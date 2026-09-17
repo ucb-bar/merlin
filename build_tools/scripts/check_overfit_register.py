@@ -24,6 +24,7 @@ when. A fabricated removal condition reads as rigour and is worse than an honest
     python build_tools/scripts/check_overfit_register.py            # full check (exit 1 on failure)
     python build_tools/scripts/check_overfit_register.py --summary  # the debt table, exit 0
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -111,17 +112,22 @@ def main(argv: list[str] | None = None) -> int:
     # see. runtime_concession / dead_seam entries name a file for provenance, not because the scan found
     # it, so they are exempt from the stale check.
     scanned_kinds = {"target_name", "target_coupling"}
-    scan_visible = {item for entry in entries if entry.get("kind") in scanned_kinds
-                    for item in (entry.get("items") or [])}
+    scan_visible = {
+        item for entry in entries if entry.get("kind") in scanned_kinds for item in (entry.get("items") or [])
+    }
     stale = [s for s in stale if s in scan_visible]
 
     if "--summary" in argv:
-        print(f"overfit register: {len(entries)} entr(y/ies) covering {len(declared)} item(s); "
-              f"{len(live)} coupled module(s) measured live")
+        print(
+            f"overfit register: {len(entries)} entr(y/ies) covering {len(declared)} item(s); "
+            f"{len(live)} coupled module(s) measured live"
+        )
         for entry in entries:
             n = len(entry.get("items") or [])
-            print(f"  [{entry.get('status','?'):9}] {entry.get('kind','?'):18} {entry.get('id','?')} "
-                  f"({n} item(s), owner {entry.get('owner','?')})")
+            print(
+                f"  [{entry.get('status', '?'):9}] {entry.get('kind', '?'):18} {entry.get('id', '?')} "
+                f"({n} item(s), owner {entry.get('owner', '?')})"
+            )
         return 0
 
     failed = False
@@ -138,23 +144,31 @@ def main(argv: list[str] | None = None) -> int:
             shown = REGISTER.relative_to(ROOT)
         except ValueError:
             shown = REGISTER
-        print(f"[FAIL] overfit-register: {len(undeclared)} module(s) depend on a specific target and are "
-              f"NOT declared in {shown}:")
+        print(
+            f"[FAIL] overfit-register: {len(undeclared)} module(s) depend on a specific target and are "
+            f"NOT declared in {shown}:"
+        )
         for u in undeclared:
             print(f"  - {u}")
-        print("  Add them to an entry with an owner and a removal condition. New coupling is a decision, "
-              "not an accident: declare it or do not introduce it.")
+        print(
+            "  Add them to an entry with an owner and a removal condition. New coupling is a decision, "
+            "not an accident: declare it or do not introduce it."
+        )
     if stale:
-        print(f"[note] overfit-register: {len(stale)} declared item(s) no longer couple to a target — "
-              "delete them so the count keeps meaning something:")
+        print(
+            f"[note] overfit-register: {len(stale)} declared item(s) no longer couple to a target — "
+            "delete them so the count keeps meaning something:"
+        )
         for s in stale:
             print(f"  - {s}")
 
     if failed:
         return 1
     n_untriaged = sum(len(e.get("items") or []) for e in entries if e.get("status") == "untriaged")
-    print(f"[  ok] overfit-register: all {len(live)} coupled module(s) declared "
-          f"({len(entries)} entries, {n_untriaged} item(s) still untriaged). The count may only fall.")
+    print(
+        f"[  ok] overfit-register: all {len(live)} coupled module(s) declared "
+        f"({len(entries)} entries, {n_untriaged} item(s) still untriaged). The count may only fall."
+    )
     return 0
 
 

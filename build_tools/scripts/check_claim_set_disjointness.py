@@ -41,6 +41,7 @@ Modes, mirroring the other gates in this directory:
                        an unresolvable target). A check that could not run has established nothing,
                        and this repo has shipped one reporting success more than once.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,8 +68,7 @@ def _bundles() -> dict[str, Path]:
     root = artifacts_dir() / "recaptures"
     if not root.is_dir():
         return {}
-    return {d.name: d / "model.mlir" for d in sorted(root.iterdir())
-            if (d / "model.mlir").is_file()}
+    return {d.name: d / "model.mlir" for d in sorted(root.iterdir()) if (d / "model.mlir").is_file()}
 
 
 def _spec_targets() -> list[str]:
@@ -100,9 +100,12 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
 
     bundles = bundles if bundles is not None else _bundles()
     if not bundles:
-        return {"target": target, "status": "no_captures",
-                "detail": "no bundle under out/artifacts/recaptures/ carries a model.mlir, so no "
-                          "requirement can be derived and nothing about circularity is established"}
+        return {
+            "target": target,
+            "status": "no_captures",
+            "detail": "no bundle under out/artifacts/recaptures/ carries a model.mlir, so no "
+            "requirement can be derived and nothing about circularity is established",
+        }
     derivation, claim = CM.partition(bundles)
     covered = CM.covered_claim_models(bundles)
     uncaptured = sorted(m for m, bs in covered.items() if not bs)
@@ -122,8 +125,10 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
         return row
     if not derivation:
         row["status"] = "empty_derivation"
-        row["detail"] = ("every capture is held out, so the requirement is derived from nothing; "
-                         "disjointness is satisfied trivially and means nothing")
+        row["detail"] = (
+            "every capture is held out, so the requirement is derived from nothing; "
+            "disjointness is satisfied trivially and means nothing"
+        )
         return row
 
     def _cells(caps):
@@ -134,45 +139,58 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
         with_claim, _ = _cells(bundles)
         without, diag = _cells(derivation)
         row["admitted_status"] = diag.get("admitted_status", "unknown")
-    except Exception as exc:                       # noqa: BLE001 -- an unresolvable target establishes nothing
+    except Exception as exc:  # noqa: BLE001 -- an unresolvable target establishes nothing
         row["status"] = "unverifiable"
         row["detail"] = f"could not derive the requirement: {type(exc).__name__}: {exc}"
         return row
 
     dependent = [c for c in with_claim if c not in without]
-    row.update({
-        "n_cells_all_captures": len(with_claim),
-        "n_cells_derivation_only": len(without),
-        "requirement_is_independent": not dependent,
-        # A cell present ONLY when the held-out models are included: a requirement a claim model
-        # demanded. Printable -- a cell is `admitted x observed`, which the tracked spec already states.
-        "cells_depending_on_a_claim_model": [list(c) for c in dependent],
-        "known_derivation_gaps": [dict(g) for g in CM.known_derivation_gaps()],
-        # ⚠️ A ZERO-CELL DERIVATION IS NOT A PASS. Independence is vacuously true when the requirement
-        # is empty -- nothing can depend on a held-out model if nothing is required at all -- so
-        # reporting `ok` there is the "a check that could not run reported success" failure this repo
-        # has paid for repeatedly. Measured: saturn_opu and saturn_opu_rvv derive no cell from any
-        # capture, and this gate called both of them clean.
-        "status": ("no_requirement" if not without else
-                   "circular" if dependent else
-                   "claim_model_uncaptured" if uncaptured else "ok"),
-    })
+    row.update(
+        {
+            "n_cells_all_captures": len(with_claim),
+            "n_cells_derivation_only": len(without),
+            "requirement_is_independent": not dependent,
+            # A cell present ONLY when the held-out models are included: a requirement a claim model
+            # demanded. Printable -- a cell is `admitted x observed`, which the tracked spec already states.
+            "cells_depending_on_a_claim_model": [list(c) for c in dependent],
+            "known_derivation_gaps": [dict(g) for g in CM.known_derivation_gaps()],
+            # ⚠️ A ZERO-CELL DERIVATION IS NOT A PASS. Independence is vacuously true when the requirement
+            # is empty -- nothing can depend on a held-out model if nothing is required at all -- so
+            # reporting `ok` there is the "a check that could not run reported success" failure this repo
+            # has paid for repeatedly. Measured: saturn_opu and saturn_opu_rvv derive no cell from any
+            # capture, and this gate called both of them clean.
+            "status": (
+                "no_requirement"
+                if not without
+                else "circular"
+                if dependent
+                else "claim_model_uncaptured"
+                if uncaptured
+                else "ok"
+            ),
+        }
+    )
     if row.get("admitted_status", "resolved") != "resolved":
         # Distinguished from "admits nothing a capture contains", because they license opposite
         # actions: generate the target's package, versus accept that the families do not intersect.
         row["status"] = "contract_unresolved"
-        row["detail"] = (f"this target's capability contract did not resolve "
-                         f"({row['admitted_status']}), so the requirement is UNKNOWN, not empty")
+        row["detail"] = (
+            f"this target's capability contract did not resolve "
+            f"({row['admitted_status']}), so the requirement is UNKNOWN, not empty"
+        )
     elif not without:
-        row["detail"] = ("the derivation set yields NO requirement cell, so independence is vacuous "
-                         "and nothing about circularity is established: this target's manifest admits "
-                         "no family any derivation capture contains")
+        row["detail"] = (
+            "the derivation set yields NO requirement cell, so independence is vacuous "
+            "and nothing about circularity is established: this target's manifest admits "
+            "no family any derivation capture contains"
+        )
     elif dependent:
-        row["detail"] = (f"{len(dependent)} requirement cell(s) exist only because a held-out model "
-                         f"was read; the corpus would be built from what it claims to generalize to")
+        row["detail"] = (
+            f"{len(dependent)} requirement cell(s) exist only because a held-out model "
+            f"was read; the corpus would be built from what it claims to generalize to"
+        )
     elif uncaptured:
-        row["detail"] = (f"claim model(s) {uncaptured} have no capture, so the claim is not measured "
-                         f"over them at all")
+        row["detail"] = f"claim model(s) {uncaptured} have no capture, so the claim is not measured over them at all"
     return row
 
 
@@ -182,8 +200,16 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
 #: code under any flag. A claim measured over a model nobody captured "reads identically to a passing
 #: one"; it read that way here too.
 _VIOLATION = frozenset({"circular", "overlap"})
-_UNMEASURED = frozenset({"claim_model_uncaptured", "no_requirement", "contract_unresolved",
-                         "no_captures", "unverifiable", "empty_derivation"})
+_UNMEASURED = frozenset(
+    {
+        "claim_model_uncaptured",
+        "no_requirement",
+        "contract_unresolved",
+        "no_captures",
+        "unverifiable",
+        "empty_derivation",
+    }
+)
 _CLEAN = frozenset({"ok"})
 
 
@@ -201,8 +227,7 @@ def verdict_bucket(status: str) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=None)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--fail-on-circular", action="store_true")
@@ -211,7 +236,7 @@ def main(argv=None) -> int:
 
     try:
         declared = CM.claim_models()
-    except Exception as exc:                       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         msg = f"claim-model declaration unreadable: {type(exc).__name__}: {exc}"
         print(f"[FAIL] {msg}", file=sys.stderr)
         # UNCONDITIONAL. The claim-model declaration is this gate's entire input; if it will not load,
@@ -227,8 +252,12 @@ def main(argv=None) -> int:
 
     bundles = _bundles()
     rows = [audit(t, bundles) for t in targets]
-    report = {"claim_models": list(declared), "exclusion_rule": CM.exclusion_rule(),
-              "forbidden_sources": list(CM.forbidden_sources()), "targets": rows}
+    report = {
+        "claim_models": list(declared),
+        "exclusion_rule": CM.exclusion_rule(),
+        "forbidden_sources": list(CM.forbidden_sources()),
+        "targets": rows,
+    }
     if a.json:
         print(json.dumps(report, indent=2))
     else:
@@ -236,9 +265,11 @@ def main(argv=None) -> int:
         for r in rows:
             head = f"  {r['target']:14} {r['status']:22}"
             if r["status"] in ("ok", "circular", "claim_model_uncaptured"):
-                print(f"{head} derivation={r['n_derivation']} claim={r['n_claim']} "
-                      f"cells={r['n_cells_derivation_only']} "
-                      f"independent={r['requirement_is_independent']}")
+                print(
+                    f"{head} derivation={r['n_derivation']} claim={r['n_claim']} "
+                    f"cells={r['n_cells_derivation_only']} "
+                    f"independent={r['requirement_is_independent']}"
+                )
             elif r.get("detail"):
                 # One line per target: the detail was printed here AND again below, so every
                 # non-ok target reported its reason twice.
@@ -246,8 +277,7 @@ def main(argv=None) -> int:
                 print(f"                 -> {r['detail']}")
             else:
                 print(f"{head}")
-            if r["status"] in ("circular", "claim_model_uncaptured", "no_requirement") \
-                    and r.get("detail"):
+            if r["status"] in ("circular", "claim_model_uncaptured", "no_requirement") and r.get("detail"):
                 print(f"                 -> {r['detail']}")
         for g in CM.known_derivation_gaps():
             print(f"  [gap] {g.get('family')}/{g.get('shape_class')}: {g.get('reason', '').strip()}")
@@ -256,11 +286,13 @@ def main(argv=None) -> int:
     unverifiable = [r for r in rows if verdict_bucket(r["status"]) == "unmeasured"]
     for r in unverifiable:
         if r["status"] not in _VIOLATION and r["status"] not in _UNMEASURED:
-            print(f"[claim-set] status {r['status']!r} ({r['target']}) is not classified by this gate; "
-                  f"treating it as unverifiable rather than as a pass", file=sys.stderr)
+            print(
+                f"[claim-set] status {r['status']!r} ({r['target']}) is not classified by this gate; "
+                f"treating it as unverifiable rather than as a pass",
+                file=sys.stderr,
+            )
     if a.fail_on_circular and circular:
-        print(f"[FAIL] {len(circular)} target(s) derive a requirement from a held-out model",
-              file=sys.stderr)
+        print(f"[FAIL] {len(circular)} target(s) derive a requirement from a held-out model", file=sys.stderr)
         return 1
     if a.fail_on_unverifiable and unverifiable:
         print(f"[FAIL] {len(unverifiable)} target(s) could not be verified", file=sys.stderr)

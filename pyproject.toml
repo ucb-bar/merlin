@@ -184,6 +184,16 @@ known-first-party = ["merlin"]
 
 [tool.ruff.format]
 docstring-code-format = true
+# The repo gates excuse a flagged literal with an inline marker on the SAME LINE (`# target-ok:`,
+# `# derived-ok:`, `# regex-ok:`, `# fact-source-ok:`). Formatting these files splits a marked line
+# inside a multi-line construct -- or, in check_no_target_name.py, inside the string literals that
+# define the markers -- so the marker lands beside a closing paren and the gate fails. A
+# single-line statement is pinned with `# fmt: skip` instead; these three have no such line to pin.
+exclude = [
+    "build_tools/scripts/check_no_target_name.py",
+    "build_tools/scripts/gen_saturn_opu_rvv_contract.py",
+    "merlin/python/merlin/llvmlower/requant_fuse.py",
+]
 
 [tool.uv]
 # Default dev environment includes the dev tools and the xdsl prototyping plane.

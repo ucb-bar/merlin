@@ -6,6 +6,7 @@ Usage:
   gen_package_docs.py            # (re)generate docs/reference/module_index.md
   gen_package_docs.py --check    # exit 1 if the index is stale, or an AGENT.md is missing/stale
 """
+
 from __future__ import annotations
 
 import ast
@@ -18,8 +19,13 @@ PKG = ROOT / "merlin" / "python" / "merlin"
 INDEX = ROOT / "docs" / "reference" / "module_index.md"
 
 # Phrases that were copy-pasted boilerplate and misrepresent live code — must never reappear.
-STALE_PHRASES = ("no real logic yet", "no real algorithms", "no real passes yet",
-                 "todo stubs only at this stage", "placeholder modules with explicit todos")
+STALE_PHRASES = (
+    "no real logic yet",
+    "no real algorithms",
+    "no real passes yet",
+    "todo stubs only at this stage",
+    "placeholder modules with explicit todos",
+)
 
 
 def _first_docline(init: Path) -> str:
@@ -44,14 +50,13 @@ def _first_docline(init: Path) -> str:
     text = " ".join(para)
     if len(text) > 200:
         cut = text.rfind(" ", 0, 200)
-        text = text[:cut if cut > 0 else 200].rstrip(" ,;:") + "…"
+        text = text[: cut if cut > 0 else 200].rstrip(" ,;:") + "…"
     return text
 
 
 def _packages() -> list[tuple[Path, Path]]:
     """(relative-dir, __init__path) for every importable package under merlin/, sorted."""
-    return sorted(((init.parent.relative_to(PKG), init) for init in PKG.rglob("__init__.py")),
-                  key=lambda t: str(t[0]))
+    return sorted(((init.parent.relative_to(PKG), init) for init in PKG.rglob("__init__.py")), key=lambda t: str(t[0]))
 
 
 def gen_index() -> str:
@@ -77,16 +82,18 @@ def _gen_agent_md(rel: Path) -> str:
     d = PKG / rel
     label = str(rel).replace(os.sep, "/")
     purpose = _first_docline(d / "__init__.py")
-    mods = [f"- `{f.name}` — {_first_docline(f)}"
-            for f in sorted(d.glob("*.py")) if f.name != "__init__.py"]
-    subpkgs = sorted(s.name for s in d.iterdir() if s.is_dir() and (s / '__init__.py').is_file())
+    mods = [f"- `{f.name}` — {_first_docline(f)}" for f in sorted(d.glob("*.py")) if f.name != "__init__.py"]
+    subpkgs = sorted(s.name for s in d.iterdir() if s.is_dir() and (s / "__init__.py").is_file())
     body = [f"# AGENT.md — merlin/python/merlin/{label}", "", "## Purpose", "", purpose, ""]
     if mods:
         body += ["## Modules", "", *mods, ""]
     if subpkgs:
         body += ["## Subpackages", "", *[f"- `{s}/`" for s in subpkgs], ""]
-    body += ["<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.",
-             "     Add hand-written notes (invariants, gotchas) below. -->", ""]
+    body += [
+        "<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.",
+        "     Add hand-written notes (invariants, gotchas) below. -->",
+        "",
+    ]
     return "\n".join(body)
 
 
@@ -141,8 +148,7 @@ def main(argv: list[str]) -> int:
         if not agent.is_file():
             agent.write_text(_gen_agent_md(rel), encoding="utf-8")
             created += 1
-    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); "
-          f"generated {created} missing AGENT.md")
+    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); generated {created} missing AGENT.md")
     return 0
 
 

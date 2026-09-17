@@ -38,8 +38,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
 from merlin.common.paths import merlin_dir, repo_root, runs_dir  # noqa: E402
-from merlin.runtime.route_partition import (                   # noqa: E402
-    ROUTE_ACCEPT, ROUTE_DECLINE, ROUTE_VIOLATION, VIOLATION_KINDS, route_of)
+from merlin.runtime.route_partition import (  # noqa: E402
+    ROUTE_ACCEPT,
+    ROUTE_DECLINE,
+    ROUTE_VIOLATION,
+    VIOLATION_KINDS,
+    route_of,
+)
 
 BUFFER_NAME = "command_buffer.json"
 
@@ -153,8 +158,14 @@ def audit(roots: list[Path], *, targets: list[str], only: set[str] | None = None
                 # An unreadable buffer is its own fact, never folded into a route.
                 n_unreadable += 1
                 per_target[tgt]["unreadable"] += 1
-                violations.append({"target": tgt, "path": str(p), "kind": "unreadable",
-                                   "detail": f"{type(exc).__name__}: {exc}"[:200]})
+                violations.append(
+                    {
+                        "target": tgt,
+                        "path": str(p),
+                        "kind": "unreadable",
+                        "detail": f"{type(exc).__name__}: {exc}"[:200],
+                    }
+                )
                 continue
             if not isinstance(cb, dict):
                 n_unreadable += 1
@@ -166,16 +177,22 @@ def audit(roots: list[Path], *, targets: list[str], only: set[str] | None = None
                 per_target[tgt][kind] += 1
                 violations.append({"target": tgt, "path": str(p), "kind": kind, "detail": detail})
 
-    return {"roots": [str(r) for r in roots], "targets_known": known,
-            "n_buffers": n_buffers, "n_unreadable": n_unreadable,
-            "per_target": {t: dict(c) for t, c in sorted(per_target.items())},
-            "violations": violations}
+    return {
+        "roots": [str(r) for r in roots],
+        "targets_known": known,
+        "n_buffers": n_buffers,
+        "n_unreadable": n_unreadable,
+        "per_target": {t: dict(c) for t, c in sorted(per_target.items())},
+        "violations": violations,
+    }
 
 
 def report(rec: dict, ratchet: set[str]) -> tuple[list[str], list[str]]:
     """Print the human report. Returns ``(ratcheted, unratcheted)`` debt keys."""
-    print(f"command buffers walked: {rec['n_buffers']:,}"
-          f"{f'  ({rec['n_unreadable']} unreadable)' if rec['n_unreadable'] else ''}")
+    print(
+        f"command buffers walked: {rec['n_buffers']:,}"
+        f"{f'  ({rec["n_unreadable"]} unreadable)' if rec['n_unreadable'] else ''}"
+    )
     print(f"targets discovered:     {', '.join(rec['targets_known']) or '(none)'}")
 
     by_key: dict[str, int] = collections.Counter()
@@ -193,8 +210,10 @@ def report(rec: dict, ratchet: set[str]) -> tuple[list[str], list[str]]:
         kinds = {k: counts[k] for k in VIOLATION_KINDS if counts.get(k)}
         if counts.get("unreadable"):
             kinds["unreadable"] = counts["unreadable"]
-        print(f"{tgt:<16}{counts.get(ROUTE_ACCEPT, 0):>8}{counts.get(ROUTE_DECLINE, 0):>8}"
-              f"{counts.get(ROUTE_VIOLATION, 0):>8}   {kinds or '-'}")
+        print(
+            f"{tgt:<16}{counts.get(ROUTE_ACCEPT, 0):>8}{counts.get(ROUTE_DECLINE, 0):>8}"
+            f"{counts.get(ROUTE_VIOLATION, 0):>8}   {kinds or '-'}"
+        )
 
     if rec["violations"]:
         print("\nviolations, one example per kind per target:")
@@ -206,7 +225,7 @@ def report(rec: dict, ratchet: set[str]) -> tuple[list[str], list[str]]:
             seen.add(key)
             rel = v["path"]
             root = str(repo_root())
-            rel = rel[len(root) + 1:] if rel.startswith(root) else rel
+            rel = rel[len(root) + 1 :] if rel.startswith(root) else rel
             print(f"\n  [{v['target']}] {v['kind']}")
             print(f"    {rel}")
             print(f"    {v['detail']}")
@@ -221,24 +240,25 @@ def report(rec: dict, ratchet: set[str]) -> tuple[list[str], list[str]]:
         print(f"\n{len(ratcheted)} ratcheted (pre-existing debt, may only shrink)")
     stale = sorted(ratchet - set(by_key))
     if stale:
-        print(f"\n{len(stale)} ratchet entr(ies) no longer needed -- REMOVE them so the ratchet "
-              f"cannot hide a regression:")
+        print(
+            f"\n{len(stale)} ratchet entr(ies) no longer needed -- REMOVE them so the ratchet cannot hide a regression:"
+        )
         for k in stale[:15]:
             print(f"  - {k}")
     return ratcheted, unratcheted
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", action="append", default=None,
-                    help="tree to walk (repeatable); default: out/runs")
-    ap.add_argument("--target", action="append", default=None,
-                    help="restrict to this target (repeatable)")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", action="append", default=None, help="tree to walk (repeatable); default: out/runs")
+    ap.add_argument("--target", action="append", default=None, help="restrict to this target (repeatable)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", default=str(DEFAULT_RATCHET))
-    ap.add_argument("--write-ratchet", action="store_true",
-                    help="regenerate the ratchet from what is present now (records debt; use once)")
+    ap.add_argument(
+        "--write-ratchet",
+        action="store_true",
+        help="regenerate the ratchet from what is present now (records debt; use once)",
+    )
     ap.add_argument("--fail-on-violation", action="store_true")
     a = ap.parse_args(argv)
 
@@ -248,12 +268,13 @@ def main(argv: list[str] | None = None) -> int:
     ratchet_path = Path(a.ratchet) if a.ratchet else None
 
     if a.write_ratchet:
-        keys = sorted({_debt(v["target"], v["kind"], subject_of(Path(v["path"])))
-                       for v in rec["violations"]})
-        body = ("# Pre-existing admission-partition debt. MAY ONLY SHRINK -- never add a line.\n"
-                "# Key: <target> <violation-kind>:<containing-directory-name>\n"
-                "# See merlin/python/merlin/runtime/route_partition.py for what each kind means.\n"
-                + "".join(k + "\n" for k in keys))
+        keys = sorted({_debt(v["target"], v["kind"], subject_of(Path(v["path"]))) for v in rec["violations"]})
+        body = (
+            "# Pre-existing admission-partition debt. MAY ONLY SHRINK -- never add a line.\n"
+            "# Key: <target> <violation-kind>:<containing-directory-name>\n"
+            "# See merlin/python/merlin/runtime/route_partition.py for what each kind means.\n"
+            + "".join(k + "\n" for k in keys)
+        )
         ratchet_path.write_text(body, encoding="utf-8")
         print(f"wrote {len(keys)} ratchet entr(ies) to {ratchet_path}")
         return 0

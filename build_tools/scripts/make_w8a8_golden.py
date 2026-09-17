@@ -33,6 +33,7 @@ Usage:
     make_w8a8_golden.py --force <bundle>    # regenerate even if present
     make_w8a8_golden.py --list              # report coverage, write nothing
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,7 @@ def int8_bundles() -> list[Path]:
     root = recaptures_dir()
     if not root.is_dir():
         return []
-    return sorted(d for d in root.iterdir()
-                  if d.is_dir() and "_int8" in d.name and (d / "model.mlir").is_file())
+    return sorted(d for d in root.iterdir() if d.is_dir() and "_int8" in d.name and (d / "model.mlir").is_file())
 
 
 def cos(a: np.ndarray, b: np.ndarray) -> float:
@@ -73,14 +73,21 @@ def generate(bundle: Path, *, force: bool = False) -> tuple[bool, str]:
     np.save(target, out)
     # Say in the bundle what kind of reference this is (see the module docstring): a consumer that
     # reads a W8A8 tier pass off this file is reading a self-comparison, not a verdict.
-    (bundle / "golden_w8a8.provenance.json").write_text(json.dumps({
-        "producer": "build_tools/scripts/make_w8a8_golden.py",
-        "computed_by": "merlin.runtime.dispatch_runtime.run_model(int8_compute=True)",
-        "independent_of_merlin": False,
-        "decides": "device-vs-host execution agreement",
-        "does_not_decide": "whether merlin's int8 arithmetic is correct (rel is 0 by construction)",
-        "created": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
-    }, indent=2) + "\n", encoding="utf-8")
+    (bundle / "golden_w8a8.provenance.json").write_text(
+        json.dumps(
+            {
+                "producer": "build_tools/scripts/make_w8a8_golden.py",
+                "computed_by": "merlin.runtime.dispatch_runtime.run_model(int8_compute=True)",
+                "independent_of_merlin": False,
+                "decides": "device-vs-host execution agreement",
+                "does_not_decide": "whether merlin's int8 arithmetic is correct (rel is 0 by construction)",
+                "created": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     gold = bundle / "golden.npy"
     note = ""
     if gold.is_file():
@@ -92,8 +99,7 @@ def generate(bundle: Path, *, force: bool = False) -> tuple[bool, str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bundles", nargs="*", help="bundle names (default: all int8 bundles)")
     ap.add_argument("--force", action="store_true", help="regenerate even if one exists")
     ap.add_argument("--list", action="store_true", help="report coverage and exit")

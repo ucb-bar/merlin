@@ -13,12 +13,12 @@ oracle; the public CONTRACT (``capsule.interface.mlir`` + ``capsule.yaml`` + ``M
 Structured path matching only (no regex, per the repo's derive-don't-hardcode/no-regex conventions).
 Run as a pre-commit + Stop gate. Exit non-zero listing any tracked answer key.
 """
+
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
-
 
 #: Filenames that live under a ``golden/`` dir but are handed to the graded method BY ITS OWN PROMPT
 #: (``targetgen_evals/methods/*/prompt.md`` tells it to read both "for reference"), so they are
@@ -38,17 +38,17 @@ def _is_answer_key(path: str) -> bool:
     name = parts[-1]
     if name in _DECLARED_METHOD_INPUTS and all(seg in parts for seg in _EVAL_DATASET_PARTS):
         return False
-    if "hidden" in parts:                       # the entire held-out subtree, any depth
+    if "hidden" in parts:  # the entire held-out subtree, any depth
         return True
-    if "golden" in parts:                       # a golden/ DIRECTORY is an answer surface too -- the
-        return True                             # filename rules below miss `golden/expected_*.yaml`
-    if name.endswith(".hidden.yaml"):           # the holdout SPECIFICATION sidecar (op+dtype+shape)
+    if "golden" in parts:  # a golden/ DIRECTORY is an answer surface too -- the
+        return True  # filename rules below miss `golden/expected_*.yaml`
+    if name.endswith(".hidden.yaml"):  # the holdout SPECIFICATION sidecar (op+dtype+shape)
         return True
-    if name == "golden.yaml":                   # graded golden output
+    if name == "golden.yaml":  # graded golden output
         return True
     if name.startswith("golden_") and name.endswith(".yaml"):  # dtype-variant goldens (golden_w8a8.yaml …)
         return True
-    if name == "expected_instruction_coverage.yaml":           # required instruction classes = the answer
+    if name == "expected_instruction_coverage.yaml":  # required instruction classes = the answer
         return True
     return False
 
@@ -62,8 +62,7 @@ def _fail(stop_hook: bool, reason: str, lines: list[str]) -> int:
     session stopped anyway. Both dialects now come from one place so they cannot drift apart again.
     """
     if stop_hook:
-        print(json.dumps({"decision": "block",
-                          "reason": reason + ("\n- " + "\n- ".join(lines) if lines else "")}))
+        print(json.dumps({"decision": "block", "reason": reason + ("\n- " + "\n- ".join(lines) if lines else "")}))
         return 0  # stop-hook signals via JSON, not exit code
     print(f"[FAIL] no-answer-keys: {reason}", file=sys.stderr)
     for line in lines[:40]:
@@ -77,21 +76,26 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     stop_hook = "--stop-hook" in argv
     try:
-        tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
-                                 check=True).stdout.splitlines()
+        tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError) as e:
         # FAIL CLOSED. "We could not look" is not "there is nothing to find". This gate is the only
         # thing standing between a public repo and a published answer key, and returning 0 on an
         # unread index made an unreadable tree indistinguishable from a clean one — a green that
         # cannot fail. An unexaminable surface is a refusal; fix the tree and re-run.
-        return _fail(stop_hook,
-                     f"could not list tracked files ({e}); the answer-key surface was NOT examined, "
-                     f"which is not the same as clean", [])
+        return _fail(
+            stop_hook,
+            f"could not list tracked files ({e}); the answer-key surface was NOT examined, "
+            f"which is not the same as clean",
+            [],
+        )
     leaks = [p for p in tracked if _is_answer_key(p)]
     if leaks:
-        return _fail(stop_hook,
-                     f"{len(leaks)} benchmark answer key(s) are TRACKED (public repo — untrack with "
-                     f"`git rm --cached`, they stay on disk + are gitignored):", leaks)
+        return _fail(
+            stop_hook,
+            f"{len(leaks)} benchmark answer key(s) are TRACKED (public repo — untrack with "
+            f"`git rm --cached`, they stay on disk + are gitignored):",
+            leaks,
+        )
     if stop_hook:
         print(json.dumps({}))
         return 0

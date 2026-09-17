@@ -44,6 +44,7 @@ Modes, mirroring the sibling gates in this directory:
                        is unknown has not been shown to be affordable, and this repo has repeatedly
                        paid for a check that could not run reporting success.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,7 +67,7 @@ from merlin.targetgen import cert_cost as CC  # noqa: E402
 #: The same default the conformance derivation sizes against, read from it rather than restated.
 try:
     from merlin.targetgen.conformance import _DEFAULT_CERT_BUDGET_S as _BUDGET
-except ImportError:                                # pragma: no cover - keep the gate runnable
+except ImportError:  # pragma: no cover - keep the gate runnable
     _BUDGET = 300.0
 
 
@@ -92,9 +93,11 @@ def _price(fit, output_elements: int) -> tuple[float, str]:
             where = f"{fit.target}/{engine}" if engine else str(fit.target)
             return secs, f"fitted on {where} ({fit.n_samples} samples, r2 {fit.r2:.2f})"
     secs, extrapolated = CC.predict_seconds_from_output(output_elements)
-    basis = (f"no measured (target, engine) basis; global calibration law "
-             f"{CC.MEASURED_COEFFICIENT_S} * out^{CC.MEASURED_EXPONENT}"
-             + (" EXTRAPOLATED past the calibrated range" if extrapolated else ""))
+    basis = (
+        f"no measured (target, engine) basis; global calibration law "
+        f"{CC.MEASURED_COEFFICIENT_S} * out^{CC.MEASURED_EXPONENT}"
+        + (" EXTRAPOLATED past the calibrated range" if extrapolated else "")
+    )
     return (secs or 0.0, basis)
 
 
@@ -108,8 +111,7 @@ def _default_corpus_target() -> str:
     from merlin.common.paths import merlin_dir
 
     root = merlin_dir() / "contract" / "capsules"
-    names = [f.stem for f in (root / "profiles").glob("*.yaml")
-             if not f.stem.startswith("_") and "." not in f.stem]
+    names = [f.stem for f in (root / "profiles").glob("*.yaml") if not f.stem.startswith("_") and "." not in f.stem]
     rootless = [n for n in names if not (root / n).is_dir()]
     return rootless[0] if len(rootless) == 1 else "(default)"
 
@@ -127,7 +129,7 @@ def _target_label_for(cy) -> str:
     """
     parts = cy.parts
     i = parts.index("capsules") if "capsules" in parts else -1
-    rest = parts[i + 1:] if i >= 0 else ()
+    rest = parts[i + 1 :] if i >= 0 else ()
     return rest[0] if len(rest) > 3 else _default_corpus_target()
 
 
@@ -140,8 +142,9 @@ def _resolved_target(label: str) -> str:
     """
     try:
         from merlin.targetgen.target_registry import declared_target_for
+
         return declared_target_for(label) or label
-    except Exception:                              # noqa: BLE001 -- no registry here: the label as given
+    except Exception:  # noqa: BLE001 -- no registry here: the label as given
         return label
 
 
@@ -156,8 +159,9 @@ def _selected_l3_engine(target: str) -> "str | None":
     try:
         from merlin.targetgen import tier_affordability as TA
         from merlin.targetgen.capsule_runner import chipyard_l3_selection
+
         engine = (chipyard_l3_selection(_resolved_target(target)) or {}).get("engine")
-    except Exception:                              # noqa: BLE001 -- unselectable is "no choice", never a guess
+    except Exception:  # noqa: BLE001 -- unselectable is "no choice", never a guess
         return None
     return TA.normalize_engine(engine) if engine else None
 
@@ -176,9 +180,8 @@ def _engine_fit(target: str, cache: dict):
     if target not in cache:
         try:
             cache[target] = CA.fits_for(_resolved_target(target))
-        except Exception:                          # noqa: BLE001 -- unreadable history is no history
-            cache[target] = {"engines": {}, "sample_counts": {}, "unattributed_samples": 0,
-                             "unsized_samples": 0}
+        except Exception:  # noqa: BLE001 -- unreadable history is no history
+            cache[target] = {"engines": {}, "sample_counts": {}, "unattributed_samples": 0, "unsized_samples": 0}
     fits = {e: f for e, f in cache[target]["engines"].items() if f is not None}
     if len(fits) == 1:
         return next(iter(fits.values()))
@@ -212,9 +215,10 @@ def _cheaper_tier(label: str, cache: dict):
     if label not in cache:
         try:
             from merlin.targetgen.conformance import _declared_oracle_tiers  # noqa: PLC2701
+
             tiers = [str(t) for t in (_declared_oracle_tiers(label) or ())]
             cache[label] = tiers[0] if len(tiers) > 1 else (None if tiers else _TIER_UNKNOWN)
-        except Exception:                          # noqa: BLE001 -- unaskable is UNKNOWN, never a cap
+        except Exception:  # noqa: BLE001 -- unaskable is UNKNOWN, never a cap
             cache[label] = _TIER_UNKNOWN
     return cache[label]
 
@@ -231,7 +235,7 @@ def _remedies(row: dict, cheaper) -> list:
     """
     out = ["smaller_shape"]
     if row.get("needs_cycle_accurate"):
-        pass                                       # capping deletes the measurement, so not a remedy
+        pass  # capping deletes the measurement, so not a remedy
     elif cheaper is _TIER_UNKNOWN or cheaper == _TIER_UNKNOWN:
         out.append("cap_onto_cheaper_tier_UNRESOLVED")
     elif cheaper:
@@ -257,12 +261,16 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         # never carry one. Placed after it, the check reported zero every time while 19 capsules on disk
         # declared the field.
         if doc.get("extends") and (not targets or any(t in cy.parts for t in targets)):
-            extends_rows.append({"capsule": cy.parent.name,
-                                 "target": _resolved_target(_target_label_for(cy)),
-                                 "extends": str(doc["extends"]),
-                                 "max_oracle_tier": doc.get("max_oracle_tier")})
+            extends_rows.append(
+                {
+                    "capsule": cy.parent.name,
+                    "target": _resolved_target(_target_label_for(cy)),
+                    "extends": str(doc["extends"]),
+                    "max_oracle_tier": doc.get("max_oracle_tier"),
+                }
+            )
         if "L3" not in (doc.get("required_oracle_tiers") or ()):
-            continue                               # not asking to be certified
+            continue  # not asking to be certified
         if targets and not any(t in cy.parts for t in targets):
             continue
         ifc = cy.parent / str(doc.get("interface_mlir") or "capsule.interface.mlir")
@@ -271,9 +279,8 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             continue
         try:
             out = CC.capsule_output_elements(ifc.read_text(encoding="utf-8"))
-        except Exception as exc:                   # noqa: BLE001 -- an unpriceable capsule is reported
-            unpriceable.append({"capsule": cy.parent.name,
-                                "why": f"{type(exc).__name__}: {exc}"})
+        except Exception as exc:  # noqa: BLE001 -- an unpriceable capsule is reported
+            unpriceable.append({"capsule": cy.parent.name, "why": f"{type(exc).__name__}: {exc}"})
             continue
         if out <= 0:
             unpriceable.append({"capsule": cy.parent.name, "why": "commits nothing measurable"})
@@ -285,28 +292,35 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         # priced by the single global law, so a target nobody had ever certified and one with 34
         # measured certifications produced the same number and neither said which.
         secs, basis = _price(_engine_fit(_target, fit_cache), out)
-        rows.append({"capsule": cy.parent.name,
-                     "target": _target,
-                     "output_elements": out,
-                     "extrapolated": out > CC.MEASURED_MAX_OUTPUT_ELEMENTS,
-                     "predicted_s": round(secs, 1), "basis": basis,
-                     "max_oracle_tier": doc.get("max_oracle_tier"),
-                     "extends": doc.get("extends"),
-                     "perf_family": perf.get("family"), "instrument": instrument or None,
-                     # ⚠️ AN L2 CAP IS NOT AVAILABLE TO EVERY CAPSULE. A performance capsule whose
-                     # gate instrument is a cycle count NEEDS a cycle-accurate tier -- capping it at
-                     # L2 would not make it cheap, it would destroy the measurement the capsule
-                     # exists to take. Advising that remedy would be advising an impossible fix, so
-                     # these are reported apart with the remedy that IS available to them.
-                     "needs_cycle_accurate": "cycle" in instrument,
-                     # ⚠️ WHICH REMEDIES THIS ROW MAY ACTUALLY TAKE, not the menu. Over-budget rows were
-                     # reported as one bucket and advised to declare an L2 cap or an extends -- both of
-                     # which are a cap onto a CHEAPER TIER that two of six targets do not have. Carried
-                     # per row so the ratchet's reason can be written from what is true of that capsule.
-                     "cheaper_tier": _cheaper_tier(_target, tier_cache),
-                     "remedies": _remedies({"needs_cycle_accurate": "cycle" in instrument},
-                                           _cheaper_tier(_target, tier_cache)),
-                     "path": str(cy.parent.relative_to(_REPO))})
+        rows.append(
+            {
+                "capsule": cy.parent.name,
+                "target": _target,
+                "output_elements": out,
+                "extrapolated": out > CC.MEASURED_MAX_OUTPUT_ELEMENTS,
+                "predicted_s": round(secs, 1),
+                "basis": basis,
+                "max_oracle_tier": doc.get("max_oracle_tier"),
+                "extends": doc.get("extends"),
+                "perf_family": perf.get("family"),
+                "instrument": instrument or None,
+                # ⚠️ AN L2 CAP IS NOT AVAILABLE TO EVERY CAPSULE. A performance capsule whose
+                # gate instrument is a cycle count NEEDS a cycle-accurate tier -- capping it at
+                # L2 would not make it cheap, it would destroy the measurement the capsule
+                # exists to take. Advising that remedy would be advising an impossible fix, so
+                # these are reported apart with the remedy that IS available to them.
+                "needs_cycle_accurate": "cycle" in instrument,
+                # ⚠️ WHICH REMEDIES THIS ROW MAY ACTUALLY TAKE, not the menu. Over-budget rows were
+                # reported as one bucket and advised to declare an L2 cap or an extends -- both of
+                # which are a cap onto a CHEAPER TIER that two of six targets do not have. Carried
+                # per row so the ratchet's reason can be written from what is true of that capsule.
+                "cheaper_tier": _cheaper_tier(_target, tier_cache),
+                "remedies": _remedies(
+                    {"needs_cycle_accurate": "cycle" in instrument}, _cheaper_tier(_target, tier_cache)
+                ),
+                "path": str(cy.parent.relative_to(_REPO)),
+            }
+        )
     # ⚠️ AN UNVERIFIED `extends` IS NOT A REMEDY. A non-empty field was read as one, so a capsule
     # naming a sibling that was never certified counted as remedied -- the failure the field exists to
     # prevent, arrived at through the field itself. verify_extends asks the sibling's own results
@@ -316,18 +330,21 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         try:
             from merlin.targetgen import tier_policy as TP
 
-            v = TP.verify_extends(r["target"],
-                                  {"extends": r["extends"],
-                                   "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
-                                  str(r["max_oracle_tier"] or "L2"))
+            v = TP.verify_extends(
+                r["target"],
+                {"extends": r["extends"], "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+                str(r["max_oracle_tier"] or "L2"),
+            )
             r["verified"] = bool(getattr(v, "verified", False))
             r["reason"] = str(getattr(v, "reason", ""))
         except Exception as exc:  # noqa: BLE001 - unaskable is UNKNOWN, never a pass
             r["verified"], r["reason"] = False, f"could not be verified here: {type(exc).__name__}"
     unverified_extends = [r for r in extends_rows if not r.get("verified")]
-    unremedied = [r for r in rows
-                  if r["predicted_s"] > budget_s and not r["extends"]
-                  and str(r["max_oracle_tier"] or "").upper() != "L2"]
+    unremedied = [
+        r
+        for r in rows
+        if r["predicted_s"] > budget_s and not r["extends"] and str(r["max_oracle_tier"] or "").upper() != "L2"
+    ]
     over = [r for r in unremedied if not r["needs_cycle_accurate"]]
     needs_cycles = [r for r in unremedied if r["needs_cycle_accurate"]]
     total = sum(r["predicted_s"] for r in rows)
@@ -347,10 +364,14 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             "n_l3_capsules": len(sizes),
             "unattributed_samples": got.get("unattributed_samples", 0),
             "unsized_samples": got.get("unsized_samples", 0),
-            "engines": {engine: {"n_samples": got["sample_counts"].get(engine, 0),
-                                 "fit": f.to_dict() if f is not None else None,
-                                 "cohort": CA.cohort_price(f, sizes)}
-                        for engine, f in sorted(got["engines"].items())},
+            "engines": {
+                engine: {
+                    "n_samples": got["sample_counts"].get(engine, 0),
+                    "fit": f.to_dict() if f is not None else None,
+                    "cohort": CA.cohort_price(f, sizes),
+                }
+                for engine, f in sorted(got["engines"].items())
+            },
         }
     # AND the same question asked of the REGISTERED ROSTER rather than of the corpus's directory
     # labels, because the two do not coincide: the default target's capsules sit directly under
@@ -359,47 +380,51 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
     roster: dict = {}
     try:
         from merlin.targetgen.target_registry import all_targets
+
         names = list(all_targets())
-    except Exception:                              # noqa: BLE001 -- no registry: no roster, not a guess
+    except Exception:  # noqa: BLE001 -- no registry: no roster, not a guess
         names = []
     # Plus every target capsule-bench has a descriptor for: a target can be benched (and certified)
     # without being in the compiler's own registry, and its measured history is exactly as real.
     _descs = _REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
     if _descs.is_dir():
-        names += [_resolved_target(d.name) for d in _descs.iterdir()
-                  if (d / "target_experiment.yaml").is_file()]
+        names += [_resolved_target(d.name) for d in _descs.iterdir() if (d / "target_experiment.yaml").is_file()]
     _seen = {_resolved_target(t): got for t, got in fit_cache.items()}
     for name in sorted(set(names) | set(_seen)):
         got = _seen.get(name)
         if got is None:
             try:
                 got = CA.fits_for(name)
-            except Exception:                      # noqa: BLE001 -- unreadable history is no history
+            except Exception:  # noqa: BLE001 -- unreadable history is no history
                 continue
         if not (got["engines"] or got["unattributed_samples"] or got["unsized_samples"]):
             continue
-        roster[name] = {"engines": {e: (f.to_dict() if f is not None else None)
-                                    for e, f in sorted(got["engines"].items())},
-                        "sample_counts": got["sample_counts"],
-                        "unattributed_samples": got["unattributed_samples"],
-                        "unsized_samples": got["unsized_samples"]}
-    return {"budget_s": budget_s, "n_demanding_l3": len(rows),
-            "measured_basis": measured, "roster_basis": roster,
-            "n_extrapolated": sum(1 for r in rows if r["extrapolated"]),
-            "extrapolated_hours": round(sum(r["predicted_s"] for r in rows
-                                            if r["extrapolated"]) / 3600.0, 2),
-            "total_predicted_s": round(total, 1),
-            "total_predicted_hours": round(total / 3600.0, 2),
-            "n_extends_declared": len(extends_rows),
-            "unverified_extends": [{"capsule": r["capsule"], "target": r["target"],
-                                    "extends": r["extends"], "reason": r.get("reason", "")}
-                                   for r in unverified_extends],
-            "over_budget": sorted(over, key=lambda r: -r["predicted_s"]),
-            # Over budget, but an L2 cap is not a remedy they can take.
-            "over_budget_needs_cycle_accurate": sorted(needs_cycles,
-                                                       key=lambda r: -r["predicted_s"]),
-            "unpriceable": unpriceable,
-            "s_per_output_element": CC.MEASURED_S_PER_OUTPUT_ELEMENT}
+        roster[name] = {
+            "engines": {e: (f.to_dict() if f is not None else None) for e, f in sorted(got["engines"].items())},
+            "sample_counts": got["sample_counts"],
+            "unattributed_samples": got["unattributed_samples"],
+            "unsized_samples": got["unsized_samples"],
+        }
+    return {
+        "budget_s": budget_s,
+        "n_demanding_l3": len(rows),
+        "measured_basis": measured,
+        "roster_basis": roster,
+        "n_extrapolated": sum(1 for r in rows if r["extrapolated"]),
+        "extrapolated_hours": round(sum(r["predicted_s"] for r in rows if r["extrapolated"]) / 3600.0, 2),
+        "total_predicted_s": round(total, 1),
+        "total_predicted_hours": round(total / 3600.0, 2),
+        "n_extends_declared": len(extends_rows),
+        "unverified_extends": [
+            {"capsule": r["capsule"], "target": r["target"], "extends": r["extends"], "reason": r.get("reason", "")}
+            for r in unverified_extends
+        ],
+        "over_budget": sorted(over, key=lambda r: -r["predicted_s"]),
+        # Over budget, but an L2 cap is not a remedy they can take.
+        "over_budget_needs_cycle_accurate": sorted(needs_cycles, key=lambda r: -r["predicted_s"]),
+        "unpriceable": unpriceable,
+        "s_per_output_element": CC.MEASURED_S_PER_OUTPUT_ELEMENT,
+    }
 
 
 def _debt_key(row: dict) -> str:
@@ -425,8 +450,7 @@ def _load_ratchet(p: Path | None) -> set[str]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=None)
     ap.add_argument("--budget-s", type=float, default=_BUDGET)
     ap.add_argument("--json", action="store_true")
@@ -442,56 +466,71 @@ def main(argv=None) -> int:
     if a.json:
         print(json.dumps({"report": rep, "new_over_budget": new}, indent=2))
     else:
-        print(f"== certification affordability at {rep['budget_s']:.0f}s "
-              f"({rep['s_per_output_element']} s per element at the flat rungs; law is superlinear)")
+        print(
+            f"== certification affordability at {rep['budget_s']:.0f}s "
+            f"({rep['s_per_output_element']} s per element at the flat rungs; law is superlinear)"
+        )
         print(f"   capsules demanding L3        : {rep['n_demanding_l3']}")
-        print(f"   predicted total              : {rep['total_predicted_s']:,.0f}s "
-              f"({rep['total_predicted_hours']}h)")
-        print(f"   priced beyond the calibrated range : {rep['n_extrapolated']} "
-              f"({rep['extrapolated_hours']}h of the total — an unstated guess if not said out loud)")
+        print(f"   predicted total              : {rep['total_predicted_s']:,.0f}s ({rep['total_predicted_hours']}h)")
+        print(
+            f"   priced beyond the calibrated range : {rep['n_extrapolated']} "
+            f"({rep['extrapolated_hours']}h of the total — an unstated guess if not said out loud)"
+        )
         print(f"   over budget with no L2 cap and no extends: {len(rep['over_budget'])}")
-        print(f"   resting on an UNVERIFIED extends          : "
-              f"{len(rep.get('unverified_extends') or [])} "
-              "(names a sibling with no certification on disk)")
+        print(
+            f"   resting on an UNVERIFIED extends          : "
+            f"{len(rep.get('unverified_extends') or [])} "
+            "(names a sibling with no certification on disk)"
+        )
         for r in rep["over_budget"][:20]:
             mark = " " if _debt_key(r) in ratchet else "*"
-            print(f"   {mark} {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
-                  f"{_debt_key(r)}")
+            print(f"   {mark} {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  {_debt_key(r)}")
         if len(rep["over_budget"]) > 20:
             print(f"     ... and {len(rep['over_budget']) - 20} more")
         if rep["over_budget_needs_cycle_accurate"]:
-            print(f"   over budget but CANNOT be capped at L2 "
-                  f"({len(rep['over_budget_needs_cycle_accurate'])}): a performance capsule whose "
-                  f"instrument is a cycle count needs a cycle-accurate tier, so its remedy is a "
-                  f"smaller shape or an accepted cost, never an L2 cap")
+            print(
+                f"   over budget but CANNOT be capped at L2 "
+                f"({len(rep['over_budget_needs_cycle_accurate'])}): a performance capsule whose "
+                f"instrument is a cycle count needs a cycle-accurate tier, so its remedy is a "
+                f"smaller shape or an accepted cost, never an L2 cap"
+            )
             for r in rep["over_budget_needs_cycle_accurate"][:10]:
-                print(f"     ! {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
-                      f"{r['capsule']}  [{r['perf_family']}: {r['instrument']}]")
+                print(
+                    f"     ! {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
+                    f"{r['capsule']}  [{r['perf_family']}: {r['instrument']}]"
+                )
         _no_cap = [r for r in rep["over_budget"] if r.get("cheaper_tier") is None]
-        _unknown_cap = [r for r in rep["over_budget"]
-                        if r.get("cheaper_tier") == _TIER_UNKNOWN]
+        _unknown_cap = [r for r in rep["over_budget"] if r.get("cheaper_tier") == _TIER_UNKNOWN]
         if _no_cap:
-            print(f"   over budget on a target that declares NO TIER CHEAPER than its cert tier "
-                  f"({len(_no_cap)}): `max_oracle_tier` and `extends` are both a cap onto a cheaper "
-                  f"tier, so neither is a remedy these can take — theirs are a smaller shape or an "
-                  f"accepted cost")
+            print(
+                f"   over budget on a target that declares NO TIER CHEAPER than its cert tier "
+                f"({len(_no_cap)}): `max_oracle_tier` and `extends` are both a cap onto a cheaper "
+                f"tier, so neither is a remedy these can take — theirs are a smaller shape or an "
+                f"accepted cost"
+            )
             for r in _no_cap[:10]:
-                print(f"     - {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
-                      f"{_debt_key(r)}")
+                print(f"     - {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  {_debt_key(r)}")
             if len(_no_cap) > 10:
                 print(f"       ... and {len(_no_cap) - 10} more")
         if _unknown_cap:
-            print(f"   over budget with an UNRESOLVED tier ladder ({len(_unknown_cap)}): nobody could "
-                  f"ask whether a cheaper tier exists, so whether a cap is available is unknown rather "
-                  f"than absent — resolve the target's adapters before accepting the cost")
+            print(
+                f"   over budget with an UNRESOLVED tier ladder ({len(_unknown_cap)}): nobody could "
+                f"ask whether a cheaper tier exists, so whether a cap is available is unknown rather "
+                f"than absent — resolve the target's adapters before accepting the cost"
+            )
         print("   measured (target, engine) basis for these prices:")
         for target, blk in sorted(rep["measured_basis"].items()):
             if not blk["engines"]:
                 n = blk["unattributed_samples"]
-                why = (f"{n} cycle-accurate measurement(s) on disk, none of which names its engine"
-                       if n else "no cycle-accurate certification history under this name")
-                print(f"     - {target}: NONE -- {why}, so no per-engine cost can be fitted and "
-                      f"every price above is the global calibration law")
+                why = (
+                    f"{n} cycle-accurate measurement(s) on disk, none of which names its engine"
+                    if n
+                    else "no cycle-accurate certification history under this name"
+                )
+                print(
+                    f"     - {target}: NONE -- {why}, so no per-engine cost can be fitted and "
+                    f"every price above is the global calibration law"
+                )
                 continue
             for engine, row in sorted(blk["engines"].items()):
                 fit = row["fit"]
@@ -499,19 +538,24 @@ def main(argv=None) -> int:
                     print(f"     - {target}/{engine}: {row['n_samples']} sample(s), too few to fit")
                     continue
                 tot = row["cohort"]["total_s"]
-                print(f"     - {target}/{engine}: n={fit['n_samples']} r2={fit['r2']} over "
-                      f"{fit['measured_range_elements']} {fit['metric']}; cohort "
-                      f"{tot:,.0f}s over {row['cohort']['priced']} capsule(s), "
-                      f"{len(row['cohort']['beyond_evidence'])} beyond the evidence")
+                print(
+                    f"     - {target}/{engine}: n={fit['n_samples']} r2={fit['r2']} over "
+                    f"{fit['measured_range_elements']} {fit['metric']}; cohort "
+                    f"{tot:,.0f}s over {row['cohort']['priced']} capsule(s), "
+                    f"{len(row['cohort']['beyond_evidence'])} beyond the evidence"
+                )
         if rep["roster_basis"]:
-            print("   registered targets with any cycle-accurate history (the roster, not the "
-                  "corpus's directory labels):")
+            print(
+                "   registered targets with any cycle-accurate history (the roster, not the corpus's directory labels):"
+            )
             for name, blk in sorted(rep["roster_basis"].items()):
                 fitted = {e: f for e, f in blk["engines"].items() if f}
-                print(f"     - {name}: {sum(blk['sample_counts'].values())} engine-attributed "
-                      f"sample(s) across {len(blk['sample_counts'])} engine(s); "
-                      f"{blk['unattributed_samples']} unattributed; "
-                      f"fits: {sorted(fitted) or 'NONE'}")
+                print(
+                    f"     - {name}: {sum(blk['sample_counts'].values())} engine-attributed "
+                    f"sample(s) across {len(blk['sample_counts'])} engine(s); "
+                    f"{blk['unattributed_samples']} unattributed; "
+                    f"fits: {sorted(fitted) or 'NONE'}"
+                )
         if rep["unpriceable"]:
             # NOT counted as affordable. An unknown price is not a small one.
             print(f"   UNPRICEABLE ({len(rep['unpriceable'])}) — these establish nothing either way:")
@@ -520,12 +564,18 @@ def main(argv=None) -> int:
 
     rc = 0
     if a.fail_on_unaffordable and new:
-        print(f"\nFAIL: {len(new)} capsule(s) demand L3 at a size over the {rep['budget_s']:.0f}s "
-              f"budget and declare neither max_oracle_tier: L2 nor extends", file=sys.stderr)
+        print(
+            f"\nFAIL: {len(new)} capsule(s) demand L3 at a size over the {rep['budget_s']:.0f}s "
+            f"budget and declare neither max_oracle_tier: L2 nor extends",
+            file=sys.stderr,
+        )
         rc = 1
     if a.fail_on_unpriceable and rep["unpriceable"]:
-        print(f"\nCANNOT DECIDE: {len(rep['unpriceable'])} capsule(s) could not be priced, so their "
-              f"affordability is unknown rather than acceptable", file=sys.stderr)
+        print(
+            f"\nCANNOT DECIDE: {len(rep['unpriceable'])} capsule(s) could not be priced, so their "
+            f"affordability is unknown rather than acceptable",
+            file=sys.stderr,
+        )
         return 2
     return rc
 

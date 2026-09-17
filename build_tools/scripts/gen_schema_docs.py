@@ -9,6 +9,7 @@ Usage:
   gen_schema_docs.py            # (re)write docs/reference/schemas.md
   gen_schema_docs.py --check    # exit 1 if stale vs merlin/schemas/
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,6 +34,7 @@ def _title_purpose(path: Path) -> tuple[str, str]:
     text = path.read_text(encoding="utf-8")
     try:
         import yaml  # type: ignore
+
         d = yaml.safe_load(text) or {}
         title = str(d.get("title", path.stem))
         purpose = " ".join(str(d.get("purpose", "")).split())
@@ -44,7 +46,7 @@ def _title_purpose(path: Path) -> tuple[str, str]:
                 title = ln.split(":", 1)[1].strip() or title
             if ln.startswith("purpose:"):
                 buf = [ln.split(":", 1)[1].strip().lstrip(">-|").strip()]
-                for cont in lines[i + 1:]:
+                for cont in lines[i + 1 :]:
                     if cont[:1] in (" ", "\t"):
                         buf.append(cont.strip())
                     else:
@@ -69,8 +71,9 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
         if cur != new:
-            sys.stderr.write("docs/reference/schemas.md is stale — run: "
-                             "python build_tools/scripts/gen_schema_docs.py\n")
+            sys.stderr.write(
+                "docs/reference/schemas.md is stale — run: python build_tools/scripts/gen_schema_docs.py\n"
+            )
             return 1
         print("docs/reference/schemas.md: up to date")
         return 0

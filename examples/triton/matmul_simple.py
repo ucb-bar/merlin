@@ -15,13 +15,13 @@ disappears.
 
 The tile is 16x32x16 because `tl.dot` refuses anything smaller (M >= 16, N >= 16, K >= 32).
 """
+
 import triton
 import triton.language as tl
 
 
 @triton.jit
-def repeated_rhs_matmul(a0_ptr, a1_ptr, w_ptr, c0_ptr, c1_ptr,
-                        BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+def repeated_rhs_matmul(a0_ptr, a1_ptr, w_ptr, c0_ptr, c1_ptr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
     offs_m = tl.arange(0, BM)
     offs_n = tl.arange(0, BN)
     offs_k = tl.arange(0, BK)

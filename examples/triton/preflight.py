@@ -9,6 +9,7 @@ Same rule as `examples/lib/preflight.py`: the VERDICT comes from the library's o
 (`toolchain.probe()`, `gemmini.available()`), never from a re-derivation here. A preflight that drifts
 from the code it guards blocks runs for reasons that stopped being true.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,30 +40,48 @@ def _components(package: Path) -> list[tuple[str, bool, str]]:
     try:
         import merlin  # noqa: F401
     except Exception as exc:  # noqa: BLE001
-        return [(f"merlin importable ({type(exc).__name__})", False,
-                 "uv sync --all-extras   (plain `python` is not on PATH; use .venv/bin/python)")]
+        return [
+            (
+                f"merlin importable ({type(exc).__name__})",
+                False,
+                "uv sync --all-extras   (plain `python` is not on PATH; use .venv/bin/python)",
+            )
+        ]
     rows.append(("merlin", True, ""))
 
     try:
         import numpy  # noqa: F401
+
         rows.append(("numpy", True, ""))
     except Exception:  # noqa: BLE001
         rows.append(("numpy", False, "uv sync --all-extras"))
 
     from merlin.triton import toolchain
+
     probe = toolchain.probe()
-    rows.append((f"triton (pinned {probe.pinned}, found {probe.installed})", probe.compatible,
-                 "" if probe.compatible else f"uv pip install -e '.[triton]'   [{probe.reason}]"))
+    rows.append(
+        (
+            f"triton (pinned {probe.pinned}, found {probe.installed})",
+            probe.compatible,
+            "" if probe.compatible else f"uv pip install -e '.[triton]'   [{probe.reason}]",
+        )
+    )
     for note in probe.notes:
         rows.append((f"  triton note: {note}", False, "reinstall triton from a real wheel"))
 
     ok = package.is_dir()
-    rows.append((f"target package ({_rel(package)})", ok,
-                 "" if ok else "pass --package <dir>, or see docs/guides/adding_a_target.md"))
+    rows.append(
+        (
+            f"target package ({_rel(package)})",
+            ok,
+            "" if ok else "pass --package <dir>, or see docs/guides/adding_a_target.md",
+        )
+    )
 
     # The two simulators. Asked of the backend, which is what the certification itself asks.
     try:
         from merlin.runtime.backends import gemmini
+
         for label, runner, fix in (
             ("spike-gemmini", "spike", "set MERLIN_SPIKE / MERLIN_CHIPYARD (see examples/README.md)"),
             ("gemmini verilator", "verilator", "build the Gemmini Verilator sim in your chipyard checkout"),
@@ -84,8 +103,7 @@ def _rel(path: Path) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--package", default=str(DEFAULT_PACKAGE))
-    parser.add_argument("--require", metavar="STAGE",
-                        help="exit non-zero unless this stage can run (used by run.sh)")
+    parser.add_argument("--require", metavar="STAGE", help="exit non-zero unless this stage can run (used by run.sh)")
     args = parser.parse_args(argv)
 
     package = Path(args.package)

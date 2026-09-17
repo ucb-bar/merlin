@@ -4,14 +4,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.common.paths import artifacts_dir
-
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from merlin.common.paths import artifacts_dir
 
 HERE = Path(__file__).resolve().parent
 DATA_PATH = HERE / "k1_model_runtime_comparison_20260907.json"
@@ -253,10 +252,17 @@ def main() -> None:
         legend_handles = [
             Patch(facecolor=COLORS["executorch"], edgecolor=COLORS["ink"], label="ExecuTorch + XNNPACK"),
             Patch(facecolor=COLORS["merlin"], edgecolor=COLORS["ink"], label="Merlin generated"),
-            Line2D([], [], marker="x", linestyle="None", markersize=9, markeredgewidth=2.2,
-                   color=COLORS["blocked"], label="Merlin + XNNPACK qd8: blocked"),
-            Patch(facecolor=COLORS["merlin"], edgecolor=COLORS["ink"], hatch="///",
-                  label="timeout lower bound"),
+            Line2D(
+                [],
+                [],
+                marker="x",
+                linestyle="None",
+                markersize=9,
+                markeredgewidth=2.2,
+                color=COLORS["blocked"],
+                label="Merlin + XNNPACK qd8: blocked",
+            ),
+            Patch(facecolor=COLORS["merlin"], edgecolor=COLORS["ink"], hatch="///", label="timeout lower bound"),
         ]
         fig.legend(
             handles=legend_handles,

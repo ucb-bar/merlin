@@ -14,6 +14,7 @@ merlin import) and structural -- column-0 ``key: value`` lines and flow/block li
 runs in the dependency-free docs CI job. It FAILS CLOSED: a roster that derives nothing raises,
 because a gate fed an empty name set would pass every file.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +38,7 @@ def _top_level_scalar(text: str, key: str) -> str | None:
     prefix = f"{key}:"
     for line in text.splitlines():
         if line.startswith(prefix):
-            return _clean(line[len(prefix):]) or None
+            return _clean(line[len(prefix) :]) or None
     return None
 
 
@@ -49,7 +50,7 @@ def _list_value(lines: list[str], i: int) -> list[str]:
     if head:
         return [head]
     items: list[str] = []
-    for line in lines[i + 1:]:
+    for line in lines[i + 1 :]:
         s = line.strip()
         if not s or s.startswith("#"):
             continue
@@ -62,8 +63,7 @@ def _list_value(lines: list[str], i: int) -> list[str]:
 def sources(root: Path) -> dict[str, set[str]]:
     """Target names per declaring registry (kept separate so a report can say where a name came from)."""
     root = Path(root)
-    out: dict[str, set[str]] = {"contracts": set(), "experiments": set(), "hardware_pins": set(),
-                                "profiles": set()}
+    out: dict[str, set[str]] = {"contracts": set(), "experiments": set(), "hardware_pins": set(), "profiles": set()}
     for p in sorted((root / CONTRACTS).glob("*/contracts/target_contract.yaml")):
         name = _top_level_scalar(p.read_text(encoding="utf-8"), "name")
         if name:
@@ -90,13 +90,16 @@ def target_names(root: Path) -> set[str]:
     """Every declared target name. Raises :class:`RosterError` when none is declared."""
     found: set[str] = set().union(*sources(root).values())
     if not found:
-        raise RosterError(f"no target is declared under {root} (looked in {CONTRACTS}, {EXPERIMENTS}, "
-                          f"{PINS}, {PROFILES}); refusing to gate on an empty name set")
+        raise RosterError(
+            f"no target is declared under {root} (looked in {CONTRACTS}, {EXPERIMENTS}, "
+            f"{PINS}, {PROFILES}); refusing to gate on an empty name set"
+        )
     return found
 
 
 if __name__ == "__main__":
     import sys
+
     here = Path(__file__).resolve().parents[2]
     for registry, names in sources(here).items():
         print(f"{registry:14s} {', '.join(sorted(names))}")

@@ -15,6 +15,7 @@ driver). No fabricated timing numbers here: this script only certifies host corr
 
 Run:  .venv/bin/python scripts/host_e2e_xnnpack.py --model out/artifacts/recaptures/bitvla_fp32_consistent
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,10 +50,13 @@ def main() -> None:
     report = {
         "model": str(md),
         "note": "HOST correctness only; board RVV timing is the deferred step",
-        "default": {"cos_vs_golden": base.get("cos"), "rel": base.get("rel"),
-                    "n_kernels": base["n_kernels"]},
-        "xnnpack": {"cos_vs_golden": xnn.get("cos"), "rel": xnn.get("rel"),
-                    "n_kernels": xnn["n_kernels"], "n_matmul_routed_to_xnnpack": xnn["n_xnn_routed"]},
+        "default": {"cos_vs_golden": base.get("cos"), "rel": base.get("rel"), "n_kernels": base["n_kernels"]},
+        "xnnpack": {
+            "cos_vs_golden": xnn.get("cos"),
+            "rel": xnn.get("rel"),
+            "n_kernels": xnn["n_kernels"],
+            "n_matmul_routed_to_xnnpack": xnn["n_xnn_routed"],
+        },
         "cos_xnnpack_vs_default": _cos(np.asarray(xnn["output"]), np.asarray(base["output"])),
     }
     outp = Path(a.out)

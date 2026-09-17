@@ -19,6 +19,7 @@ Idempotent: re-running detects what is already present and changes nothing.
     .venv/bin/python build_tools/chipyard/setup_multicore_saturn.py            # install
     .venv/bin/python build_tools/chipyard/setup_multicore_saturn.py --check    # report only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -91,6 +92,7 @@ MARKER = "merlin multicore Saturn-vectors"
 def chipyard_root() -> Path:
     sys.path.insert(0, str(HERE.parents[1] / "merlin" / "python"))
     from merlin.common.paths import env  # noqa: PLC0415
+
     root = env("MERLIN_CHIPYARD") or env("MERLIN_EXT_CHIPYARD")
     if not root:
         raise SystemExit("MERLIN_CHIPYARD unset — point it at your chipyard checkout (.env)")
@@ -125,8 +127,7 @@ def _append_once(path: Path, text: str, check: bool, label: str) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report status, change nothing")
     a = ap.parse_args()
 
@@ -134,10 +135,18 @@ def main() -> int:
     print(f"chipyard: {cy}")
     results = [
         _install_scala(cy, a.check),
-        _append_once(cy / "generators/firechip/chip/src/main/scala/TargetConfigs.scala",
-                     FIRESIM_TARGETS, a.check, "firechip TargetConfigs.scala"),
-        _append_once(cy / "sims/firesim/deploy/config_build_recipes.yaml",
-                     BUILD_RECIPES, a.check, "firesim config_build_recipes.yaml"),
+        _append_once(
+            cy / "generators/firechip/chip/src/main/scala/TargetConfigs.scala",
+            FIRESIM_TARGETS,
+            a.check,
+            "firechip TargetConfigs.scala",
+        ),
+        _append_once(
+            cy / "sims/firesim/deploy/config_build_recipes.yaml",
+            BUILD_RECIPES,
+            a.check,
+            "firesim config_build_recipes.yaml",
+        ),
     ]
     for r in results:
         print("  " + r)

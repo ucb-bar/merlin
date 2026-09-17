@@ -38,6 +38,7 @@ Usage:
     w8a8_policy_ablation.py <bundle> --out <path.json>
     w8a8_policy_ablation.py <bundle> --classify-only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,6 +77,7 @@ def _prepared_module(bundle: Path):
     from merlin.llvmlower.passes_xdsl import collapse_overrank_matmul
     from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
     from merlin.runtime.dispatch_runtime import _propagate_quant_inner
+
     module = parse_mlir_file(bundle / "model.mlir")
     lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
@@ -91,6 +93,7 @@ def classify(bundle: Path) -> dict:
     makes them comparable to the reference's per-construct weight count).
     """
     from merlin.llvmlower.quant_passes import registry
+
     module = _prepared_module(bundle)
     out: dict[str, dict[str, int]] = {}
     for name, qp in registry().items():
@@ -99,7 +102,7 @@ def classify(bundle: Path) -> dict:
         def rec(op, _seen=seen):
             key = _attr_str(op, "prov.aten") or "<untagged>"
             _seen[key] = _seen.get(key, 0) + 1
-            return False                      # record only; never rewrite
+            return False  # record only; never rewrite
 
         qp.fn(module, select=rec)
         out[name] = dict(sorted(seen.items(), key=lambda kv: -kv[1]))
@@ -119,6 +122,7 @@ def _references(bundle: Path) -> dict[str, np.ndarray]:
 
 def _flat(res: dict) -> np.ndarray:
     from merlin.runtime.dispatch_runtime import bf16_to_f32
+
     raw = res["output"]
     a = np.asarray(raw)
     return (bf16_to_f32(a) if a.dtype == np.uint16 else a.astype(np.float32)).ravel()
@@ -131,8 +135,10 @@ def aten_arm(name: str, atens: set[str]) -> tuple[str, dict]:
     + attention bmm" and the step to "+ spectral DFT" are different policy decisions with different
     risk, and a single "every contraction" arm cannot tell which one moved the number.
     """
+
     def sel(op, _a=atens) -> bool:
         return (_attr_str(op, "prov.aten") or "") in _a
+
     return (name, {"int8_compute": True, "quant_passes": ["contraction_int8"], "quant_select": sel})
 
 
@@ -176,48 +182,73 @@ def pass_arm(name: str, passes: list[str]) -> tuple[str, dict]:
     return (name, {"int8_compute": True, "quant_passes": passes})
 
 
-def arms(linear_aten: set[str], extra: "list[tuple[str, set[str]]] | None" = None,
-         pass_extra: "list[tuple[str, list[str]]] | None" = None
-         ) -> list[tuple[str, dict]]:
+def arms(
+    linear_aten: set[str],
+    extra: "list[tuple[str, set[str]]] | None" = None,
+    pass_extra: "list[tuple[str, list[str]]] | None" = None,
+) -> list[tuple[str, dict]]:
     """(name, run_model kwargs) in widening-reach order."""
+
     def is_linear(op) -> bool:
         return (_attr_str(op, "prov.aten") or "") in linear_aten
+
     base = [
         ("weight_only", {"int8_compute": False}),
-        ("contraction_linear", {"int8_compute": True, "quant_passes": ["contraction_int8"],
-                                "quant_select": is_linear}),
+        ("contraction_linear", {"int8_compute": True, "quant_passes": ["contraction_int8"], "quant_select": is_linear}),
         ("contraction", {"int8_compute": True, "quant_passes": ["contraction_int8"]}),
-        ("contraction_conv", {"int8_compute": True,
-                              "quant_passes": ["contraction_int8", "conv_int8"]}),
+        ("contraction_conv", {"int8_compute": True, "quant_passes": ["contraction_int8", "conv_int8"]}),
         ("all", {"int8_compute": True, "quant_passes": list(known())}),
     ]
     # extra arms slot in after the apples-to-apples one: they widen the contraction reach a
     # named group at a time, before the "every contraction" arm.
-    return (base[:2] + [aten_arm(n, a) for n, a in (extra or [])] + base[2:]
-            + [pass_arm(n, ps) for n, ps in (pass_extra or [])])
+    return (
+        base[:2]
+        + [aten_arm(n, a) for n, a in (extra or [])]
+        + base[2:]
+        + [pass_arm(n, ps) for n, ps in (pass_extra or [])]
+    )
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("bundle", help="recapture bundle name (ONE per process: two model libraries "
-                                   "both export _mlir_ciface_forward and the second dlopen wins)")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument(
+        "bundle",
+        help="recapture bundle name (ONE per process: two model libraries "
+        "both export _mlir_ciface_forward and the second dlopen wins)",
+    )
     ap.add_argument("--out", help="write the ablation JSON here")
     ap.add_argument("--classify-only", action="store_true")
-    ap.add_argument("--linear-aten", default=DEFAULT_LINEAR_ATEN,
-                    help="comma-separated prov.aten values that mean 'an nn.Linear matmul'")
+    ap.add_argument(
+        "--linear-aten",
+        default=DEFAULT_LINEAR_ATEN,
+        help="comma-separated prov.aten values that mean 'an nn.Linear matmul'",
+    )
     ap.add_argument("--arms", default="", help="comma-separated subset of the arm names")
-    ap.add_argument("--aten-arm", action="append", default=[], metavar="NAME=ATEN,ATEN",
-                    help="extra contraction-only arm over exactly these prov.aten values "
-                         "(repeatable); attributes the residual to one op group at a time")
-    ap.add_argument("--pass-arm", action="append", default=[], metavar="NAME=PASS,PASS",
-                    help="extra arm over exactly this quant-pass subset (repeatable); attributes "
-                         "the step from 'every contraction' to the shipped datapath")
+    ap.add_argument(
+        "--aten-arm",
+        action="append",
+        default=[],
+        metavar="NAME=ATEN,ATEN",
+        help="extra contraction-only arm over exactly these prov.aten values "
+        "(repeatable); attributes the residual to one op group at a time",
+    )
+    ap.add_argument(
+        "--pass-arm",
+        action="append",
+        default=[],
+        metavar="NAME=PASS,PASS",
+        help="extra arm over exactly this quant-pass subset (repeatable); attributes "
+        "the step from 'every contraction' to the shipped datapath",
+    )
     ap.add_argument("--workdir", default=None, help="scratch dir for compiled kernels")
-    ap.add_argument("--dump-outputs", default=None, metavar="DIR",
-                    help="save each arm's raw output as <DIR>/<arm>.npy, so the residual's "
-                         "STRUCTURE (a few quantization-boundary flips vs a systematic bias) can "
-                         "be examined without re-running the model")
+    ap.add_argument(
+        "--dump-outputs",
+        default=None,
+        metavar="DIR",
+        help="save each arm's raw output as <DIR>/<arm>.npy, so the residual's "
+        "STRUCTURE (a few quantization-boundary flips vs a systematic bias) can "
+        "be examined without re-running the model",
+    )
     args = ap.parse_args()
 
     bundle = recaptures_dir() / args.bundle
@@ -226,15 +257,14 @@ def main() -> int:
         return 2
 
     cls = classify(bundle)
-    n_linear = sum(v for k, v in cls["contraction_int8"].items()
-                   if k in set(args.linear_aten.split(",")))
+    n_linear = sum(v for k, v in cls["contraction_int8"].items() if k in set(args.linear_aten.split(",")))
     n_contraction = sum(cls["contraction_int8"].values())
 
     # Cross-check the apples-to-apples arm against the reference's OWN accounting.
     prov_path = bundle / (INDEP_NAME + ".provenance.json")
     prov = json.loads(prov_path.read_text()) if prov_path.is_file() else {}
     n_ref_quantized = prov.get("weights", {}).get("n_quantized")
-    parity = (None if n_ref_quantized is None else bool(n_linear == n_ref_quantized))
+    parity = None if n_ref_quantized is None else bool(n_linear == n_ref_quantized)
 
     report: dict = {
         "bundle": args.bundle,
@@ -252,10 +282,10 @@ def main() -> int:
         return 0
 
     from merlin.runtime.dispatch_runtime import run_model
+
     refs = _references(bundle)
     if "w8a8" not in refs:
-        print(f"{args.bundle}: no {INDEP_NAME} — nothing independent to grade against",
-              file=sys.stderr)
+        print(f"{args.bundle}: no {INDEP_NAME} — nothing independent to grade against", file=sys.stderr)
         return 2
 
     want = set(a for a in args.arms.split(",") if a) or None
@@ -278,7 +308,8 @@ def main() -> int:
         res = run_model(str(bundle), wd, **kw)
         flat = _flat(res)
         if args.dump_outputs:
-            d = Path(args.dump_outputs); d.mkdir(parents=True, exist_ok=True)
+            d = Path(args.dump_outputs)
+            d.mkdir(parents=True, exist_ok=True)
             np.save(d / f"{name}.npy", flat)
         g = _gate(flat, refs)
         entry = {k: v for k, v in g.items() if k not in ("golden",)}
@@ -287,14 +318,16 @@ def main() -> int:
         entry["seconds"] = round(time.time() - t0, 1)
         entry["n_kernels"] = res.get("n_kernels")
         report["runs"][name] = entry
-        if args.out:                       # write after EVERY arm: a long multi-arm run that
-            Path(args.out).parent.mkdir(parents=True, exist_ok=True)   # dies mid-way must not
-            Path(args.out).write_text(json.dumps(report, indent=2))    # lose the arms it finished
-        print(f"{args.bundle:28s} {name:20s} "
-              f"w8a8_cos={g.get('w8a8_cos'):.6f} rel={g.get('w8a8_rel'):.5f} "
-              f"max_rel={g.get('w8a8_max_rel'):.4g} "
-              f"fp32_cos={g.get('fp32_cos'):.6f} tier_ok={g.get('tier_ok')} ok={g.get('ok')}",
-              flush=True)
+        if args.out:  # write after EVERY arm: a long multi-arm run that
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)  # dies mid-way must not
+            Path(args.out).write_text(json.dumps(report, indent=2))  # lose the arms it finished
+        print(
+            f"{args.bundle:28s} {name:20s} "
+            f"w8a8_cos={g.get('w8a8_cos'):.6f} rel={g.get('w8a8_rel'):.5f} "
+            f"max_rel={g.get('w8a8_max_rel'):.4g} "
+            f"fp32_cos={g.get('fp32_cos'):.6f} tier_ok={g.get('tier_ok')} ok={g.get('ok')}",
+            flush=True,
+        )
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

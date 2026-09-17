@@ -9,6 +9,7 @@ Preference order: an explicitly named package, then any package whose manifest l
 nothing — because "no grader for this model" is a better outcome than a grader that cannot see its
 reference.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,7 +23,7 @@ from merlin.common.artifacts import artifacts_dir
 def _models(pkg: Path) -> set[str]:
     try:
         man = json.loads((pkg / "manifest.json").read_text())
-    except Exception:                                                 # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return set()
     return {b.get("model") for b in man.get("binaries", []) if b.get("model")}
 
@@ -49,10 +50,13 @@ def main(argv=None) -> int:
             print(pkg / "grade.py")
             return 0
 
-    print(f"no packaged grader carries references for '{a.model}'. Build one:\n"
-          f"  ./run.sh package --full        # or --models {a.model}\n"
-          f"or unpack a delivered zip next to it:\n"
-          f"  python -m zipfile -e <package>.zip {root}/", file=sys.stderr)
+    print(
+        f"no packaged grader carries references for '{a.model}'. Build one:\n"
+        f"  ./run.sh package --full        # or --models {a.model}\n"
+        f"or unpack a delivered zip next to it:\n"
+        f"  python -m zipfile -e <package>.zip {root}/",
+        file=sys.stderr,
+    )
     return 1
 
 

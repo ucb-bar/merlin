@@ -28,16 +28,22 @@ spike (gcc intrinsic incompatibility). GELU uses explicit spellings and runs on 
 Honest by construction: a build/run failure or VERIFY FAIL yields a not_run row with the exact
 blocker — never a fabricated number. Board left clean (binaries rm'd after each run).
 """
+
 from __future__ import annotations
 
-import argparse, json, subprocess, sys, tempfile
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after, int_field
+from merlin.common.paths import repo_root
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+
 if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _k1_common import _cc  # noqa: E402  (helpers shared by the k1 drivers)
@@ -47,12 +53,19 @@ K1H = HERE / "k1_harness"
 XNN = Path(repo_root()) / "tmp/kernels/XNNPACK/src"
 REPO = Path(repo_root())
 
-_K1_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
-              "-O3", "-ffast-math", "-DNDEBUG", "-std=gnu99", "-Wno-implicit-function-declaration"]
+_K1_CFLAGS = [
+    "--target=riscv64-unknown-linux-gnu",
+    "-march=rv64gcv",
+    "-mabi=lp64d",
+    "-O3",
+    "-ffast-math",
+    "-DNDEBUG",
+    "-std=gnu99",
+    "-Wno-implicit-function-declaration",
+]
 
 
-def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
-                pmu: bool = False) -> tuple[str | None, str]:
+def _deploy_run(binary: Path, tag: str, *, timeout: int = 300, pmu: bool = False) -> tuple[str | None, str]:
     """scp the ELF to the board and run it. With ``pmu=True`` the run is wrapped in the
     perf_event_open counter shim so the caller also gets cycles/instructions/IPC -- the axis that
     separates "emits too many instructions" from "stalls on each instruction". PMU counts ride on
@@ -60,9 +73,23 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
     the shim is unavailable the run still happens, just without counters."""
     remote = f"/tmp/k1ops_{tag}"
     try:
-        subprocess.run(["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes",
-                        "-o", "StrictHostKeyChecking=no", str(binary), f"{k1.K1_HOST}:{remote}"],
-                       capture_output=True, text=True, timeout=120, check=True)
+        subprocess.run(
+            [
+                "scp",
+                "-i",
+                k1.K1_SSH_KEY,
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                str(binary),
+                f"{k1.K1_HOST}:{remote}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         return None, f"scp failed: {e.stderr[-200:] if e.stderr else e}"
     try:
@@ -70,6 +97,7 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
         cmd = remote
         if pmu:
             from merlin.mining import pmu as pmu_mod
+
             if pmu_mod.ensure_deployed():
                 cmd = pmu_mod.wrap(remote)
         p = k1._ssh(cmd, timeout=timeout)
@@ -84,6 +112,7 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
     # and the numbers land in the same record the wall-time measurement does.
     if pmu:
         from merlin.mining import pmu as pmu_mod
+
         counts = pmu_mod.parse(p.stderr or "")
         if counts is not None:
             return f"{p.stdout}\nMERLIN_PMU cycles={counts.cycles} instructions={counts.instructions}\n", "ok"
@@ -94,13 +123,18 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     if console is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": detail}
     if "VERIFY PASS" not in console:
-        return {**base, "ticks": None, "status": "not_run",
-                "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
+        return {
+            **base,
+            "ticks": None,
+            "status": "not_run",
+            "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
+        }
     t = int_after(console, "CYCLES")
     if t is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
     err = int_field(console, "errors")
     from merlin.mining import pmu as pmu_mod
+
     counts = pmu_mod.parse(console)
     pmu_fields = counts.as_dict() if counts is not None else {}
     # Retired instructions on the SAME bracket as the rdtime timing (the drivers read minstret via
@@ -110,16 +144,19 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     # Absent on drivers that do not print it.
     instret = int_after(console, "INSTRET")
     if instret is not None:
-        pmu_fields = {**pmu_fields, "instret": instret,
-                      "instret_full": int_after(console, "INSTRET_FULL")}
-    return {**base, "ticks": t, "status": "pass", **pmu_fields,
-            "correct": (err == 0) if err is not None else True,
-            "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
-            "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
+        pmu_fields = {**pmu_fields, "instret": instret, "instret_full": int_after(console, "INSTRET_FULL")}
+    return {
+        **base,
+        "ticks": t,
+        "status": "pass",
+        **pmu_fields,
+        "correct": (err == 0) if err is not None else True,
+        "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
+        "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified",
+    }
 
 
-def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
-                   base: dict, pmu: bool = False) -> dict:
+def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3, base: dict, pmu: bool = False) -> dict:
     """Compile one standalone XNNPACK driver with the K1 clang, scp+run reps times, keep min."""
     cc = _cc()
     inc_flags = []
@@ -128,15 +165,18 @@ def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
     best = None
     with tempfile.TemporaryDirectory(prefix="k1_xnn_") as tmp:
         binp = Path(tmp) / tag
-        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *defs, "-static", "-o", str(binp),
-               str(driver), "-lm"]
+        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *defs, "-static", "-o", str(binp), str(driver), "-lm"]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         except (subprocess.TimeoutExpired, OSError) as e:
             return {**base, "ticks": None, "status": "not_run", "blocker": f"build exec failed: {e}"}
         if p.returncode != 0 or not binp.is_file():
-            return {**base, "ticks": None, "status": "not_run",
-                    "blocker": f"build failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
+            return {
+                **base,
+                "ticks": None,
+                "status": "not_run",
+                "blocker": f"build failed rc={p.returncode}: {p.stderr.strip()[-700:]}",
+            }
         for rep in range(reps):
             console, detail = _deploy_run(binp, f"{tag}_{rep}", pmu=pmu)
             r = _parse(base, console, detail)
@@ -149,8 +189,9 @@ def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
     return best
 
 
-def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
-                vectorize: bool, work: Path, march: str | None = None):
+def _lower_ours(
+    bundle: Path, run_id: str, features: list[str], *, int8: bool, vectorize: bool, work: Path, march: str | None = None
+):
     """Reuse the K1 build path's lowering -> model.o + cgen artifacts. Returns (model_o, cgen, err).
 
     ``march`` overrides the codegen march string. Default (None) keeps the VLEN-pinned
@@ -166,9 +207,16 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
     prepared = zm._prepare_model_mlir(md / "model.mlir", work, int8_compute=int8)
     feats = frozenset(features or []) or None
     try:
-        res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                               vectorize=vectorize, transform_schedule=None,
-                               hoist_static_allocs=False, features=feats)
+        res = lower_model_file(
+            prepared,
+            work / "lower",
+            targets=(),
+            textual=True,
+            vectorize=vectorize,
+            transform_schedule=None,
+            hoist_static_allocs=False,
+            features=feats,
+        )
     except PipelineError as e:
         return None, None, f"lowering raised: {str(e)[:220]}"
     clang23 = toolchain.clang()
@@ -178,11 +226,24 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
     # doubles vector-register pressure (spills inside the K loop) and leaves half the datapath idle
     # (`vl` at half `VLMAX`). See k1.codegen_march for the measured cost.
     try:
-        subprocess.run([str(clang23), "--target=riscv64-unknown-linux-gnu",
-                        f"-march={march or k1.codegen_march()}", f"-mabi={k1.K1_MABI}",
-                        "-O2", "-Wno-override-module",
-                        "-c", str(res.ll_path), "-o", str(model_o)],
-                       capture_output=True, text=True, timeout=300, check=True)
+        subprocess.run(
+            [
+                str(clang23),
+                "--target=riscv64-unknown-linux-gnu",
+                f"-march={march or k1.codegen_march()}",
+                f"-mabi={k1.K1_MABI}",
+                "-O2",
+                "-Wno-override-module",
+                "-c",
+                str(res.ll_path),
+                "-o",
+                str(model_o),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         return None, None, f"model.o compile failed: {e.stderr[-400:] if e.stderr else e}"
     cgen = work / "cgen"
@@ -190,40 +251,59 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
     return model_o, cgen, None
 
 
-def _build_run_ours(tag, bundle: Path, driver: Path, defs: list[str], run_id: str,
-                    features: list[str], *, int8: bool, vectorize: bool, reps: int,
-                    base: dict, timeout: int = 600, pmu: bool = False) -> dict:
+def _build_run_ours(
+    tag,
+    bundle: Path,
+    driver: Path,
+    defs: list[str],
+    run_id: str,
+    features: list[str],
+    *,
+    int8: bool,
+    vectorize: bool,
+    reps: int,
+    base: dict,
+    timeout: int = 600,
+    pmu: bool = False,
+) -> dict:
     """Lower OUR model.o for `bundle`, link the given OURS driver, scp+run reps, keep min."""
     cc = _cc()
     rt = REPO / "merlin/runtime/c"
     abi = REPO / "merlin/runtime/abi"
     with tempfile.TemporaryDirectory(prefix="k1_ours_") as tmp:
-        work = Path(tmp) / "work"; work.mkdir(parents=True, exist_ok=True)
-        model_o, cgen, err = _lower_ours(bundle, run_id, features, int8=int8,
-                                         vectorize=vectorize, work=work)
+        work = Path(tmp) / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        model_o, cgen, err = _lower_ours(bundle, run_id, features, int8=int8, vectorize=vectorize, work=work)
         if err is not None:
             return {**base, "ticks": None, "status": "not_run", "blocker": err}
         inc_flags = []
         for d in (K1H, HERE, cgen, rt):
             inc_flags += ["-I", str(d)]
         binp = Path(tmp) / tag
-        srcs = [str(driver), str(cgen / "model_call.c"),
-                str(rt / "merlin_model.c"), str(abi / "mlir_runtime.c"), str(model_o)]
-        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *defs, "-static", "-o", str(binp),
-               *srcs, "-lm", "-lpthread"]
+        srcs = [
+            str(driver),
+            str(cgen / "model_call.c"),
+            str(rt / "merlin_model.c"),
+            str(abi / "mlir_runtime.c"),
+            str(model_o),
+        ]
+        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *defs, "-static", "-o", str(binp), *srcs, "-lm", "-lpthread"]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=400)
         except (subprocess.TimeoutExpired, OSError) as e:
             return {**base, "ticks": None, "status": "not_run", "blocker": f"link exec failed: {e}"}
         if p.returncode != 0 or not binp.is_file():
             try:
-                p2 = subprocess.run([c for c in cmd if c != "-static"],
-                                    capture_output=True, text=True, timeout=400)
+                p2 = subprocess.run([c for c in cmd if c != "-static"], capture_output=True, text=True, timeout=400)
             except (subprocess.TimeoutExpired, OSError) as e:
                 return {**base, "ticks": None, "status": "not_run", "blocker": f"link exec failed: {e}"}
             if p2.returncode != 0 or not binp.is_file():
-                return {**base, "ticks": None, "status": "not_run",
-                        "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
+                return {
+                    **base,
+                    "ticks": None,
+                    "status": "not_run",
+                    "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-700:]}",
+                }
         best = None
         for rep in range(reps):
             console, detail = _deploy_run(binp, f"{tag}_{rep}", timeout=timeout, pmu=pmu)
@@ -240,40 +320,73 @@ def _build_run_ours(tag, bundle: Path, driver: Path, defs: list[str], run_id: st
 # ---------------------------------------------------------------------------
 def run_activation(op: str, sizes: list[int], reps: int) -> list[dict]:
     from merlin.mining import workloads
+
     rows = []
     if op == "gelu":
         ksrc = "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c"
         kfn = "xnn_f32_vgelu_ukernel__rvv_rational_12_10_div_u4v"
-        ref = "gelu"; gen = workloads.gen_gelu_f32
+        ref = "gelu"
+        gen = workloads.gen_gelu_f32
     elif op == "sigmoid":
         ksrc = "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c"
         kfn = "xnn_f32_vsigmoid_ukernel__rvv_rr2_p5_div_u4v"
-        ref = "sigmoid"; gen = workloads.gen_sigmoid_f32
+        ref = "sigmoid"
+        gen = workloads.gen_sigmoid_f32
     else:
         # fail-closed: never silently mislabel an unsupported activation as sigmoid. Add a proper
         # (ksrc, kfn, ref, gen) triple + driver ref macro to extend (e.g. tanh, hardswish, elu).
         raise ValueError(f"run_activation: unsupported op {op!r} (wired: gelu, sigmoid)")
     for Nsz in sizes:
         # XNNPACK
-        base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": "xnnpack",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        base = {
+            "op": op,
+            "dtype": "f32",
+            "size_n": Nsz,
+            "source": "xnnpack",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+        }
         print(f"--- xnnpack {op} N={Nsz} ---")
-        r = _build_run_xnn(f"{op}_xnn_{Nsz}", HERE / "xnnpack_vunary_driver.c",
-                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                            f"-DXNN_REF_{ref}", f"-DVLEN_N={Nsz}"], reps=reps, base=base)
+        r = _build_run_xnn(
+            f"{op}_xnn_{Nsz}",
+            HERE / "xnnpack_vunary_driver.c",
+            [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}", f"-DXNN_REF_{ref}", f"-DVLEN_N={Nsz}"],
+            reps=reps,
+            base=base,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         # OURS scalar baseline vs RVV-vectorized
         bundle = gen(REPO / "artifacts" / "cache" / "rvv_workloads", N=Nsz)
         for vec, sid in ((False, "ours_scalar"), (True, "ours_vectorized")):
-            base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": sid, "target": "k1",
-                    "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-                    "vectorize": vec, "kernel_file": f"merlin RVV codegen ({sid})"}
+            base = {
+                "op": op,
+                "dtype": "f32",
+                "size_n": Nsz,
+                "source": sid,
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "vectorize": vec,
+                "kernel_file": f"merlin RVV codegen ({sid})",
+            }
             print(f"--- {sid} {op} N={Nsz} ---")
-            r = _build_run_ours(f"{op}_{sid}_{Nsz}", bundle, HERE / "ours_activation_driver.c",
-                                [f"-DXNN_REF_{ref}"], sid, [], int8=False, vectorize=vec,
-                                reps=reps, base=base)
+            r = _build_run_ours(
+                f"{op}_{sid}_{Nsz}",
+                bundle,
+                HERE / "ours_activation_driver.c",
+                [f"-DXNN_REF_{ref}"],
+                sid,
+                [],
+                int8=False,
+                vectorize=vec,
+                reps=reps,
+                base=base,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -285,31 +398,67 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
     rdtime on real silicon (mode=inner_compute), pack-outside fairness. This is the per-op analogue
     of the whole-model four-way, isolating the GEMM kernel gap the models are dominated by."""
     from merlin.mining import workloads
+
     rows = []
     for S in shapes:
-        base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S,
-                "source": "xnnpack", "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ,
-                "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c"}
+        base = {
+            "op": "f32_gemm",
+            "dtype": "f32",
+            "M": S,
+            "N": S,
+            "K": S,
+            "source": "xnnpack",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c",
+        }
         print(f"--- xnnpack f32_gemm {S}^3 (7x4v) ---")
-        r = _build_run_xnn(f"f32gemm_xnn_{S}", HERE / "xnnpack_gemm_driver_7x4v.c",
-                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base,
-                           pmu=True)
+        r = _build_run_xnn(
+            f"f32gemm_xnn_{S}",
+            HERE / "xnnpack_gemm_driver_7x4v.c",
+            [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
         # ours: naive baseline (no features) AND our best whole-model codegen feature.
-        for feats, sid in (([], "ours_f32_baseline"),
-                           (["accumulator_resident_wholemodel_vf"], "ours_f32_wholemodel_vf")):
-            base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S, "source": sid,
-                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                    "timebase_hz": k1.K1_TIMEBASE_HZ, "compiler_features": feats,
-                    "kernel_file": f"merlin RVV codegen ({sid})"}
+        for feats, sid in (
+            ([], "ours_f32_baseline"),
+            (["accumulator_resident_wholemodel_vf"], "ours_f32_wholemodel_vf"),
+        ):
+            base = {
+                "op": "f32_gemm",
+                "dtype": "f32",
+                "M": S,
+                "N": S,
+                "K": S,
+                "source": sid,
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "compiler_features": feats,
+                "kernel_file": f"merlin RVV codegen ({sid})",
+            }
             print(f"--- {sid} {S}^3 ---")
-            r = _build_run_ours(f"f32gemm_{sid}_{S}", bundle, HERE / "ours_gemm_driver.c",
-                                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
-                                sid, feats, int8=False, vectorize=True, reps=reps, base=base,
-                                pmu=True)
+            r = _build_run_ours(
+                f"f32gemm_{sid}_{S}",
+                bundle,
+                HERE / "ours_gemm_driver.c",
+                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+                sid,
+                feats,
+                int8=False,
+                vectorize=True,
+                reps=reps,
+                base=base,
+                pmu=True,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -317,16 +466,31 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
 
 def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
     from merlin.mining import workloads
+
     rows = []
     for S in shapes:
-        base = {"op": "int8_gemm", "dtype": "qd8_qc8w", "M": S, "N": S, "K": S,
-                "source": "xnnpack", "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ,
-                "kernel_file": "tmp/kernels/XNNPACK/src/qd8-f32-qc8w-gemm/gen/qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c"}
+        base = {
+            "op": "int8_gemm",
+            "dtype": "qd8_qc8w",
+            "M": S,
+            "N": S,
+            "K": S,
+            "source": "xnnpack",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/qd8-f32-qc8w-gemm/gen/qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c",
+        }
         print(f"--- xnnpack int8_gemm {S}^3 ---")
-        r = _build_run_xnn(f"qd8_xnn_{S}", HERE / "xnnpack_qd8_gemm_driver.c",
-                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base,
-                           pmu=True)
+        r = _build_run_xnn(
+            f"qd8_xnn_{S}",
+            HERE / "xnnpack_qd8_gemm_driver.c",
+            [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         # OURS int8 W8A8, three points: NAIVE (features=[] -> scalar, the ~200x catastrophe), the
@@ -346,20 +510,43 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
         # so vf is NOT the int8 best and had not been for some time; it was simply the only int8
         # recipe wired here. The naive row is kept to SHOW the gap the vectorization lever closes.
         from merlin.mining.from_strategy import microkernel_features
+
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
-        int8_configs = [([], "ours_int8_naive"),
-                        (["accumulator_resident_wholemodel_vf"], "ours_int8_vf"),
-                        (microkernel_features({"MR": 4, "NR": 16, "KC": 16}), "ours_int8_v3")]
+        int8_configs = [
+            ([], "ours_int8_naive"),
+            (["accumulator_resident_wholemodel_vf"], "ours_int8_vf"),
+            (microkernel_features({"MR": 4, "NR": 16, "KC": 16}), "ours_int8_v3"),
+        ]
         for feats, sid in int8_configs:
-            base = {"op": "int8_gemm", "dtype": "i8xi8->i32", "M": S, "N": S, "K": S, "source": sid,
-                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                    "timebase_hz": k1.K1_TIMEBASE_HZ, "int8_compute": True,
-                    "compiler_features": feats, "kernel_file": f"merlin RVV codegen ({sid})"}
+            base = {
+                "op": "int8_gemm",
+                "dtype": "i8xi8->i32",
+                "M": S,
+                "N": S,
+                "K": S,
+                "source": sid,
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "int8_compute": True,
+                "compiler_features": feats,
+                "kernel_file": f"merlin RVV codegen ({sid})",
+            }
             print(f"--- {sid} {S}^3 ---")
             # int8 W8A8 is an APPROXIMATION of the f32 product -> cos>0.99 (the repo's fp32 int8 tier).
-            r = _build_run_ours(f"int8_{sid}_{S}", bundle, HERE / "ours_int8_gemm_driver.c",
-                                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
-                                sid, feats, int8=True, vectorize=True, reps=reps, base=base)
+            r = _build_run_ours(
+                f"int8_{sid}_{S}",
+                bundle,
+                HERE / "ours_int8_gemm_driver.c",
+                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+                sid,
+                feats,
+                int8=True,
+                vectorize=True,
+                reps=reps,
+                base=base,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -369,20 +556,47 @@ def run_dwconv(reps: int) -> list[dict]:
     """XNNPACK f32 depthwise 3x3 on a MobileNet-style shape. OURS has no depthwise primitive
     (regular conv = im2col->GEMM only), so the ours-depthwise row is an honest not_run/note."""
     OH, OW, C = 28, 28, 128
-    base = {"op": "dwconv", "dtype": "f32", "OH": OH, "OW": OW, "C": C, "kernel": "3x3",
-            "source": "xnnpack", "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-            "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "kernel_file": "tmp/kernels/XNNPACK/src/f32-dwconv/gen/f32-dwconv-9p8vc-rvv.c"}
+    base = {
+        "op": "dwconv",
+        "dtype": "f32",
+        "OH": OH,
+        "OW": OW,
+        "C": C,
+        "kernel": "3x3",
+        "source": "xnnpack",
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "kernel_file": "tmp/kernels/XNNPACK/src/f32-dwconv/gen/f32-dwconv-9p8vc-rvv.c",
+    }
     print(f"--- xnnpack dwconv {OH}x{OW}x{C} 3x3 ---")
-    r = _build_run_xnn("dwconv_xnn", HERE / "xnnpack_dwconv_driver.c",
-                       [f"-DDW_OH={OH}", f"-DDW_OW={OW}", f"-DDW_C={C}"], reps=reps, base=base)
+    r = _build_run_xnn(
+        "dwconv_xnn",
+        HERE / "xnnpack_dwconv_driver.c",
+        [f"-DDW_OH={OH}", f"-DDW_OW={OW}", f"-DDW_C={C}"],
+        reps=reps,
+        base=base,
+    )
     print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
-    note = ("OURS has no depthwise-conv primitive on the f32 RVV path: regular conv2d lowers "
-            "im2col->matmul (the GEMM ceiling, raced separately as op=conv2d), but a per-channel "
-            "depthwise filter is not expressible as that single contraction. Honest not_run.")
-    ours = {"op": "dwconv", "dtype": "f32", "OH": OH, "OW": OW, "C": C, "kernel": "3x3",
-            "source": "ours_depthwise", "target": "k1", "ticks": None, "status": "not_run",
-            "blocker": note}
+    note = (
+        "OURS has no depthwise-conv primitive on the f32 RVV path: regular conv2d lowers "
+        "im2col->matmul (the GEMM ceiling, raced separately as op=conv2d), but a per-channel "
+        "depthwise filter is not expressible as that single contraction. Honest not_run."
+    )
+    ours = {
+        "op": "dwconv",
+        "dtype": "f32",
+        "OH": OH,
+        "OW": OW,
+        "C": C,
+        "kernel": "3x3",
+        "source": "ours_depthwise",
+        "target": "k1",
+        "ticks": None,
+        "status": "not_run",
+        "blocker": note,
+    }
     return [r, ours]
 
 
@@ -392,18 +606,39 @@ def run_conv2d(reps: int) -> list[dict]:
     RVV kernel is depthwise (raced separately); regular conv on the library side IS its f32 GEMM
     (igemm), so we note that and race OUR im2col-GEMM baseline vs vectorized."""
     from merlin.mining import workloads
+
     rows = []
     M, N, K = 64, 16, 27
     bundle = workloads.gen_conv2d_as_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
     for feats, sid in (([], "ours_conv_baseline"), (["fused_vfmacc_contraction"], "ours_conv_vfmacc")):
-        base = {"op": "conv2d", "dtype": "f32", "M": M, "N": N, "K": K, "via": "im2col->matmul",
-                "source": sid, "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "compiler_features": feats,
-                "kernel_file": f"merlin RVV codegen ({sid})"}
+        base = {
+            "op": "conv2d",
+            "dtype": "f32",
+            "M": M,
+            "N": N,
+            "K": K,
+            "via": "im2col->matmul",
+            "source": sid,
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "compiler_features": feats,
+            "kernel_file": f"merlin RVV codegen ({sid})",
+        }
         print(f"--- {sid} conv {M}x{N}x{K} (im2col->matmul) ---")
-        r = _build_run_ours(f"conv_{sid}", bundle, HERE / "ours_gemm_driver.c",
-                            [f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}"], sid, feats,
-                            int8=False, vectorize=True, reps=reps, base=base)
+        r = _build_run_ours(
+            f"conv_{sid}",
+            bundle,
+            HERE / "ours_gemm_driver.c",
+            [f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}"],
+            sid,
+            feats,
+            int8=False,
+            vectorize=True,
+            reps=reps,
+            base=base,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
     return rows
@@ -413,22 +648,42 @@ def run_attention(reps: int) -> list[dict]:
     """ATTENTION has NO library baseline (not an XNNPACK/OpenBLAS primitive). So we compare OUR
     baseline batch_matmul lowering vs OUR vfmacc feature — explicitly ours-vs-ours."""
     from merlin.mining import workloads
+
     rows = []
-    B, M, Nn, K = 4, 32, 8, 32   # llama-style attention bmm (small N -> N-tail path)
+    B, M, Nn, K = 4, 32, 8, 32  # llama-style attention bmm (small N -> N-tail path)
     bundle = workloads.gen_batch_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", B=B, M=M, N=Nn, K=K)
-    for feats, sid in (([], "ours_bmm_baseline"),
-                       (["fused_vfmacc_contraction"], "ours_bmm_vfmacc")):
-        base = {"op": "attention_bmm", "dtype": "f32", "B": B, "M": M, "N": Nn, "K": K,
-                "source": sid, "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "compiler_features": feats,
-                "baseline_kind": "ours_vs_ours (no library attention primitive)",
-                "kernel_file": f"merlin RVV codegen ({sid})"}
+    for feats, sid in (([], "ours_bmm_baseline"), (["fused_vfmacc_contraction"], "ours_bmm_vfmacc")):
+        base = {
+            "op": "attention_bmm",
+            "dtype": "f32",
+            "B": B,
+            "M": M,
+            "N": Nn,
+            "K": K,
+            "source": sid,
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "compiler_features": feats,
+            "baseline_kind": "ours_vs_ours (no library attention primitive)",
+            "kernel_file": f"merlin RVV codegen ({sid})",
+        }
         print(f"--- {sid} attention bmm {B}x{M}x{Nn}x{K} ---")
         # Dedicated bmm driver: CORRECT batched scalar reference (the 2-D gemm driver's flat ref
         # would be wrong for a block-diagonal bmm). inner-compute, fill subtracted.
-        r = _build_run_ours(f"attn_{sid}", bundle, HERE / "ours_bmm_driver.c",
-                            [f"-DBMM_B={B}", f"-DBMM_M={M}", f"-DBMM_N={Nn}", f"-DBMM_K={K}"],
-                            sid, feats, int8=False, vectorize=True, reps=reps, base=base)
+        r = _build_run_ours(
+            f"attn_{sid}",
+            bundle,
+            HERE / "ours_bmm_driver.c",
+            [f"-DBMM_B={B}", f"-DBMM_M={M}", f"-DBMM_N={Nn}", f"-DBMM_K={K}"],
+            sid,
+            feats,
+            int8=False,
+            vectorize=True,
+            reps=reps,
+            base=base,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
     return rows
@@ -441,36 +696,74 @@ def run_attention(reps: int) -> list[dict]:
 # and transpose (the largest BYTE-traffic family). Each cell: XNNPACK RVV ukernel vs OUR
 # codegen, same shape, correctness-gated, ticks + INSTRET.
 
+
 def run_vbinary(sizes: list[int], reps: int) -> list[dict]:
     """XNNPACK f32-vbinary (vmul / vadd) vs OUR elementwise-mul/add codegen. Present in every
     model (residual adds, gating muls); mapped in the catalog. Bandwidth-bound -> sweep N."""
     from merlin.mining import workloads
+
     rows = []
-    kernels = [("mul", "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v"),
-               ("add", "f32-vbinary/gen/f32-vadd-rvv-u8v.c", "xnn_f32_vadd_ukernel__rvv_u8v")]
+    kernels = [
+        ("mul", "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v"),
+        ("add", "f32-vbinary/gen/f32-vadd-rvv-u8v.c", "xnn_f32_vadd_ukernel__rvv_u8v"),
+    ]
     for op, ksrc, kfn in kernels:
         for Nsz in sizes:
-            base = {"op": f"vbinary_{op}", "dtype": "f32", "size_n": Nsz, "source": "xnnpack",
-                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                    "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+            base = {
+                "op": f"vbinary_{op}",
+                "dtype": "f32",
+                "size_n": Nsz,
+                "source": "xnnpack",
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+            }
             print(f"--- xnnpack vbinary {op} N={Nsz} ---")
-            r = _build_run_xnn(f"brd_vbin_{op}_xnn_{Nsz}", HERE / "xnnpack_vbinary_driver.c",
-                               [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                                f"-DXNN_BINOP_{op.upper()}", f"-DVLEN_N={Nsz}"],
-                               reps=reps, base=base, pmu=True)
+            r = _build_run_xnn(
+                f"brd_vbin_{op}_xnn_{Nsz}",
+                HERE / "xnnpack_vbinary_driver.c",
+                [
+                    f'-DXNN_KERNEL_SRC="{ksrc}"',
+                    f"-DXNN_KERNEL_FN={kfn}",
+                    f"-DXNN_BINOP_{op.upper()}",
+                    f"-DVLEN_N={Nsz}",
+                ],
+                reps=reps,
+                base=base,
+                pmu=True,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
-            bundle = workloads.gen_binary_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
-                                              op=op, N=Nsz)
+            bundle = workloads.gen_binary_f32(REPO / "artifacts" / "cache" / "rvv_workloads", op=op, N=Nsz)
             for vec, sid in ((False, "ours_scalar"), (True, "ours_vectorized")):
-                base = {"op": f"vbinary_{op}", "dtype": "f32", "size_n": Nsz, "source": sid,
-                        "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                        "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": vec,
-                        "kernel_file": f"merlin RVV codegen ({sid})"}
+                base = {
+                    "op": f"vbinary_{op}",
+                    "dtype": "f32",
+                    "size_n": Nsz,
+                    "source": sid,
+                    "target": "k1",
+                    "mode": "inner_compute",
+                    "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ,
+                    "vectorize": vec,
+                    "kernel_file": f"merlin RVV codegen ({sid})",
+                }
                 print(f"--- {sid} vbinary {op} N={Nsz} ---")
-                r = _build_run_ours(f"brd_vbin_{op}_{sid}_{Nsz}", bundle, HERE / "ours_kernel_driver.c",
-                                    ["-DOURS_REF_binary", f"-DBINOP_{op.upper()}"], sid, [],
-                                    int8=False, vectorize=vec, reps=reps, base=base, pmu=True)
+                r = _build_run_ours(
+                    f"brd_vbin_{op}_{sid}_{Nsz}",
+                    bundle,
+                    HERE / "ours_kernel_driver.c",
+                    ["-DOURS_REF_binary", f"-DBINOP_{op.upper()}"],
+                    sid,
+                    [],
+                    int8=False,
+                    vectorize=vec,
+                    reps=reps,
+                    base=base,
+                    pmu=True,
+                )
                 print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
                 rows.append(r)
     return rows
@@ -480,31 +773,71 @@ def run_reduce(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
     """XNNPACK f32-rsum / f32-rmax (per-row, over the last dim) vs OUR reduce codegen. The
     softmax/norm reduction present in every model; catalog partial (rsum/rminmax)."""
     from merlin.mining import workloads
+
     rows = []
-    kernels = [("sum", "f32-rsum/gen/f32-rsum-rvv-u8v.c", "xnn_f32_rsum_ukernel__rvv_u8v"),
-               ("max", "f32-rminmax/gen/f32-rmax-rvv-u8v.c", "xnn_f32_rmax_ukernel__rvv_u8v")]
+    kernels = [
+        ("sum", "f32-rsum/gen/f32-rsum-rvv-u8v.c", "xnn_f32_rsum_ukernel__rvv_u8v"),
+        ("max", "f32-rminmax/gen/f32-rmax-rvv-u8v.c", "xnn_f32_rmax_ukernel__rvv_u8v"),
+    ]
     for op, ksrc, kfn in kernels:
-        for (M, N) in shapes:
-            base = {"op": f"reduce_{op}", "dtype": "f32", "M": M, "N": N, "source": "xnnpack",
-                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                    "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        for M, N in shapes:
+            base = {
+                "op": f"reduce_{op}",
+                "dtype": "f32",
+                "M": M,
+                "N": N,
+                "source": "xnnpack",
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+            }
             print(f"--- xnnpack reduce {op} {M}x{N} ---")
-            r = _build_run_xnn(f"brd_red_{op}_xnn_{M}x{N}", HERE / "xnnpack_reduce_driver.c",
-                               [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                                f"-DXNN_REDOP_{op.upper()}", f"-DRED_M={M}", f"-DRED_N={N}"],
-                               reps=reps, base=base, pmu=True)
+            r = _build_run_xnn(
+                f"brd_red_{op}_xnn_{M}x{N}",
+                HERE / "xnnpack_reduce_driver.c",
+                [
+                    f'-DXNN_KERNEL_SRC="{ksrc}"',
+                    f"-DXNN_KERNEL_FN={kfn}",
+                    f"-DXNN_REDOP_{op.upper()}",
+                    f"-DRED_M={M}",
+                    f"-DRED_N={N}",
+                ],
+                reps=reps,
+                base=base,
+                pmu=True,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
-            bundle = workloads.gen_reduce_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
-                                              op=op, M=M, N=N)
-            base = {"op": f"reduce_{op}", "dtype": "f32", "M": M, "N": N, "source": "ours_vectorized",
-                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                    "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
-                    "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+            bundle = workloads.gen_reduce_f32(REPO / "artifacts" / "cache" / "rvv_workloads", op=op, M=M, N=N)
+            base = {
+                "op": f"reduce_{op}",
+                "dtype": "f32",
+                "M": M,
+                "N": N,
+                "source": "ours_vectorized",
+                "target": "k1",
+                "mode": "inner_compute",
+                "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "vectorize": True,
+                "kernel_file": "merlin RVV codegen (ours_vectorized)",
+            }
             print(f"--- ours reduce {op} {M}x{N} ---")
-            r = _build_run_ours(f"brd_red_{op}_ours_{M}x{N}", bundle, HERE / "ours_kernel_driver.c",
-                                ["-DOURS_REF_reduce", f"-DREDOP_{op.upper()}"], "ours_vectorized", [],
-                                int8=False, vectorize=True, reps=reps, base=base, pmu=True)
+            r = _build_run_ours(
+                f"brd_red_{op}_ours_{M}x{N}",
+                bundle,
+                HERE / "ours_kernel_driver.c",
+                ["-DOURS_REF_reduce", f"-DREDOP_{op.upper()}"],
+                "ours_vectorized",
+                [],
+                int8=False,
+                vectorize=True,
+                reps=reps,
+                base=base,
+                pmu=True,
+            )
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -513,31 +846,66 @@ def run_reduce(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
 def run_clamp(sizes: list[int], reps: int) -> list[dict]:
     """XNNPACK f32-vclamp (relu6) vs OUR clamp codegen. Mapped in the catalog (clamp/relu)."""
     from merlin.mining import workloads
+
     rows = []
     ksrc = "f32-vclamp/gen/f32-vclamp-rvv-u8v.c"
     kfn = "xnn_f32_vclamp_ukernel__rvv_u8v"
     for Nsz in sizes:
-        base = {"op": "clamp", "dtype": "f32", "size_n": Nsz, "source": "xnnpack", "target": "k1",
-                "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-                "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        base = {
+            "op": "clamp",
+            "dtype": "f32",
+            "size_n": Nsz,
+            "source": "xnnpack",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+        }
         print(f"--- xnnpack clamp N={Nsz} ---")
-        r = _build_run_xnn(f"brd_clamp_xnn_{Nsz}", HERE / "xnnpack_vclamp_driver.c",
-                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                            "-DCLAMP_LO=0.0f", "-DCLAMP_HI=6.0f", f"-DVLEN_N={Nsz}"],
-                           reps=reps, base=base, pmu=True)
+        r = _build_run_xnn(
+            f"brd_clamp_xnn_{Nsz}",
+            HERE / "xnnpack_vclamp_driver.c",
+            [
+                f'-DXNN_KERNEL_SRC="{ksrc}"',
+                f"-DXNN_KERNEL_FN={kfn}",
+                "-DCLAMP_LO=0.0f",
+                "-DCLAMP_HI=6.0f",
+                f"-DVLEN_N={Nsz}",
+            ],
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
-        bundle = workloads.gen_relu_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
-                                        N=Nsz, lo=0.0, hi=6.0)
-        base = {"op": "clamp", "dtype": "f32", "size_n": Nsz, "source": "ours_vectorized",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
-                "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+        bundle = workloads.gen_relu_f32(REPO / "artifacts" / "cache" / "rvv_workloads", N=Nsz, lo=0.0, hi=6.0)
+        base = {
+            "op": "clamp",
+            "dtype": "f32",
+            "size_n": Nsz,
+            "source": "ours_vectorized",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "vectorize": True,
+            "kernel_file": "merlin RVV codegen (ours_vectorized)",
+        }
         print(f"--- ours clamp N={Nsz} ---")
-        r = _build_run_ours(f"brd_clamp_ours_{Nsz}", bundle, HERE / "ours_kernel_driver.c",
-                            ["-DOURS_REF_clamp", "-DCLAMP_LO=0.0f", "-DCLAMP_HI=6.0f"],
-                            "ours_vectorized", [], int8=False, vectorize=True, reps=reps,
-                            base=base, pmu=True)
+        r = _build_run_ours(
+            f"brd_clamp_ours_{Nsz}",
+            bundle,
+            HERE / "ours_kernel_driver.c",
+            ["-DOURS_REF_clamp", "-DCLAMP_LO=0.0f", "-DCLAMP_HI=6.0f"],
+            "ours_vectorized",
+            [],
+            int8=False,
+            vectorize=True,
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
     return rows
@@ -547,28 +915,62 @@ def run_transpose(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
     """XNNPACK x32-transposec vs OUR transpose codegen. Largest BYTE-traffic op family across the
     census; catalog partial. Non-square shapes so a stride bug is not hidden by symmetry."""
     from merlin.mining import workloads
+
     rows = []
     ksrc = "x32-transposec/gen/x32-transposec-8xv4-rvv.c"
     kfn = "xnn_x32_transposec_ukernel__8xv4_rvv"
-    for (R, C) in shapes:
-        base = {"op": "transpose", "dtype": "f32/x32", "R": R, "C": C, "source": "xnnpack",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+    for R, C in shapes:
+        base = {
+            "op": "transpose",
+            "dtype": "f32/x32",
+            "R": R,
+            "C": C,
+            "source": "xnnpack",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+        }
         print(f"--- xnnpack transpose {R}x{C} ---")
-        r = _build_run_xnn(f"brd_tr_xnn_{R}x{C}", HERE / "xnnpack_transposec_driver.c",
-                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                            f"-DTR_R={R}", f"-DTR_C={C}"], reps=reps, base=base, pmu=True)
+        r = _build_run_xnn(
+            f"brd_tr_xnn_{R}x{C}",
+            HERE / "xnnpack_transposec_driver.c",
+            [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}", f"-DTR_R={R}", f"-DTR_C={C}"],
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         bundle = workloads.gen_transpose_f32(REPO / "artifacts" / "cache" / "rvv_workloads", R=R, C=C)
-        base = {"op": "transpose", "dtype": "f32", "R": R, "C": C, "source": "ours_vectorized",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
-                "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+        base = {
+            "op": "transpose",
+            "dtype": "f32",
+            "R": R,
+            "C": C,
+            "source": "ours_vectorized",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "vectorize": True,
+            "kernel_file": "merlin RVV codegen (ours_vectorized)",
+        }
         print(f"--- ours transpose {R}x{C} ---")
-        r = _build_run_ours(f"brd_tr_ours_{R}x{C}", bundle, HERE / "ours_kernel_driver.c",
-                            ["-DOURS_REF_transpose"], "ours_vectorized", [], int8=False,
-                            vectorize=True, reps=reps, base=base, pmu=True)
+        r = _build_run_ours(
+            f"brd_tr_ours_{R}x{C}",
+            bundle,
+            HERE / "ours_kernel_driver.c",
+            ["-DOURS_REF_transpose"],
+            "ours_vectorized",
+            [],
+            int8=False,
+            vectorize=True,
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
     return rows
@@ -581,13 +983,26 @@ def run_noise_control(reps: int) -> list[dict]:
     rows = []
     ksrc, kfn, Nsz = "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v", 65536
     for k in ("ctrlA", "ctrlB"):
-        base = {"op": "noise_control", "dtype": "f32", "size_n": Nsz, "source": f"xnnpack_{k}",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        base = {
+            "op": "noise_control",
+            "dtype": "f32",
+            "size_n": Nsz,
+            "source": f"xnnpack_{k}",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc,
+        }
         print(f"--- noise control {k} (vmul N={Nsz}) ---")
-        r = _build_run_xnn(f"brd_noise_{k}", HERE / "xnnpack_vbinary_driver.c",
-                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
-                            "-DXNN_BINOP_MUL", f"-DVLEN_N={Nsz}"], reps=reps, base=base, pmu=True)
+        r = _build_run_xnn(
+            f"brd_noise_{k}",
+            HERE / "xnnpack_vbinary_driver.c",
+            [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}", "-DXNN_BINOP_MUL", f"-DVLEN_N={Nsz}"],
+            reps=reps,
+            base=base,
+            pmu=True,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
     return rows
@@ -616,20 +1031,33 @@ def main():
     transpose_shapes = [tuple(int(x) for x in s.split("x")) for s in a.transpose_shapes.split(",")]
 
     rows: list[dict] = []
-    if "f32_gemm" in ops:  rows += run_f32_gemm(gemm_shapes, a.reps)
-    if "gelu" in ops:      rows += run_activation("gelu", act_sizes, a.reps)
-    if "sigmoid" in ops:   rows += run_activation("sigmoid", act_sizes, a.reps)
-    if "int8_gemm" in ops: rows += run_int8_gemm(int8_shapes, a.reps)
-    if "dwconv" in ops:    rows += run_dwconv(a.reps)
-    if "conv2d" in ops:    rows += run_conv2d(a.reps)
-    if "attention" in ops: rows += run_attention(a.reps)
-    if "vbinary" in ops:   rows += run_vbinary(binary_sizes, a.reps)
-    if "reduce" in ops:    rows += run_reduce(reduce_shapes, a.reps)
-    if "clamp" in ops:     rows += run_clamp(clamp_sizes, a.reps)
-    if "transpose" in ops: rows += run_transpose(transpose_shapes, a.reps)
-    if "noise" in ops:     rows += run_noise_control(a.reps)
+    if "f32_gemm" in ops:
+        rows += run_f32_gemm(gemm_shapes, a.reps)
+    if "gelu" in ops:
+        rows += run_activation("gelu", act_sizes, a.reps)
+    if "sigmoid" in ops:
+        rows += run_activation("sigmoid", act_sizes, a.reps)
+    if "int8_gemm" in ops:
+        rows += run_int8_gemm(int8_shapes, a.reps)
+    if "dwconv" in ops:
+        rows += run_dwconv(a.reps)
+    if "conv2d" in ops:
+        rows += run_conv2d(a.reps)
+    if "attention" in ops:
+        rows += run_attention(a.reps)
+    if "vbinary" in ops:
+        rows += run_vbinary(binary_sizes, a.reps)
+    if "reduce" in ops:
+        rows += run_reduce(reduce_shapes, a.reps)
+    if "clamp" in ops:
+        rows += run_clamp(clamp_sizes, a.reps)
+    if "transpose" in ops:
+        rows += run_transpose(transpose_shapes, a.reps)
+    if "noise" in ops:
+        rows += run_noise_control(a.reps)
 
-    outp = Path(a.out); outp.parent.mkdir(parents=True, exist_ok=True)
+    outp = Path(a.out)
+    outp.parent.mkdir(parents=True, exist_ok=True)
     with outp.open("w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")

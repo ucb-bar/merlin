@@ -26,12 +26,13 @@ What each part is for:
 Deliberately NOT here: archiving. Producing a directory keeps this composable and reviewable; zip it as
 a final manual step if that is how it is being sent.
 """
+
 from __future__ import annotations
 
 import argparse
-import os
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -42,15 +43,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
-import numpy as np                                                          # noqa: E402
+import numpy as np  # noqa: E402
 
-from merlin.common.artifacts import new_product                             # noqa: E402
-from merlin.common.paths import _dotenv, repo_root                          # noqa: E402
-from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME                 # noqa: E402
-from merlin.runtime import boards, elf_audit                                # noqa: E402
-from merlin.runtime.boards import CONSOLE_HTIF                              # noqa: E402
-from merlin.runtime.backends import zephyr_model as zm                      # noqa: E402
-from merlin.mining.registry import load_rvv_package                         # noqa: E402
+from merlin.common.artifacts import new_product  # noqa: E402
+from merlin.common.paths import _dotenv, repo_root  # noqa: E402
+from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME  # noqa: E402
+from merlin.mining.registry import load_rvv_package  # noqa: E402
+from merlin.runtime import boards, elf_audit  # noqa: E402
+from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
+from merlin.runtime.boards import CONSOLE_HTIF  # noqa: E402
 
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.
@@ -359,53 +360,53 @@ if __name__ == "__main__":
 #: than no number.
 STATUS = {
     "spectformer": "VERIFIED. Bit-exact against the W8A8 reference on spike, at every hart count of "
-                   "every VECTOR image we have shipped, and on a "
-                   "SpacemiT K1 board (real RVV silicon): w8a8_rel = 0.0. A failure here is about the "
-                   "board, not about us — which is why this is the one to run first.",
+    "every VECTOR image we have shipped, and on a "
+    "SpacemiT K1 board (real RVV silicon): w8a8_rel = 0.0. A failure here is about the "
+    "board, not about us — which is why this is the one to run first.",
     "deepjscc": "VERIFIED: w8a8_cos = 1.0, rel = 0.0, on both the vector and the scalar image, at "
-                "every hart count, on spike. The scalar image is newly correct — the one in the "
-                "previous package computed w8a8_cos 0.9176 because per-op register blocking was "
-                "applied only to vector builds, and scalar images were shipped without ever being "
-                "simulated. Both halves of that are fixed: the blocking is unconditional, and no "
-                "image ships now without a gate behind it.",
+    "every hart count, on spike. The scalar image is newly correct — the one in the "
+    "previous package computed w8a8_cos 0.9176 because per-op register blocking was "
+    "applied only to vector builds, and scalar images were shipped without ever being "
+    "simulated. Both halves of that are fixed: the blocking is unconditional, and no "
+    "image ships now without a gate behind it.",
     "lstmnetvit": "KNOWN DIVERGENT on RISC-V: w8a8_cos 0.9943 on spike and on the K1, while the same "
-                  "IR is exact on x86. The 1-hart and N-hart runs ARE bit-identical, so it is useful "
-                  "for bring-up and timing. Do not treat its output as an accuracy result — the cause "
-                  "is ours to fix, not yours to debug.",
+    "IR is exact on x86. The 1-hart and N-hart runs ARE bit-identical, so it is useful "
+    "for bring-up and timing. Do not treat its output as an accuracy result — the cause "
+    "is ours to fix, not yours to debug.",
     "gemma2_2b_section12": "A SECTION of the model, not the whole of it, and the first thing to know "
-                           "about it: 12 of Gemma 2 2B's 26 decoder layers, from the real pretrained "
-                           "`google/gemma-2-2b-it` weights at sequence length 128, int8. The whole "
-                           "model does not fit -- its image needs 7916 MB of DRAM, which is 193% of "
-                           "this design's 4 GB. This section's images are linked for the regions in the "
-                           "DRAM table above, every one of them inside 4 GB. SECOND thing to "
-                           "know, because it changes how you feed it: the image enters at the "
-                           "hidden state that has already been multiplied by the embedding scale, NOT "
-                           "at token ids. The embedding table is a 2250 MB fp32 gather (the int8 "
-                           "quantizer only converts linear layers), and with it in the image no layer "
-                           "count fits at all -- but a gather does no arithmetic, so nothing that "
-                           "would have run on the matrix unit is missing. The embedded inputs are the "
-                           "real embedding rows for a drawn set of token ids, and the goldens beside "
-                           "them are references for THIS section, not for the full model. Not "
-                           "simulated: a functional simulator cannot run 196e9 MACs in a usable time, "
-                           "so its evidence is the ELF audit, the routing record and the instruction "
-                           "audit -- see the matrix-unit section.",
+    "about it: 12 of Gemma 2 2B's 26 decoder layers, from the real pretrained "
+    "`google/gemma-2-2b-it` weights at sequence length 128, int8. The whole "
+    "model does not fit -- its image needs 7916 MB of DRAM, which is 193% of "
+    "this design's 4 GB. This section's images are linked for the regions in the "
+    "DRAM table above, every one of them inside 4 GB. SECOND thing to "
+    "know, because it changes how you feed it: the image enters at the "
+    "hidden state that has already been multiplied by the embedding scale, NOT "
+    "at token ids. The embedding table is a 2250 MB fp32 gather (the int8 "
+    "quantizer only converts linear layers), and with it in the image no layer "
+    "count fits at all -- but a gather does no arithmetic, so nothing that "
+    "would have run on the matrix unit is missing. The embedded inputs are the "
+    "real embedding rows for a drawn set of token ids, and the goldens beside "
+    "them are references for THIS section, not for the full model. Not "
+    "simulated: a functional simulator cannot run 196e9 MACs in a usable time, "
+    "so its evidence is the ELF audit, the routing record and the instruction "
+    "audit -- see the matrix-unit section.",
     "whisper_tiny": "RE-EXPORTED SMALLER since the last package, because its problem was never the "
-                    "code — it was the upload. Its token-embedding table was still fp32 (torchao's "
-                    "default filter matches nn.Linear only), 76 MB of a 117 MB bundle, with the TIED "
-                    "output projection stored a second time at a quarter the size. Quantizing it "
-                    "takes the image from 127 MB to 71 MB. It is still by far the largest thing here "
-                    "and still the longest-running; check the upload column against your link speed "
-                    "before starting, and send the console log whatever it says.",
+    "code — it was the upload. Its token-embedding table was still fp32 (torchao's "
+    "default filter matches nn.Linear only), 76 MB of a 117 MB bundle, with the TIED "
+    "output projection stored a second time at a quarter the size. Quantizing it "
+    "takes the image from 127 MB to 71 MB. It is still by far the largest thing here "
+    "and still the longest-running; check the upload column against your link speed "
+    "before starting, and send the console log whatever it says.",
     "whisper_tiny_375pos": "VERIFIED, on a SHORTER AUDIO WINDOW — w8a8_cos = 0.99999994 on spike at "
-                           "every hart count. Read the suffix before you compare this against "
-                           "anything: it encodes 375 positions (7.5 s of audio) instead of Whisper's "
-                           "fixed 1500 (30 s). That is not a tuning choice. Encoder self-attention "
-                           "materializes a [heads, pos, pos] tensor, so the peak is quadratic in the "
-                           "window: at the full 1500 it needs 2184 MB live, which is larger than the "
-                           "DRAM on either of your boards, and it died with no message at all. At "
-                           "375 the peak is 319 MB and it runs to completion. The weights are the "
-                           "pretrained ones, with the position table truncated to the shorter "
-                           "window; every other model here is full-size and unmodified.",
+    "every hart count. Read the suffix before you compare this against "
+    "anything: it encodes 375 positions (7.5 s of audio) instead of Whisper's "
+    "fixed 1500 (30 s). That is not a tuning choice. Encoder self-attention "
+    "materializes a [heads, pos, pos] tensor, so the peak is quadratic in the "
+    "window: at the full 1500 it needs 2184 MB live, which is larger than the "
+    "DRAM on either of your boards, and it died with no message at all. At "
+    "375 the peak is 319 MB and it runs to completion. The weights are the "
+    "pretrained ones, with the position table truncated to the shorter "
+    "window; every other model here is full-size and unmodified.",
 }
 
 
@@ -430,19 +431,27 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     # Zephyr images do. A board with 1 GB of DRAM had 700 MB spare at the time.
     from merlin.common.ir_lock import IR_LOCK
     from merlin.common.mlir_query import activation_peak_bytes
+
     with IR_LOCK:
         peak = activation_peak_bytes(bundle / "model.mlir")
     arena_mb = max(256, ((int(peak or 0) + 128 * 1024 * 1024) + 2**20 - 1) // 2**20)
-    b = spike_model.build(bundle, work, inputs_npz=bundle / "inputs.npz",
-                          dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
-                          int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
-                          rvv_schedule=pkg.schedule_text, arena_mb=arena_mb,
-                          cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen)
+    b = spike_model.build(
+        bundle,
+        work,
+        inputs_npz=bundle / "inputs.npz",
+        dram_base=brd.dram_base,
+        dram_bytes=brd.dram_bytes,
+        int8_compute=True,
+        features=frozenset([PEROP_BLOCK_NAME]),
+        rvv_schedule=pkg.schedule_text,
+        arena_mb=arena_mb,
+        cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+        vlen=brd.vlen,
+    )
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    run = spike_model.run(b["elf"], harts=1, mem_bytes=b["mem_bytes"], timeout=timeout,
-                          isa=zm.spike_isa(brd.vlen))
+    run = spike_model.run(b["elf"], harts=1, mem_bytes=b["mem_bytes"], timeout=timeout, isa=zm.spike_isa(brd.vlen))
     res = dict(run)
     res.update(zm._gate(run["prefix"], refs))
     res.setdefault("metrics", run.get("metrics", {}))
@@ -454,27 +463,45 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
         # same bundle, package, features and vlen, so `build_hash` (a digest of the lowered model
         # object plus the weights blob) is identical and the package can say the compute is the same
         # binary content and only the output channel differs.
-        ship = spike_model.build(bundle, work / "board", inputs_npz=bundle / "inputs.npz",
-                                 dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
-                                 int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
-                                 rvv_schedule=pkg.schedule_text, arena_mb=arena_mb,
-                                 cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen,
-                                 console=brd.console, sdk_dir=sdk_dir, sdk_chip=brd.sdk_chip,
-                                 chip_freq_hz=brd.chip_freq_hz)
+        ship = spike_model.build(
+            bundle,
+            work / "board",
+            inputs_npz=bundle / "inputs.npz",
+            dram_base=brd.dram_base,
+            dram_bytes=brd.dram_bytes,
+            int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME]),
+            rvv_schedule=pkg.schedule_text,
+            arena_mb=arena_mb,
+            cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+            vlen=brd.vlen,
+            console=brd.console,
+            sdk_dir=sdk_dir,
+            sdk_chip=brd.sdk_chip,
+            chip_freq_hz=brd.chip_freq_hz,
+        )
         if ship.get("build_hash") != b.get("build_hash"):
             raise RuntimeError(
                 f"the gated image and the shipped image disagree on build_hash "
                 f"({b.get('build_hash')} vs {ship.get('build_hash')}) -- they are not the same "
-                "computation, so the gate does not cover what is being shipped")
+                "computation, so the gate does not cover what is being shipped"
+            )
     # Third element is the instrumented twin, and there isn't one: the debug harness is Zephyr's
     # (printk, k_uptime_get, the fatal hook overriding a kernel symbol) and this path has no RTOS.
     # Returned as None rather than omitted so the shape matches the Zephyr path -- returning a
     # 2-tuple here is what made the packager die on unpacking after every image had already built.
-    return res, {"elf": ship["elf"], "ram_bytes": ship["mem_bytes"],
-                 "build_hash": ship.get("build_hash", ""),
-                 "console": ship.get("console", CONSOLE_HTIF),
-                 "chip_freq_hz": ship.get("chip_freq_hz"),
-                 "console_provenance": ship.get("console_provenance", {})}, None
+    return (
+        res,
+        {
+            "elf": ship["elf"],
+            "ram_bytes": ship["mem_bytes"],
+            "build_hash": ship.get("build_hash", ""),
+            "console": ship.get("console", CONSOLE_HTIF),
+            "chip_freq_hz": ship.get("chip_freq_hz"),
+            "console_provenance": ship.get("console_provenance", {}),
+        },
+        None,
+    )
 
 
 #: Keys `zephyr_model.build_app` returns that describe an image's MEMORY DEMAND. Forwarded explicitly by
@@ -487,8 +514,9 @@ def _keep_memory(b: dict) -> dict:
     return {k: b[k] for k in MEMORY_KEYS if b.get(k) is not None}
 
 
-def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
-                     backend: str = "rvv", debug: bool = False):
+def build_board_only(
+    bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None, backend: str = "rvv", debug: bool = False
+):
     """Build the board image and return its facts, without running it anywhere.
 
     The honest use for this is when the numbers are already established on better evidence than a
@@ -503,17 +531,31 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
         # harness the image is built with: a board whose SDK has no RTOS cannot run a Zephyr image,
         # and building one anyway would ship an ELF that cannot boot on the target it names.
         from merlin.runtime.backends import spike_model
-        b = spike_model.build(bundle, work, inputs_npz=bundle / "inputs.npz",
-                              dram_base=brd.dram_base, dram_bytes=brd.dram_bytes,
-                              int8_compute=True, features=frozenset([PEROP_BLOCK_NAME]),
-                              rvv_schedule=pkg.schedule_text,
-                              cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=brd.vlen,
-                              console=brd.console, sdk_dir=sdk_dir, sdk_chip=brd.sdk_chip,
-                              chip_freq_hz=brd.chip_freq_hz)
-        return {"elf": b["elf"], "ram_bytes": b["mem_bytes"],
-                "build_hash": b.get("build_hash", ""), "console": b.get("console", CONSOLE_HTIF),
-                "chip_freq_hz": b.get("chip_freq_hz"),
-                "console_provenance": b.get("console_provenance", {})}
+
+        b = spike_model.build(
+            bundle,
+            work,
+            inputs_npz=bundle / "inputs.npz",
+            dram_base=brd.dram_base,
+            dram_bytes=brd.dram_bytes,
+            int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME]),
+            rvv_schedule=pkg.schedule_text,
+            cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+            vlen=brd.vlen,
+            console=brd.console,
+            sdk_dir=sdk_dir,
+            sdk_chip=brd.sdk_chip,
+            chip_freq_hz=brd.chip_freq_hz,
+        )
+        return {
+            "elf": b["elf"],
+            "ram_bytes": b["mem_bytes"],
+            "build_hash": b.get("build_hash", ""),
+            "console": b.get("console", CONSOLE_HTIF),
+            "chip_freq_hz": b.get("chip_freq_hz"),
+            "console_provenance": b.get("console_provenance", {}),
+        }
     if backend != "rvv":
         # A scalar image gets none of the vector machinery -- no RVV package, no -march vector width --
         # but it DOES get per-op register blocking, and leaving it out was a correctness bug, not a
@@ -529,25 +571,64 @@ def build_board_only(bundle: Path, brd, harts: int, *, work: Path, sdk_dir=None,
         # It does not vectorise the image -- the point of a scalar build is a hart with no vector unit,
         # and that property is checked, not assumed: `forward` audits at 0 vector instructions with
         # this on, and `_audit` below fails the package if any appear.
-        b = zm.build_app(bundle, work, board=brd.name, backend=backend, rvv_hart=0,
-                         cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
-                         features=frozenset([PEROP_BLOCK_NAME]),
-                         sdk_dir=sdk_dir, debug=debug)
-        return {"elf": b["elf"], "ram_bytes": b["ram_bytes"],
-                "build_hash": b.get("build_hash", ""), "backend": backend,
-                "op_profile_table": b.get("op_profile_table"), **_keep_memory(b)}
-    b = zm.build_app(bundle, work, board=brd.name, backend="rvv", rvv_hart=0,
-                     cpus=zm.image_cpus(brd, harts), n_harts=harts, int8_compute=True,
-                     rvv_schedule=pkg.schedule_text,
-                     cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-                     features=frozenset([PEROP_BLOCK_NAME]), vlen=brd.vlen, sdk_dir=sdk_dir,
-                     debug=debug)
-    return {"elf": b["elf"], "ram_bytes": b["ram_bytes"], "build_hash": b.get("build_hash", ""),
-            "op_profile_table": b.get("op_profile_table"), **_keep_memory(b)}
+        b = zm.build_app(
+            bundle,
+            work,
+            board=brd.name,
+            backend=backend,
+            rvv_hart=0,
+            cpus=zm.image_cpus(brd, harts),
+            n_harts=harts,
+            int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME]),
+            sdk_dir=sdk_dir,
+            debug=debug,
+        )
+        return {
+            "elf": b["elf"],
+            "ram_bytes": b["ram_bytes"],
+            "build_hash": b.get("build_hash", ""),
+            "backend": backend,
+            "op_profile_table": b.get("op_profile_table"),
+            **_keep_memory(b),
+        }
+    b = zm.build_app(
+        bundle,
+        work,
+        board=brd.name,
+        backend="rvv",
+        rvv_hart=0,
+        cpus=zm.image_cpus(brd, harts),
+        n_harts=harts,
+        int8_compute=True,
+        rvv_schedule=pkg.schedule_text,
+        cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+        features=frozenset([PEROP_BLOCK_NAME]),
+        vlen=brd.vlen,
+        sdk_dir=sdk_dir,
+        debug=debug,
+    )
+    return {
+        "elf": b["elf"],
+        "ram_bytes": b["ram_bytes"],
+        "build_hash": b.get("build_hash", ""),
+        "op_profile_table": b.get("op_profile_table"),
+        **_keep_memory(b),
+    }
 
 
-def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
-              debug: bool = False, backend: str = "rvv"):
+def build_one(
+    bundle: Path,
+    brd,
+    harts: int,
+    *,
+    vlen,
+    work: Path,
+    timeout: int,
+    sdk_dir=None,
+    debug: bool = False,
+    backend: str = "rvv",
+):
     """Build one image and run it on spike at the board's VLEN and hart count.
 
     Both backends come through here. A SCALAR image used to be built and shipped without ever being
@@ -560,8 +641,9 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
     # the arithmetic right rather than what makes it vector.
     vec = backend == "rvv"
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
-    tune = dict(rvv_schedule=pkg.schedule_text,
-                cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen) if vec else {}
+    tune = (
+        dict(rvv_schedule=pkg.schedule_text, cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen) if vec else {}
+    )
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
@@ -569,11 +651,19 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
 
     def board(dbg: bool):
         return zm.build_app(
-            bundle, work / f"board_h{harts}{'_dbg' if dbg else ''}", board=brd.name,
-            backend=backend, rvv_hart=0,
-            cpus=cpus, int8_compute=True,
-            features=frozenset([PEROP_BLOCK_NAME]), n_harts=harts, sdk_dir=sdk_dir,
-            debug=dbg, **tune)
+            bundle,
+            work / f"board_h{harts}{'_dbg' if dbg else ''}",
+            board=brd.name,
+            backend=backend,
+            rvv_hart=0,
+            cpus=cpus,
+            int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME]),
+            n_harts=harts,
+            sdk_dir=sdk_dir,
+            debug=dbg,
+            **tune,
+        )
 
     ship = board(False)
     if brd.console == CONSOLE_HTIF:
@@ -588,20 +678,31 @@ def build_one(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, 
         # `-pN` is the image's CPU COUNT, not its hart count: a 1-hart model image is still built with
         # MP_MAX_NUM_CPUS=2, and under `-p1` Zephyr waits forever for a CPU that never arrives and hangs
         # before printing anything. That failure is indistinguishable from a slow model.
-        res = zm.run_on_spike(ship["elf"], harts=cpus, mem_bytes=ship["ram_bytes"],
-                              timeout=timeout, vlen=vlen if vec else None)
+        res = zm.run_on_spike(
+            ship["elf"], harts=cpus, mem_bytes=ship["ram_bytes"], timeout=timeout, vlen=vlen if vec else None
+        )
         res.update(zm._gate(res["prefix"], refs))
         res["backend"] = backend
     else:
         # A board whose console is its own UART cannot be simulated here at all -- spike has no such
         # peripheral -- so the gate runs on an HTIF twin built from the same IR, and the package says so.
         res = zm.build_and_run(
-            bundle, work, board="spike_riscv64",
+            bundle,
+            work,
+            board="spike_riscv64",
             # The twin must declare the SAME CPU count as the shipped image: its whole job is to certify
             # that ELF's arithmetic, and MP_MAX_NUM_CPUS changes the code (per-CPU structs, idle threads,
             # the SMP bring-up). `cpus`, not a second formula.
-            backend=backend, rvv_hart=0, harts=cpus, int8_compute=True, n_harts=harts,
-            features=frozenset([PEROP_BLOCK_NAME]), references=refs, timeout=timeout, **tune)
+            backend=backend,
+            rvv_hart=0,
+            harts=cpus,
+            int8_compute=True,
+            n_harts=harts,
+            features=frozenset([PEROP_BLOCK_NAME]),
+            references=refs,
+            timeout=timeout,
+            **tune,
+        )
 
     # The debug twin is NOT re-simulated: same model, same lowering, same references, instrumentation
     # only, and re-gating it would burn hours of spike to re-establish an answer we already have.
@@ -689,27 +790,33 @@ def _upload_doc(brd, manifest: dict) -> str:
     payload = _upload_payload(brd, worst)
     alts = "\n".join(
         f"- at **{b} baud**: {_duration(payload / (b / 10.0))} ({b / brd.loader_baud:.0f}x faster)"
-        for b in FASTER_BAUDS if b > brd.loader_baud)
+        for b in FASTER_BAUDS
+        if b > brd.loader_baud
+    )
     smallest = min(rows, key=lambda b: b["upload_estimate_s"])
-    verdict = (f"""**Over the documented {brd.loader_baud}-baud link the largest images here are not
+    verdict = (
+        f"""**Over the documented {brd.loader_baud}-baud link the largest images here are not
 practical.** Treat them as images for a faster link, or for a cycle-accurate or functional run of this
 design where the loader is not on a serial wire at all. Nothing faster than this link is documented for
 this board in the material we have."""
-               if secs >= UPLOAD_IMPRACTICAL_S else
-               f"""It is a wait, not a wall: budget for it and raise any timeout in your harness past it.
+        if secs >= UPLOAD_IMPRACTICAL_S
+        else f"""It is a wait, not a wall: budget for it and raise any timeout in your harness past it.
 Nothing faster than this link is documented for this board in the material we have, so the lever that
-matters is the baud above.""")
+matters is the baud above."""
+    )
     # Only point at the smallest image when it is MATERIALLY cheaper. In a package where everything is
     # within a factor of two of 74 hours, "start with the smallest" reads as advice and carries none.
     small_s = float(smallest["upload_estimate_s"])
     if smallest is not worst and small_s < UPLOAD_IMPRACTICAL_S and small_s < secs / 2:
-        verdict += (f"\n\nIf what you want first is a quick confirmation that your silicon and our "
-                    f"compiler agree, start with `{smallest['elf']}` — the smallest image here, "
-                    f"{_duration(small_s)} on the same link.")
+        verdict += (
+            f"\n\nIf what you want first is a quick confirmation that your silicon and our "
+            f"compiler agree, start with `{smallest['elf']}` — the smallest image here, "
+            f"{_duration(small_s)} on the same link."
+        )
     return f"""
 ## Before you start: the upload is the long pole
 
-The largest binary here is `{worst['elf']}`, and your loader has to send **{payload / 2**20:.0f} MB** of
+The largest binary here is `{worst["elf"]}`, and your loader has to send **{payload / 2**20:.0f} MB** of
 it. At the **{brd.loader_baud} baud** your own scripts use, `{brd.loader}` moves about
 **{rate / 1024:.1f} KB/s**, so the upload alone is **{_duration(secs)}** before a single instruction
 executes. The loader polls for completion with no timeout, so from the outside that is indistinguishable
@@ -741,15 +848,19 @@ def _routing_facts(build_dir: Path) -> dict:
         return int(r.get("b") or 1) * int(r["m"]) * int(r["n"]) * int(r["k"])
 
     widest = max(routed, key=_macs, default=None)
-    out = {"routed_contractions": int(got.get("count") or len(routed)),
-           "distinct_signatures": len(got.get("signatures") or {}),
-           # NOT a count: the reasons are the point. An empty list is the claim "nothing was left behind".
-           "skipped": [f"{d.get('what')}: {d.get('why')}" for d in (got.get("skipped") or [])],
-           "macs_routed": sum(_macs(r) for r in routed)}
+    out = {
+        "routed_contractions": int(got.get("count") or len(routed)),
+        "distinct_signatures": len(got.get("signatures") or {}),
+        # NOT a count: the reasons are the point. An empty list is the claim "nothing was left behind".
+        "skipped": [f"{d.get('what')}: {d.get('why')}" for d in (got.get("skipped") or [])],
+        "macs_routed": sum(_macs(r) for r in routed),
+    }
     if widest is not None:
-        out["widest_routed"] = {"fqn": widest.get("fqn"),
-                                "shape": [widest.get("b"), widest["m"], widest["n"], widest["k"]],
-                                "macs": _macs(widest)}
+        out["widest_routed"] = {
+            "fqn": widest.get("fqn"),
+            "shape": [widest.get("b"), widest["m"], widest["n"], widest["k"]],
+            "macs": _macs(widest),
+        }
     return out
 
 
@@ -768,10 +879,13 @@ def _memory_facts(build: dict, rep) -> dict:
     image = int(round(float(rep.facts.get("image_memsz_mb") or 0.0) * 2**20))
     need = int(build.get("allocation_bytes_total") or 0)
     arena = region - image
-    out = {"region_mb": round(region / 2**20, 1), "image_memsz_mb": round(image / 2**20, 1),
-           "arena_mb": round(arena / 2**20, 1),
-           "allocation_total_mb": round(need / 2**20, 1),
-           "allocation_dynamic_calls": int(build.get("allocation_dynamic_calls") or 0)}
+    out = {
+        "region_mb": round(region / 2**20, 1),
+        "image_memsz_mb": round(image / 2**20, 1),
+        "arena_mb": round(arena / 2**20, 1),
+        "allocation_total_mb": round(need / 2**20, 1),
+        "allocation_dynamic_calls": int(build.get("allocation_dynamic_calls") or 0),
+    }
     if build.get("activation_peak_bytes"):
         out["activation_peak_mb"] = round(int(build["activation_peak_bytes"]) / 2**20, 1)
     if need and arena < need:
@@ -791,17 +905,20 @@ def _matrix_facts(matrix_build: dict | None) -> dict:
     """
     if not isinstance(matrix_build, dict):
         return {}
-    out: dict = {k: matrix_build.get(k) for k in
-                 ("tile_edge", "alignment_bytes", "scratch_bytes", "parallel_tiles")}
+    out: dict = {k: matrix_build.get(k) for k in ("tile_edge", "alignment_bytes", "scratch_bytes", "parallel_tiles")}
     prov = matrix_build.get("provenance") or {}
     for pin, got in (prov.get("hardware_pins") or {}).items():
         obs = got.get("observed") or {}
         out["unit_revision"] = {
-            "pin": pin, "commit": obs.get("commit"), "branch": obs.get("branch"),
-            "repo": obs.get("remote"), "verified": bool(got.get("ok")),
+            "pin": pin,
+            "commit": obs.get("commit"),
+            "branch": obs.get("branch"),
+            "repo": obs.get("remote"),
+            "verified": bool(got.get("ok")),
             # A dirty hardware checkout is not automatically wrong -- it is wrong when the dirty files are
             # ones this build READ, which is what `drift` distinguishes and `source_digest` pins exactly.
-            "dirty_files": obs.get("dirty_files"), "drift": list(got.get("drift") or ()),
+            "dirty_files": obs.get("dirty_files"),
+            "drift": list(got.get("drift") or ()),
         }
         break
     if prov.get("source_digest"):
@@ -811,8 +928,20 @@ def _matrix_facts(matrix_build: dict | None) -> dict:
     return out
 
 
-def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: int, sdk_dir=None,
-                 debug: bool = False, unit: str, config: str, simulate: bool = True):
+def build_matrix(
+    bundle: Path,
+    brd,
+    harts: int,
+    *,
+    vlen,
+    work: Path,
+    timeout: int,
+    sdk_dir=None,
+    debug: bool = False,
+    unit: str,
+    config: str,
+    simulate: bool = True,
+):
     """Build an image that routes contractions to a MATRIX EXTENSION, and gate it honestly.
 
     The problem this solves: the shipped image contains instructions no functional simulator we have can
@@ -836,8 +965,7 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
 
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
-    tune = dict(rvv_schedule=pkg.schedule_text,
-                cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen)
+    tune = dict(rvv_schedule=pkg.schedule_text, cflags_override=pkg.cflags + zm._CFLAGS_COMMON, vlen=vlen)
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
@@ -846,10 +974,21 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
 
     def build(*, stand_in: bool, dbg: bool, where: str):
         return zm.build_app(
-            bundle, work / where, board=brd.name, backend="rvv", rvv_hart=0, cpus=cpus,
-            int8_compute=True, features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
-            n_harts=harts, sdk_dir=sdk_dir, debug=dbg, matrix=routing,
-            matrix_scalar_tile=stand_in, **tune)
+            bundle,
+            work / where,
+            board=brd.name,
+            backend="rvv",
+            rvv_hart=0,
+            cpus=cpus,
+            int8_compute=True,
+            features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
+            n_harts=harts,
+            sdk_dir=sdk_dir,
+            debug=dbg,
+            matrix=routing,
+            matrix_scalar_tile=stand_in,
+            **tune,
+        )
 
     ship_where, twin_where = f"board_h{harts}", f"twin_h{harts}"
     ship = build(stand_in=False, dbg=False, where=ship_where)
@@ -870,24 +1009,24 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
     if ship_lowering != twin_lowering:
         raise RuntimeError(
             f"the stand-in twin lowers to {twin_lowering} against the shipped image's {ship_lowering}; "
-            "they are not the same lowering, so grading the twin would say nothing about what ships")
+            "they are not the same lowering, so grading the twin would say nothing about what ships"
+        )
 
     # The anti-cheat, in both directions. An image carrying NONE of the unit's instructions computes
     # correct answers on the host core and passes every numerical check, which is the most comfortable
     # way for a matrix-unit delivery to be wrong; and a twin that carries them is not a stand-in.
     encodings = opu_shim.derive_encodings(opu_shim.load_contract(unit)).encodings
-    counts = {k: int(v) for k, v in
-              sorted((unit_audit.audit_object(ship["elf"], encodings).counts or {}).items()) if v}
+    counts = {k: int(v) for k, v in sorted((unit_audit.audit_object(ship["elf"], encodings).counts or {}).items()) if v}
     if not counts:
         raise RuntimeError(f"the shipped image contains NONE of {unit}'s instructions")
     # Count by VALUE, not by key: the audit returns an entry per instruction whether or not it occurs,
     # so a clean image comes back as `{OPMACC: 0, ...}` -- a dict that is perfectly truthy and made this
     # reject its own correct twin the first time it ran.
-    twin_counts = {k: int(v) for k, v in
-                   (unit_audit.audit_object(twin["elf"], encodings).counts or {}).items() if v}
+    twin_counts = {k: int(v) for k, v in (unit_audit.audit_object(twin["elf"], encodings).counts or {}).items() if v}
     if twin_counts:
-        raise RuntimeError(f"the stand-in twin contains the unit's instructions ({twin_counts}), "
-                           "so it is not a stand-in")
+        raise RuntimeError(
+            f"the stand-in twin contains the unit's instructions ({twin_counts}), so it is not a stand-in"
+        )
 
     # The DIAGNOSTIC build, audited the same way and for the same reason. It is the image someone falls
     # back to when the plain one misbehaves on hardware nobody has run, so a diagnostic build that lost
@@ -895,16 +1034,19 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
     # the host core, and prove nothing about the unit. Built here rather than by the caller so the audit
     # cannot be skipped by whoever asks for it.
     dbg = build(stand_in=False, dbg=True, where=f"board_h{harts}_dbg") if debug else None
-    dbg_counts = {} if dbg is None else {
-        k: int(v) for k, v in
-        sorted((unit_audit.audit_object(dbg["elf"], encodings).counts or {}).items()) if v}
+    dbg_counts = (
+        {}
+        if dbg is None
+        else {k: int(v) for k, v in sorted((unit_audit.audit_object(dbg["elf"], encodings).counts or {}).items()) if v}
+    )
     if dbg is not None and not dbg_counts:
-        raise RuntimeError(f"the diagnostic build of this image contains NONE of {unit}'s instructions, "
-                           "so the build someone falls back to on a bad run would not exercise the unit")
+        raise RuntimeError(
+            f"the diagnostic build of this image contains NONE of {unit}'s instructions, "
+            "so the build someone falls back to on a bad run would not exercise the unit"
+        )
 
     if simulate:
-        res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"],
-                              timeout=timeout, vlen=vlen)
+        res = zm.run_on_spike(twin["elf"], harts=cpus, mem_bytes=twin["ram_bytes"], timeout=timeout, vlen=vlen)
         res.update(zm._gate(res["prefix"], refs))
     else:
         # --no-spike: the twin is still BUILT and both images still audited (the digest match and the
@@ -918,7 +1060,9 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
     # already uses.
     res["build_hash"] = twin["build_hash"]
     res["matrix"] = {
-        "unit": unit, "config": config, "unit_instruction_counts": counts,
+        "unit": unit,
+        "config": config,
+        "unit_instruction_counts": counts,
         # The GEOMETRY the shipped kernel was compiled for, and the revision of the unit's sources the
         # instruction encodings were derived from. Both come from the build that produced this ELF rather
         # than being re-derived here, so the package cannot state an edge the binary does not have.
@@ -945,18 +1089,20 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
         # the two are separate binaries, so stating one and implying the other is exactly the gap this
         # closes.
         **({"debug_unit_instruction_counts": dbg_counts} if dbg is not None else {}),
-        "gated_via": ("scalar stand-in twin on spike; it shares this image's LOWERING (see "
-                      "lowering_digest) but not its app configuration. That covers the routing, the "
-                      "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
-                      "covered here -- it is certified on the unit's own RTL against a frozen corpus."
-                      if simulate else
-                      "NOTHING was graded here. The stand-in twin was built and audited -- it shares "
-                      "this image's lowering_digest and carries none of the unit's instructions -- but "
-                      "it was not simulated, because a whole-model scalar stand-in costs hours of "
-                      "spike. What this package establishes about these images is structural: the "
-                      "routing happened, the shipped ELF carries the unit's instructions and the twin "
-                      "does not, and both lower to the same bytes. Any numerical evidence is external "
-                      "and named in this package's notes."),
+        "gated_via": (
+            "scalar stand-in twin on spike; it shares this image's LOWERING (see "
+            "lowering_digest) but not its app configuration. That covers the routing, the "
+            "K-major pack, the descriptor ABI and the requant epilogue. The DATAPATH is not "
+            "covered here -- it is certified on the unit's own RTL against a frozen corpus."
+            if simulate
+            else "NOTHING was graded here. The stand-in twin was built and audited -- it shares "
+            "this image's lowering_digest and carries none of the unit's instructions -- but "
+            "it was not simulated, because a whole-model scalar stand-in costs hours of "
+            "spike. What this package establishes about these images is structural: the "
+            "routing happened, the shipped ELF carries the unit's instructions and the twin "
+            "does not, and both lower to the same bytes. Any numerical evidence is external "
+            "and named in this package's notes."
+        ),
     }
     return res, ship, dbg
 
@@ -964,93 +1110,141 @@ def build_matrix(bundle: Path, brd, harts: int, *, vlen, work: Path, timeout: in
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--board", required=True, help="Zephyr board (e.g. chipyard_kodiak)")
-    ap.add_argument("--models", default="spectformer,deepjscc,lstmnetvit",
-                    help="comma-separated workloads. Either a name, whose bundle is "
-                         "`recaptures/<name>_<dtype>_full`, or `label:directory` naming the bundle "
-                         "directory explicitly — which is what a bundle that is not the whole model "
-                         "needs (a section of a model too big to fit is a legitimate deliverable, and "
-                         "its directory should say which section while the label stays readable in a "
-                         "filename).")
+    ap.add_argument(
+        "--models",
+        default="spectformer,deepjscc,lstmnetvit",
+        help="comma-separated workloads. Either a name, whose bundle is "
+        "`recaptures/<name>_<dtype>_full`, or `label:directory` naming the bundle "
+        "directory explicitly — which is what a bundle that is not the whole model "
+        "needs (a section of a model too big to fit is a legitimate deliverable, and "
+        "its directory should say which section while the label stays readable in a "
+        "filename).",
+    )
     ap.add_argument("--harts", default="1,3", help="comma-separated hart counts, one binary each")
     ap.add_argument("--dram-mb", type=int, default=None, help="the board's REAL DRAM")
     ap.add_argument("--vlen", type=int, default=None, help="the board's REAL vector length")
     ap.add_argument("--dtype", default="int8")
-    ap.add_argument("--scalar-harts", default="",
-                    help="comma-separated hart counts to ALSO build as SCALAR images (no vector "
-                         "instructions). The point is a heterogeneous SoC: a chip may bring up more "
-                         "cores than it attaches vector units to, and a scalar image is the only way "
-                         "to use the extra ones. Slower per core, but it is the whole machine.")
-    ap.add_argument("--matrix-harts", default="",
-                    help="comma-separated hart counts to ALSO build with contractions ROUTED TO A "
-                         "MATRIX EXTENSION (needs --matrix-unit/--matrix-config). Those images carry "
-                         "instructions no simulator here can execute, so each is graded through a "
-                         "scalar stand-in twin built from the same lowering — see build_matrix.")
-    ap.add_argument("--matrix-unit", default=None,
-                    help="the matrix extension to route to, named as a block in the unit contract. "
-                         "Required by --matrix-harts and deliberately not defaulted: a default would "
-                         "make this script about one particular accelerator.")
-    ap.add_argument("--matrix-config", default=None,
-                    help="the elaborated hardware configuration to derive the tile geometry from. "
-                         "Required by --matrix-harts.")
+    ap.add_argument(
+        "--scalar-harts",
+        default="",
+        help="comma-separated hart counts to ALSO build as SCALAR images (no vector "
+        "instructions). The point is a heterogeneous SoC: a chip may bring up more "
+        "cores than it attaches vector units to, and a scalar image is the only way "
+        "to use the extra ones. Slower per core, but it is the whole machine.",
+    )
+    ap.add_argument(
+        "--matrix-harts",
+        default="",
+        help="comma-separated hart counts to ALSO build with contractions ROUTED TO A "
+        "MATRIX EXTENSION (needs --matrix-unit/--matrix-config). Those images carry "
+        "instructions no simulator here can execute, so each is graded through a "
+        "scalar stand-in twin built from the same lowering — see build_matrix.",
+    )
+    ap.add_argument(
+        "--matrix-unit",
+        default=None,
+        help="the matrix extension to route to, named as a block in the unit contract. "
+        "Required by --matrix-harts and deliberately not defaulted: a default would "
+        "make this script about one particular accelerator.",
+    )
+    ap.add_argument(
+        "--matrix-config",
+        default=None,
+        help="the elaborated hardware configuration to derive the tile geometry from. Required by --matrix-harts.",
+    )
     ap.add_argument("--timeout", type=int, default=14400)
-    ap.add_argument("--no-spike-models", default="",
-                    help="comma-separated models to build+audit WITHOUT simulating, while the rest "
-                         "keep their gate. For the case where one model's functional run costs hours "
-                         "and its evidence comes from elsewhere (FireSim), but the others are cheap.")
-    ap.add_argument("--no-spike-backends", default="",
-                    help="comma-separated BACKENDS (rvv|scalar|matrix) to build+audit without "
-                         "simulating, while every other image keeps its gate. --no-spike-models cannot "
-                         "express this: a matrix image's gate is a scalar stand-in of the whole model, "
-                         "which costs hours on spike, while the RVV image of the SAME model costs "
-                         "minutes — so naming the model would throw away the cheap gate to skip the "
-                         "expensive one.")
-    ap.add_argument("--no-spike", action="store_true",
-                    help="build and audit the board ELFs but do not simulate them. Use when the "
-                         "lowering is already validated on stronger evidence (e.g. FireSim on the "
-                         "real RTL) and the spike gate is not worth its wall clock. The package then "
-                         "ships WITHOUT an expected_console for those binaries, and says so.")
-    ap.add_argument("--jobs", type=int, default=None,
-                    help="images to build/simulate at once (default: min(images, 6)); each is one "
-                         "single-threaded spike")
-    ap.add_argument("--debug", action="store_true",
-                    help="ALSO build a diagnostic twin of every image, into the same package. Same computation, but "
-                         "each announces the stage it reached, heartbeats while it runs (naming the "
-                         "op it is inside), probes that the linked DRAM region really exists, reports "
-                         "stack high-water marks, and turns a fault into one greppable FAIL line "
-                         "carrying the build hash. For a board we cannot attach to, this is what "
-                         "makes ONE returned console log a diagnosis instead of a new question.")
-    ap.add_argument("--note", action="append", default=[],
-                    help="a sentence the recipient must read, recorded in the manifest and rendered "
-                         "near the top of the README. For the facts that belong to THIS package and "
-                         "cannot be derived from a board descriptor or a build — chiefly which "
-                         "hardware it has and has not been executed on. Repeatable.")
+    ap.add_argument(
+        "--no-spike-models",
+        default="",
+        help="comma-separated models to build+audit WITHOUT simulating, while the rest "
+        "keep their gate. For the case where one model's functional run costs hours "
+        "and its evidence comes from elsewhere (FireSim), but the others are cheap.",
+    )
+    ap.add_argument(
+        "--no-spike-backends",
+        default="",
+        help="comma-separated BACKENDS (rvv|scalar|matrix) to build+audit without "
+        "simulating, while every other image keeps its gate. --no-spike-models cannot "
+        "express this: a matrix image's gate is a scalar stand-in of the whole model, "
+        "which costs hours on spike, while the RVV image of the SAME model costs "
+        "minutes — so naming the model would throw away the cheap gate to skip the "
+        "expensive one.",
+    )
+    ap.add_argument(
+        "--no-spike",
+        action="store_true",
+        help="build and audit the board ELFs but do not simulate them. Use when the "
+        "lowering is already validated on stronger evidence (e.g. FireSim on the "
+        "real RTL) and the spike gate is not worth its wall clock. The package then "
+        "ships WITHOUT an expected_console for those binaries, and says so.",
+    )
+    ap.add_argument(
+        "--jobs",
+        type=int,
+        default=None,
+        help="images to build/simulate at once (default: min(images, 6)); each is one single-threaded spike",
+    )
+    ap.add_argument(
+        "--debug",
+        action="store_true",
+        help="ALSO build a diagnostic twin of every image, into the same package. Same computation, but "
+        "each announces the stage it reached, heartbeats while it runs (naming the "
+        "op it is inside), probes that the linked DRAM region really exists, reports "
+        "stack high-water marks, and turns a fault into one greppable FAIL line "
+        "carrying the build hash. For a board we cannot attach to, this is what "
+        "makes ONE returned console log a diagnosis instead of a new question.",
+    )
+    ap.add_argument(
+        "--note",
+        action="append",
+        default=[],
+        help="a sentence the recipient must read, recorded in the manifest and rendered "
+        "near the top of the README. For the facts that belong to THIS package and "
+        "cannot be derived from a board descriptor or a build — chiefly which "
+        "hardware it has and has not been executed on. Repeatable.",
+    )
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
-    ap.add_argument("--refresh", action="store_true",
-                    help="do not build anything: recompute --out's manifest summary, re-render its "
-                         "README from it, and rebuild its zip. For bringing an already-built package "
-                         "up to date with a packager that has since learned to state something new, "
-                         "without paying hours of simulation to regenerate identical bytes.")
-    ap.add_argument("--twin-of", default=None,
-                    help="with --refresh: another package whose binaries WERE gated. For each image "
-                         "here, if a same-model/same-hart image there runs an identical instruction "
-                         "sequence, record that gate as twin evidence. For a variant we cannot "
-                         "simulate (a clock bring-up) but whose model code is unchanged.")
-    ap.add_argument("--probe-console", default=None,
-                    help="a vlen_probe console log returned FROM THE SILICON. The descriptor's VLEN is "
-                         "checked against it and a disagreement refuses the build. This is the only "
-                         "check that can catch an under-declared VLEN: it corrupts kernel memory (the "
-                         "vector save area is sized from the config but filled with a hardware length) "
-                         "and a spike gate is structurally blind to it, because spike is handed the "
-                         "VLEN we declared.")
-    ap.add_argument("--sdk-dir", default=None,
-                    help="the target's own SDK checkout. REQUIRED for a board whose console is its "
-                         "own UART: the UART address and the clock rates its baud divisor depends on "
-                         "are derived from that SDK's headers rather than hardcoded here.")
-    ap.add_argument("--firesim-board", default=None,
-                    help="the board (a registry entry declaring its `bitstream`) whose FireSim runs "
-                         "produced the results in $MERLIN_EXT_FIRESIM_BUILDS. Required when that "
-                         "directory has results for a packaged model; defaults to "
-                         "$MERLIN_FIRESIM_EVIDENCE_BOARD (process env or .env).")
+    ap.add_argument(
+        "--refresh",
+        action="store_true",
+        help="do not build anything: recompute --out's manifest summary, re-render its "
+        "README from it, and rebuild its zip. For bringing an already-built package "
+        "up to date with a packager that has since learned to state something new, "
+        "without paying hours of simulation to regenerate identical bytes.",
+    )
+    ap.add_argument(
+        "--twin-of",
+        default=None,
+        help="with --refresh: another package whose binaries WERE gated. For each image "
+        "here, if a same-model/same-hart image there runs an identical instruction "
+        "sequence, record that gate as twin evidence. For a variant we cannot "
+        "simulate (a clock bring-up) but whose model code is unchanged.",
+    )
+    ap.add_argument(
+        "--probe-console",
+        default=None,
+        help="a vlen_probe console log returned FROM THE SILICON. The descriptor's VLEN is "
+        "checked against it and a disagreement refuses the build. This is the only "
+        "check that can catch an under-declared VLEN: it corrupts kernel memory (the "
+        "vector save area is sized from the config but filled with a hardware length) "
+        "and a spike gate is structurally blind to it, because spike is handed the "
+        "VLEN we declared.",
+    )
+    ap.add_argument(
+        "--sdk-dir",
+        default=None,
+        help="the target's own SDK checkout. REQUIRED for a board whose console is its "
+        "own UART: the UART address and the clock rates its baud divisor depends on "
+        "are derived from that SDK's headers rather than hardcoded here.",
+    )
+    ap.add_argument(
+        "--firesim-board",
+        default=None,
+        help="the board (a registry entry declaring its `bitstream`) whose FireSim runs "
+        "produced the results in $MERLIN_EXT_FIRESIM_BUILDS. Required when that "
+        "directory has results for a packaged model; defaults to "
+        "$MERLIN_FIRESIM_EVIDENCE_BOARD (process env or .env).",
+    )
     a = ap.parse_args(argv)
 
     if a.refresh:
@@ -1072,37 +1266,42 @@ def main(argv=None) -> int:
     no_spike_models = {m.strip() for m in a.no_spike_models.split(",") if m.strip()}
     unknown = no_spike_models - set(models)
     if unknown:
-        print(f"[make_delivery] --no-spike-models names models not in --models: {sorted(unknown)}",
-              file=sys.stderr)
+        print(f"[make_delivery] --no-spike-models names models not in --models: {sorted(unknown)}", file=sys.stderr)
         return 2
     no_spike_backends = {b.strip() for b in a.no_spike_backends.split(",") if b.strip()}
     if not no_spike_backends <= {"rvv", "scalar", "matrix"}:
-        print(f"[make_delivery] --no-spike-backends: unknown backend(s) "
-              f"{sorted(no_spike_backends - {'rvv', 'scalar', 'matrix'})}", file=sys.stderr)
+        print(
+            f"[make_delivery] --no-spike-backends: unknown backend(s) "
+            f"{sorted(no_spike_backends - {'rvv', 'scalar', 'matrix'})}",
+            file=sys.stderr,
+        )
         return 2
     hart_list = [int(h) for h in a.harts.split(",") if h.strip()]
     scalar_hart_list = [int(h) for h in a.scalar_harts.split(",") if h.strip()]
     matrix_hart_list = [int(h) for h in a.matrix_harts.split(",") if h.strip()]
     if matrix_hart_list and not (a.matrix_unit and a.matrix_config):
-        print("[make_delivery] --matrix-harts needs --matrix-unit and --matrix-config: the unit and "
-              "its elaborated configuration are what the tile geometry is derived from, and guessing "
-              "either produces a shim that is wrong on the second beat of a load",
-              file=sys.stderr)
+        print(
+            "[make_delivery] --matrix-harts needs --matrix-unit and --matrix-config: the unit and "
+            "its elaborated configuration are what the tile geometry is derived from, and guessing "
+            "either produces a shim that is wrong on the second beat of a load",
+            file=sys.stderr,
+        )
         return 2
     if any(h > brd.harts for h in matrix_hart_list + scalar_hart_list):
-        print(f"[make_delivery] refusing a scalar image over more than {brd.harts} harts",
-              file=sys.stderr)
+        print(f"[make_delivery] refusing a scalar image over more than {brd.harts} harts", file=sys.stderr)
         return 2
     if max(hart_list) > brd.harts:
-        print(f"[make_delivery] refusing {max(hart_list)} harts: {brd.name} has {brd.harts}",
-              file=sys.stderr)
+        print(f"[make_delivery] refusing {max(hart_list)} harts: {brd.name} has {brd.harts}", file=sys.stderr)
         return 2
     # Fail here rather than three hours into a build: without the SDK there is no way to know this
     # chip's console, and the fallback (a host-assisted channel) is precisely the bug that made the
     # first delivery print nothing on real hardware.
     if brd.console != CONSOLE_HTIF and not a.sdk_dir:
-        print(f"[make_delivery] {brd.name} has a '{brd.console}' console: pass --sdk-dir "
-              f"<the target's SDK checkout> so its facts can be derived", file=sys.stderr)
+        print(
+            f"[make_delivery] {brd.name} has a '{brd.console}' console: pass --sdk-dir "
+            f"<the target's SDK checkout> so its facts can be derived",
+            file=sys.stderr,
+        )
         return 2
 
     # The board's own answer about its vector width, when someone has run the probe on it. Checked
@@ -1112,22 +1311,26 @@ def main(argv=None) -> int:
     probe_check, probe_problems = None, []
     if a.probe_console:
         from merlin.runtime import vector_probe
-        probe_check = vector_probe.verify_declared(brd.vlen,
-                                                  Path(a.probe_console).read_text(errors="replace"))
+
+        probe_check = vector_probe.verify_declared(brd.vlen, Path(a.probe_console).read_text(errors="replace"))
         v, measured = probe_check["verdict"], probe_check["measured"]
         if v == vector_probe.PROBE_DISAGREES:
-            print(f"[make_delivery] refusing: {brd.name} declares vlen={brd.vlen} but the probe log "
-                  f"{a.probe_console} measured {measured} on the silicon. Fix the descriptor -- "
-                  f"under-declaring VLEN corrupts kernel thread structs, and no gate here can see it.",
-                  file=sys.stderr)
+            print(
+                f"[make_delivery] refusing: {brd.name} declares vlen={brd.vlen} but the probe log "
+                f"{a.probe_console} measured {measured} on the silicon. Fix the descriptor -- "
+                f"under-declaring VLEN corrupts kernel thread structs, and no gate here can see it.",
+                file=sys.stderr,
+            )
             return 2
         if v == vector_probe.PROBE_UNMEASURED:
             # NOT a pass. The probe prints from every hart, so a multi-hart chip returns interleaved
             # characters; saying so is the difference between "checked" and "looked like it was".
-            probe_problems.append(f"NO STATUS: {a.probe_console} did not yield a usable VLEN reading "
-                                  f"(complete={probe_check['complete']}, "
-                                  f"consistent={probe_check['consistent']}), so vlen={brd.vlen} is "
-                                  f"still declared rather than measured")
+            probe_problems.append(
+                f"NO STATUS: {a.probe_console} did not yield a usable VLEN reading "
+                f"(complete={probe_check['complete']}, "
+                f"consistent={probe_check['consistent']}), so vlen={brd.vlen} is "
+                f"still declared rather than measured"
+            )
         else:
             print(f"[make_delivery] probe agrees: vlen={measured} measured on the silicon", flush=True)
 
@@ -1140,21 +1343,24 @@ def main(argv=None) -> int:
             f"NO STATUS: {brd.name} declares vlen={brd.vlen}, below this Zephyr tree's default vector "
             f"width; the save area was raised to {zm._vector_max_len_bits(brd)} bits so an "
             f"under-declaration cannot overrun a thread struct. Run vlen_probe.elf and pass the log to "
-            f"--probe-console to replace the declaration with a measurement.")
+            f"--probe-console to replace the declaration with a measurement."
+        )
 
     if a.out:
         dest = Path(a.out)
         dest.mkdir(parents=True, exist_ok=True)
         manifest_writer = None
     else:
-        prod = new_product("delivery", version=1, target=a.board,
-                           notes=f"int8 multicore-RVV binaries for {a.board}")
+        prod = new_product("delivery", version=1, target=a.board, notes=f"int8 multicore-RVV binaries for {a.board}")
         dest, manifest_writer = Path(prod.path), prod
-    print(f"[make_delivery] board={brd.name} dram={brd.dram_bytes // 2**20}MB harts={brd.harts} "
-          f"vlen={brd.vlen or 'unknown(assume 128)'} -> {dest}", flush=True)
+    print(
+        f"[make_delivery] board={brd.name} dram={brd.dram_bytes // 2**20}MB harts={brd.harts} "
+        f"vlen={brd.vlen or 'unknown(assume 128)'} -> {dest}",
+        flush=True,
+    )
 
     binaries, audits, problems = [], {}, list(probe_problems)
-    todo = []                                     # (model, bundle, harts) -- one image each
+    todo = []  # (model, bundle, harts) -- one image each
     for model in models:
         bundle = bundles[model]
         if not (bundle / "model.mlir").is_file():
@@ -1168,8 +1374,10 @@ def main(argv=None) -> int:
                 # gemmelos dispatches hart 1 through its own thread-lib, not OpenMP; a multi-hart
                 # bare-metal image is a separate integration, so say so rather than shipping something
                 # untested.
-                problems.append(f"{model} h{harts}: baremetal multicore not implemented "
-                                f"(hart 1 waits in wfi; their thread-lib dispatches it)")
+                problems.append(
+                    f"{model} h{harts}: baremetal multicore not implemented "
+                    f"(hart 1 waits in wfi; their thread-lib dispatches it)"
+                )
                 continue
             todo.append((model, bundle, harts, "rvv"))
         # SCALAR images, when asked for. Their reason to exist is a heterogeneous SoC: the vector
@@ -1198,33 +1406,67 @@ def main(argv=None) -> int:
                 # build at all — the one combination you want when the twin's functional run costs hours
                 # and the real evidence comes from the RTL.
                 res, board_build, dbg_build = build_matrix(
-                    bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
-                    sdk_dir=a.sdk_dir, debug=a.debug, unit=a.matrix_unit, config=a.matrix_config,
-                    simulate=False)
-                print(f"  [{tag}] built (ungraded): {board_build['ram_bytes'] // 2**20} MB region, "
-                      f"{board_build['build_hash']}, unit counts "
-                      f"{res.get('matrix', {}).get('unit_instruction_counts')}", flush=True)
+                    bundle,
+                    brd,
+                    harts,
+                    vlen=brd.vlen,
+                    work=work,
+                    timeout=a.timeout,
+                    sdk_dir=a.sdk_dir,
+                    debug=a.debug,
+                    unit=a.matrix_unit,
+                    config=a.matrix_config,
+                    simulate=False,
+                )
+                print(
+                    f"  [{tag}] built (ungraded): {board_build['ram_bytes'] // 2**20} MB region, "
+                    f"{board_build['build_hash']}, unit counts "
+                    f"{res.get('matrix', {}).get('unit_instruction_counts')}",
+                    flush=True,
+                )
                 return res, board_build, dbg_build
-            board_build = build_board_only(bundle, brd, harts, work=work, sdk_dir=a.sdk_dir,
-                                           backend=backend, debug=False)
-            dbg_build = (build_board_only(bundle, brd, harts, work=work / "dbg",
-                                          sdk_dir=a.sdk_dir, backend=backend, debug=True)
-                         if a.debug else None)
-            print(f"  [{tag}] built: {board_build['ram_bytes'] // 2**20} MB region, "
-                  f"{board_build['build_hash']}"
-                  + (f" (+debug {dbg_build['build_hash']})" if dbg_build else ""), flush=True)
-            return ({"console": "", "metrics": {}, "outputs": None, "backend": backend},
-                    board_build, dbg_build)
+            board_build = build_board_only(
+                bundle, brd, harts, work=work, sdk_dir=a.sdk_dir, backend=backend, debug=False
+            )
+            dbg_build = (
+                build_board_only(bundle, brd, harts, work=work / "dbg", sdk_dir=a.sdk_dir, backend=backend, debug=True)
+                if a.debug
+                else None
+            )
+            print(
+                f"  [{tag}] built: {board_build['ram_bytes'] // 2**20} MB region, "
+                f"{board_build['build_hash']}" + (f" (+debug {dbg_build['build_hash']})" if dbg_build else ""),
+                flush=True,
+            )
+            return ({"console": "", "metrics": {}, "outputs": None, "backend": backend}, board_build, dbg_build)
         print(f"  [{tag}] building + simulating in {work}", flush=True)
         if backend == "matrix":
-            out = build_matrix(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
-                               sdk_dir=a.sdk_dir, debug=a.debug,
-                               unit=a.matrix_unit, config=a.matrix_config)
+            out = build_matrix(
+                bundle,
+                brd,
+                harts,
+                vlen=brd.vlen,
+                work=work,
+                timeout=a.timeout,
+                sdk_dir=a.sdk_dir,
+                debug=a.debug,
+                unit=a.matrix_unit,
+                config=a.matrix_config,
+            )
         elif brd.flow == boards.FLOW_BAREMETAL:
             out = build_baremetal(bundle, brd, work=work, timeout=a.timeout, sdk_dir=a.sdk_dir)
         else:
-            out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout,
-                            sdk_dir=a.sdk_dir, debug=a.debug, backend=backend)
+            out = build_one(
+                bundle,
+                brd,
+                harts,
+                vlen=brd.vlen,
+                work=work,
+                timeout=a.timeout,
+                sdk_dir=a.sdk_dir,
+                debug=a.debug,
+                backend=backend,
+            )
         cyc = out[0]["metrics"].get("cycles")
         print(f"  [{tag}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
         return out
@@ -1244,7 +1486,7 @@ def main(argv=None) -> int:
             item = futures[fut]
             try:
                 done[item] = fut.result()
-            except Exception as exc:                                        # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 msg = f"{item[0]} h{item[2]} {item[3]}: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
                 problems.append(msg)
                 # Say it NOW: a failure held until the final summary reads as an image still building,
@@ -1253,9 +1495,11 @@ def main(argv=None) -> int:
 
     for model in models:
         outputs = {}
-        for harts, backend in ([(h, "rvv") for h in hart_list]
-                               + [(h, "scalar") for h in scalar_hart_list]
-                               + [(h, "matrix") for h in matrix_hart_list]):
+        for harts, backend in (
+            [(h, "rvv") for h in hart_list]
+            + [(h, "scalar") for h in scalar_hart_list]
+            + [(h, "matrix") for h in matrix_hart_list]
+        ):
             got = done.get((model, bundles[model], harts, backend))
             if got is None:
                 continue
@@ -1268,9 +1512,9 @@ def main(argv=None) -> int:
             # require_vector is the whole point of a scalar image being scalar: demanding vector
             # instructions there would fail a correct build, and NOT checking it on a vector build
             # would let a silently-scalar image ship as if it had been vectorized.
-            rep = elf_audit.audit(dest / elf_name, brd,
-                                  ram_bytes=board_build["ram_bytes"],
-                                  require_vector=(backend in ("rvv", "matrix")))
+            rep = elf_audit.audit(
+                dest / elf_name, brd, ram_bytes=board_build["ram_bytes"], require_vector=(backend in ("rvv", "matrix"))
+            )
             audits[elf_name] = rep.to_dict()
             mem = _memory_facts(board_build, rep)
             audits[elf_name]["memory"] = mem
@@ -1284,7 +1528,8 @@ def main(argv=None) -> int:
                     f"{elf_name}: NOT SHIPPED — its linked region leaves a {mem['arena_mb']:.0f} MB "
                     f"arena while the lowered model requests {mem['allocation_total_mb']:.0f} MB in "
                     f"total, i.e. {mem['arena_short_mb']:.0f} MB short. Grow the region (the board has "
-                    f"{brd.dram_bytes // 2**20} MB) or shrink the model.")
+                    f"{brd.dram_bytes // 2**20} MB) or shrink the model."
+                )
                 (dest / elf_name).unlink(missing_ok=True)
                 del audits[elf_name]
                 continue
@@ -1292,52 +1537,65 @@ def main(argv=None) -> int:
                 (dest / f"{model}_h{harts}{suffix}.expected_console.txt").write_text(res["console"])
             if res["outputs"] is not None:
                 outputs[harts] = res["outputs"]
-            binaries.append({
-                "model": model, "elf": elf_name, "harts": harts, "dtype": a.dtype,
-                "backend": backend,
-                "build_hash": board_build.get("build_hash", ""),
-                # The image the GATE ran on, when that is not the image we ship. For a board whose
-                # console is its own UART, spike has no such peripheral, so the gate runs on an HTIF
-                # twin built from the same IR -- and the expected_console beside the ELF therefore
-                # names the twin. Recording it here is what lets grade.py tell "this console came
-                # from the documented twin" apart from "this package is inconsistent".
-                **({"gate_build_hash": res["build_hash"]}
-                   if res.get("build_hash") and res["build_hash"] != board_build.get("build_hash")
-                   else {}),
-                # A matrix-extension image is graded through its scalar stand-in twin, so the gate
-                # covers the routing, the pack, the ABI and the epilogue on this exact lowering while
-                # saying nothing about the unit's datapath -- which is certified on the unit's own RTL.
-                # Recorded rather than implied: "gate_ok" alone would read as a full verdict.
-                **({"matrix": res["matrix"]} if res.get("matrix") else {}),
-                "ram_bytes": board_build["ram_bytes"],
-                # Region/image/arena and the total the lowered model requests. On a design whose DRAM the
-                # image nearly fills, this is the first thing a reader needs and the last thing they can
-                # reconstruct from the ELF alone.
-                "memory": mem,
-                # A matrix image was never simulated -- nothing here can execute its instructions -- so
-                # it has no spike cycle count. Its twin's is recorded inside "matrix", named for what it
-                # is, rather than sitting in this field where it would read as the image's own cost.
-                "spike_cycles": (None if res.get("matrix")
-                                 else res["metrics"].get("cycles")),
-                "spike_vlen": res.get("vlen"), "gate_ok": bool(res.get("ok")),
-                "tier_ok": res.get("tier_ok"), "cos": res.get("cos"), "rel": res.get("rel"),
-                "upload_estimate_s": rep.facts.get("upload_estimate_s"),
-                # The bytes the loader actually sends, so a later re-render does not have to reconstruct
-                # them from the estimate and the rate.
-                "upload_bytes": rep.facts.get("upload_bytes"),
-            })
+            binaries.append(
+                {
+                    "model": model,
+                    "elf": elf_name,
+                    "harts": harts,
+                    "dtype": a.dtype,
+                    "backend": backend,
+                    "build_hash": board_build.get("build_hash", ""),
+                    # The image the GATE ran on, when that is not the image we ship. For a board whose
+                    # console is its own UART, spike has no such peripheral, so the gate runs on an HTIF
+                    # twin built from the same IR -- and the expected_console beside the ELF therefore
+                    # names the twin. Recording it here is what lets grade.py tell "this console came
+                    # from the documented twin" apart from "this package is inconsistent".
+                    **(
+                        {"gate_build_hash": res["build_hash"]}
+                        if res.get("build_hash") and res["build_hash"] != board_build.get("build_hash")
+                        else {}
+                    ),
+                    # A matrix-extension image is graded through its scalar stand-in twin, so the gate
+                    # covers the routing, the pack, the ABI and the epilogue on this exact lowering while
+                    # saying nothing about the unit's datapath -- which is certified on the unit's own RTL.
+                    # Recorded rather than implied: "gate_ok" alone would read as a full verdict.
+                    **({"matrix": res["matrix"]} if res.get("matrix") else {}),
+                    "ram_bytes": board_build["ram_bytes"],
+                    # Region/image/arena and the total the lowered model requests. On a design whose DRAM the
+                    # image nearly fills, this is the first thing a reader needs and the last thing they can
+                    # reconstruct from the ELF alone.
+                    "memory": mem,
+                    # A matrix image was never simulated -- nothing here can execute its instructions -- so
+                    # it has no spike cycle count. Its twin's is recorded inside "matrix", named for what it
+                    # is, rather than sitting in this field where it would read as the image's own cost.
+                    "spike_cycles": (None if res.get("matrix") else res["metrics"].get("cycles")),
+                    "spike_vlen": res.get("vlen"),
+                    "gate_ok": bool(res.get("ok")),
+                    "tier_ok": res.get("tier_ok"),
+                    "cos": res.get("cos"),
+                    "rel": res.get("rel"),
+                    "upload_estimate_s": rep.facts.get("upload_estimate_s"),
+                    # The bytes the loader actually sends, so a later re-render does not have to reconstruct
+                    # them from the estimate and the rate.
+                    "upload_bytes": rep.facts.get("upload_bytes"),
+                }
+            )
             cyc = res["metrics"].get("cycles")
-            print(f"  {elf_name}: cycles={cyc:,} gate={res.get('tier_ok')} "
-                  f"audit={'OK' if rep.ok else 'FAIL'}" if cyc is not None else
-                  f"  {elf_name}: not simulated, audit={'OK' if rep.ok else 'FAIL'}", flush=True)
+            print(
+                f"  {elf_name}: cycles={cyc:,} gate={res.get('tier_ok')} audit={'OK' if rep.ok else 'FAIL'}"
+                if cyc is not None
+                else f"  {elf_name}: not simulated, audit={'OK' if rep.ok else 'FAIL'}",
+                flush=True,
+            )
             # The instrumented twin, in the SAME package. Someone debugging a board does not want to
             # come back to us for a different download, and someone reporting a number does not want to
             # sift diagnostics out of it -- so both are here, distinguished by the filename.
             if dbg_build is not None:
                 dbg_name = f"{model}_{a.dtype}_h{harts}{suffix}_debug_{brd.name}.elf"
                 shutil.copy2(dbg_build["elf"], dest / dbg_name)
-                drep = elf_audit.audit(dest / dbg_name, brd, ram_bytes=dbg_build["ram_bytes"],
-                                       require_vector=(backend == "rvv"))
+                drep = elf_audit.audit(
+                    dest / dbg_name, brd, ram_bytes=dbg_build["ram_bytes"], require_vector=(backend == "rvv")
+                )
                 audits[dbg_name] = drep.to_dict()
                 dmem = _memory_facts(dbg_build, drep)
                 audits[dbg_name]["memory"] = dmem
@@ -1351,7 +1609,8 @@ def main(argv=None) -> int:
                     problems.append(
                         f"{dbg_name}: NOT SHIPPED — its arena is {dmem['arena_mb']:.0f} MB against the "
                         f"{dmem['allocation_total_mb']:.0f} MB the model requests, "
-                        f"{dmem['arena_short_mb']:.0f} MB short.")
+                        f"{dmem['arena_short_mb']:.0f} MB short."
+                    )
                     (dest / dbg_name).unlink(missing_ok=True)
                     del audits[dbg_name]
                     continue
@@ -1361,19 +1620,27 @@ def main(argv=None) -> int:
                 tbl = dbg_build.get("op_profile_table")
                 if tbl and Path(tbl).is_file():
                     shutil.copy2(tbl, dest / f"{model}_h{harts}{suffix}.op_table.json")
-                binaries.append({
-                    "model": model, "elf": dbg_name, "harts": harts, "dtype": a.dtype,
-                    "memory": dmem,
-                    "backend": backend, "debug": True,
-                    "build_hash": dbg_build.get("build_hash", ""),
-                    "ram_bytes": dbg_build["ram_bytes"],
-                    "spike_cycles": None, "spike_vlen": None,
-                    "gate_ok": bool(res.get("ok")), "tier_ok": res.get("tier_ok"),
-                    "cos": res.get("cos"), "rel": res.get("rel"),
-                    "upload_estimate_s": drep.facts.get("upload_estimate_s"),
-                })
-                print(f"  {dbg_name}: instrumented twin, audit={'OK' if drep.ok else 'FAIL'}",
-                      flush=True)
+                binaries.append(
+                    {
+                        "model": model,
+                        "elf": dbg_name,
+                        "harts": harts,
+                        "dtype": a.dtype,
+                        "memory": dmem,
+                        "backend": backend,
+                        "debug": True,
+                        "build_hash": dbg_build.get("build_hash", ""),
+                        "ram_bytes": dbg_build["ram_bytes"],
+                        "spike_cycles": None,
+                        "spike_vlen": None,
+                        "gate_ok": bool(res.get("ok")),
+                        "tier_ok": res.get("tier_ok"),
+                        "cos": res.get("cos"),
+                        "rel": res.get("rel"),
+                        "upload_estimate_s": drep.facts.get("upload_estimate_s"),
+                    }
+                )
+                print(f"  {dbg_name}: instrumented twin, audit={'OK' if drep.ok else 'FAIL'}", flush=True)
         # 1-hart vs N-hart bit-identity: the property a multicore run exists to establish
         if len(outputs) > 1:
             base_h = min(outputs)
@@ -1381,8 +1648,10 @@ def main(argv=None) -> int:
                 if h == base_h:
                     continue
                 if not np.array_equal(outputs[base_h], arr):
-                    problems.append(f"{model}: {h}-hart output differs from {base_h}-hart — an "
-                                    f"overlapping or lost work split, not rounding")
+                    problems.append(
+                        f"{model}: {h}-hart output differs from {base_h}-hart — an "
+                        f"overlapping or lost work split, not rounding"
+                    )
                 else:
                     print(f"  {model}: {h}-hart output bit-identical to {base_h}-hart", flush=True)
 
@@ -1402,19 +1671,25 @@ def main(argv=None) -> int:
     # WHICH hardware produced those results: the results files do not record it, and the README quotes
     # its bitstream and vector length as facts about them. Resolved on the first model that actually has
     # evidence, so a package without any never asks.
-    fs_board_name = (a.firesim_board or os.environ.get("MERLIN_FIRESIM_EVIDENCE_BOARD")
-                     or _dotenv().get("MERLIN_FIRESIM_EVIDENCE_BOARD"))
+    fs_board_name = (
+        a.firesim_board
+        or os.environ.get("MERLIN_FIRESIM_EVIDENCE_BOARD")
+        or _dotenv().get("MERLIN_FIRESIM_EVIDENCE_BOARD")
+    )
     fs_board = None
-    for model in (models if fs_dir else []):
+    for model in models if fs_dir else []:
         f = fs_dir / f"results_{model}.json"
         if not f.is_file():
             continue
         try:
             rows = json.loads(f.read_text())
-        except Exception:                                                   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
-        keep = [{k: r.get(k) for k in ("harts", "cycles", "tier_ok", "w8a8_cos", "w8a8_max_rel")}
-                for r in rows if r.get("cycles")]
+        keep = [
+            {k: r.get(k) for k in ("harts", "cycles", "tier_ok", "w8a8_cos", "w8a8_max_rel")}
+            for r in rows
+            if r.get("cycles")
+        ]
         if not keep:
             continue
         by = {r["harts"]: r for r in keep}
@@ -1423,8 +1698,7 @@ def main(argv=None) -> int:
             if fs_board is None:
                 print(f"[make_delivery] {why}", file=sys.stderr)
                 return 2
-        ent = {"board": fs_board.name, "bitstream": fs_board.bitstream, "vlen": fs_board.vlen,
-               "runs": keep}
+        ent = {"board": fs_board.name, "bitstream": fs_board.bitstream, "vlen": fs_board.vlen, "runs": keep}
         if 1 in by and 2 in by and by[1]["cycles"] and by[2]["cycles"]:
             ent["speedup_1_to_2_harts"] = round(by[1]["cycles"] / by[2]["cycles"], 3)
             # Prefer an explicitly recorded verdict over inferring one from stored outputs: a results
@@ -1433,8 +1707,7 @@ def main(argv=None) -> int:
             # deepjscc's 2-hart run is NOT identical to its 1-hart run (w8a8_cos 0.9999972,
             # reproduced twice), while spectformer's is exact -- so this is a real distinction and not
             # a formality.
-            explicit = [r.get("harts_bit_identical") for r in rows
-                        if r.get("harts_bit_identical") is not None]
+            explicit = [r.get("harts_bit_identical") for r in rows if r.get("harts_bit_identical") is not None]
             outs = {r["harts"]: r.get("outputs") for r in rows if r.get("outputs")}
             if explicit:
                 ent["harts_bit_identical"] = bool(explicit[0])
@@ -1454,8 +1727,9 @@ def main(argv=None) -> int:
         # SHIP speaks the board's own. Same source, same -march, differing only in the linked console
         # object -- so the self-check below covers the CSR reads and the reporting, which is what can
         # be wrong about a probe, while the shipped twin is the one that can actually be heard.
-        selfcheck_elf = vector_probe.build(pwork / "htif", dram_base=brd.dram_base,
-                                           dram_bytes=brd.dram_bytes, vlen=brd.vlen)
+        selfcheck_elf = vector_probe.build(
+            pwork / "htif", dram_base=brd.dram_base, dram_bytes=brd.dram_bytes, vlen=brd.vlen
+        )
         checks = {}
         for v in sorted({128, 256, brd.vlen or 128}):
             # -m must match the region the probe was BUILT for: the probe now writes and reads across
@@ -1463,8 +1737,8 @@ def main(argv=None) -> int:
             # broken (it faults at the simulator's edge, exactly as it would on a board with less DRAM
             # than we were told -- which is the whole point of the check).
             checks[v] = vector_probe.parse(
-                vector_probe.run_on_spike(selfcheck_elf, vlen=v, dram_base=brd.dram_base,
-                                          mem_bytes=brd.dram_bytes))
+                vector_probe.run_on_spike(selfcheck_elf, vlen=v, dram_base=brd.dram_base, mem_bytes=brd.dram_bytes)
+            )
         pelf = selfcheck_elf
         if brd.console != CONSOLE_HTIF:
             # The board image also carries the chip's reference-clock rate, so the probe can report a
@@ -1473,34 +1747,45 @@ def main(argv=None) -> int:
             mtime_hz = None
             if a.sdk_dir and brd.sdk_chip:
                 from merlin.runtime.sdk_facts import derive_uart_console
+
                 mtime_hz = derive_uart_console(a.sdk_dir, brd.sdk_chip).mtime_hz
-            pelf = vector_probe.build(pwork / "board", dram_base=brd.dram_base,
-                                      dram_bytes=brd.dram_bytes, vlen=brd.vlen,
-                                      console=brd.console, sdk_dir=a.sdk_dir,
-                                      sdk_chip=brd.sdk_chip, chip_freq_hz=brd.chip_freq_hz,
-                                      mtime_hz=mtime_hz)
+            pelf = vector_probe.build(
+                pwork / "board",
+                dram_base=brd.dram_base,
+                dram_bytes=brd.dram_bytes,
+                vlen=brd.vlen,
+                console=brd.console,
+                sdk_dir=a.sdk_dir,
+                sdk_chip=brd.sdk_chip,
+                chip_freq_hz=brd.chip_freq_hz,
+                mtime_hz=mtime_hz,
+            )
         shutil.copy2(pelf, dest / "vlen_probe.elf")
-        probe_report = {"elf": "vlen_probe.elf", "bytes": (dest / "vlen_probe.elf").stat().st_size,
-                        "console": brd.console,
-                        "spike_selfcheck_console": CONSOLE_HTIF,
-                        "spike_selfcheck": {str(k): v for k, v in checks.items()},
-                        # What the SILICON said, when a returned log was passed in, versus what the
-                        # descriptor claims. The self-check above proves the probe reports correctly;
-                        # only this says the descriptor is right about the part.
-                        "silicon": probe_check,
-                        "declared_vlen": brd.vlen,
-                        "vector_save_area_bits": zm._vector_max_len_bits(brd)}
-        bad = [v for v, r in checks.items()
-               if not (r.get("complete") and r.get("consistent") and r.get("vlen_bits") == v)]
+        probe_report = {
+            "elf": "vlen_probe.elf",
+            "bytes": (dest / "vlen_probe.elf").stat().st_size,
+            "console": brd.console,
+            "spike_selfcheck_console": CONSOLE_HTIF,
+            "spike_selfcheck": {str(k): v for k, v in checks.items()},
+            # What the SILICON said, when a returned log was passed in, versus what the
+            # descriptor claims. The self-check above proves the probe reports correctly;
+            # only this says the descriptor is right about the part.
+            "silicon": probe_check,
+            "declared_vlen": brd.vlen,
+            "vector_save_area_bits": zm._vector_max_len_bits(brd),
+        }
+        bad = [
+            v for v, r in checks.items() if not (r.get("complete") and r.get("consistent") and r.get("vlen_bits") == v)
+        ]
         if bad:
-            problems.append(f"vlen_probe.elf misreported the VLEN at {bad} — not shipping a probe "
-                            f"whose answer we cannot trust")
+            problems.append(
+                f"vlen_probe.elf misreported the VLEN at {bad} — not shipping a probe whose answer we cannot trust"
+            )
             (dest / "vlen_probe.elf").unlink(missing_ok=True)
             probe_report = None
         else:
-            print(f"  vlen_probe.elf: {probe_report['bytes']} bytes, correct at "
-                  f"{sorted(checks)} on spike", flush=True)
-    except Exception as exc:                                                # noqa: BLE001
+            print(f"  vlen_probe.elf: {probe_report['bytes']} bytes, correct at {sorted(checks)} on spike", flush=True)
+    except Exception as exc:  # noqa: BLE001
         problems.append(f"vlen_probe: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
 
     (dest / "elf_audit.json").write_text(json.dumps(audits, indent=2) + "\n")
@@ -1508,9 +1793,17 @@ def main(argv=None) -> int:
     (dest / "grade.py").chmod(0o755)
     problems += _derived_problems(binaries)
     manifest = {
-        "board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
-                  "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
-        "dtype": a.dtype, "binaries": binaries, "problems": problems,
+        "board": {
+            "name": brd.name,
+            "dram_bytes": brd.dram_bytes,
+            "harts": brd.harts,
+            "vlen": brd.vlen,
+            "console": brd.console,
+            "notes": brd.notes,
+        },
+        "dtype": a.dtype,
+        "binaries": binaries,
+        "problems": problems,
         # Facts about THIS package that no descriptor and no build can state, chiefly which hardware its
         # binaries have and have not run on. Free text because that is what it is; recorded here and
         # rendered in the README so it cannot be a thing we only said in an email.
@@ -1532,16 +1825,15 @@ def main(argv=None) -> int:
     # and nothing we say about the package covers it, so somebody spends bench time on a build we
     # already know is broken.
     keep = {b["elf"] for b in binaries} | {
-        f"{b['model']}_h{b['harts']}{'' if b.get('backend', 'rvv') == 'rvv' else '_' + b['backend']}"
-        f".{suffix}" for b in binaries for suffix in ("expected_console.txt", "op_table.json")}
-    keep |= {"vlen_probe.elf", "manifest.json", "README.md", "grade.py", "elf_audit.json",
-             "firesim_evidence.json"}
-    keep |= {f"{model}.golden.npy" for model in models} | {f"{model}.golden_w8a8.npy"
-                                                           for model in models}
+        f"{b['model']}_h{b['harts']}{'' if b.get('backend', 'rvv') == 'rvv' else '_' + b['backend']}.{suffix}"
+        for b in binaries
+        for suffix in ("expected_console.txt", "op_table.json")
+    }
+    keep |= {"vlen_probe.elf", "manifest.json", "README.md", "grade.py", "elf_audit.json", "firesim_evidence.json"}
+    keep |= {f"{model}.golden.npy" for model in models} | {f"{model}.golden_w8a8.npy" for model in models}
     for f in sorted(dest.iterdir()):
         if f.is_file() and f.name not in keep:
-            print(f"  pruned stale {f.name} ({f.stat().st_size / 2**20:.1f} MB) — not in this "
-                  f"manifest", flush=True)
+            print(f"  pruned stale {f.name} ({f.stat().st_size / 2**20:.1f} MB) — not in this manifest", flush=True)
             f.unlink()
     if manifest_writer is not None:
         for f in sorted(dest.iterdir()):
@@ -1574,7 +1866,7 @@ def _strip_marker(problem: str) -> str:
     line in the manifest; it is not part of the sentence a person reads."""
     for pre in DERIVED_PREFIXES:
         if problem.startswith(pre):
-            return problem[len(pre):].strip()
+            return problem[len(pre) :].strip()
     return problem
 
 
@@ -1586,8 +1878,10 @@ def _derived_problems(binaries: list[dict]) -> list[str]:
     # precisely the thing a reader has to be told. Silence about a model is a packaging defect.
     unstated = sorted({b["model"] for b in binaries} - set(STATUS))
     if unstated:
-        out.append(f"{NO_STATUS_PREFIX} no status text for {', '.join(unstated)} — the README will "
-                   f"say 'no status recorded' for {'them' if len(unstated) > 1 else 'it'}")
+        out.append(
+            f"{NO_STATUS_PREFIX} no status text for {', '.join(unstated)} — the README will "
+            f"say 'no status recorded' for {'them' if len(unstated) > 1 else 'it'}"
+        )
     return out
 
 
@@ -1608,10 +1902,8 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
     total = len(binaries)
     twinned = [b for b in binaries if not b.get("gate_ok") and b.get("twin_gate")]
     rest = [b for b in binaries if not b.get("twin_gate")]
-    unrun = sorted(b["elf"] for b in rest
-                   if not b.get("gate_ok") and b.get("spike_cycles") is None)
-    ungraded = sorted(b["elf"] for b in rest
-                      if not b.get("gate_ok") and b.get("spike_cycles") is not None)
+    unrun = sorted(b["elf"] for b in rest if not b.get("gate_ok") and b.get("spike_cycles") is None)
+    ungraded = sorted(b["elf"] for b in rest if not b.get("gate_ok") and b.get("spike_cycles") is not None)
     if not (unrun or ungraded or twinned):
         return None
 
@@ -1620,13 +1912,17 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
 
     parts = []
     if unrun:
-        parts.append(f"{len(unrun)} of {total} were never simulated ({_shown(unrun)}) — built and "
-                     f"ELF-audited only, so nothing here certifies that they compute the right "
-                     f"answer")
+        parts.append(
+            f"{len(unrun)} of {total} were never simulated ({_shown(unrun)}) — built and "
+            f"ELF-audited only, so nothing here certifies that they compute the right "
+            f"answer"
+        )
     if ungraded:
-        parts.append(f"{len(ungraded)} of {total} ran to completion but could not be tier-graded "
-                     f"({_shown(ungraded)}) — the model ships no W8A8 reference, so their output "
-                     f"was compared only against the weight-only golden")
+        parts.append(
+            f"{len(ungraded)} of {total} ran to completion but could not be tier-graded "
+            f"({_shown(ungraded)}) — the model ships no W8A8 reference, so their output "
+            f"was compared only against the weight-only golden"
+        )
     if twinned:
         pkg = twinned[0]["twin_gate"]["package"]
         # Say how many needed the relaxation tolerance rather than claiming an exact match for all of
@@ -1635,13 +1931,17 @@ def _ungated_problem(binaries: list[dict]) -> str | None:
         how = "instruction for instruction"
         if relaxed:
             worst = max(b["twin_gate"]["relaxed_insns"] for b in relaxed)
-            how = (f"instruction for instruction — exactly so for {len(twinned) - len(relaxed)} of them, "
-                   f"and for the other {len(relaxed)} apart from at most {worst} PC-relative address "
-                   f"materialisation(s) the linker collapsed because the layout moved")
-        parts.append(f"{len(twinned)} of {total} were not simulated here, but each runs the same model "
-                     f"as a gated binary in `{pkg}` (same program, different addresses), matching it "
-                     f"{how}; that gate therefore covers their arithmetic, and what it does not cover "
-                     f"is the part that differs between the two builds")
+            how = (
+                f"instruction for instruction — exactly so for {len(twinned) - len(relaxed)} of them, "
+                f"and for the other {len(relaxed)} apart from at most {worst} PC-relative address "
+                f"materialisation(s) the linker collapsed because the layout moved"
+            )
+        parts.append(
+            f"{len(twinned)} of {total} were not simulated here, but each runs the same model "
+            f"as a gated binary in `{pkg}` (same program, different addresses), matching it "
+            f"{how}; that gate therefore covers their arithmetic, and what it does not cover "
+            f"is the part that differs between the two builds"
+        )
     return f"{UNGATED_PREFIX} " + "; ".join(parts) + "."
 
 
@@ -1656,10 +1956,13 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     if twin is not None:
         attach_twin_evidence(dest, twin)
     man = json.loads((dest / "manifest.json").read_text())
-    brd = boards.board(man["board"]["name"], dram_bytes=man["board"]["dram_bytes"],
-                       harts=man["board"]["harts"], vlen=man["board"]["vlen"])
-    man["problems"] = [p for p in man.get("problems", [])
-                       if not p.startswith(DERIVED_PREFIXES)]
+    brd = boards.board(
+        man["board"]["name"],
+        dram_bytes=man["board"]["dram_bytes"],
+        harts=man["board"]["harts"],
+        vlen=man["board"]["vlen"],
+    )
+    man["problems"] = [p for p in man.get("problems", []) if not p.startswith(DERIVED_PREFIXES)]
     man["problems"] += _derived_problems(man["binaries"])
     # Both are pure functions of the descriptor, so a package built before the packager recorded them
     # can state them without rebuilding a byte. `silicon` is NOT filled here: it needs a returned probe
@@ -1674,11 +1977,12 @@ def refresh_package(dest: Path, twin: Path | None = None) -> int:
     (dest / "grade.py").write_text(GRADE_PY)
     (dest / "grade.py").chmod(0o755)
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
-    (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug")
-                                                                for b in man["binaries"])))
+    (dest / "README.md").write_text(_readme(brd, man, debug=any(b.get("debug") for b in man["binaries"])))
     z = zip_package(dest)
-    print(f"[make_delivery] refreshed {dest.name}: {len(man['problems'])} problem(s), "
-          f"zipped {z.stat().st_size / 2**20:.0f} MB")
+    print(
+        f"[make_delivery] refreshed {dest.name}: {len(man['problems'])} problem(s), "
+        f"zipped {z.stat().st_size / 2**20:.0f} MB"
+    )
     for p in man["problems"]:
         print(f"  - {p}")
     return 0
@@ -1691,22 +1995,34 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     board bring-up begins. Mnemonics ONLY: two builds that differ solely in where things landed have
     the same instructions with different immediates, and that is exactly the difference we want to
     look through."""
-    from merlin.kernels.decode import objdump as OD
     import subprocess
+
+    from merlin.kernels.decode import objdump as OD
+
     try:
-        out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True,
-                             timeout=300, check=True).stdout
+        out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True, timeout=300, check=True).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    syms = {f[2]: int(f[0], 16) for f in (ln.split() for ln in out.splitlines())
-            if len(f) == 3 and f[1] in ("t", "T")}
+    syms = {f[2]: int(f[0], 16) for f in (ln.split() for ln in out.splitlines()) if len(f) == 3 and f[1] in ("t", "T")}
     if "forward" not in syms or "main" not in syms or syms["main"] <= syms["forward"]:
         return None
     try:
-        dis = subprocess.run([OD.objdump_bin(), "-d", "--triple=riscv64", "-M", "no-aliases",
-                              f"--start-address={syms['forward']}", f"--stop-address={syms['main']}",
-                              str(elf)], capture_output=True, text=True, timeout=900,
-                             check=True).stdout
+        dis = subprocess.run(
+            [
+                OD.objdump_bin(),
+                "-d",
+                "--triple=riscv64",
+                "-M",
+                "no-aliases",
+                f"--start-address={syms['forward']}",
+                f"--stop-address={syms['main']}",
+                str(elf),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=True,
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     ms: list[str] = []
@@ -1771,8 +2087,7 @@ def attach_twin_evidence(dest: Path, twin: Path) -> int:
     """
     man = json.loads((dest / "manifest.json").read_text())
     tman = json.loads((twin / "manifest.json").read_text())
-    by_key = {(b["model"], b["harts"], bool(b.get("debug")), b.get("backend", "rvv")): b
-              for b in tman["binaries"]}
+    by_key = {(b["model"], b["harts"], bool(b.get("debug")), b.get("backend", "rvv")): b for b in tman["binaries"]}
     matched = 0
     for b in man["binaries"]:
         key = (b["model"], b["harts"], bool(b.get("debug")), b.get("backend", "rvv"))
@@ -1786,33 +2101,39 @@ def attach_twin_evidence(dest: Path, twin: Path) -> int:
             continue
         same, relaxed = twin_equivalence(mine, theirs)
         if not same:
-            print(f"  {b['elf']}: model code DIFFERS from {sib['elf']} "
-                  f"({len(mine)} vs {len(theirs)} insns) — no twin evidence recorded")
+            print(
+                f"  {b['elf']}: model code DIFFERS from {sib['elf']} "
+                f"({len(mine)} vs {len(theirs)} insns) — no twin evidence recorded"
+            )
             continue
-        b["twin_gate"] = {"package": twin.name, "elf": sib["elf"],
-                          "build_hash": sib.get("build_hash", ""), "tier_ok": sib.get("tier_ok"),
-                          "cos": sib.get("cos"), "insns": len(mine),
-                          # 0 = byte-for-byte the same instruction sequence. Nonzero = the same
-                          # sequence apart from N address materialisations the linker collapsed
-                          # because the layout moved; stated rather than hidden inside "match".
-                          "relaxed_insns": relaxed}
+        b["twin_gate"] = {
+            "package": twin.name,
+            "elf": sib["elf"],
+            "build_hash": sib.get("build_hash", ""),
+            "tier_ok": sib.get("tier_ok"),
+            "cos": sib.get("cos"),
+            "insns": len(mine),
+            # 0 = byte-for-byte the same instruction sequence. Nonzero = the same
+            # sequence apart from N address materialisations the linker collapsed
+            # because the layout moved; stated rather than hidden inside "match".
+            "relaxed_insns": relaxed,
+        }
         if relaxed:
-            print(f"  {b['elf']}: same program as {sib['elf']}, modulo {relaxed} relaxed "
-                  f"address materialisation(s)")
+            print(f"  {b['elf']}: same program as {sib['elf']}, modulo {relaxed} relaxed address materialisation(s)")
         matched += 1
     man["twin_evidence"] = {
-        "package": twin.name, "matched": matched, "of": len(man["binaries"]),
+        "package": twin.name,
+        "matched": matched,
+        "of": len(man["binaries"]),
         "method": "identical instruction sequence over [forward, main) — same program, different "
-                  "addresses. Tolerates ONLY inserted/deleted address materialisations (auipc) that "
-                  "the linker collapses when the layout moves; each binary's `relaxed_insns` says how "
-                  "many, and 0 means byte-for-byte identical. Any other difference is a mismatch.",
+        "addresses. Tolerates ONLY inserted/deleted address materialisations (auipc) that "
+        "the linker collapses when the layout moves; each binary's `relaxed_insns` says how "
+        "many, and 0 means byte-for-byte identical. Any other difference is a mismatch.",
         "covers": "the model's arithmetic, via the twin's gate",
-        "does_not_cover": "whatever differs between the two builds (for a clock variant, the "
-                          "bring-up itself)",
+        "does_not_cover": "whatever differs between the two builds (for a clock variant, the bring-up itself)",
     }
     (dest / "manifest.json").write_text(json.dumps(man, indent=2) + "\n")
-    print(f"[make_delivery] twin evidence: {matched}/{len(man['binaries'])} match a gated image "
-          f"in {twin.name}")
+    print(f"[make_delivery] twin evidence: {matched}/{len(man['binaries'])} match a gated image in {twin.name}")
     return 0
 
 
@@ -1828,10 +2149,15 @@ def zip_package(dest: Path) -> Path:
 
 def _git_sha() -> str:
     import subprocess
+
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True,
-                              cwd=repo_root(), timeout=30).stdout.strip()[:12] or "unknown"
-    except Exception:                                                       # noqa: BLE001
+        return (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=repo_root(), timeout=30
+            ).stdout.strip()[:12]
+            or "unknown"
+        )
+    except Exception:  # noqa: BLE001
         return "unknown"
 
 
@@ -1845,15 +2171,18 @@ def _firesim_evidence_board(name: str | None, fs_dir: Path):
     ``bitstream`` refuses the package instead.
     """
     if not name:
-        return None, (f"FireSim results found in {fs_dir}, but nothing says which hardware produced them: "
-                      f"pass --firesim-board <board> (or set MERLIN_FIRESIM_EVIDENCE_BOARD) naming the "
-                      f"board-registry entry whose `bitstream` they ran on")
+        return None, (
+            f"FireSim results found in {fs_dir}, but nothing says which hardware produced them: "
+            f"pass --firesim-board <board> (or set MERLIN_FIRESIM_EVIDENCE_BOARD) naming the "
+            f"board-registry entry whose `bitstream` they ran on"
+        )
     brd = boards.BOARDS.get(name)
     if brd is None:
         return None, f"--firesim-board {name!r} is not in the board registry: {sorted(boards.BOARDS)}"
     if not brd.bitstream:
-        return None, (f"board {name!r} declares no `bitstream`, so it cannot be the hardware FireSim "
-                      f"results were measured on")
+        return None, (
+            f"board {name!r} declares no `bitstream`, so it cannot be the hardware FireSim results were measured on"
+        )
     return brd, None
 
 
@@ -1868,15 +2197,16 @@ def _provenance(no_spike: bool, no_spike_models: set, no_spike_backends: set = f
     matrix-unit image of a model whose RVV image was simulated here leaves this line true of most of the
     package and false of one row, so the row is named.
     """
-    rtl = ("FireSim (our own SoC's RTL, whole model, bit-exact vs the W8A8 reference)")
+    rtl = "FireSim (our own SoC's RTL, whole model, bit-exact vs the W8A8 reference)"
     if no_spike:
         return f"{rtl}; these binaries were built and ELF-audited but NOT simulated"
     spike = "spike (functional, at the board's VLEN)"
-    exceptions = [*sorted(no_spike_models),
-                  *(f"the {b} images" for b in sorted(no_spike_backends))]
+    exceptions = [*sorted(no_spike_models), *(f"the {b} images" for b in sorted(no_spike_backends))]
     if exceptions:
-        return (f"{spike} — EXCEPT {', '.join(exceptions)}: built and ELF-audited but not "
-                f"simulated, with that evidence coming from {rtl}")
+        return (
+            f"{spike} — EXCEPT {', '.join(exceptions)}: built and ELF-audited but not "
+            f"simulated, with that evidence coming from {rtl}"
+        )
     return spike
 
 
@@ -2094,11 +2424,13 @@ def _debug_tail(manifest: dict, brd=None) -> str:
     if not dbg:
         return ""
     first = min(dbg, key=lambda b: (b.get("upload_estimate_s") or 0, b["ram_bytes"]))
-    out = (f"\n**Start with `{first['elf']}`.** On silicon nobody has run yet, run the instrumented "
-           f"build BEFORE the plain one: if it faults or stalls, its log says where, and if it completes "
-           f"you have both the answer and the whole trace. It is the cheapest image here to get on the "
-           f"wire, and its log answers vector width, per-hart vector state, DRAM extent, stack usage and "
-           f"the per-op trace in one go.\n")
+    out = (
+        f"\n**Start with `{first['elf']}`.** On silicon nobody has run yet, run the instrumented "
+        f"build BEFORE the plain one: if it faults or stalls, its log says where, and if it completes "
+        f"you have both the answer and the whole trace. It is the cheapest image here to get on the "
+        f"wire, and its log answers vector width, per-hart vector state, DRAM extent, stack usage and "
+        f"the per-op trace in one go.\n"
+    )
     # A diagnostic build of a matrix image must still BE one. Stated with its own counts, because it is a
     # separate binary from the plain image and the fallback nobody would think to re-check.
     # Where the diagnostic output GOES, said next to the instruction to run it. A host-assisted console
@@ -2106,19 +2438,22 @@ def _debug_tail(manifest: dict, brd=None) -> str:
     # that exists to explain itself explains nothing: no banner, no STAGE, no fault -- indistinguishable
     # from a dead image, on hardware where "dead image" is the expected first hypothesis.
     if brd is not None and brd.console == CONSOLE_HTIF:
-        out += ("\nNone of those lines reach you unless the loader stays attached. This board's console is "
-                "HTIF: the image writes a word and waits for a host to acknowledge it, and your loader "
-                "(`--fesvr`) is that host. Load and detach and you will see nothing at all -- not even the "
-                "banner -- from an image that is running correctly. Stay attached until `DONE`.\n")
-    mx = [b for b in manifest["binaries"]
-          if b.get("matrix") and b["matrix"].get("debug_unit_instruction_counts")]
+        out += (
+            "\nNone of those lines reach you unless the loader stays attached. This board's console is "
+            "HTIF: the image writes a word and waits for a host to acknowledge it, and your loader "
+            "(`--fesvr`) is that host. Load and detach and you will see nothing at all -- not even the "
+            "banner -- from an image that is running correctly. Stay attached until `DONE`.\n"
+        )
+    mx = [b for b in manifest["binaries"] if b.get("matrix") and b["matrix"].get("debug_unit_instruction_counts")]
     if mx:
         pairs = ", ".join(f"`{b['matrix']['debug_unit_instruction_counts']}`" for b in mx[:1])
-        out += (f"\nThe instrumented build of a matrix-unit image is still a matrix-unit image, and we "
-                f"audit it separately rather than assuming it: it carries the unit's instructions in the "
-                f"same counts as the binary it shadows ({pairs}), and the packager refuses to ship a "
-                f"diagnostic build that lost the routing. So falling back to `_debug` when a matrix run "
-                f"misbehaves does not quietly move the work off the unit.\n")
+        out += (
+            f"\nThe instrumented build of a matrix-unit image is still a matrix-unit image, and we "
+            f"audit it separately rather than assuming it: it carries the unit's instructions in the "
+            f"same counts as the binary it shadows ({pairs}), and the packager refuses to ship a "
+            f"diagnostic build that lost the routing. So falling back to `_debug` when a matrix run "
+            f"misbehaves does not quietly move the work off the unit.\n"
+        )
     return out
 
 
@@ -2128,22 +2463,20 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
     # the port and the link, not to how many cores the design has, so a descriptor that shares
     # `zephyr_board` with a documented one would otherwise ship the generic paragraph and read as a
     # different, unsupported flow.
-    loader = (LOADER_DOC.get(brd.name)
-              or LOADER_DOC.get(brd.zephyr_board or "")
-              or LOADER_DOC["default"])
+    loader = LOADER_DOC.get(brd.name) or LOADER_DOC.get(brd.zephyr_board or "") or LOADER_DOC["default"]
     # Each board gets the explanation of ITS last failure, not a generic one.
     superseded_doc = SUPERSEDED_DOC if brd.sdk_chip else HISTORY_DOC.get(brd.name, "")
-    debug_doc = (DEBUG_DOC + _debug_tail(manifest, brd)
-                 if any(b.get("debug") for b in manifest["binaries"]) else "")
+    debug_doc = DEBUG_DOC + _debug_tail(manifest, brd) if any(b.get("debug") for b in manifest["binaries"]) else ""
     # Say what was actually checked for THIS board's console. Claiming a `.htif` check on a board whose
     # console is its own UART is both wrong and exactly the kind of detail that erodes trust in the
     # rest of the list.
-    console_check = ("`.htif` present so your loader can find `tohost`/`fromhost`"
-                     if brd.console == CONSOLE_HTIF
-                     else "no `.htif` section and no `tohost` symbol, so nothing waits on a host")
+    console_check = (
+        "`.htif` present so your loader can find `tohost`/`fromhost`"
+        if brd.console == CONSOLE_HTIF
+        else "no `.htif` section and no `tohost` symbol, so nothing waits on a host"
+    )
     baremetal = brd.flow == boards.FLOW_BAREMETAL
-    image = ("bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal
-             else "Zephyr image")
+    image = "bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal else "Zephyr image"
     # Put the package's own shortcomings in the README, not only in manifest.json. The per-row verdict
     # already says "not simulated", but nobody reads sixteen rows before starting a run, and the one
     # thing a recipient must not have to discover on the bench is which of these we never checked.
@@ -2160,10 +2493,8 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
         # `config` alone do not tell anyone what the kernel assumes, and the tile edge is the one number
         # that has to match the design: a kernel built for a different edge does not fail to link, it
         # computes the wrong thing on the second beat of a load.
-        geom = sorted({(b["matrix"].get("config"), b["matrix"].get("tile_edge"))
-                       for b in matrix_bins})
-        geom_lines = "\n".join(
-            f"- **{cfg}** — logical tile edge **{edge}**" for cfg, edge in geom if cfg) or ""
+        geom = sorted({(b["matrix"].get("config"), b["matrix"].get("tile_edge")) for b in matrix_bins})
+        geom_lines = "\n".join(f"- **{cfg}** — logical tile edge **{edge}**" for cfg, edge in geom if cfg) or ""
         # Coverage, per image, from its own sidecar. "The unit is used" is compatible with one small GEMM
         # out of a hundred going through it, so the number that matters is how much of the model's
         # arithmetic went there and whether anything was left behind.
@@ -2173,60 +2504,82 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
             if not r:
                 continue
             w = r.get("widest_routed") or {}
-            left = ("nothing was left behind" if not r.get("skipped")
-                    else "NOT everything was routed: " + "; ".join(r["skipped"]))
+            left = (
+                "nothing was left behind"
+                if not r.get("skipped")
+                else "NOT everything was routed: " + "; ".join(r["skipped"])
+            )
             cover.append(
                 f"- `{b['elf']}`: **{r['routed_contractions']} contraction(s)** routed across "
                 f"**{r['distinct_signatures']} distinct signature(s)**, "
                 f"**{r['macs_routed'] / 1e9:.2f}e9 MACs** on the unit — {left}"
-                + (f". Widest routed shape `{w.get('shape')}` ({w.get('fqn')}), "
-                   f"{w.get('macs', 0) / 1e9:.2f}e9 MACs." if w else "."))
-        cover_lines = ("\n\nWhat went to the unit, read from each image's own routing record:\n\n"
-                       + "\n".join(cover)) if cover else ""
+                + (
+                    f". Widest routed shape `{w.get('shape')}` ({w.get('fqn')}), {w.get('macs', 0) / 1e9:.2f}e9 MACs."
+                    if w
+                    else "."
+                )
+            )
+        cover_lines = (
+            ("\n\nWhat went to the unit, read from each image's own routing record:\n\n" + "\n".join(cover))
+            if cover
+            else ""
+        )
         parallel = sorted({b["harts"] for b in matrix_bins if b["matrix"].get("parallel_tiles")})
-        serial = sorted({b["harts"] for b in matrix_bins
-                         if b["matrix"].get("parallel_tiles") is False})
+        serial = sorted({b["harts"] for b in matrix_bins if b["matrix"].get("parallel_tiles") is False})
         reach = []
         if parallel:
-            reach.append(f"the {', '.join(f'{h}-hart' for h in parallel)} image(s) compile the kernel's "
-                         f"tile loop with OpenMP, so the tiles are split across harts and one unit per "
-                         f"hart is reached")
+            reach.append(
+                f"the {', '.join(f'{h}-hart' for h in parallel)} image(s) compile the kernel's "
+                f"tile loop with OpenMP, so the tiles are split across harts and one unit per "
+                f"hart is reached"
+            )
         if serial:
-            reach.append(f"the {', '.join(f'{h}-hart' for h in serial)} image(s) run that loop serially, "
-                         f"which uses exactly ONE unit — correct, and half the machine on a chip that "
-                         f"has one per core")
-        reach_line = ("\n\nWhich units get used is a property of the image, not of the chip: "
-                      + "; ".join(reach) + ".") if reach else ""
-        rev = next((b["matrix"]["unit_revision"] for b in matrix_bins
-                    if b["matrix"].get("unit_revision")), None)
+            reach.append(
+                f"the {', '.join(f'{h}-hart' for h in serial)} image(s) run that loop serially, "
+                f"which uses exactly ONE unit — correct, and half the machine on a chip that "
+                f"has one per core"
+            )
+        reach_line = (
+            ("\n\nWhich units get used is a property of the image, not of the chip: " + "; ".join(reach) + ".")
+            if reach
+            else ""
+        )
+        rev = next((b["matrix"]["unit_revision"] for b in matrix_bins if b["matrix"].get("unit_revision")), None)
         # A pin that did NOT verify is the sentence that must not be dropped: the encodings and the tile
         # geometry were read from a tree carrying uncommitted changes, so the revision alone does not
         # describe them, and only the source digest does. Saying "derived from revision X" and stopping
         # there is how a result gets attributed to a revision that cannot reproduce it.
-        drift_line = ("" if not rev or rev.get("verified") else
-                      "\n\n**One caveat on that revision, and it is ours, not yours:** the sources this "
-                      "was read from carry changes that are not committed anywhere ("
-                      + "; ".join(rev.get("drift") or ["unspecified drift"])
-                      + "). So the commit above does not fully describe what these binaries were built "
-                        "from; what does is `unit_source_digest` in `manifest.json`, which is a digest of "
-                        "the exact bytes read. Ask us for those sources if you need to rebuild this "
-                        "yourself.")
-        rev_line = ("" if not rev else
-                    f"\n\nThe instruction encodings were derived from the unit's own RTL at "
-                    f"`{(rev.get('commit') or '')[:12]}` (`{rev.get('branch')}`), cross-checked against "
-                    f"the header its author maintains; the build refuses to emit if those two disagree. "
-                    f"`manifest.json` carries the full revision and a digest of the exact bytes read."
-                    + drift_line)
+        drift_line = (
+            ""
+            if not rev or rev.get("verified")
+            else "\n\n**One caveat on that revision, and it is ours, not yours:** the sources this "
+            "was read from carry changes that are not committed anywhere ("
+            + "; ".join(rev.get("drift") or ["unspecified drift"])
+            + "). So the commit above does not fully describe what these binaries were built "
+            "from; what does is `unit_source_digest` in `manifest.json`, which is a digest of "
+            "the exact bytes read. Ask us for those sources if you need to rebuild this "
+            "yourself."
+        )
+        rev_line = (
+            ""
+            if not rev
+            else f"\n\nThe instruction encodings were derived from the unit's own RTL at "
+            f"`{(rev.get('commit') or '')[:12]}` (`{rev.get('branch')}`), cross-checked against "
+            f"the header its author maintains; the build refuses to emit if those two disagree. "
+            f"`manifest.json` carries the full revision and a digest of the exact bytes read." + drift_line
+        )
         # Which of the two twin stories is true of THIS package. Both are honest; asserting the graded
         # one when nothing ran is not, and it is the failure mode a reader cannot check.
         twin_ran = all(b["matrix"].get("twin_simulated") for b in matrix_bins)
-        twin_bullet = ("""\
+        twin_bullet = (
+            """\
 - **Everything around the unit** — the routing, the K-major operand pack, the descriptor ABI and the
   requant epilogue — is graded on a *scalar stand-in twin*: the same module rebuilt with a scalar loop
   in place of the unit's datapath. The twin shares this image's lowering (`lowering_digest` in
   `manifest.json`; the image-level `build_hash` differs because the twin's app compiles the shim
-  differently), and it grades bit-exact against the same references as everything else here.""" if twin_ran
-                       else """\
+  differently), and it grades bit-exact against the same references as everything else here."""
+            if twin_ran
+            else """\
 - **Everything around the unit** — the routing, the K-major operand pack, the descriptor ABI and the
   requant epilogue — is covered STRUCTURALLY here, not numerically. We build the *scalar stand-in twin*
   (the same module with a scalar loop in place of the unit's datapath), check that it lowers to the same
@@ -2234,19 +2587,23 @@ def _readme(brd, manifest: dict, *, debug: bool = False) -> str:
   unit's instructions while the shipped image carries them — but we did **not** run it: a whole-model
   scalar stand-in costs hours of functional simulation. So no number in this package was produced by
   executing this model's matrix path; where such a number exists it comes from hardware, and this
-  package's notes say which.""")
+  package's notes say which."""
+        )
         # The console note only applies where a console exists. Saying "`expected_console.txt` beside
         # these ELFs is the twin's" in a package that shipped no such file sends the reader looking for
         # it, which is how a correct package reads as an incomplete one.
-        twin_console_note = ("""\
+        twin_console_note = (
+            """\
 Two things follow. `spike_cycles` is `null` for these rows on purpose — the shipped image was never
 simulated; the twin's cycle count is recorded inside `matrix` and is the price of *not* having the unit,
 so it is not a speed figure for this binary. And `expected_console.txt` beside these ELFs is the twin's,
 so its `METRIC build_hash` line names `twin_build_hash`, not the shipped image's — `grade.py` knows."""
-                             if twin_ran else """\
+            if twin_ran
+            else """\
 So there is no `expected_console.txt` for these rows and `spike_cycles` is `null`: we would rather ship
 no reference than one we did not produce. `grade.py` still scores the console YOU send back against the
-same references, which is the comparison that matters — the W8A8 golden is in this package.""")
+same references, which is the comparison that matters — the W8A8 golden is in this package."""
+        )
         matrix_doc = f"""
 ## The matrix-unit images, and exactly what backs them
 
@@ -2276,9 +2633,13 @@ If the run faults, the first thing worth checking is whether your part actually 
 built for it will not run on one without it.
 """
 
-    problems_doc = ("" if not manifest.get("problems") else
-                    "\n### What we did NOT verify in this package\n\n"
-                    + "\n".join(f"- {_strip_marker(p)}" for p in manifest["problems"]) + "\n")
+    problems_doc = (
+        ""
+        if not manifest.get("problems")
+        else "\n### What we did NOT verify in this package\n\n"
+        + "\n".join(f"- {_strip_marker(p)}" for p in manifest["problems"])
+        + "\n"
+    )
     hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
@@ -2286,37 +2647,58 @@ built for it will not run on one without it.
         f"{'**diagnostic**' if b.get('debug') else 'plain'} | "
         f"{b['ram_bytes'] // 2**20} MB | {_upload_note(b['upload_estimate_s'])} | "
         f"{_verdict(b)} |"
-        for b in manifest["binaries"])
-    statuses = "\n".join(f"- **{m}** — {STATUS.get(m, 'no status recorded')}"
-                         for m in sorted({b["model"] for b in manifest["binaries"]}))
+        for b in manifest["binaries"]
+    )
+    statuses = "\n".join(
+        f"- **{m}** — {STATUS.get(m, 'no status recorded')}" for m in sorted({b["model"] for b in manifest["binaries"]})
+    )
     vlen = brd.vlen or 128
-    paired = sorted({b["model"] for b in manifest["binaries"]
-                     if sum(1 for o in manifest["binaries"] if o["model"] == b["model"]) > 1})
+    paired = sorted(
+        {
+            b["model"]
+            for b in manifest["binaries"]
+            if sum(1 for o in manifest["binaries"] if o["model"] == b["model"]) > 1
+        }
+    )
     unpaired = sorted({b["model"] for b in manifest["binaries"]} - set(paired))
-    pair_section = ("""\
+    pair_section = (
+        """\
 ## Please run BOTH hart counts
 
 For %s the package carries one binary per hart count, and the pair exists so you can check them
 against each other: **the outputs must be bit-identical.** They are the same computation split
 differently, so any difference at all is vector/SMP state on the SoC, not rounding — and that is a far
-more useful signal for you than either run alone. %s%s""" % (", ".join("`%s`" % m for m in paired),
-                         ("We verified this holds on spike at your vector length before shipping."
-                          if any(b.get("spike_cycles") is not None for b in manifest["binaries"])
-                          else "We verified this property on our own RTL rather than on these exact "
-                               "images (see the FireSim table below): 1-hart and 2-hart outputs came "
-                               "back bit-identical there."),
-                         ("\n\n%s single-hart only: we could not build a multi-hart image for "
-                          "%s, and would not ship one we had not run." %
-                          (", ".join("`%s`" % m for m in unpaired)
-                           + (" ships" if len(unpaired) == 1 else " ship"),
-                           "it" if len(unpaired) == 1 else "them")) if unpaired else "")
-                    if len(hart_counts) > 1 else """\
+more useful signal for you than either run alone. %s%s"""
+        % (
+            ", ".join("`%s`" % m for m in paired),
+            (
+                "We verified this holds on spike at your vector length before shipping."
+                if any(b.get("spike_cycles") is not None for b in manifest["binaries"])
+                else "We verified this property on our own RTL rather than on these exact "
+                "images (see the FireSim table below): 1-hart and 2-hart outputs came "
+                "back bit-identical there."
+            ),
+            (
+                "\n\n%s single-hart only: we could not build a multi-hart image for "
+                "%s, and would not ship one we had not run."
+                % (
+                    ", ".join("`%s`" % m for m in unpaired) + (" ships" if len(unpaired) == 1 else " ship"),
+                    "it" if len(unpaired) == 1 else "them",
+                )
+            )
+            if unpaired
+            else "",
+        )
+        if len(hart_counts) > 1
+        else """\
 ## Only one hart, deliberately
 
 Every binary here runs on one hart. We did not ship a multi-hart bare-metal image because dispatching
 your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
 targets, and shipping that untested would waste your bench time. If you want it, that integration is
-ours to do next — say so and we will build against your dispatch.""" if hart_counts == [1] else """\
+ours to do next — say so and we will build against your dispatch."""
+        if hart_counts == [1]
+        else """\
 ## One hart count here, and what that costs you
 
 Every binary in this package fans out over **%d** harts. Elsewhere we ship one binary per hart count
@@ -2324,9 +2706,9 @@ precisely so you can diff their outputs — the same computation split different
 bit-identical, and any difference at all is vector/SMP state on the SoC rather than rounding. That is the
 single most useful check you can run, and this package cannot give it to you: each image here is about
 %d MB, so the pair would double an upload that is already the longest part of the job. If you want the
-1-hart companion of any of these, say so and we will build it — it is a rebuild, not a redesign.""" % (
-                        hart_counts[0],
-                        max(_upload_payload(brd, b) for b in manifest["binaries"]) // 2**20))
+1-hart companion of any of these, say so and we will build it — it is a rebuild, not a redesign."""
+        % (hart_counts[0], max(_upload_payload(brd, b) for b in manifest["binaries"]) // 2**20)
+    )
     # A scalar image is a different ISA for a different set of harts, not a slower build of the same
     # thing. Someone looking at two files that differ by one word in the name needs that said.
     # `== "scalar"`, not `!= "rvv"`. A matrix-unit image is neither of those things, and under the old
@@ -2358,8 +2740,7 @@ only, and the table says so.
         rows_fs = []
         for model, e in sorted(fs.items()):
             for r in e["runs"]:
-                rows_fs.append(f"| {model} | {r['harts']} | {r['cycles']:,} | {r['tier_ok']} | "
-                               f"{r['w8a8_max_rel']} |")
+                rows_fs.append(f"| {model} | {r['harts']} | {r['cycles']:,} | {r['tier_ok']} | {r['w8a8_max_rel']} |")
         # Say plainly where the multicore split is NOT an exact work division. Publishing a blanket
         # "bit-identical" would be false for one of the models, and it is exactly the property we ask
         # the board owners to check themselves.
@@ -2370,38 +2751,42 @@ only, and the table says so.
         # just as well -- and instrumented builds of the same models later came back bit-identical on
         # the same bitstream, which is what a timing-sensitive race looks like when you perturb the
         # timing. Shipping an inference dressed as a finding is worse than shipping an open question.
-        not_ident = sorted(m for m, e in fs.items()
-                           if e.get("harts_bit_identical") is False)
-        caveat = ("" if not not_ident else
-                  "> **Read this before you trust a 2-hart number.** On that FPGA the 2-hart run of "
-                  + ", ".join(f"`{m}`" for m in not_ident)
-                  + "\n> is *not* bit-identical to its 1-hart run, and misses the W8A8 gate. We chased it to a\n"
-                    "> conclusion, and the conclusion is not about the compiled code:\n"
-                    ">\n"
-                    "> | test | result |\n"
-                    "> |---|---|\n"
-                    "> | the same binary run twice on that FPGA | bit-identical, same cycle count — not a race |\n"
-                    "> | **those exact binaries on spike at the same vector length** | `h1` ≡ `h2`, both `cos 1.0` |\n"
-                    "> | those binaries on the FPGA | `h1` exact, `h2` deviates |\n"
-                    ">\n"
-                    "> So the arithmetic we generate is right, and something in that SoC's 2-hart vector\n"
-                    "> path is not. It is also schedule-sensitive: it moved from one model to another when\n"
-                    "> the compiler changed, in both directions. That is a different chip from yours, so it\n"
-                    "> says nothing directly about your silicon — but it does say something about our\n"
-                    "> evidence, and you should know it:\n"
-                    ">\n"
-                    "> **A spike gate cannot certify multicore numerics on real hardware.** Every image in\n"
-                    "> this package passes one, and the binary above passes one too. So the single most\n"
-                    "> useful thing you can do is run `h1` and `h2` of the same model and diff their `OUT`\n"
-                    "> lines. Identical is the expected answer and confirms the whole path. Different is a\n"
-                    "> real finding on your chip, whatever it costs us to hear — please send both logs.")
+        not_ident = sorted(m for m, e in fs.items() if e.get("harts_bit_identical") is False)
+        caveat = (
+            ""
+            if not not_ident
+            else "> **Read this before you trust a 2-hart number.** On that FPGA the 2-hart run of "
+            + ", ".join(f"`{m}`" for m in not_ident)
+            + "\n> is *not* bit-identical to its 1-hart run, and misses the W8A8 gate. We chased it to a\n"
+            "> conclusion, and the conclusion is not about the compiled code:\n"
+            ">\n"
+            "> | test | result |\n"
+            "> |---|---|\n"
+            "> | the same binary run twice on that FPGA | bit-identical, same cycle count — not a race |\n"
+            "> | **those exact binaries on spike at the same vector length** | `h1` ≡ `h2`, both `cos 1.0` |\n"
+            "> | those binaries on the FPGA | `h1` exact, `h2` deviates |\n"
+            ">\n"
+            "> So the arithmetic we generate is right, and something in that SoC's 2-hart vector\n"
+            "> path is not. It is also schedule-sensitive: it moved from one model to another when\n"
+            "> the compiler changed, in both directions. That is a different chip from yours, so it\n"
+            "> says nothing directly about your silicon — but it does say something about our\n"
+            "> evidence, and you should know it:\n"
+            ">\n"
+            "> **A spike gate cannot certify multicore numerics on real hardware.** Every image in\n"
+            "> this package passes one, and the binary above passes one too. So the single most\n"
+            "> useful thing you can do is run `h1` and `h2` of the same model and diff their `OUT`\n"
+            "> lines. Identical is the expected answer and confirms the whole path. Different is a\n"
+            "> real finding on your chip, whatever it costs us to hear — please send both logs."
+        )
         extra = []
         for model, e in sorted(fs.items()):
             if e.get("speedup_1_to_2_harts"):
-                extra.append(f"- `{model}`: **{e['speedup_1_to_2_harts']}×** on 2 harts, outputs "
-                             f"{'bit-identical' if e.get('harts_bit_identical') else 'NOT identical'}"
-                             f" to the 1-hart run")
-        firesim_doc = ("""\
+                extra.append(
+                    f"- `{model}`: **{e['speedup_1_to_2_harts']}×** on 2 harts, outputs "
+                    f"{'bit-identical' if e.get('harts_bit_identical') else 'NOT identical'}"
+                    f" to the 1-hart run"
+                )
+        firesim_doc = """\
 ## What the same code did on real RTL (not a simulator)
 
 These models also ran on **FireSim**, executing our own SoC's RTL on an FPGA — whole model,
@@ -2422,8 +2807,13 @@ model, the lowering and the schedule — the compiled arithmetic — not the ima
 This is *not* a claim about your chip's clock or memory system — different SoC, different frequency.
 What it does establish is that the arithmetic holds up on real hardware rather than only in a
 functional simulator, and it is where a multicore split gets its first honest test.
-""" % (list(fs.values())[0]["bitstream"], list(fs.values())[0].get("vlen") or "unrecorded",
-       "\n".join(rows_fs), "\n".join(extra) or "", caveat))
+""" % (
+            list(fs.values())[0]["bitstream"],
+            list(fs.values())[0].get("vlen") or "unrecorded",
+            "\n".join(rows_fs),
+            "\n".join(extra) or "",
+            caveat,
+        )
     else:
         firesim_doc = ""
     simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
@@ -2432,25 +2822,35 @@ functional simulator, and it is where a multicore split gets its first honest te
     # the gate, and the "linked with a host-assisted console instead of your UART" clause is simply false
     # of a board whose own console IS the host-assisted one: there, the simulated image is the shipped one.
     gated = [b for b in manifest["binaries"] if b.get("spike_cycles") is not None]
-    which = ("Ran every binary here" if len(gated) == len(manifest["binaries"]) else
-             "Ran " + ", ".join(f"`{b['elf']}`" for b in gated))
-    same_image = (" That is the same image you have, console and all."
-                  if brd.console == CONSOLE_HTIF else
-                  " That simulated image differs from the one you have in exactly one way: spike provides"
-                  " a debug host, so it was linked with the host-assisted console instead of your UART.")
-    sim_line = ("""\
+    which = (
+        "Ran every binary here"
+        if len(gated) == len(manifest["binaries"])
+        else "Ran " + ", ".join(f"`{b['elf']}`" for b in gated)
+    )
+    same_image = (
+        " That is the same image you have, console and all."
+        if brd.console == CONSOLE_HTIF
+        else " That simulated image differs from the one you have in exactly one way: spike provides"
+        " a debug host, so it was linked with the host-assisted console instead of your UART."
+    )
+    sim_line = (
+        """\
 - %s on spike at **%d-bit** vectors and gated the output against the W8A8 reference.%s
   Simulated and shipped share a `build_hash` — a digest
   of the lowered model object plus the weights — so the computation is byte-for-byte the same, and the
   packager refuses to ship the pair if those hashes disagree. Two consequences for the log you send
   back: your run prints two extra `METRIC` lines (`console`, `chip_freq_hz`) that the reference does
   not, and `METRIC cycles` will differ because it is a different chip. Grading reads the `OUT` line, so
-  neither affects PASS/FAIL.""" % (which, brd.vlen or 128, same_image) if simulated else """\
+  neither affects PASS/FAIL."""
+        % (which, brd.vlen or 128, same_image)
+        if simulated
+        else """\
 - **Did NOT run these exact binaries through a functional simulator.** The lowering they were built
   from is validated on stronger evidence — the same models, same schedule, executing our own SoC's
   RTL on an FPGA, bit-exact against the W8A8 reference (see above). What is specific to these
   binaries is their memory map and link, which is what the ELF audit checks. That is why there is no
-  `expected_console.txt` for them: we would rather ship no reference than one we did not produce.""")
+  `expected_console.txt` for them: we would rather ship no reference than one we did not produce."""
+    )
     probe = manifest.get("vector_probe")
     # The width the model code was COMPILED for, and the width Zephyr's per-thread vector save area was
     # SIZED for. They are usually equal but not the same fact, and the probe guidance below has to name
@@ -2458,7 +2858,8 @@ functional simulator, and it is where a multicore split gets its first honest te
     # than the second overruns the save area into the next thread struct.
     _built_vlen = brd.vlen or 128
     _save_bits = zm._vector_max_len_bits(brd)
-    probe_doc = ("""\
+    probe_doc = (
+        """\
 Load `vlen_probe.elf` the same way as any other binary below. It reads the chip's own CSRs and prints:
 
 ```
@@ -2494,20 +2895,32 @@ instruction in the model images would trap. The probe deliberately stops before 
 that case rather than taking the trap.
 
 The probe prints one block per hart, lowest first, and ends with a single `DONE`. If the blocks come
-back interleaved character-by-character, that is an older probe — tell us and we will resend.""" % (
-    # Two distinct numbers, and which one bounds which direction is the whole point: the -march minimum
-    # is what a NARROWER unit violates, and the save-area width is what a WIDER one overruns.
-    _built_vlen, _save_bits, _built_vlen, _save_bits, _built_vlen, _built_vlen, _built_vlen)
-                 if probe else "*(not included in this package)*")
+back interleaved character-by-character, that is an older probe — tell us and we will resend."""
+        % (
+            # Two distinct numbers, and which one bounds which direction is the whole point: the -march minimum
+            # is what a NARROWER unit violates, and the save-area width is what a WIDER one overruns.
+            _built_vlen,
+            _save_bits,
+            _built_vlen,
+            _save_bits,
+            _built_vlen,
+            _built_vlen,
+            _built_vlen,
+        )
+        if probe
+        else "*(not included in this package)*"
+    )
     # The instruction-mix check, described as what it checked HERE. Listing a scalar image's property in a
     # package with no scalar image reads as boilerplate, and boilerplate is where a real omission hides.
     mix_check = "real vector instructions in every vector image"
     if scalar_bins:
         mix_check += ", and *zero* of them in a scalar one"
     if matrix_bins:
-        mix_check += (", plus the matrix unit's own instructions in every matrix image and none in its "
-                      "stand-in twin, compared as parsed instruction fields against encodings derived "
-                      "from the unit's RTL")
+        mix_check += (
+            ", plus the matrix unit's own instructions in every matrix image and none in its "
+            "stand-in twin, compared as parsed instruction fields against encodings derived "
+            "from the unit's RTL"
+        )
     # How each image divides the DRAM it was linked for. Stated because the arena is not a field anyone can
     # look up -- it is the leftover after the image -- and because on a design an image nearly fills, "does
     # it fit" is the first question and the one a recipient cannot answer from the ELF alone.
@@ -2517,7 +2930,8 @@ back interleaved character-by-character, that is an older probe — tell us and 
         rows_mem = "\n".join(
             f"| `{b['elf']}` | {m['region_mb']:.0f} MB | {m['image_memsz_mb']:.0f} MB | "
             f"{m['arena_mb']:.0f} MB | {m['allocation_total_mb']:.0f} MB |"
-            for b, m in mem_rows)
+            for b, m in mem_rows
+        )
         dyn = sum(m.get("allocation_dynamic_calls", 0) for _, m in mem_rows)
         memory_doc = f"""
 ### How each image uses your DRAM
@@ -2530,18 +2944,25 @@ The last column is the **sum** of every heap allocation the lowered model makes,
 footprint. That is the figure the arena has to cover: our other runtime's allocator never reclaims, so
 sizing to a liveness peak is only safe on one of the two, and the peak our analysis reports is documented
 as a lower bound. The packager refuses to ship an image whose arena is below that sum.{
-    "" if not dyn else f" ({dyn} allocation(s) in these images take a computed size rather than a constant one, so that column is a lower bound on the requirement; the margin above covers them.)"}
+            ""
+            if not dyn
+            else f" ({dyn} allocation(s) in these images take a computed size rather than a constant one, so that column is a lower bound on the requirement; the margin above covers them.)"
+        }
 """
     upload_doc = _upload_doc(brd, manifest)
-    identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
-                     if len(hart_counts) > 1 else
-                     "- Single-hart images only (see above), so there is no hart-split to check.")
+    identity_line = (
+        "- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
+        if len(hart_counts) > 1
+        else "- Single-hart images only (see above), so there is no hart-split to check."
+    )
     # The package's own caveats, first thing after the summary. A note that arrives in an email beside a
     # zip is a note that gets lost from the zip; this is the same sentence, inside the artifact.
-    notes_doc = ("" if not manifest.get("notes") else
-                 "\n> **Read this first.**\n>\n"
-                 + "\n".join(f"> - {n}" for n in manifest["notes"]) + "\n")
-    isa_line = ("RVV + matrix unit" if matrix_bins else "RVV")
+    notes_doc = (
+        ""
+        if not manifest.get("notes")
+        else "\n> **Read this first.**\n>\n" + "\n".join(f"> - {n}" for n in manifest["notes"]) + "\n"
+    )
+    isa_line = "RVV + matrix unit" if matrix_bins else "RVV"
     return f"""\
 # Merlin int8 {isa_line} binaries for `{brd.name}`
 
@@ -2555,11 +2976,11 @@ We have no access to this board — you running these is the first time they tou
 
 | fact | value | where it came from |
 |---|---|---|
-| DRAM | {brd.dram_bytes // 2**20} MB at `{hex(brd.dram_base)}` | your chip — {'the linker scripts in your repo declare less' if baremetal else 'the DTS in your repo declares less'} |
+| DRAM | {brd.dram_bytes // 2**20} MB at `{hex(brd.dram_base)}` | your chip — {"the linker scripts in your repo declare less" if baremetal else "the DTS in your repo declares less"} |
 | harts on the chip | {brd.harts} | your chip |
-| harts these binaries use | {', '.join(str(h) for h in hart_counts)} | {'one hart count only — see below' if len(hart_counts) == 1 else 'one binary per count'} |
-| vector length | {vlen} bits{'' if brd.vlen else ' (assumed — the V minimum, since nothing declares it)'} | {'stated in your repo' if brd.vlen else 'NOT declared anywhere in the board files'} |
-| console | {brd.console} | {'derived from your SDK headers' if brd.sdk_chip else ('your `chip_config.h` / SIMS platform' if baremetal else 'board DT')} |
+| harts these binaries use | {", ".join(str(h) for h in hart_counts)} | {"one hart count only — see below" if len(hart_counts) == 1 else "one binary per count"} |
+| vector length | {vlen} bits{"" if brd.vlen else " (assumed — the V minimum, since nothing declares it)"} | {"stated in your repo" if brd.vlen else "NOT declared anywhere in the board files"} |
+| console | {brd.console} | {"derived from your SDK headers" if brd.sdk_chip else ("your `chip_config.h` / SIMS platform" if baremetal else "board DT")} |
 
 **If any of those is wrong, tell us** — a mismatch is the most likely cause of a silent hang, and each
 one is a one-line rebuild on our side. In particular we would like to know `vlenb` on the real chip.
@@ -2618,7 +3039,7 @@ warns if the log's `build_hash` is not one of ours.
 What that does *not* cover: your clock, your DRAM timing, your vector unit's actual VLEN, and anything
 about wall-clock performance. spike is functional — it proves correctness, never speed.
 {matrix_doc}{problems_doc}
-Merlin commit `{manifest['merlin_commit']}`.
+Merlin commit `{manifest["merlin_commit"]}`.
 """
 
 

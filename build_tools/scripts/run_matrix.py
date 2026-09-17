@@ -5,6 +5,7 @@ Usage: run_matrix.py <bundle_dir> [<bundle_dir> ...]
 Each <bundle_dir> is under out/artifacts/recaptures/. Prints one RESULT line per bundle so a
 monitor can stream them; tolerant of per-bundle failures (reports them, keeps going).
 """
+
 import sys
 import tempfile
 import traceback
@@ -23,12 +24,11 @@ def main(names):
             print(f"RESULT {name} SKIP(no model.mlir)", flush=True)
             continue
         try:
-            r = run_model(b, Path(tempfile.mkdtemp(prefix=f"{name}_")),
-                          cache_dir=OUT / f".kc_{name}")
+            r = run_model(b, Path(tempfile.mkdtemp(prefix=f"{name}_")), cache_dir=OUT / f".kc_{name}")
             cos, rel, ok, nk = r.get("cos"), r.get("rel"), r.get("ok"), r["n_kernels"]
-            cs = f"{cos:.7f}" if cos == cos else "nan"        # nan-safe (mask-like tensors)
+            cs = f"{cos:.7f}" if cos == cos else "nan"  # nan-safe (mask-like tensors)
             print(f"RESULT {name} kernels={nk} cos={cs} rel={rel:.2e} ok={ok}", flush=True)
-        except Exception as exc:                              # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             print(f"RESULT {name} ERROR {type(exc).__name__}: {str(exc)[:200]}", flush=True)
             traceback.print_exc()
     print("__ALL_RUNS_FINISHED__", flush=True)

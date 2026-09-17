@@ -21,6 +21,7 @@ Usage:
     check_isa_matches_rtl.py --target <t> [--json] [--show-covered]
     check_isa_matches_rtl.py --all
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,13 +35,14 @@ from merlin.targetgen import isa_rtl_crosscheck as X  # noqa: E402
 
 
 def _print_report(rep, *, show_covered: bool) -> None:
-    print(f"\n[{rep.target}] status={rep.status.upper()}  "
-          f"model={rep.model_mnemonics} mnemonics (provenance: {rep.model_provenance})")
+    print(
+        f"\n[{rep.target}] status={rep.status.upper()}  "
+        f"model={rep.model_mnemonics} mnemonics (provenance: {rep.model_provenance})"
+    )
 
     print("  evidence sources:")
     for s in rep.sources:
-        state = "USABLE " if s.usable else ("CIRCULAR" if s.circular else
-                                            ("present" if s.present else "absent  "))
+        state = "USABLE " if s.usable else ("CIRCULAR" if s.circular else ("present" if s.present else "absent  "))
         print(f"    [{state:8s}] {s.kind:24s} entries={s.entries:<5d} {s.note}")
         if s.provenance and s.usable:
             print(f"{'':16s}from: {s.provenance}")
@@ -49,21 +51,26 @@ def _print_report(rep, *, show_covered: bool) -> None:
     # "clean" is the exact failure this gate exists to make impossible, so the number nobody wants to
     # look at is printed before the number everybody does.
     cov, unc = rep.covered_mnemonics, rep.uncovered_mnemonics
-    print(f"  coverage: {len(cov)} instruction(s) actually compared against hardware evidence, "
-          f"{len(unc)} NOT COVERED by any usable source")
+    print(
+        f"  coverage: {len(cov)} instruction(s) actually compared against hardware evidence, "
+        f"{len(unc)} NOT COVERED by any usable source"
+    )
     # Per source as well as in union: a union that covers everything can still hide a source that saw
     # almost nothing, and "which source actually looked at this instruction" is what a reader needs to
     # judge how much the AGREE is worth.
     for s in rep.sources:
         if not s.usable:
             continue
-        n = {v: len([f for f in rep.findings if f.source == s.kind and f.verdict == v])
-             for v in (X.AGREE, X.DISAGREE, X.NOT_COVERED)}
-        print(f"    via {s.kind:24s} agree={n[X.AGREE]:<4d} disagree={n[X.DISAGREE]:<4d} "
-              f"not_covered={n[X.NOT_COVERED]}")
+        n = {
+            v: len([f for f in rep.findings if f.source == s.kind and f.verdict == v])
+            for v in (X.AGREE, X.DISAGREE, X.NOT_COVERED)
+        }
+        print(
+            f"    via {s.kind:24s} agree={n[X.AGREE]:<4d} disagree={n[X.DISAGREE]:<4d} not_covered={n[X.NOT_COVERED]}"
+        )
     if unc:
         show = sorted(unc)
-        print(f"    not covered: {', '.join(show[:12])}" + (f" … (+{len(show)-12} more)" if len(show) > 12 else ""))
+        print(f"    not covered: {', '.join(show[:12])}" + (f" … (+{len(show) - 12} more)" if len(show) > 12 else ""))
         print("    ^ these were NOT checked. Absence of evidence is not evidence of agreement.")
 
     for n in rep.notes:
@@ -85,11 +92,12 @@ def _print_report(rep, *, show_covered: bool) -> None:
             if row["hardware_for"]:
                 print(f"{'':18s}but AGREED by hardware source(s): {', '.join(row['hardware_for'])}")
             if row["authored_for"]:
-                print(f"{'':18s}backed by authored source(s): {', '.join(row['authored_for'])}"
-                      "  (a document does not outrank an extraction)")
+                print(
+                    f"{'':18s}backed by authored source(s): {', '.join(row['authored_for'])}"
+                    "  (a document does not outrank an extraction)"
+                )
         if undeclared:
-            print("\n  To resolve: decide which side is right and record it in "
-                  f"{X.errata_path()}. Ready-to-paste:\n")
+            print(f"\n  To resolve: decide which side is right and record it in {X.errata_path()}. Ready-to-paste:\n")
             print(_errata_yaml(rep, undeclared))
 
 
@@ -101,26 +109,28 @@ def _errata_yaml(rep, undeclared: dict) -> str:
     out = [f"  {rep.target}:"]
     for mnem, row in sorted(undeclared.items()):
         hw = sorted(row["evidence"].values())
-        out += [f"    {mnem}:",
-                f"      declared: {row['declared']!r}",
-                f"      hardware: {hw[0]!r}" if hw else "      hardware: null",
-                f"      sources_against_spec: [{', '.join(sorted(row['hardware_against']))}]",
-                f"      sources_for_spec: [{', '.join(sorted(row['authored_for'] + row['hardware_for']))}]",
-                "      authoritative: FILL_ME   # rtl | spec | unresolved",
-                "      rationale: FILL_ME",
-                "      upstream: null"]
+        out += [
+            f"    {mnem}:",
+            f"      declared: {row['declared']!r}",
+            f"      hardware: {hw[0]!r}" if hw else "      hardware: null",
+            f"      sources_against_spec: [{', '.join(sorted(row['hardware_against']))}]",
+            f"      sources_for_spec: [{', '.join(sorted(row['authored_for'] + row['hardware_for']))}]",
+            "      authoritative: FILL_ME   # rtl | spec | unresolved",
+            "      rationale: FILL_ME",
+            "      upstream: null",
+        ]
     return "\n".join(out)
 
 
 def _targets() -> list[str]:
     from merlin.common.paths import merlin_dir
+
     base = merlin_dir() / "experiments" / "capsule_bench" / "targets"
     return sorted(p.parent.name for p in base.glob("*/target_experiment.yaml"))
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--target")
     g.add_argument("--all", action="store_true", help="every target that ships a descriptor")
@@ -133,8 +143,13 @@ def main(argv=None) -> int:
     reports = [X.crosscheck(t, rtl_root=a.rtl_root or None) for t in targets]
 
     if a.json:
-        print(json.dumps([X.erratum(r) | {"undeclared": sorted(X.undeclared_disagreements(r))}
-                          for r in reports], indent=2, default=str))
+        print(
+            json.dumps(
+                [X.erratum(r) | {"undeclared": sorted(X.undeclared_disagreements(r))} for r in reports],
+                indent=2,
+                default=str,
+            )
+        )
     else:
         for r in reports:
             _print_report(r, show_covered=a.show_covered)
@@ -142,21 +157,26 @@ def main(argv=None) -> int:
     bad = [r for r in reports if X.undeclared_disagreements(r)]
     unknown = [r for r in reports if r.status == X.UNKNOWN]
     if not a.json:
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         for r in reports:
-            print(f"  {r.target:12s} {r.status.upper():12s} "
-                  f"compared={len(r.covered_mnemonics):<4d} not_covered={len(r.uncovered_mnemonics):<4d} "
-                  f"undeclared_disagreements={len(X.undeclared_disagreements(r))}")
+            print(
+                f"  {r.target:12s} {r.status.upper():12s} "
+                f"compared={len(r.covered_mnemonics):<4d} not_covered={len(r.uncovered_mnemonics):<4d} "
+                f"undeclared_disagreements={len(X.undeclared_disagreements(r))}"
+            )
         if bad:
-            print("\nFAIL: a target's own hardware contradicts the encoding merlin derives for it, and the "
-                  "disagreement is not recorded. A backend deriving from that encoding emits a word the "
-                  "hardware executes as a DIFFERENT instruction, silently.")
+            print(
+                "\nFAIL: a target's own hardware contradicts the encoding merlin derives for it, and the "
+                "disagreement is not recorded. A backend deriving from that encoding emits a word the "
+                "hardware executes as a DIFFERENT instruction, silently."
+            )
         elif unknown:
-            print("\nUNKNOWN: no usable hardware evidence covered a single instruction for at least one "
-                  "target. This is not a pass — nothing was verified.")
+            print(
+                "\nUNKNOWN: no usable hardware evidence covered a single instruction for at least one "
+                "target. This is not a pass — nothing was verified."
+            )
         else:
-            print("\nOK: every comparable instruction agrees with its hardware, or is recorded as an "
-                  "erratum.")
+            print("\nOK: every comparable instruction agrees with its hardware, or is recorded as an erratum.")
     return 1 if bad else (2 if unknown else 0)
 
 

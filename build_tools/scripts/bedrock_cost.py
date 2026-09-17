@@ -19,6 +19,7 @@ Examples:
   bedrock_cost.py cost --daily --days 14 --group-tag Experiment
   bedrock_cost.py tokens --days 7
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,9 +43,11 @@ def _aws(args: list[str]) -> tuple[bool, dict | str]:
     if p.returncode != 0:
         err = (p.stderr or p.stdout).strip()
         if "NoCredentials" in err or "Unable to locate credentials" in err:
-            return False, ("no AWS cost-API credentials. The Bedrock BEARER token is inference-only; "
-                           "configure IAM creds with ce:GetCostAndUsage + cloudwatch:GetMetricData "
-                           "(aws configure / aws sso login) and retry.")
+            return False, (
+                "no AWS cost-API credentials. The Bedrock BEARER token is inference-only; "
+                "configure IAM creds with ce:GetCostAndUsage + cloudwatch:GetMetricData "
+                "(aws configure / aws sso login) and retry."
+            )
         if "AccessDenied" in err:
             return False, f"access denied (the principal lacks ce/cloudwatch read permission): {err[:200]}"
         return False, err[:400]
@@ -62,9 +65,18 @@ def cmd_cost(a) -> int:
         start = (today - _dt.timedelta(days=a.days)).isoformat()
         end = (today + _dt.timedelta(days=1)).isoformat()
         gran = "DAILY"
-    args = ["ce", "get-cost-and-usage", "--time-period", f"Start={start},End={end}",
-            "--granularity", gran, "--metrics", "UnblendedCost",
-            "--filter", json.dumps({"Dimensions": {"Key": "SERVICE", "Values": [_SERVICE]}})]
+    args = [
+        "ce",
+        "get-cost-and-usage",
+        "--time-period",
+        f"Start={start},End={end}",
+        "--granularity",
+        gran,
+        "--metrics",
+        "UnblendedCost",
+        "--filter",
+        json.dumps({"Dimensions": {"Key": "SERVICE", "Values": [_SERVICE]}}),
+    ]
     if a.group_tag:
         args += ["--group-by", json.dumps([{"Type": "TAG", "Key": a.group_tag}])]
     ok, res = _aws(args)
@@ -90,13 +102,25 @@ def cmd_cost(a) -> int:
 def cmd_tokens(a) -> int:
     end = _dt.datetime.now(_dt.timezone.utc)
     start = end - _dt.timedelta(days=a.days)
-    queries = [{"Id": mid, "MetricStat": {
-        "Metric": {"Namespace": "AWS/Bedrock", "MetricName": name},
-        "Period": 86400, "Stat": "Sum"}}
-        for mid, name in (("input", "InputTokenCount"), ("output", "OutputTokenCount"))]
-    ok, res = _aws(["cloudwatch", "get-metric-data",
-                    "--start-time", start.isoformat(), "--end-time", end.isoformat(),
-                    "--metric-data-queries", json.dumps(queries)])
+    queries = [
+        {
+            "Id": mid,
+            "MetricStat": {"Metric": {"Namespace": "AWS/Bedrock", "MetricName": name}, "Period": 86400, "Stat": "Sum"},
+        }
+        for mid, name in (("input", "InputTokenCount"), ("output", "OutputTokenCount"))
+    ]
+    ok, res = _aws(
+        [
+            "cloudwatch",
+            "get-metric-data",
+            "--start-time",
+            start.isoformat(),
+            "--end-time",
+            end.isoformat(),
+            "--metric-data-queries",
+            json.dumps(queries),
+        ]
+    )
     if not ok:
         print(f"NO-TOKENS: {res}", file=sys.stderr)
         return 2

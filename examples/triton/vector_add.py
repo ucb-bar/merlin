@@ -15,6 +15,7 @@ keeps the launch inside the tensor, and it refuses rather than guessing.
 This kernel has no matmul, so it compiles as generic computation through the LLVM path even when the
 target is an accelerator — the route is chosen by the payload, not by the target.
 """
+
 import triton
 import triton.language as tl
 

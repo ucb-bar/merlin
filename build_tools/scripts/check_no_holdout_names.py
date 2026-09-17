@@ -32,6 +32,7 @@ somebody will one day un-sanitize; a withheld one cannot leak.
 WHAT IS SCANNED: files git reports as TRACKED. Untracked build output is not published and is covered by
 ``check_bundled_data`` instead. Binary files are skipped by content sniff, never by extension.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,21 +53,15 @@ _ALLOWED: dict[str, str] = {
     # RATCHETS RECORD DEBT BY NAME, DELIBERATELY. A ratchet whose entries were anonymised could not be
     # checked against the thing it ratchets, which is the whole mechanism; `holdout_disjointness_ratchet`
     # has always worked this way. They are tracked, reviewed, and may only shrink.
-    "build_tools/scripts/holdout_disjointness_ratchet.txt":
-        "the disjointness ratchet records the pairs it is ratcheting, by name, on purpose",
-    "build_tools/scripts/cert_affordability_ratchet.txt":
-        "an affordability ratchet names the capsules whose cost is accepted debt",
-    "build_tools/scripts/mesh_assertion_ratchet.txt":
-        "a mesh-assertion ratchet names the capsules whose assertion gap is accepted debt",
-    "build_tools/generalization_debt.txt":
-        "the generalization debt list names what it is holding open",
+    "build_tools/scripts/holdout_disjointness_ratchet.txt": "the disjointness ratchet records the pairs it is ratcheting, by name, on purpose",
+    "build_tools/scripts/cert_affordability_ratchet.txt": "an affordability ratchet names the capsules whose cost is accepted debt",
+    "build_tools/scripts/mesh_assertion_ratchet.txt": "a mesh-assertion ratchet names the capsules whose assertion gap is accepted debt",
+    "build_tools/generalization_debt.txt": "the generalization debt list names what it is holding open",
     # A TEST ABOUT THE LEAK HAS TO BE ABLE TO SPELL ONE. These construct a holdout name as a fixture or
     # assert that some artifact does NOT contain it; forbidding the string here would forbid testing the
     # property. Tests are not published artifacts.
-    "merlin/tests":
-        "a test whose subject is the holdout must be able to name one as a fixture",
-    "build_tools/scripts/check_no_holdout_names.py":
-        "this gate's own docstring describes the leak it was written for",
+    "merlin/tests": "a test whose subject is the holdout must be able to name one as a fixture",
+    "build_tools/scripts/check_no_holdout_names.py": "this gate's own docstring describes the leak it was written for",
 }
 
 
@@ -90,8 +85,7 @@ def _holdout_stores() -> dict[str, str]:
 
 
 def _tracked_files() -> list[Path]:
-    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True,
-                         check=False)
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=False)
     if out.returncode != 0:
         raise SystemExit(f"[FAIL] no-holdout-names: `git ls-files` failed: {out.stderr[-300:]}")
     return [REPO / p for p in out.stdout.split("\0") if p]
@@ -170,9 +164,16 @@ def scan(*, limit: int = 20) -> dict:
     if not names:
         # UNKNOWN, never a pass. A worktree has no hidden corpus, so an empty set means the question
         # could not be asked -- and a gate that cannot fail must say so rather than print [ ok].
-        return {"status": "undeterminable", "n_holdouts": 0, "leaks": [], "abs_paths": [],
-                "detail": ("no held-out capsule is readable in this checkout (a worktree carries no "
-                           "hidden corpus), so this gate could not be evaluated")}
+        return {
+            "status": "undeterminable",
+            "n_holdouts": 0,
+            "leaks": [],
+            "abs_paths": [],
+            "detail": (
+                "no held-out capsule is readable in this checkout (a worktree carries no "
+                "hidden corpus), so this gate could not be evaluated"
+            ),
+        }
 
     ratchet = _ratchet()
     leaks, ratcheted, abs_paths, skipped = [], [], [], 0
@@ -194,23 +195,33 @@ def scan(*, limit: int = 20) -> dict:
             (ratcheted if rel in ratchet else leaks).append(row)
         if _local_absolute(text):
             abs_paths.append(rel)
-    return {"status": "ok", "n_holdouts": len(names), "n_tracked_scanned": len(_tracked_files()),
-            "n_binary_skipped": skipped, "leaks": leaks[:limit], "n_leaks": len(leaks),
-            "ratcheted": [r["file"] for r in ratcheted], "n_ratcheted": len(ratcheted),
-            "ratchet_declared": len(ratchet),
-            "abs_paths": abs_paths[:limit], "n_abs_paths": len(abs_paths)}
+    return {
+        "status": "ok",
+        "n_holdouts": len(names),
+        "n_tracked_scanned": len(_tracked_files()),
+        "n_binary_skipped": skipped,
+        "leaks": leaks[:limit],
+        "n_leaks": len(leaks),
+        "ratcheted": [r["file"] for r in ratcheted],
+        "n_ratcheted": len(ratcheted),
+        "ratchet_declared": len(ratchet),
+        "abs_paths": abs_paths[:limit],
+        "n_abs_paths": len(abs_paths),
+    }
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=20)
-    ap.add_argument("--strict-paths", action="store_true",
-                    help="also FAIL on a tracked file embedding a local absolute path. Off by default: "
-                         "that is a real but far broader pre-existing problem (default paths in "
-                         "scripts, pins, docs) and folding it in would make this gate fail for a "
-                         "reason other than the one it is named for")
+    ap.add_argument(
+        "--strict-paths",
+        action="store_true",
+        help="also FAIL on a tracked file embedding a local absolute path. Off by default: "
+        "that is a real but far broader pre-existing problem (default paths in "
+        "scripts, pins, docs) and folding it in would make this gate fail for a "
+        "reason other than the one it is named for",
+    )
     a = ap.parse_args(argv)
 
     rep = scan(limit=a.limit)
@@ -219,38 +230,49 @@ def main(argv=None) -> int:
 
     if rep.get("n_ratcheted") is not None and not a.json:
         stale = rep["ratchet_declared"] - rep["n_ratcheted"]
-        print(f"   accepted as pre-existing debt: {rep['n_ratcheted']} "
-              f"(ratchet declares {rep['ratchet_declared']}"
-              + (f"; {stale} entr(y/ies) no longer leak and MUST be removed" if stale > 0 else "")
-              + ")")
+        print(
+            f"   accepted as pre-existing debt: {rep['n_ratcheted']} "
+            f"(ratchet declares {rep['ratchet_declared']}"
+            + (f"; {stale} entr(y/ies) no longer leak and MUST be removed" if stale > 0 else "")
+            + ")"
+        )
 
     if rep["status"] == "undeterminable":
         print(f"[note] no-holdout-names: UNDETERMINABLE — {rep['detail']}")
         return 0
 
     if not a.json:
-        print(f"no-holdout-names: {rep['n_holdouts']} held-out capsule name(s), "
-              f"{rep['n_tracked_scanned']} tracked file(s) scanned "
-              f"({rep['n_binary_skipped']} binary skipped)")
+        print(
+            f"no-holdout-names: {rep['n_holdouts']} held-out capsule name(s), "
+            f"{rep['n_tracked_scanned']} tracked file(s) scanned "
+            f"({rep['n_binary_skipped']} binary skipped)"
+        )
 
     rc = 0
     if rep["leaks"]:
-        print(f"\n[FAIL] no-holdout-names: {rep['n_leaks']} tracked file(s) NAME a held-out capsule. "
-              f"A holdout's name is an answer key -- knowing which shapes are graded privately is most "
-              f"of the advantage the holdout exists to deny:")
+        print(
+            f"\n[FAIL] no-holdout-names: {rep['n_leaks']} tracked file(s) NAME a held-out capsule. "
+            f"A holdout's name is an answer key -- knowing which shapes are graded privately is most "
+            f"of the advantage the holdout exists to deny:"
+        )
         for row in rep["leaks"]:
-            print(f"  - {row['file']}: {row['names']}"
-                  + (f" (+{row['n_names'] - len(row['names'])} more)"
-                     if row["n_names"] > len(row["names"]) else ""))
-        print("  Fix by WITHHOLDING, not sanitizing: keep the auditable counts and the refusal reasons, "
-              "drop the identity- and path-bearing fields behind an explicit opt-in.")
+            print(
+                f"  - {row['file']}: {row['names']}"
+                + (f" (+{row['n_names'] - len(row['names'])} more)" if row["n_names"] > len(row["names"]) else "")
+            )
+        print(
+            "  Fix by WITHHOLDING, not sanitizing: keep the auditable counts and the refusal reasons, "
+            "drop the identity- and path-bearing fields behind an explicit opt-in."
+        )
         rc = 1
 
     if rep["abs_paths"]:
         head = "[FAIL]" if a.strict_paths else "[note]"
-        print(f"\n{head} no-holdout-names: {rep['n_abs_paths']} tracked file(s) embed a LOCAL ABSOLUTE "
-              f"path. These files are published; a path under someone's home or scratch root is neither "
-              f"portable nor reviewable, and it is the carrier the holdout names travelled on:")
+        print(
+            f"\n{head} no-holdout-names: {rep['n_abs_paths']} tracked file(s) embed a LOCAL ABSOLUTE "
+            f"path. These files are published; a path under someone's home or scratch root is neither "
+            f"portable nor reviewable, and it is the carrier the holdout names travelled on:"
+        )
         for rel in rep["abs_paths"]:
             print(f"  - {rel}")
         if a.strict_paths:

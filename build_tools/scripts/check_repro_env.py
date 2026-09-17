@@ -17,6 +17,7 @@ Usage:
   check_repro_env.py --json              # machine-readable
   check_repro_env.py --require spike_rv64gcv,k1_board   # exit 1 unless all named caps are available
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,20 +36,33 @@ from pathlib import Path
 # substrates show up with zero edits to this file (no ``if key == "gemmini_spike"`` branching).
 _BASE_CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
     "xdsl": ("all", "xDSL prototyping plane (host dialect descent)", ["(pip extra: .[xdsl])"]),
-    "llvm_m2m_toolchain": ("WS-A", "model2MLIR + clang-23 whole-model lowering",
-                           ["MERLIN_M2M_DIR", "MERLIN_M2M_VENV", "MERLIN_CLANG", "MERLIN_IREE_BIN"]),
-    "spike_rv64gcv": ("WS-A/D", "spike rv64gcv RVV oracle",
-                      ["MERLIN_CHIPYARD", "MERLIN_SPIKE", "MERLIN_RISCV_GCC"]),
-    "k1_board": ("WS-A/D", "SpacemiT K1 board (real cycles)",
-                 ["MERLIN_K1_HOST", "MERLIN_K1_SSH_KEY", "MERLIN_K1_TOOLCHAIN"]),
+    "llvm_m2m_toolchain": (
+        "WS-A",
+        "model2MLIR + clang-23 whole-model lowering",
+        ["MERLIN_M2M_DIR", "MERLIN_M2M_VENV", "MERLIN_CLANG", "MERLIN_IREE_BIN"],
+    ),
+    "spike_rv64gcv": ("WS-A/D", "spike rv64gcv RVV oracle", ["MERLIN_CHIPYARD", "MERLIN_SPIKE", "MERLIN_RISCV_GCC"]),
+    "k1_board": (
+        "WS-A/D",
+        "SpacemiT K1 board (real cycles)",
+        ["MERLIN_K1_HOST", "MERLIN_K1_SSH_KEY", "MERLIN_K1_TOOLCHAIN"],
+    ),
     "firesim": ("WS-B", "FireSim job queue (L5)", ["MERLIN_EXT_FIRESIM_QUEUE", "FIRESIM_ROOT"]),
-    "zephyr_spike": ("WS-A/C", "Zephyr SW build_app path (whole-model spike compile)",
-                     ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"]),
-    "zephyr_multicore": ("WS-A/C", "multicore RVV Zephyr image (OpenMP shim over pinned harts)",
-                         ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR",
-                          "MERLIN_CHIPYARD"]),
-    "circt_firtool": ("WS-B", "CIRCT firtool + FileCheck (L4 rtlchecks)",
-                      ["MERLIN_CHIPYARD", "(firtool/FileCheck on PATH)"]),
+    "zephyr_spike": (
+        "WS-A/C",
+        "Zephyr SW build_app path (whole-model spike compile)",
+        ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
+    ),
+    "zephyr_multicore": (
+        "WS-A/C",
+        "multicore RVV Zephyr image (OpenMP shim over pinned harts)",
+        ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
+    ),
+    "circt_firtool": (
+        "WS-B",
+        "CIRCT firtool + FileCheck (L4 rtlchecks)",
+        ["MERLIN_CHIPYARD", "(firtool/FileCheck on PATH)"],
+    ),
     "chia": ("WS-B/D", "chia agentic-loop framework (build/chia-venv)", ["(uv venv build/chia-venv)"]),
     "llm_api": ("WS-B/D", "Anthropic API for real agentic runs", ["ANTHROPIC_API_KEY", "MERLIN_LLM_MODEL"]),
 }
@@ -82,7 +96,7 @@ def _backend_env_hints(target: str, backend: str) -> list[str]:
     hints: list[str] = []
     if tok:
         hints.append(f"MERLIN_{target.upper()}_{tok}")
-        hints.append("MERLIN_CHIPYARD")   # RTL sims are built under the chipyard toolchain root
+        hints.append("MERLIN_CHIPYARD")  # RTL sims are built under the chipyard toolchain root
     return hints + _BACKEND_ENV.get(backend, [])
 
 
@@ -95,6 +109,7 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
     derived: dict[str, tuple[str, str]] = {}
     try:
         from merlin.targetgen import target_registry as tr
+
         names = tr.all_targets()
     except Exception:
         return caps, derived
@@ -136,7 +151,7 @@ def _backend_probe(target: str, backend: str) -> tuple[str, str]:
             mod = base.get_backend(target)
             try:
                 ok = mod.available(sim)
-            except TypeError:                       # backend has no simulator-mode arg
+            except TypeError:  # backend has no simulator-mode arg
                 ok = mod.available()
             return ("available" if ok else "unavailable", sim)
     except Exception as e:  # pragma: no cover - a broken guard should report, not crash
@@ -158,8 +173,10 @@ def _probe(key: str) -> tuple[str, str]:
             return ("available" if sp.available() else "unavailable", "")
         if key == "k1_board":
             k1 = importlib.import_module("merlin.mining.k1")
-            return ("available" if k1.available() else "unavailable",
-                    os.environ.get("MERLIN_K1_HOST", "MERLIN_K1_HOST unset"))
+            return (
+                "available" if k1.available() else "unavailable",
+                os.environ.get("MERLIN_K1_HOST", "MERLIN_K1_HOST unset"),
+            )
         if key == "firesim":
             ho = importlib.import_module("merlin.targetgen.heavy_oracles")
             return ("available" if ho.firesim_queue_alive() else "unavailable", "")
@@ -187,9 +204,12 @@ def _probe(key: str) -> tuple[str, str]:
             # loop interpreter's existence, not chia_bridge.chia_available() (which checks importability
             # from THIS main .venv, where chia is intentionally absent -> always False).
             from merlin.common.paths import build_dir
+
             chia_py = build_dir() / "chia-venv" / "bin" / "python"
-            return ("available" if chia_py.is_file() else "unavailable",
-                    str(chia_py) if chia_py.is_file() else "uv venv out/build/chia-venv")
+            return (
+                "available" if chia_py.is_file() else "unavailable",
+                str(chia_py) if chia_py.is_file() else "uv venv out/build/chia-venv",
+            )
         if key == "llm_api":
             has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
             try:
@@ -214,6 +234,7 @@ def _probe(key: str) -> tuple[str, str]:
 def _interpreters() -> dict[str, str]:
     """Report the three isolated interpreters the reproduction flow keeps separate."""
     from merlin.common.paths import build_dir, repo_root
+
     root = repo_root()
     out: dict[str, str] = {}
     venv = root / ".venv" / "bin" / "python"
@@ -222,6 +243,7 @@ def _interpreters() -> dict[str, str]:
     chia = build_dir() / "chia-venv" / "bin" / "python"
     out["out/build/chia-venv"] = str(chia) if chia.exists() else "MISSING (uv venv out/build/chia-venv)"
     from merlin.common.paths import env as _env
+
     m2m_dir = _env("MERLIN_M2M_DIR", "")
     m2m_venv = _env("MERLIN_M2M_VENV") or (f"{m2m_dir}/.venv" if m2m_dir else "")
     m2m_py = Path(m2m_venv) / "bin" / "python" if m2m_venv else None
@@ -231,8 +253,13 @@ def _interpreters() -> dict[str, str]:
 
 def _out_roots() -> dict[str, str]:
     from merlin.common.paths import artifacts_dir, build_dir, out_dir, runs_dir
-    return {"out": str(out_dir()), "runs": str(runs_dir()),
-            "artifacts": str(artifacts_dir()), "build": str(build_dir())}
+
+    return {
+        "out": str(out_dir()),
+        "runs": str(runs_dir()),
+        "artifacts": str(artifacts_dir()),
+        "build": str(build_dir()),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

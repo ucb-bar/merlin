@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Generate the K1 VLA latency + whole-model profile figure from its frozen JSON receipt."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-from merlin.common.paths import artifacts_dir
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch
 
+from merlin.common.paths import artifacts_dir
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "k1_vla_profile_comparison_20260907.json"
@@ -64,9 +64,7 @@ def main() -> None:
     warm = np.array([row["warm_ms"] for row in rows], dtype=float)
     hybrid = np.array([row["hybrid_ms"] or np.nan for row in rows], dtype=float)
     shares = {
-        category: np.array([
-            row["categories_ms"][category] / row["profile_wall_ms"] for row in rows
-        ])
+        category: np.array([row["categories_ms"][category] / row["profile_wall_ms"] for row in rows])
         for category in CATEGORIES
     }
 
@@ -90,40 +88,82 @@ def main() -> None:
 
         ax = axes[0]
         width = 0.34
-        ax.bar(x - width / 2, warm, width=width, color="#5B9BD5", edgecolor=COLORS["ink"],
-               linewidth=0.8, label="Merlin generated")
-        ax.bar(x + width / 2, hybrid, width=width, color=COLORS["hybrid"],
-               edgecolor=COLORS["ink"], linewidth=0.8, label="Merlin + XNNPACK GEMM")
+        ax.bar(
+            x - width / 2,
+            warm,
+            width=width,
+            color="#5B9BD5",
+            edgecolor=COLORS["ink"],
+            linewidth=0.8,
+            label="Merlin generated",
+        )
+        ax.bar(
+            x + width / 2,
+            hybrid,
+            width=width,
+            color=COLORS["hybrid"],
+            edgecolor=COLORS["ink"],
+            linewidth=0.8,
+            label="Merlin + XNNPACK GEMM",
+        )
         ax.set_yscale("log")
         ax.set_ylim(20, 2.0e4)
         ax.set_xticks(x, names)
         ax.set_ylabel("Warm inference latency (ms, log scale)")
         ax.grid(axis="y", which="major", color=COLORS["grid"], linewidth=0.8, zorder=0)
         for i, value in enumerate(warm):
-            ax.text(i - width / 2, value * 1.16, _latency_label(value), ha="center", va="bottom", fontsize=9,
-                    fontweight="bold")
+            ax.text(
+                i - width / 2,
+                value * 1.16,
+                _latency_label(value),
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                fontweight="bold",
+            )
             if np.isfinite(hybrid[i]):
-                ax.text(i + width / 2, hybrid[i] * 1.16, _latency_label(hybrid[i]), ha="center",
-                        va="bottom", fontsize=9, fontweight="bold")
+                ax.text(
+                    i + width / 2,
+                    hybrid[i] * 1.16,
+                    _latency_label(hybrid[i]),
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold",
+                )
             else:
-                ax.text(i + width / 2, -0.11, "× blocked", transform=ax.get_xaxis_transform(),
-                        ha="center", va="center", fontsize=8.5, fontweight="bold",
-                        color=COLORS["blocked"], clip_on=False)
+                ax.text(
+                    i + width / 2,
+                    -0.11,
+                    "× blocked",
+                    transform=ax.get_xaxis_transform(),
+                    ha="center",
+                    va="center",
+                    fontsize=8.5,
+                    fontweight="bold",
+                    color=COLORS["blocked"],
+                    clip_on=False,
+                )
         ax.legend(loc="upper left", frameon=False, fontsize=9)
-        ax.set_title("1   Warm latency: generated vs kernel swap", loc="left", fontsize=14,
-                     fontweight="bold")
+        ax.set_title("1   Warm latency: generated vs kernel swap", loc="left", fontsize=14, fontweight="bold")
 
         ax = axes[1]
         bottom = np.zeros(len(rows))
         for category in CATEGORIES:
             values = shares[category]
-            ax.bar(x, values, width=0.62, bottom=bottom, color=COLORS[category],
-                   edgecolor="white", linewidth=0.6)
+            ax.bar(x, values, width=0.62, bottom=bottom, color=COLORS[category], edgecolor="white", linewidth=0.6)
             for i, value in enumerate(values):
                 if value >= 0.075:
-                    ax.text(i, bottom[i] + value / 2, f"{100 * value:.1f}%", ha="center",
-                            va="center", fontsize=9, fontweight="bold",
-                            color="white" if category == "layout_copy" else COLORS["ink"])
+                    ax.text(
+                        i,
+                        bottom[i] + value / 2,
+                        f"{100 * value:.1f}%",
+                        ha="center",
+                        va="center",
+                        fontsize=9,
+                        fontweight="bold",
+                        color="white" if category == "layout_copy" else COLORS["ink"],
+                    )
             bottom += values
         ax.set_ylim(0, 1.0)
         ax.set_yticks(np.linspace(0, 1, 6), [f"{int(v)}%" for v in np.linspace(0, 100, 6)])
@@ -132,12 +172,25 @@ def main() -> None:
         ax.grid(axis="y", color=COLORS["grid"], linewidth=0.8, zorder=0)
         ax.set_title("2   Where the wall goes", loc="left", fontsize=14, fontweight="bold")
         handles = [Patch(facecolor=COLORS[c], edgecolor="none", label=LABELS[c]) for c in CATEGORIES]
-        fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.055), ncol=5,
-                   frameon=False, columnspacing=1.35, handlelength=1.5)
-        fig.text(0.5, 0.012,
-                 "SpaceMiT K1 · 1 core · FP32 reduced-depth deterministic captures · "
-                 "3 launches, 2 warmup + 5 timed · perturbation-gated operator profiles",
-                 ha="center", va="bottom", fontsize=8.8, color="#555555")
+        fig.legend(
+            handles=handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.055),
+            ncol=5,
+            frameon=False,
+            columnspacing=1.35,
+            handlelength=1.5,
+        )
+        fig.text(
+            0.5,
+            0.012,
+            "SpaceMiT K1 · 1 core · FP32 reduced-depth deterministic captures · "
+            "3 launches, 2 warmup + 5 timed · perturbation-gated operator profiles",
+            ha="center",
+            va="bottom",
+            fontsize=8.8,
+            color="#555555",
+        )
         fig.subplots_adjust(left=0.075, right=0.985, top=0.90, bottom=0.25)
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         fig.savefig(OUT_PDF, format="pdf", bbox_inches="tight", pad_inches=0.06)

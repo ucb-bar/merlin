@@ -16,6 +16,7 @@ is the board gate; the host-wide ``k1.board_lock`` flock is the stronger cross-p
 that also protects against OTHER sessions on this machine. Each fork's certify still fails-closed
 inside the task (one fork's error never aborts the sweep) exactly as the ThreadPool sweep does.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,8 +38,10 @@ def _make_chia_sweep(k1_slots: int):
     def _certify_task(job: dict) -> dict:
         # runs on a Ray worker under the chia venv; import inside so the closure stays serializable.
         import sys as _sys
+
         _sys.path.insert(0, str(REPO / "merlin" / "python"))
         from merlin.mining.runner import certify_rvv
+
         try:
             return certify_rvv(**job)
         except Exception as e:  # fork error must not abort the sweep (same contract as run_sweep)
@@ -66,8 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--width", type=int, default=3)
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--top-k", type=int, default=2)
-    ap.add_argument("--k1-slots", type=int, default=1,
-                    help="how many forks may hold the logical 'k1' board resource at once (1 = serial)")
+    ap.add_argument(
+        "--k1-slots",
+        type=int,
+        default=1,
+        help="how many forks may hold the logical 'k1' board resource at once (1 = serial)",
+    )
     a = ap.parse_args(argv)
 
     require_chia()
@@ -77,19 +84,38 @@ def main(argv: list[str] | None = None) -> int:
     sweep_fn = _make_chia_sweep(a.k1_slots)
     # chia_run owns the aet parent + Ray init (declares the k1 resource); run_instrumented_beam opens
     # its own aet parent for the beam tree, and the sweep tasks run under the Ray cluster chia_run set up.
-    with chia_run(suite=f"beam/{a.op}", method="chia_cca_beam", target="rvv",
-                  extra={"op": a.op, "k1_slots": a.k1_slots, "workload": Path(a.model_dir).name},
-                  ray_resources={"k1": a.k1_slots}) as run:
+    with chia_run(
+        suite=f"beam/{a.op}",
+        method="chia_cca_beam",
+        target="rvv",
+        extra={"op": a.op, "k1_slots": a.k1_slots, "workload": Path(a.model_dir).name},
+        ray_resources={"k1": a.k1_slots},
+    ) as run:
         res = run_instrumented_beam(
-            seed_pkg=seed_pkg, model_dir=a.model_dir, expert_objdump=a.expert_objdump,
-            op=a.op, dtype=a.dtype, shape_regime=a.shape_regime, targets=("k1",),
-            width=a.width, depth=a.depth, top_k=a.top_k, sweep_fn=sweep_fn)
+            seed_pkg=seed_pkg,
+            model_dir=a.model_dir,
+            expert_objdump=a.expert_objdump,
+            op=a.op,
+            dtype=a.dtype,
+            shape_regime=a.shape_regime,
+            targets=("k1",),
+            width=a.width,
+            depth=a.depth,
+            top_k=a.top_k,
+            sweep_fn=sweep_fn,
+        )
         best = res.get("best") or {}
-        run.summary = {"best_run_id": best.get("run_id"), "best_speedup": best.get("speedup"),
-                       "best_lever": best.get("lever"), "n_forks": len(res.get("nodes", [])) - 1}
+        run.summary = {
+            "best_run_id": best.get("run_id"),
+            "best_speedup": best.get("speedup"),
+            "best_lever": best.get("lever"),
+            "n_forks": len(res.get("nodes", [])) - 1,
+        }
         print(f"parent_run={res.get('parent_run_dir')}")
-        print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "
-              f"speedup={best.get('speedup')} gate_ok={best.get('gate_ok')}")
+        print(
+            f"best: run_id={best.get('run_id')} lever={best.get('lever')} "
+            f"speedup={best.get('speedup')} gate_ok={best.get('gate_ok')}"
+        )
     return 0
 
 

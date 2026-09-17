@@ -24,6 +24,7 @@ docs-doctor loop reconciles it and bumps last_verified.
 Needs full history: in a shallow clone `git log -1 -- <path>` returns the one grafted commit for every
 path, so every doc would read as drifted.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,8 +43,7 @@ KINDS = {"reference", "guide", "design"}
 STATUSES = {"current", "draft", "superseded"}
 SKIP_NAMES = {"README.md", "AGENT.md"}
 # Generated references legitimately carry no hand-authored front-matter.
-GENERATED = {"reference/cli.md", "reference/module_index.md", "reference/schemas.md",
-             "reference/repo_map.md"}
+GENERATED = {"reference/cli.md", "reference/module_index.md", "reference/schemas.md", "reference/repo_map.md"}
 RATCHET = ROOT / "build_tools" / "scripts" / "docs_freshness_ratchet.txt"
 
 
@@ -94,8 +94,9 @@ def uncategorized() -> list[str]:
 
 def _last_commit_date(path: str) -> str | None:
     """Newest committer date (YYYY-MM-DD) touching path, or None if untracked/unknown."""
-    r = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%cs", "--", path],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "-C", str(ROOT), "log", "-1", "--format=%cs", "--", path], capture_output=True, text=True
+    )
     d = (r.stdout or "").strip()
     return d or None
 
@@ -118,8 +119,7 @@ def drift() -> list[dict]:
             if d and lv and d > lv:
                 stale.append({"path": ref, "last_commit": d})
         if stale:
-            out.append({"doc": p.relative_to(DOCS).as_posix(), "last_verified": lv,
-                        "stale_code_refs": stale})
+            out.append({"doc": p.relative_to(DOCS).as_posix(), "last_verified": lv, "stale_code_refs": stale})
     return out
 
 
@@ -140,16 +140,22 @@ def ratchet() -> int:
     new = sorted(set(drifted) - allowed)
     healed = sorted(allowed - set(drifted))
     if healed:
-        print(f"[note] {len(healed)} ratcheted doc(s) no longer drift; delete their lines from "
-              f"{RATCHET.name}: {', '.join(healed)}")
+        print(
+            f"[note] {len(healed)} ratcheted doc(s) no longer drift; delete their lines from "
+            f"{RATCHET.name}: {', '.join(healed)}"
+        )
     if new:
-        sys.stderr.write(f"docs freshness FAILED -- {len(new)} doc(s) drifted behind their code_refs and "
-                         f"are not in {RATCHET.name}:\n")
+        sys.stderr.write(
+            f"docs freshness FAILED -- {len(new)} doc(s) drifted behind their code_refs and "
+            f"are not in {RATCHET.name}:\n"
+        )
         for doc in new:
             refs = ", ".join(f"{s['path']}@{s['last_commit']}" for s in drifted[doc]["stale_code_refs"])
             sys.stderr.write(f"  - {doc} (verified {drifted[doc]['last_verified']}) < {refs}\n")
-        sys.stderr.write("Reconcile the doc with its code and bump last_verified (docs-doctor skill); "
-                         "do not add it to the ratchet.\n")
+        sys.stderr.write(
+            "Reconcile the doc with its code and bump last_verified (docs-doctor skill); "
+            "do not add it to the ratchet.\n"
+        )
         return 1
     print(f"docs freshness: OK ({len(drifted)} drifted, all ratcheted; the list may only shrink)")
     return 0

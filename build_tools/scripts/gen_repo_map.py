@@ -14,6 +14,7 @@ Usage:
   gen_repo_map.py            # (re)generate docs/reference/repo_map.md
   gen_repo_map.py --check    # exit 1 if it is stale
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -26,8 +27,7 @@ MAP = ROOT / "docs" / "reference" / "repo_map.md"
 
 #: Trees listed one level deeper, because their children are the unit a reader looks for: one
 #: importable package, one experiment, one target.
-DEEP = ("merlin/python", "merlin/python/merlin", "merlin/experiments",
-        "merlin/targets", "merlin/tests")
+DEEP = ("merlin/python", "merlin/python/merlin", "merlin/experiments", "merlin/targets", "merlin/tests")
 
 #: Vendored upstream; its size says nothing about this repo and its AGENT.md files are ours.
 SKIP_TOP = ("third_party",)
@@ -63,8 +63,9 @@ def _tracked() -> list[str]:
 
     `check=True`: an empty file list because git failed reads exactly like an empty repo.
     """
-    out = subprocess.run(["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=ROOT,
-                         capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(
+        ["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
     return [ln for ln in out.splitlines() if ln.strip()]
 
 
@@ -77,7 +78,7 @@ def _purpose(rel: str) -> str:
     for i, line in enumerate(lines):
         if line.strip().lower().startswith("## purpose"):
             body: list[str] = []
-            for nxt in lines[i + 1:]:
+            for nxt in lines[i + 1 :]:
                 if nxt.startswith("#"):
                     break
                 if nxt.strip():
@@ -90,7 +91,7 @@ def _purpose(rel: str) -> str:
             # at a word boundary keeps the table readable without inventing grammar rules.
             if len(text) > 200:
                 cut = text.rfind(" ", 0, 200)
-                text = text[:cut if cut > 0 else 200].rstrip(" ,;:") + "…"
+                text = text[: cut if cut > 0 else 200].rstrip(" ,;:") + "…"
             return text
     return ""
 
@@ -167,8 +168,7 @@ def main(argv: list[str]) -> int:
     body = render()
     if "--check" in argv:
         if not MAP.is_file() or MAP.read_text(encoding="utf-8") != body:
-            sys.stderr.write(f"{MAP.relative_to(ROOT)} is stale — run: "
-                             "python build_tools/scripts/gen_repo_map.py\n")
+            sys.stderr.write(f"{MAP.relative_to(ROOT)} is stale — run: python build_tools/scripts/gen_repo_map.py\n")
             return 1
         print(f"{MAP.relative_to(ROOT)}: up to date")
         return 0

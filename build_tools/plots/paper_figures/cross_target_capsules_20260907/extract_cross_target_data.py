@@ -47,11 +47,16 @@ def product(shape):
 def shape_regime(name: str, shapes: list[list[int]]) -> str:
     low = name.lower()
     for key, label in (
-        ("odd_tail", "odd tail"), ("partial", "partial tile"),
-        ("sub_tile", "sub-tile"), ("aligned", "aligned"),
-        ("tall_skinny", "tall-skinny"), ("wide_skinny", "wide-skinny"),
-        ("gemv", "GEMV-like"), ("square", "square"),
-        ("projection", "projection"), ("spill", "spill/stress"),
+        ("odd_tail", "odd tail"),
+        ("partial", "partial tile"),
+        ("sub_tile", "sub-tile"),
+        ("aligned", "aligned"),
+        ("tall_skinny", "tall-skinny"),
+        ("wide_skinny", "wide-skinny"),
+        ("gemv", "GEMV-like"),
+        ("square", "square"),
+        ("projection", "projection"),
+        ("spill", "spill/stress"),
     ):
         if key in low:
             return label
@@ -115,11 +120,13 @@ def extract_target(target: str, cfg: dict) -> tuple[dict, list[dict], list[dict]
     output_chars = sum(x.get("output_chars", 0) or 0 for x in tools.values())
     l3_pass = sum(1 for x in graded_capsules if x.get("tiers", {}).get("L3") == "pass")
     l3_pass_carried = sum(
-        1 for x in graded_capsules
+        1
+        for x in graded_capsules
         if x.get("tiers", {}).get("L3") == "pass" and "L3" in (x.get("tier_reuse") or {}).get("carried", [])
     )
     l3_pass_executed = sum(
-        1 for x in graded_capsules
+        1
+        for x in graded_capsules
         if x.get("tiers", {}).get("L3") == "pass" and "L3" in (x.get("tier_reuse") or {}).get("executed", [])
     )
     summary = {
@@ -192,10 +199,16 @@ def extract_target(target: str, cfg: dict) -> tuple[dict, list[dict], list[dict]
             "max_tensor_elements": max([product(s) for s in shapes] or [0]),
             "required_tiers": "+".join(spec.get("required_oracle_tiers") or []),
             "l3_evidence": (
-                "carried pass" if observed.get("tiers", {}).get("L3") == "pass" and "L3" in (observed.get("tier_reuse") or {}).get("carried", [])
-                else "fresh pass" if observed.get("tiers", {}).get("L3") == "pass" and "L3" in (observed.get("tier_reuse") or {}).get("executed", [])
-                else "pass (origin unspecified)" if observed.get("tiers", {}).get("L3") == "pass"
-                else "failed" if observed.get("tiers", {}).get("L3") == "fail"
+                "carried pass"
+                if observed.get("tiers", {}).get("L3") == "pass"
+                and "L3" in (observed.get("tier_reuse") or {}).get("carried", [])
+                else "fresh pass"
+                if observed.get("tiers", {}).get("L3") == "pass"
+                and "L3" in (observed.get("tier_reuse") or {}).get("executed", [])
+                else "pass (origin unspecified)"
+                if observed.get("tiers", {}).get("L3") == "pass"
+                else "failed"
+                if observed.get("tiers", {}).get("L3") == "fail"
                 else "not passed"
             ),
         }
@@ -215,14 +228,16 @@ def extract_target(target: str, cfg: dict) -> tuple[dict, list[dict], list[dict]
         data = json.loads(path.read_text())
         if not data.get("gradeable") or not data.get("n_capsules"):
             continue
-        history.append({
-            "target": target,
-            "verdict": path.name,
-            "graded_at": data["graded_at"],
-            "passed": data["n_passed"],
-            "capsules": data["n_capsules"],
-            "pass_fraction": data["n_passed"] / data["n_capsules"],
-        })
+        history.append(
+            {
+                "target": target,
+                "verdict": path.name,
+                "graded_at": data["graded_at"],
+                "passed": data["n_passed"],
+                "capsules": data["n_capsules"],
+                "pass_fraction": data["n_passed"] / data["n_capsules"],
+            }
+        )
     return summary, capsules, history, tool_rows
 
 
@@ -254,7 +269,12 @@ def main():
     write_csv(HERE / "capsules.csv", capsules)
     write_csv(HERE / "campaigns.csv", summaries)
     write_csv(HERE / "tools.csv", tools)
-    print(json.dumps({"campaigns": len(summaries), "capsules": len(capsules), "history": len(history), "tools": len(tools)}, indent=2))
+    print(
+        json.dumps(
+            {"campaigns": len(summaries), "capsules": len(capsules), "history": len(history), "tools": len(tools)},
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

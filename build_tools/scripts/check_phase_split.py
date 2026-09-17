@@ -17,6 +17,7 @@ UNMEASURED IS NOT CLEAN. A target with no certification history cannot have its 
 decided at all. That is reported as ``undetermined`` and, with ``--strict``, is a non-zero exit --
 never a pass. The remedy is to certify that target's corpus once, not to weaken this check.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,8 +45,9 @@ def _corpus_root() -> Path:
 def _targets(root: Path) -> list[str]:
     """Every target with a public profile. Derived from what is on disk so a new target needs no edit
     here -- the profile IS the declaration that a target exists."""
-    return sorted(p.stem for p in (root / "profiles").glob("*.yaml")
-                  if not p.stem.startswith("_") and "." not in p.stem)
+    return sorted(
+        p.stem for p in (root / "profiles").glob("*.yaml") if not p.stem.startswith("_") and "." not in p.stem
+    )
 
 
 def _capsules_for(root: Path, target: str, subtrees: set[str]) -> list[Path]:
@@ -54,8 +56,7 @@ def _capsules_for(root: Path, target: str, subtrees: set[str]) -> list[Path]:
     if target in subtrees:
         return sorted((root / target).rglob("capsule.yaml"))
     excluded = subtrees | {"profiles"}
-    return sorted(p for p in root.rglob("capsule.yaml")
-                  if p.relative_to(root).parts[0] not in excluded)
+    return sorted(p for p in root.rglob("capsule.yaml") if p.relative_to(root).parts[0] not in excluded)
 
 
 def main() -> int:
@@ -63,8 +64,11 @@ def main() -> int:
     ap.add_argument("--target", help="only this target (default: every target with a public profile)")
     ap.add_argument("--budget-s", type=float, default=DEFAULT_BUDGET_S)
     ap.add_argument("--json", action="store_true", help="emit the report as JSON")
-    ap.add_argument("--strict", action="store_true",
-                    help="an undecidable target (no certification history) is a failure, not a note")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="an undecidable target (no certification history) is a failure, not a note",
+    )
     args = ap.parse_args()
 
     import yaml
@@ -97,15 +101,16 @@ def main() -> int:
                 caps.append(doc)
         fit = CC.fit_for(t)
         ca = PP.cycle_accurate_seen(t)
-        rep = PP.split_report(caps, target=t, fit=fit, budget_s=args.budget_s,
-                              cycle_accurate_available=ca)
+        rep = PP.split_report(caps, target=t, fit=fit, budget_s=args.budget_s, cycle_accurate_available=ca)
         counts = rep["counts"]
-        report[t] = {"n_capsules": rep["n_capsules"], "counts": counts,
-                     "cert_fit_samples": getattr(fit, "n_samples", None),
-                     "single_phase_reasons": rep["single_phase_reasons"]}
+        report[t] = {
+            "n_capsules": rep["n_capsules"],
+            "counts": counts,
+            "cert_fit_samples": getattr(fit, "n_samples", None),
+            "single_phase_reasons": rep["single_phase_reasons"],
+        }
 
-        anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s,
-                         cycle_accurate_available=ca, verify=True)
+        anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s, cycle_accurate_available=ca, verify=True)
         report[t]["obligations"] = anc["n_obligations"]
         report[t]["paired"] = anc["n_paired"]
         report[t]["orphaned"] = anc["n_orphaned"]
@@ -113,11 +118,12 @@ def main() -> int:
         report[t]["self_certified"] = anc.get("n_self_certified", 0)
         if anc.get("n_unverified"):
             reasons = sorted({r.get("verification", "") for r in anc["paired"] if not r.get("verified")})
-            unverified.append(f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) rest on "
-                              "an `extends` no result on disk backs: " + "; ".join(reasons[:3]))
+            unverified.append(
+                f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) rest on "
+                "an `extends` no result on disk backs: " + "; ".join(reasons[:3])
+            )
         if anc["n_orphaned"]:
-            orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing "
-                            f"({anc['orphaned'][0]['why']})")
+            orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing ({anc['orphaned'][0]['why']})")
 
         # A phase-2 member exists to carry a performance claim, and a claim whose family cannot reach a
         # verdict costs a certification floor to tell nobody anything. REPORTED, not gated: an
@@ -132,34 +138,44 @@ def main() -> int:
             if v.phase in (PP.PHASE1, PP.PHASE2, PP.NEITHER) and not v.reason.strip():
                 unexplained.append(f"{t}: {v.name} is {v.phase} with no recorded reason")
         if counts[PP.UNDETERMINED]:
-            undecided.append(f"{t}: {counts[PP.UNDETERMINED]} of {rep['n_capsules']} undecidable "
-                             f"({'no measured certification history' if fit is None else 'a predicate could not answer'})")
+            undecided.append(
+                f"{t}: {counts[PP.UNDETERMINED]} of {rep['n_capsules']} undecidable "
+                f"({'no measured certification history' if fit is None else 'a predicate could not answer'})"
+            )
 
     if args.json:
         print(json.dumps(report, indent=1, default=str))
     else:
-        print(f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
-              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}{'selfcert':>9}  cert-fit")
+        print(
+            f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
+            f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}{'selfcert':>9}  cert-fit"
+        )
         for t, r in report.items():
             c = r["counts"]
             n = r["cert_fit_samples"]
-            print(f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
-                  f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
-                  f"{r['orphaned']:>8}{r.get('verified', 0):>7}{r.get('self_certified', 0):>9}"
-                  f"  {('n=%d' % n) if n else 'none'}")
+            print(
+                f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
+                f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
+                f"{r['orphaned']:>8}{r.get('verified', 0):>7}{r.get('self_certified', 0):>9}"
+                f"  {('n=%d' % n) if n else 'none'}"
+            )
 
     if unexplained:
-        print("\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
-              "from a member nobody sized:")
+        print(
+            "\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
+            "from a member nobody sized:"
+        )
         for line in unexplained[:20]:
             print(f"  - {line}")
         return 1
 
     if orphaned:
         head = "[FAIL]" if args.strict else "[note]"
-        print(f"\n{head} phase-split: a phase-2 member is admissible only as an EXTENSION of a sibling "
-              "that WAS certified; one resting on nothing is an L2 pass on a shape nothing ever "
-              "certified cycle-accurately:")
+        print(
+            f"\n{head} phase-split: a phase-2 member is admissible only as an EXTENSION of a sibling "
+            "that WAS certified; one resting on nothing is an L2 pass on a shape nothing ever "
+            "certified cycle-accurately:"
+        )
         for line in orphaned:
             print(f"  - {line}")
 
@@ -169,22 +185,28 @@ def main() -> int:
         # count would have improved a number that gates nothing. An unchecked `extends` reads as
         # certified, which is precisely the claim this file refuses to let a corpus make for free.
         head = "[FAIL]" if args.strict else "[note]"
-        print(f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
-              "because an unchecked one reads as certified:")
+        print(
+            f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
+            "because an unchecked one reads as certified:"
+        )
         for line in unverified:
             print(f"  - {line}")
 
     if unreachable_levers:
-        print("\n[note] phase-split: a phase-2 member carries a performance claim, and a family whose "
-              "declaration contradicts itself reaches no verdict -- the member costs a certification "
-              "floor to tell nobody anything:")
+        print(
+            "\n[note] phase-split: a phase-2 member carries a performance claim, and a family whose "
+            "declaration contradicts itself reaches no verdict -- the member costs a certification "
+            "floor to tell nobody anything:"
+        )
         for line in unreachable_levers[:10]:
             print(f"  - {line}")
 
     if undecided:
         head = "[FAIL]" if args.strict else "[note]"
-        print(f"\n{head} phase-split: a target with no certification history cannot have its phase-1 "
-              "membership decided; certify its corpus once rather than weakening this check:")
+        print(
+            f"\n{head} phase-split: a target with no certification history cannot have its phase-1 "
+            "membership decided; certify its corpus once rather than weakening this check:"
+        )
         for line in undecided:
             print(f"  - {line}")
         if args.strict:

@@ -5,7 +5,6 @@ from pathlib import Path
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-
 COLORS = {
     "merlin": "#0072B2",
     "executorch": "#D55E00",
@@ -14,24 +13,26 @@ COLORS = {
     "pending": "#777777",
 }
 
-mpl.rcParams.update({
-    "font.size": 10,
-    "font.family": "serif",
-    "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-    "axes.labelsize": 10,
-    "axes.titlesize": 11,
-    "xtick.labelsize": 9,
-    "ytick.labelsize": 9,
-    "legend.fontsize": 8.5,
-    "figure.dpi": 300,
-    "savefig.dpi": 300,
-    "savefig.bbox": "tight",
-    "savefig.pad_inches": 0.05,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-})
+mpl.rcParams.update(
+    {
+        "font.size": 10,
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "axes.labelsize": 10,
+        "axes.titlesize": 11,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8.5,
+        "figure.dpi": 300,
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.05,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
 
 def save_figure(fig: plt.Figure, output: Path) -> None:
@@ -47,6 +48,7 @@ def figure_dir(set_name: str) -> Path:
     generator, which is how 33 renders once accumulated in a top-level ``figures/`` directory.
     """
     from merlin.common.paths import artifacts_dir  # noqa: PLC0415
+
     out = artifacts_dir() / "paper-figures" / set_name
     out.mkdir(parents=True, exist_ok=True)
     return out

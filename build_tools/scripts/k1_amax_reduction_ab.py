@@ -27,6 +27,7 @@ USAGE (the board is the only thing here that is not host-side):
 Add `--build-only` to do everything except touch the board: it still builds both ELFs and prints the
 linked-ELF census, which is the whole static half of the evidence and needs no hardware.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,14 +45,27 @@ from merlin.llvmlower import toolchain
 from merlin.llvmlower.reduce_vec import FEATURE
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+
 if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _k1_common import run_paddings  # noqa: E402  (helpers shared by the k1 drivers)
 
 #: libm symbols the quantization path can reach. `fabsf` is the one this feature removes; the others
 #: are listed so the report shows whether removing it moved anything else (it should not).
-LIBM_SYMBOLS = ("fabsf", "fabs", "roundevenf", "expf", "erff", "tanhf",
-                "sqrtf", "logf", "powf", "truncf", "floorf", "ceilf")
+LIBM_SYMBOLS = (
+    "fabsf",
+    "fabs",
+    "roundevenf",
+    "expf",
+    "erff",
+    "tanhf",
+    "sqrtf",
+    "logf",
+    "powf",
+    "truncf",
+    "floorf",
+    "ceilf",
+)
 
 
 def _objdump(elf: Path) -> str:
@@ -61,8 +75,7 @@ def _objdump(elf: Path) -> str:
     tool = toolchain.clang().parent / "llvm-objdump"
     if not tool.is_file():
         raise SystemExit(f"llvm-objdump not found next to {toolchain.clang()}")
-    return subprocess.run([str(tool), "-d", str(elf)],
-                          capture_output=True, text=True, check=True).stdout
+    return subprocess.run([str(tool), "-d", str(elf)], capture_output=True, text=True, check=True).stdout
 
 
 def elf_census(elf: Path) -> dict:
@@ -77,7 +90,7 @@ def elf_census(elf: Path) -> dict:
     for line in _objdump(elf).splitlines():
         s = line.strip()
         if s.endswith(":") and "<" in s and ">" in s:
-            cur = s[s.find("<") + 1:s.rfind(">")]
+            cur = s[s.find("<") + 1 : s.rfind(">")]
             per.setdefault(cur, {"vector": 0, "scalar": 0, "total": 0})
             continue
         if cur is None:
@@ -105,12 +118,16 @@ def elf_census(elf: Path) -> dict:
                 calls[sym] = calls.get(sym, 0) + 1
     fwd = per.get("forward", {"vector": 0, "scalar": 0, "total": 0})
     frac = (fwd["vector"] / fwd["total"]) if fwd["total"] else None
-    return {"elf_bytes": elf.stat().st_size, "symbols": len(per),
-            "forward": fwd, "forward_vector_fraction": frac, "libm_call_sites": calls}
+    return {
+        "elf_bytes": elf.stat().st_size,
+        "symbols": len(per),
+        "forward": fwd,
+        "forward_vector_fraction": frac,
+        "libm_call_sites": calls,
+    }
 
 
-def build(bundle: Path, pkg, features: list[str], work: Path,
-          max_session_steps: "int | None" = None) -> Path:
+def build(bundle: Path, pkg, features: list[str], work: Path, max_session_steps: "int | None" = None) -> Path:
     """Cross-compile + LINK, host-side. `build_k1_binary` never contacts the board.
 
     `fallback_policy="forbid"` on purpose: the default silently falls back to a SCALAR whole-model
@@ -118,37 +135,49 @@ def build(bundle: Path, pkg, features: list[str], work: Path,
     fallback, not the feature. A build that cannot lower must fail loudly here.
     """
     work.mkdir(parents=True, exist_ok=True)
-    return k1.build_k1_binary(bundle, work, replace(pkg, compiler_features=sorted(features)),
-                              fallback_policy="forbid",
-                              max_session_steps=max_session_steps)
+    return k1.build_k1_binary(
+        bundle,
+        work,
+        replace(pkg, compiler_features=sorted(features)),
+        fallback_policy="forbid",
+        max_session_steps=max_session_steps,
+    )
 
 
 def verdict(base_rows: list[dict], feat_rows: list[dict]) -> dict:
     """Bit-identity across paddings AND between arms, or the exact reason it could not be decided."""
+
     def digests(rows):
         return [r.get("board_out_hash") for r in rows]
+
     b, f = digests(base_rows), digests(feat_rows)
     if any(d is None for d in b + f) or not b or not f:
-        return {"decided": False,
-                "reason": "at least one run produced no output digest; a missing digest is refused "
-                          "as firmly as a mismatch -- it cannot support a bit-identity claim"}
-    return {"decided": True,
-            "baseline_stable_across_paddings": len(set(b)) == 1,
-            "feature_stable_across_paddings": len(set(f)) == 1,
-            "arms_bit_identical": set(b) == set(f) and len(set(b)) == 1,
-            "baseline_digests": sorted(set(b)), "feature_digests": sorted(set(f))}
+        return {
+            "decided": False,
+            "reason": "at least one run produced no output digest; a missing digest is refused "
+            "as firmly as a mismatch -- it cannot support a bit-identity claim",
+        }
+    return {
+        "decided": True,
+        "baseline_stable_across_paddings": len(set(b)) == 1,
+        "feature_stable_across_paddings": len(set(f)) == 1,
+        "arms_bit_identical": set(b) == set(f) and len(set(b)) == 1,
+        "baseline_digests": sorted(set(b)),
+        "feature_digests": sorted(set(f)),
+    }
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bundle", required=True, type=Path)
     ap.add_argument("--package", required=True, type=Path)
-    ap.add_argument("--paddings", type=int, default=6,
-                    help="environment paddings per arm (>= 6 is the standard here)")
+    ap.add_argument("--paddings", type=int, default=6, help="environment paddings per arm (>= 6 is the standard here)")
     ap.add_argument("--n", type=int, default=5, help="repeats per padding (min wall is taken)")
-    ap.add_argument("--build-only", action="store_true",
-                    help="build both ELFs and print the linked-ELF census; never touch the board")
+    ap.add_argument(
+        "--build-only",
+        action="store_true",
+        help="build both ELFs and print the linked-ELF census; never touch the board",
+    )
     ap.add_argument("--timeout", type=int, default=900, help="per-run board timeout (s)")
     ap.add_argument("--work", type=Path, default=None)
     # Caps how much of a session corpus is EMBEDDED AS C LITERALS. resnet50's 256-step, 154 MB
@@ -162,55 +191,60 @@ def main(argv=None) -> int:
     work = a.work or Path(tempfile.mkdtemp(prefix="amax_ab_"))
     pkg = load_rvv_package(a.package)
     base_features = sorted(frozenset(pkg.compiler_features or []))
-    arms = {"baseline": base_features,
-            "with_amax_reduction": sorted(set(base_features) | {FEATURE})}
+    arms = {"baseline": base_features, "with_amax_reduction": sorted(set(base_features) | {FEATURE})}
 
-    report: dict = {"bundle": str(a.bundle), "package": str(a.package),
-                    "baseline_features": base_features, "feature": FEATURE,
-                    "paddings": a.paddings, "n": a.n, "work": str(work), "arms": {}}
+    report: dict = {
+        "bundle": str(a.bundle),
+        "package": str(a.package),
+        "baseline_features": base_features,
+        "feature": FEATURE,
+        "paddings": a.paddings,
+        "n": a.n,
+        "work": str(work),
+        "arms": {},
+    }
 
     elves: dict[str, Path] = {}
     for tag, feats in arms.items():
         try:
             elf = build(a.bundle, pkg, feats, work / tag, a.max_session_steps)
-        except Exception as e:                                       # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             report["arms"][tag] = {"features": feats, "build_error": f"{type(e).__name__}: {e}"}
             continue
         elves[tag] = elf
         report["arms"][tag] = {"features": feats, "elf": str(elf), "static": elf_census(elf)}
 
     if len(elves) == 2:
-        b, f = (report["arms"]["baseline"]["static"],
-                report["arms"]["with_amax_reduction"]["static"])
+        b, f = (report["arms"]["baseline"]["static"], report["arms"]["with_amax_reduction"]["static"])
         report["static_delta"] = {
             "forward_total": f["forward"]["total"] - b["forward"]["total"],
             "forward_vector": f["forward"]["vector"] - b["forward"]["vector"],
             "forward_scalar": f["forward"]["scalar"] - b["forward"]["scalar"],
-            "forward_vector_fraction": [b["forward_vector_fraction"],
-                                        f["forward_vector_fraction"]],
-            "libm_call_sites": {"baseline": b["libm_call_sites"],
-                                "with_feature": f["libm_call_sites"]},
-            "elf_bytes": [b["elf_bytes"], f["elf_bytes"]]}
+            "forward_vector_fraction": [b["forward_vector_fraction"], f["forward_vector_fraction"]],
+            "libm_call_sites": {"baseline": b["libm_call_sites"], "with_feature": f["libm_call_sites"]},
+            "elf_bytes": [b["elf_bytes"], f["elf_bytes"]],
+        }
 
     if not a.build_only and len(elves) == 2:
-        rows = {tag: run_paddings(a.bundle, work / tag, pkg, elf, a.paddings, a.n, a.timeout)
-                for tag, elf in elves.items()}
+        rows = {
+            tag: run_paddings(a.bundle, work / tag, pkg, elf, a.paddings, a.n, a.timeout) for tag, elf in elves.items()
+        }
         for tag, r in rows.items():
             report["arms"][tag]["runs"] = r
         report["correctness"] = verdict(rows["baseline"], rows["with_amax_reduction"])
-        walls = {tag: [x.get("wall_ns_min") for x in r if x.get("wall_ns_min")]
-                 for tag, r in rows.items()}
+        walls = {tag: [x.get("wall_ns_min") for x in r if x.get("wall_ns_min")] for tag, r in rows.items()}
         if all(walls.values()):
             lo, hi = min(walls["baseline"]), min(walls["with_amax_reduction"])
             report["wall"] = {
-                "baseline_ns_min": lo, "feature_ns_min": hi,
+                "baseline_ns_min": lo,
+                "feature_ns_min": hi,
                 "ratio_baseline_over_feature": lo / hi if hi else None,
                 "board_noise_floor_pct": 1.9,
                 "note": "NOT a speed claim. A ratio inside the board's own noise floor is not a "
-                        "result; see memory k1-measurement-noise-floor."}
+                "result; see memory k1-measurement-noise-floor.",
+            }
     elif not a.build_only:
-        report["correctness"] = {"decided": False,
-                                 "reason": "both arms did not build; nothing was run"}
+        report["correctness"] = {"decided": False, "reason": "both arms did not build; nothing was run"}
 
     product = new_product("amax-reduction-ab", target="k1_spacemit", version=1)
     out = product.add_artifact("report.json")

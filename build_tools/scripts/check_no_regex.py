@@ -27,6 +27,7 @@ The allowlist only ever *shrinks*: as each file is converted, delete its entry. 
     python build_tools/scripts/check_no_regex.py --staged   # only git-staged files
     python build_tools/scripts/check_no_regex.py --stop-hook # emit Claude Code Stop-hook JSON
 """
+
 from __future__ import annotations
 
 import ast
@@ -44,10 +45,20 @@ EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# regex-ok:"
 
 # re-module functions that constitute a regex call site.
-REGEX_FUNCS = frozenset({
-    "compile", "match", "search", "fullmatch", "sub", "subn",
-    "findall", "finditer", "split", "escape",
-})
+REGEX_FUNCS = frozenset(
+    {
+        "compile",
+        "match",
+        "search",
+        "fullmatch",
+        "sub",
+        "subn",
+        "findall",
+        "finditer",
+        "split",
+        "escape",
+    }
+)
 
 
 def _load_allowlist() -> set[str]:
@@ -66,8 +77,8 @@ class _RegexVisitor(ast.NodeVisitor):
     """Collect line numbers of ``re``-module call sites, following the file's import aliases."""
 
     def __init__(self) -> None:
-        self.aliases: set[str] = set()       # module aliases bound to `re` (e.g. {"re", "_re"})
-        self.from_funcs: set[str] = set()     # names bound via `from re import <name>`
+        self.aliases: set[str] = set()  # module aliases bound to `re` (e.g. {"re", "_re"})
+        self.from_funcs: set[str] = set()  # names bound via `from re import <name>`
         self.hits: list[tuple[int, str]] = []  # (lineno, what)
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -85,8 +96,12 @@ class _RegexVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         fn = node.func
         # <alias>.<func>(...)
-        if (isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name)
-                and fn.value.id in self.aliases and fn.attr in REGEX_FUNCS):
+        if (
+            isinstance(fn, ast.Attribute)
+            and isinstance(fn.value, ast.Name)
+            and fn.value.id in self.aliases
+            and fn.attr in REGEX_FUNCS
+        ):
             self.hits.append((fn.lineno, f"{fn.value.id}.{fn.attr}"))
         # bare <func>(...) from `from re import <func>`
         elif isinstance(fn, ast.Name) and fn.id in self.from_funcs and fn.id in REGEX_FUNCS:
@@ -120,8 +135,13 @@ def _iter_targets(staged: bool) -> list[Path]:
         # that cannot run (bad GIT_DIR, no repo, no binary) yielded an EMPTY list and the gate printed
         # OK -- a green that could not have gone red. `check=True` turns that into an exception the
         # caller reports; see check_no_answer_keys.py, which fixed the same shape first.
-        out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
         rels = [ln for ln in out.splitlines() if ln.strip()]
     else:
         rels = []
@@ -142,6 +162,7 @@ def _iter_targets(staged: bool) -> list[Path]:
 #: This gate's name in its own messages.
 _GATE = "no-regex"
 
+
 def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
     """Refuse when the work list could not be read.
 
@@ -150,8 +171,10 @@ def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
     Reported in whichever dialect the caller speaks (a Stop hook BLOCKS via JSON on stdout, not via
     the exit status), so the two cannot drift apart.
     """
-    reason = (f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
-              f"not the same as clean. Fix the tree/index and re-run.")
+    reason = (
+        f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
+        f"not the same as clean. Fix the tree/index and re-run."
+    )
     if stop_hook:
         print(json.dumps({"decision": "block", "reason": reason}))
         return 0  # stop-hook signals via JSON, not exit code
@@ -175,16 +198,25 @@ def main(argv: list[str] | None = None) -> int:
         if relstr in allow:
             continue
         for lineno, what in _scan_file(ROOT / rel):
-            violations.append(f"{relstr}:{lineno}: regex call `{what}` "
-                              f"(replace with a structured impl, add `# regex-ok: <why>`, "
-                              f"or allowlist the file)")
+            violations.append(
+                f"{relstr}:{lineno}: regex call `{what}` "
+                f"(replace with a structured impl, add `# regex-ok: <why>`, "
+                f"or allowlist the file)"
+            )
 
     if stop_hook:
         if violations:
-            print(json.dumps({"decision": "block",
-                              "reason": ("Stray regex outside the allowlist (see docs / "
-                                         "build_tools/scripts/regex_allowlist.txt):\n- "
-                                         + "\n- ".join(violations))}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": (
+                            "Stray regex outside the allowlist (see docs / "
+                            "build_tools/scripts/regex_allowlist.txt):\n- " + "\n- ".join(violations)
+                        ),
+                    }
+                )
+            )
         else:
             print(json.dumps({}))
         return 0  # stop-hook signals via JSON, not exit code

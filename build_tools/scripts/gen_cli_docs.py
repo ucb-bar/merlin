@@ -8,6 +8,7 @@ Usage:
   python build_tools/scripts/gen_cli_docs.py           # (re)write docs/reference/cli.md
   python build_tools/scripts/gen_cli_docs.py --check    # exit 1 if docs/reference/cli.md is stale vs pyproject
 """
+
 from __future__ import annotations
 
 import sys
@@ -42,8 +43,10 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
         if cur != new:
-            sys.stderr.write("docs/reference/cli.md is stale vs pyproject [project.scripts]; "
-                             "run: python build_tools/scripts/gen_cli_docs.py\n")
+            sys.stderr.write(
+                "docs/reference/cli.md is stale vs pyproject [project.scripts]; "
+                "run: python build_tools/scripts/gen_cli_docs.py\n"
+            )
             return 1
         print("docs/reference/cli.md: up to date")
         return 0

@@ -37,6 +37,7 @@ ratchet; 2 when a target's contract cannot be read, since then nothing about its
 established either way. Both used to require an opt-in flag that nothing passed, and the script was
 wired into no hook and no CI job, so it printed 25 un-ratcheted weakenings and exited 0.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,7 +63,7 @@ _HAND_ROLES = frozenset({"handauthored_compiler_test", "uplifted_from_bareMetalC
 def _operand_dtype(doc: dict) -> str | None:
     """The dtype the capsule's work is done in, from its declared operands."""
     for role in ("input", "weight"):
-        for spec in (doc.get("inputs") or ()):
+        for spec in doc.get("inputs") or ():
             if str((spec or {}).get("role")) == role and spec.get("dtype"):
                 return str(spec["dtype"])
     return None
@@ -92,12 +93,12 @@ def _target_of(path: Path, target_dirs: frozenset[str] = frozenset()) -> str | N
         i = parts.index("capsules")
     except ValueError:
         return None
-    rest = parts[i + 1:]
+    rest = parts[i + 1 :]
     if not rest:
         return None
     if rest[0] in target_dirs:
         return rest[0]
-    return rest[0] if len(rest) > 3 else None      # <target>/<category>/<capsule>/capsule.yaml
+    return rest[0] if len(rest) > 3 else None  # <target>/<category>/<capsule>/capsule.yaml
 
 
 def audit(targets=()) -> dict:
@@ -120,7 +121,7 @@ def audit(targets=()) -> dict:
         if t not in admitted_cache:
             try:
                 admitted_cache[t] = CF.admitted_with_reason(t)
-            except Exception as exc:               # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 admitted_cache[t] = ({}, f"unresolvable: {type(exc).__name__}: {exc}")
         return admitted_cache[t]
 
@@ -161,21 +162,29 @@ def audit(targets=()) -> dict:
         # through (an unmapped token comes back unchanged, so it surfaces rather than vanishing).
         dtypes = {CF.capsule_dtype(str(x)) for x in (adm.get(str(fam)) or ())}
         if not dtypes or (dtype and dtype not in dtypes):
-            continue                               # not admitted: a fallback is the right answer
+            continue  # not admitted: a fallback is the right answer
         checked += 1
         if sem.get("must_accelerate") is True:
             continue
         if doc.get("not_asserted_reason") or sem.get("not_asserted_reason"):
-            continue                               # declined WITH a stated reason
-        weakened.append({
-            "capsule": cy.parent.name, "target": declared, "family": str(fam), "dtype": dtype,
-            "must_accelerate": sem.get("must_accelerate"),
-            "source_role": str(doc.get("source_role") or "(none)"),
-            "hand_authored": str(doc.get("source_role") or "") in _HAND_ROLES,
-            "path": str(cy.parent.relative_to(_REPO)),
-        })
-    return {"n_admitted_capsules_checked": checked, "unresolved_targets": unresolved,
-            "weakened": sorted(weakened, key=lambda r: (not r["hand_authored"], r["capsule"]))}
+            continue  # declined WITH a stated reason
+        weakened.append(
+            {
+                "capsule": cy.parent.name,
+                "target": declared,
+                "family": str(fam),
+                "dtype": dtype,
+                "must_accelerate": sem.get("must_accelerate"),
+                "source_role": str(doc.get("source_role") or "(none)"),
+                "hand_authored": str(doc.get("source_role") or "") in _HAND_ROLES,
+                "path": str(cy.parent.relative_to(_REPO)),
+            }
+        )
+    return {
+        "n_admitted_capsules_checked": checked,
+        "unresolved_targets": unresolved,
+        "weakened": sorted(weakened, key=lambda r: (not r["hand_authored"], r["capsule"])),
+    }
 
 
 #: Pre-existing debt, beside the script like every sibling gate's ratchet. MAY ONLY SHRINK.
@@ -194,25 +203,31 @@ def _load_ratchet(p: Path | None) -> set[str]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=None)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--ratchet", type=Path, default=None,
-                    help=f"accepted debt, `<target>/<capsule>` per line (default: {_RATCHET.name}). "
-                         f"It MAY ONLY SHRINK.")
-    ap.add_argument("--no-ratchet", action="store_true",
-                    help="report every finding as new (what the debt list is hiding)")
+    ap.add_argument(
+        "--ratchet",
+        type=Path,
+        default=None,
+        help=f"accepted debt, `<target>/<capsule>` per line (default: {_RATCHET.name}). It MAY ONLY SHRINK.",
+    )
+    ap.add_argument(
+        "--no-ratchet", action="store_true", help="report every finding as new (what the debt list is hiding)"
+    )
     # Kept for callers that already pass them; both behaviours are now the DEFAULT. A gate whose exit
     # code only reflected its finding when the caller opted in is a gate that reports and cannot
     # enforce -- this one printed 25 unratcheted weakenings and exited 0, wired into no hook.
     ap.add_argument("--fail-on-weakened", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--fail-on-unresolved", action="store_true", help=argparse.SUPPRESS)
-    ap.add_argument("--advisory", action="store_true",
-                    help="print the findings and exit 0 (inventory mode; NOT for a hook)")
-    ap.add_argument("--stop-hook", action="store_true",
-                    help="session Stop hook: JSON-only on stdout, blocks via {'decision': 'block'} "
-                         "rather than the exit status")
+    ap.add_argument(
+        "--advisory", action="store_true", help="print the findings and exit 0 (inventory mode; NOT for a hook)"
+    )
+    ap.add_argument(
+        "--stop-hook",
+        action="store_true",
+        help="session Stop hook: JSON-only on stdout, blocks via {'decision': 'block'} rather than the exit status",
+    )
     a = ap.parse_args(argv)
 
     rep = audit(tuple(a.target or ()))
@@ -225,17 +240,28 @@ def main(argv=None) -> int:
         # A Claude Code Stop hook BLOCKS through {"decision": "block"} on stdout; a non-zero exit is a
         # NON-blocking error there, and stdout must carry nothing but the JSON.
         if rep["unresolved_targets"]:
-            print(json.dumps({"decision": "block", "reason":
-                              f"mesh assertion: {len(rep['unresolved_targets'])} target(s) have no "
-                              f"resolvable contract, so their capsules established nothing: "
-                              + ", ".join(sorted(rep["unresolved_targets"]))}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": f"mesh assertion: {len(rep['unresolved_targets'])} target(s) have no "
+                        f"resolvable contract, so their capsules established nothing: "
+                        + ", ".join(sorted(rep["unresolved_targets"])),
+                    }
+                )
+            )
         elif new:
-            print(json.dumps({"decision": "block", "reason":
-                              f"{len(new)} capsule(s) decline must_accelerate on work their target's "
-                              f"contract admits, with no not_asserted_reason "
-                              f"({len(hand_new)} hand-authored):\n- "
-                              + "\n- ".join(f"{r['target']}/{r['capsule']} "
-                                            f"({r['family']}/{r['dtype']})" for r in new[:40])}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": f"{len(new)} capsule(s) decline must_accelerate on work their target's "
+                        f"contract admits, with no not_asserted_reason "
+                        f"({len(hand_new)} hand-authored):\n- "
+                        + "\n- ".join(f"{r['target']}/{r['capsule']} ({r['family']}/{r['dtype']})" for r in new[:40]),
+                    }
+                )
+            )
         else:
             print(json.dumps({}))
         return 0  # stop-hook signals via JSON, not exit code
@@ -248,15 +274,21 @@ def main(argv=None) -> int:
         # Both counts are over the SAME population. They used to be over two ("25 (0 of them
         # HAND-AUTHORED)" put the total beside the un-ratcheted hand-authored count), which read as
         # "none of the weakenings are hand-authored" while nine of them were.
-        print(f"   declining the demand with no reason     : {len(rep['weakened'])}"
-              f"  ({len(hand_all)} of them HAND-AUTHORED)")
-        print(f"   of those, NOT in the ratchet            : {len(new)}"
-              f"  ({len(hand_new)} HAND-AUTHORED)   [ratchet: {len(ratchet)} entr(y|ies)]")
+        print(
+            f"   declining the demand with no reason     : {len(rep['weakened'])}"
+            f"  ({len(hand_all)} of them HAND-AUTHORED)"
+        )
+        print(
+            f"   of those, NOT in the ratchet            : {len(new)}"
+            f"  ({len(hand_new)} HAND-AUTHORED)   [ratchet: {len(ratchet)} entr(y|ies)]"
+        )
         for r in rep["weakened"][:25]:
             mark = " " if f"{r['target']}/{r['capsule']}" in ratchet else "*"
             tag = "HAND" if r["hand_authored"] else "    "
-            print(f"   {mark} {tag} {r['capsule']:36s} {r['target']:12s} "
-                  f"{r['family']}/{r['dtype']} must_accelerate={r['must_accelerate']}")
+            print(
+                f"   {mark} {tag} {r['capsule']:36s} {r['target']:12s} "
+                f"{r['family']}/{r['dtype']} must_accelerate={r['must_accelerate']}"
+            )
         if len(rep["weakened"]) > 25:
             print(f"   … and {len(rep['weakened']) - 25} more (--json for all)")
         if rep["unresolved_targets"]:
@@ -265,13 +297,19 @@ def main(argv=None) -> int:
                 print(f"     ? {t}: {why[:90]}")
 
     if rep["unresolved_targets"]:
-        print(f"\nCANNOT DECIDE: {len(rep['unresolved_targets'])} target(s) have no resolvable "
-              f"contract, so their capsules established nothing", file=sys.stderr)
+        print(
+            f"\nCANNOT DECIDE: {len(rep['unresolved_targets'])} target(s) have no resolvable "
+            f"contract, so their capsules established nothing",
+            file=sys.stderr,
+        )
         return 0 if a.advisory else 2
     if new:
-        print(f"\nFAIL: {len(new)} capsule(s) decline must_accelerate on work their target's "
-              f"contract admits, with no not_asserted_reason ({len(hand_new)} hand-authored). "
-              f"Fix them, or state a reason; {_RATCHET.name} may only SHRINK.", file=sys.stderr)
+        print(
+            f"\nFAIL: {len(new)} capsule(s) decline must_accelerate on work their target's "
+            f"contract admits, with no not_asserted_reason ({len(hand_new)} hand-authored). "
+            f"Fix them, or state a reason; {_RATCHET.name} may only SHRINK.",
+            file=sys.stderr,
+        )
         return 0 if a.advisory else 1
     return 0
 

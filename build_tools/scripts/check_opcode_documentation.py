@@ -25,6 +25,7 @@ check, and turning inherited debt into a hard failure on day one only teaches ev
   --fail-on-unverifiable exit non-zero when the comparison COULD NOT RUN (unreadable ABI or parser
                          tables). A check that could not run has established nothing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,7 +79,7 @@ def audit() -> dict:
     for mnem in sorted(IE.defined_mnemonics()):
         opcode = mapping.get(mnem)
         if opcode is None:
-            structural.append(mnem)          # `tensor` declares a leaf; it issues no command
+            structural.append(mnem)  # `tensor` declares a leaf; it issues no command
             continue
         (documented if opcode in opcodes else undocumented)[mnem] = opcode
     # The mirror direction: an ABI opcode no mnemonic reaches is documentation for an op no capsule can
@@ -94,8 +95,7 @@ def audit() -> dict:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=_DEFAULT_RATCHET)
     ap.add_argument("--fail-on-undocumented", action="store_true")
@@ -117,23 +117,25 @@ def main(argv=None) -> int:
     if a.json:
         print(json.dumps(rep, indent=2))
     else:
-        print(f"[opcode-doc] {len(rep['documented'])} documented, "
-              f"{len(rep['undocumented'])} undocumented "
-              f"({len(rep['ratcheted'])} ratcheted), {len(rep['structural'])} structural")
+        print(
+            f"[opcode-doc] {len(rep['documented'])} documented, "
+            f"{len(rep['undocumented'])} undocumented "
+            f"({len(rep['ratcheted'])} ratcheted), {len(rep['structural'])} structural"
+        )
         for m, oc in sorted(new.items()):
-            print(f"  [NEW] {m} -> {oc}: the parser accepts it and the ABI states no semantics; the "
-                  f"agent would have to guess the operands")
+            print(
+                f"  [NEW] {m} -> {oc}: the parser accepts it and the ABI states no semantics; the "
+                f"agent would have to guess the operands"
+            )
         for m in rep["ratcheted"]:
             print(f"  [debt] {m} -> {rep['undocumented'][m]}")
         if stale:
-            print(f"  [ratchet] {len(stale)} entry/entries now documented — delete them: "
-                  f"{', '.join(stale)}")
+            print(f"  [ratchet] {len(stale)} entry/entries now documented — delete them: {', '.join(stale)}")
         for oc in rep["abi_opcodes_no_mnemonic_reaches"]:
             print(f"  [note] ABI documents {oc}, which no interface mnemonic reaches")
 
     if a.fail_on_undocumented and new:
-        print(f"[FAIL] {len(new)} interface op(s) the parser accepts have no ABI semantics",
-              file=sys.stderr)
+        print(f"[FAIL] {len(new)} interface op(s) the parser accepts have no ABI semantics", file=sys.stderr)
         return 1
     return 0
 

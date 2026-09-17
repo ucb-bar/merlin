@@ -47,6 +47,7 @@ here (the build's ``build_py`` hook does the same thing, but needs setuptools, w
 does not carry); the copy rules come from ``setup.py`` either way, and re-running the check afterwards
 verifies the result.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -114,8 +115,11 @@ def _setup_rules(base: Path) -> dict:
                     pass
             elif name == _KINDS_FROM:
                 # ``_BUNDLE = {kind: ... for kind in (...)}`` — the iterated tuple names the trees.
-                found = [ast.literal_eval(g.iter) for g in getattr(node.value, "generators", [])
-                         if isinstance(g.iter, (ast.Tuple, ast.List))]
+                found = [
+                    ast.literal_eval(g.iter)
+                    for g in getattr(node.value, "generators", [])
+                    if isinstance(g.iter, (ast.Tuple, ast.List))
+                ]
                 if found:
                     kinds = tuple(str(k) for k in found[0])
 
@@ -161,7 +165,7 @@ def _walk_source(root: Path, kind: str, rules: dict) -> dict[str, str]:
         try:
             entries = sorted(here.iterdir())
         except OSError:
-            out[rel or "."] = "UNREADABLE"   # a directory we could not list is UNKNOWN, not empty
+            out[rel or "."] = "UNREADABLE"  # a directory we could not list is UNKNOWN, not empty
             continue
         for entry in entries:
             if _is_ignored(entry.name, kind, rules):
@@ -214,26 +218,52 @@ def audit(root: Path | None = None) -> dict:
     base = Path(root) if root is not None else repo_root()
     bad_allowlist = sorted(k for k, v in _INTENDED_DIVERGENCE.items() if not str(v).strip())
     if bad_allowlist:
-        return {"status": "unknown",
-                "reason": ("declared divergences without a reason: " + ", ".join(bad_allowlist)
-                           + " — an allowlist entry with no reason is a silent skip"),
-                "trees": {}, "differing": [], "only_in_source": [], "only_in_packaged": [],
-                "unreadable": [], "allowed": {}}
+        return {
+            "status": "unknown",
+            "reason": (
+                "declared divergences without a reason: "
+                + ", ".join(bad_allowlist)
+                + " — an allowlist entry with no reason is a silent skip"
+            ),
+            "trees": {},
+            "differing": [],
+            "only_in_source": [],
+            "only_in_packaged": [],
+            "unreadable": [],
+            "allowed": {},
+        }
 
     rules = _setup_rules(base)
     if "unknown" in rules:
-        return {"status": "unknown", "reason": rules["unknown"], "trees": {}, "differing": [],
-                "only_in_source": [], "only_in_packaged": [], "unreadable": [], "allowed": {}}
+        return {
+            "status": "unknown",
+            "reason": rules["unknown"],
+            "trees": {},
+            "differing": [],
+            "only_in_source": [],
+            "only_in_packaged": [],
+            "unreadable": [],
+            "allowed": {},
+        }
 
     source_root = base.joinpath(*_SOURCE_REL)
     packaged_root = base.joinpath(*_PACKAGED_REL)
     if not packaged_root.is_dir():
-        return {"status": "not-built",
-                "reason": (f"no bundle at {packaged_root} — the build has never run in this checkout, "
-                           "so there is nothing to compare (not a clean bill of health)"),
-                "trees": {}, "differing": [], "only_in_source": [], "only_in_packaged": [],
-                "unreadable": [], "allowed": {},
-                "source": str(source_root), "packaged": str(packaged_root)}
+        return {
+            "status": "not-built",
+            "reason": (
+                f"no bundle at {packaged_root} — the build has never run in this checkout, "
+                "so there is nothing to compare (not a clean bill of health)"
+            ),
+            "trees": {},
+            "differing": [],
+            "only_in_source": [],
+            "only_in_packaged": [],
+            "unreadable": [],
+            "allowed": {},
+            "source": str(source_root),
+            "packaged": str(packaged_root),
+        }
 
     differing: list[str] = []
     only_source: list[str] = []
@@ -251,8 +281,7 @@ def audit(root: Path | None = None) -> dict:
         d = sorted(k for k in set(src) & set(pkg) if src[k] != pkg[k])
         os_only = sorted(set(src) - set(pkg))
         op_only = sorted(set(pkg) - set(src))
-        un = sorted(k for k in set(src) | set(pkg)
-                    if src.get(k) == "UNREADABLE" or pkg.get(k) == "UNREADABLE")
+        un = sorted(k for k in set(src) | set(pkg) if src.get(k) == "UNREADABLE" or pkg.get(k) == "UNREADABLE")
 
         for bucket, sink in ((d, differing), (os_only, only_source), (op_only, only_packaged)):
             for rel in bucket:
@@ -262,20 +291,25 @@ def audit(root: Path | None = None) -> dict:
                 else:
                     allowed[f"{kind}/{rel}"] = reason
         unreadable.extend(f"{kind}/{k}" for k in un)
-        trees[kind] = {"source": len(src), "packaged": len(pkg),
-                       "compared": len(set(src) & set(pkg)),
-                       "differing": len(d), "only_in_source": len(os_only),
-                       "only_in_packaged": len(op_only)}
+        trees[kind] = {
+            "source": len(src),
+            "packaged": len(pkg),
+            "compared": len(set(src) & set(pkg)),
+            "differing": len(d),
+            "only_in_source": len(os_only),
+            "only_in_packaged": len(op_only),
+        }
 
     return {
         "status": "compared",
         "source": str(source_root),
         "packaged": str(packaged_root),
         "kinds": list(rules["kinds"]),
-        "build_rules": {"exclude": {k: list(v) for k, v in rules["exclude"].items()},
-                        "exclude_suffixes": {k: list(v)
-                                             for k, v in rules["exclude_suffixes"].items()},
-                        "code_suffixes": list(rules["code_suffixes"])},
+        "build_rules": {
+            "exclude": {k: list(v) for k, v in rules["exclude"].items()},
+            "exclude_suffixes": {k: list(v) for k, v in rules["exclude_suffixes"].items()},
+            "code_suffixes": list(rules["code_suffixes"]),
+        },
         "trees": trees,
         "n_compared": sum(t.get("compared", 0) for t in trees.values()),
         "differing": sorted(differing),
@@ -288,8 +322,12 @@ def audit(root: Path | None = None) -> dict:
 
 def findings(rep: dict) -> list[str]:
     """Every path the report holds against the bundle, in one list."""
-    return (rep.get("differing", []) + rep.get("only_in_source", [])
-            + rep.get("only_in_packaged", []) + rep.get("unreadable", []))
+    return (
+        rep.get("differing", [])
+        + rep.get("only_in_source", [])
+        + rep.get("only_in_packaged", [])
+        + rep.get("unreadable", [])
+    )
 
 
 def staged_touches_a_bundled_tree(kinds, base: Path | None = None) -> tuple[bool, str]:
@@ -308,8 +346,14 @@ def staged_touches_a_bundled_tree(kinds, base: Path | None = None) -> tuple[bool
 
     root = Path(base) if base is not None else repo_root()
     try:
-        proc = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=root,
-                              capture_output=True, text=True, timeout=120, check=False)
+        proc = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         return True, f"the staged file list is unreadable ({exc}), which is not the same as clean"
     if proc.returncode != 0:
@@ -344,9 +388,7 @@ def sync(base: Path | None = None) -> dict:
             continue
         if dst.exists():
             shutil.rmtree(dst)
-        shutil.copytree(src, dst,
-                        ignore=lambda _d, names, _k=kind: {n for n in names
-                                                           if _is_ignored(n, _k, rules)})
+        shutil.copytree(src, dst, ignore=lambda _d, names, _k=kind: {n for n in names if _is_ignored(n, _k, rules)})
         done.append(kind)
     return {"status": "synced", "synced": done}
 
@@ -355,37 +397,51 @@ def _render(rep: dict, limit: int) -> None:
     print("bundled-data: the wheel bundle and the trees it is built from DISAGREE.")
     print(f"  source  : {rep.get('source')}")
     print(f"  packaged: {rep.get('packaged')}")
-    for key, label in (("differing", "differs        "),
-                       ("only_in_source", "only in repo   "),
-                       ("only_in_packaged", "only in package"),
-                       ("unreadable", "UNREADABLE     ")):
+    for key, label in (
+        ("differing", "differs        "),
+        ("only_in_source", "only in repo   "),
+        ("only_in_packaged", "only in package"),
+        ("unreadable", "UNREADABLE     "),
+    ):
         items = rep.get(key, [])
         for k in items[:limit]:
             print(f"  * {label}: {k}")
         if len(items) > limit:
             print(f"  * {label}: … +{len(items) - limit} more")
-    print("  fix: python build_tools/scripts/check_bundled_data.py --sync  "
-          "(rebuilds the bundle from the top-level trees) — never hand-edit the bundle.")
+    print(
+        "  fix: python build_tools/scripts/check_bundled_data.py --sync  "
+        "(rebuilds the bundle from the top-level trees) — never hand-edit the bundle."
+    )
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--staged", action="store_true",
-                    help="pre-commit mode: run the FULL comparison when the commit stages a file "
-                         "under a bundled corpus (the moment the copies part company), and say so "
-                         "when it does not. The comparison itself is never narrowed.")
-    ap.add_argument("--stop-hook", action="store_true",
-                    help="session Stop hook mode: JSON-only on stdout, blocks via "
-                         "{'decision': 'block'} rather than the exit status")
-    ap.add_argument("--require-bundle", action="store_true",
-                    help="treat an unbuilt bundle as a failure (for a context that must have one)")
-    ap.add_argument("--limit", type=int, default=40,
-                    help="max paths printed per category (the full list is in --json)")
-    ap.add_argument("--sync", action="store_true",
-                    help="rebuild the bundle from the top-level trees (the build's own rules), then "
-                         "re-check — the fix for a divergence; never hand-edit the bundle")
+    ap.add_argument(
+        "--staged",
+        action="store_true",
+        help="pre-commit mode: run the FULL comparison when the commit stages a file "
+        "under a bundled corpus (the moment the copies part company), and say so "
+        "when it does not. The comparison itself is never narrowed.",
+    )
+    ap.add_argument(
+        "--stop-hook",
+        action="store_true",
+        help="session Stop hook mode: JSON-only on stdout, blocks via "
+        "{'decision': 'block'} rather than the exit status",
+    )
+    ap.add_argument(
+        "--require-bundle",
+        action="store_true",
+        help="treat an unbuilt bundle as a failure (for a context that must have one)",
+    )
+    ap.add_argument("--limit", type=int, default=40, help="max paths printed per category (the full list is in --json)")
+    ap.add_argument(
+        "--sync",
+        action="store_true",
+        help="rebuild the bundle from the top-level trees (the build's own rules), then "
+        "re-check — the fix for a divergence; never hand-edit the bundle",
+    )
     a = ap.parse_args(argv)
 
     if a.sync:
@@ -402,8 +458,10 @@ def main(argv=None) -> int:
             return 1
         run_it, why = staged_touches_a_bundled_tree(rules["kinds"])
         if not run_it:
-            print(f"[skip] bundled-data: {why} — the bundle is a build product; this commit cannot "
-                  f"have changed what it is built from.")
+            print(
+                f"[skip] bundled-data: {why} — the bundle is a build product; this commit cannot "
+                f"have changed what it is built from."
+            )
             return 0
         # Say WHY it is running, so the widened case (git unreadable -> check everything) is visible
         # rather than looking like an ordinary silent pass.
@@ -418,9 +476,12 @@ def main(argv=None) -> int:
     elif status == "not-built" and a.require_bundle:
         blocked = f"bundled-data: {rep['reason']}"
     elif bad:
-        blocked = ("The wheel bundle and the trees it is built from DISAGREE "
-                   f"({len(bad)} path(s); fix: check_bundled_data.py --sync):\n- " + "\n- ".join(bad[:a.limit])
-                   + (f"\n- … +{len(bad) - a.limit} more" if len(bad) > a.limit else ""))
+        blocked = (
+            "The wheel bundle and the trees it is built from DISAGREE "
+            f"({len(bad)} path(s); fix: check_bundled_data.py --sync):\n- "
+            + "\n- ".join(bad[: a.limit])
+            + (f"\n- … +{len(bad) - a.limit} more" if len(bad) > a.limit else "")
+        )
 
     if a.stop_hook:
         # A Claude Code Stop hook BLOCKS through {"decision": "block"} on stdout; a non-zero exit is a
@@ -442,9 +503,11 @@ def main(argv=None) -> int:
         return 1
     if not a.staged:
         kinds = ", ".join(rep.get("kinds", []))
-        print(f"[  ok] bundled-data: {rep['n_compared']} file(s) identical across the source trees "
-              f"and the wheel bundle ({kinds})."
-              + (f" {len(rep['allowed'])} declared divergence(s)." if rep.get("allowed") else ""))
+        print(
+            f"[  ok] bundled-data: {rep['n_compared']} file(s) identical across the source trees "
+            f"and the wheel bundle ({kinds})."
+            + (f" {len(rep['allowed'])} declared divergence(s)." if rep.get("allowed") else "")
+        )
     return 0
 
 

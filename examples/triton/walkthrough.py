@@ -13,6 +13,7 @@ Two rules this file follows, both of which matter more than they look:
   argument: this file has no branch on which accelerator it is talking to, and neither does the
   frontend. Point `--package` at a different directory and the same kernel descends somewhere else.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,8 +27,13 @@ DEFAULT_PACKAGE = "out/artifacts/targets/gemmini/hand_v0"
 # Triton kernel is not self-describing -- untyped parameters, shapeless pointers, the grid at the call
 # site -- so these are the facts Merlin refuses to guess. See README.md "What you have to declare".
 KERNEL = "examples/triton/matmul_simple.py:repeated_rhs_matmul"
-ARGS = ("a0_ptr=*i8:16x32:read", "a1_ptr=*i8:16x32:read", "w_ptr=*i8:32x16:read",
-        "c0_ptr=*i32:16x16:write", "c1_ptr=*i32:16x16:write")
+ARGS = (
+    "a0_ptr=*i8:16x32:read",
+    "a1_ptr=*i8:16x32:read",
+    "w_ptr=*i8:32x16:read",
+    "c0_ptr=*i32:16x16:write",
+    "c1_ptr=*i32:16x16:write",
+)
 CONSTEXPRS = {"BM": 16, "BN": 16, "BK": 32}
 GRID = (1,)
 
@@ -88,7 +94,8 @@ def step_package(state: dict) -> None:
     if not package_dir.is_dir():
         raise WalkthroughError(
             f"no target package at {package_dir}\n"
-            f"  fix: pass --package <dir>, or see docs/guides/adding_a_target.md to build one")
+            f"  fix: pass --package <dir>, or see docs/guides/adding_a_target.md to build one"
+        )
     pkg = load_target(package_dir)
     state["package"] = pkg
     print(f"    package dir : {package_dir.relative_to(REPO_ROOT)}")
@@ -132,8 +139,9 @@ def step_declare(state: dict) -> None:
         outright -- there is deliberately no dynamic-shape fallback to paper over a missing fact.
         """)
     fn = load_kernel(str(REPO_ROOT / KERNEL.split(":")[0]) + ":" + KERNEL.split(":")[1])
-    spec = TritonKernelSpec(function=fn, args=tuple(parse_arg(a) for a in ARGS),
-                            grid=GridSpec(dims=GRID), constexprs=dict(CONSTEXPRS))
+    spec = TritonKernelSpec(
+        function=fn, args=tuple(parse_arg(a) for a in ARGS), grid=GridSpec(dims=GRID), constexprs=dict(CONSTEXPRS)
+    )
     state["spec"] = spec
     print(f"    kernel     : {spec.name}")
     for arg in spec.args:
@@ -156,7 +164,7 @@ def step_ttir(state: dict) -> None:
     state["ttir"] = ttir
     ops: dict[str, int] = {}
     for op in source.walk_ops(ttir):
-        name = op.get_name()                   # a triton IR object, so its own accessor
+        name = op.get_name()  # a triton IR object, so its own accessor
         ops[name] = ops.get(name, 0) + 1
     print(f"    TTIR ops: {sum(ops.values())} total")
     for name, count in sorted(ops.items()):
@@ -209,7 +217,8 @@ def step_route(state: dict) -> None:
             "this walkthrough follows the staged accelerator descent, and this payload did not take "
             "it.\n  That is a legitimate outcome, not a bug: this package does not declare that it "
             "materializes\n  this payload. `run.sh route` and `run.sh compare` show that refusal "
-            "deliberately, side by side.")
+            "deliberately, side by side."
+        )
     state["lowered"] = result.staged
 
 
@@ -236,15 +245,16 @@ def step_stages(state: dict) -> None:
     lowered = state["lowered"]
     for attr, decides in STAGE_MEANING:
         module = getattr(lowered, attr)
-        module.verify()                        # structural validity, checked here as the CLI does
+        module.verify()  # structural validity, checked here as the CLI does
         ops = [op.name for op in module.walk()]
         # The dialects present ARE the stage's identity, so show which ones appeared, not every op.
         dialects = sorted({o.split(".", 1)[0] for o in ops} - {"builtin", "func"})
         print(f"      {attr.removesuffix('_module'):10s} {len(ops):3d} ops  [{', '.join(dialects)}]")
         print(f"      {'':10s} {decides}")
     print(f"\n    this target's dialect after lowering:")
-    tgt_ops = sorted({op.name for op in state["lowered"].target_module.walk()}
-                     - {"builtin.module", "func.func", "func.return"})
+    tgt_ops = sorted(
+        {op.name for op in state["lowered"].target_module.walk()} - {"builtin.module", "func.func", "func.return"}
+    )
     for name in tgt_ops:
         print(f"      {name}")
 
@@ -261,8 +271,10 @@ def step_command_buffer(state: dict) -> None:
     cb = state["lowered"].command_buffer
     state["cb"] = cb
     print(f"    target   : {cb['target']}")
-    print(f"    tensors  : " + ", ".join(
-        f"{n}[{'x'.join(str(d) for d in t['shape'])}]:{t['dtype']}" for n, t in cb["tensors"].items()))
+    print(
+        f"    tensors  : "
+        + ", ".join(f"{n}[{'x'.join(str(d) for d in t['shape'])}]:{t['dtype']}" for n, t in cb["tensors"].items())
+    )
     print(f"    commands :")
     for i, cmd in enumerate(cb["commands"]):
         operands = " ".join(f"{k}={v}" for k, v in cmd.get("operands", {}).items())
@@ -291,10 +303,12 @@ def step_check(state: dict) -> None:
     print("    interpreter == reference outputs : True")
 
     tensors = materialize_inputs(cb)
-    packed = {c["operands"]["dst"]: c["operands"]["src"]
-              for c in cb["commands"] if c["opcode"] == "RES_PACK"}
-    lhs_of = {c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
-              for c in cb["commands"] if c["opcode"].startswith("MATMUL")}
+    packed = {c["operands"]["dst"]: c["operands"]["src"] for c in cb["commands"] if c["opcode"] == "RES_PACK"}
+    lhs_of = {
+        c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
+        for c in cb["commands"]
+        if c["opcode"].startswith("MATMUL")
+    }
     for commit in [c for c in cb["commands"] if c["opcode"] == "COMMIT"]:
         lhs, rhs = lhs_of[commit["operands"]["src"]]
         activation = np.array(tensors[lhs].to_list(), dtype=np.int64)
@@ -322,13 +336,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="steps: " + ", ".join(name for name, _, _ in STEPS))
-    parser.add_argument("--package", default=DEFAULT_PACKAGE,
-                        help=f"target package directory (default: {DEFAULT_PACKAGE})")
-    parser.add_argument("--pause", action="store_true",
-                        help="stop after each step and wait for Enter")
-    parser.add_argument("--quiet", action="store_true",
-                        help="artifacts only, without the explanation of why each step exists")
+        epilog="steps: " + ", ".join(name for name, _, _ in STEPS),
+    )
+    parser.add_argument(
+        "--package", default=DEFAULT_PACKAGE, help=f"target package directory (default: {DEFAULT_PACKAGE})"
+    )
+    parser.add_argument("--pause", action="store_true", help="stop after each step and wait for Enter")
+    parser.add_argument(
+        "--quiet", action="store_true", help="artifacts only, without the explanation of why each step exists"
+    )
     parser.add_argument("--list", action="store_true", help="list the steps and exit")
     args = parser.parse_args(argv)
 

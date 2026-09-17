@@ -17,6 +17,7 @@ will not compile is SKIPPED and logged honestly, never faked.
 The family->fixture->ukernel registry is ``wholemodel_proposer.FAMILY_TEACHERS`` (single source of
 truth, shared with the proposer). Run: ``.venv/bin/python build_tools/scripts/harvest_xnnpack_fixtures.py``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,7 @@ from merlin.kernels.decode.objdump import disassemble_text
 from merlin.mining import k1
 from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS, FamilyTeacher, cca_asm_dir
 
-_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv_zfh_zvfh", "-mabi=lp64d",
-           "-O3", "-DNDEBUG"]
+_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv_zfh_zvfh", "-mabi=lp64d", "-O3", "-DNDEBUG"]
 
 
 def _ceiling_inc() -> Path:
@@ -41,6 +41,7 @@ def _ceiling_inc() -> Path:
 
 def _xnnpack_src() -> Path:
     import os
+
     env = os.environ.get("MERLIN_XNNPACK_REPO")
     root = Path(env) if env else work_dir() / "tmp" / "kernels" / "XNNPACK"
     return root / "src"
@@ -52,6 +53,7 @@ def _harvestable() -> list[FamilyTeacher]:
     seen: set[str] = set()
     out: list[FamilyTeacher] = []
     from merlin.mining.wholemodel_proposer import dtype_fixture_teachers
+
     # the dtype-matched GEMM fixtures too: they are not census-family entries, but they must be
     # re-harvestable or they stay stuck as the unlinked versions that teach nothing loop-scoped.
     for t in list(FAMILY_TEACHERS.values()) + dtype_fixture_teachers():
@@ -62,16 +64,16 @@ def _harvestable() -> list[FamilyTeacher]:
     return out
 
 
-def harvest_one(t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir: Path,
-                *, timeout: int = 300) -> tuple[bool, str]:
+def harvest_one(
+    t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir: Path, *, timeout: int = 300
+) -> tuple[bool, str]:
     """Compile + disassemble one ukernel into its fixture. Returns (ok, message)."""
     src = xsrc / t.ukernel_src
     if not src.is_file():
         return False, f"ukernel source not found: {src}"
     with tempfile.TemporaryDirectory(prefix="merlin_harvest_") as tmp:
         obj = Path(tmp) / (t.fixture.replace(".objdump", "") + ".o")
-        cmd = [str(cc), *_CFLAGS, "-I", str(ceil_inc), "-I", str(xsrc), "-c", str(src),
-               "-o", str(obj)]
+        cmd = [str(cc), *_CFLAGS, "-I", str(ceil_inc), "-I", str(xsrc), "-c", str(src), "-o", str(obj)]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except (subprocess.TimeoutExpired, OSError) as e:
@@ -94,13 +96,18 @@ def harvest_one(t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir:
         # ukernel's undefined externals stay undefined in a shared object. If the link fails the
         # fixture is SKIPPED with the reason, never written unlinked.
         linked = Path(tmp) / (t.fixture.replace(".objdump", "") + ".so")
-        lp = subprocess.run([str(cc), "--target=riscv64-unknown-linux-gnu", "-shared", "-nostdlib",
-                             "-o", str(linked), str(obj)], capture_output=True, text=True,
-                            timeout=timeout)
+        lp = subprocess.run(
+            [str(cc), "--target=riscv64-unknown-linux-gnu", "-shared", "-nostdlib", "-o", str(linked), str(obj)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
         target = linked if (lp.returncode == 0 and linked.is_file()) else None
         if target is None:
-            return False, (f"link failed (rc={lp.returncode}), refusing to write an unlinked fixture "
-                           f"whose loop structure the lifter cannot read: {lp.stderr.strip()[-300:]}")
+            return False, (
+                f"link failed (rc={lp.returncode}), refusing to write an unlinked fixture "
+                f"whose loop structure the lifter cannot read: {lp.stderr.strip()[-300:]}"
+            )
         try:
             text = disassemble_text(target)
         except Exception as e:  # noqa: BLE001
@@ -111,11 +118,14 @@ def harvest_one(t: FamilyTeacher, cc: Path, xsrc: Path, ceil_inc: Path, out_dir:
     # loop-scoped facet as None, and `cca_compare` then skips those axes without saying so. Refuse it
     # rather than write one -- the decoder already knows how to tell, so use it.
     from merlin.kernels.decode import rvv as _rvv
+
     _stream = _rvv.decode_text(text)
     if not _stream.spans_reliable():
-        return False, ("loop spans unreadable (branch displacements look unrelocated) -- this fixture "
-                       "would teach nothing about register blocking, accumulator residency or memory, "
-                       "and would do it silently. Refusing to write it.")
+        return False, (
+            "loop spans unreadable (branch displacements look unrelocated) -- this fixture "
+            "would teach nothing about register blocking, accumulator residency or memory, "
+            "and would do it silently. Refusing to write it."
+        )
     (out_dir / t.fixture).write_text(_machine_independent(text, t.fixture), encoding="utf-8")
     return True, f"wrote {t.fixture} ({len(text)} chars) from {t.ukernel_src}"
 
@@ -153,8 +163,11 @@ def main(argv: list[str] | None = None) -> int:
 
     cc = k1.toolchain_cc()
     if cc is None:
-        print("SKIP-ALL: SpacemiT K1 clang not found (k1.toolchain_cc() is None); "
-              "set MERLIN_K1_TOOLCHAIN. No fixtures written.", file=sys.stderr)
+        print(
+            "SKIP-ALL: SpacemiT K1 clang not found (k1.toolchain_cc() is None); "
+            "set MERLIN_K1_TOOLCHAIN. No fixtures written.",
+            file=sys.stderr,
+        )
         return 1
     xsrc = _xnnpack_src()
     if not xsrc.is_dir():

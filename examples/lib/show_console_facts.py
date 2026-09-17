@@ -9,6 +9,7 @@ numbers below are parsed from the vendor's headers at build time, and the same v
 Kconfig (`CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC`, the baud divisor) and the device-tree overlay, so the two
 cannot disagree about which UART this is.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,14 +25,19 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     f = derive_uart_console(a.sdk_dir, a.chip)
-    print(json.dumps({
-        "uart_base": hex(f.uart_base),
-        "uart_regs": {k: hex(v) for k, v in sorted(f.reg.items())},
-        "sys_clk_hz": f.sys_clk_hz,
-        "mtime_hz": f.mtime_hz,
-        "pll_base": hex(f.pll_base) if f.pll_base else None,
-        "clksel_base": hex(f.clksel_base) if f.clksel_base else None,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "uart_base": hex(f.uart_base),
+                "uart_regs": {k: hex(v) for k, v in sorted(f.reg.items())},
+                "sys_clk_hz": f.sys_clk_hz,
+                "mtime_hz": f.mtime_hz,
+                "pll_base": hex(f.pll_base) if f.pll_base else None,
+                "clksel_base": hex(f.clksel_base) if f.clksel_base else None,
+            },
+            indent=2,
+        )
+    )
     print("\n# sys_clk_hz is the RESET clock. pll_base/clksel_base are what the 500 MHz variant")
     print("# reprograms, in the vendor's own order, before the console divisor is applied.")
     return 0

@@ -22,6 +22,7 @@ Usage:
   python build_tools/scripts/setup_atlas.py --write-env     # + append MERLIN_EXT_* to .env
   python build_tools/scripts/setup_atlas.py --sync-npu-model
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,14 +52,16 @@ _PIN_NPU_MODEL = "11598ec"
 
 def _sha(repo: Path) -> str | None:
     try:
-        return subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True, check=True).stdout.strip()
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
     except Exception:  # noqa: BLE001
         return None
 
 
 def _resolve_atlas_npu(cli: str | None) -> Path | None:
     from merlin.common.paths import env
+
     for cand in (cli, env("MERLIN_EXT_ATLAS_NPU"), str(_ATLAS_NPU_DEFAULT)):
         if cand and Path(cand).is_dir():
             return Path(cand)
@@ -72,12 +75,16 @@ def main() -> int:
     ap.add_argument("--chipyard-atlas", help="chipyard-atlas checkout w/ the prebuilt Verilator sim (L4 RTL)")
     ap.add_argument("--write-env", action="store_true", help="append MERLIN_EXT_* to this clone's .env")
     ap.add_argument("--sync-npu-model", action="store_true", help="run `uv sync` in the npu-model dir")
-    ap.add_argument("--target-package-dir", help="where to materialize the atlas OOT definition package "
-                    "(default: the generated home out/build/generated/atlas — auto-discovered by "
-                    "target_registry; point MERLIN_TARGET_PATH at a pinned/versioned copy to override). "
-                    "Pass --no-target-package to skip.")
-    ap.add_argument("--no-target-package", action="store_true",
-                    help="skip materializing the OOT target-definition package")
+    ap.add_argument(
+        "--target-package-dir",
+        help="where to materialize the atlas OOT definition package "
+        "(default: the generated home out/build/generated/atlas — auto-discovered by "
+        "target_registry; point MERLIN_TARGET_PATH at a pinned/versioned copy to override). "
+        "Pass --no-target-package to skip.",
+    )
+    ap.add_argument(
+        "--no-target-package", action="store_true", help="skip materializing the OOT target-definition package"
+    )
     a = ap.parse_args()
 
     ok = True
@@ -90,7 +97,8 @@ def main() -> int:
     print(f"atlas-npu   : {atlas_npu}  (sha {_sha(atlas_npu) or '?'}; onboarded @{_PIN_ATLAS_NPU})")
     print(f"npu-model   : {npu_model}  (sha {_sha(npu_model) or '?'}; onboarded @{_PIN_NPU_MODEL})")
     if not npu_model.is_dir():
-        sys.stderr.write(f"npu-model dir missing under {atlas_npu} — pass --npu-model.\n"); ok = False
+        sys.stderr.write(f"npu-model dir missing under {atlas_npu} — pass --npu-model.\n")
+        ok = False
 
     if a.sync_npu_model and npu_model.is_dir():
         print(f"[sync] uv sync in {npu_model} ...")
@@ -100,11 +108,13 @@ def main() -> int:
     # L3 RTL-cert tier: the mlc arc model must resolve (this is what makes not_run_is_not_pass real).
     try:
         from merlin.targetgen.rtl import mlc_bridge
+
         arc = mlc_bridge.arc_available("atlas")
         print(f"mlc arc(atlas) [L3 RTL cert] : {'OK' if arc else 'UNAVAILABLE'}")
         ok = ok and arc
     except Exception as e:  # noqa: BLE001
-        sys.stderr.write(f"mlc arc check failed: {type(e).__name__}: {e}\n"); ok = False
+        sys.stderr.write(f"mlc arc check failed: {type(e).__name__}: {e}\n")
+        ok = False
 
     # L2 functional tier: npu_model must be importable (the adapter shells its Simulation).
     pkg = npu_model / "npu_model"
@@ -114,6 +124,7 @@ def main() -> int:
     # L4 cycle-accurate RTL tier: the prebuilt chipyard whole-program Verilator sim (optional — the eval
     # can grade on arcilator L3 without it; verilator is the 2nd RTL tier + cross-check).
     from merlin.common.paths import env as _env
+
     chip = Path(a.chipyard_atlas or _env("MERLIN_EXT_CHIPYARD_ATLAS") or _CHIPYARD_ATLAS_DEFAULT)
     sim = chip / _VERILATOR_SIM_REL
     print(f"chipyard Verilator [L4 RTL]   : {'built' if sim.is_file() else 'not built'} ({sim})")
@@ -125,13 +136,15 @@ def main() -> int:
     if ok and not a.no_target_package:
         try:
             from merlin.targetgen import capability_manifests as _cm
+
             # The SAME target-agnostic materialization every target uses (atlas / gemmini / ...): drop the
             # OOT package into the zero-env generated home so target_registry.resolve finds it with no env.
             dest = Path(a.target_package_dir) if a.target_package_dir else None
             dest = _cm.materialize_generated_target("atlas", dest)
             print(f"target package [OOT def]      : {dest} (endpoint/mesh/encoding derived from CIRCT facts)")
         except Exception as e:  # noqa: BLE001
-            sys.stderr.write(f"target-package materialization failed: {type(e).__name__}: {e}\n"); ok = False
+            sys.stderr.write(f"target-package materialization failed: {type(e).__name__}: {e}\n")
+            ok = False
 
     if a.write_env:
         envf = ROOT / ".env"

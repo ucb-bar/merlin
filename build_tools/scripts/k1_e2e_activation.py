@@ -22,23 +22,26 @@ SCALAR (vectorize=False, no-feature) lowering. So `act_alone` whole-model does N
 activation here; it is a KERNEL-level feature (validated isolated in V2). The `lowering_path` field
 records 'vectorized' vs 'scalar_fallback' + the exact PipelineError op so the e2e number is honest.
 """
+
 from __future__ import annotations
 
-import argparse, json
+import argparse
+
+# reuse the frozen e2e measurement helpers
+import importlib.util as _ilu
+import json
 from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
-from merlin.mining.registry import load_rvv_package
-from merlin.llvmlower.impr_features import apply_schedule, normalize, CompositionError
+from merlin.llvmlower.impr_features import CompositionError, apply_schedule, normalize
 from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
+from merlin.mining.registry import load_rvv_package
 
-# reuse the frozen e2e measurement helpers
-import importlib.util as _ilu
-_spec = _ilu.spec_from_file_location(
-    "k1_e2e_gv", str(Path(__file__).resolve().parent / "k1_e2e_general_validate.py"))
-_gv = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_gv)
+_spec = _ilu.spec_from_file_location("k1_e2e_gv", str(Path(__file__).resolve().parent / "k1_e2e_general_validate.py"))
+_gv = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_gv)
 run_pkg = _gv.run_pkg
 
 
@@ -71,7 +74,10 @@ def composition_probe(feats: list[str]) -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default="out/artifacts/recaptures/bitvla_fp32_consistent,artifacts/recaptures/openvla_fp32_consistent")
+    ap.add_argument(
+        "--models",
+        default="out/artifacts/recaptures/bitvla_fp32_consistent,artifacts/recaptures/openvla_fp32_consistent",
+    )
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=1800)
@@ -96,10 +102,17 @@ def main():
             if not probe["composes"]:
                 # honest composition limitation: do NOT run the board, record the verdict.
                 print(f"    COMPOSITION BLOCKED: {probe['composition_error'][:140]}")
-                model_rows.append({
-                    "tag": tag, "compiler_features": feats, "status": "not_run",
-                    "blocker": "composition_error: " + probe["composition_error"],
-                    "composes": False, "min_wall_ns": None, "fp32_cos": None})
+                model_rows.append(
+                    {
+                        "tag": tag,
+                        "compiler_features": feats,
+                        "status": "not_run",
+                        "blocker": "composition_error: " + probe["composition_error"],
+                        "composes": False,
+                        "min_wall_ns": None,
+                        "fp32_cos": None,
+                    }
+                )
                 continue
             pkg = replace(hb, run_id=f"act_e2e_{md.name}_{tag}", compiler_features=list(feats))
             row = run_pkg(md, pkg, golden, a.n, tag, a.timeout)
@@ -110,10 +123,10 @@ def main():
         for r in model_rows:
             if base and r.get("min_wall_ns"):
                 r["speedup_vs_baseline"] = base["min_wall_ns"] / r["min_wall_ns"]
-        results[md.name] = {"model": str(md), "golden_shape": list(golden.shape),
-                            "n": a.n, "rows": model_rows}
+        results[md.name] = {"model": str(md), "golden_shape": list(golden.shape), "n": a.n, "rows": model_rows}
 
-    outp = Path(a.out); outp.parent.mkdir(parents=True, exist_ok=True)
+    outp = Path(a.out)
+    outp.parent.mkdir(parents=True, exist_ok=True)
     outp.write_text(json.dumps(results, indent=2))
     print(f"\nwrote -> {outp}")
     print(json.dumps(results, indent=2))

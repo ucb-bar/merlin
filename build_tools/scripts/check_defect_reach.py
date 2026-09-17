@@ -31,6 +31,7 @@ WHAT THIS IS NOT. Reach is necessary, not sufficient: a capsule can declare the 
 fail to exhibit a defect the compiler only shows at another scale. An UNREACHABLE verdict is a proof
 of absence; a REACHABLE one is only the absence of that proof.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,9 +49,13 @@ from merlin.runtime.commandbuffer import EPILOGUE_STAGES  # noqa: E402
 def _capsule_docs(root: Path, target: str, subtrees: set[str]):
     import yaml
 
-    paths = (sorted((root / target).rglob("capsule.yaml")) if target in subtrees
-             else sorted(p for p in root.rglob("capsule.yaml")
-                         if p.relative_to(root).parts[0] not in subtrees | {"profiles"}))
+    paths = (
+        sorted((root / target).rglob("capsule.yaml"))
+        if target in subtrees
+        else sorted(
+            p for p in root.rglob("capsule.yaml") if p.relative_to(root).parts[0] not in subtrees | {"profiles"}
+        )
+    )
     for p in paths:
         try:
             doc = yaml.safe_load(p.read_text())
@@ -96,14 +101,12 @@ def padding_reach(caps) -> dict:
         if not any(k in a for k in ("kh", "kw", "pool_size")):
             continue
         pad = tuple(a.get("padding") or a.get("pool_padding") or ())
-        geoms.add((pad, tuple(a.get("stride") or a.get("pool_stride") or ()),
-                   tuple(a.get("dilation") or ())))
+        geoms.add((pad, tuple(a.get("stride") or a.get("pool_stride") or ()), tuple(a.get("dilation") or ())))
         if any(int(v) for v in pad if isinstance(v, int)):
             padded.append(str(c.get("name") or ""))
         if a.get("pad_value") is not None:
             pad_values.add(str(a.get("pad_value")))
-    return {"distinct_geometries": len(geoms), "padded_members": padded,
-            "declared_pad_values": sorted(pad_values)}
+    return {"distinct_geometries": len(geoms), "padded_members": padded, "declared_pad_values": sorted(pad_values)}
 
 
 def store_overflow_reach(caps, *, target: str) -> dict:
@@ -113,12 +116,18 @@ def store_overflow_reach(caps, *, target: str) -> dict:
 
         store, capacity = MR.operand_store(target, dtype="i8")
     except Exception as exc:  # noqa: BLE001
-        return {"capacity_elements": None, "over": [],
-                "reason": f"the operand store is not derivable for this target ({type(exc).__name__}), "
-                          "so overflow cannot be decided here -- unknown, not absent"}
+        return {
+            "capacity_elements": None,
+            "over": [],
+            "reason": f"the operand store is not derivable for this target ({type(exc).__name__}), "
+            "so overflow cannot be decided here -- unknown, not absent",
+        }
     if not capacity:
-        return {"capacity_elements": None, "over": [],
-                "reason": "this target declares no operand-store capacity we can derive"}
+        return {
+            "capacity_elements": None,
+            "over": [],
+            "reason": "this target declares no operand-store capacity we can derive",
+        }
     over = []
     for c in caps:
         total = 0
@@ -129,8 +138,7 @@ def store_overflow_reach(caps, *, target: str) -> dict:
             total += n
         if total > int(capacity):
             over.append((str(c.get("name") or ""), total))
-    return {"capacity_elements": int(capacity), "over": over,
-            "store": getattr(store, "name", None)}
+    return {"capacity_elements": int(capacity), "over": over, "store": getattr(store, "name", None)}
 
 
 def resident_reuse_reach(caps) -> dict:
@@ -150,13 +158,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--strict", action="store_true",
-                    help="an unreachable defect class is a failure, not a note")
+    ap.add_argument("--strict", action="store_true", help="an unreachable defect class is a failure, not a note")
     args = ap.parse_args()
 
     root = merlin_dir() / "contract" / "capsules"
-    targets = sorted(p.stem for p in (root / "profiles").glob("*.yaml")
-                     if not p.stem.startswith("_") and "." not in p.stem)
+    targets = sorted(
+        p.stem for p in (root / "profiles").glob("*.yaml") if not p.stem.startswith("_") and "." not in p.stem
+    )
     subtrees = {t for t in targets if (root / t).is_dir()}
     if args.target:
         targets = [args.target]
@@ -168,23 +176,35 @@ def main() -> int:
         pad = padding_reach(caps)
         sto = store_overflow_reach(caps, target=t)
         res = resident_reuse_reach(caps)
-        report[t] = {"n_capsules": len(caps), "epilogue": {k: len(v) for k, v in epi.items()},
-                     "padding": pad, "store_overflow": sto,
-                     "resident_reuse": {"n_chains": len(res["chains"]), "deepest": res["deepest"]}}
+        report[t] = {
+            "n_capsules": len(caps),
+            "epilogue": {k: len(v) for k, v in epi.items()},
+            "padding": pad,
+            "store_overflow": sto,
+            "resident_reuse": {"n_chains": len(res["chains"]), "deepest": res["deepest"]},
+        }
 
         for stage, members in epi.items():
             if not members:
-                unreachable.append(f"{t}: epilogue stage {stage!r} is declared by the ABI and demanded "
-                                   "by no capsule, so a backend that cannot emit it fails nothing here")
+                unreachable.append(
+                    f"{t}: epilogue stage {stage!r} is declared by the ABI and demanded "
+                    "by no capsule, so a backend that cannot emit it fails nothing here"
+                )
         if not pad["padded_members"]:
-            unreachable.append(f"{t}: no capsule declares a non-zero padding, so a lowering that loses "
-                               "the padding identity is wrong only in rows this corpus never computes")
+            unreachable.append(
+                f"{t}: no capsule declares a non-zero padding, so a lowering that loses "
+                "the padding identity is wrong only in rows this corpus never computes"
+            )
         if sto["capacity_elements"] and not sto["over"]:
-            unreachable.append(f"{t}: no capsule's working set exceeds the {sto['capacity_elements']}-element "
-                               "operand store, so aliasing past capacity cannot be observed")
+            unreachable.append(
+                f"{t}: no capsule's working set exceeds the {sto['capacity_elements']}-element "
+                "operand store, so aliasing past capacity cannot be observed"
+            )
         if res["deepest"] < 2:
-            unreachable.append(f"{t}: no capsule reuses one weight across several activations, so a weight "
-                               "reconfigured when it should have stayed resident is invisible")
+            unreachable.append(
+                f"{t}: no capsule reuses one weight across several activations, so a weight "
+                "reconfigured when it should have stayed resident is invisible"
+            )
 
     if args.json:
         print(json.dumps(report, indent=1, default=str))
@@ -192,14 +212,17 @@ def main() -> int:
         print(f"{'target':<16}{'caps':>5}  {'epilogue reached':<34}{'padded':>7}{'over-store':>11}{'reuse':>7}")
         for t, r in report.items():
             reached = ",".join(k for k, n in r["epilogue"].items() if n) or "-"
-            print(f"{t:<16}{r['n_capsules']:>5}  {reached[:33]:<34}"
-                  f"{len(r['padding']['padded_members']):>7}{len(r['store_overflow']['over']):>11}"
-                  f"{r['resident_reuse']['n_chains']:>7}")
+            print(
+                f"{t:<16}{r['n_capsules']:>5}  {reached[:33]:<34}"
+                f"{len(r['padding']['padded_members']):>7}{len(r['store_overflow']['over']):>11}"
+                f"{r['resident_reuse']['n_chains']:>7}"
+            )
 
     if unreachable:
         head = "[FAIL]" if args.strict else "[note]"
-        print(f"\n{head} defect-reach: the corpus cannot EXHIBIT these classes, so a green run says "
-              "nothing about them:")
+        print(
+            f"\n{head} defect-reach: the corpus cannot EXHIBIT these classes, so a green run says nothing about them:"
+        )
         for line in unreachable:
             print(f"  - {line}")
         if args.strict:

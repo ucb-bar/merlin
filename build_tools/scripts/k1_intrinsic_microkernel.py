@@ -20,14 +20,20 @@ Honest by construction: a build/run failure or a VERIFY FAIL yields a not_run ro
 never a fabricated tick number. cycle_accurate=false (rdtime is a real-silicon wall proxy; spike is
 the cycle/functional authority).
 """
+
 from __future__ import annotations
 
-import argparse, json, subprocess, sys, tempfile
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
-from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after, int_field
+from merlin.common.paths import repo_root
 from merlin.mining import k1
+
 if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _k1_common import _cc, _deploy_run  # noqa: E402  (helpers shared by the k1 drivers)
@@ -37,8 +43,16 @@ K1H = HERE / "k1_harness"
 DRIVER = HERE / "ours_intrinsic_gemm_driver.c"
 
 # IDENTICAL flags to scripts/k1_cross_framework.py::_K1_CFLAGS (the expert columns).
-_K1_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
-              "-O3", "-ffast-math", "-DNDEBUG", "-std=gnu99", "-Wno-implicit-function-declaration"]
+_K1_CFLAGS = [
+    "--target=riscv64-unknown-linux-gnu",
+    "-march=rv64gcv",
+    "-mabi=lp64d",
+    "-O3",
+    "-ffast-math",
+    "-DNDEBUG",
+    "-std=gnu99",
+    "-Wno-implicit-function-declaration",
+]
 
 
 def _build(binp: Path, *, M: int, N: int, K: int) -> tuple[bool, str]:
@@ -52,8 +66,7 @@ def _build(binp: Path, *, M: int, N: int, K: int) -> tuple[bool, str]:
         return False, f"build exec failed: {e}"
     if p.returncode != 0 or not binp.is_file():
         try:
-            p2 = subprocess.run([c for c in cmd if c != "-static"], capture_output=True,
-                                text=True, timeout=300)
+            p2 = subprocess.run([c for c in cmd if c != "-static"], capture_output=True, text=True, timeout=300)
         except (subprocess.TimeoutExpired, OSError) as e:
             return False, f"build exec failed: {e}"
         if p2.returncode != 0 or not binp.is_file():
@@ -81,21 +94,29 @@ def _objdump_vsetvli(binp: Path) -> dict:
         # A non-zero objdump prints nothing on stdout, and the counts below would then report
         # "no e32/m4 vsetvli, 0 vfmacc.vf" -- a MEASUREMENT of the wrong thing, not an absence.
         # UNKNOWN, surfaced, never a zero (cf. the same shape on unrelocated .o loop spans).
-        return {"vsetvli_found": None,
-                "note": f"objdump exited {p.returncode}: {p.stderr.strip()[-200:]}"}
-    setvli = sorted({ln.strip() for ln in p.stdout.splitlines()
-                     if "vsetvl" in ln and "e32" in ln and "m4" in ln})
+        return {"vsetvli_found": None, "note": f"objdump exited {p.returncode}: {p.stderr.strip()[-200:]}"}
+    setvli = sorted({ln.strip() for ln in p.stdout.splitlines() if "vsetvl" in ln and "e32" in ln and "m4" in ln})
     vfmacc = p.stdout.count("vfmacc.vf")
     return {"vsetvli_e32m4_variants": setvli[:6], "vfmacc_vf_count": vfmacc}
 
 
 def measure_intrinsic_k1(*, M: int, N: int, K: int, reps: int = 3) -> dict:
-    base = {"op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
-            "source": "ours-intrinsic", "target": "k1", "mode": "inner_compute",
-            "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ, "cycle_accurate": False,
-            "kernel_file": "merlin/python/merlin/kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c",
-            "kernel_desc": "register-blocked MR=4, accumulator-resident, K-streaming, riscv_vector.h LMUL=4",
-            "measure_method": "standalone_linux_inner_compute"}
+    base = {
+        "op": "matmul",
+        "dtype": "f32",
+        "M": M,
+        "N": N,
+        "K": K,
+        "source": "ours-intrinsic",
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "cycle_accurate": False,
+        "kernel_file": "merlin/python/merlin/kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c",
+        "kernel_desc": "register-blocked MR=4, accumulator-resident, K-streaming, riscv_vector.h LMUL=4",
+        "measure_method": "standalone_linux_inner_compute",
+    }
     with tempfile.TemporaryDirectory(prefix="k1_intrinsic_") as tmp:
         binp = Path(tmp) / "ours_intrinsic_gemm"
         ok, detail = _build(binp, M=M, N=N, K=K)
@@ -109,21 +130,31 @@ def measure_intrinsic_k1(*, M: int, N: int, K: int, reps: int = 3) -> dict:
             if console is None:
                 return {**base, "ticks": None, "status": "not_run", "blocker": detail, "asm": asm}
             if "VERIFY PASS" not in console:
-                return {**base, "ticks": None, "status": "not_run",
-                        "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
-                        "asm": asm}
+                return {
+                    **base,
+                    "ticks": None,
+                    "status": "not_run",
+                    "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
+                    "asm": asm,
+                }
             cyc = int_after(console, "CYCLES")
             if cyc is None:
-                return {**base, "ticks": None, "status": "not_run",
-                        "blocker": "no CYCLES/ticks line", "asm": asm}
+                return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line", "asm": asm}
             ticks_runs.append(cyc)
             mr_val = int_field(console, "MR")
             if mr_val is not None:
                 mr = mr_val
-    return {**base, "ticks": min(ticks_runs), "ticks_runs": ticks_runs, "status": "pass",
-            "reps": reps, "MR": mr, "asm": asm,
-            "wall_ns_est": int(min(ticks_runs) * 1e9 / k1.K1_TIMEBASE_HZ),
-            "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified; min of N reps"}
+    return {
+        **base,
+        "ticks": min(ticks_runs),
+        "ticks_runs": ticks_runs,
+        "status": "pass",
+        "reps": reps,
+        "MR": mr,
+        "asm": asm,
+        "wall_ns_est": int(min(ticks_runs) * 1e9 / k1.K1_TIMEBASE_HZ),
+        "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified; min of N reps",
+    }
 
 
 def main():

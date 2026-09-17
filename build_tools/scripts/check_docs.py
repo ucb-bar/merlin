@@ -15,6 +15,7 @@ Usage:
   check_docs.py             # plain text; exit 1 on any staleness (pre-commit / CI / manual)
   check_docs.py --stop-hook # emit Claude Code Stop-hook JSON instead (exit 0; signal via JSON)
 """
+
 from __future__ import annotations
 
 import json
@@ -34,16 +35,19 @@ CHECKS = [
     ("docs freshness", "check_docs_freshness.py"),
     ("doc paths", "check_doc_paths.py"),
 ]
-ROOT_STALE_PHRASES = ("placeholder modules", "not working compiler",
-                      "do not implement major algorithms", "currently a scaffold",
-                      "status: **scaffold**")
+ROOT_STALE_PHRASES = (
+    "placeholder modules",
+    "not working compiler",
+    "do not implement major algorithms",
+    "currently a scaffold",
+    "status: **scaffold**",
+)
 
 
 def collect() -> list[str]:
     problems: list[str] = []
     for label, script in CHECKS:
-        r = subprocess.run([sys.executable, str(SCRIPTS / script), "--check"],
-                           capture_output=True, text=True)
+        r = subprocess.run([sys.executable, str(SCRIPTS / script), "--check"], capture_output=True, text=True)
         if r.returncode != 0:
             detail = (r.stderr or r.stdout or "").strip().splitlines()
             first = next((ln.strip() for ln in detail if ln.strip()), f"{label}: stale")
@@ -62,8 +66,11 @@ def main(argv: list[str]) -> int:
     problems = collect()
     if "--stop-hook" in argv:
         if problems:
-            print(json.dumps({"decision": "block",
-                              "reason": "Docs are stale — regenerate/fix:\n- " + "\n- ".join(problems)}))
+            print(
+                json.dumps(
+                    {"decision": "block", "reason": "Docs are stale — regenerate/fix:\n- " + "\n- ".join(problems)}
+                )
+            )
         else:
             print(json.dumps({}))
         return 0  # stop-hook signals via JSON, not exit code

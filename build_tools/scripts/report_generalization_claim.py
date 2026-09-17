@@ -14,6 +14,7 @@ answers a question nobody asked and quietly shrinks when a capture goes missing.
 capture is REPORTED, and with ``--require-roster`` it fails the run -- a claim resting on half its roster
 must not read like a claim resting on all of it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,9 +65,12 @@ def _for_target(target: str) -> dict:
     if descriptor is None:
         return {"target": target, "status": "no_descriptor"}
     if not roster:
-        return {"target": target, "status": "no_roster",
-                "detail": "the descriptor declares no workload_spec.models, so this claim has no "
-                          "tracked denominator; add one rather than defaulting to the capture directory"}
+        return {
+            "target": target,
+            "status": "no_roster",
+            "detail": "the descriptor declares no workload_spec.models, so this claim has no "
+            "tracked denominator; add one rather than defaulting to the capture directory",
+        }
     available = _captures()
     # A roster member matches a capture by prefix: one model has several precision variants, and every
     # one of them is evidence about that model.
@@ -79,8 +83,12 @@ def _for_target(target: str) -> dict:
         else:
             missing.append(model)
     if not used:
-        return {"target": target, "status": "no_capture_for_any_roster_model",
-                "roster": roster, "roster_without_capture": missing}
+        return {
+            "target": target,
+            "status": "no_capture_for_any_roster_model",
+            "roster": roster,
+            "roster_without_capture": missing,
+        }
     report = AC.coverage(used, target)
     # THE CLAIM COUNTS WHAT WAS READ, NOT WHAT WAS SUPPLIED. A capture the region reader cannot parse
     # contributes no regions, and reporting the supplied count beside numbers computed without it
@@ -88,13 +96,17 @@ def _for_target(target: str) -> dict:
     per_model = report.get("per_model") or {}
     unreadable = sorted(m for m, d in per_model.items() if d.get("status") == "unreadable")
     n_read = len(per_model) - len(unreadable)
-    return {"target": target, "status": "ok", "roster": roster,
-            "roster_without_capture": missing,
-            "captures_used": sorted(used),
-            "captures_unreadable": unreadable,
-            "n_models_read": n_read,
-            "claim": AC.claim_sentence({**report, "n_models": n_read}),
-            "report": report}
+    return {
+        "target": target,
+        "status": "ok",
+        "roster": roster,
+        "roster_without_capture": missing,
+        "captures_used": sorted(used),
+        "captures_unreadable": unreadable,
+        "n_models_read": n_read,
+        "claim": AC.claim_sentence({**report, "n_models": n_read}),
+        "report": report,
+    }
 
 
 def _isa_coverage(target: str, kernels_dir: Path) -> dict:
@@ -102,33 +114,38 @@ def _isa_coverage(target: str, kernels_dir: Path) -> dict:
     try:
         from merlin.targetgen.isa_corpus_coverage import corpus_coverage
         from merlin.targetgen.isa_model import isa_model_for_target
-    except Exception as exc:                       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return {"status": "unavailable", "detail": f"{type(exc).__name__}: {exc}"}
     files = {p.name: p for p in sorted(Path(kernels_dir).rglob("*")) if p.is_file()}
     if not files:
         return {"status": "no_kernels", "detail": f"no emitted kernel found under {kernels_dir}"}
     try:
         return {"status": "ok", **corpus_coverage(isa_model_for_target(target), files)}
-    except Exception as exc:                       # noqa: BLE001 -- an underivable ISA is not zero coverage
+    except Exception as exc:  # noqa: BLE001 -- an underivable ISA is not zero coverage
         return {"status": "not_measured", "detail": f"{type(exc).__name__}: {exc}"}
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--require-roster", action="store_true",
-                    help="fail when a declared roster model has no capture")
-    ap.add_argument("--kernels", type=Path, default=None,
-                    help="a directory of EMITTED kernels; adds the ISA-coverage figure, which has a "
-                         "different denominator (the target's own derived instruction set) and cannot "
-                         "be computed from captures alone")
+    ap.add_argument("--require-roster", action="store_true", help="fail when a declared roster model has no capture")
+    ap.add_argument(
+        "--kernels",
+        type=Path,
+        default=None,
+        help="a directory of EMITTED kernels; adds the ISA-coverage figure, which has a "
+        "different denominator (the target's own derived instruction set) and cannot "
+        "be computed from captures alone",
+    )
     a = ap.parse_args(argv)
 
-    targets = a.target or sorted(
-        p.name for p in (repo_root() / _TARGETS).iterdir()
-        if (p / "target_experiment.yaml").is_file()) if (repo_root() / _TARGETS).is_dir() else []
+    targets = (
+        a.target
+        or sorted(p.name for p in (repo_root() / _TARGETS).iterdir() if (p / "target_experiment.yaml").is_file())
+        if (repo_root() / _TARGETS).is_dir()
+        else []
+    )
     if not targets:
         print("no target with a descriptor found", file=sys.stderr)
         return 2
@@ -149,32 +166,40 @@ def main(argv=None) -> int:
             if r.get("claim"):
                 print(f"    {r['claim']}")
             if r.get("captures_unreadable"):
-                print(f"    [gap] captured but UNREADABLE by the region reader, so they contributed no "
-                      f"regions: {r['captures_unreadable']}")
+                print(
+                    f"    [gap] captured but UNREADABLE by the region reader, so they contributed no "
+                    f"regions: {r['captures_unreadable']}"
+                )
                 # The two halves of the claim then rest on DIFFERENT evidence bases, and saying so is
                 # the difference between a bounded claim and a misleading one: the operator census
                 # scans the MLIR as text and still sees these models, while the routing half parses it
                 # structurally and does not. Quoting both numbers in one sentence without this note
                 # implies one denominator where there are two.
-                print("    [note] the operator census reads these models as TEXT and counts them; the "
-                      "routing and work figures parse them structurally and do not. The two halves of "
-                      "the claim above therefore rest on different evidence bases")
+                print(
+                    "    [note] the operator census reads these models as TEXT and counts them; the "
+                    "routing and work figures parse them structurally and do not. The two halves of "
+                    "the claim above therefore rest on different evidence bases"
+                )
             iso = r.get("isa_coverage")
             if iso:
                 if iso.get("status") == "ok":
-                    print(f"    [isa]  {iso.get('n_exercised')} of {iso.get('n_universe')} derived "
-                          f"instruction(s) exercised by the emitted kernels")
+                    print(
+                        f"    [isa]  {iso.get('n_exercised')} of {iso.get('n_universe')} derived "
+                        f"instruction(s) exercised by the emitted kernels"
+                    )
                 else:
                     print(f"    [isa]  not measured: {iso.get('detail')}")
             if r.get("roster_without_capture"):
                 print(f"    [gap] roster models with no capture: {r['roster_without_capture']}")
-            wk = ((r.get("report") or {}).get("work") or {})
+            wk = (r.get("report") or {}).get("work") or {}
             if wk.get("routed_fraction") is not None and not wk.get("exact"):
-                print("    [note] work is a LOWER BOUND: at least one iteration nest was only "
-                      "partially recovered")
+                print("    [note] work is a LOWER BOUND: at least one iteration nest was only partially recovered")
     if a.require_roster and any(r.get("roster_without_capture") for r in results):
-        print("\nFAIL: a declared roster model has no capture; the claim would rest on part of the "
-              "roster while reading as though it rested on all of it", file=sys.stderr)
+        print(
+            "\nFAIL: a declared roster model has no capture; the claim would rest on part of the "
+            "roster while reading as though it rested on all of it",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

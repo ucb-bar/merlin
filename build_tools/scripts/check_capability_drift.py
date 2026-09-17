@@ -49,6 +49,7 @@ Ratchet entries are SCOPED TO THEIR TARGET AND DIRECTION -- ``<target> <directio
 because a bare family name would let one target's accepted debt silently excuse another's, and
 ``contraction`` is a real entry on more than one target here.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,11 +70,20 @@ def audit(target: str, *, require_pin: bool = False) -> dict:
     try:
         return CD.delta(target, require_pin=require_pin)
     except CD.ProvenanceRefused as e:
-        return {"target": target, "status": "pin_unverified", "detail": str(e),
-                "under_declared": [], "over_declared": [],
-                "undeterminable": [{"kind": "provenance", "name": target, "detail": str(e)}],
-                "discovered_families": [], "declared_families": [], "datapath_dtypes": {},
-                "rungs_ran": [], "notes": [], "sources": []}
+        return {
+            "target": target,
+            "status": "pin_unverified",
+            "detail": str(e),
+            "under_declared": [],
+            "over_declared": [],
+            "undeterminable": [{"kind": "provenance", "name": target, "detail": str(e)}],
+            "discovered_families": [],
+            "declared_families": [],
+            "datapath_dtypes": {},
+            "rungs_ran": [],
+            "notes": [],
+            "sources": [],
+        }
 
 
 def _debt(target: str, direction: str, kind: str, name: str) -> str:
@@ -102,23 +112,29 @@ def _print_report(r: dict, ratchet: set[str]) -> None:
     print(f"== {t}   rungs that ran: {r.get('rungs_ran') or ['none']}")
     bc = r.get("build_config") or {}
     if bc:
-        print(f"   build config        : {bc.get('name')} -> {bc.get('instantiated')} "
-              f"({len(bc.get('fields') or {})} field(s), "
-              f"{sum(1 for f in (bc.get('fields') or {}).values() if f.get('origin') == 'set')} set / "
-              f"{sum(1 for f in (bc.get('fields') or {}).values() if f.get('origin') == 'declared_default')}"
-              f" declared default)")
+        print(
+            f"   build config        : {bc.get('name')} -> {bc.get('instantiated')} "
+            f"({len(bc.get('fields') or {})} field(s), "
+            f"{sum(1 for f in (bc.get('fields') or {}).values() if f.get('origin') == 'set')} set / "
+            f"{sum(1 for f in (bc.get('fields') or {}).values() if f.get('origin') == 'declared_default')}"
+            f" declared default)"
+        )
     pins = r.get("source_pin_status") or {}
     off = {k: v for k, v in pins.items() if v not in ("pinned", "nested_pinned")}
     if off:
-        print(f"   NOT PINNED          : {off} — header-derived claims from these files are real but "
-              f"are NOT claims about the pinned revision")
+        print(
+            f"   NOT PINNED          : {off} — header-derived claims from these files are real but "
+            f"are NOT claims about the pinned revision"
+        )
     print(f"   discovered families : {r['discovered_families'] or '-'}")
     print(f"   declared   families : {r['declared_families'] or '-'}")
     for role, dts in sorted((r.get("datapath_dtypes") or {}).items()):
         print(f"   datapath {role:16s}: {dts}")
     if r["under_declared"]:
-        print(f"   UNDER-DECLARED ({len(r['under_declared'])}) — evidenced, not admitted; this LOWERS "
-              f"the conformance bar rather than failing a capsule")
+        print(
+            f"   UNDER-DECLARED ({len(r['under_declared'])}) — evidenced, not admitted; this LOWERS "
+            f"the conformance bar rather than failing a capsule"
+        )
         for u in r["under_declared"]:
             mark = " " if _debt(t, "under", u["kind"], u["name"]) in ratchet else "*"
             ev = (u.get("evidence") or [{}])[0]
@@ -129,27 +145,31 @@ def _print_report(r: dict, ratchet: set[str]) -> None:
             if where:
                 print(f"       evidence: {where}")
     if r["over_declared"]:
-        print(f"   OVER-DECLARED ({len(r['over_declared'])}) — claimed, and the deciding rung ran and "
-              f"found nothing")
+        print(f"   OVER-DECLARED ({len(r['over_declared'])}) — claimed, and the deciding rung ran and found nothing")
         for o in r["over_declared"]:
             mark = " " if _debt(t, "over", o["kind"], o["name"]) in ratchet else "*"
             print(f"     {mark} {o['kind']:14s} {o['name']:22s} {o.get('detail', '')[:80]}")
     enb = r.get("encodable_not_built") or []
     if enb:
-        print(f"   ENCODABLE BUT NOT BUILT ({len(enb)}) — the ISA encodes it, this elaboration does "
-              f"not contain it; declaring any of these would be OVER-declaration")
+        print(
+            f"   ENCODABLE BUT NOT BUILT ({len(enb)}) — the ISA encodes it, this elaboration does "
+            f"not contain it; declaring any of these would be OVER-declaration"
+        )
         for f in enb:
             g = f.get("gate") or {}
-            print(f"     ! {f['axis']:14s} {f['name']:22s} gated on {g.get('off')} = false in "
-                  f"{g.get('config')}")
+            print(f"     ! {f['axis']:14s} {f['name']:22s} gated on {g.get('off')} = false in {g.get('config')}")
             ev = (f.get("evidence") or [{}])[-1]
             if ev.get("locator"):
-                print(f"       evidence: {ev['locator']}"
-                      + (f":{ev['line']}" if ev.get("line") else "")
-                      + f"  {ev.get('observed', '')[:70]}")
+                print(
+                    f"       evidence: {ev['locator']}"
+                    + (f":{ev['line']}" if ev.get("line") else "")
+                    + f"  {ev.get('observed', '')[:70]}"
+                )
     if r["undeterminable"]:
-        print(f"   undeterminable ({len(r['undeterminable'])}) — no rung capable of deciding ran; NOT "
-              f"absence, and never a licence to remove a declaration")
+        print(
+            f"   undeterminable ({len(r['undeterminable'])}) — no rung capable of deciding ran; NOT "
+            f"absence, and never a licence to remove a declaration"
+        )
         for u in r["undeterminable"][:12]:
             print(f"     ? {u['kind']:14s} {u['name'][:40]}")
         if len(r["undeterminable"]) > 12:
@@ -159,16 +179,15 @@ def _print_report(r: dict, ratchet: set[str]) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--ratchet", type=Path,
-                    default=_HERE.parent / "capability_drift_ratchet.txt")
+    ap.add_argument("--ratchet", type=Path, default=_HERE.parent / "capability_drift_ratchet.txt")
     ap.add_argument("--fail-on-under-declared", action="store_true")
     ap.add_argument("--fail-on-over-declared", action="store_true")
-    ap.add_argument("--require-pin", action="store_true",
-                    help="refuse to report a surface whose hardware pin does not verify")
+    ap.add_argument(
+        "--require-pin", action="store_true", help="refuse to report a surface whose hardware pin does not verify"
+    )
     a = ap.parse_args(argv)
 
     # DEFAULT TARGET SET IS DISCOVERED, not named: every target that has an RTL fact bundle. A hardcoded
@@ -176,8 +195,11 @@ def main(argv=None) -> int:
     # whole module exists to prevent (and the no-target-name gate rightly rejects it).
     targets = a.target or CD.targets_with_facts()
     if not targets:
-        print("no --target given and no target in this checkout has a readable RTL fact bundle; pass "
-              "--target NAME, or regenerate facts first", file=sys.stderr)
+        print(
+            "no --target given and no target in this checkout has a readable RTL fact bundle; pass "
+            "--target NAME, or regenerate facts first",
+            file=sys.stderr,
+        )
         return 2
 
     ratchet = _load_ratchet(a.ratchet)
@@ -188,28 +210,40 @@ def main(argv=None) -> int:
         for r in reports:
             _print_report(r, ratchet)
 
-    new_under = [_debt(r["target"], "under", u["kind"], u["name"])
-                 for r in reports for u in r.get("under_declared", [])
-                 if _debt(r["target"], "under", u["kind"], u["name"]) not in ratchet]
-    new_over = [_debt(r["target"], "over", o["kind"], o["name"])
-                for r in reports for o in r.get("over_declared", [])
-                if _debt(r["target"], "over", o["kind"], o["name"]) not in ratchet]
+    new_under = [
+        _debt(r["target"], "under", u["kind"], u["name"])
+        for r in reports
+        for u in r.get("under_declared", [])
+        if _debt(r["target"], "under", u["kind"], u["name"]) not in ratchet
+    ]
+    new_over = [
+        _debt(r["target"], "over", o["kind"], o["name"])
+        for r in reports
+        for o in r.get("over_declared", [])
+        if _debt(r["target"], "over", o["kind"], o["name"]) not in ratchet
+    ]
 
     if not a.json:
         n_undet = sum(len(r.get("undeterminable", [])) for r in reports)
         n_enb = sum(len(r.get("encodable_not_built", [])) for r in reports)
-        print(f"\n{len(targets)} target(s): {len(new_under)} un-ratcheted under-declaration(s), "
-              f"{len(new_over)} un-ratcheted over-declaration(s), {n_enb} encodable-but-not-built, "
-              f"{n_undet} undeterminable entr(ies)")
+        print(
+            f"\n{len(targets)} target(s): {len(new_under)} un-ratcheted under-declaration(s), "
+            f"{len(new_over)} un-ratcheted over-declaration(s), {n_enb} encodable-but-not-built, "
+            f"{n_undet} undeterminable entr(ies)"
+        )
 
     rc = 0
     if new_under and a.fail_on_under_declared:
-        print(f"\nFAIL: {len(new_under)} under-declared capability(ies) not in the ratchet:\n  "
-              + "\n  ".join(new_under), file=sys.stderr)
+        print(
+            f"\nFAIL: {len(new_under)} under-declared capability(ies) not in the ratchet:\n  " + "\n  ".join(new_under),
+            file=sys.stderr,
+        )
         rc = 1
     if new_over and a.fail_on_over_declared:
-        print(f"\nFAIL: {len(new_over)} over-declared capability(ies) not in the ratchet:\n  "
-              + "\n  ".join(new_over), file=sys.stderr)
+        print(
+            f"\nFAIL: {len(new_over)} over-declared capability(ies) not in the ratchet:\n  " + "\n  ".join(new_over),
+            file=sys.stderr,
+        )
         rc = 1
     return rc
 

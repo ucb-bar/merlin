@@ -32,6 +32,7 @@ capsules all fit the store many times over cannot detect a memory-mapping failur
 Reporting-only by default because the derivation is new and the corpus predates it: turning a 35-cell gap
 into a hard failure on day one would only teach everyone to pass `--no-verify`.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -97,23 +98,22 @@ def _applications(te) -> dict:
         if missing:
             # Not silently skipped: a declared application whose bundle is absent means the axis is
             # deriving from less than the descriptor claims, and that difference has to be visible.
-            print(f"[note] applications declared but not in the recapture store: {missing}",
-                  file=sys.stderr)
+            print(f"[note] applications declared but not in the recapture store: {missing}", file=sys.stderr)
     else:
         root = Path(declared)
         if not root.is_absolute():
             root = repo_root() / root
         if not root.is_dir():
             return {}
-        found = {d.name: d / "model.mlir" for d in sorted(root.iterdir())
-                 if (d / "model.mlir").is_file()}
+        found = {d.name: d / "model.mlir" for d in sorted(root.iterdir()) if (d / "model.mlir").is_file()}
 
     offending = sorted(n for n in found if CM.is_claim_bundle(n))
     if offending:
         raise ClaimModelInApplications(
             f"{offending} named as application(s), but they are CLAIM models. The application axis "
             f"decides which capsules exist, so reading a claim model here would build the corpus from "
-            f"the model it is then said to generalize to. Claim models: {list(CM.claim_models())}")
+            f"the model it is then said to generalize to. Claim models: {list(CM.claim_models())}"
+        )
     return found
 
 
@@ -184,6 +184,7 @@ def _target_experiment(target: str) -> Path | None:
     if not root.is_dir():
         return None
     import yaml
+
     for desc in sorted(root.glob("*/target_experiment.yaml")):
         try:
             doc = yaml.safe_load(desc.read_text(encoding="utf-8")) or {}
@@ -208,7 +209,7 @@ def _contract_target(target: str) -> str:
         return target
     try:
         return str(getattr(load_target_experiment(desc), "target", "") or target)
-    except Exception:                              # noqa: BLE001 -- unreadable descriptor: use the dir
+    except Exception:  # noqa: BLE001 -- unreadable descriptor: use the dir
         return target
 
 
@@ -218,8 +219,11 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
 
     desc = _target_experiment(target)
     if desc is None:
-        return {"target": target, "status": "no_target_experiment",
-                "detail": f"no target_experiment.yaml for {target!r}"}
+        return {
+            "target": target,
+            "status": "no_target_experiment",
+            "detail": f"no target_experiment.yaml for {target!r}",
+        }
     te = load_target_experiment(desc)
     # THE DIRECTORY NAME IS NOT ALWAYS THE TARGET NAME. A descriptor declares the target its contract is
     # registered under, and for some targets that differs from the directory the descriptor sits in
@@ -233,21 +237,30 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
     caps = _captures()
     if spec_path and spec_path.is_file():
         import yaml
+
         doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
         origin = f"tracked spec {spec_path}"
     else:
         # The corpus is handed in as a SECOND evidence source for the negative lane: it is what the
         # grader will run, and it can present work the captures never do (a bf16 contraction on an
         # int8-only array). See `conformance.corpus_presented_pairs`.
-        doc = CF.spec(contract_target, caps, applications=_applications(te),
-                      corpus_roots=roots, cert_budget_s=_cert_budget_s(te))
-        origin = ("derived now" if contract_target == target
-                  else f"derived now against contract target {contract_target!r}")
+        doc = CF.spec(
+            contract_target, caps, applications=_applications(te), corpus_roots=roots, cert_budget_s=_cert_budget_s(te)
+        )
+        origin = (
+            "derived now" if contract_target == target else f"derived now against contract target {contract_target!r}"
+        )
     if not doc.get("cells"):
-        return {"target": target, "status": "no_requirement", "spec_origin": origin,
-                "detail": ("nothing was derived: no capability manifest resolved, or no captured model "
-                           "was readable. This is 'we do not know', never 'nothing is required'."),
-                "captures_available": sorted(caps)}
+        return {
+            "target": target,
+            "status": "no_requirement",
+            "spec_origin": origin,
+            "detail": (
+                "nothing was derived: no capability manifest resolved, or no captured model "
+                "was readable. This is 'we do not know', never 'nothing is required'."
+            ),
+            "captures_available": sorted(caps),
+        }
 
     tile = (doc.get("boundaries") or {}).get("tile_edge")
     gap = CF.uncovered(doc, roots, labels={"public", "dev"}, tile_dim=tile, exclude=exclude)
@@ -262,9 +275,14 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         "tile_edge": tile,
         "n_required": gap["n_required"],
         "n_covered": gap["n_covered"],
-        "uncovered": [{"cell": c, "basis": by_cell.get(c, {}).get("basis"),
-                       "admitted_by": by_cell.get(c, {}).get("admitted_by", [])}
-                      for c in gap["uncovered"]],
+        "uncovered": [
+            {
+                "cell": c,
+                "basis": by_cell.get(c, {}).get("basis"),
+                "admitted_by": by_cell.get(c, {}).get("admitted_by", []),
+            }
+            for c in gap["uncovered"]
+        ],
         "corpus_cells_not_required": gap["extra_cells"],
         "composition": gap.get("composition") or {"status": "not_measured"},
         "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
@@ -309,58 +327,83 @@ def uncovered_debt(reports: list[dict], ratchet: set) -> list[str]:
     ``--fail-on-uncovered`` returned 0 on it. A single function is what lets a test assert that an
     uncovered gap on EACH axis reaches the verdict.
     """
-    bad = [_debt(r["target"], u["cell"]) for r in reports if r["status"] == "ok"
-           for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
+    bad = [
+        _debt(r["target"], u["cell"])
+        for r in reports
+        if r["status"] == "ok"
+        for u in r["uncovered"]
+        if _debt(r["target"], u["cell"]) not in ratchet
+    ]
     # Composition gaps carry a `composition` axis tag so a shape and a cell can never collide in one flat
     # file, and so a reader of the ratchet can see which axis each debt belongs to.
-    bad += [_debt(r["target"], k, "composition") for r in reports if r["status"] == "ok"
-            for k in ((r.get("composition") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "composition") not in ratchet]
-    bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
-            for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "memory") not in ratchet]
+    bad += [
+        _debt(r["target"], k, "composition")
+        for r in reports
+        if r["status"] == "ok"
+        for k in ((r.get("composition") or {}).get("uncovered") or [])
+        if _debt(r["target"], k, "composition") not in ratchet
+    ]
+    bad += [
+        _debt(r["target"], k, "memory")
+        for r in reports
+        if r["status"] == "ok"
+        for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
+        if _debt(r["target"], k, "memory") not in ratchet
+    ]
     # The negative lane carries its own axis tag for the same reason the others do: a family name and a
     # composition shape must never collide in one flat ratchet file.
-    bad += [_debt(r["target"], k, "host_only") for r in reports if r["status"] == "ok"
-            for k in ((r.get("host_only") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "host_only") not in ratchet]
+    bad += [
+        _debt(r["target"], k, "host_only")
+        for r in reports
+        if r["status"] == "ok"
+        for k in ((r.get("host_only") or {}).get("uncovered") or [])
+        if _debt(r["target"], k, "host_only") not in ratchet
+    ]
     # Shape geometry was the fifth axis and the only one that was DECORATION: it was measured, printed
     # with the same `*` un-ratcheted marker as the others, and never accumulated here -- so an aspect
     # ratio no capsule reproduces, and the share of real contraction MAC work sitting in it, printed as
     # a violation while --fail-on-uncovered returned 0. The ratchet file has no `geometry:` line for the
     # same reason: nothing has ever been forced to record one.
-    bad += [_debt(r["target"], k, "geometry") for r in reports if r["status"] == "ok"
-            for k in ((r.get("shape_geometry") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "geometry") not in ratchet]
+    bad += [
+        _debt(r["target"], k, "geometry")
+        for r in reports
+        if r["status"] == "ok"
+        for k in ((r.get("shape_geometry") or {}).get("uncovered") or [])
+        if _debt(r["target"], k, "geometry") not in ratchet
+    ]
     return bad
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--spec", type=Path, default=None)
     ap.add_argument("--write", type=Path, default=None)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=None)
     ap.add_argument("--fail-on-uncovered", action="store_true")
-    ap.add_argument("--fail-on-unverifiable", action="store_true",
-                    help="exit 2 when a target could not be audited at all")
+    ap.add_argument(
+        "--fail-on-unverifiable", action="store_true", help="exit 2 when a target could not be audited at all"
+    )
     a = ap.parse_args(argv)
 
     # DEFAULT TARGET SET IS DISCOVERED, not named: every target that already has a tracked conformance
     # spec. A hardcoded default here would make this gate silently about one target forever, which is the
     # overfitting the whole module exists to prevent (and the no-target-name gate rightly rejects it).
     targets = a.target or sorted(
-        p.stem for p in (repo_root() / "merlin" / "contract" / "capsules" / "conformance").glob("*.yaml"))
+        p.stem for p in (repo_root() / "merlin" / "contract" / "capsules" / "conformance").glob("*.yaml")
+    )
     if not targets:
-        print("no --target given and no tracked conformance spec found under "
-              "merlin/contract/capsules/conformance/; pass --target NAME (with --write to create one)",
-              file=sys.stderr)
+        print(
+            "no --target given and no tracked conformance spec found under "
+            "merlin/contract/capsules/conformance/; pass --target NAME (with --write to create one)",
+            file=sys.stderr,
+        )
         return 2
 
     if a.write:
         import yaml
+
         if len(targets) != 1:
             print("--write takes exactly one --target", file=sys.stderr)
             return 2
@@ -378,16 +421,22 @@ def main(argv=None) -> int:
         # requirement, and omitting the corpus here produced a spec that named fewer negative-lane
         # pairs than the one `audit` derives from the very same tree -- the two disagreeing about the
         # requirement is worse than either being wrong.
-        doc = CF.spec(_contract_target(targets[0]), _captures(),
-                      applications=_applications(_te), corpus_roots=list(_te.graded_roots()),
-                      cert_budget_s=_cert_budget_s(_te))
+        doc = CF.spec(
+            _contract_target(targets[0]),
+            _captures(),
+            applications=_applications(_te),
+            corpus_roots=list(_te.graded_roots()),
+            cert_budget_s=_cert_budget_s(_te),
+        )
         a.write.parent.mkdir(parents=True, exist_ok=True)
         a.write.write_text(
             "# DERIVED — regenerate with:\n"
             f"#   build_tools/scripts/check_conformance_coverage.py --target {targets[0]} "
             f"--write {a.write.relative_to(repo_root()) if a.write.is_absolute() else a.write}\n"
             "# Do not hand-edit: the point of this file is that it is evidence, not authorship.\n"
-            + yaml.safe_dump(doc, sort_keys=False, width=100), encoding="utf-8")
+            + yaml.safe_dump(doc, sort_keys=False, width=100),
+            encoding="utf-8",
+        )
         print(f"wrote {a.write} — {len(doc['cells'])} required cell(s)")
         return 0
 
@@ -406,8 +455,10 @@ def main(argv=None) -> int:
             print(f"   covered       : {r['n_covered']} / {r['n_required']} required cell(s)")
             new = [u for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
             if r["uncovered"]:
-                print(f"   UNCOVERED     : {len(r['uncovered'])}"
-                      + (f" ({len(new)} not in the ratchet)" if ratchet else ""))
+                print(
+                    f"   UNCOVERED     : {len(r['uncovered'])}"
+                    + (f" ({len(new)} not in the ratchet)" if ratchet else "")
+                )
                 for u in r["uncovered"]:
                     mark = " " if _debt(r["target"], u["cell"]) in ratchet else "*"
                     print(f"     {mark} {u['cell']:34s} basis={u['basis']} by={u['admitted_by']}")
@@ -419,11 +470,15 @@ def main(argv=None) -> int:
                     print(f"     {mark} {kind:34s} no capsule assembles work this way")
                 thin = [(k, v) for k, v in sorted((comp.get("covered_by") or {}).items()) if len(v) == 1]
                 for kind, names in thin:
-                    print(f"       {kind:32s} covered by ONE capsule ({names[0]}) — a single point of "
-                          f"evidence for a whole composition shape")
-                for kind in (comp.get("covered_only_incidentally") or []):
-                    print(f"       {kind:32s} covered only INCIDENTALLY — every capsule containing it "
-                          f"is named for a different shape, so nothing is built to prove it")
+                    print(
+                        f"       {kind:32s} covered by ONE capsule ({names[0]}) — a single point of "
+                        f"evidence for a whole composition shape"
+                    )
+                for kind in comp.get("covered_only_incidentally") or []:
+                    print(
+                        f"       {kind:32s} covered only INCIDENTALLY — every capsule containing it "
+                        f"is named for a different shape, so nothing is built to prove it"
+                    )
                 if comp.get("unreadable_capsules"):
                     # TWO DIFFERENT FACTS, and they license different actions. "We could not read this
                     # capsule" is a defect in the capsule -- fix the capsule. "This target's seam cannot
@@ -433,51 +488,64 @@ def main(argv=None) -> int:
                     und = {n: w for n, w in comp["unreadable_capsules"].items() if "undeterminable" in w}
                     bad = {n: w for n, w in comp["unreadable_capsules"].items() if n not in und}
                     if bad:
-                        print(f"   UNREADABLE    : {len(bad)} capsule(s) whose composition could not "
-                              f"be determined")
+                        print(f"   UNREADABLE    : {len(bad)} capsule(s) whose composition could not be determined")
                         for name, why in sorted(bad.items()):
                             print(f"     ? {name:32s} {why}")
                     if und:
-                        print(f"   UNBUILDABLE   : {len(und)} capsule(s) are accelerator-eligible on a "
-                              f"target whose host/device seam no path in this repo can emit, so their "
-                              f"composition is UNDETERMINABLE -- not covered, and not a capsule defect")
+                        print(
+                            f"   UNBUILDABLE   : {len(und)} capsule(s) are accelerator-eligible on a "
+                            f"target whose host/device seam no path in this repo can emit, so their "
+                            f"composition is UNDETERMINABLE -- not covered, and not a capsule defect"
+                        )
                         for name, why in sorted(und.items()):
                             print(f"     ? {name:32s} {why}")
             elif comp:
                 print(f"   composition   : {comp.get('status')} — {comp.get('detail', '')}")
             geo = r.get("shape_geometry") or {}
             if geo.get("status") == "ok":
-                print(f"   shape geometry: {geo['n_covered']} / {geo['n_required']} aspect-ratio "
-                      f"class(es) real models present")
+                print(
+                    f"   shape geometry: {geo['n_covered']} / {geo['n_required']} aspect-ratio "
+                    f"class(es) real models present"
+                )
                 for kind in geo["uncovered"]:
                     mark = " " if _debt(r["target"], kind, "geometry") in ratchet else "*"
                     print(f"     {mark} {kind:34s} no capsule reproduces this aspect ratio")
                 if geo.get("mac_fraction_uncovered"):
-                    print(f"       {100.0 * float(geo['mac_fraction_uncovered']):.1f}% of real "
-                          f"contraction MAC work sits in an untested aspect ratio")
+                    print(
+                        f"       {100.0 * float(geo['mac_fraction_uncovered']):.1f}% of real "
+                        f"contraction MAC work sits in an untested aspect ratio"
+                    )
             elif geo:
                 print(f"   shape geometry: {geo.get('status')} — {geo.get('detail', '')}")
             mem = r.get("memory_mapping") or {}
             if mem.get("status") == "ok":
-                print(f"   memory regime : {mem['n_covered']} / {mem['n_required']} required regime(s)"
-                      f"   (operand store {mem.get('capacity_rows')} rows)")
+                print(
+                    f"   memory regime : {mem['n_covered']} / {mem['n_required']} required regime(s)"
+                    f"   (operand store {mem.get('capacity_rows')} rows)"
+                )
                 counts = mem.get("region_counts") or {}
                 total = sum(counts.values()) or 1
                 for kind in mem["uncovered"]:
                     mark = " " if _debt(r["target"], kind, "memory") in ratchet else "*"
                     n = counts.get(kind, 0)
-                    print(f"     {mark} {kind:34s} no capsule reaches it; {n} real region(s) "
-                          f"({100.0 * n / total:.1f}% of what the captures contain) do")
+                    print(
+                        f"     {mark} {kind:34s} no capsule reaches it; {n} real region(s) "
+                        f"({100.0 * n / total:.1f}% of what the captures contain) do"
+                    )
                 lw = mem.get("largest_working_set") or {}
                 if lw.get("name"):
-                    print(f"       largest capsule working set: {lw['name']} at "
-                          f"{100.0 * float(lw.get('fraction_of_capacity') or 0):.2f}% of capacity")
+                    print(
+                        f"       largest capsule working set: {lw['name']} at "
+                        f"{100.0 * float(lw.get('fraction_of_capacity') or 0):.2f}% of capacity"
+                    )
             elif mem:
                 print(f"   memory regime : {mem.get('status')} — {mem.get('detail', '')}")
             ho = r.get("host_only") or {}
             if ho.get("status") == "ok":
-                print(f"   host-only lane: {ho['n_covered']} / {ho['n_required']} family/families the "
-                      f"hardware must NOT accelerate")
+                print(
+                    f"   host-only lane: {ho['n_covered']} / {ho['n_required']} family/families the "
+                    f"hardware must NOT accelerate"
+                )
                 for fam in ho["uncovered"]:
                     mark = " " if _debt(r["target"], fam, "host_only") in ratchet else "*"
                     print(f"     {mark} {fam:34s} no capsule proves it lands on the host lane")
@@ -487,11 +555,11 @@ def main(argv=None) -> int:
                 print(f"   host-only lane: UNDETERMINABLE — {ho.get('detail', '')}")
             elif ho:
                 print(f"   host-only lane: {ho.get('status')} — {ho.get('detail', '')}")
-            for label, key, noun in (("host lane    ", "host_lane", "(family, dtype) pair(s) the "
-                                      "compiler must place on the HOST"),
-                                     ("epilogue     ", "epilogue", "fusable stage(s)"),
-                                     ("conv window  ", "conv_geometry", "convolution window(s) real "
-                                      "captures contain")):
+            for label, key, noun in (
+                ("host lane    ", "host_lane", "(family, dtype) pair(s) the compiler must place on the HOST"),
+                ("epilogue     ", "epilogue", "fusable stage(s)"),
+                ("conv window  ", "conv_geometry", "convolution window(s) real captures contain"),
+            ):
                 ax = r.get(key) or {}
                 if ax.get("status") != "ok":
                     print(f"   {label}: {ax.get('status', 'missing')} — {ax.get('detail', '')}")
@@ -503,20 +571,25 @@ def main(argv=None) -> int:
                 # A stage evidenced ONLY standalone says the lowering exists and the FUSION is not
                 # tested, which is a different remedy from the reverse; one number cannot carry both.
                 if ax.get("standalone_only"):
-                    print(f"       evidenced standalone only (fusion untested): "
-                          f"{ax['standalone_only']}")
+                    print(f"       evidenced standalone only (fusion untested): {ax['standalone_only']}")
                 if ax.get("entry_tensor_only"):
-                    print(f"       evidenced only by a whole model's ENTRY tensor, which is not an "
-                          f"operand dtype: {ax['entry_tensor_only']}")
+                    print(
+                        f"       evidenced only by a whole model's ENTRY tensor, which is not an "
+                        f"operand dtype: {ax['entry_tensor_only']}"
+                    )
                 if ax.get("covered_only_incidentally"):
-                    print(f"       covered only INCIDENTALLY (no capsule is named for it): "
-                          f"{ax['covered_only_incidentally']}")
+                    print(
+                        f"       covered only INCIDENTALLY (no capsule is named for it): "
+                        f"{ax['covered_only_incidentally']}"
+                    )
             if r["corpus_cells_not_required"]:
                 print(f"   corpus cells not in the requirement: {r['corpus_cells_not_required']}")
-                print("     (a cell the hardware does not admit for that family — e.g. an int8 movement "
-                      "capsule on a target whose movement datapath is float-only — is INTENTIONAL: it is "
-                      "what forces the compiler off the accelerator path)")
-            for n in (r["diagnostics"].get("notes") or []):
+                print(
+                    "     (a cell the hardware does not admit for that family — e.g. an int8 movement "
+                    "capsule on a target whose movement datapath is float-only — is INTENTIONAL: it is "
+                    "what forces the compiler off the accelerator path)"
+                )
+            for n in r["diagnostics"].get("notes") or []:
                 print(f"   note: {n}")
 
     bad = uncovered_debt(reports, ratchet)
@@ -529,8 +602,9 @@ def main(argv=None) -> int:
     # This repo has now paid for that shape five times, so it is spelled 2 ("cannot decide"), never 0.
     unrunnable = [r for r in reports if r["status"] != "ok"]
     if unrunnable:
-        print(f"\n  COULD NOT AUDIT ({len(unrunnable)}) — these establish NOTHING, they are not clean:",
-              file=sys.stderr)
+        print(
+            f"\n  COULD NOT AUDIT ({len(unrunnable)}) — these establish NOTHING, they are not clean:", file=sys.stderr
+        )
         for r in unrunnable:
             print(f"    ? {r['target']:28s} {r['status']}: {r.get('detail', '')}", file=sys.stderr)
 
@@ -538,8 +612,7 @@ def main(argv=None) -> int:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1
     if unrunnable and (a.fail_on_uncovered or a.fail_on_unverifiable):
-        print(f"\nCANNOT DECIDE: {len(unrunnable)} target(s) could not be audited at all.",
-              file=sys.stderr)
+        print(f"\nCANNOT DECIDE: {len(unrunnable)} target(s) could not be audited at all.", file=sys.stderr)
         return 2
     return 0
 

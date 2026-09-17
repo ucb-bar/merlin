@@ -12,6 +12,7 @@ part of what the driver measured, and merging it would change a number somebody 
 Stdlib + merlin only. A driver run as a file reaches this module through its own directory, which is
 ``sys.path[0]``; a driver loaded by path (as the tests load them) inserts that directory first.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,9 +38,23 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | No
     """scp the binary to the board, run it, return (stdout-or-None, detail)."""
     remote = f"/tmp/k1ceil_{tag}"
     try:
-        subprocess.run(["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes",
-                        "-o", "StrictHostKeyChecking=no", str(binary), f"{k1.K1_HOST}:{remote}"],
-                       capture_output=True, text=True, timeout=120, check=True)
+        subprocess.run(
+            [
+                "scp",
+                "-i",
+                k1.K1_SSH_KEY,
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                str(binary),
+                f"{k1.K1_HOST}:{remote}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         return None, f"scp failed: {e.stderr[-200:] if e.stderr else e}"
     try:
@@ -56,8 +71,7 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | No
 
 
 # From k1_amax_reduction_ab and k1_pkg_cflags_ab (whose docstring was a shorter form of this one).
-def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
-                 iters: int, timeout: int) -> list[dict]:
+def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int, iters: int, timeout: int) -> list[dict]:
     """Run the ALREADY-BUILT ELF on the board once per environment padding; a row per padding.
 
     Through `k1.run_binary_on_k1`, which deploys and runs a given binary under an explicit
@@ -73,26 +87,28 @@ def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
     """
     rows = []
     for i in range(n_paddings):
-        pad = "X" * (1 << (6 + i))                 # 64 B, 128 B, ... doubling per padding
+        pad = "X" * (1 << (6 + i))  # 64 B, 128 B, ... doubling per padding
         env = {"MERLIN_AB_PAD": pad, "MERLIN_ITERS": str(iters)}
         try:
             res = k1.run_binary_on_k1(bundle, bwork, pkg, elf, env=env, timeout=timeout)
-        except Exception as e:                                       # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             rows.append({"padding_bytes": len(pad), "error": f"{type(e).__name__}: {e}"})
             continue
         # The harness prints its own digest over the output bytes; recompute host-side over the
         # parsed values as an independent check, and REPORT BOTH. A single digest that the same code
         # both produces and checks cannot detect a harness-side bug.
         outputs = res.get("outputs")
-        host = (hashlib.sha256(
-            b"".join(float(v).hex().encode() for v in outputs)).hexdigest()
-            if outputs else None)
+        host = hashlib.sha256(b"".join(float(v).hex().encode() for v in outputs)).hexdigest() if outputs else None
         walls = res.get("iter_wall_ns") or []
-        rows.append({"padding_bytes": len(pad),
-                     "board_out_hash": res.get("out_hash"),
-                     "host_digest_over_parsed_outputs": host,
-                     "n_outputs": len(outputs) if outputs else 0,
-                     "wall_ns_min": min(walls) if walls else None})
+        rows.append(
+            {
+                "padding_bytes": len(pad),
+                "board_out_hash": res.get("out_hash"),
+                "host_digest_over_parsed_outputs": host,
+                "n_outputs": len(outputs) if outputs else 0,
+                "wall_ns_min": min(walls) if walls else None,
+            }
+        )
     return rows
 
 
@@ -100,8 +116,9 @@ def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
 def _dirty(paths) -> list:
     out = []
     for rel in paths:
-        got = subprocess.run(["git", "status", "--porcelain", "--", rel],
-                             cwd=str(repo_root()), capture_output=True, text=True)
+        got = subprocess.run(
+            ["git", "status", "--porcelain", "--", rel], cwd=str(repo_root()), capture_output=True, text=True
+        )
         if got.stdout.strip():
             out.append(rel)
     return sorted(out)
@@ -119,8 +136,7 @@ def _write_manifest(outdir: Path, product) -> None:
     from merlin.common.yaml import dump_yaml, load_yaml
 
     files = sorted(p.name for p in outdir.iterdir() if p.is_file() and p.name != "manifest.yaml")
-    cells = sorted(f"cells/{p.name}" for p in (outdir / "cells").iterdir()) \
-        if (outdir / "cells").is_dir() else []
+    cells = sorted(f"cells/{p.name}" for p in (outdir / "cells").iterdir()) if (outdir / "cells").is_dir() else []
     mf = outdir / "manifest.yaml"
     if mf.is_file():
         existing = load_yaml(mf) or {}

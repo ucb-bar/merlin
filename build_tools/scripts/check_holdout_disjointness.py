@@ -41,6 +41,7 @@ Reporting-only by default for the same reason the sibling coverage gate is: the 
 check, and turning an inherited duplicate into a hard failure on day one only teaches everyone to pass
 ``--no-verify``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,10 +66,21 @@ HIDDEN_SUFFIX = ".hidden.yaml"
 # --- what makes a POINT ---------------------------------------------------------------------------
 # Identity / provenance / bookkeeping: present on every entry, load-bearing for none of them. Dropping
 # these is what turns "a rename" into "the same point".
-_IDENTITY_KEYS = frozenset({
-    "name", "label", "cat", "source_role", "source_reference", "note", "notes", "description",
-    "comment", "comparison_group", "gate",
-})
+_IDENTITY_KEYS = frozenset(
+    {
+        "name",
+        "label",
+        "cat",
+        "source_role",
+        "source_reference",
+        "note",
+        "notes",
+        "description",
+        "comment",
+        "comparison_group",
+        "gate",
+    }
+)
 # Keys whose VALUE is an operand tensor label. Dropped on purpose, and this is the crux of the check:
 # the corpus generator salts operand DATA from the capsule name, so an entry that differs from a public
 # one only in ``lhs: A0`` vs ``lhs: Ah5`` builds a byte-identical program over fresh numbers. Keeping
@@ -87,10 +99,20 @@ _ROLE_LABEL_KEYS = frozenset({"semantic"})
 # string-valued key is treated as a label and dropped — the conservative direction for a disjointness
 # test, since dropping a key can only merge points and so can only make a collision MORE visible.
 # Unrecognized string keys are reported (never silently accepted) as ``unclassified_keys``.
-_STRUCTURAL_STRING_KEYS = frozenset({
-    "op", "kind", "operand_dtype", "accum_dtype", "output_dtype", "source", "model", "spec_ref",
-    "loader", "compare",
-})
+_STRUCTURAL_STRING_KEYS = frozenset(
+    {
+        "op",
+        "kind",
+        "operand_dtype",
+        "accum_dtype",
+        "output_dtype",
+        "source",
+        "model",
+        "spec_ref",
+        "loader",
+        "compare",
+    }
+)
 _TILES_SUFFIX = "_tiles"
 
 
@@ -119,7 +141,7 @@ def canonical_point(entry: dict, tile: int) -> tuple:
             continue
         if key.endswith(_TILES_SUFFIX) and len(key) > len(_TILES_SUFFIX):
             base = key[: -len(_TILES_SUFFIX)]
-            if base in entry:            # both spellings present: the absolute one is authoritative
+            if base in entry:  # both spellings present: the absolute one is authoritative
                 continue
             flat[base] = int(value) * tile
             continue
@@ -152,8 +174,13 @@ def unclassified_string_keys(entries: list[dict]) -> list[str]:
     seen = set()
     for e in entries:
         for k, v in e.items():
-            if (isinstance(v, str) and k not in _IDENTITY_KEYS and k not in _TENSOR_LABEL_KEYS
-                    and k not in _ROLE_LABEL_KEYS and k not in _STRUCTURAL_STRING_KEYS):
+            if (
+                isinstance(v, str)
+                and k not in _IDENTITY_KEYS
+                and k not in _TENSOR_LABEL_KEYS
+                and k not in _ROLE_LABEL_KEYS
+                and k not in _STRUCTURAL_STRING_KEYS
+            ):
                 seen.add(k)
     return sorted(seen)
 
@@ -173,8 +200,7 @@ def _generator():
 
 
 def _descriptor_for(target: str) -> Path | None:
-    cand = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-            / "target_experiment.yaml")
+    cand = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
     return cand if cand.is_file() else None
 
 
@@ -187,7 +213,7 @@ def _needs_traits(*profiles: dict) -> bool:
     consults the traits at all, so passing None changes nothing.
     """
     for prof in profiles:
-        for sweep in (prof.get("sweeps") or []):
+        for sweep in prof.get("sweeps") or []:
             if isinstance(sweep, dict) and ((sweep.get("gate") or {}).get("requires")):
                 return True
     return False
@@ -230,19 +256,28 @@ def audit(target: str) -> dict:
     public_path = PROFILES / f"{target}.yaml"
     hidden_path = PROFILES / f"{target}{HIDDEN_SUFFIX}"
     if not public_path.is_file():
-        return {"target": target, "status": "no_public_profile",
-                "detail": f"no {public_path.name}: nothing to be disjoint FROM"}
+        return {
+            "target": target,
+            "status": "no_public_profile",
+            "detail": f"no {public_path.name}: nothing to be disjoint FROM",
+        }
     if not hidden_path.is_file():
         # A public clone, or a sandbox where the sidecar is masked. Not an error and not a pass:
         # there is no holdout set here to check.
-        return {"target": target, "status": "no_holdout_sidecar",
-                "detail": "no hidden sidecar is readable here (public clone or masked sandbox)"}
+        return {
+            "target": target,
+            "status": "no_holdout_sidecar",
+            "detail": "no hidden sidecar is readable here (public clone or masked sandbox)",
+        }
     desc = _descriptor_for(target)
     if desc is None:
-        return {"target": target, "status": "no_target_experiment",
-                "detail": "no target_experiment.yaml: the tile edge cannot be derived, so tile-relative "
-                          "and absolute spellings of one shape cannot be compared. Reported UNKNOWN "
-                          "rather than compared at an assumed tile edge."}
+        return {
+            "target": target,
+            "status": "no_target_experiment",
+            "detail": "no target_experiment.yaml: the tile edge cannot be derived, so tile-relative "
+            "and absolute spellings of one shape cannot be compared. Reported UNKNOWN "
+            "rather than compared at an assumed tile edge.",
+        }
 
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -252,12 +287,14 @@ def audit(target: str) -> dict:
     try:
         binding = CS.derive_binding(load_target_experiment(desc), public.get("datapath", {}))
     except Exception as exc:  # noqa: BLE001 — an underivable binding is UNKNOWN, never a default tile
-        return {"target": target, "status": "binding_underivable",
-                "detail": f"{type(exc).__name__}: {exc}"}
+        return {"target": target, "status": "binding_underivable", "detail": f"{type(exc).__name__}: {exc}"}
     tile = int(getattr(binding, "tile_dim", 0) or 0)
     if tile < 1:
-        return {"target": target, "status": "no_tile_edge",
-                "detail": "the binding reports no tile edge; tile-relative extents cannot be resolved"}
+        return {
+            "target": target,
+            "status": "no_tile_edge",
+            "detail": "the binding reports no tile edge; tile-relative extents cannot be resolved",
+        }
 
     gc = _generator()
     skipped_pub: list = []
@@ -280,13 +317,16 @@ def audit(target: str) -> dict:
         "n_holdout_generated": len(hid_entries) - hid_hand,
     }
     report.update(compare(pub_entries, hid_entries, tile))
-    report.update({
-        "unclassified_keys": sorted(set(unclassified_string_keys(pub_entries))
-                                    | set(unclassified_string_keys(hid_entries))),
-        "traits_derived": traits is not None,
-        "sweeps_skipped_public": skipped_pub,
-        "sweeps_skipped_holdout": [{"reason": s.get("reason")} for s in skipped_hid],
-    })
+    report.update(
+        {
+            "unclassified_keys": sorted(
+                set(unclassified_string_keys(pub_entries)) | set(unclassified_string_keys(hid_entries))
+            ),
+            "traits_derived": traits is not None,
+            "sweeps_skipped_public": skipped_pub,
+            "sweeps_skipped_holdout": [{"reason": s.get("reason")} for s in skipped_hid],
+        }
+    )
     return report
 
 
@@ -317,12 +357,10 @@ def _load_ratchet(p: Path | None) -> dict[str, int]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--ratchet", type=Path,
-                    default=_HERE.parent / "holdout_disjointness_ratchet.txt")
+    ap.add_argument("--ratchet", type=Path, default=_HERE.parent / "holdout_disjointness_ratchet.txt")
     ap.add_argument("--fail-on-overlap", action="store_true")
     ap.add_argument("--fail-on-unverifiable", action="store_true")
     a = ap.parse_args(argv)
@@ -342,48 +380,68 @@ def main(argv=None) -> int:
                 continue
             allowed = ratchet.get(_debt_key(r["target"]), 0)
             print(f"== {r['target']}  (tile edge {r['tile_edge']})")
-            print(f"   public        : {r['n_public_points']} point(s) "
-                  f"[{r['n_public_hand_authored']} hand-authored, {r['n_public_generated']} generated]"
-                  f" -> {r['n_public_distinct_points']} distinct")
-            print(f"   holdout       : {r['n_holdout_points']} point(s) "
-                  f"[{r['n_holdout_hand_authored']} hand-authored, {r['n_holdout_generated']} generated]")
+            print(
+                f"   public        : {r['n_public_points']} point(s) "
+                f"[{r['n_public_hand_authored']} hand-authored, {r['n_public_generated']} generated]"
+                f" -> {r['n_public_distinct_points']} distinct"
+            )
+            print(
+                f"   holdout       : {r['n_holdout_points']} point(s) "
+                f"[{r['n_holdout_hand_authored']} hand-authored, {r['n_holdout_generated']} generated]"
+            )
             verdict = "DISJOINT" if r["disjoint"] else "NOT DISJOINT"
-            print(f"   disjointness  : {verdict} — {r['n_holdout_coinciding_with_public']} holdout "
-                  f"point(s) coincide with a public point (ratcheted allowance {allowed})")
+            print(
+                f"   disjointness  : {verdict} — {r['n_holdout_coinciding_with_public']} holdout "
+                f"point(s) coincide with a public point (ratcheted allowance {allowed})"
+            )
             if r["n_holdout_internal_duplicates"]:
-                print(f"   holdout self-overlap: {r['n_holdout_internal_duplicates']} holdout point(s) "
-                      f"duplicate another holdout — the set is smaller than it counts")
+                print(
+                    f"   holdout self-overlap: {r['n_holdout_internal_duplicates']} holdout point(s) "
+                    f"duplicate another holdout — the set is smaller than it counts"
+                )
             if not r["disjoint"]:
-                print("     (the coinciding points are NOT printed: a holdout's specification is "
-                      "itself an answer. Read the untracked sidecar to fix them.)")
+                print(
+                    "     (the coinciding points are NOT printed: a holdout's specification is "
+                    "itself an answer. Read the untracked sidecar to fix them.)"
+                )
             if r["unclassified_keys"]:
-                print(f"   UNCLASSIFIED  : string field(s) {r['unclassified_keys']} are neither declared "
-                      f"identity nor declared structural; they are DROPPED from the point (the "
-                      f"conservative direction) — classify them rather than leaving this UNKNOWN")
+                print(
+                    f"   UNCLASSIFIED  : string field(s) {r['unclassified_keys']} are neither declared "
+                    f"identity nor declared structural; they are DROPPED from the point (the "
+                    f"conservative direction) — classify them rather than leaving this UNKNOWN"
+                )
             for s in r["sweeps_skipped_public"]:
                 print(f"   note: public sweep {s.get('sweep')} generated nothing — {s.get('reason')}")
             for s in r["sweeps_skipped_holdout"]:
                 print(f"   note: a holdout sweep generated nothing — {s.get('reason')}")
 
-    over = [(r["target"], r["n_holdout_coinciding_with_public"],
-             ratchet.get(_debt_key(r["target"]), 0))
-            for r in reports if r["status"] == "ok"
-            and r["n_holdout_coinciding_with_public"] > ratchet.get(_debt_key(r["target"]), 0)]
+    over = [
+        (r["target"], r["n_holdout_coinciding_with_public"], ratchet.get(_debt_key(r["target"]), 0))
+        for r in reports
+        if r["status"] == "ok" and r["n_holdout_coinciding_with_public"] > ratchet.get(_debt_key(r["target"]), 0)
+    ]
     # A target whose comparison could not run is neither a pass nor an overlap. It is UNKNOWN, and it
     # is tracked separately so it can never be mistaken for either. `no_holdout_sidecar` and
     # `no_public_profile` are excluded: those are real answers about a clone that has nothing to check.
-    unverifiable = [(r["target"], r["status"]) for r in reports
-                    if r["status"] not in ("ok", "no_holdout_sidecar", "no_public_profile")]
+    unverifiable = [
+        (r["target"], r["status"])
+        for r in reports
+        if r["status"] not in ("ok", "no_holdout_sidecar", "no_public_profile")
+    ]
     rc = 0
     if over and a.fail_on_overlap:
         for target, seen, allowed in over:
-            print(f"\nFAIL: {target} has {seen} holdout point(s) coinciding with a public point "
-                  f"(allowance {allowed})", file=sys.stderr)
+            print(
+                f"\nFAIL: {target} has {seen} holdout point(s) coinciding with a public point (allowance {allowed})",
+                file=sys.stderr,
+            )
         rc = 1
     if unverifiable and a.fail_on_unverifiable:
         for target, status in unverifiable:
-            print(f"\nFAIL: {target} could not be checked ({status}); a check that could not run has "
-                  f"established nothing", file=sys.stderr)
+            print(
+                f"\nFAIL: {target} could not be checked ({status}); a check that could not run has established nothing",
+                file=sys.stderr,
+            )
         rc = 1
     return rc
 

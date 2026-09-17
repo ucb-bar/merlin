@@ -24,6 +24,7 @@ Measurement is INSTRET on the same bracket as the timing (``ours_gemm_driver.c``
 
 Run:  .venv/bin/python build_tools/scripts/k1_escape_cost.py --dtype f32 --sizes 64,96,128,160
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,15 +38,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import k1_large_shape_packing as L  # noqa: E402
+
 from merlin.common.driver_output import int_after  # noqa: E402
 from merlin.common.paths import repo_root  # noqa: E402
 from merlin.mining import k1  # noqa: E402
 
-TAG = "esc"          # unique remote-tag prefix: other agents measure on this board concurrently
+TAG = "esc"  # unique remote-tag prefix: other agents measure on this board concurrently
 
 
-def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str],
-               tmp: Path) -> tuple[Path | None, str]:
+def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str], tmp: Path) -> tuple[Path | None, str]:
     """Build the standalone K1 GEMM driver around OUR compiler-emitted kernel. (binary, detail)."""
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
@@ -58,25 +59,45 @@ def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str],
     pkg = load_rvv_package(Path(repo_root()) / "out/artifacts/targets/rvv" / pkg_dir)
     pkg = replace(pkg, run_id=f"esc_{dtype}", compiler_features=list(features))
 
-    bundle = Path(workloads.gen_matmul_f32(
-        Path(repo_root()) / "out/artifacts/cache/escape-cost", M=M, N=N, K=K))
+    bundle = Path(workloads.gen_matmul_f32(Path(repo_root()) / "out/artifacts/cache/escape-cost", M=M, N=N, K=K))
     work = tmp / "work"
     work.mkdir(parents=True, exist_ok=True)
     prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=pkg.is_int8)
     feats = frozenset(pkg.compiler_features or []) or None
     try:
-        res = lower_model_file(prepared, work / "lower", targets=(), textual=True, vectorize=True,
-                               transform_schedule=pkg.schedule_text, hoist_static_allocs=False,
-                               features=feats)
+        res = lower_model_file(
+            prepared,
+            work / "lower",
+            targets=(),
+            textual=True,
+            vectorize=True,
+            transform_schedule=pkg.schedule_text,
+            hoist_static_allocs=False,
+            features=feats,
+        )
     except PipelineError as e:
         return None, f"lowering failed: {str(e)[:200]}"
 
     model_o = work / "model.o"
     try:
-        subprocess.run([str(toolchain.clang()), "--target=riscv64-unknown-linux-gnu",
-                        "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wno-override-module",
-                        "-c", str(res.ll_path), "-o", str(model_o)],
-                       capture_output=True, text=True, timeout=600, check=True)
+        subprocess.run(
+            [
+                str(toolchain.clang()),
+                "--target=riscv64-unknown-linux-gnu",
+                "-march=rv64gcv",
+                "-mabi=lp64d",
+                "-O2",
+                "-Wno-override-module",
+                "-c",
+                str(res.ll_path),
+                "-o",
+                str(model_o),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         return None, f"model.o compile failed: {(e.stderr or '')[-300:]}"
 
@@ -89,10 +110,24 @@ def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str],
     inc_flags: list[str] = []
     for d in [L.K1H, L.HERE, cgen, rt]:
         inc_flags += ["-I", str(d)]
-    cmd = [str(L._cc()), *inc_flags, *L._K1_CFLAGS,
-           f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}", "-static", "-o", str(binp),
-           str(driver), str(cgen / "model_call.c"), str(rt / "merlin_model.c"),
-           str(abi / "mlir_runtime.c"), str(model_o), "-lm", "-lpthread"]
+    cmd = [
+        str(L._cc()),
+        *inc_flags,
+        *L._K1_CFLAGS,
+        f"-DGEMM_M={M}",
+        f"-DGEMM_N={N}",
+        f"-DGEMM_K={K}",
+        "-static",
+        "-o",
+        str(binp),
+        str(driver),
+        str(cgen / "model_call.c"),
+        str(rt / "merlin_model.c"),
+        str(abi / "mlir_runtime.c"),
+        str(model_o),
+        "-lm",
+        "-lpthread",
+    ]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if p.returncode != 0 or not binp.is_file():
         return None, f"link failed rc={p.returncode}: {p.stderr.strip()[-400:]}"
@@ -112,15 +147,20 @@ def measure(binp: Path, tag: str, reps: int) -> dict:
             if console is None:
                 return {"status": "not_run", "blocker": detail}
             if "VERIFY PASS" not in console:
-                return {"status": "not_run",
-                        "blocker": f"verify did not pass; tail: {console.strip()[-300:]}"}
+                return {"status": "not_run", "blocker": f"verify did not pass; tail: {console.strip()[-300:]}"}
             c, i = int_after(console, "CYCLES"), int_after(console, "INSTRET")
             if c is None or i is None:
                 return {"status": "not_run", "blocker": "missing CYCLES/INSTRET line"}
             ticks.append(c)
             instret.append(i)
-    return {"status": "pass", "ticks": min(ticks), "instret": min(instret),
-            "ticks_runs": ticks, "instret_runs": instret, "reps": reps}
+    return {
+        "status": "pass",
+        "ticks": min(ticks),
+        "instret": min(instret),
+        "ticks_runs": ticks,
+        "instret_runs": instret,
+        "reps": reps,
+    }
 
 
 def fit_cubic_quadratic(points: list[tuple[int, int]]) -> dict:
@@ -135,14 +175,20 @@ def fit_cubic_quadratic(points: list[tuple[int, int]]) -> dict:
     if len(pts) < 3:
         return {"status": "insufficient", "note": "need >=3 sizes (2 unknowns + a held-out check)"}
     train, (hn, hy) = pts[:-1], pts[-1]
-    A = np.array([[n ** 3, n ** 2] for n, _ in train], dtype=float)
+    A = np.array([[n**3, n**2] for n, _ in train], dtype=float)
     y = np.array([v for _, v in train], dtype=float)
     (a, b), *_ = np.linalg.lstsq(A, y, rcond=None)
-    pred = a * hn ** 3 + b * hn ** 2
-    return {"status": "ok", "a_per_mac": float(a), "b_per_output_elem": float(b),
-            "heldout_N": hn, "heldout_actual": hy, "heldout_pred": float(pred),
-            "heldout_err_pct": float(abs(pred - hy) / hy * 100.0),
-            "train_sizes": [n for n, _ in train]}
+    pred = a * hn**3 + b * hn**2
+    return {
+        "status": "ok",
+        "a_per_mac": float(a),
+        "b_per_output_elem": float(b),
+        "heldout_N": hn,
+        "heldout_actual": hy,
+        "heldout_pred": float(pred),
+        "heldout_err_pct": float(abs(pred - hy) / hy * 100.0),
+        "train_sizes": [n for n, _ in train],
+    }
 
 
 def arm(dtype: str, features: list[str], sizes: list[int], reps: int) -> dict:
@@ -159,8 +205,7 @@ def arm(dtype: str, features: list[str], sizes: list[int], reps: int) -> dict:
             r = measure(binp, f"{TAG}_{dtype}_{'f' if features else 'b'}_{N}", reps)
         r["N"] = N
         rows.append(r)
-        print(f"  N={N:<5} {r.get('status')} ticks={r.get('ticks')} instret={r.get('instret')}",
-              flush=True)
+        print(f"  N={N:<5} {r.get('status')} ticks={r.get('ticks')} instret={r.get('instret')}", flush=True)
     fit = fit_cubic_quadratic([(r["N"], r["instret"]) for r in rows if r.get("status") == "pass"])
     return {"arm": label, "dtype": dtype, "features": features, "rows": rows, "fit": fit}
 
@@ -169,8 +214,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dtype", default="f32", choices=["f32", "int8"])
     ap.add_argument("--sizes", default="64,96,128,160")
-    ap.add_argument("--features", default="erase_self_copy",
-                    help="comma-separated feature set for the treatment arm ('' = control only)")
+    ap.add_argument(
+        "--features",
+        default="erase_self_copy",
+        help="comma-separated feature set for the treatment arm ('' = control only)",
+    )
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
@@ -181,18 +229,21 @@ def main(argv: list[str] | None = None) -> int:
     if feats:
         arms.append(arm(a.dtype, feats, sizes, a.reps))
 
-    report = {"board": "k1_spacemit", "dtype": a.dtype, "sizes": sizes, "reps": a.reps,
-              "arms": arms}
+    report = {"board": "k1_spacemit", "dtype": a.dtype, "sizes": sizes, "reps": a.reps, "arms": arms}
     # Speedup per size, control vs treatment, only where BOTH verified.
     if len(arms) == 2:
         ctl = {r["N"]: r for r in arms[0]["rows"] if r.get("status") == "pass"}
         trt = {r["N"]: r for r in arms[1]["rows"] if r.get("status") == "pass"}
         report["delta"] = [
-            {"N": n,
-             "instret_ctl": ctl[n]["instret"], "instret_trt": trt[n]["instret"],
-             "instret_ratio": ctl[n]["instret"] / trt[n]["instret"],
-             "ticks_ctl": ctl[n]["ticks"], "ticks_trt": trt[n]["ticks"],
-             "ticks_speedup": ctl[n]["ticks"] / trt[n]["ticks"]}
+            {
+                "N": n,
+                "instret_ctl": ctl[n]["instret"],
+                "instret_trt": trt[n]["instret"],
+                "instret_ratio": ctl[n]["instret"] / trt[n]["instret"],
+                "ticks_ctl": ctl[n]["ticks"],
+                "ticks_trt": trt[n]["ticks"],
+                "ticks_speedup": ctl[n]["ticks"] / trt[n]["ticks"],
+            }
             for n in sorted(set(ctl) & set(trt))
         ]
     print(json.dumps({k: v for k, v in report.items() if k != "arms"}, indent=2))

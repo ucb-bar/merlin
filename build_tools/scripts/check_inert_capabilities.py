@@ -77,6 +77,7 @@ Usage::
     check_inert_capabilities.py --scan-root DIR       # audit a fixture tree instead of the repo
     check_inert_capabilities.py --stop-hook           # Claude Code Stop-hook JSON
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,27 +93,61 @@ RATCHET = Path(__file__).resolve().parent / "inert_capabilities_ratchet.txt"
 #: Trees whose Python is *library / tooling* code -- the code that declares capabilities.
 DEFAULT_SCAN_ROOTS = ("merlin/python/merlin", "build_tools/scripts")
 #: Trees consulted only to answer "does anything PRODUCE this value / READ this knob?".
-DEFAULT_WITNESS_ROOTS = ("merlin/python/merlin", "build_tools/scripts", "merlin/contract",
-                         "merlin/tests", "merlin/schemas", "examples", "docs",
-                         # The session hooks are real readers: `MERLIN_ALLOW_ARTIFACT_WRITE` is
-                         # consumed only by `.claude/hooks/guard_artifact_writes.py`, and a witness
-                         # set that skipped them reported the repo's own escape hatch as dead.
-                         ".claude/hooks")
+DEFAULT_WITNESS_ROOTS = (
+    "merlin/python/merlin",
+    "build_tools/scripts",
+    "merlin/contract",
+    "merlin/tests",
+    "merlin/schemas",
+    "examples",
+    "docs",
+    # The session hooks are real readers: `MERLIN_ALLOW_ARTIFACT_WRITE` is
+    # consumed only by `.claude/hooks/guard_artifact_writes.py`, and a witness
+    # set that skipped them reported the repo's own escape hatch as dead.
+    ".claude/hooks",
+)
 #: Build-generated bundles copied in at wheel time; never source.
-EXCLUDE_FRAGMENTS = ("/_data/", "/__pycache__/", "/site-packages/", "/.venv/",
-                     "/.claude/worktrees/", "/third_party/", "/out/", "/build/",
-                     "/_qa_ws/", "/node_modules/", "/.git/")
+EXCLUDE_FRAGMENTS = (
+    "/_data/",
+    "/__pycache__/",
+    "/site-packages/",
+    "/.venv/",
+    "/.claude/worktrees/",
+    "/third_party/",
+    "/out/",
+    "/build/",
+    "/_qa_ws/",
+    "/node_modules/",
+    "/.git/",
+)
 
-KINDS = ("unproduced-member", "always-empty-field", "registry-asymmetry", "tautological-gate",
-         "nonrecursive-aggregate", "self-comparison", "unchecked-subprocess-input",
-         "dead-env-knob", "unreferenced-def", "runtime-inert")
+KINDS = (
+    "unproduced-member",
+    "always-empty-field",
+    "registry-asymmetry",
+    "tautological-gate",
+    "nonrecursive-aggregate",
+    "self-comparison",
+    "unchecked-subprocess-input",
+    "dead-env-knob",
+    "unreferenced-def",
+    "runtime-inert",
+)
 
 #: Consequence rank per kind, HIGH first. A dead accuracy gate matters more than a dead debug flag;
 #: the ranking is per-KIND because a per-finding severity would be a guess.
-RANK = {"runtime-inert": 0, "unchecked-subprocess-input": 1, "self-comparison": 2,
-        "always-empty-field": 3, "registry-asymmetry": 4, "tautological-gate": 5,
-        "nonrecursive-aggregate": 6, "unproduced-member": 7,
-        "dead-env-knob": 8, "unreferenced-def": 9}
+RANK = {
+    "runtime-inert": 0,
+    "unchecked-subprocess-input": 1,
+    "self-comparison": 2,
+    "always-empty-field": 3,
+    "registry-asymmetry": 4,
+    "tautological-gate": 5,
+    "nonrecursive-aggregate": 6,
+    "unproduced-member": 7,
+    "dead-env-knob": 8,
+    "unreferenced-def": 9,
+}
 
 # --------------------------------------------------------------------------------------------
 # vocabulary heuristics (all structural; this file, like the rest of the tree, uses no regex)
@@ -121,9 +156,24 @@ RANK = {"runtime-inert": 0, "unchecked-subprocess-input": 1, "self-comparison": 
 #: A module-level ALL-CAPS binding whose name carries one of these tokens is a candidate
 #: *vocabulary* -- a set of accepted values, not an arbitrary constant. Membership in an ``in`` /
 #: ``not in`` guard is ALSO required, so a name that merely looks like a vocabulary is not enough.
-VOCAB_TOKENS = ("KNOWN", "VALID", "ALLOWED", "SUPPORTED", "ACCEPTED", "LEGAL", "RECOGNISED",
-                "RECOGNIZED", "KINDS", "MODES", "STAGES", "FAMILIES", "TOKENS", "CHOICES",
-                "OPTIONS", "VOCAB")
+VOCAB_TOKENS = (
+    "KNOWN",
+    "VALID",
+    "ALLOWED",
+    "SUPPORTED",
+    "ACCEPTED",
+    "LEGAL",
+    "RECOGNISED",
+    "RECOGNIZED",
+    "KINDS",
+    "MODES",
+    "STAGES",
+    "FAMILIES",
+    "TOKENS",
+    "CHOICES",
+    "OPTIONS",
+    "VOCAB",
+)
 
 #: Function-name prefixes that promise a verdict. A member of this family with no reachable failure
 #: is a gate that cannot fail.
@@ -140,8 +190,28 @@ ENV_READERS = ("getenv", "environ")
 
 #: Non-Python files that can PRODUCE a vocabulary member (a capsule declares its own epilogue, a
 #: registry yaml its own scale kinds, an ISA header its own opcode names).
-DATA_SUFFIXES = (".yaml", ".yml", ".json", ".mlir", ".td", ".h", ".hpp", ".c", ".cc", ".cpp",
-                 ".S", ".s", ".scala", ".sv", ".v", ".txt", ".csv", ".toml", ".cfg", ".ini")
+DATA_SUFFIXES = (
+    ".yaml",
+    ".yml",
+    ".json",
+    ".mlir",
+    ".td",
+    ".h",
+    ".hpp",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".S",
+    ".s",
+    ".scala",
+    ".sv",
+    ".v",
+    ".txt",
+    ".csv",
+    ".toml",
+    ".cfg",
+    ".ini",
+)
 #: Data files larger than this are captures/goldens, not declarations; reading them would cost
 #: minutes and add nothing (a 6.8 GB contract tree lives under one of the witness roots).
 MAX_DATA_BYTES = 4 * 1024 * 1024
@@ -191,7 +261,7 @@ def _safe_rglob(root: Path, *suffixes: str) -> list[Path]:
         try:
             entries = sorted(cur.iterdir())
         except OSError:
-            continue                       # another session's tree, or a broken link: not ours
+            continue  # another session's tree, or a broken link: not ours
         for e in entries:
             marker = f"/{e.as_posix()}/"
             if any(frag in marker for frag in EXCLUDE_FRAGMENTS):
@@ -241,28 +311,36 @@ def _parent(node: ast.AST) -> ast.AST | None:
 @dataclass
 class Finding:
     kind: str
-    ident: str            # stable ratchet key (no line numbers -- lines move, defects don't)
+    ident: str  # stable ratchet key (no line numbers -- lines move, defects don't)
     file: str
     line: int
-    declared: str         # what is declared
-    fires_when: str       # what would have to happen for it to fire
-    blocked_by: str       # why that cannot happen
-    evidence: str = ""    # how this was verified -- never omit
+    declared: str  # what is declared
+    fires_when: str  # what would have to happen for it to fire
+    blocked_by: str  # why that cannot happen
+    evidence: str = ""  # how this was verified -- never omit
 
     @property
     def key(self) -> str:
         return f"{self.kind} {self.ident}"
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "id": self.ident, "file": self.file, "line": self.line,
-                "declared": self.declared, "fires_when": self.fires_when,
-                "blocked_by": self.blocked_by, "evidence": self.evidence,
-                "rank": RANK.get(self.kind, 99)}
+        return {
+            "kind": self.kind,
+            "id": self.ident,
+            "file": self.file,
+            "line": self.line,
+            "declared": self.declared,
+            "fires_when": self.fires_when,
+            "blocked_by": self.blocked_by,
+            "evidence": self.evidence,
+            "rank": RANK.get(self.kind, 99),
+        }
 
 
 @dataclass
 class _Corpus:
     """Everything the detectors need to ask "does anything else in the tree do X?"."""
+
     scan: dict[Path, ast.Module] = field(default_factory=dict)
     witness: dict[Path, ast.Module] = field(default_factory=dict)
     #: Identifier-shaped tokens appearing in NON-Python data (capsule yaml/mlir, schemas, headers).
@@ -282,14 +360,19 @@ class _Corpus:
 # D1  unproduced-member
 # --------------------------------------------------------------------------------------------
 
+
 def _string_members(node: ast.AST) -> list[str] | None:
     """The string members of a set/frozenset/tuple/list/dict-keys literal, or ``None``.
 
     Only *fully* constant collections qualify: one non-literal element and the collection's real
     membership is unknown, so claiming a member is unproduced would be a guess.
     """
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and \
-            node.func.id in ("frozenset", "set", "tuple", "list") and len(node.args) == 1:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("frozenset", "set", "tuple", "list")
+        and len(node.args) == 1
+    ):
         return _string_members(node.args[0])
     if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
         elts = node.elts
@@ -370,7 +453,7 @@ def _string_occurrences(corpus: _Corpus, decl_nodes: set[int]) -> dict[str, dict
                 continue
             par = _parent(node)
             if isinstance(par, ast.Compare):
-                continue                       # a membership/equality test is consumption
+                continue  # a membership/equality test is consumption
             counts.setdefault(node.value, {"prod": 0, "test": 0})[bucket] += 1
     return counts
 
@@ -385,38 +468,42 @@ def detect_unproduced_member(corpus: _Corpus) -> list[Finding]:
     findings: list[Finding] = []
     for name, (path, lineno, members, _n) in sorted(vocabs.items()):
         if name not in validated:
-            continue                            # declared but not used as a gate -- other detectors
+            continue  # declared but not used as a gate -- other detectors
         rel = _rel(path, corpus.root)
         for m in members:
             c = occ.get(m, {"prod": 0, "test": 0})
             if c["prod"] > 0:
                 continue
-            where = ("only a TEST constructs it" if c["test"] else
-                     "nothing anywhere constructs it")
+            where = "only a TEST constructs it" if c["test"] else "nothing anywhere constructs it"
             in_data = m in corpus.data_tokens
             if in_data:
                 continue
-            findings.append(Finding(
-                kind="unproduced-member",
-                ident=f"{rel}:{name}:{m}",
-                file=rel, line=lineno,
-                declared=f"{name} accepts the value {m!r}",
-                fires_when=f"some code path constructs the string {m!r} and feeds it to the "
-                           f"guard that validates against {name}",
-                blocked_by=f"no producing occurrence of {m!r} in the scanned corpus -- {where}",
-                evidence=f"AST string-constant census over {len(corpus.all_trees())} Python "
-                         f"files (prod={c['prod']} test={c['test']} producing occurrences; "
-                         f"membership comparisons and the declaration itself excluded) PLUS a "
-                         f"token census of {len(corpus.data_tokens)} distinct tokens in the "
-                         f"non-Python data trees, where this member does not appear either. "
-                         f"A member a capsule/registry/ISA-header could produce is NOT inert; "
-                         f"that is what the data census rules out."))
+            findings.append(
+                Finding(
+                    kind="unproduced-member",
+                    ident=f"{rel}:{name}:{m}",
+                    file=rel,
+                    line=lineno,
+                    declared=f"{name} accepts the value {m!r}",
+                    fires_when=f"some code path constructs the string {m!r} and feeds it to the "
+                    f"guard that validates against {name}",
+                    blocked_by=f"no producing occurrence of {m!r} in the scanned corpus -- {where}",
+                    evidence=f"AST string-constant census over {len(corpus.all_trees())} Python "
+                    f"files (prod={c['prod']} test={c['test']} producing occurrences; "
+                    f"membership comparisons and the declaration itself excluded) PLUS a "
+                    f"token census of {len(corpus.data_tokens)} distinct tokens in the "
+                    f"non-Python data trees, where this member does not appear either. "
+                    f"A member a capsule/registry/ISA-header could produce is NOT inert; "
+                    f"that is what the data census rules out.",
+                )
+            )
     return findings
 
 
 # --------------------------------------------------------------------------------------------
 # D2  always-empty-field
 # --------------------------------------------------------------------------------------------
+
 
 def _is_empty_literal(node: ast.AST) -> bool | None:
     """``True`` empty, ``False`` non-empty, ``None`` not statically decidable."""
@@ -448,12 +535,16 @@ def _iterated_keys(corpus: _Corpus) -> set[str]:
                 it = node.generators[0].iter if node.generators else None
             if it is None:
                 continue
-            if isinstance(it, ast.Subscript) and isinstance(it.slice, ast.Constant) \
-                    and isinstance(it.slice.value, str):
+            if isinstance(it, ast.Subscript) and isinstance(it.slice, ast.Constant) and isinstance(it.slice.value, str):
                 keys.add(it.slice.value)
-            elif isinstance(it, ast.Call) and isinstance(it.func, ast.Attribute) \
-                    and it.func.attr == "get" and it.args \
-                    and isinstance(it.args[0], ast.Constant) and isinstance(it.args[0].value, str):
+            elif (
+                isinstance(it, ast.Call)
+                and isinstance(it.func, ast.Attribute)
+                and it.func.attr == "get"
+                and it.args
+                and isinstance(it.args[0], ast.Constant)
+                and isinstance(it.args[0].value, str)
+            ):
                 keys.add(it.args[0].value)
             elif isinstance(it, ast.Attribute):
                 keys.add(it.attr)
@@ -471,8 +562,11 @@ def _mutated_keys(corpus: _Corpus) -> set[str]:
     keys: set[str] = set()
     for tree in corpus.all_trees().values():
         for node in ast.walk(tree):
-            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) \
-                    and isinstance(node.slice.value, str):
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)
+            ):
                 par = _parent(node)
                 if isinstance(node.ctx, (ast.Store, ast.Del)):
                     keys.add(node.slice.value)
@@ -482,8 +576,11 @@ def _mutated_keys(corpus: _Corpus) -> set[str]:
                     keys.add(node.slice.value)
             elif isinstance(node, ast.Attribute) and node.attr in mutators:
                 base = node.value
-                if isinstance(base, ast.Subscript) and isinstance(base.slice, ast.Constant) \
-                        and isinstance(base.slice.value, str):
+                if (
+                    isinstance(base, ast.Subscript)
+                    and isinstance(base.slice, ast.Constant)
+                    and isinstance(base.slice.value, str)
+                ):
                     keys.add(base.slice.value)
     return keys
 
@@ -530,20 +627,23 @@ def detect_always_empty_field(corpus: _Corpus) -> list[Finding]:
             continue
         rel, line = sites[0]
         undec = undecidable.get(key, 0)
-        findings.append(Finding(
-            kind="always-empty-field",
-            ident=f"{rel}:{key}",
-            file=rel, line=line,
-            declared=f"field {key!r} is consumed element-wise somewhere (iterated / measured)",
-            fires_when=f"some construction site writes a NON-EMPTY {key!r}",
-            blocked_by=f"every statically-decidable construction site writes an empty literal "
-                       f"({len(sites)} site(s): "
-                       + ", ".join(f"{r}:{ln}" for r, ln in sites[:4]) + ")",
-            evidence=f"AST dict-literal census over construction sites (a dict literal passed to "
-                     f"a call): {len(sites)} empty, 0 non-empty, {undec} not statically decidable; "
-                     f"the key is never written or mutated by subscript afterwards, and it IS "
-                     f"consumed element-wise. A non-zero 'undecidable' count means a computed "
-                     f"value could be non-empty -- verify by hand before acting."))
+        findings.append(
+            Finding(
+                kind="always-empty-field",
+                ident=f"{rel}:{key}",
+                file=rel,
+                line=line,
+                declared=f"field {key!r} is consumed element-wise somewhere (iterated / measured)",
+                fires_when=f"some construction site writes a NON-EMPTY {key!r}",
+                blocked_by=f"every statically-decidable construction site writes an empty literal "
+                f"({len(sites)} site(s): " + ", ".join(f"{r}:{ln}" for r, ln in sites[:4]) + ")",
+                evidence=f"AST dict-literal census over construction sites (a dict literal passed to "
+                f"a call): {len(sites)} empty, 0 non-empty, {undec} not statically decidable; "
+                f"the key is never written or mutated by subscript afterwards, and it IS "
+                f"consumed element-wise. A non-zero 'undecidable' count means a computed "
+                f"value could be non-empty -- verify by hand before acting.",
+            )
+        )
     return findings
 
 
@@ -556,9 +656,11 @@ def detect_always_empty_field(corpus: _Corpus) -> list[Finding]:
 #: silent failures, so both are reported. Each side is ``(module, attribute, extractor)`` where the
 #: extractor turns the attribute's value into a set of names.
 REGISTRY_PAIRS = [
-    ("impr-features/ranked-levers",
-     ("merlin.llvmlower.impr_features", "known", "call"),
-     ("merlin.mining.wholemodel_proposer", "RANKED_LEVERS", "first-of-pairs")),
+    (
+        "impr-features/ranked-levers",
+        ("merlin.llvmlower.impr_features", "known", "call"),
+        ("merlin.mining.wholemodel_proposer", "RANKED_LEVERS", "first-of-pairs"),
+    ),
 ]
 
 
@@ -586,8 +688,7 @@ def _named_elsewhere(corpus: _Corpus, producer_file: str) -> tuple[set[str], set
                 literals.add(node.value)
             elif isinstance(node, ast.JoinedStr) and node.values:
                 head = node.values[0]
-                if isinstance(head, ast.Constant) and isinstance(head.value, str) \
-                        and len(head.value) >= 6:
+                if isinstance(head, ast.Constant) and isinstance(head.value, str) and len(head.value) >= 6:
                     prefixes.add(head.value)
     literals |= corpus.data_tokens
     return literals, prefixes
@@ -617,6 +718,7 @@ def detect_registry_asymmetry(corpus: _Corpus, *, enabled: bool) -> tuple[list[F
     for label, (pmod, pattr, phow), (cmod, cattr, chow) in REGISTRY_PAIRS:
         try:
             import importlib
+
             # BOTH modules are imported BEFORE either table is read. Registration in this repo
             # happens as an import side effect, so reading the producer first would report every
             # feature the consumer's own imports register (`prepack_weight_layout` and five others)
@@ -627,21 +729,25 @@ def detect_registry_asymmetry(corpus: _Corpus, *, enabled: bool) -> tuple[list[F
             cm = importlib.import_module(cmod)
             produced = _extract(getattr(pm, pattr), phow)
             consumed = _extract(getattr(cm, cattr), chow)
-        except Exception as exc:                                  # noqa: BLE001 - report, never die
+        except Exception as exc:  # noqa: BLE001 - report, never die
             notes.append(f"registry-asymmetry {label}: UNDECIDED ({type(exc).__name__}: {exc})")
             continue
         for name in sorted(consumed - produced):
-            findings.append(Finding(
-                kind="registry-asymmetry",
-                ident=f"{label}:consumed-not-registered:{name}",
-                file=cmod.replace(".", "/") + ".py", line=0,
-                declared=f"{cattr} offers the lever {name!r}",
-                fires_when=f"{name!r} is registered in {pmod} so the composition check can resolve it",
-                blocked_by=f"{name!r} is NOT registered; the resolver raises KeyError, which the "
-                           f"composition check swallows and returns False -- the lever is never "
-                           f"declined, it is INVISIBLE",
-                evidence=f"imported {pmod}.{pattr} and {cmod}.{cattr} and differenced the "
-                         f"name sets ({len(produced)} registered, {len(consumed)} ranked)"))
+            findings.append(
+                Finding(
+                    kind="registry-asymmetry",
+                    ident=f"{label}:consumed-not-registered:{name}",
+                    file=cmod.replace(".", "/") + ".py",
+                    line=0,
+                    declared=f"{cattr} offers the lever {name!r}",
+                    fires_when=f"{name!r} is registered in {pmod} so the composition check can resolve it",
+                    blocked_by=f"{name!r} is NOT registered; the resolver raises KeyError, which the "
+                    f"composition check swallows and returns False -- the lever is never "
+                    f"declined, it is INVISIBLE",
+                    evidence=f"imported {pmod}.{pattr} and {cmod}.{cattr} and differenced the "
+                    f"name sets ({len(produced)} registered, {len(consumed)} ranked)",
+                )
+            )
         producer_file = pmod.rsplit(".", 1)[-1] + ".py"
         literals, prefixes = _named_elsewhere(corpus, producer_file)
         # A registry also publishes SUB-TABLES of its own names (`MRPAD_INT8_TILES`,
@@ -657,24 +763,27 @@ def detect_registry_asymmetry(corpus: _Corpus, *, enabled: bool) -> tuple[list[F
             elif isinstance(val, dict):
                 tabled |= {k for k in val if isinstance(k, str)}
         for name in sorted(produced - consumed):
-            if name in literals or name in tabled \
-                    or any(name.startswith(pre) for pre in prefixes):
-                continue           # named, tabled or composed by a consumer: reachable, not inert
-            findings.append(Finding(
-                kind="registry-asymmetry",
-                ident=f"{label}:registered-not-consumed:{name}",
-                file=pmod.replace(".", "/") + ".py", line=0,
-                declared=f"{pmod} registers the feature {name!r}",
-                fires_when=f"{name!r} is listed in {cmod}.{cattr} (or another proposal list) so the "
-                           f"search can offer it",
-                blocked_by=f"{name!r} appears in no consumer list, so nothing ever proposes it; "
-                           f"registration alone does not make a lever reachable",
-                evidence=f"imported both tables and differenced them ({len(produced)} registered, "
-                         f"{len(consumed)} ranked), then removed every name that ANY other module "
-                         f"names as a literal or composes from a prefix (a refinement ladder, a "
-                         f"microkernel resolver, a champion config). What is left is named by "
-                         f"nothing. Some of these are DELIBERATE -- read the comment at the "
-                         f"registration site before treating one as a defect."))
+            if name in literals or name in tabled or any(name.startswith(pre) for pre in prefixes):
+                continue  # named, tabled or composed by a consumer: reachable, not inert
+            findings.append(
+                Finding(
+                    kind="registry-asymmetry",
+                    ident=f"{label}:registered-not-consumed:{name}",
+                    file=pmod.replace(".", "/") + ".py",
+                    line=0,
+                    declared=f"{pmod} registers the feature {name!r}",
+                    fires_when=f"{name!r} is listed in {cmod}.{cattr} (or another proposal list) so the "
+                    f"search can offer it",
+                    blocked_by=f"{name!r} appears in no consumer list, so nothing ever proposes it; "
+                    f"registration alone does not make a lever reachable",
+                    evidence=f"imported both tables and differenced them ({len(produced)} registered, "
+                    f"{len(consumed)} ranked), then removed every name that ANY other module "
+                    f"names as a literal or composes from a prefix (a refinement ladder, a "
+                    f"microkernel resolver, a champion config). What is left is named by "
+                    f"nothing. Some of these are DELIBERATE -- read the comment at the "
+                    f"registration site before treating one as a defect.",
+                )
+            )
     return findings, notes
 
 
@@ -682,20 +791,20 @@ def detect_registry_asymmetry(corpus: _Corpus, *, enabled: bool) -> tuple[list[F
 # D4  tautological-gate
 # --------------------------------------------------------------------------------------------
 
+
 def _returns_only_truthy(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool | None:
     """``True`` when every ``return`` yields a truthy CONSTANT, ``None`` when undecidable."""
     seen = False
     for node in ast.walk(fn):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node is not fn:
-            continue                                   # a nested def has its own verdict
+            continue  # a nested def has its own verdict
         if isinstance(node, ast.Return):
             if node.value is None:
-                continue                               # bare `return` is a truthy-free exit
-            if not (isinstance(node.value, ast.Constant)
-                    and isinstance(node.value.value, bool)):
-                return None            # a non-bool return is a VALUE, not a verdict -- not a gate
+                continue  # bare `return` is a truthy-free exit
+            if not (isinstance(node.value, ast.Constant) and isinstance(node.value.value, bool)):
+                return None  # a non-bool return is a VALUE, not a verdict -- not a gate
             if not node.value.value:
-                return False                           # a falsy return IS a reachable failure
+                return False  # a falsy return IS a reachable failure
             seen = True
     return True if seen else None
 
@@ -719,23 +828,28 @@ def detect_tautological_gate(corpus: _Corpus) -> list[Finding]:
             raises = [n for n in ast.walk(node) if isinstance(n, ast.Raise)]
             asserts = [n for n in ast.walk(node) if isinstance(n, ast.Assert)]
             if raises or asserts:
-                continue                                # it CAN signal; not tautological
-            findings.append(Finding(
-                kind="tautological-gate",
-                ident=f"{rel}:{node.name}",
-                file=rel, line=node.lineno,
-                declared=f"{node.name}() reads as a verdict (check/verify/validate family)",
-                fires_when="the thing under test is bad and the function says so",
-                blocked_by="every return path yields a truthy constant and the body neither "
-                           "raises nor asserts -- there is no way for it to report a problem",
-                evidence="AST: enumerated every Return in the function body (nested defs "
-                         "excluded); all are truthy constants; zero Raise, zero Assert"))
+                continue  # it CAN signal; not tautological
+            findings.append(
+                Finding(
+                    kind="tautological-gate",
+                    ident=f"{rel}:{node.name}",
+                    file=rel,
+                    line=node.lineno,
+                    declared=f"{node.name}() reads as a verdict (check/verify/validate family)",
+                    fires_when="the thing under test is bad and the function says so",
+                    blocked_by="every return path yields a truthy constant and the body neither "
+                    "raises nor asserts -- there is no way for it to report a problem",
+                    evidence="AST: enumerated every Return in the function body (nested defs "
+                    "excluded); all are truthy constants; zero Raise, zero Assert",
+                )
+            )
     return findings
 
 
 # --------------------------------------------------------------------------------------------
 # D5  nonrecursive-aggregate
 # --------------------------------------------------------------------------------------------
+
 
 def _lister_call(node: ast.AST) -> str | None:
     """The name of a NON-recursive directory listing call, or ``None``.
@@ -750,10 +864,10 @@ def _lister_call(node: ast.AST) -> str | None:
         return None
     if attr == "glob":
         if not node.args or not isinstance(node.args[0], ast.Constant):
-            return None                                  # computed pattern: undecidable, skip
+            return None  # computed pattern: undecidable, skip
         pattern = node.args[0].value
         if not isinstance(pattern, str) or "**" in pattern:
-            return None                                  # recursive
+            return None  # recursive
     return attr
 
 
@@ -774,44 +888,60 @@ def detect_nonrecursive_aggregate(corpus: _Corpus) -> list[Finding]:
             if not any(tok in lowered for tok in AGGREGATE_TOKENS):
                 continue
             has_recursive = any(
-                isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                and (n.func.attr in ("rglob", "walk")
-                     or (n.func.attr == "glob" and n.args
-                         and isinstance(n.args[0], ast.Constant)
-                         and isinstance(n.args[0].value, str) and "**" in n.args[0].value))
-                for n in ast.walk(node))
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and (
+                    n.func.attr in ("rglob", "walk")
+                    or (
+                        n.func.attr == "glob"
+                        and n.args
+                        and isinstance(n.args[0], ast.Constant)
+                        and isinstance(n.args[0].value, str)
+                        and "**" in n.args[0].value
+                    )
+                )
+                for n in ast.walk(node)
+            )
             if has_recursive:
                 continue
-            listers = [(_lister_call(n), getattr(n, "lineno", node.lineno))
-                       for n in ast.walk(node)]
+            listers = [(_lister_call(n), getattr(n, "lineno", node.lineno)) for n in ast.walk(node)]
             listers = [(a, ln) for a, ln in listers if a]
             if not listers:
                 continue
-            aggregates = [n for n in ast.walk(node)
-                          if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                          and n.func.id in ("sum", "len", "max", "min")]
+            aggregates = [
+                n
+                for n in ast.walk(node)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id in ("sum", "len", "max", "min")
+            ]
             if not aggregates:
                 continue
             attr, ln = listers[0]
-            findings.append(Finding(
-                kind="nonrecursive-aggregate",
-                ident=f"{rel}:{node.name}",
-                file=rel, line=node.lineno,
-                declared=f"{node.name}() totals something over a directory",
-                fires_when="the total reflects the whole tree, so a comparison against it "
-                           "(a budget, a fit check, a coverage count) can fail",
-                blocked_by=f"the listing at line {ln} is NON-recursive (`{attr}`), so every entry "
-                           f"one directory down contributes ZERO -- the total is structurally "
-                           f"low, not merely small",
-                evidence="AST: the function aggregates (sum/len/max/min) over a non-recursive "
-                         "listing and contains no rglob/walk/`**` form. Confirm the layout the "
-                         "callers actually pass: a flat directory makes this a false positive."))
+            findings.append(
+                Finding(
+                    kind="nonrecursive-aggregate",
+                    ident=f"{rel}:{node.name}",
+                    file=rel,
+                    line=node.lineno,
+                    declared=f"{node.name}() totals something over a directory",
+                    fires_when="the total reflects the whole tree, so a comparison against it "
+                    "(a budget, a fit check, a coverage count) can fail",
+                    blocked_by=f"the listing at line {ln} is NON-recursive (`{attr}`), so every entry "
+                    f"one directory down contributes ZERO -- the total is structurally "
+                    f"low, not merely small",
+                    evidence="AST: the function aggregates (sum/len/max/min) over a non-recursive "
+                    "listing and contains no rglob/walk/`**` form. Confirm the layout the "
+                    "callers actually pass: a flat directory makes this a false positive.",
+                )
+            )
     return findings
 
 
 # --------------------------------------------------------------------------------------------
 # D5b  self-comparison
 # --------------------------------------------------------------------------------------------
+
 
 def detect_self_comparison(corpus: _Corpus) -> list[Finding]:
     """``x == x`` and friends: a conjunct that can only ever be True.
@@ -825,12 +955,11 @@ def detect_self_comparison(corpus: _Corpus) -> list[Finding]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.Compare) or len(node.ops) != 1:
                 continue
-            if not isinstance(node.ops[0], (ast.Eq, ast.NotEq, ast.LtE, ast.GtE,
-                                            ast.Is, ast.IsNot)):
+            if not isinstance(node.ops[0], (ast.Eq, ast.NotEq, ast.LtE, ast.GtE, ast.Is, ast.IsNot)):
                 continue
             left, right = node.left, node.comparators[0]
             if isinstance(left, ast.Constant) or isinstance(right, ast.Constant):
-                continue                       # `x == x` is the shape; `1 == 1` is a literal test
+                continue  # `x == x` is the shape; `1 == 1` is a literal test
             if ast.dump(left) != ast.dump(right):
                 continue
             # `cos == cos` / `v != v` on a bare NAME, standing alone, is the NaN idiom -- correct
@@ -845,28 +974,32 @@ def detect_self_comparison(corpus: _Corpus) -> list[Finding]:
             # pairs with (`if v == v and abs(v) != float("inf")`). A conjunct naming inf/nan in the
             # same guard is the tell; without it, `x == x` beside an unrelated claim is the defect.
             if isinstance(par, ast.BoolOp):
-                sibling_text = " ".join(ast.unparse(v) for v in par.values
-                                        if v is not node).lower()
+                sibling_text = " ".join(ast.unparse(v) for v in par.values if v is not node).lower()
                 if "inf" in sibling_text or "nan" in sibling_text:
                     continue
             src = ast.unparse(node)
-            findings.append(Finding(
-                kind="self-comparison",
-                ident=f"{rel}:{node.lineno}:{src}",
-                file=rel, line=node.lineno,
-                declared=f"a comparison `{src}` inside a predicate",
-                fires_when="the two sides differ",
-                blocked_by="both sides are the SAME expression, so the comparison has a constant "
-                           "value -- whatever the surrounding message claims to check, this "
-                           "conjunct does not check it",
-                evidence="AST: the two operands have byte-identical dumps. Constant-vs-constant "
-                         "comparisons are excluded (those are deliberate literal tests)."))
+            findings.append(
+                Finding(
+                    kind="self-comparison",
+                    ident=f"{rel}:{node.lineno}:{src}",
+                    file=rel,
+                    line=node.lineno,
+                    declared=f"a comparison `{src}` inside a predicate",
+                    fires_when="the two sides differ",
+                    blocked_by="both sides are the SAME expression, so the comparison has a constant "
+                    "value -- whatever the surrounding message claims to check, this "
+                    "conjunct does not check it",
+                    evidence="AST: the two operands have byte-identical dumps. Constant-vs-constant "
+                    "comparisons are excluded (those are deliberate literal tests).",
+                )
+            )
     return findings
 
 
 # --------------------------------------------------------------------------------------------
 # D5c  unchecked-subprocess-input
 # --------------------------------------------------------------------------------------------
+
 
 def detect_unchecked_subprocess_input(corpus: _Corpus) -> list[Finding]:
     """A gate whose WORK LIST comes from a subprocess whose exit status it never reads.
@@ -887,14 +1020,18 @@ def detect_unchecked_subprocess_input(corpus: _Corpus) -> list[Finding]:
             checks_status = any(
                 (isinstance(n, ast.Attribute) and n.attr in ("returncode", "check_returncode"))
                 or (isinstance(n, ast.keyword) and n.arg == "check")
-                for n in body)
+                for n in body
+            )
             if checks_status:
                 continue
             for n in body:
-                if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                        and n.func.attr in ("run", "check_output", "Popen")
-                        and isinstance(n.func.value, ast.Name)
-                        and n.func.value.id == "subprocess"):
+                if not (
+                    isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and n.func.attr in ("run", "check_output", "Popen")
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.value.id == "subprocess"
+                ):
                     continue
                 # Only when the OUTPUT decides what gets examined: `.stdout` consumed in the
                 # same function. A subprocess whose output is merely logged is not this defect.
@@ -903,23 +1040,26 @@ def detect_unchecked_subprocess_input(corpus: _Corpus) -> list[Finding]:
                 # The defect is a WORK LIST built from stdout -- an empty list is a clean verdict
                 # over nothing. A helper that reads a single scalar out of stdout (a git sha, a
                 # version) fails differently and louder, so require the split/splitlines shape.
-                if not any(isinstance(m, ast.Attribute) and m.attr in ("splitlines", "split")
-                           for m in body):
+                if not any(isinstance(m, ast.Attribute) and m.attr in ("splitlines", "split") for m in body):
                     continue
-                findings.append(Finding(
-                    kind="unchecked-subprocess-input",
-                    ident=f"{rel}:{fn.name}",
-                    file=rel, line=n.lineno,
-                    declared=f"{fn.name}() derives what it examines from a subprocess's stdout",
-                    fires_when="the subprocess fails and the caller notices",
-                    blocked_by="neither `check=` nor `.returncode` appears in the function, so a "
-                               "failed command yields empty stdout, an empty work list, and a "
-                               "clean verdict over nothing",
-                    evidence="AST: a subprocess.run/check_output/Popen call whose stdout is "
-                             "consumed in the same function, with no returncode/check inspection "
-                             "anywhere in it. Verify by running the caller with a broken "
-                             "environment (e.g. GIT_DIR=/nonexistent) and checking it still "
-                             "reports success."))
+                findings.append(
+                    Finding(
+                        kind="unchecked-subprocess-input",
+                        ident=f"{rel}:{fn.name}",
+                        file=rel,
+                        line=n.lineno,
+                        declared=f"{fn.name}() derives what it examines from a subprocess's stdout",
+                        fires_when="the subprocess fails and the caller notices",
+                        blocked_by="neither `check=` nor `.returncode` appears in the function, so a "
+                        "failed command yields empty stdout, an empty work list, and a "
+                        "clean verdict over nothing",
+                        evidence="AST: a subprocess.run/check_output/Popen call whose stdout is "
+                        "consumed in the same function, with no returncode/check inspection "
+                        "anywhere in it. Verify by running the caller with a broken "
+                        "environment (e.g. GIT_DIR=/nonexistent) and checking it still "
+                        "reports success.",
+                    )
+                )
                 break
     return findings
 
@@ -927,6 +1067,7 @@ def detect_unchecked_subprocess_input(corpus: _Corpus) -> list[Finding]:
 # --------------------------------------------------------------------------------------------
 # D6  dead-env-knob
 # --------------------------------------------------------------------------------------------
+
 
 def _env_read_prefixes(corpus: _Corpus) -> set[str]:
     """Constant PREFIXES of env names built at run time -- ``os.environ.get(f"MERLIN_EXT_{name}")``.
@@ -943,10 +1084,12 @@ def _env_read_prefixes(corpus: _Corpus) -> set[str]:
         if isinstance(n, ast.JoinedStr) and n.values:
             head = n.values[0]
             tail = n.values[-1]
-            h = head.value if isinstance(head, ast.Constant) \
-                and isinstance(head.value, str) else ""
-            t = tail.value if len(n.values) > 1 and isinstance(tail, ast.Constant) \
-                and isinstance(tail.value, str) else ""
+            h = head.value if isinstance(head, ast.Constant) and isinstance(head.value, str) else ""
+            t = (
+                tail.value
+                if len(n.values) > 1 and isinstance(tail, ast.Constant) and isinstance(tail.value, str)
+                else ""
+            )
             if h:
                 return (h, t)
         if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
@@ -958,18 +1101,23 @@ def _env_read_prefixes(corpus: _Corpus) -> set[str]:
     for tree in corpus.all_trees().values():
         for node in ast.walk(tree):
             arg = None
-            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
-                    and node.value.attr == "environ":
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "environ"
+            ):
                 arg = node.slice
             elif isinstance(node, ast.Call):
                 fn = node.func
-                attr = fn.attr if isinstance(fn, ast.Attribute) else (
-                    fn.id if isinstance(fn, ast.Name) else "")
+                attr = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else "")
                 # `os.environ.get(...)` is a `.get` on an `environ` attribute -- the single most
                 # common env read in this tree, and reading only `getenv`/`environ[...]` missed it.
-                is_environ_get = (attr == "get" and isinstance(fn, ast.Attribute)
-                                  and isinstance(fn.value, ast.Attribute)
-                                  and fn.value.attr == "environ")
+                is_environ_get = (
+                    attr == "get"
+                    and isinstance(fn, ast.Attribute)
+                    and isinstance(fn.value, ast.Attribute)
+                    and fn.value.attr == "environ"
+                )
                 if attr in ENV_READERS or attr == "env" or is_environ_get:
                     arg = node.args[0] if node.args else None
             if arg is None:
@@ -979,11 +1127,16 @@ def _env_read_prefixes(corpus: _Corpus) -> set[str]:
                 prefixes.add(shape)
             # `k.startswith("MERLIN_EXT_")` over os.environ is the other composed-read spelling.
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                    and node.func.attr == "startswith" and node.args \
-                    and isinstance(node.args[0], ast.Constant) \
-                    and isinstance(node.args[0].value, str) \
-                    and node.args[0].value.endswith("_") and node.args[0].value.isupper():
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "startswith"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                and node.args[0].value.endswith("_")
+                and node.args[0].value.isupper()
+            ):
                 prefixes.add((node.args[0].value, ""))
     return prefixes
 
@@ -1008,8 +1161,7 @@ def _env_names_read(corpus: _Corpus) -> set[str]:
                 # composite strings (`f"-Wl,--defsym,MERLIN_STACK_BYTES={...}"` is a LINKER symbol,
                 # not an env var, and reporting it as a dead knob is simply wrong). Any code that
                 # spells the name is evidence something uses it.
-                names |= {t for t in _tokens(node.value)
-                          if t.isupper() and "_" in t and not t.endswith("_")}
+                names |= {t for t in _tokens(node.value) if t.isupper() and "_" in t and not t.endswith("_")}
             if isinstance(node, ast.Subscript):
                 base = node.value
                 if isinstance(base, ast.Attribute) and base.attr == "environ":
@@ -1018,8 +1170,7 @@ def _env_names_read(corpus: _Corpus) -> set[str]:
                         names.add(s)
             elif isinstance(node, ast.Call):
                 fn = node.func
-                attr = fn.attr if isinstance(fn, ast.Attribute) else (
-                    fn.id if isinstance(fn, ast.Name) else "")
+                attr = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else "")
                 if attr in ENV_READERS or attr in ("env", "get", "pop", "setdefault"):
                     s = const_str(node.args[0]) if node.args else None
                     if s and s.isupper() and "_" in s:
@@ -1062,24 +1213,27 @@ def detect_dead_env_knob(corpus: _Corpus, prefix: str, mention_roots: list[Path]
         # written as a literal. Head AND tail must both match, so the bare `MERLIN_` head of that
         # f-string does not excuse every knob in the namespace.
         return name in read or any(
-            name.startswith(h) and name.endswith(t) and len(name) > len(h) + len(t)
-            for h, t in composed)
+            name.startswith(h) and name.endswith(t) and len(name) > len(h) + len(t) for h, t in composed
+        )
 
     mentions: dict[str, tuple[str, int]] = {}
     for root in mention_roots:
         if not root.exists():
             continue
-        files = [root] if root.is_file() else _safe_rglob(
-            root, ".md", ".json", ".yaml", ".yml", ".sh", ".toml", ".txt")
+        files = [root] if root.is_file() else _safe_rglob(root, ".md", ".json", ".yaml", ".yml", ".sh", ".toml", ".txt")
         for p in files:
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            toks = {t for t in _tokens(text)
-                    if t.startswith(prefix) and len(t) > len(prefix)
-                    and not t.endswith("_")          # a namespace prefix, not a knob
-                    and not is_read(t)}
+            toks = {
+                t
+                for t in _tokens(text)
+                if t.startswith(prefix)
+                and len(t) > len(prefix)
+                and not t.endswith("_")  # a namespace prefix, not a knob
+                and not is_read(t)
+            }
             if not toks:
                 continue
             rel = _rel(p, corpus.root)
@@ -1087,25 +1241,30 @@ def detect_dead_env_knob(corpus: _Corpus, prefix: str, mention_roots: list[Path]
                 for t in sorted(toks):
                     if t in line and t not in mentions:
                         mentions[t] = (rel, ln)
-    return [Finding(
-        kind="dead-env-knob",
-        ident=name,
-        file=where, line=line,
-        declared=f"the repo advertises the env knob {name}",
-        fires_when="some code path reads it and changes behaviour",
-        blocked_by="no os.environ / os.getenv / paths.env read of this name anywhere in the "
-                   "scanned trees -- exporting it does nothing",
-        evidence=f"AST census of env reads ({len(read)} literal {prefix}* names, plus "
-                 f"{len(composed)} composed name shape(s) {sorted(composed)}) vs a token scan of "
-                 f"docs/settings/shell; first mention at {where}:{line}. A knob read through a "
-                 f"name this census cannot see (a dict of names, a name from a data file) would "
-                 f"make this a false positive -- check the read side before deleting a knob.")
-        for name, (where, line) in sorted(mentions.items())]
+    return [
+        Finding(
+            kind="dead-env-knob",
+            ident=name,
+            file=where,
+            line=line,
+            declared=f"the repo advertises the env knob {name}",
+            fires_when="some code path reads it and changes behaviour",
+            blocked_by="no os.environ / os.getenv / paths.env read of this name anywhere in the "
+            "scanned trees -- exporting it does nothing",
+            evidence=f"AST census of env reads ({len(read)} literal {prefix}* names, plus "
+            f"{len(composed)} composed name shape(s) {sorted(composed)}) vs a token scan of "
+            f"docs/settings/shell; first mention at {where}:{line}. A knob read through a "
+            f"name this census cannot see (a dict of names, a name from a data file) would "
+            f"make this a false positive -- check the read side before deleting a knob.",
+        )
+        for name, (where, line) in sorted(mentions.items())
+    ]
 
 
 # --------------------------------------------------------------------------------------------
 # D7  unreferenced-def
 # --------------------------------------------------------------------------------------------
+
 
 def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
     """A module-PRIVATE def/class nothing names. Restricted to ``_``-prefixed names on purpose:
@@ -1121,17 +1280,20 @@ def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
             elif isinstance(node, ast.Attribute):
                 referenced.add(node.attr)
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                referenced |= _tokens(node.value)          # dynamic dispatch by name
+                referenced |= _tokens(node.value)  # dynamic dispatch by name
             elif isinstance(node, ast.alias):
                 referenced.add(node.name.split(".")[-1])
                 if node.asname:
                     referenced.add(node.asname)
         if not in_scan:
             continue
-        for node in tree.body:                              # module level only
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) \
-                    and node.name.startswith("_") and not node.name.startswith("__") \
-                    and not node.decorator_list:
+        for node in tree.body:  # module level only
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and node.name.startswith("_")
+                and not node.name.startswith("__")
+                and not node.decorator_list
+            ):
                 defined.setdefault(node.name, []).append((rel, node.lineno))
     findings: list[Finding] = []
     for name, sites in sorted(defined.items()):
@@ -1140,17 +1302,21 @@ def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
         if name in referenced or len(sites) > 1:
             continue
         rel, line = sites[0]
-        findings.append(Finding(
-            kind="unreferenced-def",
-            ident=f"{rel}:{name}",
-            file=rel, line=line,
-            declared=f"module-private {name}()",
-            fires_when="something calls it, imports it, or reaches it by name",
-            blocked_by="the name appears nowhere else in the corpus -- not as a call, an "
-                       "attribute, an import, or a string (which would mean dynamic dispatch)",
-            evidence="AST name census over Name / Attribute / alias / string-constant tokens "
-                     "across scan + witness trees. Decorated defs are excluded (a decorator can "
-                     "register a callee invisibly)."))
+        findings.append(
+            Finding(
+                kind="unreferenced-def",
+                ident=f"{rel}:{name}",
+                file=rel,
+                line=line,
+                declared=f"module-private {name}()",
+                fires_when="something calls it, imports it, or reaches it by name",
+                blocked_by="the name appears nowhere else in the corpus -- not as a call, an "
+                "attribute, an import, or a string (which would mean dynamic dispatch)",
+                evidence="AST name census over Name / Attribute / alias / string-constant tokens "
+                "across scan + witness trees. Decorated defs are excluded (a decorator can "
+                "register a callee invisibly).",
+            )
+        )
     return findings
 
 
@@ -1160,8 +1326,19 @@ def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
 
 #: Counter-name suffixes that mean "candidates the pass LOOKED at" and "candidates it CHANGED".
 SEEN_TOKENS = ("scanned", "seen", "candidates", "considered", "visited", "examined", "population")
-DONE_TOKENS = ("lowered", "transformed", "applied", "rewritten", "fused", "changed", "hit",
-               "matched", "emitted", "promoted", "fired")
+DONE_TOKENS = (
+    "lowered",
+    "transformed",
+    "applied",
+    "rewritten",
+    "fused",
+    "changed",
+    "hit",
+    "matched",
+    "emitted",
+    "promoted",
+    "fired",
+)
 
 
 def _flat_counters(obj, prefix: str = "") -> dict[str, dict[str, int]]:
@@ -1194,8 +1371,10 @@ def detect_runtime_inert(report_paths: list[Path]) -> tuple[list[Finding], list[
     clean verdict: "we did not look" must not read as "nothing is inert".
     """
     if not report_paths:
-        return [], ["runtime-inert: NO --report given; the measured axis was NOT evaluated. "
-                    "A clean static run is NOT evidence that no pass is inert."]
+        return [], [
+            "runtime-inert: NO --report given; the measured axis was NOT evaluated. "
+            "A clean static run is NOT evidence that no pass is inert."
+        ]
     findings: list[Finding] = []
     notes: list[str] = []
     for rp in report_paths:
@@ -1208,32 +1387,38 @@ def detect_runtime_inert(report_paths: list[Path]) -> tuple[list[Finding], list[
             notes.append(f"runtime-inert: {rp} unreadable ({exc}); axis UNMEASURED")
             continue
         stem = rp.stem
-        for cap, counters in sorted(_flat_counters(payload, "" if isinstance(payload, dict)
-                                                   and any(isinstance(v, dict)
-                                                           for v in payload.values()) else stem).items()):
-            seen = max((v for k, v in counters.items()
-                        if any(t in k.lower() for t in SEEN_TOKENS)), default=0)
-            done = max((v for k, v in counters.items()
-                        if any(t in k.lower() for t in DONE_TOKENS)), default=None)
+        for cap, counters in sorted(
+            _flat_counters(
+                payload,
+                "" if isinstance(payload, dict) and any(isinstance(v, dict) for v in payload.values()) else stem,
+            ).items()
+        ):
+            seen = max((v for k, v in counters.items() if any(t in k.lower() for t in SEEN_TOKENS)), default=0)
+            done = max((v for k, v in counters.items() if any(t in k.lower() for t in DONE_TOKENS)), default=None)
             if done is None or seen <= 0 or done > 0:
                 continue
-            findings.append(Finding(
-                kind="runtime-inert",
-                ident=f"{cap}",
-                file=_rel(rp, ROOT), line=0,
-                declared=f"{cap} reports a candidate population of {seen}",
-                fires_when="its predicate matches at least one of those candidates",
-                blocked_by=f"it transformed ZERO of {seen} candidates on this run "
-                           f"({', '.join(f'{k}={v}' for k, v in sorted(counters.items()))})",
-                evidence=f"MEASURED from {_rel(rp, ROOT)} -- not inferred. A single run with a "
-                         f"population but no transform is suggestive; the same result across the "
-                         f"fleet is what makes it inert."))
+            findings.append(
+                Finding(
+                    kind="runtime-inert",
+                    ident=f"{cap}",
+                    file=_rel(rp, ROOT),
+                    line=0,
+                    declared=f"{cap} reports a candidate population of {seen}",
+                    fires_when="its predicate matches at least one of those candidates",
+                    blocked_by=f"it transformed ZERO of {seen} candidates on this run "
+                    f"({', '.join(f'{k}={v}' for k, v in sorted(counters.items()))})",
+                    evidence=f"MEASURED from {_rel(rp, ROOT)} -- not inferred. A single run with a "
+                    f"population but no transform is suggestive; the same result across the "
+                    f"fleet is what makes it inert.",
+                )
+            )
     return findings, notes
 
 
 # --------------------------------------------------------------------------------------------
 # ratchet + CLI
 # --------------------------------------------------------------------------------------------
+
 
 def load_ratchet(path: Path) -> set[str]:
     keys: set[str] = set()
@@ -1245,9 +1430,17 @@ def load_ratchet(path: Path) -> set[str]:
     return keys
 
 
-def run(scan_roots: list[Path], witness_roots: list[Path], *, root: Path,
-        kinds: list[str], report_paths: list[Path], imports: bool,
-        env_prefix: str, mention_roots: list[Path]) -> tuple[list[Finding], list[str]]:
+def run(
+    scan_roots: list[Path],
+    witness_roots: list[Path],
+    *,
+    root: Path,
+    kinds: list[str],
+    report_paths: list[Path],
+    imports: bool,
+    env_prefix: str,
+    mention_roots: list[Path],
+) -> tuple[list[Finding], list[str]]:
     corpus = _Corpus(root=root)
     for p in _py_files(scan_roots):
         tree = _parse(p)
@@ -1310,27 +1503,49 @@ def run(scan_roots: list[Path], witness_roots: list[Path], *, root: Path,
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--scan-root", action="append", default=None,
-                    help="tree(s) whose declarations are audited (default: the library + tooling)")
-    ap.add_argument("--witness-root", action="append", default=None,
-                    help="tree(s) consulted only to answer 'does anything produce/read this?'")
-    ap.add_argument("--mention-root", action="append", default=None,
-                    help="tree(s) scanned for env-knob mentions (docs, settings, shell)")
+    ap = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--scan-root",
+        action="append",
+        default=None,
+        help="tree(s) whose declarations are audited (default: the library + tooling)",
+    )
+    ap.add_argument(
+        "--witness-root",
+        action="append",
+        default=None,
+        help="tree(s) consulted only to answer 'does anything produce/read this?'",
+    )
+    ap.add_argument(
+        "--mention-root",
+        action="append",
+        default=None,
+        help="tree(s) scanned for env-knob mentions (docs, settings, shell)",
+    )
     ap.add_argument("--repo-root", default=None, help="path roots are relative to (default: repo)")
     ap.add_argument("--kinds", default=",".join(KINDS), help="comma-separated detectors to run")
     ap.add_argument("--list-kinds", action="store_true", help="print the detector names and exit")
-    ap.add_argument("--report", action="append", default=[],
-                    help="a pass/capability counter report (JSON) for the MEASURED axis")
+    ap.add_argument(
+        "--report", action="append", default=[], help="a pass/capability counter report (JSON) for the MEASURED axis"
+    )
     ap.add_argument("--env-prefix", default="MERLIN_", help="env-knob namespace to audit")
-    ap.add_argument("--imports", dest="imports", action="store_true", default=True,
-                    help="allow importing modules to resolve registries (default: on)")
+    ap.add_argument(
+        "--imports",
+        dest="imports",
+        action="store_true",
+        default=True,
+        help="allow importing modules to resolve registries (default: on)",
+    )
     ap.add_argument("--no-imports", dest="imports", action="store_false")
     ap.add_argument("--ratchet", default=str(RATCHET), help="debt file; MAY ONLY SHRINK")
     ap.add_argument("--no-ratchet", action="store_true", help="report every finding as new")
-    ap.add_argument("--write-ratchet", action="store_true",
-                    help="rewrite the ratchet from this run (seeding only -- review the diff)")
+    ap.add_argument(
+        "--write-ratchet",
+        action="store_true",
+        help="rewrite the ratchet from this run (seeding only -- review the diff)",
+    )
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--stop-hook", action="store_true", help="Claude Code Stop-hook JSON")
     args = ap.parse_args(argv)
@@ -1341,25 +1556,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     root = Path(args.repo_root).resolve() if args.repo_root else ROOT
-    scan = [Path(p) if Path(p).is_absolute() else root / p
-            for p in (args.scan_root or DEFAULT_SCAN_ROOTS)]
-    witness = [Path(p) if Path(p).is_absolute() else root / p
-               for p in (args.witness_root or DEFAULT_WITNESS_ROOTS)]
-    mention = [Path(p) if Path(p).is_absolute() else root / p
-               for p in (args.mention_root or ("docs", ".claude", "build_tools", "README.md",
-                                               "CLAUDE.md", "AGENT.md", "pyproject.toml"))]
+    scan = [Path(p) if Path(p).is_absolute() else root / p for p in (args.scan_root or DEFAULT_SCAN_ROOTS)]
+    witness = [Path(p) if Path(p).is_absolute() else root / p for p in (args.witness_root or DEFAULT_WITNESS_ROOTS)]
+    mention = [
+        Path(p) if Path(p).is_absolute() else root / p
+        for p in (
+            args.mention_root
+            or ("docs", ".claude", "build_tools", "README.md", "CLAUDE.md", "AGENT.md", "pyproject.toml")
+        )
+    ]
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()]
     unknown = [k for k in kinds if k not in KINDS]
     if unknown:
         print(f"[FAIL] unknown detector(s): {', '.join(unknown)}", file=sys.stderr)
         return 2
 
-    findings, notes = run([p for p in scan if p.exists()],
-                          [p for p in witness if p.exists()],
-                          root=root, kinds=kinds,
-                          report_paths=[Path(p) for p in args.report],
-                          imports=args.imports, env_prefix=args.env_prefix,
-                          mention_roots=mention)
+    findings, notes = run(
+        [p for p in scan if p.exists()],
+        [p for p in witness if p.exists()],
+        root=root,
+        kinds=kinds,
+        report_paths=[Path(p) for p in args.report],
+        imports=args.imports,
+        env_prefix=args.env_prefix,
+        mention_roots=mention,
+    )
 
     ratchet_path = Path(args.ratchet)
     ratcheted = set() if args.no_ratchet else load_ratchet(ratchet_path)
@@ -1368,24 +1589,31 @@ def main(argv: list[str] | None = None) -> int:
     stale = sorted(ratcheted - {f.key for f in findings})
 
     if args.write_ratchet:
-        header = ("# Inert capabilities that MAY ONLY SHRINK.\n"
-                  "#\n"
-                  "# Each line is `<kind> <id>` -- a capability that is DECLARED and cannot fire.\n"
-                  "# NEVER ADD A LINE. A new entry means a new feature that does nothing and says\n"
-                  "# nothing; fix it, or delete the declaration. Regenerate with:\n"
-                  "#   build_tools/scripts/check_inert_capabilities.py --write-ratchet\n"
-                  "#\n"
-                  f"# count: {len(findings)}\n")
+        header = (
+            "# Inert capabilities that MAY ONLY SHRINK.\n"
+            "#\n"
+            "# Each line is `<kind> <id>` -- a capability that is DECLARED and cannot fire.\n"
+            "# NEVER ADD A LINE. A new entry means a new feature that does nothing and says\n"
+            "# nothing; fix it, or delete the declaration. Regenerate with:\n"
+            "#   build_tools/scripts/check_inert_capabilities.py --write-ratchet\n"
+            "#\n"
+            f"# count: {len(findings)}\n"
+        )
         ratchet_path.write_text(header + "".join(f"{f.key}\n" for f in findings), encoding="utf-8")
         print(f"[write] {ratchet_path}: {len(findings)} entr(y|ies)")
         return 0
 
-    payload = {"ratchet_count": len(ratcheted), "finding_count": len(findings),
-               "new_count": len(new), "carried_count": len(carried),
-               "stale_ratchet_entries": stale,
-               "by_kind": {k: sum(1 for f in findings if f.kind == k) for k in kinds},
-               "findings": [f.as_dict() for f in findings],
-               "new": [f.key for f in new], "notes": notes}
+    payload = {
+        "ratchet_count": len(ratcheted),
+        "finding_count": len(findings),
+        "new_count": len(new),
+        "carried_count": len(carried),
+        "stale_ratchet_entries": stale,
+        "by_kind": {k: sum(1 for f in findings if f.kind == k) for k in kinds},
+        "findings": [f.as_dict() for f in findings],
+        "new": [f.key for f in new],
+        "notes": notes,
+    }
 
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1394,8 +1622,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.stop_hook:
         if new:
             body = "\n- ".join(f"{f.key} ({f.file}:{f.line}) -- {f.blocked_by}" for f in new)
-            print(json.dumps({"decision": "block",
-                              "reason": f"New inert capability/ies (declared, cannot fire):\n- {body}"}))
+            print(
+                json.dumps(
+                    {"decision": "block", "reason": f"New inert capability/ies (declared, cannot fire):\n- {body}"}
+                )
+            )
         else:
             print(json.dumps({}))
         return 0
@@ -1407,8 +1638,9 @@ def main(argv: list[str] | None = None) -> int:
         for s in stale:
             print(f"         {s}")
     if new:
-        print(f"[FAIL] inert-capabilities: {len(new)} NEW finding(s) "
-              f"({len(carried)} carried, ratchet={len(ratcheted)}):")
+        print(
+            f"[FAIL] inert-capabilities: {len(new)} NEW finding(s) ({len(carried)} carried, ratchet={len(ratcheted)}):"
+        )
         for f in new:
             print(f"  - [{f.kind}] {f.file}:{f.line}  {f.ident}")
             print(f"      declared   : {f.declared}")
@@ -1416,8 +1648,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"      blocked by : {f.blocked_by}")
             print(f"      verified   : {f.evidence}")
         return 1
-    print(f"[  ok] inert-capabilities: {len(findings)} finding(s), all ratcheted "
-          f"(ratchet={len(ratcheted)}; this number MAY ONLY FALL).")
+    print(
+        f"[  ok] inert-capabilities: {len(findings)} finding(s), all ratcheted "
+        f"(ratchet={len(ratcheted)}; this number MAY ONLY FALL)."
+    )
     return 0
 
 

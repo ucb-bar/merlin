@@ -102,6 +102,7 @@ Run::
     python build_tools/scripts/check_fact_provenance.py --fail-on-new  # gate on un-ratcheted findings
     python build_tools/scripts/check_fact_provenance.py --staged       # only git-staged files
 """
+
 from __future__ import annotations
 
 import argparse
@@ -151,8 +152,10 @@ FORBIDDEN_SOURCES: dict[str, dict] = {
         "names": ("npu_model", "from_npu", "npu_config"),  # target-ok: the artifact being hunted
     },
     "declared_config": {
-        "what": ("a hand-authored machine declaration reached through a target's `config_path()` "
-                 "accessor — a person wrote the numbers in it; CIRCT did not emit them"),
+        "what": (
+            "a hand-authored machine declaration reached through a target's `config_path()` "
+            "accessor — a person wrote the numbers in it; CIRCT did not emit them"
+        ),
         # The indirection that made the muon geometry leak survive a target-agnostic rewrite:
         # `simt_occupancy` never spells a target or an env var, it asks the backend for its
         # `config_path()` and parses the toml. The accessor NAME is the only textual trace, so that is
@@ -189,25 +192,64 @@ FACT_PRODUCER_FRAGMENTS = (
     "/perf/profile.py",
     "/perf/simt_occupancy.py",
     "/dse/hardware_space.py",
-    "introspect",           # any */*introspect*.py — a target's own RTL extractor
+    "introspect",  # any */*introspect*.py — a target's own RTL extractor
 )
 
 #: Names that, used as a dict key / attribute / subscript, mean "this value is being filed as a fact".
-FACT_SINK_KEYS = frozenset({
-    "facts", "fact", "fields", "capabilities", "capability", "geometry", "geom", "provenance",
-    "evidence", "hardware", "hw_facts", "rtl_facts", "manifest", "arch", "peak", "datapath",
-    "memories", "mesh", "simt", "clock_hz", "dtypes", "encoding",
-})
+FACT_SINK_KEYS = frozenset(
+    {
+        "facts",
+        "fact",
+        "fields",
+        "capabilities",
+        "capability",
+        "geometry",
+        "geom",
+        "provenance",
+        "evidence",
+        "hardware",
+        "hw_facts",
+        "rtl_facts",
+        "manifest",
+        "arch",
+        "peak",
+        "datapath",
+        "memories",
+        "mesh",
+        "simt",
+        "clock_hz",
+        "dtypes",
+        "encoding",
+    }
+)
 
 #: Callables that WRITE a fact artifact.
-FACT_SINK_CALLS = frozenset({
-    "write_facts", "write_facts_guarded", "dump_facts", "build_facts", "load_facts",
-    "simt_facts", "target_fact_bundle", "spatial_fact_bundle", "new_measurement", "record",
-})
+FACT_SINK_CALLS = frozenset(
+    {
+        "write_facts",
+        "write_facts_guarded",
+        "dump_facts",
+        "build_facts",
+        "load_facts",
+        "simt_facts",
+        "target_fact_bundle",
+        "spatial_fact_bundle",
+        "new_measurement",
+        "record",
+    }
+)
 
 #: Function-name shapes whose RETURN VALUE is a fact.
-FACT_FN_SUFFIXES = ("_facts", "_geometry", "_fact_bundle", "_capabilities", "_capability",
-                    "_manifest", "_from_npu", "_provenance")
+FACT_FN_SUFFIXES = (
+    "_facts",
+    "_geometry",
+    "_fact_bundle",
+    "_capabilities",
+    "_capability",
+    "_manifest",
+    "_from_npu",
+    "_provenance",
+)
 
 
 def _is_fact_producer_path(rel: str) -> bool:
@@ -242,8 +284,12 @@ class _Scanner(ast.NodeVisitor):
     # -- docstring bookkeeping ---------------------------------------------------------------
     def _mark_docstring(self, node: ast.AST) -> None:
         body = getattr(node, "body", None)
-        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-                and isinstance(body[0].value.value, str):
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
             self.docstrings.add(id(body[0].value))
 
     def visit_Module(self, node: ast.Module) -> None:
@@ -329,16 +375,21 @@ class _Scanner(ast.NodeVisitor):
                 self.visit(k)
 
     def _record(self, node: ast.AST, src: str, text: str, how: str) -> None:
-        self.hits.append({
-            "lineno": node.lineno, "source": src, "literal": text[:80], "how": how,
-            "fn": self.fn_stack[-1] if self.fn_stack else "<module>",
-            "sinks": [s for s in self.sink_stack if s],
-        })
+        self.hits.append(
+            {
+                "lineno": node.lineno,
+                "source": src,
+                "literal": text[:80],
+                "how": how,
+                "fn": self.fn_stack[-1] if self.fn_stack else "<module>",
+                "sinks": [s for s in self.sink_stack if s],
+            }
+        )
 
     def _check(self, node: ast.AST, text: str) -> None:
         """A STRING LITERAL naming a forbidden source (an env var, an ext_path key, a filename)."""
         if _resolves_to_arc(text):
-            return          # a CIRCT/arc artifact: allowed whatever it is named
+            return  # a CIRCT/arc artifact: allowed whatever it is named
         for src, spec in FORBIDDEN_SOURCES.items():
             if any(tok == text or (tok in text and len(tok) > 6) for tok in spec["tokens"]):
                 self._record(node, src, text, "literal")
@@ -389,13 +440,15 @@ def scan_file(path: Path, rel: str) -> list[dict]:
     out: list[dict] = []
     for hit in sc.hits:
         line = lines[hit["lineno"] - 1] if 0 < hit["lineno"] <= len(lines) else ""
-        why = ("the module's purpose is producing hardware facts (fact-producing path)"
-               if producer else _reaches_fact_sink(hit))
+        why = (
+            "the module's purpose is producing hardware facts (fact-producing path)"
+            if producer
+            else _reaches_fact_sink(hit)
+        )
         if why is None:
-            continue        # a verdict path: runs the thing, does not file the answer as a fact
+            continue  # a verdict path: runs the thing, does not file the answer as a fact
         rec = dict(hit)
-        rec.update({"path": rel, "why_fact": why,
-                    "kind": "cross_check" if INLINE_MARKER in line else "violation"})
+        rec.update({"path": rel, "why_fact": why, "kind": "cross_check" if INLINE_MARKER in line else "violation"})
         if rec["kind"] == "cross_check":
             rec["annotation"] = line.split(INLINE_MARKER, 1)[1].strip()
         out.append(rec)
@@ -428,8 +481,13 @@ def _iter_targets(staged: bool) -> list[str]:
         # that cannot run (bad GIT_DIR, no repo, no binary) yielded an EMPTY list and the gate printed
         # OK -- a green that could not have gone red. `check=True` turns that into an exception the
         # caller reports; see check_no_answer_keys.py, which fixed the same shape first.
-        out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
         rels = [ln for ln in out.splitlines() if ln.strip()]
     else:
         rels = []
@@ -464,13 +522,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--json", action="store_true", help="machine-readable findings")
     ap.add_argument("--staged", action="store_true", help="only git-staged files")
-    ap.add_argument("--fail-on-new", action="store_true",
-                    help="exit 1 on any un-ratcheted violation")
-    ap.add_argument("--fail-on-any", action="store_true",
-                    help="exit 1 on any finding, ratcheted debt included")
-    ap.add_argument("--ratchet", default=None, metavar="PATH",
-                    help=f"the accepted-debt list (default: {RATCHET_FILE.name}). It may only SHRINK; "
-                         "each entry is `<path>::<source>  # reason`.")
+    ap.add_argument("--fail-on-new", action="store_true", help="exit 1 on any un-ratcheted violation")
+    ap.add_argument("--fail-on-any", action="store_true", help="exit 1 on any finding, ratcheted debt included")
+    ap.add_argument(
+        "--ratchet",
+        default=None,
+        metavar="PATH",
+        help=f"the accepted-debt list (default: {RATCHET_FILE.name}). It may only SHRINK; "
+        "each entry is `<path>::<source>  # reason`.",
+    )
     a = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     ratchet_path = Path(a.ratchet) if a.ratchet else None
@@ -480,23 +540,37 @@ def main(argv: list[str] | None = None) -> int:
         # FAIL CLOSED: the work list comes from `git`, and a `git` that cannot run used to yield an
         # empty list and a printed "[  ok]" -- a green that could not have gone red. "We could not
         # look" is not "there is nothing to find" (see check_no_answer_keys.py, same fix).
-        print(f"[FAIL] fact-provenance: could not list the files to examine ({exc}); NOTHING was "
-              f"examined, which is not the same as clean.", file=sys.stderr)
+        print(
+            f"[FAIL] fact-provenance: could not list the files to examine ({exc}); NOTHING was "
+            f"examined, which is not the same as clean.",
+            file=sys.stderr,
+        )
         return 1
     viol = [f for f in found if f["kind"] == "violation"]
     ratch = [f for f in found if f["kind"] == "ratcheted"]
     xchk = [f for f in found if f["kind"] == "cross_check"]
 
     if a.json:
-        print(json.dumps({"violations": viol, "ratcheted": ratch, "cross_checks": xchk,
-                          "n_ratchet_entries": len(load_ratchet(ratchet_path))}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "violations": viol,
+                    "ratcheted": ratch,
+                    "cross_checks": xchk,
+                    "n_ratchet_entries": len(load_ratchet(ratchet_path)),
+                },
+                indent=2,
+            )
+        )
     else:
         if viol:
             print(f"[FAIL] fact-provenance: {len(viol)} fact producer(s) reading a forbidden source:")
             for f in viol:
-                print(f"  - {f['path']}:{f['lineno']}: [{f['source']}] {f['literal']!r} in "
-                      f"{f['fn']}() — {f['why_fact']}. "
-                      f"{FORBIDDEN_SOURCES[f['source']]['what']}")
+                print(
+                    f"  - {f['path']}:{f['lineno']}: [{f['source']}] {f['literal']!r} in "
+                    f"{f['fn']}() — {f['why_fact']}. "
+                    f"{FORBIDDEN_SOURCES[f['source']]['what']}"
+                )
         else:
             print("[  ok] fact-provenance: no un-ratcheted fact producer reads a forbidden source.")
         if ratch:

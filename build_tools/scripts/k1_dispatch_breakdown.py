@@ -47,6 +47,7 @@ cos-gated (>= 0.9999) before any wall is recorded. Honest not_run on board-unrea
 Run: MERLIN_K1_HOST=root@<ip> .venv/bin/python scripts/k1_dispatch_breakdown.py \
         --model out/artifacts/recaptures/openvla_fp32_consistent -n 5
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,12 +77,19 @@ def _spread(walls: list[int]) -> dict | None:
     mn, mx, med = ws[0], ws[-1], ws[len(ws) // 2]
     mean = sum(ws) / len(ws)
     std = (sum((w - mean) ** 2 for w in ws) / len(ws)) ** 0.5
-    return {"min_ns": mn, "max_ns": mx, "median_ns": med, "stdev_ns": round(std),
-            "range_pct": round(100.0 * (mx - mn) / mn, 2), "n": len(ws)}
+    return {
+        "min_ns": mn,
+        "max_ns": mx,
+        "median_ns": med,
+        "stdev_ns": round(std),
+        "range_pct": round(100.0 * (mx - mn) / mn, 2),
+        "n": len(ws),
+    }
 
 
-def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
-            kernel_backend: str | None, dispatch_timing: bool) -> dict:
+def run_cfg(
+    model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str, kernel_backend: str | None, dispatch_timing: bool
+) -> dict:
     """Run one config N times; gate cos each run; collect wall + (optional) matmul ticks/calls."""
     runs: list[dict] = []
     cos = n_xnn = n_routed = 0
@@ -89,21 +97,31 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
     for i in range(n):
         work = Path(tempfile.mkdtemp(prefix=f"k1dbrk_{tag}_{i}_"))
         try:
-            res = k1.run_on_k1(model_dir, work, pkg, timeout=1800,
-                               kernel_backend=kernel_backend, dispatch_timing=dispatch_timing)
+            res = k1.run_on_k1(
+                model_dir, work, pkg, timeout=1800, kernel_backend=kernel_backend, dispatch_timing=dispatch_timing
+            )
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
             n_xnn = res.get("n_xnn_routed", 0)
             # routed-matmul count for whichever expert/ours backend ran (for the log + provenance).
             n_routed = res.get("n_xnn_routed", res.get("n_openblas_routed", res.get("n_ours_routed", 0)))
             m = res["metrics"]
-            runs.append({"wall_ns": m.get("wall_ns"), "time_ticks": m.get("time_ticks"),
-                         "matmul_ticks": m.get("matmul_ticks"), "matmul_calls": m.get("matmul_calls"),
-                         "fp32_cos": cos, "vlen": res.get("vlen")})
+            runs.append(
+                {
+                    "wall_ns": m.get("wall_ns"),
+                    "time_ticks": m.get("time_ticks"),
+                    "matmul_ticks": m.get("matmul_ticks"),
+                    "matmul_calls": m.get("matmul_calls"),
+                    "fp32_cos": cos,
+                    "vlen": res.get("vlen"),
+                }
+            )
             mb = _ticks_to_ns(m.get("matmul_ticks"))
-            print(f"  [{tag}] run {i}: wall_ns={m.get('wall_ns')} cos={cos:.7f} "
-                  f"n_routed={n_routed} matmul_ns={None if mb is None else round(mb)} "
-                  f"matmul_calls={m.get('matmul_calls')}")
+            print(
+                f"  [{tag}] run {i}: wall_ns={m.get('wall_ns')} cos={cos:.7f} "
+                f"n_routed={n_routed} matmul_ns={None if mb is None else round(mb)} "
+                f"matmul_calls={m.get('matmul_calls')}"
+            )
         except Exception as e:  # noqa: BLE001
             blocker = f"{type(e).__name__}: {str(e)[:400]}"
             print(f"  [{tag}] run {i}: BLOCKED — {blocker}")
@@ -123,15 +141,25 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
         if matmul_ns is not None:
             dispatch_ns = float(min_wall) - matmul_ns
             matmul_frac = matmul_ns / float(min_wall)
-    return {"tag": tag, "run_id": pkg.run_id,
-            "compiler_features": list(pkg.compiler_features or []),
-            "kernel_backend": kernel_backend, "dispatch_timing": dispatch_timing,
-            "n_xnn_routed": n_xnn, "n_routed": n_routed,
-            "min_wall_ns": min_wall, "spread": _spread(walls),
-            "matmul_bucket_ns": matmul_ns, "dispatch_bucket_ns": dispatch_ns,
-            "matmul_frac": matmul_frac, "matmul_calls": matmul_calls,
-            "fp32_cos": cos, "ok": (cos is not None and cos >= 0.9999),
-            "blocker": blocker, "runs": runs}
+    return {
+        "tag": tag,
+        "run_id": pkg.run_id,
+        "compiler_features": list(pkg.compiler_features or []),
+        "kernel_backend": kernel_backend,
+        "dispatch_timing": dispatch_timing,
+        "n_xnn_routed": n_xnn,
+        "n_routed": n_routed,
+        "min_wall_ns": min_wall,
+        "spread": _spread(walls),
+        "matmul_bucket_ns": matmul_ns,
+        "dispatch_bucket_ns": dispatch_ns,
+        "matmul_frac": matmul_frac,
+        "matmul_calls": matmul_calls,
+        "fp32_cos": cos,
+        "ok": (cos is not None and cos >= 0.9999),
+        "blocker": blocker,
+        "runs": runs,
+    }
 
 
 def main() -> None:
@@ -139,11 +167,15 @@ def main() -> None:
     ap.add_argument("--model", default="out/artifacts/recaptures/openvla_fp32_consistent")
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=5)
-    ap.add_argument("--configs", default="ours_wholemodel_vf,xnnpack_kernels,baseline",
-                    help="ours_wholemodel_vf,ours_wholemodel,xnnpack_kernels,ours_kernels,baseline")
+    ap.add_argument(
+        "--configs",
+        default="ours_wholemodel_vf,xnnpack_kernels,baseline",
+        help="ours_wholemodel_vf,ours_wholemodel,xnnpack_kernels,ours_kernels,baseline",
+    )
     ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/dispatch_breakdown.json")
-    ap.add_argument("--append", action="store_true",
-                    help="merge into an existing --out (per-model dict) instead of overwriting")
+    ap.add_argument(
+        "--append", action="store_true", help="merge into an existing --out (per-model dict) instead of overwriting"
+    )
     a = ap.parse_args()
 
     md = Path(a.model)
@@ -153,10 +185,16 @@ def main() -> None:
 
     pkgs = {
         "baseline": (base, None, False),
-        "ours_wholemodel": (replace(base, run_id="ours_wholemodel",
-                                    compiler_features=["accumulator_resident_wholemodel"]), None, False),
-        "ours_wholemodel_vf": (replace(base, run_id="ours_wholemodel_vf",
-                                       compiler_features=["accumulator_resident_wholemodel_vf"]), None, False),
+        "ours_wholemodel": (
+            replace(base, run_id="ours_wholemodel", compiler_features=["accumulator_resident_wholemodel"]),
+            None,
+            False,
+        ),
+        "ours_wholemodel_vf": (
+            replace(base, run_id="ours_wholemodel_vf", compiler_features=["accumulator_resident_wholemodel_vf"]),
+            None,
+            False,
+        ),
         # XNNPACK config carries the matmul-bucket timer (the routed GEMM shim).
         "xnnpack_kernels": (replace(base, run_id="xnnpack_kernels"), "xnnpack", True),
         # ours_kernels: the apples-to-apples sibling of xnnpack_kernels — SAME baseline non-matmul
@@ -176,20 +214,27 @@ def main() -> None:
         results[cfg] = run_cfg(md, pkg, golden, a.n, cfg, backend, dtiming)
 
     summary = {
-        "model": str(md), "n": a.n, "board": "k1_spacemit", "vlen": k1.VLEN,
+        "model": str(md),
+        "n": a.n,
+        "board": "k1_spacemit",
+        "vlen": k1.VLEN,
         "timer": "CLOCK_MONOTONIC wall_ns + rdtime matmul ticks; cycle_accurate=false",
         "timebase_hz": TIMEBASE_HZ,
-        "method": ("Per-dispatch matmul-bucket via rdtime inside the routed RVV GEMM shim "
-                   "(default-off, -DMERLIN_DISPATCH_TIMING). matmul_bucket = sum(GEMM-ukernel "
-                   "ticks)->ns; dispatch_bucket = whole-model wall - matmul_bucket. The matmul "
-                   "kernel decodes identically to XNNPACK (packing_residual.md), so the measured "
-                   "XNNPACK matmul-bucket is the GEMM cost ours-vf also pays; ours-vf wall minus "
-                   "that bucket is ours-vf's non-matmul/dispatch cost."),
-        "caveats": ("rdtime is the 24MHz platform counter (cycle_accurate=false), same proxy the "
-                    "K1 harness uses. The matmul bucket is the XNNPACK ukernel compute (resident "
-                    "pack excluded); attributed to ours-vf by the decode-equivalence proof, not by "
-                    "re-timing ours' inlined vfmacc (no call boundary exists to isolate it without "
-                    "changing ours' lowering)."),
+        "method": (
+            "Per-dispatch matmul-bucket via rdtime inside the routed RVV GEMM shim "
+            "(default-off, -DMERLIN_DISPATCH_TIMING). matmul_bucket = sum(GEMM-ukernel "
+            "ticks)->ns; dispatch_bucket = whole-model wall - matmul_bucket. The matmul "
+            "kernel decodes identically to XNNPACK (packing_residual.md), so the measured "
+            "XNNPACK matmul-bucket is the GEMM cost ours-vf also pays; ours-vf wall minus "
+            "that bucket is ours-vf's non-matmul/dispatch cost."
+        ),
+        "caveats": (
+            "rdtime is the 24MHz platform counter (cycle_accurate=false), same proxy the "
+            "K1 harness uses. The matmul bucket is the XNNPACK ukernel compute (resident "
+            "pack excluded); attributed to ours-vf by the decode-equivalence proof, not by "
+            "re-timing ours' inlined vfmacc (no call boundary exists to isolate it without "
+            "changing ours' lowering)."
+        ),
         "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv",
         "configs_run": want,
         "results": results,
@@ -204,15 +249,20 @@ def main() -> None:
         om, xm = ok["matmul_bucket_ns"], xk["matmul_bucket_ns"]
         ow, xw = ok.get("min_wall_ns"), xk.get("min_wall_ns")
         summary["measured_matmul_split"] = {
-            "ours_matmul_bucket_ns": om, "xnnpack_matmul_bucket_ns": xm,
+            "ours_matmul_bucket_ns": om,
+            "xnnpack_matmul_bucket_ns": xm,
             "ours_over_xnnpack_matmul": (om / xm) if xm else None,
-            "ours_wall_ns": ow, "xnnpack_wall_ns": xw,
+            "ours_wall_ns": ow,
+            "xnnpack_wall_ns": xw,
             "ours_dispatch_bucket_ns": (ow - om) if ow is not None else None,
             "xnnpack_dispatch_bucket_ns": (xw - xm) if xw is not None else None,
-            "ours_matmul_calls": ok.get("matmul_calls"), "xnnpack_matmul_calls": xk.get("matmul_calls"),
-            "note": ("both buckets MEASURED (rdtime in each backend's GEMM shim), same baseline "
-                     "non-matmul lowering. dispatch buckets should agree (validates the method); "
-                     "the matmul buckets are the real ours-v3-vs-XNNPACK kernel cost."),
+            "ours_matmul_calls": ok.get("matmul_calls"),
+            "xnnpack_matmul_calls": xk.get("matmul_calls"),
+            "note": (
+                "both buckets MEASURED (rdtime in each backend's GEMM shim), same baseline "
+                "non-matmul lowering. dispatch buckets should agree (validates the method); "
+                "the matmul buckets are the real ours-v3-vs-XNNPACK kernel cost."
+            ),
         }
     # cross-config localization (ours-vf vs xnnpack), if both ran.
     xn = results.get("xnnpack_kernels")
@@ -221,7 +271,8 @@ def main() -> None:
         if ov and xn and ov.get("min_wall_ns") and xn.get("matmul_bucket_ns") is not None:
             mb = xn["matmul_bucket_ns"]
             summary[f"localize_{ours_tag}"] = {
-                "ours_wall_ns": ov["min_wall_ns"], "xnnpack_wall_ns": xn["min_wall_ns"],
+                "ours_wall_ns": ov["min_wall_ns"],
+                "xnnpack_wall_ns": xn["min_wall_ns"],
                 "shared_matmul_bucket_ns": mb,
                 "ours_dispatch_bucket_ns": ov["min_wall_ns"] - mb,
                 "xnnpack_dispatch_bucket_ns": xn["min_wall_ns"] - mb,

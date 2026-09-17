@@ -39,6 +39,7 @@ read by the generator, with ``RETIRED.md`` recording what covers each one. The r
 untrack or supersede rather than delete, because a retired entry that turns out to have been load-bearing
 must be readable, not recovered from a reflog.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,8 +63,7 @@ def _profiles_dir() -> Path:
 
 
 def _targets() -> list[str]:
-    return sorted(p.stem for p in _profiles_dir().glob("*.yaml")
-                  if not p.stem.startswith("_") and "." not in p.stem)
+    return sorted(p.stem for p in _profiles_dir().glob("*.yaml") if not p.stem.startswith("_") and "." not in p.stem)
 
 
 def _binding(target: str):
@@ -71,14 +71,13 @@ def _binding(target: str):
 
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    desc = (merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml")
+    desc = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
     prof = yaml.safe_load((_profiles_dir() / f"{target}.yaml").read_text())
     return CS.derive_binding(load_target_experiment(desc), prof["datapath"]), prof
 
 
 def _shape_key(cap) -> tuple:
-    return tuple(tuple(r.get("shape") or ()) for r in (cap.get("inputs") or ())
-                 if isinstance(r, dict))
+    return tuple(tuple(r.get("shape") or ()) for r in (cap.get("inputs") or ()) if isinstance(r, dict))
 
 
 def _realize(entries, binding, on_disk: dict):
@@ -117,9 +116,13 @@ def _on_disk(target: str, subtrees: set[str]) -> dict:
     import yaml
 
     root = merlin_dir() / "contract" / "capsules"
-    paths = (sorted((root / target).rglob("capsule.yaml")) if target in subtrees
-             else sorted(p for p in root.rglob("capsule.yaml")
-                         if p.relative_to(root).parts[0] not in subtrees | {"profiles"}))
+    paths = (
+        sorted((root / target).rglob("capsule.yaml"))
+        if target in subtrees
+        else sorted(
+            p for p in root.rglob("capsule.yaml") if p.relative_to(root).parts[0] not in subtrees | {"profiles"}
+        )
+    )
     out = {}
     for p in paths:
         try:
@@ -175,16 +178,24 @@ def classify(target: str) -> dict:
             verdicts[n] = (COVERED, next(m for m, s in same if s == shp))
         else:
             verdicts[n] = (COVERED_AT_SCALE, same[0][0])
-    return {"target": target, "verdicts": verdicts, "unrealized": hand_unrealized,
-            "n_hand": len(prof.get("capsules") or []), "n_derived": len(derived)}
+    return {
+        "target": target,
+        "verdicts": verdicts,
+        "unrealized": hand_unrealized,
+        "n_hand": len(prof.get("capsules") or []),
+        "n_derived": len(derived),
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target")
-    ap.add_argument("--include-rescaled", action="store_true",
-                    help="also retire entries covered only at a different scale (check them first: a "
-                         "hand entry often exists BECAUSE of its extents, which the signature cannot see)")
+    ap.add_argument(
+        "--include-rescaled",
+        action="store_true",
+        help="also retire entries covered only at a different scale (check them first: a "
+        "hand entry often exists BECAUSE of its extents, which the signature cannot see)",
+    )
     ap.add_argument("--write", action="store_true", help="actually move the retired entries")
     args = ap.parse_args()
 
@@ -202,7 +213,9 @@ def main() -> int:
         c = sum(1 for v, _ in rep["verdicts"].values() if v == COVERED)
         s = sum(1 for v, _ in rep["verdicts"].values() if v == COVERED_AT_SCALE)
         u = sum(1 for v, _ in rep["verdicts"].values() if v == UNCOVERED)
-        total[COVERED] += c; total[COVERED_AT_SCALE] += s; total[UNCOVERED] += u
+        total[COVERED] += c
+        total[COVERED_AT_SCALE] += s
+        total[UNCOVERED] += u
         print(f"{t:<16}{rep['n_hand']:>6}{rep['n_derived']:>9}{c:>9}{s:>10}{u:>11}{len(rep['unrealized']):>12}")
 
     print(f"\n  retirable now (covered): {total[COVERED]}")
@@ -214,24 +227,34 @@ def main() -> int:
 
     import yaml
 
-    retire = {t: [n for n, (v, _) in r["verdicts"].items()
-                  if v == COVERED or (args.include_rescaled and v == COVERED_AT_SCALE)]
-              for t, r in reports.items()}
+    retire = {
+        t: [
+            n
+            for n, (v, _) in r["verdicts"].items()
+            if v == COVERED or (args.include_rescaled and v == COVERED_AT_SCALE)
+        ]
+        for t, r in reports.items()
+    }
     if not any(retire.values()):
-        print("\n[  ok] retirement: nothing is provably covered, so nothing moved. That is a RESULT, not "
-              "an omission -- retiring on a weaker test is how a corpus loses coverage while every count "
-              "goes up.")
+        print(
+            "\n[  ok] retirement: nothing is provably covered, so nothing moved. That is a RESULT, not "
+            "an omission -- retiring on a weaker test is how a corpus loses coverage while every count "
+            "goes up."
+        )
         return 0
 
     out_dir = _profiles_dir() / "retired"
     out_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["# Retired hand-authored capsule entries",
-             "",
-             "Each entry below was removed from its target's live profile ONLY because a derived capsule",
-             "exercises the same declared axis values. The covering capsule is named so the claim can be",
-             "checked rather than trusted. Nothing here is deleted: the entries are kept verbatim beside",
-             "this file so one that turns out to have been load-bearing is readable, not recovered from a",
-             "reflog.", ""]
+    lines = [
+        "# Retired hand-authored capsule entries",
+        "",
+        "Each entry below was removed from its target's live profile ONLY because a derived capsule",
+        "exercises the same declared axis values. The covering capsule is named so the claim can be",
+        "checked rather than trusted. Nothing here is deleted: the entries are kept verbatim beside",
+        "this file so one that turns out to have been load-bearing is readable, not recovered from a",
+        "reflog.",
+        "",
+    ]
     for t, names in sorted(retire.items()):
         if not names:
             continue
@@ -242,7 +265,8 @@ def main() -> int:
         (out_dir / f"{t}.v0.yaml").write_text(
             "# DERIVED-OUT: entries retired from " + f"profiles/{t}.yaml" + " because a derived capsule\n"
             "# covers the same obligation. Tracked, and NOT read by the generator.\n"
-            + yaml.safe_dump({"capsules": moved}, sort_keys=False))
+            + yaml.safe_dump({"capsules": moved}, sort_keys=False)
+        )
         prof["capsules"] = keep
         prof_path.write_text(yaml.safe_dump(prof, sort_keys=False))
         lines.append(f"## {t}")
@@ -252,8 +276,10 @@ def main() -> int:
         lines.append("")
     (out_dir / "RETIRED.md").write_text("\n".join(lines))
     print(f"\n  retired {sum(len(v) for v in retire.values())} entr(y/ies) to {out_dir}")
-    print("  RE-GENERATE the affected targets and re-run check_conformance_coverage before committing: a "
-          "profile and a generated tree that disagree read as a stale corpus, not as a retirement.")
+    print(
+        "  RE-GENERATE the affected targets and re-run check_conformance_coverage before committing: a "
+        "profile and a generated tree that disagree read as a stale corpus, not as a retirement."
+    )
     return 0
 
 

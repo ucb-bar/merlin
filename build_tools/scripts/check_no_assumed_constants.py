@@ -26,7 +26,7 @@ Detected structurally with ``ast`` (no regex on itself). In-scope trees:
 
 Allowed exceptions (checked in order):
 
-  1. an inline ``# derived-ok: <rationale>`` on the offending line (preferred) — for a value that IS
+  1. an inline ``# derived-ok: <rationale>`` on the offending line (preferred) — for a value that IS  # fmt: skip
      derived-then-cached, or a genuinely-universal standard constant (e.g. the RISC-V reset base) used
      only as a documented fallback. The rationale must cite the fact source / standard.
   2. a whole-file entry in ``build_tools/scripts/assumed_constants_allowlist.txt`` — for a file whose
@@ -39,6 +39,7 @@ Run::
     python build_tools/scripts/check_no_assumed_constants.py --staged   # only git-staged files
     python build_tools/scripts/check_no_assumed_constants.py --stop-hook # Claude Code Stop-hook JSON
 """
+
 from __future__ import annotations
 
 import ast
@@ -51,15 +52,27 @@ ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "assumed_constants_allowlist.txt"
 SCAN_ROOTS = ("merlin/python/merlin", "merlin/contract", "build_tools/scripts")
 EXCLUDE_FRAGMENTS = ("/_data/",)
-INLINE_MARKER = "# derived-ok:"
+INLINE_MARKER = "# derived-ok:"  # fmt: skip
 
 # Underscore-split identifier tokens that mark a name / dict-key as an ISA-identity fact. Matched by
 # token EQUALITY (not substring) so ``functional`` / ``mesh_ran`` (a counter) do NOT match while
 # ``CUSTOM_OPCODE`` (custom, opcode), ``FUNCT3`` (funct3), ``mesh``, ``scratchpad_bytes`` do. A
 # numeric literal bound to one of these is an assumed constant unless derived (or a marked standard).
-ISA_FACT_TOKENS = frozenset({
-    "opcode", "funct3", "funct5", "funct7", "func3", "func5", "func7", "mesh", "scratchpad", "dim", "base",
-})
+ISA_FACT_TOKENS = frozenset(
+    {
+        "opcode",
+        "funct3",
+        "funct5",
+        "funct7",
+        "func3",
+        "func5",
+        "func7",
+        "mesh",
+        "scratchpad",
+        "dim",
+        "base",
+    }
+)
 # Trivial values that are never a baked opcode / dimension / capacity worth deriving (flags, inits).
 _TRIVIAL_VALUES = frozenset({0, 1})
 
@@ -159,8 +172,13 @@ def _iter_targets(staged: bool) -> list[Path]:
         # that cannot run (bad GIT_DIR, no repo, no binary) yielded an EMPTY list and the gate printed
         # OK -- a green that could not have gone red. `check=True` turns that into an exception the
         # caller reports; see check_no_answer_keys.py, which fixed the same shape first.
-        out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
         rels = [ln for ln in out.splitlines() if ln.strip()]
     else:
         rels = []
@@ -181,6 +199,7 @@ def _iter_targets(staged: bool) -> list[Path]:
 #: This gate's name in its own messages.
 _GATE = "no-assumed-constants"
 
+
 def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
     """Refuse when the work list could not be read.
 
@@ -189,8 +208,10 @@ def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
     Reported in whichever dialect the caller speaks (a Stop hook BLOCKS via JSON on stdout, not via
     the exit status), so the two cannot drift apart.
     """
-    reason = (f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
-              f"not the same as clean. Fix the tree/index and re-run.")
+    reason = (
+        f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
+        f"not the same as clean. Fix the tree/index and re-run."
+    )
     if stop_hook:
         print(json.dumps({"decision": "block", "reason": reason}))
         return 0  # stop-hook signals via JSON, not exit code
@@ -216,14 +237,21 @@ def main(argv: list[str] | None = None) -> int:
         for lineno, label, value in _scan_file(ROOT / rel):
             violations.append(f"{relstr}:{lineno}: assumed ISA constant {label!r} = {value} "
                               f"(derive it from rtl.facts / the manifest and fail closed on UNKNOWN, "
-                              f"add `# derived-ok: <source>`, or allowlist the file)")
+                              f"add `# derived-ok: <source>`, or allowlist the file)")  # fmt: skip
 
     if stop_hook:
         if violations:
-            print(json.dumps({"decision": "block",
-                              "reason": ("Assumed ISA constant outside the allowlist (see "
-                                         "build_tools/scripts/assumed_constants_allowlist.txt):\n- "
-                                         + "\n- ".join(violations))}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": (
+                            "Assumed ISA constant outside the allowlist (see "
+                            "build_tools/scripts/assumed_constants_allowlist.txt):\n- " + "\n- ".join(violations)
+                        ),
+                    }
+                )
+            )
         else:
             print(json.dumps({}))
         return 0

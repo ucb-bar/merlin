@@ -13,6 +13,7 @@ Delegates to ``merlin.validation.generated_target.check_generated_target``.
 Usage:
     python build_tools/scripts/check_generated_target.py <path-to-generated-repo>
 """
+
 from __future__ import annotations
 
 import os

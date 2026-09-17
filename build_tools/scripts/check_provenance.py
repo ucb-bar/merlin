@@ -32,6 +32,7 @@ Usage:
   check_provenance.py --stop-hook     # session gate; same checks, hook-shaped output
   check_provenance.py --verify-pins   # additionally verify pins against live checkouts
 """
+
 from __future__ import annotations
 
 import json
@@ -64,8 +65,7 @@ def _tracked(staged: bool) -> list[Path]:
     the gate printed OK having examined nothing. "We could not look" is not "there is nothing to
     find" (see check_no_answer_keys.py, which fixed the same shape first).
     """
-    args = (["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"] if staged
-            else ["git", "ls-files"])
+    args = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"] if staged else ["git", "ls-files"]
     got = subprocess.run(args, capture_output=True, text=True, cwd=_ROOT, check=True)
     return [_ROOT / line for line in got.stdout.splitlines() if line.strip()]
 
@@ -84,8 +84,9 @@ def _scan_out() -> list[Path]:
     """
     try:
         from merlin.common.paths import artifacts_dir
+
         root = Path(artifacts_dir())
-    except Exception:                                     # noqa: BLE001 — no output root yet
+    except Exception:  # noqa: BLE001 — no output root yet
         return []
     if not root.is_dir():
         return []
@@ -98,8 +99,9 @@ def _scan_out() -> list[Path]:
             for entry in d.iterdir():
                 seen += 1
                 if seen > _SCAN_CAP:
-                    print(f"  NOTE: scan capped at {_SCAN_CAP} entries; some reports were not examined",
-                          file=sys.stderr)
+                    print(
+                        f"  NOTE: scan capped at {_SCAN_CAP} entries; some reports were not examined", file=sys.stderr
+                    )
                     return found
                 if entry.is_symlink():
                     continue
@@ -119,8 +121,7 @@ def _scan_out() -> list[Path]:
 def _ratcheted() -> set[str]:
     if not RATCHET.is_file():
         return set()
-    return {l.strip() for l in RATCHET.read_text(encoding="utf-8").splitlines()
-            if l.strip() and not l.startswith("#")}
+    return {l.strip() for l in RATCHET.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")}
 
 
 def _claims_a_verdict(payload: object) -> bool:
@@ -148,8 +149,7 @@ def _claims_a_verdict(payload: object) -> bool:
     # carrying pass counts: a per-round QA verdict has the same counts but is an intermediate written
     # every round inside a run dir, and the run's final score is what gets published and cited. Demanding
     # a block on each round would flag hundreds of historical files and train people to bypass the gate.
-    if ("n_passed" in payload and "n_capsules" in payload
-            and ("functional_pass" in payload or "task" in payload)):
+    if "n_passed" in payload and "n_capsules" in payload and ("functional_pass" in payload or "task" in payload):
         try:
             return int(payload.get("n_capsules") or 0) > 0
         except (TypeError, ValueError):
@@ -180,7 +180,7 @@ def _surface_sources(prov, pins: dict, got, notes: list[str], seen: set[str]) ->
     """
     problems: list[str] = []
     declared = pins.get(got.pin)
-    if declared is None:                                  # a covered pin that vanished mid-run
+    if declared is None:  # a covered pin that vanished mid-run
         notes.append(f"pin {got.pin}: verified but no longer declared; per-file verdict not surfaced")
         return problems
     # A covered pin is reached twice -- once on its own turn through the registry, once through its
@@ -190,24 +190,32 @@ def _surface_sources(prov, pins: dict, got, notes: list[str], seen: set[str]) ->
     seen.add(got.pin)
     if declared.nested_in:
         rec = got.nested_recorded or "UNDETERMINABLE"
-        notes.append(f"pin {got.pin}: nested in {declared.nested_in} at {declared.nested_path} — "
-                     f"container records {rec[:12]}, pin declares {declared.commit[:12]}, checkout is at "
-                     f"{got.observed.commit[:12]}")
+        notes.append(
+            f"pin {got.pin}: nested in {declared.nested_in} at {declared.nested_path} — "
+            f"container records {rec[:12]}, pin declares {declared.commit[:12]}, checkout is at "
+            f"{got.observed.commit[:12]}"
+        )
         if got.observed.present and not got.nested_recorded:
-            problems.append(f"pin {got.pin}: the revision {declared.nested_in} records at "
-                            f"{declared.nested_path} is UNDETERMINABLE, so nothing can say which revision "
-                            "the sources read from this nested checkout belong to. Not a pass.")
+            problems.append(
+                f"pin {got.pin}: the revision {declared.nested_in} records at "
+                f"{declared.nested_path} is UNDETERMINABLE, so nothing can say which revision "
+                "the sources read from this nested checkout belong to. Not a pass."
+            )
     for s in got.sources:
         if s.status == prov.PINNED:
             notes.append(f"pin {got.pin}: {s.rel} PINNED by content ({s.digest[:12]})")
         elif s.status == prov.OFF_PIN:
-            notes.append(f"pin {got.pin}: {s.rel} OFF-PIN — {s.reason} (read {s.digest[:12]}, pinned "
-                         f"revision {s.pinned_digest[:12]}). A claim derived from this file is NOT a "
-                         "pinned claim and must not be reported as one.")
+            notes.append(
+                f"pin {got.pin}: {s.rel} OFF-PIN — {s.reason} (read {s.digest[:12]}, pinned "
+                f"revision {s.pinned_digest[:12]}). A claim derived from this file is NOT a "
+                "pinned claim and must not be reported as one."
+            )
         else:
-            problems.append(f"pin {got.pin}: {s.rel} is UNDETERMINABLE against its pin — {s.reason}. A "
-                            "claim derived from it can be neither confirmed nor refuted, which is not the "
-                            "same as clean.")
+            problems.append(
+                f"pin {got.pin}: {s.rel} is UNDETERMINABLE against its pin — {s.reason}. A "
+                "claim derived from it can be neither confirmed nor refuted, which is not the "
+                "same as clean."
+            )
     for child in got.covered:
         problems.extend(_surface_sources(prov, pins, child, notes, seen))
     return problems
@@ -242,8 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     # 1. The registry itself.
     try:
         from merlin.common import provenance as P
+
         pins = P.load_pins()
-    except Exception as exc:                              # noqa: BLE001 — any failure is fatal here
+    except Exception as exc:  # noqa: BLE001 — any failure is fatal here
         print(f"provenance: FAILED — pin registry unusable: {exc}", file=sys.stderr)
         return _hook_result(stop_hook, f"provenance: pin registry unusable: {exc}")
     notes.append(f"{len(pins)} pin(s) declared: {', '.join(sorted(pins))}")
@@ -260,11 +269,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         candidates = _tracked(staged) + _scan_out()
     except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"provenance: FAILED — could not list the files to examine ({exc}); NOTHING was "
-              f"examined, which is not the same as clean", file=sys.stderr)
-        return _hook_result(stop_hook,
-                            f"provenance: could not list the files to examine ({exc}); nothing "
-                            f"was examined, which is not the same as clean")
+        print(
+            f"provenance: FAILED — could not list the files to examine ({exc}); NOTHING was "
+            f"examined, which is not the same as clean",
+            file=sys.stderr,
+        )
+        return _hook_result(
+            stop_hook,
+            f"provenance: could not list the files to examine ({exc}); nothing "
+            f"was examined, which is not the same as clean",
+        )
     unreadable: list[str] = []
     for path in candidates:
         if path.suffix not in _REPORT_SUFFIXES:
@@ -297,10 +311,12 @@ def main(argv: list[str] | None = None) -> int:
         if rel in allow:
             notes.append(f"ratcheted (pre-dates the convention): {rel}")
             continue
-        problems.append(f"{rel}: claims a verdict but records no `provenance` block, so the result "
-                        f"cannot be attributed to a hardware revision. Record one via "
-                        f"merlin.common.provenance.record(), or add the path to "
-                        f"{RATCHET.name} with a reason.")
+        problems.append(
+            f"{rel}: claims a verdict but records no `provenance` block, so the result "
+            f"cannot be attributed to a hardware revision. Record one via "
+            f"merlin.common.provenance.record(), or add the path to "
+            f"{RATCHET.name} with a reason."
+        )
 
     # 3. Optional live verification.
     if verify_pins:
@@ -309,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         # passing quietly -- one that verifies against nothing certifies itself.
         try:
             arts = P.load_artifacts()
-        except Exception as exc:                          # noqa: BLE001 — a malformed section is fatal
+        except Exception as exc:  # noqa: BLE001 — a malformed section is fatal
             print(f"provenance: FAILED — artifact registry unusable: {exc}", file=sys.stderr)
             return _hook_result(stop_hook, f"provenance: artifact registry unusable: {exc}")
         for name in sorted(arts):
@@ -324,10 +340,13 @@ def main(argv: list[str] | None = None) -> int:
             if got.ok:
                 notes.append(f"pin {name}: ok at {got.observed.commit[:12]}")
             else:
-                detail = "; ".join([*got.drift,
-                                    *([f"missing {list(got.missing_paths)}"] if got.missing_paths else []),
-                                    *([f"forbidden present {list(got.forbidden_present)}"]
-                                      if got.forbidden_present else [])])
+                detail = "; ".join(
+                    [
+                        *got.drift,
+                        *([f"missing {list(got.missing_paths)}"] if got.missing_paths else []),
+                        *([f"forbidden present {list(got.forbidden_present)}"] if got.forbidden_present else []),
+                    ]
+                )
                 notes.append(f"pin {name}: DRIFT — {detail}")
             problems.extend(_surface_sources(P, pins, got, notes, surfaced))
 
@@ -335,12 +354,14 @@ def main(argv: list[str] | None = None) -> int:
     # failure mode this whole convention exists to prevent, so the count is always printed when non-zero.
     skipped = len(unreadable) + len(_UNREADABLE)
     if skipped:
-        notes.append(f"{skipped} path(s) NOT EXAMINED (unreadable — commonly a live run's chmod-000 "
-                     f"answer surface): " + ", ".join(
-                         [Path(x).name for x in (_UNREADABLE + unreadable)][:5])
-                     + (" ..." if skipped > 5 else ""))
+        notes.append(
+            f"{skipped} path(s) NOT EXAMINED (unreadable — commonly a live run's chmod-000 "
+            f"answer surface): "
+            + ", ".join([Path(x).name for x in (_UNREADABLE + unreadable)][:5])
+            + (" ..." if skipped > 5 else "")
+        )
 
-    for n in notes:              # stdout must be JSON ONLY in hook mode
+    for n in notes:  # stdout must be JSON ONLY in hook mode
         print(f"  {n}", file=sys.stderr if stop_hook else sys.stdout)
     if problems:
         print("provenance: FAILED", file=sys.stderr)
@@ -349,8 +370,11 @@ def main(argv: list[str] | None = None) -> int:
         return _hook_result(stop_hook, f"Hardware-provenance violations ({len(problems)}):", problems)
     if stop_hook:
         return _hook_result(stop_hook, None)
-    print(f"provenance: OK ({checked} verdict-claiming report(s) checked"
-          + (f", {skipped} unreadable" if skipped else "") + ")")
+    print(
+        f"provenance: OK ({checked} verdict-claiming report(s) checked"
+        + (f", {skipped} unreadable" if skipped else "")
+        + ")"
+    )
     return 0
 
 

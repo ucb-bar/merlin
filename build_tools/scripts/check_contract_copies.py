@@ -24,6 +24,7 @@ divergence to prove the gate can fail.
 carries a curated subset, and the goldens/holdouts must never ship), so requiring equality there would
 demand exactly the answer-key leak the no-answer-keys gate forbids.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,9 +42,11 @@ from merlin.common.paths import repo_root  # noqa: E402
 
 #: Subtrees whose two copies are MEANT to differ, with the reason. Anything not listed must match.
 _EXEMPT = {
-    "capsules": ("the packaged corpus is a curated subset, and goldens/holdouts must never ship; "
-                 "requiring equality here would demand the answer-key leak the no-answer-keys gate "
-                 "forbids"),
+    "capsules": (
+        "the packaged corpus is a curated subset, and goldens/holdouts must never ship; "
+        "requiring equality here would demand the answer-key leak the no-answer-keys gate "
+        "forbids"
+    ),
 }
 
 
@@ -70,7 +73,7 @@ def _build_excluded_suffixes() -> tuple[str, ...]:
     """setup.py's own ``_CODE_SUFFIXES``, read structurally so a drift is reported not inherited."""
     import ast
 
-    src = (repo_root() / "setup.py")
+    src = repo_root() / "setup.py"
     if not src.is_file():
         return ()
     try:
@@ -98,13 +101,13 @@ def _tree(root: Path) -> dict[str, str]:
         try:
             if not p.is_file():
                 continue
-        except OSError:                                  # unreadable entry: not a divergence
+        except OSError:  # unreadable entry: not a divergence
             continue
         rel = p.relative_to(root)
         if rel.parts and rel.parts[0] in _EXEMPT:
             continue
         if p.suffix in _NEVER_BUNDLED_SUFFIXES:
-            continue                                     # the build will never ship it
+            continue  # the build will never ship it
         if any(part in _NEVER_BUNDLED_DIRS for part in rel.parts):
             continue
         try:
@@ -128,21 +131,30 @@ def audit(root: Path | None = None) -> dict:
     packaged = base.joinpath(*_PACKAGED_REL)
     if not packaged.is_dir():
         # UNKNOWN, never "clean": a missing packaged tree means the wheel would ship no contract at all.
-        return {"source": str(source), "packaged": str(packaged), "authority": "n/a",
-                "n_compared": 0, "only_in_source": [], "only_in_packaged": [], "differing": [],
-                "unreadable": [], "exempt": dict(_EXEMPT),
-                "missing_packaged_tree": True}
+        return {
+            "source": str(source),
+            "packaged": str(packaged),
+            "authority": "n/a",
+            "n_compared": 0,
+            "only_in_source": [],
+            "only_in_packaged": [],
+            "differing": [],
+            "unreadable": [],
+            "exempt": dict(_EXEMPT),
+            "missing_packaged_tree": True,
+        }
     a, b = _tree(source), _tree(packaged)
     only_source = sorted(set(a) - set(b))
     only_packaged = sorted(set(b) - set(a))
     differing = sorted(k for k in set(a) & set(b) if a[k] != b[k])
-    unreadable = sorted(k for k in set(a) | set(b)
-                        if a.get(k) == "UNREADABLE" or b.get(k) == "UNREADABLE")
+    unreadable = sorted(k for k in set(a) | set(b) if a.get(k) == "UNREADABLE" or b.get(k) == "UNREADABLE")
     return {
         "source": str(source),
         "packaged": str(packaged),
-        "authority": ("split — a checkout reads the repo copy, an installed wheel reads the packaged "
-                      "copy; nothing else keeps them equal, which is what this gate is for"),
+        "authority": (
+            "split — a checkout reads the repo copy, an installed wheel reads the packaged "
+            "copy; nothing else keeps them equal, which is what this gate is for"
+        ),
         "n_compared": len(set(a) & set(b)),
         "only_in_source": only_source,
         "only_in_packaged": only_packaged,
@@ -153,21 +165,28 @@ def audit(root: Path | None = None) -> dict:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--staged", action="store_true",
-                    help="pre-commit mode: IDENTICAL checks (both copies are always compared in "
-                         "full), only the success line is suppressed")
-    ap.add_argument("--stop-hook", action="store_true",
-                    help="session Stop hook mode: JSON-only on stdout, blocks via {'decision': "
-                         "'block'} rather than the exit status")
+    ap.add_argument(
+        "--staged",
+        action="store_true",
+        help="pre-commit mode: IDENTICAL checks (both copies are always compared in "
+        "full), only the success line is suppressed",
+    )
+    ap.add_argument(
+        "--stop-hook",
+        action="store_true",
+        help="session Stop hook mode: JSON-only on stdout, blocks via {'decision': "
+        "'block'} rather than the exit status",
+    )
     a = ap.parse_args(argv)
 
     rep = audit()
     if rep.get("missing_packaged_tree"):
-        reason = (f"contract-copies: no packaged contract tree at {rep['packaged']} — an installed "
-                  f"wheel would ship no contract at all. Reported as UNKNOWN, not as clean.")
+        reason = (
+            f"contract-copies: no packaged contract tree at {rep['packaged']} — an installed "
+            f"wheel would ship no contract at all. Reported as UNKNOWN, not as clean."
+        )
         if a.stop_hook:
             print(json.dumps({"decision": "block", "reason": reason}))
             return 0  # stop-hook signals via JSON, not exit code
@@ -179,9 +198,17 @@ def main(argv=None) -> int:
         # NON-blocking error there. This flag was parsed and never read, so the gate could report and
         # not enforce — and stdout had to stay JSON-only, which the human printing below breaks.
         if bad:
-            print(json.dumps({"decision": "block",
-                              "reason": ("The two copies of the frozen contract DISAGREE "
-                                         f"({len(bad)} file(s)):\n- " + "\n- ".join(bad))}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": (
+                            "The two copies of the frozen contract DISAGREE "
+                            f"({len(bad)} file(s)):\n- " + "\n- ".join(bad)
+                        ),
+                    }
+                )
+            )
         else:
             print(json.dumps({}))
         return 0
@@ -202,8 +229,10 @@ def main(argv=None) -> int:
     elif not a.staged:
         # --staged is pre-commit mode: the checks are identical (both copies are compared in full --
         # a partial compare would be a different, weaker claim), the OK line is just suppressed.
-        print(f"[  ok] contract-copies: {rep['n_compared']} file(s) identical across both copies "
-              f"({', '.join(sorted(_EXEMPT))} exempt).")
+        print(
+            f"[  ok] contract-copies: {rep['n_compared']} file(s) identical across both copies "
+            f"({', '.join(sorted(_EXEMPT))} exempt)."
+        )
     return 1 if bad else 0
 
 

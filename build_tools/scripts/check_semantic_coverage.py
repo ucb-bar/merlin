@@ -20,6 +20,7 @@ list MAY ONLY SHRINK, so this lands on a tree that is not yet clean without bloc
 
 Usage:  check_semantic_coverage.py [--target NAME] [--json]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,11 +30,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
-from merlin.common.paths import repo_root                              # noqa: E402
-from merlin.targetgen import capability_probes as cp                   # noqa: E402
-from merlin.targetgen import eligibility as el                         # noqa: E402
-from merlin.targetgen import semantic_families as sf                   # noqa: E402
-from merlin.targetgen import target_registry as tr                     # noqa: E402
+from merlin.common.paths import repo_root  # noqa: E402
+from merlin.targetgen import capability_probes as cp  # noqa: E402
+from merlin.targetgen import eligibility as el  # noqa: E402
+from merlin.targetgen import semantic_families as sf  # noqa: E402
+from merlin.targetgen import target_registry as tr  # noqa: E402
 
 DEBT = repo_root() / "build_tools" / "generalization_debt.txt"
 
@@ -56,6 +57,7 @@ def _corpus_dirs(target: str) -> list[Path]:
 
 def _load_capsules(target: str) -> list[dict]:
     import yaml
+
     out = []
     for d in _corpus_dirs(target):
         for f in sorted(d.rglob("capsule.yaml")):
@@ -72,6 +74,7 @@ def _materializable_families() -> set[str]:
     try:
         sys.path.insert(0, str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "harness"))
         import generalization_difftest as gd
+
         return set(gd.FAMILY_MAT)
     except Exception:  # noqa: BLE001 — runner unavailable: report nothing rather than fail everything
         return set()
@@ -98,8 +101,7 @@ def _targets_with_profiles() -> list[str]:
     d = repo_root() / "merlin" / "contract" / "capsules" / "profiles"
     if not d.is_dir():
         return []
-    return sorted(p.stem for p in d.glob("*.yaml")
-                  if "." not in p.stem and not p.stem.startswith("_"))
+    return sorted(p.stem for p in d.glob("*.yaml") if "." not in p.stem and not p.stem.startswith("_"))
 
 
 def audit(target: str) -> list[dict]:
@@ -115,14 +117,25 @@ def audit(target: str) -> list[dict]:
 
     # 1. capability drift -- the contract disagrees with its own target's evidence
     for d in (contract.get("capability_evidence") or {}).get("drift", []):
-        findings.append({"target": target, "kind": d.get("kind", "capability_drift"),
-                         "family": d.get("family"), "detail": d.get("detail", "")})
+        findings.append(
+            {
+                "target": target,
+                "kind": d.get("kind", "capability_drift"),
+                "family": d.get("family"),
+                "detail": d.get("detail", ""),
+            }
+        )
 
     if not cap_map:
-        findings.append({"target": target, "kind": "no_declared_capability",
-                         "detail": "the contract declares no semantic_capabilities, so every region is "
-                                   "ineligible and ARR is undefined -- the target is outside the "
-                                   "measurement entirely"})
+        findings.append(
+            {
+                "target": target,
+                "kind": "no_declared_capability",
+                "detail": "the contract declares no semantic_capabilities, so every region is "
+                "ineligible and ARR is undefined -- the target is outside the "
+                "measurement entirely",
+            }
+        )
         return findings
 
     # 2/3. every declared family must be probeable AND materializable
@@ -132,13 +145,25 @@ def audit(target: str) -> list[dict]:
     unmaterializable = {k: v for k, v in (contract.get("unmaterializable_families") or {}).items()}
     for fam in sorted(cap_map):
         if fam not in probed:
-            findings.append({"target": target, "kind": "family_without_probe", "family": fam,
-                             "detail": "declared but the probe synthesizer produces nothing for it"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "family_without_probe",
+                    "family": fam,
+                    "detail": "declared but the probe synthesizer produces nothing for it",
+                }
+            )
         if mat and fam not in mat and fam not in unmaterializable:
-            findings.append({"target": target, "kind": "family_without_materializer", "family": fam,
-                             "detail": "declared and probed, but no materializer can turn a probe into "
-                                       "a runnable capsule, so the claim is never tested; declare it in "
-                                       "unmaterializable_families with a reason if that is intended"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "family_without_materializer",
+                    "family": fam,
+                    "detail": "declared and probed, but no materializer can turn a probe into "
+                    "a runnable capsule, so the claim is never tested; declare it in "
+                    "unmaterializable_families with a reason if that is intended",
+                }
+            )
 
     # 3b. The resolved corpus must not contain capsules this target STRUCTURALLY cannot execute.
     #
@@ -160,10 +185,12 @@ def audit(target: str) -> list[dict]:
     try:
         from merlin.targetgen.capsule_runner import _split_ineligible
         from merlin.targetgen.target_experiment import load_target_experiment
-        desc = (repo_root() / "merlin/experiments/capsule_bench/targets" / target / "target_experiment.yaml")
+
+        desc = repo_root() / "merlin/experiments/capsule_bench/targets" / target / "target_experiment.yaml"
         if desc.is_file():
             te = load_target_experiment(str(desc))
             import yaml as _y
+
             corpus = []
             for r in [Path(te.capsule_corpus)] + [Path(s) for s in te.corpus_siblings()]:
                 if not r.is_dir():
@@ -179,11 +206,16 @@ def audit(target: str) -> list[dict]:
             op = [c for c in corpus if c.get("kind") != "model"]
             _, withheld = _split_ineligible(op, target)
             for w in withheld:
-                findings.append({"target": target, "kind": "corpus_contains_unexecutable",
-                                 "family": w.get("capsule"),
-                                 "detail": "in this target's RESOLVED corpus but structurally impossible "
-                                           "for it, so it can never pass and keeps all_pass unreachable: "
-                                           + str((w.get("failure") or {}).get("detail", ""))})
+                findings.append(
+                    {
+                        "target": target,
+                        "kind": "corpus_contains_unexecutable",
+                        "family": w.get("capsule"),
+                        "detail": "in this target's RESOLVED corpus but structurally impossible "
+                        "for it, so it can never pass and keeps all_pass unreachable: "
+                        + str((w.get("failure") or {}).get("detail", "")),
+                    }
+                )
     except Exception:  # noqa: BLE001 - a corpus we cannot resolve is reported by the checks above
         pass
 
@@ -198,16 +230,26 @@ def audit(target: str) -> list[dict]:
         sem = c.get("semantic") or {}
         fam = sem.get("semantic_family")
         if not sem.get("generalization_axis"):
-            findings.append({"target": target, "kind": "capsule_without_semantic_block",
-                             "family": c.get("name"),
-                             "detail": "no semantic block, so it can never raise a must_accelerate "
-                                       "violation and its coverage certificate passes vacuously"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "capsule_without_semantic_block",
+                    "family": c.get("name"),
+                    "detail": "no semantic block, so it can never raise a must_accelerate "
+                    "violation and its coverage certificate passes vacuously",
+                }
+            )
             continue
         derived = sf.from_op((c.get("operation") or {}).get("op"))
         if fam and derived and fam != derived:
-            findings.append({"target": target, "kind": "capsule_family_contradicts_op",
-                             "family": c.get("name"),
-                             "detail": f"declares {fam!r} but its op derives {derived!r}"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "capsule_family_contradicts_op",
+                    "family": c.get("name"),
+                    "detail": f"declares {fam!r} but its op derives {derived!r}",
+                }
+            )
         if fam:
             exercised.add(fam)
             if sem.get("must_accelerate"):
@@ -217,13 +259,25 @@ def audit(target: str) -> list[dict]:
         if fam in undet:
             continue
         if fam not in exercised:
-            findings.append({"target": target, "kind": "declared_family_unexercised", "family": fam,
-                             "detail": "the contract declares it and no capsule in the corpus exercises "
-                                       "it, so nothing measures whether the compiler covers it"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "declared_family_unexercised",
+                    "family": fam,
+                    "detail": "the contract declares it and no capsule in the corpus exercises "
+                    "it, so nothing measures whether the compiler covers it",
+                }
+            )
         elif fam not in asserted:
-            findings.append({"target": target, "kind": "family_never_must_accelerate", "family": fam,
-                             "detail": "exercised but no capsule asserts must_accelerate, so a compiler "
-                                       "that falls back on every one of them still passes"})
+            findings.append(
+                {
+                    "target": target,
+                    "kind": "family_never_must_accelerate",
+                    "family": fam,
+                    "detail": "exercised but no capsule asserts must_accelerate, so a compiler "
+                    "that falls back on every one of them still passes",
+                }
+            )
     return findings
 
 
@@ -242,8 +296,7 @@ def main() -> int:
 
     known = set()
     if DEBT.exists():
-        known = {ln.strip() for ln in DEBT.read_text().splitlines()
-                 if ln.strip() and not ln.startswith("#")}
+        known = {ln.strip() for ln in DEBT.read_text().splitlines() if ln.strip() and not ln.startswith("#")}
     fresh = [f for f in findings if _key(f) not in known]
     stale = sorted(known - {_key(f) for f in findings})
 
@@ -252,20 +305,28 @@ def main() -> int:
         return 1 if fresh else 0
 
     for f in fresh:
-        print(f"[FAIL] semantic-coverage: {f['target']}: {f['kind']}"
-              f"{' ' + f['family'] if f.get('family') else ''} -- {f['detail']}")
+        print(
+            f"[FAIL] semantic-coverage: {f['target']}: {f['kind']}"
+            f"{' ' + f['family'] if f.get('family') else ''} -- {f['detail']}"
+        )
     if stale:
-        print(f"[  ok] semantic-coverage: {len(stale)} debt entry(ies) RESOLVED -- delete them from "
-              f"{DEBT.name} so the count keeps meaning something:")
+        print(
+            f"[  ok] semantic-coverage: {len(stale)} debt entry(ies) RESOLVED -- delete them from "
+            f"{DEBT.name} so the count keeps meaning something:"
+        )
         for k in stale[:10]:
             print(f"         {k}")
     if not fresh:
         n = len(findings)
-        print(f"[  ok] semantic-coverage: {len(targets)} target(s) measurable"
-              + (f"; {n} known hole(s) on the ratchet (may only fall)." if n else "."))
+        print(
+            f"[  ok] semantic-coverage: {len(targets)} target(s) measurable"
+            + (f"; {n} known hole(s) on the ratchet (may only fall)." if n else ".")
+        )
         return 0
-    print(f"[FAIL] semantic-coverage: {len(fresh)} new finding(s). Fix them, or record a reviewed "
-          f"rationale in {DEBT.name} -- that list may only shrink.")
+    print(
+        f"[FAIL] semantic-coverage: {len(fresh)} new finding(s). Fix them, or record a reviewed "
+        f"rationale in {DEBT.name} -- that list may only shrink."
+    )
     return 1
 
 

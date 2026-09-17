@@ -18,6 +18,7 @@ levers were inert this way (``KC``; ``MR`` under ``unroll_m``), so the digest is
 Fail-closed by construction: a build failure, a run failure or a missing ``VERIFY PASS`` yields a
 ``not_run`` row carrying the exact blocker — never a timing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,13 +30,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import k1_cross_framework_ops as X  # the shared build/deploy/parse path (same protocol as the matrix)
+
 from merlin.common.artifacts import cache_dir
 from merlin.common.driver_output import int_after, int_field
 from merlin.common.paths import repo_root
 from merlin.kernels.microkernel import MicrokernelSpec, UnsupportedAxis
 from merlin.mining import k1
-
-import k1_cross_framework_ops as X  # the shared build/deploy/parse path (same protocol as the matrix)
 
 REPO = Path(repo_root())
 
@@ -44,9 +45,9 @@ def _objdump(obj: Path, out: Path) -> str | None:
     """Disassemble the lowered ``model.o`` and keep it beside the measurement (the evidence a
     claim about the inner loop has to be made from). Returns the text, or None if unreadable."""
     from merlin.kernels.decode.objdump import objdump_bin
+
     try:
-        p = subprocess.run([objdump_bin(), "-d", "--mattr=+v", str(obj)],
-                           capture_output=True, text=True, timeout=180)
+        p = subprocess.run([objdump_bin(), "-d", "--mattr=+v", str(obj)], capture_output=True, text=True, timeout=180)
     except (OSError, subprocess.SubprocessError):
         return None
     if p.returncode != 0:
@@ -57,7 +58,9 @@ def _objdump(obj: Path, out: Path) -> str | None:
 
 def _digest(text: str) -> str:
     import hashlib
+
     from merlin.kernels.decode import rvv as _rvv
+
     stream = _rvv.decode_text(text)
     body = "\n".join(f"{i.raw.mnemonic} {','.join(i.raw.operands)}" for i in stream.insns)
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
@@ -72,6 +75,7 @@ def _inner_loop_facts(text: str) -> dict:
     spill moves 128 B in a single instruction — cheap to count, expensive to run), and the effective
     LMUL those instructions actually run under."""
     from merlin.kernels.decode import rvv as _rvv
+
     stream = _rvv.decode_text(text)
     # Scope to the innermost loop that does VECTOR arithmetic, not simply the tightest loop. A
     # recipe that peels (the VL-agnostic scalable one peels N) leaves a SCALAR remainder loop that
@@ -106,8 +110,16 @@ def _inner_loop_facts(text: str) -> dict:
     return facts
 
 
-def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
-               extra_features: list[str], *, march: str | None = None) -> dict:
+def _run_point(
+    spec: MicrokernelSpec,
+    S: int,
+    reps: int,
+    tag: str,
+    keep: Path,
+    extra_features: list[str],
+    *,
+    march: str | None = None,
+) -> dict:
     """Lower + build + run ONE micro-kernel point; keep its objdump. Fail-closed.
 
     ``march`` overrides the codegen march string. VL_DYNAMIC points are compiled WITHOUT the ``_zvl``
@@ -115,15 +127,26 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
     itself to the hardware at run time (the whole point of the axis), and the cross-cutting finding
     is that the pin may not even take effect at scale. VL_FIXED points keep the pinned default so the
     VL-agnostic loop is measured against the strongest fixed-width baseline."""
+    from merlin.kernels.microkernel import VL_DYNAMIC
     from merlin.mining import workloads
     from merlin.mining.from_strategy import microkernel_features
-    from merlin.kernels.microkernel import VL_DYNAMIC
 
     if march is None:
         march = k1.K1_MARCH if spec.vl_strategy == VL_DYNAMIC else k1.codegen_march()
-    base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S, "target": "k1",
-            "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "source": "ours_microkernel_sweep", "microkernel": asdict(spec), "march": march}
+    base = {
+        "op": "f32_gemm",
+        "dtype": "f32",
+        "M": S,
+        "N": S,
+        "K": S,
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "source": "ours_microkernel_sweep",
+        "microkernel": asdict(spec),
+        "march": march,
+    }
     try:
         feats = list(extra_features) + microkernel_features(spec.to_knobs())
     except UnsupportedAxis as e:
@@ -133,8 +156,7 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
     bundle = workloads.gen_matmul_f32(cache_dir("rvv_workloads"), M=S, N=S, K=S)
     work = keep / "work"
     work.mkdir(parents=True, exist_ok=True)
-    model_o, cgen, err = X._lower_ours(bundle, tag, feats, int8=False, vectorize=True, work=work,
-                                       march=march)
+    model_o, cgen, err = X._lower_ours(bundle, tag, feats, int8=False, vectorize=True, work=work, march=march)
     if err is not None:
         return {**base, "ticks": None, "status": "not_run", "blocker": err}
 
@@ -156,17 +178,38 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
     for d in (X.K1H, X.HERE, cgen, rt):
         inc += ["-I", str(d)]
     binp = keep / f"{tag}.elf"
-    srcs = [str(X.HERE / "ours_gemm_driver.c"), str(cgen / "model_call.c"),
-            str(rt / "merlin_model.c"), str(abi / "mlir_runtime.c"), str(model_o)]
-    cmd = [str(cc), *inc, *X._K1_CFLAGS, f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}",
-           "-static", "-o", str(binp), *srcs, "-lm", "-lpthread"]
+    srcs = [
+        str(X.HERE / "ours_gemm_driver.c"),
+        str(cgen / "model_call.c"),
+        str(rt / "merlin_model.c"),
+        str(abi / "mlir_runtime.c"),
+        str(model_o),
+    ]
+    cmd = [
+        str(cc),
+        *inc,
+        *X._K1_CFLAGS,
+        f"-DGEMM_M={S}",
+        f"-DGEMM_N={S}",
+        f"-DGEMM_K={S}",
+        "-static",
+        "-o",
+        str(binp),
+        *srcs,
+        "-lm",
+        "-lpthread",
+    ]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     except (subprocess.TimeoutExpired, OSError) as e:
         return {**base, "ticks": None, "status": "not_run", "blocker": f"link exec failed: {e}"}
     if p.returncode != 0 or not binp.is_file():
-        return {**base, "ticks": None, "status": "not_run",
-                "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-500:]}"}
+        return {
+            **base,
+            "ticks": None,
+            "status": "not_run",
+            "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-500:]}",
+        }
 
     # The board is SHARED (other agents measure concurrently) and the cross-framework harness's
     # _deploy_run does not take the host-wide lock, so a concurrent run would contend for the 8
@@ -178,7 +221,7 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
             console, detail = X._deploy_run(binp, f"{tag}_{rep}", timeout=900)
             r = X._parse(base, console, detail)
             if r["status"] != "pass":
-                return r                          # first failure is the honest blocker
+                return r  # first failure is the honest blocker
             r["instret"] = int_after(console, "INSTRET")
             r["instret_full"] = int_after(console, "INSTRET_FULL")
             r["errors"] = int_field(console, "errors")
@@ -192,14 +235,27 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
 
 
 def _run_xnn(S: int, reps: int, tag: str) -> dict:
-    base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S, "source": "xnnpack",
-            "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-            "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c"}
-    with k1.board_lock():                          # same fairness gate as the ours points
-        return X._build_run_xnn(tag, X.HERE / "xnnpack_gemm_driver_7x4v.c",
-                                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
-                                reps=reps, base=base)
+    base = {
+        "op": "f32_gemm",
+        "dtype": "f32",
+        "M": S,
+        "N": S,
+        "K": S,
+        "source": "xnnpack",
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c",
+    }
+    with k1.board_lock():  # same fairness gate as the ours points
+        return X._build_run_xnn(
+            tag,
+            X.HERE / "xnnpack_gemm_driver_7x4v.c",
+            [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+            reps=reps,
+            base=base,
+        )
 
 
 def _parse_specs(text: str) -> list[MicrokernelSpec]:
@@ -209,6 +265,7 @@ def _parse_specs(text: str) -> list[MicrokernelSpec]:
     ``vl_strategy='dynamic'`` (a scalable N block sized to the runtime VL). Under vl_dynamic, NR is
     the block width in lanes at the RVV MINIMUM VLEN (128 bits): NR=16 -> vector<[8]xf32> == LMUL 4."""
     from merlin.kernels.microkernel import VL_DYNAMIC
+
     out = []
     for item in text.split(";"):
         item = item.strip()
@@ -231,13 +288,13 @@ def _parse_specs(text: str) -> list[MicrokernelSpec]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--specs", default="4:16:16;2:32:16;4:32:16;8:32:16",
-                    help="';'-separated MR:NR:KC[:flags] points")
+    ap.add_argument("--specs", default="4:16:16;2:32:16;4:32:16;8:32:16", help="';'-separated MR:NR:KC[:flags] points")
     ap.add_argument("--shapes", default="128")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--tag-prefix", default="w_", help="unique remote-tag prefix (boards are shared)")
-    ap.add_argument("--features", default="erase_self_copy",
-                    help="comma-separated extra compiler features applied to every point")
+    ap.add_argument(
+        "--features", default="erase_self_copy", help="comma-separated extra compiler features applied to every point"
+    )
     ap.add_argument("--xnn", action="store_true", help="also measure the XNNPACK reference")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -255,20 +312,32 @@ def main() -> int:
             rows.append(r)
         for spec in specs:
             from merlin.kernels.microkernel import VL_DYNAMIC
+
             flags = "".join(k[0] for k in ("unroll_m", "k_block", "pack") if getattr(spec, k))
             if spec.vl_strategy == VL_DYNAMIC:
-                flags += "V"                       # VL-agnostic (scalable) N block
+                flags += "V"  # VL-agnostic (scalable) N block
             tag = f"{a.tag_prefix}mk{spec.MR}x{spec.NR}x{spec.KC}{flags}_{S}"
             keep = root / tag
             keep.mkdir(parents=True, exist_ok=True)
-            print(f"--- ours {spec.MR}x{spec.NR}x{spec.KC}{'+' + flags if flags else ''} {S}^3 ---",
-                  flush=True)
+            print(f"--- ours {spec.MR}x{spec.NR}x{spec.KC}{'+' + flags if flags else ''} {S}^3 ---", flush=True)
             r = _run_point(spec, S, a.reps, tag, keep, extra)
             r["artifact_dir"] = str(keep)
-            il = (r.get("inner_loop") or {})
-            print("   ", r["status"], r.get("ticks"), "instret=", r.get("instret"),
-                  "ins/tick=", r.get("ins_per_tick"), "digest=", r.get("emitted_digest"),
-                  "loop_insns=", il.get("n_insns"), r.get("blocker", ""), flush=True)
+            il = r.get("inner_loop") or {}
+            print(
+                "   ",
+                r["status"],
+                r.get("ticks"),
+                "instret=",
+                r.get("instret"),
+                "ins/tick=",
+                r.get("ins_per_tick"),
+                "digest=",
+                r.get("emitted_digest"),
+                "loop_insns=",
+                il.get("n_insns"),
+                r.get("blocker", ""),
+                flush=True,
+            )
             rows.append(r)
 
     outp = Path(a.out) if a.out else (root / "sweep.jsonl")

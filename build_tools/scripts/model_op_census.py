@@ -28,6 +28,7 @@ The work/bytes weighting itself lives in `merlin.kernels.work` -- the per-contra
 (`merlin.kernels.census`) needs the identical proxy, and two copies of a cost model drift into two
 different rankings of the same model.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,8 +51,15 @@ def _shape_of(t) -> tuple[list[int], str]:
 def census_bundle(mlir: Path) -> dict:
     module = mq.parse(mlir)
     per_op: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "work": 0, "bytes": 0, "partial": 0,
-                 "linalg_ops": defaultdict(int), "shapes": defaultdict(int)})
+        lambda: {
+            "count": 0,
+            "work": 0,
+            "bytes": 0,
+            "partial": 0,
+            "linalg_ops": defaultdict(int),
+            "shapes": defaultdict(int),
+        }
+    )
     for op in module.walk():
         name = mq.op_name(op)
         if not wk.is_weighable(op):
@@ -72,9 +80,14 @@ def census_bundle(mlir: Path) -> dict:
     out = {}
     for fam, rec in per_op.items():
         top = sorted(rec["shapes"].items(), key=lambda kv: -kv[1])[:3]
-        out[fam] = {"count": rec["count"], "work": rec["work"], "bytes": rec["bytes"],
-                    "partial_iterspace": rec["partial"], "linalg_ops": dict(rec["linalg_ops"]),
-                    "top_shapes": [{"shape": s, "n": n} for s, n in top]}
+        out[fam] = {
+            "count": rec["count"],
+            "work": rec["work"],
+            "bytes": rec["bytes"],
+            "partial_iterspace": rec["partial"],
+            "linalg_ops": dict(rec["linalg_ops"]),
+            "top_shapes": [{"shape": s, "n": n} for s, n in top],
+        }
     return out
 
 
@@ -89,9 +102,9 @@ def main() -> None:
     if a.bundles:
         names = a.bundles.split(",")
     else:
-        names = sorted(p.name for p in root.iterdir()
-                       if p.is_dir() and (p / "model.mlir").is_file()
-                       and p.name.endswith(a.suffix))
+        names = sorted(
+            p.name for p in root.iterdir() if p.is_dir() and (p / "model.mlir").is_file() and p.name.endswith(a.suffix)
+        )
 
     per_model: dict[str, dict] = {}
     for name in names:
@@ -127,27 +140,36 @@ def main() -> None:
             counts[fam] += rec["count"]
             models_with[fam] += 1
     n_models = len(per_model) or 1
-    ranking = [{"family": fam,
-                "mean_work_share": sum(sl) / n_models,
-                "max_work_share": max(sl),
-                "mean_bytes_share": sum(byte_shares[fam]) / n_models,
-                "models_with": models_with[fam],
-                "n_models": n_models,
-                "total_work": totals[fam],
-                "total_op_count": counts[fam]}
-               for fam, sl in shares.items()]
+    ranking = [
+        {
+            "family": fam,
+            "mean_work_share": sum(sl) / n_models,
+            "max_work_share": max(sl),
+            "mean_bytes_share": sum(byte_shares[fam]) / n_models,
+            "models_with": models_with[fam],
+            "n_models": n_models,
+            "total_work": totals[fam],
+            "total_op_count": counts[fam],
+        }
+        for fam, sl in shares.items()
+    ]
     ranking.sort(key=lambda r: -r["mean_work_share"])
 
     out = Path(a.out) if a.out else Path(artifacts_dir()) / "ceiling" / "model_op_census.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"models": per_model, "ranking": ranking,
-                               "n_models": len(per_model), "bundles": list(per_model)}, indent=2))
+    out.write_text(
+        json.dumps(
+            {"models": per_model, "ranking": ranking, "n_models": len(per_model), "bundles": list(per_model)}, indent=2
+        )
+    )
     print(f"\nwrote {out}\n")
     print(f"{'family':<26}{'work share':>12}{'bytes share':>13}{'max':>9}{'models':>8}{'ops':>9}")
     for r in ranking[:30]:
-        print(f"{r['family']:<26}{r['mean_work_share']*100:>11.2f}%"
-              f"{r['mean_bytes_share']*100:>12.2f}%{r['max_work_share']*100:>8.1f}%"
-              f"{r['models_with']:>8}{r['total_op_count']:>9}")
+        print(
+            f"{r['family']:<26}{r['mean_work_share'] * 100:>11.2f}%"
+            f"{r['mean_bytes_share'] * 100:>12.2f}%{r['max_work_share'] * 100:>8.1f}%"
+            f"{r['models_with']:>8}{r['total_op_count']:>9}"
+        )
 
 
 if __name__ == "__main__":

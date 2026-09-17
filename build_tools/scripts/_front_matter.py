@@ -17,6 +17,7 @@ the parser and not in the 25 documents.
 Scalars are unquoted, because `title: "Design: ..."` was reaching the generated hub with its
 quotes still attached (and sorting under `"` rather than under D).
 """
+
 from __future__ import annotations
 
 
@@ -62,7 +63,7 @@ def parse(text: str) -> dict | None:
             while "]" not in buf and i < n:
                 buf += " " + lines[i].strip()
                 i += 1
-            fm[key] = _flow_items(buf[1:buf.rindex("]")] if "]" in buf else buf[1:])
+            fm[key] = _flow_items(buf[1 : buf.rindex("]")] if "]" in buf else buf[1:])
         elif value:
             fm[key] = _unquote(value)
         else:

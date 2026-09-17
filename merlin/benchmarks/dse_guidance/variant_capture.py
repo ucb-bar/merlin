@@ -11,6 +11,7 @@ m2m.convert directly in the model venv with an overridden env:
 
 Usage: python variant_capture.py        (runs both)
 """
+
 from __future__ import annotations
 
 import os
@@ -31,7 +32,7 @@ VARIANTS = [
     ("rdt_depth6", "rdt", {"M2M_RDT_DEPTH": "6"}),
 ]
 
-_INNER = r'''
+_INNER = r"""
 import sys
 sys.path.insert(0, sys.argv[1])
 from loader import get_model_and_inputs
@@ -40,11 +41,12 @@ mdl, inputs = get_model_and_inputs()
 r = m2m.convert(mdl, inputs, backend="fx_importer", quantization=None, level="linalg-on-tensors")
 open(sys.argv[2], "w").write(r.mlir_text)
 print("MLIR_OK", len(r.mlir_text))
-'''
+"""
 
 
 def _toml(d: Path) -> dict:
     import tomllib
+
     f = d / "capture.toml"
     return tomllib.loads(f.read_text()) if f.exists() else {}
 
@@ -58,12 +60,13 @@ def run(tag: str, wl: str, overrides: dict) -> str:
         return f"{tag}: venv missing {py}"
     env = dict(os.environ)
     env.update({k: str(v) for k, v in cfg.get("env", {}).items()})  # capture.toml defaults...
-    env.update({k: str(v) for k, v in overrides.items()})           # ...then OUR overrides win
+    env.update({k: str(v) for k, v in overrides.items()})  # ...then OUR overrides win
     odir = OUT / tag
     odir.mkdir(parents=True, exist_ok=True)
     out = odir / "model.mlir"
-    proc = subprocess.run([str(py), "-c", _INNER, str(d), str(out)], env=env,
-                          capture_output=True, text=True, timeout=1800)
+    proc = subprocess.run(
+        [str(py), "-c", _INNER, str(d), str(out)], env=env, capture_output=True, text=True, timeout=1800
+    )
     if proc.returncode == 0 and out.is_file():
         return f"{tag}: OK ({out.stat().st_size} bytes; overrides={overrides})"
     (odir / "FAILED.txt").write_text(proc.stdout[-3000:] + "\n---\n" + proc.stderr[-3000:])

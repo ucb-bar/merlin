@@ -60,6 +60,7 @@ Ratchet lines are ``<pass name> <axis>:<item>`` — scoped to BOTH the pass and 
 A bare pass name would let an accepted missing obligation silently excuse that same pass later going
 dead, and a bare axis would let one pass's debt forgive every other pass's.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -115,30 +116,32 @@ def audit(logs: list[Path], verify_logs: list[Path] | None = None) -> dict:
     for p in cat:
         st = ex["per_pass"][p.name]
         vs = vr["per_pass"][p.name]
-        rows.append({
-            "name": p.name,
-            "stage": p.stage,
-            "entry": p.entry,
-            "input_dialect": p.input_dialect,
-            "output_dialect": p.output_dialect,
-            "obligation": p.obligation,
-            "required_by": list(p.required_by),
-            "discharges": p.discharges(),
-            "is_required": p.is_required(),
-            "exercise": st["status"],
-            "capsules": st["capsules"],
-            "required_hits": st["required_hits"],
-            "install": st["install"],
-            "effects": st.get("effects", {}),
-            "effect_evidence": st.get("effect_evidence", []),
-            "verification": vs["status"],
-            "verdicts": vs["verdicts"],
-            "verify_methods": vs["methods"],
-            "verify_targets": vs["targets"],
-            "verify_requirement_classes": vs["requirement_classes"],
-            "verify_capsules": vs["capsules"],
-            "verdict_evidence": vs["evidence"],
-        })
+        rows.append(
+            {
+                "name": p.name,
+                "stage": p.stage,
+                "entry": p.entry,
+                "input_dialect": p.input_dialect,
+                "output_dialect": p.output_dialect,
+                "obligation": p.obligation,
+                "required_by": list(p.required_by),
+                "discharges": p.discharges(),
+                "is_required": p.is_required(),
+                "exercise": st["status"],
+                "capsules": st["capsules"],
+                "required_hits": st["required_hits"],
+                "install": st["install"],
+                "effects": st.get("effects", {}),
+                "effect_evidence": st.get("effect_evidence", []),
+                "verification": vs["status"],
+                "verdicts": vs["verdicts"],
+                "verify_methods": vs["methods"],
+                "verify_targets": vs["targets"],
+                "verify_requirement_classes": vs["requirement_classes"],
+                "verify_capsules": vs["capsules"],
+                "verdict_evidence": vs["evidence"],
+            }
+        )
     return {
         "n_passes": len(rows),
         "obligations": list(PS.OBLIGATIONS),
@@ -159,25 +162,31 @@ def audit(logs: list[Path], verify_logs: list[Path] | None = None) -> dict:
 
 def findings(rep: dict, ratchet: set[str]) -> dict[str, list[dict]]:
     """Group the audit into the three gated axes, marking each item ratcheted or new."""
-    out: dict[str, list[dict]] = {"undischarged": [], "unrequired": [],
-                                 "unknown_dialect": [], "dead": [],
-                                 "not_instrumented": [], "unattributed": [],
-                                 "wrong_capsule": [], "noop": [],
-                                 "unverified": [], "refuted": []}
+    out: dict[str, list[dict]] = {
+        "undischarged": [],
+        "unrequired": [],
+        "unknown_dialect": [],
+        "dead": [],
+        "not_instrumented": [],
+        "unattributed": [],
+        "wrong_capsule": [],
+        "noop": [],
+        "unverified": [],
+        "refuted": [],
+    }
     for r in rep["passes"]:
         if not r["discharges"]:
             key = _debt(r["name"], "undeclared", "obligation")
-            out["undischarged"].append({"pass": r["name"], "debt": key,
-                                        "ratcheted": key in ratchet})
+            out["undischarged"].append({"pass": r["name"], "debt": key, "ratcheted": key in ratchet})
         if not r["is_required"]:
             key = _debt(r["name"], "no-capsule-declares-it", "requirement")
-            out["unrequired"].append({"pass": r["name"], "debt": key,
-                                      "ratcheted": key in ratchet})
+            out["unrequired"].append({"pass": r["name"], "debt": key, "ratcheted": key in ratchet})
         unknown = [k for k in ("input_dialect", "output_dialect") if r[k] == PS.UNKNOWN]
         if unknown:
             key = _debt(r["name"], ",".join(unknown), "dialect")
-            out["unknown_dialect"].append({"pass": r["name"], "fields": unknown, "debt": key,
-                                           "ratcheted": key in ratchet})
+            out["unknown_dialect"].append(
+                {"pass": r["name"], "fields": unknown, "debt": key, "ratcheted": key in ratchet}
+            )
         if r["exercise"] in _DEAD:
             key = _debt(r["name"], "no-capsule-runs-it", "exercise")
             out["dead"].append({"pass": r["name"], "debt": key, "ratcheted": key in ratchet})
@@ -186,13 +195,19 @@ def findings(rep: dict, ratchet: set[str]) -> dict[str, list[dict]]:
         elif r["exercise"] == "exercised_unattributed":
             out["unattributed"].append({"pass": r["name"]})
         elif r["exercise"] == "exercised_wrong_capsule":
-            out["wrong_capsule"].append({"pass": r["name"], "capsules": r["capsules"],
-                                          "required_by": r["required_by"]})
+            out["wrong_capsule"].append({"pass": r["name"], "capsules": r["capsules"], "required_by": r["required_by"]})
         elif r["exercise"] == "exercised_noop":
             key = _debt(r["name"], "no-capsule-reaches-its-work", "exercise")
-            out["noop"].append({"pass": r["name"], "capsules": r["capsules"],
-                                "effects": r["effects"], "evidence": r["effect_evidence"],
-                                "debt": key, "ratcheted": key in ratchet})
+            out["noop"].append(
+                {
+                    "pass": r["name"],
+                    "capsules": r["capsules"],
+                    "effects": r["effects"],
+                    "evidence": r["effect_evidence"],
+                    "debt": key,
+                    "ratcheted": key in ratchet,
+                }
+            )
 
         # ``.get`` with the fail-closed default: a row assembled without a verification report is
         # UNMEASURED, which claims nothing verified and charges nothing unverified. The gate's own
@@ -204,42 +219,72 @@ def findings(rep: dict, ratchet: set[str]) -> dict[str, list[dict]]:
         # this particular run happened to invoke it. It carries NO debt key — deliberately, so that
         # no ratchet line can ever mark it accepted.
         if verification == "refuted":
-            out["refuted"].append({"pass": r["name"], "verdicts": r.get("verdicts", {}),
-                                   "methods": r.get("verify_methods", []),
-                                   "targets": r.get("verify_targets", []),
-                                   "evidence": r.get("verdict_evidence", [])})
+            out["refuted"].append(
+                {
+                    "pass": r["name"],
+                    "verdicts": r.get("verdicts", {}),
+                    "methods": r.get("verify_methods", []),
+                    "targets": r.get("verify_targets", []),
+                    "evidence": r.get("verdict_evidence", []),
+                }
+            )
         # REACHED but unverified. Both measurements are required: "reached" comes from the invocation
         # log and "verified" from the verdict log, so with either missing this is not an empty list,
         # it is an undecidable question — which `main` spells as exit 2 rather than as a clean axis.
-        elif (rep["measured"] and rep.get("verify_measured", False)
-                and str(r["exercise"]).startswith("exercised")
-                and verification != "verified"):
+        elif (
+            rep["measured"]
+            and rep.get("verify_measured", False)
+            and str(r["exercise"]).startswith("exercised")
+            and verification != "verified"
+        ):
             key = _debt(r["name"], "no-static-or-formal-verdict", "verification")
-            out["unverified"].append({"pass": r["name"], "verification": verification,
-                                      "exercise": r["exercise"], "verdicts": r.get("verdicts", {}),
-                                      "methods": r.get("verify_methods", []),
-                                      "evidence": r.get("verdict_evidence", []),
-                                      "debt": key, "ratcheted": key in ratchet})
+            out["unverified"].append(
+                {
+                    "pass": r["name"],
+                    "verification": verification,
+                    "exercise": r["exercise"],
+                    "verdicts": r.get("verdicts", {}),
+                    "methods": r.get("verify_methods", []),
+                    "evidence": r.get("verdict_evidence", []),
+                    "debt": key,
+                    "ratcheted": key in ratchet,
+                }
+            )
     return out
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--log", action="append", type=Path, default=[],
-                    help="invocation log to read (repeatable); default: $" + PS.PASS_LOG_ENV)
-    ap.add_argument("--verify-log", action="append", type=Path, default=[],
-                    help="verdict log to read (repeatable); default: $" + PS.VERIFY_LOG_ENV)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument(
+        "--log",
+        action="append",
+        type=Path,
+        default=[],
+        help="invocation log to read (repeatable); default: $" + PS.PASS_LOG_ENV,
+    )
+    ap.add_argument(
+        "--verify-log",
+        action="append",
+        type=Path,
+        default=[],
+        help="verdict log to read (repeatable); default: $" + PS.VERIFY_LOG_ENV,
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=None)
     ap.add_argument("--fail-on-undischarged", action="store_true")
     ap.add_argument("--fail-on-unrequired", action="store_true")
     ap.add_argument("--fail-on-dead", action="store_true")
-    ap.add_argument("--fail-on-noop", action="store_true",
-                    help="exit non-zero when a pass ran but every invocation transformed nothing")
+    ap.add_argument(
+        "--fail-on-noop",
+        action="store_true",
+        help="exit non-zero when a pass ran but every invocation transformed nothing",
+    )
     ap.add_argument("--fail-on-unknown-dialect", action="store_true")
-    ap.add_argument("--fail-on-unverified", action="store_true",
-                    help="exit non-zero when a capsule-reached pass has no static or formal verdict")
+    ap.add_argument(
+        "--fail-on-unverified",
+        action="store_true",
+        help="exit non-zero when a capsule-reached pass has no static or formal verdict",
+    )
     a = ap.parse_args(argv)
 
     logs = list(a.log)
@@ -265,9 +310,11 @@ def main(argv=None) -> int:
         for r in rep["passes"]:
             mark = " " if r["discharges"] else "*"
             req = f" required_by={r['required_by']}" if r["required_by"] else " required_by=[]"
-            print(f"  {mark} {r['name']:34s} {r['input_dialect']:>18s} -> "
-                  f"{r['output_dialect']:<18s} {r['obligation']:<24s} {r['exercise']}"
-                  f"/{r['verification']}{req}")
+            print(
+                f"  {mark} {r['name']:34s} {r['input_dialect']:>18s} -> "
+                f"{r['output_dialect']:<18s} {r['obligation']:<24s} {r['exercise']}"
+                f"/{r['verification']}{req}"
+            )
         print(f"\n  undischarged (no valid production obligation): {len(f['undischarged'])}")
         for it in f["undischarged"]:
             print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']}")
@@ -279,73 +326,88 @@ def main(argv=None) -> int:
             print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} {it['fields']}")
         if not rep["measured"]:
             # The load-bearing sentence of this gate: silence here is ignorance, not health.
-            print("\n  exercise: UNMEASURED — no invocation log was read, so NO pass can be called "
-                  f"dead and none can be called live.\n    Record one with "
-                  f"{PS.PASS_LOG_ENV}=<path> during a capsule run, then re-run with --log <path>.")
+            print(
+                "\n  exercise: UNMEASURED — no invocation log was read, so NO pass can be called "
+                f"dead and none can be called live.\n    Record one with "
+                f"{PS.PASS_LOG_ENV}=<path> during a capsule run, then re-run with --log <path>."
+            )
         else:
             print(f"\n  logs read: {rep['logs_read']}")
             live = [r for r in rep["passes"] if r["exercise"] == "exercised"]
-            print(f"  exercised by a capsule run AND measured to do work: "
-                  f"{len(live)} / {rep['n_passes']}")
+            print(f"  exercised by a capsule run AND measured to do work: {len(live)} / {rep['n_passes']}")
             if f["noop"]:
                 # The distinction this gate exists to keep: ran, and reached none of its work.
-                print(f"  RAN TO NO EFFECT ({len(f['noop'])}): invoked, but every invocation left "
-                      "the IR unchanged and produced nothing")
+                print(
+                    f"  RAN TO NO EFFECT ({len(f['noop'])}): invoked, but every invocation left "
+                    "the IR unchanged and produced nothing"
+                )
                 for it in f["noop"]:
                     ev = it["evidence"][0] if it["evidence"] else {}
-                    print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} "
-                          f"under {it['capsules']} effects={it['effects']} "
-                          f"produced={ev.get('produced')} ({ev.get('product_read')})")
+                    print(
+                        f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} "
+                        f"under {it['capsules']} effects={it['effects']} "
+                        f"produced={ev.get('produced')} ({ev.get('product_read')})"
+                    )
             print(f"  declared but DEAD (instrumented, never invoked): {len(f['dead'])}")
             for it in f["dead"]:
                 print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']}")
             if f["not_instrumented"]:
-                print(f"  NOT INSTRUMENTED (we did not look — this is not 'dead'): "
-                      f"{len(f['not_instrumented'])}")
+                print(f"  NOT INSTRUMENTED (we did not look — this is not 'dead'): {len(f['not_instrumented'])}")
                 for it in f["not_instrumented"]:
                     print(f"    ? {it['pass']:34s} {it['install']}")
             if f["unattributed"]:
-                print(f"  ran, but under no capsule context ({len(f['unattributed'])}): "
-                      f"set {PS.PASS_LOG_CAPSULE_ENV} or use passes.pass_run_context()")
+                print(
+                    f"  ran, but under no capsule context ({len(f['unattributed'])}): "
+                    f"set {PS.PASS_LOG_CAPSULE_ENV} or use passes.pass_run_context()"
+                )
                 for it in f["unattributed"]:
                     print(f"    ? {it['pass']}")
             if f["wrong_capsule"]:
-                print(f"  WRONG CAPSULE ({len(f['wrong_capsule'])}): a pass ran, but none of the "
-                      "capsules that require it caused the run")
+                print(
+                    f"  WRONG CAPSULE ({len(f['wrong_capsule'])}): a pass ran, but none of the "
+                    "capsules that require it caused the run"
+                )
                 for it in f["wrong_capsule"]:
-                    print(f"    ? {it['pass']}: ran under {it['capsules']}, requires "
-                          f"{it['required_by']}")
+                    print(f"    ? {it['pass']}: ran under {it['capsules']}, requires {it['required_by']}")
         # --- the verification layers ----------------------------------------------------------
         if not rep["verify_measured"]:
             # Same sentence as the exercise block above, for the same reason: nothing was checked is
             # not the same claim as everything checks out, and only one of them is what we know.
-            print("\n  verification: UNMEASURED — no verdict log was read, so NO pass can be called "
-                  f"verified and none can be called unverified.\n    Record one with "
-                  f"{PS.VERIFY_LOG_ENV}=<path> while running the static/formal layers, then re-run "
-                  "with --verify-log <path>.")
+            print(
+                "\n  verification: UNMEASURED — no verdict log was read, so NO pass can be called "
+                f"verified and none can be called unverified.\n    Record one with "
+                f"{PS.VERIFY_LOG_ENV}=<path> while running the static/formal layers, then re-run "
+                "with --verify-log <path>."
+            )
         else:
             print(f"\n  verdict logs read: {rep['verify_logs_read']}")
             proven = [r for r in rep["passes"] if r["verification"] == "verified"]
             print(f"  verified by a static or formal layer: {len(proven)} / {rep['n_passes']}")
             if f["refuted"]:
-                print(f"  REFUTED ({len(f['refuted'])}): a layer DISPROVED the pass. This is not "
-                      "debt and cannot be ratcheted.")
+                print(
+                    f"  REFUTED ({len(f['refuted'])}): a layer DISPROVED the pass. This is not "
+                    "debt and cannot be ratcheted."
+                )
                 for it in f["refuted"]:
                     ev = it["evidence"][0] if it["evidence"] else {}
-                    print(f"    ! {it['pass']:34s} by {it['methods']} on {it['targets']} "
-                          f"evidence={ev.get('evidence')}")
+                    print(f"    ! {it['pass']:34s} by {it['methods']} on {it['targets']} evidence={ev.get('evidence')}")
             if not rep["measured"]:
-                print("  reached-but-unverified: CANNOT DECIDE — the invocation log says which "
-                      "passes a capsule reaches, and none was read.")
+                print(
+                    "  reached-but-unverified: CANNOT DECIDE — the invocation log says which "
+                    "passes a capsule reaches, and none was read."
+                )
             else:
-                print(f"  reached but UNVERIFIED (no static or formal verdict): "
-                      f"{len(f['unverified'])}")
+                print(f"  reached but UNVERIFIED (no static or formal verdict): {len(f['unverified'])}")
                 for it in f["unverified"]:
-                    print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} "
-                          f"{it['exercise']} / {it['verification']} verdicts={it['verdicts']}")
+                    print(
+                        f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} "
+                        f"{it['exercise']} / {it['verification']} verdicts={it['verdicts']}"
+                    )
             if rep["verdicts_for_unknown_passes"]:
-                print(f"  verdicts against names the catalog does not carry (evidence that stopped "
-                      f"counting): {rep['verdicts_for_unknown_passes']}")
+                print(
+                    f"  verdicts against names the catalog does not carry (evidence that stopped "
+                    f"counting): {rep['verdicts_for_unknown_passes']}"
+                )
         if rep["unreadable_log_lines"]:
             print(f"  UNREADABLE log entries: {rep['unreadable_log_lines']}")
         if rep["unreadable_verify_log_lines"]:
@@ -356,21 +418,21 @@ def main(argv=None) -> int:
     # and no ratchet line forgives it — a gate that let a disproof be marked "accepted" would take
     # the only thing this layer can positively establish and file it away.
     if f["refuted"]:
-        print(f"\nFAIL: {len(f['refuted'])} pass(es) were REFUTED by a static or formal layer "
-              "(a failed check or a concrete counterexample); this is a disproof, not debt",
-              file=sys.stderr)
+        print(
+            f"\nFAIL: {len(f['refuted'])} pass(es) were REFUTED by a static or formal layer "
+            "(a failed check or a concrete counterexample); this is a disproof, not debt",
+            file=sys.stderr,
+        )
         rc = 1
     if a.fail_on_undischarged:
         new = [it for it in f["undischarged"] if not it["ratcheted"]]
         if new:
-            print(f"\nFAIL: {len(new)} pass(es) discharge no production obligation",
-                  file=sys.stderr)
+            print(f"\nFAIL: {len(new)} pass(es) discharge no production obligation", file=sys.stderr)
             rc = 1
     if a.fail_on_unrequired:
         new = [it for it in f["unrequired"] if not it["ratcheted"]]
         if new:
-            print(f"\nFAIL: {len(new)} production pass(es) have no requiring capsule",
-                  file=sys.stderr)
+            print(f"\nFAIL: {len(new)} production pass(es) have no requiring capsule", file=sys.stderr)
             rc = 1
     if a.fail_on_unknown_dialect:
         new = [it for it in f["unknown_dialect"] if not it["ratcheted"]]
@@ -379,13 +441,15 @@ def main(argv=None) -> int:
             rc = 1
     if a.fail_on_noop:
         if not rep["measured"]:
-            print("\nCANNOT DECIDE: --fail-on-noop needs an invocation log and none was read.",
-                  file=sys.stderr)
+            print("\nCANNOT DECIDE: --fail-on-noop needs an invocation log and none was read.", file=sys.stderr)
             return 2
         new = [it for it in f["noop"] if not it["ratcheted"]]
         if new:
-            print(f"\nFAIL: {len(new)} pass(es) ran but reached none of their work; a capsule that "
-                  "invokes a pass to no effect does not certify it", file=sys.stderr)
+            print(
+                f"\nFAIL: {len(new)} pass(es) ran but reached none of their work; a capsule that "
+                "invokes a pass to no effect does not certify it",
+                file=sys.stderr,
+            )
             rc = 1
     if a.fail_on_unverified:
         if not rep["verify_measured"] or not rep["measured"]:
@@ -398,28 +462,37 @@ def main(argv=None) -> int:
                 missing.append(f"a verdict log ({PS.VERIFY_LOG_ENV}=<path>, --verify-log <path>)")
             if not rep["measured"]:
                 missing.append(f"an invocation log ({PS.PASS_LOG_ENV}=<path>, --log <path>)")
-            print("\nCANNOT DECIDE: --fail-on-unverified needs " + " and ".join(missing)
-                  + ", and none was read.", file=sys.stderr)
+            print(
+                "\nCANNOT DECIDE: --fail-on-unverified needs " + " and ".join(missing) + ", and none was read.",
+                file=sys.stderr,
+            )
             # `rc or 2`: an undecidable axis must not swallow a refutation that WAS decided.
             return rc or 2
         new = [it for it in f["unverified"] if not it["ratcheted"]]
         if new:
-            print(f"\nFAIL: {len(new)} pass(es) are reached by a capsule but no static or formal "
-                  "layer has reached a verdict about them; a capsule grade is an outcome, not a "
-                  "proof that the pass is correct", file=sys.stderr)
+            print(
+                f"\nFAIL: {len(new)} pass(es) are reached by a capsule but no static or formal "
+                "layer has reached a verdict about them; a capsule grade is an outcome, not a "
+                "proof that the pass is correct",
+                file=sys.stderr,
+            )
             rc = 1
     if a.fail_on_dead:
         if not rep["measured"]:
             # Exit 2, not 0: "we could not measure" must never be spelled the same way as "clean".
-            print("\nCANNOT DECIDE: --fail-on-dead needs an invocation log and none was read. "
-                  f"Run a capsule with {PS.PASS_LOG_ENV}=<path> and pass --log <path>.",
-                  file=sys.stderr)
+            print(
+                "\nCANNOT DECIDE: --fail-on-dead needs an invocation log and none was read. "
+                f"Run a capsule with {PS.PASS_LOG_ENV}=<path> and pass --log <path>.",
+                file=sys.stderr,
+            )
             return 2
         new = [it for it in f["dead"] if not it["ratcheted"]]
         wrong = list(f["wrong_capsule"])
         if new or wrong:
-            print(f"\nFAIL: {len(new)} declared pass(es) are dead and {len(wrong)} ran only under "
-                  "non-requiring capsules", file=sys.stderr)
+            print(
+                f"\nFAIL: {len(new)} declared pass(es) are dead and {len(wrong)} ran only under non-requiring capsules",
+                file=sys.stderr,
+            )
             rc = 1
     return rc
 

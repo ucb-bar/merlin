@@ -27,6 +27,7 @@ memory into a different answer instead of a plausible one.
 HOST ONLY. Nothing here touches a board. The emulator is user-mode QEMU; the board A/B it prints is
 for a human to run when a board slot is free.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,21 +42,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
 
-from merlin.common.artifacts import new_product                        # noqa: E402
-from merlin.common.paths import build_dir, repo_root                   # noqa: E402
-from merlin.llvmlower import perop_blocks as pb                        # noqa: E402
-from merlin.llvmlower import toolchain                                 # noqa: E402
-from merlin.llvmlower.pipeline import build_rvv_pipeline               # noqa: E402
-from merlin.mining import k1                                           # noqa: E402
-from merlin.mining.registry import load_rvv_package                    # noqa: E402
-from merlin.runtime.backends import zephyr_model as zm                 # noqa: E402
+from merlin.common.artifacts import new_product  # noqa: E402
+from merlin.common.paths import build_dir, repo_root  # noqa: E402
+from merlin.llvmlower import perop_blocks as pb  # noqa: E402
+from merlin.llvmlower import toolchain  # noqa: E402
+from merlin.llvmlower.pipeline import build_rvv_pipeline  # noqa: E402
+from merlin.mining import k1  # noqa: E402
+from merlin.mining.registry import load_rvv_package  # noqa: E402
+from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 
 #: The ops whose count must agree between the two arms. A contraction still named ``linalg.matmul``
 #: after the package schedule ran is one no arm claimed: it lowers through convert-linalg-to-loops,
 #: i.e. scalar, with correct numbers and no gate to notice.
-_CENSUS_OPS = ("vector.contract", "vector.transfer_read", "vector.transfer_write",
-               "vector.mask", "vector.create_mask", "linalg.matmul", "linalg.batch_matmul",
-               "linalg.generic", "scf.forall")
+_CENSUS_OPS = (
+    "vector.contract",
+    "vector.transfer_read",
+    "vector.transfer_write",
+    "vector.mask",
+    "vector.create_mask",
+    "linalg.matmul",
+    "linalg.batch_matmul",
+    "linalg.generic",
+    "scf.forall",
+)
 
 #: Counted apart: the wrapper is the ONE thing that is allowed to differ.
 _WRAPPER_OP = "scf.forall"
@@ -108,21 +117,28 @@ def schedule_census(work: Path) -> dict:
     sched = low / "rvv_schedule.mlir"
     par = low / "rvv_parallel_schedule.mlir"
     vec = low / "rvv_vec_pre_schedule.mlir"
-    pipe = build_rvv_pipeline(sched, hoist_static_allocs=False, features=frozenset(),
-                              par_sched_path=(par if par.is_file() else None),
-                              vec_sched_path=(vec if vec.is_file() else None),
-                              perop_parallel=par.is_file())
+    pipe = build_rvv_pipeline(
+        sched,
+        hoist_static_allocs=False,
+        features=frozenset(),
+        par_sched_path=(par if par.is_file() else None),
+        vec_sched_path=(vec if vec.is_file() else None),
+        perop_parallel=par.is_file(),
+    )
     anchor = "transform-interpreter{entry-point=__transform_main},canonicalize,cse"
     if anchor not in pipe:
         raise SystemExit("the package schedule's interpreter is not in the pipeline string")
-    prefix = pipe[:pipe.index(anchor) + len(anchor)]
+    prefix = pipe[: pipe.index(anchor) + len(anchor)]
     prefix += ")" * (prefix.count("(") - prefix.count(")"))
     mlir_opt = Path(str(toolchain.clang()).replace("clang-23", "mlir-opt"))
     if not mlir_opt.is_file():
         raise SystemExit(f"{mlir_opt} not built (third_party/llvm-install)")
-    proc = subprocess.run([str(mlir_opt), str(low / "model.upstream.mlir"),
-                           f"--pass-pipeline=builtin.module({prefix})"],
-                          capture_output=True, text=True, timeout=7200)
+    proc = subprocess.run(
+        [str(mlir_opt), str(low / "model.upstream.mlir"), f"--pass-pipeline=builtin.module({prefix})"],
+        capture_output=True,
+        text=True,
+        timeout=7200,
+    )
     if proc.returncode != 0:
         raise SystemExit(f"schedule census failed:\n{proc.stderr[-3000:]}")
     counts: collections.Counter = collections.Counter()
@@ -141,8 +157,7 @@ def elf_census(elf: Path, objdump: Path) -> dict:
     ``forward`` and everything outlined out of it (the OpenMP regions) are counted together, because
     which of the two a body lives in is exactly what the parallel wrapper changes.
     """
-    out = subprocess.run([str(objdump), "-d", str(elf)],
-                         capture_output=True, text=True, timeout=3600).stdout
+    out = subprocess.run([str(objdump), "-d", str(elf)], capture_output=True, text=True, timeout=3600).stdout
     cur = None
     instrs = vector = 0
     mnem: collections.Counter = collections.Counter()
@@ -150,7 +165,7 @@ def elf_census(elf: Path, objdump: Path) -> dict:
     for line in out.splitlines():
         s = line.strip()
         if s.endswith(">:") and "<" in s:
-            cur = s[s.index("<") + 1:-2]
+            cur = s[s.index("<") + 1 : -2]
             if cur == "forward" or cur.startswith("forward."):
                 symbols += 1
             continue
@@ -171,8 +186,12 @@ def elf_census(elf: Path, objdump: Path) -> dict:
         if m.startswith("v") and not m.startswith("vset"):
             vector += 1
         mnem[m] += 1
-    return {"compute_symbols": symbols, "instructions": instrs, "vector_instructions": vector,
-            "top_mnemonics": dict(mnem.most_common(20))}
+    return {
+        "compute_symbols": symbols,
+        "instructions": instrs,
+        "vector_instructions": vector,
+        "top_mnemonics": dict(mnem.most_common(20)),
+    }
 
 
 def _objdump() -> Path:
@@ -193,6 +212,7 @@ def emulator() -> Path | None:
         if p.is_file():
             return p
     from shutil import which
+
     got = which("qemu-riscv64")
     return Path(got) if got else None
 
@@ -213,13 +233,17 @@ def output_digests(elf: Path, qemu: Path, vlen: int, threads, pads, timeout: int
             env["OMP_NUM_THREADS"] = str(n)
             proc = subprocess.run(
                 [str(qemu), "-cpu", f"rv64,v=true,vlen={vlen},elen=64", str(elf)],
-                capture_output=True, text=True, cwd=str(elf.parent), env=env, timeout=timeout)
+                capture_output=True,
+                text=True,
+                cwd=str(elf.parent),
+                env=env,
+                timeout=timeout,
+            )
             lines = [l for l in proc.stdout.splitlines() if l.startswith("OUT ")]
             if not lines:
                 out[f"threads={n},pad={pad}"] = "NO_OUTPUT"
                 continue
-            out[f"threads={n},pad={pad}"] = hashlib.sha256(
-                "\n".join(lines).encode()).hexdigest()[:32]
+            out[f"threads={n},pad={pad}"] = hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
     return out
 
 
@@ -234,8 +258,9 @@ def _et_model_name(bundle_name: str) -> str:
     """
     try:
         from merlin.baselines import executorch as _et
+
         known = sorted(getattr(_et, "ALL_MODELS", ()), key=len, reverse=True)
-    except Exception:                                        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         known = []
     for m in known:
         if bundle_name == m or bundle_name.startswith(f"{m}_"):
@@ -244,40 +269,52 @@ def _et_model_name(bundle_name: str) -> str:
 
 
 def build(bundle: Path, work: Path, pkg, harts: int) -> Path:
-    return k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz",
-                              parallel_harts=(harts if harts > 1 else None))
+    return k1.build_k1_binary(
+        bundle, work, pkg, inputs_npz=bundle / "inputs.npz", parallel_harts=(harts if harts > 1 else None)
+    )
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model-dir", required=True, help="the bundle to build (a recapture dir)")
     ap.add_argument("--package", required=True, help="rvv package dir (out/artifacts/targets/rvv/...)")
-    ap.add_argument("--features", default=None,
-                    help="comma-separated compiler features; omitted = the package's own")
+    ap.add_argument("--features", default=None, help="comma-separated compiler features; omitted = the package's own")
     ap.add_argument("--harts", type=int, default=8, help="the multicore arm's hart count")
-    ap.add_argument("--digest", action="store_true",
-                    help="also verify the two binaries agree BIT-EXACTLY under user-mode QEMU, "
-                         "across thread counts and environment paddings")
+    ap.add_argument(
+        "--digest",
+        action="store_true",
+        help="also verify the two binaries agree BIT-EXACTLY under user-mode QEMU, "
+        "across thread counts and environment paddings",
+    )
     ap.add_argument("--digest-threads", default="1,4,8")
     ap.add_argument("--digest-pads", default="0,37,512")
     ap.add_argument("--digest-timeout-s", type=int, default=3600)
-    ap.add_argument("--et-model", default=None,
-                    help="the reference arm's model NAME for the board command this prints (its "
-                         "--model). Resolved from the ExecuTorch model registry when the bundle "
-                         "name starts with a registered one; a bundle outside that registry has to "
-                         "name it here, and the command is printed with a placeholder rather than a "
-                         "guess if it does not.")
-    ap.add_argument("--ref-cpu-threads", type=int, default=None,
-                    help="cores the REFERENCE arm gets in the board command this prints "
-                         "(default: the same as --harts, which is what makes it an NvN cell)")
+    ap.add_argument(
+        "--et-model",
+        default=None,
+        help="the reference arm's model NAME for the board command this prints (its "
+        "--model). Resolved from the ExecuTorch model registry when the bundle "
+        "name starts with a registered one; a bundle outside that registry has to "
+        "name it here, and the command is printed with a placeholder rather than a "
+        "guess if it does not.",
+    )
+    ap.add_argument(
+        "--ref-cpu-threads",
+        type=int,
+        default=None,
+        help="cores the REFERENCE arm gets in the board command this prints "
+        "(default: the same as --harts, which is what makes it an NvN cell)",
+    )
     ap.add_argument("--out", default=None, help="artifact dir (default: a new versioned product)")
     a = ap.parse_args()
 
     bundle = Path(a.model_dir).resolve()
     base = load_rvv_package(a.package)
-    feats = ([f.strip() for f in a.features.split(",") if f.strip()] if a.features is not None
-             else list(base.compiler_features or []))
+    feats = (
+        [f.strip() for f in a.features.split(",") if f.strip()]
+        if a.features is not None
+        else list(base.compiler_features or [])
+    )
     key = hashlib.sha256(",".join(sorted(feats)).encode()).hexdigest()[:10] if feats else "nofeatures"
     root = build_dir() / "multicore_kernel_ab" / bundle.name / key
     root.mkdir(parents=True, exist_ok=True)
@@ -288,11 +325,15 @@ def main() -> int:
         pkg = replace(base, run_id=f"mcab_{name}", compiler_features=feats)
         print(f"[build] {name}: harts={harts} -> {work}", flush=True)
         elf = build(bundle, work, pkg, harts)
-        rec = {"harts": harts, "work": str(work), "elf": str(elf),
-               "block_tags": block_tags(work),
-               "schedule_census": schedule_census(work),
-               "elf_census": elf_census(elf, _objdump()),
-               "derived_split": None}
+        rec = {
+            "harts": harts,
+            "work": str(work),
+            "elf": str(elf),
+            "block_tags": block_tags(work),
+            "schedule_census": schedule_census(work),
+            "elf_census": elf_census(elf, _objdump()),
+            "derived_split": None,
+        }
         split = work / zm.PARALLEL_ARMS_FILE
         if split.is_file():
             rec["derived_split"] = json.loads(split.read_text(encoding="utf-8"))
@@ -306,8 +347,11 @@ def main() -> int:
     if s["block_tags"] != p["block_tags"]:
         problems.append("the two arms tagged different register blocks")
     if census_s != census_p:
-        differing = {k: [census_s.get(k), census_p.get(k)]
-                     for k in set(census_s) | set(census_p) if census_s.get(k) != census_p.get(k)}
+        differing = {
+            k: [census_s.get(k), census_p.get(k)]
+            for k in set(census_s) | set(census_p)
+            if census_s.get(k) != census_p.get(k)
+        }
         problems.append(f"the schedule's own output differs: {differing}")
     for arm, c in (("serial", s["schedule_census"]), ("parallel", p["schedule_census"])):
         left = c.get("linalg.matmul", 0) + c.get("linalg.batch_matmul", 0)
@@ -329,60 +373,81 @@ def main() -> int:
             digests = {}
             for name in ("serial", "parallel"):
                 print(f"[digest] {name}", flush=True)
-                digests[name] = output_digests(Path(arms[name]["elf"]), qemu, k1.VLEN,
-                                               threads, pads, a.digest_timeout_s)
+                digests[name] = output_digests(
+                    Path(arms[name]["elf"]), qemu, k1.VLEN, threads, pads, a.digest_timeout_s
+                )
             values = {v for d in digests.values() for v in d.values()}
             if len(values) != 1 or "NO_OUTPUT" in values:
                 problems.append(f"the two arms do not agree bit-exactly: {digests}")
 
-    verdict = {"kernels_match": not problems, "problems": problems,
-               "wrapper_forall": wrapper, "output_digests": digests}
-    record = {"bundle": bundle.name, "package": Path(a.package).name, "features": sorted(feats),
-              "harts": int(a.harts), "arms": arms, "verdict": verdict}
+    verdict = {
+        "kernels_match": not problems,
+        "problems": problems,
+        "wrapper_forall": wrapper,
+        "output_digests": digests,
+    }
+    record = {
+        "bundle": bundle.name,
+        "package": Path(a.package).name,
+        "features": sorted(feats),
+        "harts": int(a.harts),
+        "arms": arms,
+        "verdict": verdict,
+    }
 
     if a.out:
         outdir = Path(a.out)
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "multicore_kernel_ab.json").write_text(
-            json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         print(f"[out] {outdir / 'multicore_kernel_ab.json'}")
     else:
-        prod = new_product("compare", version=0,
-                           notes=f"multicore kernel-identity A/B for {bundle.name}")
+        prod = new_product("compare", version=0, notes=f"multicore kernel-identity A/B for {bundle.name}")
         dest = prod.add_artifact("multicore_kernel_ab.json")
         dest.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         prod.write_manifest()
         print(f"[out] {dest}")
 
     print()
-    print(f"block tags   serial={sum(s['block_tags'].values())} "
-          f"parallel={sum(p['block_tags'].values())}  identical={s['block_tags'] == p['block_tags']}")
+    print(
+        f"block tags   serial={sum(s['block_tags'].values())} "
+        f"parallel={sum(p['block_tags'].values())}  identical={s['block_tags'] == p['block_tags']}"
+    )
     print(f"schedule IR  serial={census_s}")
     print(f"schedule IR  parallel={census_p}")
     print(f"scf.forall   serial={wrapper['serial']} parallel={wrapper['parallel']}")
-    print(f"linked ELF   serial={s['elf_census']['instructions']} instrs / "
-          f"{s['elf_census']['vector_instructions']} vector "
-          f"({s['elf_census']['compute_symbols']} compute symbols)")
-    print(f"linked ELF   parallel={p['elf_census']['instructions']} instrs / "
-          f"{p['elf_census']['vector_instructions']} vector "
-          f"({p['elf_census']['compute_symbols']} compute symbols)")
+    print(
+        f"linked ELF   serial={s['elf_census']['instructions']} instrs / "
+        f"{s['elf_census']['vector_instructions']} vector "
+        f"({s['elf_census']['compute_symbols']} compute symbols)"
+    )
+    print(
+        f"linked ELF   parallel={p['elf_census']['instructions']} instrs / "
+        f"{p['elf_census']['vector_instructions']} vector "
+        f"({p['elf_census']['compute_symbols']} compute symbols)"
+    )
     if p["derived_split"]:
         d = p["derived_split"]
-        print(f"derived split {d['split_contractions']}/{d['priced_contractions']} contractions, "
-              f"{len(d['arms'])} distinct arms; serial residue: {d['serial_contractions']}")
+        print(
+            f"derived split {d['split_contractions']}/{d['priced_contractions']} contractions, "
+            f"{len(d['arms'])} distinct arms; serial residue: {d['serial_contractions']}"
+        )
     print()
 
     if problems:
         for why in problems:
             print(f"REFUSED: {why}", file=sys.stderr)
-        print("The two arms are NOT the same kernel, so a wall ratio between them would not be a "
-              "thread measurement. No board command is printed.", file=sys.stderr)
+        print(
+            "The two arms are NOT the same kernel, so a wall ratio between them would not be a "
+            "thread measurement. No board command is printed.",
+            file=sys.stderr,
+        )
         return 2
 
     threads = int(a.ref_cpu_threads) if a.ref_cpu_threads else int(a.harts)
     et_model = a.et_model or _et_model_name(bundle.name)
-    print("KERNELS MATCH. The parallel arm is the serial kernel plus "
-          f"{wrapper['parallel']} scf.forall wrapper(s).")
+    print(f"KERNELS MATCH. The parallel arm is the serial kernel plus {wrapper['parallel']} scf.forall wrapper(s).")
     print()
     print("Board A/B (needs a free board slot; run it as one command so both arms share a session):")
     print()
@@ -392,9 +457,11 @@ def main() -> int:
     print(f"      --features {','.join(sorted(feats))} \\")
     print(f"      --parallel-harts {a.harts} --ref-cpu-threads {threads}")
     print()
-    print("...and the same command with `--parallel-harts 1 --ref-cpu-threads 1` for the per-core "
-          "cell. Both arms now compile the same kernel, so the ratio between them is a thread "
-          "effect; it was not before.")
+    print(
+        "...and the same command with `--parallel-harts 1 --ref-cpu-threads 1` for the per-core "
+        "cell. Both arms now compile the same kernel, so the ratio between them is a thread "
+        "effect; it was not before."
+    )
     return 0
 
 

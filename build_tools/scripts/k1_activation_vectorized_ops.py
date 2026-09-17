@@ -20,18 +20,20 @@ It then UPDATES cross_framework_ops_k1.{jsonl,md}:
 Reuses the FROZEN harness `_build_run_ours` from k1_cross_framework_ops.py (no rebuild). Honest
 not_run with the exact blocker on any build/run/verify failure; board left clean.
 """
+
 from __future__ import annotations
 
-import argparse, json
+import argparse
+import importlib.util as _ilu
+import json
 from pathlib import Path
 
-import importlib.util as _ilu
-_spec = _ilu.spec_from_file_location(
-    "k1_ops", str(Path(__file__).resolve().parent / "k1_cross_framework_ops.py"))
-_ops = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_ops)
+_spec = _ilu.spec_from_file_location("k1_ops", str(Path(__file__).resolve().parent / "k1_cross_framework_ops.py"))
+_ops = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_ops)
 
-from merlin.mining import k1, workloads
 from merlin.common.paths import repo_root
+from merlin.mining import k1, workloads
 
 REPO = Path(repo_root())
 HERE = REPO / "merlin/python/merlin/kernels/ceiling_drivers"
@@ -44,16 +46,32 @@ def run_ours_vectorized(op: str, sizes: list[int], reps: int) -> list[dict]:
     rows = []
     for Nsz in sizes:
         bundle = gen(REPO / "artifacts" / "cache" / "rvv_workloads", N=Nsz)
-        base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": "ours_vectorized",
-                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
-                "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
-                "compiler_features": [FEATURE],
-                "kernel_file": "merlin RVV codegen (ours_vectorized: vectorized_transcendental_activation polynomial)"}
+        base = {
+            "op": op,
+            "dtype": "f32",
+            "size_n": Nsz,
+            "source": "ours_vectorized",
+            "target": "k1",
+            "mode": "inner_compute",
+            "timer": "rdtime",
+            "timebase_hz": k1.K1_TIMEBASE_HZ,
+            "vectorize": True,
+            "compiler_features": [FEATURE],
+            "kernel_file": "merlin RVV codegen (ours_vectorized: vectorized_transcendental_activation polynomial)",
+        }
         print(f"--- ours_vectorized(POLY) {op} N={Nsz} ---")
         r = _ops._build_run_ours(
-            f"{op}_oursvec_{Nsz}", bundle, HERE / "ours_activation_driver.c",
-            [f"-DXNN_REF_{ref}"], "ours_vectorized", [FEATURE],
-            int8=False, vectorize=True, reps=reps, base=base)
+            f"{op}_oursvec_{Nsz}",
+            bundle,
+            HERE / "ours_activation_driver.c",
+            [f"-DXNN_REF_{ref}"],
+            "ours_vectorized",
+            [FEATURE],
+            int8=False,
+            vectorize=True,
+            reps=reps,
+            base=base,
+        )
         print("   ", r["status"], r.get("ticks"), r.get("blocker", "")[:160])
         rows.append(r)
     return rows
@@ -70,7 +88,8 @@ def main():
     rows = []
     for op in a.ops.split(","):
         rows += run_ours_vectorized(op, sizes, a.reps)
-    outp = Path(a.out); outp.parent.mkdir(parents=True, exist_ok=True)
+    outp = Path(a.out)
+    outp.parent.mkdir(parents=True, exist_ok=True)
     with outp.open("w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")

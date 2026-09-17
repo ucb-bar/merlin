@@ -28,6 +28,7 @@ CI needs full history (``fetch-depth: 0``): an unresolvable base FAILS -- "could
 "nothing grew". The one exception is git's all-zero sentinel (a push that creates a branch has no
 previous revision), which is reported as UNMEASURED, never as OK.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -59,8 +60,9 @@ def _entries(text: str | None) -> list[str]:
 def _accept_reasons(text: str | None) -> set[str]:
     if text is None:
         return set()
-    return {ln.strip()[len(ACCEPT_MARKER):].strip() for ln in text.splitlines()
-            if ln.strip().startswith(ACCEPT_MARKER)}
+    return {
+        ln.strip()[len(ACCEPT_MARKER) :].strip() for ln in text.splitlines() if ln.strip().startswith(ACCEPT_MARKER)
+    }
 
 
 def _show(root: Path, spec: str) -> str | None:
@@ -126,12 +128,13 @@ def main(argv: list[str]) -> int:
             raise OSError("`git rev-parse --show-toplevel` produced no path")
         root = Path(top)
         if base == ZERO_SHA:
-            print("ratchets: UNMEASURED -- no base revision (a push that created the branch); "
-                  "nothing was compared")
+            print("ratchets: UNMEASURED -- no base revision (a push that created the branch); nothing was compared")
             return 0
         if _git(root, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", check=False).returncode:
-            sys.stderr.write(f"[FAIL] ratchets: base revision {base!r} does not resolve (shallow clone?); "
-                             "NOTHING was compared, which is not the same as nothing grew.\n")
+            sys.stderr.write(
+                f"[FAIL] ratchets: base revision {base!r} does not resolve (shallow clone?); "
+                "NOTHING was compared, which is not the same as nothing grew.\n"
+            )
             return 1
         failures, notes = compare(root, base, staged)
     except (OSError, subprocess.CalledProcessError) as exc:
@@ -143,8 +146,10 @@ def main(argv: list[str]) -> int:
         sys.stderr.write("ratchets FAILED -- a may-only-shrink ledger grew:\n")
         for f in failures:
             sys.stderr.write(f"  - {f}\n")
-        sys.stderr.write("Fix the new debt instead. If a gate WIDENED its scope and found existing debt, "
-                         f"add a '{ACCEPT_MARKER} <reason>' line to that ledger in the same change.\n")
+        sys.stderr.write(
+            "Fix the new debt instead. If a gate WIDENED its scope and found existing debt, "
+            f"add a '{ACCEPT_MARKER} <reason>' line to that ledger in the same change.\n"
+        )
         return 1
     print(f"ratchets: OK (vs {base}{', staged' if staged else ''}; every ledger held or shrank)")
     return 0

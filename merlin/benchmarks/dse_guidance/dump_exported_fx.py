@@ -13,6 +13,7 @@ Usage:  python dump_exported_fx.py [<workload> ...]    (default: all workloads w
 Output: out/artifacts/dse-guidance/case_study/manual_validation/exported_fx/<wl>.txt
         (or <wl>.FAILED.txt on error)
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,7 @@ WL = M2M / "workloads"
 OUT = paths.artifacts_dir() / "dse-guidance" / "case_study" / "manual_validation" / "exported_fx"
 
 # Runs INSIDE the model's venv: rebuild the exact loader inputs, re-export, dump histogram + graph.
-_INNER = r'''
+_INNER = r"""
 import sys
 from collections import Counter
 sys.path.insert(0, sys.argv[1])              # workloads/<wl> dir, for `from loader import ...`
@@ -43,11 +44,12 @@ for k, v in sorted(hist.items(), key=lambda x: -x[1]):
     print(f"{v:6d}  {k}")
 print("=== GRAPH ===")
 print(gm.print_readable(print_output=False))
-'''
+"""
 
 
 def _toml(d: Path) -> dict:
     import tomllib
+
     f = d / "capture.toml"
     return tomllib.loads(f.read_text()) if f.exists() else {}
 
@@ -65,8 +67,7 @@ def dump(wl: str) -> str:
     env.update({k: str(v) for k, v in cfg.get("env", {}).items()})
     OUT.mkdir(parents=True, exist_ok=True)
     try:
-        proc = subprocess.run([str(py), "-c", _INNER, str(d)], env=env,
-                              capture_output=True, text=True, timeout=1800)
+        proc = subprocess.run([str(py), "-c", _INNER, str(d)], env=env, capture_output=True, text=True, timeout=1800)
     except subprocess.TimeoutExpired:
         (OUT / f"{wl}.FAILED.txt").write_text("timeout (1800s)")
         return f"{wl}: TIMEOUT"
@@ -74,8 +75,7 @@ def dump(wl: str) -> str:
         (OUT / f"{wl}.txt").write_text(proc.stdout)
         nhist = proc.stdout.split("=== GRAPH ===")[0].count("\n") - 1
         return f"{wl}: OK ({len(proc.stdout)} bytes, {nhist} distinct aten ops)"
-    (OUT / f"{wl}.FAILED.txt").write_text(
-        "STDOUT:\n" + proc.stdout[-4000:] + "\n\nSTDERR:\n" + proc.stderr[-4000:])
+    (OUT / f"{wl}.FAILED.txt").write_text("STDOUT:\n" + proc.stdout[-4000:] + "\n\nSTDERR:\n" + proc.stderr[-4000:])
     return f"{wl}: FAILED (see {wl}.FAILED.txt)"
 
 

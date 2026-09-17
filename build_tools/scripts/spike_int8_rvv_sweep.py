@@ -13,8 +13,15 @@ Resumable JSONL ledger. Usage:
         --ledger /path/to/tmp/spike_int8_rvv.jsonl
 With no BUNDLE args, sweeps the default fitting->large order below.
 """
-import argparse, json, subprocess, sys, time, traceback
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+import traceback
 from pathlib import Path
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,8 +31,16 @@ from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 # small -> large; pi05 excluded (task #61: its int8 capture is unquantized fp32, not a real
 # int8 test). The 1B-class (rdt/smolvla/groot/molmoact) are functional-slow on spike but run.
 DEFAULT_ORDER = [
-    "small_llama", "tiny_llama", "bitvla", "xr0", "openvla", "rdt2",
-    "rdt", "smolvla", "groot_n1d7", "molmoact",
+    "small_llama",
+    "tiny_llama",
+    "bitvla",
+    "xr0",
+    "openvla",
+    "rdt2",
+    "rdt",
+    "smolvla",
+    "groot_n1d7",
+    "molmoact",
 ]
 
 RVV_INT_OPS = ("vmacc", "vwmacc", "vmul.vv", "vadd.vv", "vsext", "vle8")
@@ -37,8 +52,7 @@ def objdump_rvv(model_o: Path) -> dict:
         return {"present": False}
     try:
         objdump = zm._spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
-        out = subprocess.run([str(objdump), "-d", str(model_o)], capture_output=True,
-                             text=True, timeout=300).stdout
+        out = subprocess.run([str(objdump), "-d", str(model_o)], capture_output=True, text=True, timeout=300).stdout
     except Exception as e:
         return {"present": True, "error": str(e)[:120]}
     counts = {op: out.count(op) for op in RVV_INT_OPS}
@@ -87,17 +101,33 @@ def main() -> int:
             if w8a8.is_file():
                 refs["w8a8"] = np.load(w8a8)
             rec["tiers"] = list(refs)
-            r = zm.build_and_run(mdir, work, board="spike_riscv64", backend="rvv",
-                                 int8_compute=True, references=refs, harts=args.harts,
-                                 timeout=args.timeout)
+            r = zm.build_and_run(
+                mdir,
+                work,
+                board="spike_riscv64",
+                backend="rvv",
+                int8_compute=True,
+                references=refs,
+                harts=args.harts,
+                timeout=args.timeout,
+            )
             rec["ran"] = True
-            rec.update(cos=r.get("cos"), rel=r.get("rel"), ok=bool(r.get("ok")),
-                       w8a8_cos=r.get("w8a8_cos"), w8a8_rel=r.get("w8a8_rel"),
-                       fp32_cos=r.get("fp32_cos"), fp32_argmax=r.get("fp32_argmax"),
-                       cycles=r.get("metrics", {}).get("cycles"))
+            rec.update(
+                cos=r.get("cos"),
+                rel=r.get("rel"),
+                ok=bool(r.get("ok")),
+                w8a8_cos=r.get("w8a8_cos"),
+                w8a8_rel=r.get("w8a8_rel"),
+                fp32_cos=r.get("fp32_cos"),
+                fp32_argmax=r.get("fp32_argmax"),
+                cycles=r.get("metrics", {}).get("cycles"),
+            )
             rec["rvv"] = objdump_rvv(work / "model.o")
-            print(f"SPIKE {bundle}: cos={rec.get('cos')} ok={rec['ok']} "
-                  f"any_rvv={rec['rvv'].get('any_rvv')} cyc={rec.get('cycles')}", flush=True)
+            print(
+                f"SPIKE {bundle}: cos={rec.get('cos')} ok={rec['ok']} "
+                f"any_rvv={rec['rvv'].get('any_rvv')} cyc={rec.get('cycles')}",
+                flush=True,
+            )
         except Exception as e:
             rec["ran"] = False
             rec["error"] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"

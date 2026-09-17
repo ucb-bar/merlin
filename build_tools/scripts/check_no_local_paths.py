@@ -23,6 +23,7 @@ Usage:
   check_no_local_paths.py            # every tracked file
   check_no_local_paths.py --staged   # only what is staged (pre-commit)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -38,11 +39,24 @@ _USER_ROOTS = ("/home/", "/scratch/", "/scratch2/")
 #: Segments that are deliberately not a person: documentation placeholders, the synthetic names
 #: tests use when a machine-shaped path is the input under test, and SHARED service directories
 #: (``/scratch/firesim_queue`` is a queue every session submits to, not anyone's home).
-_GENERIC = frozenset({
-    "<user>", "$USER", "${USER}", "path", "to", "builder", "someone", "answer", "runner", "user",
-    "...", "firesim_queue", "chipyard",
-    "\\w+",   # a redaction PATTERN in transcript_tooling_audit.py, not a path
-})
+_GENERIC = frozenset(
+    {
+        "<user>",
+        "$USER",
+        "${USER}",
+        "path",
+        "to",
+        "builder",
+        "someone",
+        "answer",
+        "runner",
+        "user",
+        "...",
+        "firesim_queue",
+        "chipyard",
+        "\\w+",  # a redaction PATTERN in transcript_tooling_audit.py, not a path
+    }
+)
 
 #: An account name is at least this long. Below it the segment is a test placeholder -- ``/home/x``
 #: in a fabricated environment dict, ``/scratch/u/repo/...`` in a leak fixture -- and flagging those
@@ -54,14 +68,30 @@ _MIN_ACCOUNT_LEN = 3
 _PATH_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./")
 
 #: Binary-ish payloads a text scan would only produce noise on.
-_SKIP_SUFFIXES = (".png", ".jpg", ".jpeg", ".pdf", ".o", ".a", ".so", ".bin", ".elf",
-                  ".safetensors", ".tar", ".gz", ".bz2", ".zip", ".npz", ".pt", ".pyc")
+_SKIP_SUFFIXES = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".pdf",
+    ".o",
+    ".a",
+    ".so",
+    ".bin",
+    ".elf",
+    ".safetensors",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".zip",
+    ".npz",
+    ".pt",
+    ".pyc",
+)
 
 
 def _tracked(staged: bool) -> list[str]:
     """`check=True`: an empty list because git failed is not an empty list because nothing matched."""
-    cmd = (["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"] if staged
-           else ["git", "ls-files"])
+    cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"] if staged else ["git", "ls-files"]
     out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True).stdout
     return [ln for ln in out.splitlines() if ln.strip()]
 
@@ -69,8 +99,9 @@ def _tracked(staged: bool) -> list[str]:
 def _ratcheted() -> set[str]:
     if not RATCHET.is_file():
         return set()
-    return {ln.strip() for ln in RATCHET.read_text(encoding="utf-8").splitlines()
-            if ln.strip() and not ln.startswith("#")}
+    return {
+        ln.strip() for ln in RATCHET.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")
+    }
 
 
 def _offending_segments(text: str) -> set[str]:
@@ -84,7 +115,7 @@ def _offending_segments(text: str) -> set[str]:
                 break
             start = at + len(root)
             if at > 0 and text[at - 1] in _PATH_CHARS:
-                continue        # not the start of an absolute path (e.g. out/scratch/x.json)
+                continue  # not the start of an absolute path (e.g. out/scratch/x.json)
             rest = text[start:]
             # The segment ends at the next separator of any kind the surrounding syntax may use.
             cut = len(rest)
@@ -120,13 +151,14 @@ def check(staged: bool) -> list[str]:
 def main(argv: list[str]) -> int:
     violations = check("--staged" in argv)
     if violations:
-        sys.stderr.write(
-            f"local paths FAILED -- {len(violations)} tracked file(s) name a personal directory:\n")
+        sys.stderr.write(f"local paths FAILED -- {len(violations)} tracked file(s) name a personal directory:\n")
         for v in violations:
             sys.stderr.write(f"  - {v}\n")
-        sys.stderr.write("Read it from .env (merlin.common.paths.env / ext_path), resolve it as a "
-                         "sibling of the repo, or put it under $TMPDIR. A measurement provenance "
-                         "record that cannot be generalised goes in no_local_paths_ratchet.txt.\n")
+        sys.stderr.write(
+            "Read it from .env (merlin.common.paths.env / ext_path), resolve it as a "
+            "sibling of the repo, or put it under $TMPDIR. A measurement provenance "
+            "record that cannot be generalised goes in no_local_paths_ratchet.txt.\n"
+        )
         return 1
     print(f"local paths: OK ({len(_ratcheted())} provenance record(s) ratcheted)")
     return 0

@@ -6,6 +6,7 @@ rebuild.  It never recompiles or changes the model: every arm must use the same 
 directory (and therefore the same generated ABI and weights), and every candidate
 output must be byte-identical to the first control launch before timing is retained.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,21 +51,20 @@ def _arm(value: str) -> tuple[str, Path]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model-dir", type=Path, required=True)
-    ap.add_argument("--work-dir", type=Path, required=True,
-                    help="shared completed build directory containing ABI and weights")
+    ap.add_argument(
+        "--work-dir", type=Path, required=True, help="shared completed build directory containing ABI and weights"
+    )
     ap.add_argument("--baseline", type=Path, required=True)
-    ap.add_argument("--arm", action="append", type=_arm, required=True,
-                    help="repeat LABEL=/path/to/elf; first arm is the control")
-    ap.add_argument("--order", required=True,
-                    help="comma-separated interleaving using the arm labels")
+    ap.add_argument(
+        "--arm", action="append", type=_arm, required=True, help="repeat LABEL=/path/to/elf; first arm is the control"
+    )
+    ap.add_argument("--order", required=True, help="comma-separated interleaving using the arm labels")
     ap.add_argument("--cores", default="1,8")
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--iters", type=int, default=5)
     ap.add_argument("--expected-sha256")
-    ap.add_argument("--staged-weights",
-                    help="existing board path for the work directory's mmap weights")
-    ap.add_argument("--staged-weights-sha256",
-                    help="required digest when --staged-weights is used")
+    ap.add_argument("--staged-weights", help="existing board path for the work directory's mmap weights")
+    ap.add_argument("--staged-weights-sha256", help="required digest when --staged-weights is used")
     ap.add_argument("--timeout", type=int, default=1200)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
@@ -103,11 +103,11 @@ def main() -> int:
         if local_digest != args.staged_weights_sha256:
             ap.error(f"local mmap weights digest {local_digest} does not match the staged digest")
         remote = k1._ssh(  # The board adapter owns credentials, port, and bounded execution.
-            "sha256sum -- " + shlex.quote(args.staged_weights), timeout=180)
+            "sha256sum -- " + shlex.quote(args.staged_weights), timeout=180
+        )
         remote_digest = remote.stdout.split()[0] if remote.returncode == 0 else ""
         if remote_digest != local_digest:
-            raise RuntimeError(
-                f"staged board weights digest {remote_digest!r} != local {local_digest}")
+            raise RuntimeError(f"staged board weights digest {remote_digest!r} != local {local_digest}")
         # run_binary_on_k1 only consults bwork for its mmap marker and full-output sink. A marker-free
         # run directory lets the explicitly verified, immutable board file be reused across launches.
         run_work = args.out.parent / (args.out.stem + ".runio")
@@ -121,11 +121,15 @@ def main() -> int:
         "shared_work_dir": str(work_dir),
         "staged_weights": staged_weights,
         "control": control,
-        "protocol": {"order": order, "cores": [int(x) for x in args.cores.split(",")],
-                     "warmup": args.warmup, "timed_iterations": args.iters,
-                     "full_output_required": True, "bit_exact_across_arms": True},
-        "artifacts": {name: {"elf": str(path), "sha256": _sha_bytes(path.read_bytes())}
-                      for name, path in arms.items()},
+        "protocol": {
+            "order": order,
+            "cores": [int(x) for x in args.cores.split(",")],
+            "warmup": args.warmup,
+            "timed_iterations": args.iters,
+            "full_output_required": True,
+            "bit_exact_across_arms": True,
+        },
+        "artifacts": {name: {"elf": str(path), "sha256": _sha_bytes(path.read_bytes())} for name, path in arms.items()},
         "launches": [],
     }
     canonical: bytes | None = None
@@ -136,15 +140,23 @@ def main() -> int:
             pkg = replace(pkg0, run_id=f"k1_ab_{name}_c{cores}_p{position}")
             row = {"cores": cores, "position": position, "arm": name}
             try:
-                run_env = {"MERLIN_WARMUP": str(args.warmup),
-                           "MERLIN_ITERS": str(args.iters),
-                           "MERLIN_AB_PAD": "X" * (64 << position)}
+                run_env = {
+                    "MERLIN_WARMUP": str(args.warmup),
+                    "MERLIN_ITERS": str(args.iters),
+                    "MERLIN_AB_PAD": "X" * (64 << position),
+                }
                 if staged_weights:
                     run_env["MERLIN_WEIGHTS"] = staged_weights["path"]
                 result = k1.run_binary_on_k1(
-                    model_dir, run_work, pkg, binary, env=run_env,
-                    timeout=args.timeout, capture_full_output=True,
-                    parallel_harts=cores)
+                    model_dir,
+                    run_work,
+                    pkg,
+                    binary,
+                    env=run_env,
+                    timeout=args.timeout,
+                    capture_full_output=True,
+                    parallel_harts=cores,
+                )
                 output = np.ascontiguousarray(result["outputs"], dtype="<f4").tobytes()
                 digest = _sha_bytes(output)
                 if expected and digest != expected:
@@ -159,16 +171,19 @@ def main() -> int:
                 samples = [int(x) for x in result.get("iter_wall_ns", ())]
                 if len(samples) != args.iters:
                     raise RuntimeError(f"expected {args.iters} samples, got {len(samples)}")
-                row.update(status="pass", samples_ns=samples,
-                           launch_mean_ns=statistics.fmean(samples),
-                           launch_median_ns=statistics.median(samples),
-                           output_sha256=digest,
-                           output_elements=len(output) // 4,
-                           independent_reference_gate=zm._gate(
-                               np.frombuffer(output, dtype="<f4"), refs, min_coverage=1.0)
-                               if refs else None,
-                           board_conditions=result.get("board_conditions"),
-                           affinity_mask=result.get("affinity_mask"))
+                row.update(
+                    status="pass",
+                    samples_ns=samples,
+                    launch_mean_ns=statistics.fmean(samples),
+                    launch_median_ns=statistics.median(samples),
+                    output_sha256=digest,
+                    output_elements=len(output) // 4,
+                    independent_reference_gate=zm._gate(np.frombuffer(output, dtype="<f4"), refs, min_coverage=1.0)
+                    if refs
+                    else None,
+                    board_conditions=result.get("board_conditions"),
+                    affinity_mask=result.get("affinity_mask"),
+                )
             except Exception as exc:
                 row.update(status="failed", error=f"{type(exc).__name__}: {exc}")
                 report["launches"].append(row)
@@ -176,16 +191,16 @@ def main() -> int:
                 raise
             report["launches"].append(row)
             _save(args.out, report)
-            print(f"c{cores} p{position} {name}: {row['launch_mean_ns']/1e6:.6f} ms", flush=True)
+            print(f"c{cores} p{position} {name}: {row['launch_mean_ns'] / 1e6:.6f} ms", flush=True)
 
     summary = {}
     for cores in report["protocol"]["cores"]:
         per_arm = {}
         for name in arms:
-            means = [row["launch_mean_ns"] for row in report["launches"]
-                     if row["cores"] == cores and row["arm"] == name]
-            per_arm[name] = {"launch_means_ns": means,
-                             "median_launch_mean_ns": statistics.median(means)}
+            means = [
+                row["launch_mean_ns"] for row in report["launches"] if row["cores"] == cores and row["arm"] == name
+            ]
+            per_arm[name] = {"launch_means_ns": means, "median_launch_mean_ns": statistics.median(means)}
         control_ns = per_arm[control]["median_launch_mean_ns"]
         for name, values in per_arm.items():
             values["speedup_vs_control"] = control_ns / values["median_launch_mean_ns"]

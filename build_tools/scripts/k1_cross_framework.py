@@ -17,18 +17,24 @@ linked against the COMPILER-EMITTED model.o for each (fork, shape) — the exact
 uses — also rdtime-timed inner-compute. honest not_run with the exact blocker for anything that
 won't build/run on K1; never a fabricated number.
 """
+
 from __future__ import annotations
 
-import argparse, json, subprocess, sys, tempfile
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after
-from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
+from merlin.common.paths import repo_root
 from merlin.kernels import bench_ceiling
+from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+
 if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _k1_common import _cc, _deploy_run  # noqa: E402  (helpers shared by the k1 drivers)
@@ -47,30 +53,56 @@ OURS_FORKS = (
 
 # K1 Linux compile flags (glibc hosted; NOT medany/nostdlib). riscv_vector.h + the kernel
 # intrinsics come from the SpacemiT clang. -ffast-math to match the spike experts' -O3 -ffast-math.
-_K1_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
-              "-O3", "-ffast-math", "-DNDEBUG", "-std=gnu99", "-Wno-implicit-function-declaration"]
+_K1_CFLAGS = [
+    "--target=riscv64-unknown-linux-gnu",
+    "-march=rv64gcv",
+    "-mabi=lp64d",
+    "-O3",
+    "-ffast-math",
+    "-DNDEBUG",
+    "-std=gnu99",
+    "-Wno-implicit-function-declaration",
+]
 
 
 def _parse(base: dict, console: str | None, detail: str) -> dict:
     if console is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": detail}
     if "VERIFY PASS" not in console:
-        return {**base, "ticks": None, "status": "not_run",
-                "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
+        return {
+            **base,
+            "ticks": None,
+            "status": "not_run",
+            "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
+        }
     ticks = int_after(console, "CYCLES")  # driver prints CYCLES = read_csr(mcycle) delta = rdtime ticks
     if ticks is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
-    return {**base, "ticks": ticks, "status": "pass",
-            "wall_ns_est": int(ticks * 1e9 / k1.K1_TIMEBASE_HZ),
-            "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
+    return {
+        **base,
+        "ticks": ticks,
+        "status": "pass",
+        "wall_ns_est": int(ticks * 1e9 / k1.K1_TIMEBASE_HZ),
+        "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified",
+    }
 
 
 def measure_expert_k1(source: str, *, M: int, N: int, K: int) -> dict:
     spec = expert._experts()[source]
-    base = {"op": "matmul", "dtype": spec["dtype"], "M": M, "N": N, "K": K,
-            "source": source, "target": "k1", "mode": "inner_compute",
-            "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "kernel_file": spec["kernel_file"], "measure_method": "standalone_linux_inner_compute"}
+    base = {
+        "op": "matmul",
+        "dtype": spec["dtype"],
+        "M": M,
+        "N": N,
+        "K": K,
+        "source": source,
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "kernel_file": spec["kernel_file"],
+        "measure_method": "standalone_linux_inner_compute",
+    }
     cc = _cc()
     incs = [K1H, HERE] + [p for p in spec["incs"] if p != HERE]  # k1_harness/util.h FIRST
     inc_flags = []
@@ -79,8 +111,7 @@ def measure_expert_k1(source: str, *, M: int, N: int, K: int) -> dict:
     shape = [f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}"]
     with tempfile.TemporaryDirectory(prefix="k1_expert_") as tmp:
         binp = Path(tmp) / f"{source}_gemm"
-        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *shape, "-static", "-o", str(binp),
-               str(spec["driver"]), "-lm"]
+        cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *shape, "-static", "-o", str(binp), str(spec["driver"]), "-lm"]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         except (subprocess.TimeoutExpired, OSError) as e:
@@ -88,28 +119,39 @@ def measure_expert_k1(source: str, *, M: int, N: int, K: int) -> dict:
         if p.returncode != 0 or not binp.is_file():
             # retry dynamic if static link fails
             try:
-                p2 = subprocess.run([c for c in cmd if c != "-static"],
-                                    capture_output=True, text=True, timeout=300)
+                p2 = subprocess.run([c for c in cmd if c != "-static"], capture_output=True, text=True, timeout=300)
             except (subprocess.TimeoutExpired, OSError) as e:
                 return {**base, "ticks": None, "status": "not_run", "blocker": f"build exec failed: {e}"}
             if p2.returncode != 0 or not binp.is_file():
-                return {**base, "ticks": None, "status": "not_run",
-                        "blocker": f"build failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
+                return {
+                    **base,
+                    "ticks": None,
+                    "status": "not_run",
+                    "blocker": f"build failed rc={p.returncode}: {p.stderr.strip()[-700:]}",
+                }
         console, detail = _deploy_run(binp, f"{source}_{M}_{N}_{K}")
     return _parse(base, console, detail)
 
 
-def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
-                    timeout: int = 600) -> dict:
-    from merlin.mining.apply import apply_rvv_package
+def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int, timeout: int = 600) -> dict:
     from merlin.mining import workloads
+    from merlin.mining.apply import apply_rvv_package
 
-    base = {"op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
-            "source": run_id, "target": "k1", "mode": "inner_compute",
-            "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "compiler_features": features,
-            "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
-            "measure_method": "standalone_linux_inner_compute"}
+    base = {
+        "op": "matmul",
+        "dtype": "f32",
+        "M": M,
+        "N": N,
+        "K": K,
+        "source": run_id,
+        "target": "k1",
+        "mode": "inner_compute",
+        "timer": "rdtime",
+        "timebase_hz": k1.K1_TIMEBASE_HZ,
+        "compiler_features": features,
+        "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
+        "measure_method": "standalone_linux_inner_compute",
+    }
     bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
     hb = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id=run_id, compiler_features=list(features))
@@ -131,22 +173,51 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
         feats = frozenset(pkg.compiler_features or []) or None
         lowered_path = "vectorized"
         try:
-            res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                                   vectorize=True, transform_schedule=pkg.schedule_text,
-                                   hoist_static_allocs=False, features=feats)
+            res = lower_model_file(
+                prepared,
+                work / "lower",
+                targets=(),
+                textual=True,
+                vectorize=True,
+                transform_schedule=pkg.schedule_text,
+                hoist_static_allocs=False,
+                features=feats,
+            )
         except PipelineError as e:
-            return {**base, "ticks": None, "status": "not_run",
-                    "blocker": f"vectorized lowering raised (feature whole-shape unsafe): {str(e)[:200]}"}
+            return {
+                **base,
+                "ticks": None,
+                "status": "not_run",
+                "blocker": f"vectorized lowering raised (feature whole-shape unsafe): {str(e)[:200]}",
+            }
         clang23 = toolchain.clang()
         model_o = work / "model.o"
         try:
-            subprocess.run([str(clang23), "--target=riscv64-unknown-linux-gnu",
-                            "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wno-override-module",
-                            "-c", str(res.ll_path), "-o", str(model_o)],
-                           capture_output=True, text=True, timeout=300, check=True)
+            subprocess.run(
+                [
+                    str(clang23),
+                    "--target=riscv64-unknown-linux-gnu",
+                    "-march=rv64gcv",
+                    "-mabi=lp64d",
+                    "-O2",
+                    "-Wno-override-module",
+                    "-c",
+                    str(res.ll_path),
+                    "-o",
+                    str(model_o),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=True,
+            )
         except subprocess.CalledProcessError as e:
-            return {**base, "ticks": None, "status": "not_run",
-                    "blocker": f"model.o compile failed: {e.stderr[-400:] if e.stderr else e}"}
+            return {
+                **base,
+                "ticks": None,
+                "status": "not_run",
+                "blocker": f"model.o compile failed: {e.stderr[-400:] if e.stderr else e}",
+            }
         cgen = work / "cgen"
         c_runtime.generate(md, cgen, md / "inputs.npz")
 
@@ -158,8 +229,13 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
         for d in incs:
             inc_flags += ["-I", str(d)]
         shape = [f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}"]
-        srcs = [str(HERE / "ours_gemm_driver.c"), str(cgen / "model_call.c"),
-                str(rt / "merlin_model.c"), str(abi / "mlir_runtime.c"), str(model_o)]
+        srcs = [
+            str(HERE / "ours_gemm_driver.c"),
+            str(cgen / "model_call.c"),
+            str(rt / "merlin_model.c"),
+            str(abi / "mlir_runtime.c"),
+            str(model_o),
+        ]
         cmd = [str(cc), *inc_flags, *_K1_CFLAGS, *shape, "-static", "-o", str(binp), *srcs, "-lm", "-lpthread"]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=400)
@@ -167,13 +243,16 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
             return {**base, "ticks": None, "status": "not_run", "blocker": f"link exec failed: {e}"}
         if p.returncode != 0 or not binp.is_file():
             try:
-                p2 = subprocess.run([c for c in cmd if c != "-static"],
-                                    capture_output=True, text=True, timeout=400)
+                p2 = subprocess.run([c for c in cmd if c != "-static"], capture_output=True, text=True, timeout=400)
             except (subprocess.TimeoutExpired, OSError) as e:
                 return {**base, "ticks": None, "status": "not_run", "blocker": f"link exec failed: {e}"}
             if p2.returncode != 0 or not binp.is_file():
-                return {**base, "ticks": None, "status": "not_run",
-                        "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
+                return {
+                    **base,
+                    "ticks": None,
+                    "status": "not_run",
+                    "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-700:]}",
+                }
         console, detail = _deploy_run(binp, f"{run_id}_{M}_{N}_{K}", timeout=timeout)
     r = _parse(base, console, detail)
     r["lowering_path"] = lowered_path
@@ -200,7 +279,8 @@ def main():
             print("  ", r.get("status"), r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
 
-    outp = Path(a.out); outp.parent.mkdir(parents=True, exist_ok=True)
+    outp = Path(a.out)
+    outp.parent.mkdir(parents=True, exist_ok=True)
     with outp.open("w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")

@@ -19,6 +19,7 @@ Modes, mirroring the sibling gates in this directory:
   --check         re-derive and diff against the tracked file; non-zero on drift
   --json          machine-readable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,7 @@ _HERE = Path(__file__).resolve()
 # The generator lives beside the capsules, not in the package tree, and `_ungradeable` imports it to
 # ask the golden engines what they can grade. Without this the gradeability check cannot run -- and a
 # check that cannot run reports `ungradeable_unchecked`, which is honest but blocks every synthesis.
-for _p in (_HERE.parents[2] / "merlin" / "python",
-           _HERE.parents[2] / "merlin" / "contract" / "capsules"):
+for _p in (_HERE.parents[2] / "merlin" / "python", _HERE.parents[2] / "merlin" / "contract" / "capsules"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -110,14 +110,25 @@ def _ungradeable(entries: list[dict], target: str) -> list[dict]:
         source = entry.get("source")
         why = None
         if source == "pytorch" and regime != "simt" and not entry.get("quant_scheme"):
-            why = (f"a pytorch-sourced capsule needs a float dtype or a declared quant_scheme; this "
-                   f"cell is {entry.get('operand_dtype')!r} (regime {regime!r})")
+            why = (
+                f"a pytorch-sourced capsule needs a float dtype or a declared quant_scheme; this "
+                f"cell is {entry.get('operand_dtype')!r} (regime {regime!r})"
+            )
         elif source is None and regime == "simt" and entry["op"] in _MX_ONLY_GOLDEN:
-            why = (f"{entry['op']!r} has a golden only in the block-scaled engine, and this cell is "
-                   f"{entry.get('operand_dtype')!r} (regime {regime!r})")
+            why = (
+                f"{entry['op']!r} has a golden only in the block-scaled engine, and this cell is "
+                f"{entry.get('operand_dtype')!r} (regime {regime!r})"
+            )
         if why:
-            out.append({"name": entry["name"], "op": entry["op"],
-                        "dtype": entry.get("operand_dtype"), "regime": regime, "reason": why})
+            out.append(
+                {
+                    "name": entry["name"],
+                    "op": entry["op"],
+                    "dtype": entry.get("operand_dtype"),
+                    "regime": regime,
+                    "reason": why,
+                }
+            )
     return out
 
 
@@ -135,9 +146,11 @@ _MX_ONLY_GOLDEN = frozenset({"attention_mx"})
 
 def _binding(target: str):
     import generate_corpus as GC
+
     from merlin.targetgen import corpus_spec as CSPEC
     from merlin.targetgen.corpora import descriptor_path
     from merlin.targetgen.target_experiment import load_target_experiment
+
     prof = GC.load_profile(target)
     te = load_target_experiment(descriptor_path(target))
     return CSPEC.derive_binding(te, prof.get("datapath") or {})
@@ -148,9 +161,12 @@ def synth_for(target: str) -> dict:
 
     spec_path = merlin_dir() / _CONFORMANCE / f"{target}.yaml"
     if not spec_path.is_file():
-        return {"target": target, "status": "no_conformance_spec",
-                "detail": f"no derived requirement at {spec_path}; write one with "
-                          f"check_conformance_coverage.py --target {target} --write"}
+        return {
+            "target": target,
+            "status": "no_conformance_spec",
+            "detail": f"no derived requirement at {spec_path}; write one with "
+            f"check_conformance_coverage.py --target {target} --write",
+        }
     doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
     try:
         out = synthesize(doc, workload_spec=_workload_spec(target))
@@ -159,9 +175,13 @@ def synth_for(target: str) -> dict:
 
     try:
         bad = _ungradeable(_gradeable_candidates(list(out.get("capsules") or ())), target)
-    except Exception as exc:                       # noqa: BLE001 -- cannot check is not "all fine"
-        return {"target": target, "status": "ungradeable_unchecked",
-                "detail": f"could not decide gradeability: {type(exc).__name__}: {exc}", **out}
+    except Exception as exc:  # noqa: BLE001 -- cannot check is not "all fine"
+        return {
+            "target": target,
+            "status": "ungradeable_unchecked",
+            "detail": f"could not decide gradeability: {type(exc).__name__}: {exc}",
+            **out,
+        }
     if bad:
         keep = {b["name"] for b in bad}
         out["capsules"] = [e for e in out["capsules"] if e["name"] not in keep]
@@ -177,7 +197,8 @@ def synth_for(target: str) -> dict:
             "entries the requirement asked for whose (op, dtype) no golden engine can grade. They are "
             "NOT in `capsules` below; adding a golden branch for the op in that dtype's engine is what "
             "closes them. `n_entries` counts what synthesis produced, `n_written` what survived this "
-            "filter -- a difference between the two with an empty list here would be a silent drop")
+            "filter -- a difference between the two with an empty list here would be a silent drop"
+        )
         prov["n_written"] = len(out["capsules"])
         out["provenance"] = prov
     return {"target": target, "status": "ok", **out}
@@ -187,12 +208,12 @@ def _render(target: str, res: dict) -> str:
     import yaml
 
     return _HEADER.format(target=target) + yaml.safe_dump(
-        {"provenance": res["provenance"], "capsules": res["capsules"]}, sort_keys=False, width=100)
+        {"provenance": res["provenance"], "capsules": res["capsules"]}, sort_keys=False, width=100
+    )
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--check", action="store_true")
@@ -201,8 +222,11 @@ def main(argv=None) -> int:
 
     targets = _targets(a.target)
     if not targets:
-        print("no --target given and no tracked conformance spec found; write one with "
-              "check_conformance_coverage.py --target NAME --write", file=sys.stderr)
+        print(
+            "no --target given and no tracked conformance spec found; write one with "
+            "check_conformance_coverage.py --target NAME --write",
+            file=sys.stderr,
+        )
         return 2
 
     results = [synth_for(t) for t in targets]
@@ -226,24 +250,29 @@ def main(argv=None) -> int:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(text, encoding="utf-8")
             if not a.json:
-                print(f"wrote {out_path} — {len(res['capsules'])} entry/entries from "
-                      f"{res['provenance']['n_required_cells']} required cell(s)")
+                print(
+                    f"wrote {out_path} — {len(res['capsules'])} entry/entries from "
+                    f"{res['provenance']['n_required_cells']} required cell(s)"
+                )
         elif a.check:
             have = out_path.read_text(encoding="utf-8") if out_path.is_file() else ""
             if have != text:
-                print(f"== {target}: DRIFT — {out_path} differs from a fresh derivation; "
-                      f"re-run with --write", file=sys.stderr)
+                print(
+                    f"== {target}: DRIFT — {out_path} differs from a fresh derivation; re-run with --write",
+                    file=sys.stderr,
+                )
                 rc = 1
             elif not a.json:
                 print(f"== {target}: ok ({len(res['capsules'])} entry/entries)")
         elif not a.json:
-            print(f"== {target}: {len(res['capsules'])} entry/entries from "
-                  f"{res['provenance']['n_required_cells']} required cell(s)")
+            print(
+                f"== {target}: {len(res['capsules'])} entry/entries from "
+                f"{res['provenance']['n_required_cells']} required cell(s)"
+            )
             for e in res["capsules"]:
                 # A whole-model entry names neither: its program is the model and its dtype is the
                 # compile format the roster axis derived. Printing "-" says that, where indexing raised.
-                print(f"     {e['name']:38s} op={str(e.get('op') or '-'):12s} "
-                      f"dtype={e.get('operand_dtype') or '-'}")
+                print(f"     {e['name']:38s} op={str(e.get('op') or '-'):12s} dtype={e.get('operand_dtype') or '-'}")
     return rc
 
 

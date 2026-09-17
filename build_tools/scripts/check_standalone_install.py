@@ -15,6 +15,7 @@ via the ``merlin/_data`` bundle produced by setup.py's build_py hook.
 Runs the build with ``uv`` (the repo's toolchain). Skips cleanly (exit 0) when ``uv`` is absent so a
 minimal CI image without it doesn't hard-fail; wire the full run into the packaging CI job.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -93,6 +94,7 @@ def main() -> int:
 
         # cwd = tmp (outside the repo); scrub MERLIN_REPO_ROOT / PYTHONPATH so nothing points home.
         import os
+
         env = {k: v for k, v in os.environ.items() if k not in ("MERLIN_REPO_ROOT", "PYTHONPATH")}
         r = _run([str(venv / "bin" / "python"), "-c", _PROBE], cwd=str(tmp), env=env)
         sys.stdout.write(r.stdout)

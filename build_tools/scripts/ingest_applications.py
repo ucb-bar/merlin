@@ -17,6 +17,7 @@ The report is the honest part. It names, per class, the shape the application re
 size that class was clamped to for cycle-accurate certification, and every class that could not be
 sized at all -- because an unaffordable behaviour must look different from an absent one.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,7 @@ def ingest(exported: Path, *, quant: str | None = None, timeout: int = 1800) -> 
     # The bundle name carries the format, matching the store's own convention so the existing
     # name-normalisation reads it the way it reads every other capture.
     out = Path(recaptures_dir()) / f"{exported.stem}_{quant or 'fp32'}_app"
-    cmd = [str(python), str(worker), "--exported", str(exported), "--out", str(out),
-           "--m2m-dir", str(m2m)]
+    cmd = [str(python), str(worker), "--exported", str(exported), "--out", str(out), "--m2m-dir", str(m2m)]
     if quant:
         cmd += ["--quant", quant]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -71,16 +71,16 @@ def report(target: str, captures: dict, *, budget_s: float | None = None) -> dic
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", required=True)
-    ap.add_argument("--applications", type=Path,
-                    help="directory of torch.export .pt2 archives to capture")
+    ap.add_argument("--applications", type=Path, help="directory of torch.export .pt2 archives to capture")
     ap.add_argument("--quant", default="", help="torchAO scheme for the capture (default: none)")
-    ap.add_argument("--budget-s", type=float, default=None,
-                    help="seconds a single cycle-accurate certification may take")
-    ap.add_argument("--report-only", action="store_true",
-                    help="skip capture; analyse the application bundles already in the store")
+    ap.add_argument(
+        "--budget-s", type=float, default=None, help="seconds a single cycle-accurate certification may take"
+    )
+    ap.add_argument(
+        "--report-only", action="store_true", help="skip capture; analyse the application bundles already in the store"
+    )
     a = ap.parse_args(argv)
 
     from merlin.common.artifacts import recaptures_dir
@@ -108,17 +108,26 @@ def main(argv=None) -> int:
         return 2
 
     axis = report(a.target, captures, budget_s=a.budget_s)
-    print(f"\n== {a.target}: {axis['n_classes']} behavioural class(es) over {axis['n_regions']} "
-          f"region(s) from {len(captures)} application(s)")
+    print(
+        f"\n== {a.target}: {axis['n_classes']} behavioural class(es) over {axis['n_regions']} "
+        f"region(s) from {len(captures)} application(s)"
+    )
     fit = axis.get("cost_model")
-    print(f"   budget {axis['cert_budget_s']}s ({axis['budget_source']}); cost model: "
-          + (f"{fit['n_samples']} measured runs, R^2 {fit['r2']}" if fit else
-             "NONE — no certification history, so no class can be sized"))
+    print(
+        f"   budget {axis['cert_budget_s']}s ({axis['budget_source']}); cost model: "
+        + (
+            f"{fit['n_samples']} measured runs, R^2 {fit['r2']}"
+            if fit
+            else "NONE — no certification history, so no class can be sized"
+        )
+    )
     for cap in axis.get("required") or ():
         basis = cap.get("basis") or {}
         extends = f"  extends {cap['extends']}" if cap.get("extends") else ""
-        print(f"   {cap['tier']:3s} {cap['class']:58s} ({cap['M']},{cap['K']},{cap['N']})"
-              f"  [{basis.get('sized_by')}]{extends}")
+        print(
+            f"   {cap['tier']:3s} {cap['class']:58s} ({cap['M']},{cap['K']},{cap['N']})"
+            f"  [{basis.get('sized_by')}]{extends}"
+        )
     for refusal in axis.get("refused") or ():
         print(f"   ---  {refusal}")
     if axis.get("captures_unreadable"):
