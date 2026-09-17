@@ -2,10 +2,12 @@
 target: toy_npu
 dialect_name: toynpu
 ops:
-  - {name: res_pack, summary: "pack + make RHS resident"}
-  - {name: matmul,   summary: "matmul vs resident tensor -> accumulator"}
-  - {name: commit,   summary: "apply epilogue + commit accumulator"}
-  - {name: evict,    summary: "free resident storage"}
+  - {name: res_pack,      summary: "pack + make RHS resident"}
+  - {name: matmul,        summary: "matmul vs resident tensor -> accumulator"}
+  - {name: commit,        summary: "apply epilogue + commit accumulator"}
+  - {name: evict,         summary: "free resident storage"}
+  - {name: vector_map,    summary: "elementwise combine (add/mul/identity) + activation on the vector lanes"}
+  - {name: vector_reduce, summary: "reduce a tensor (sum) on the vector lanes"}
 types:
   - {name: resident_tensor}
   - {name: accumulator}
@@ -14,6 +16,8 @@ lowering:
   - {from: interface.matmul,         to: toynpu.matmul}
   - {from: interface.commit,         to: toynpu.commit}
   - {from: interface.resident_evict, to: toynpu.evict}
+  - {from: interface.vector_map,     to: toynpu.vector_map}
+  - {from: interface.vector_reduce,  to: toynpu.vector_reduce}
 tests:
   - {lit: res_pack_roundtrip}
   - {lit: matmul_commit_epilogue}

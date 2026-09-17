@@ -1,0 +1,328 @@
+# RESIDUAL side-input for the voyager_accel capability contract — DRAFT.
+#
+# Every value below is DERIVED from the pinned `voyager_accelerator` release (e3a725db) and carries
+# the file:line it was read from. Nothing is guessed; anything not derivable is spelled UNKNOWN.
+# The full fact map: merlin/experiments/voyager_h2h/VOYAGER_ACCEL_TARGET.md.
+#
+# WHY THIS IS AN ALL-RESIDUAL TARGET (no `facts_source`). The three fact-extractor families merlin
+# has — circt_static, simt_config, opu (merlin/python/merlin/targetgen/families.py:55-95) — all read
+# elaborated RTL. This target's RTL is Catapult HLS output from SystemC/Matchlib templates: its
+# geometry lives in C++ macros and its parameter ABI lives ONLY in src/Params.h, in no RTL at all
+# (the generated top sees one 64-bit port and a `passthrough` blackbox). So there is nothing for an
+# RTL reader to ground, and the honest form is a residual whose every field cites a source file.
+# That is gap G1; it is why `merlin-onboard` will refuse this target today rather than fabricate a
+# manifest (merlin/python/merlin/targetgen/onboard.py:169-173), which is the correct behaviour.
+#
+# THE VALUES BELOW ARE FOR ONE BUILD CONFIGURATION, and that is not a detail: a Voyager accelerator
+# is a -D set, and two builds of the same commit are different devices with different ABIs.
+#   DATATYPE=INT8 IC_DIMENSION=16 OC_DIMENSION=16
+#   INPUT_BUFFER_SIZE=WEIGHT_BUFFER_SIZE=ACCUM_BUFFER_SIZE=1024
+#   DOUBLE_BUFFERED_ACCUM_BUFFER=false SUPPORT_MVM=false SUPPORT_SPMM=false SUPPORT_DWC=false
+# which is the release's own RTL-CI point (.gitlab/ci/rtl.yml) and the release's own canonical build
+# id: INT8_16x16_1024x1024x1024_false_false_false (Makefile:118). See gap G10: the pin registry
+# records a commit, not a -D set, so this string must ride on every voyager_accel result.
+name: voyager_accel
+version: '0.1'
+family: tensor_resident
+
+# NO `facts_source`: see above. Every fact here is source-derived and cited.
+
+# ---------------------------------------------------------------------------------------------------
+# The compute datapath.
+# ---------------------------------------------------------------------------------------------------
+compute_units:
+  - name: matrix_unit
+    # HONEST, and it costs something: `systolic` forces encoding_required=True and the rocc_insn trace
+    # gate from the family profile (families.py:77), because merlin couples the DATAPATH axis to the
+    # CONTROL axis. This device is a systolic array with NO command ISA, so `endpoint_kind` below
+    # overrides the endpoint (target_experiment.py:1182-1183 clears the trace gate with it) but
+    # `encoding_required` has no override path (target_experiment.py:1188). That is gap G2.
+    # Declaring `kind: spatial` to dodge it would misdescribe the datapath and misroute fact
+    # extraction at the OPU extractor; it is the wrong fix.
+    kind: systolic
+    # cite: src/SystolicArray.h (the array), src/ProcessingElement.h (the cell),
+    #       src/Skewer.h (the diagonal skew), src/MatrixProcessor.h (the driver).
+    dtypes: [int8]
+    # cite: src/ArchitectureParams.h:94-95 (INPUT_DATATYPE/WEIGHT_DATATYPE = DataTypes::int8 under
+    #       -DINT8); typedef Int<8,true> int8 at src/datatypes/DataTypes.h:30.
+    ops: [matmul]
+    # conv2d is also mapped by the release (test/toolchain/MatrixOps.h, via the fy/fx loop slots and
+    # stride/padding fields of MatrixParams), but this draft declares only what the first milestone
+    # exercises. Under-declaring is a denominator loss; it is recorded here so it is not forgotten.
+    accumulate:
+      - {in: int8, weight: int8, acc: int24}
+      # cite: src/ArchitectureParams.h:96 (ACCUM_DATATYPE DataTypes::int24 under -DINT8);
+      #       src/datatypes/DataTypes.h:34 (typedef Int<24,true> int24). CONFIRMED in the built RTL:
+      #       the accumulator RAM is DualPortBuffer_Pack1D_DataTypes_int24_16UL_1024 (1024 x 384 b)
+      #       and the matrix->vector bus is wire [383:0] matrix_unit_output_dat = 16 lanes x 24 b.
+      # NOTE: this is int24, not int32. -DINT8_32 (src/ArchitectureParams.h:99-104) is a DIFFERENT
+      # device with acc: int32. A capsule corpus graded at i8xi8->i32 would be grading the wrong build.
+    # `scaling` and `requant` are UNKNOWN (see the `unknowns:` block below, U6) and are therefore
+    # NOT declared here: merlin.targetgen.compute_units validates both against a CLOSED vocabulary
+    # with no "unknown" member, so the only way to record ignorance is to omit the key and say so.
+    # That is gap G11. Not derivable in this pass: the matrix unit carries per-op dequantise plumbing
+    # (weight_dequant / dq_scale_offset / dq_zero_point_offset, src/Params.h:173-175) and the MX
+    # builds add block-scale streams (src/Accelerator.h:33-41), but the arithmetic those select
+    # lives in the vector unit's instruction encoding, which this pass did not read.
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8], ranks: [2]}
+      # rank 2 ONLY in this draft: rank 3/4 are believed reachable (the loop nest has fy/fx slots and
+      # stride/padding) but were not exercised, and declaring a rank this target has not been shown to
+      # execute is the same failure as declaring too few.
+
+  - name: vector_unit
+    kind: vector
+    dtypes: [bfloat16]
+    # cite: src/ArchitectureParams.h:97 (VECTOR_DATATYPE DataTypes::bfloat16 under -DINT8);
+    #       StdFloat<7,8,false,true,AC_RND_CONV> at src/datatypes/DataTypes.h:40.
+    ops: []
+    # DELIBERATELY EMPTY, not "none": the op vocabulary is the VectorInstructions encoding
+    # (src/Params.h:526-725, src/vector_unit/VectorOps.h), which this pass did not read — UNKNOWN U6
+    # in the `unknowns:` block below.
+    # WHY THE UNIT IS DECLARED AT ALL DESPITE THAT: the matrix unit CANNOT WRITE MEMORY. Its only output is
+    # a combinational Pack1D<int24,16> channel wired straight into the vector unit
+    # (src/Accelerator.h:46-47, bound at :220 and :304); every store in the device is the vector
+    # unit's (vector_output_data 128 b + vector_output_addr 32 b, src/Accelerator.h:152-155).
+    # So ONE matmul that must reach DRAM is TWO parameter submissions on TWO queues. merlin's
+    # contract has no axis for cross-unit egress — that is gap G7.
+
+# ---------------------------------------------------------------------------------------------------
+# The control endpoint. THE defining fact about this target.
+# ---------------------------------------------------------------------------------------------------
+# Not an ISA. Each unit has its own queue of 64-bit words; the host bit-packs a parameter struct in
+# Marshall order and streams it; a per-unit ParamsDeserializer pops exactly ceil(T::width/64) words
+# and rebuilds the struct. No opcode, no length, no tag, no framing, no in-band routing.
+#   cite: src/Accelerator.h:22 (matrix_unit_params_in), :139 (vector_unit_params_in),
+#         :64/:110/:173 (mvm/spmm/dwc queues, present only under their -D flags);
+#         src/ParamsDeserializer.h:15-26 (get_serialized_params<T,64>);
+#         built RTL: `input [63:0] matrix_unit_params_in_dat` + _vld/_rdy.
+# So the 4th artifact is a command buffer, not assembly, and the target's runtime backend owns the
+# Marshall packing and the queue routing (which is the host's job in the release's own driver too:
+# test/common/Harness.cc:352-397 dispatches on struct type and on is_fc/is_spmm).
+endpoint_kind: command_buffer
+
+# The ABI encoding surface no RTL discovery can ground — the struct layout exists ONLY in
+# src/Params.h. Spelled as widths + word counts rather than as an opcode table, because there are no
+# opcodes. Every number here is the release's own declared width, and the Marshaller asserts that the
+# declared width equals the exact sum of the field widths (marshaller.h:172-175), so these are
+# self-checking against the build rather than transcribed.
+encoding:
+  kind: params_struct
+  # Bit order: the FIRST Marshalled field occupies the LOW bits; field n sits at
+  # glob.range(cur_idx+FieldSize-1, cur_idx). cite: connections/marshaller.h:156-169.
+  # Word i of the stream is bits [64i+63 : 64i]; the last word is zero-padded.
+  # cite: test/common/Harness.cc:344-349 (host) and src/ParamsDeserializer.h:18-22 (device).
+  bit_order: lsb_first
+  word_bits: 64
+  # Struct widths for THIS build. They move with DTYPE_INDEX_WIDTH (2 under MXNF4,
+  # src/ArchitectureParams.h:138), NUM_CODEBOOK_ENTRIES (:263-265) and SUPPORT_SPMM — which is
+  # exactly why a backend must never hardcode a word count (gap G8).
+  structs:
+    MatrixParams:
+      width_bits: 1010     # cite: src/Params.h:184-201 (712 base + 298 extra + 0 spmm)
+      words: 16
+      queue: matrix_unit_params_in
+    VectorParams:
+      width_bits: 1084     # cite: src/Params.h:938-952 (4*186 + 12+36+32+18+4+8+32-16-18+135+97)
+      words: 17
+      queue: vector_unit_params_in
+    VectorInstructionConfig:
+      width_bits: 1582     # cite: src/Params.h:1560-1562 (135*8 + 4 + 16 + 434 + 48)
+      words: 25
+      queue: vector_unit_params_in
+    DwCParams:
+      width_bits: 349      # cite: src/Params.h:1740-1744 (SUPPORT_DWC builds only)
+      words: 6
+      queue: dwc_unit_params_in
+  # A vector OPERATION is always the PAIR, in this order, on the same queue: 17 + 25 = 42 words.
+  # cite: src/ParamsDeserializer.h:169-198.
+  submission_units:
+    matrix_op: [MatrixParams]
+    vector_op: [VectorParams, VectorInstructionConfig]
+
+# ---------------------------------------------------------------------------------------------------
+# Completion. There is no interrupt, no status register, no MMIO and no operation id.
+# ---------------------------------------------------------------------------------------------------
+# Two Connections::SyncOut channels per unit carrying NO DATA — a bare ready/valid pulse pair.
+#   cite: src/Accelerator.h:43-44 (matrix_unit_start/done), :165-166 (vector_unit_start/done),
+#         :100-101/:131-132/:198-199 (the optional units); built RTL:
+#         `output matrix_unit_start_vld; input matrix_unit_start_rdy; output matrix_unit_done_vld;
+#          input matrix_unit_done_rdy`.
+# The host BLOCKS on the pulse (test/common/Harness.cc:441 start, :538 done) and serialises between
+# operations (:392-396). Whether a unit accepts op N+1's parameters while op N runs is NOT
+# established by the release — it never tries (UNKNOWN U5), so a backend must assume it does not.
+# merlin's contract has no vocabulary for this; recorded here as free text. That is gap G6.
+completion:
+  kind: sync_pulse
+  per: unit
+  tagged: false
+  interrupts: false
+  mmio: false
+
+# ---------------------------------------------------------------------------------------------------
+# Memory. The units master their own memory; there is no scratchpad and no DMA instruction.
+# ---------------------------------------------------------------------------------------------------
+memory_model:
+  resident: false            # no software-addressable on-chip store to make anything resident IN
+  accumulators: true         # 1024 x Pack1D<int24,16> (48 KiB), cite: src/MatrixUnit.h:110
+  unit_mastered: true
+  scratchpad: false
+  # Each unit drives Connections::Out<MemoryRequest> and consumes an UNTAGGED, IN-ORDER stream of
+  # port-width beats. MemoryRequest = {ac_int<64> address; ac_int<32> burst_size}, 96 b on the wire.
+  #   cite: src/AccelTypes.h:20-24; built RTL `output [95:0] matrix_unit_input_req_dat`.
+  #   address = <stream>_offset + element_index * dtype_width/8   (src/Utils.h:60-68)
+  #   burst_size is in BYTES; responder returns ceil(burst/(port_bytes)) beats
+  #     (test/common/Harness.cc:194-206)
+  # DERIVED HAZARD: the parameter offsets are ADDRESS_WIDTH = 32 bits (src/ArchitectureParams.h:176,
+  # src/Params.h:110-114) while the bus address is 64. A backend must REFUSE a base >= 2^32, never
+  # truncate.
+  address_bits_params: 32
+  address_bits_bus: 64
+  on_chip_bytes: 114688      # 32 KiB input + 32 KiB weight + 48 KiB accumulator
+  # cite: src/MatrixUnit.h:42,74,110 + src/ArchitectureParams.h:309-327 + src/DoubleBuffer.h:12-16
+  #       (two full-depth ping-pong memories per DoubleBuffer) + src/DualPortBuffer.h:9-16 (1 bank
+  #       unless DOUBLE_BUFFERED_ACCUM_BUFFER). CONFIRMED in the built RTL: three distinct
+  #       ccs_ram_sync_1R1W instantiations — DoubleBuffer_1024_128 mem0/mem1 (instantiated twice, as
+  #       input_buffer and weight_buffer) and DualPortBuffer_Pack1D_DataTypes_int24_16UL_1024.
+  # NOTE the discrepancy, do not adopt either side silently: merlin/contract/perf_reference_targets
+  # .yaml:247 names this design `..._sram96KB`. The derived total is 112 KiB for INT8 (128 KiB for
+  # INT8_32). Provenance of the 96 KB label is UNKNOWN (U8).
+  dram_latency: UNKNOWN      # the release ships no memory model: the testbench never stalls
+  dram_bandwidth: UNKNOWN    # cite: test/common/Harness.cc:189-221 + Harness.h:32-41 (sc_fifo)
+  bus_arbitration: UNKNOWN   # 6 independent req/resp port pairs at the top; no interconnect declared
+
+# ---------------------------------------------------------------------------------------------------
+# What a legal program must respect. These are the release's OWN constraints, not merlin's.
+# ---------------------------------------------------------------------------------------------------
+# For an M x K @ K x N GEMM with x0*x1 = M, k0*k1 = N/OC_DIMENSION, c0*c1 = K/IC_DIMENSION.
+# cite: test/common/Tiling.cc:524-560 (the release's tiler enforces exactly these, and exits on
+#       failure rather than spilling).
+compiler_obligations:
+  - "x0 * c0 <= INPUT_BUFFER_SIZE"
+  - "k0 * c0 * IC_DIMENSION <= WEIGHT_BUFFER_SIZE"
+  - "x0 * k0 <= ACCUM_BUFFER_SIZE"
+  - "every loop bound < 1024"
+  # NOT a style rule: MatrixProcessor's own counters are LOOP_WIDTH = 10 (src/MatrixProcessor.h:23)
+  # while MatrixParams::LOOP_WIDTH is 16 (src/Params.h:108). A bound >= 1024 is SILENTLY TRUNCATED
+  # inside the unit.
+  - "every tensor base < 2^32"
+  - "must route each op to the correct unit queue (no in-band routing exists)"
+  - "must submit a vector op as the pair VectorParams,VectorInstructionConfig in that order"
+  - "must pair a matmul that stores to DRAM with a vector op (the matrix unit cannot write memory)"
+
+hardware_promises:
+  - systolic_int8_contraction          # 16 x 16 = 256 MACs; cite: Makefile:48-49
+  - widening_integer_accumulate        # int8 x int8 -> int24; cite: src/ArchitectureParams.h:94-96
+  - ping_pong_input_and_weight_buffers # cite: src/DoubleBuffer.h:12-16
+  - unit_mastered_dram_streaming       # cite: src/Utils.h:60-68, src/InputController.h:215-241
+  - per_unit_start_done_handshake      # cite: src/Accelerator.h:43-44,165-166
+
+runtime_promises:
+  - command_buffer
+
+capabilities: {}
+legality: []
+
+status: prototype
+confidence: low
+requires_human_review: true
+
+# ---------------------------------------------------------------------------------------------------
+# Everything this pass could NOT derive, recorded rather than guessed or silently omitted.
+# Some of these could not be spelled in their natural field because merlin validates that field
+# against a closed vocabulary with no "unknown" member (gap G11) — they are listed here instead, so a
+# reader of the contract sees the ignorance rather than an absence they might read as "none".
+# Full discussion: merlin/experiments/voyager_h2h/VOYAGER_ACCEL_TARGET.md section 3.
+# ---------------------------------------------------------------------------------------------------
+unknowns:
+  U1_clock_frequency: >-
+    not a property of the release. The pinned build targets 5 ns on generic 45 nm and seven blocks
+    miss it by Catapult's own estimate; the paper's 1 GHz / TSMC 16 nm point is not reproducible here.
+  U2_dram_model: >-
+    the release ships no memory model: the testbench answers every request from an array with no
+    stalls (test/common/Harness.cc:189-221). Every published cycle count is against a perfect memory.
+  U3_bus_arbitration: >-
+    six independent request/response port pairs at the top (3 matrix, 3 vector); nothing says how
+    they would share a real interconnect.
+  U4_param_queue_depth: >-
+    Connections::In<ac_int<64>> declares none; the harness binds a Connections::Combinational.
+  U5_pipelined_submission: >-
+    whether a unit accepts op N+1's parameters while op N runs. The release's driver never tries
+    (test/common/Harness.cc:392-396), so a backend must assume it does not.
+  U6_vector_instruction_semantics: >-
+    op_type / vector_op0..3 / vdest / reduce_op / approximation coefficients. The ABI (widths, order,
+    42 words per vector op) IS derived above; the MEANING of the fields is not. This is why
+    compute_units[matrix_unit].scaling and .requant are omitted and [vector_unit].ops is empty.
+  U7_area_power_technology: build- and PDK-dependent; the generic 45 nm build is not the paper's point.
+  U8_on_chip_sram_label: >-
+    merlin/contract/perf_reference_targets.yaml:247 names this design `..._sram96KB`; the derived
+    total is 112 KiB (INT8) / 128 KiB (INT8_32). Provenance of the 96 KB label not established.
+  U9_mx_build_protocol: >-
+    whether MXINT8/MXNF4 (the only SUPPORT_MX datatypes, and the only ones without the depth-1 FIFO)
+    change the completion or queue protocol. They add two request/response pairs per unit and change
+    MatrixParams::width via DTYPE_INDEX_WIDTH; not read in this pass.
+  U10_rtl_derivable_abi: >-
+    none exists. The struct layout lives only in src/Params.h; the generated top sees one 64-bit port
+    and a `passthrough` blackbox. Any merlin fact extractor for this target must read C++ headers,
+    which merlin has no extractor family for (gap G1).
+
+# Which substrate may produce which number.
+measurement:
+  cycles_from: UNKNOWN
+  # The release reports RUNTIME IN NANOSECONDS and cycles = runtime / CLOCK_PERIOD
+  # (test/common/Harness.cc:558-559, test/common/Simulation.cc:145). The only cycle-accurate
+  # substrate today is VCS on Catapult-generated Verilog, through the release's own flow; merlin has
+  # no adapter for it, so no merlin measurement authority is declared.
+  wall_from: null
+  citable_tier: UNKNOWN
+  notes:
+    - "EVERY non-MX build of this release is capped at ~50% of its own matrix throughput by a depth-1
+       accumulate-to-writeback FIFO: src/MatrixProcessor.h:24 is `FIFO_DEPTH = SUPPORT_MX ? 8 : 1`
+       and SUPPORT_MX is true only for MXINT8/MXNF4 (src/ArchitectureParams.h:106-147). Reproduced
+       and A/B'd in merlin/experiments/voyager_h2h/PLANE_B.md: depth 1 -> 2 alone takes MobileBERT
+       from 13.63M cycles / 49.7% utilization to 7.38M / 91.8%. A head-to-head on this RTL must build
+       BOTH sides patched, or report the cap in the cell."
+    - "The INT8 vector path is separately bound by port width: OC_PORT_WIDTH is 128 b
+       (src/ArchitectureParams.h:296-300) while a 16-lane bf16 vector is 256 b, i.e. two beats
+       (src/vector_unit/VectorFetch.h:369-370). That is a configuration bandwidth bound, not a stall."
+    - "A result from this target must name its -D BUILD as well as its commit: the release's own
+       build id string (Makefile:118) is the canonical form, e.g.
+       INT8_16x16_1024x1024x1024_false_false_false. Two builds of e3a725db are different devices with
+       different parameter ABIs."
+
+oracle_ladder:
+  level_0: {name: UNKNOWN, derived_from_rtl: false}
+  # merlin has no reference simulator for this device and no gold model reachable from a
+  # merlin-produced buffer: the release's run_gold_model is driven by its protobuf op list, not by
+  # MatrixParams (test/common/Simulation.cc:204-243). See VOYAGER_ACCEL_TARGET.md section 4, M3.
+  level_1: {name: voyager_systemc_pre_hls, derived_from_rtl: false}
+  # Voyager's own Makefile `sim` TestRunner under CONNECTIONS_ACCURATE_SIM. Upstream states it is
+  # functional, not cycle-accurate; PLANE_B.md measured it reproducing the RTL cycles anyway on four
+  # layers, which is evidence about those layers, not a general guarantee.
+  level_2: {name: voyager_vcs_rtl, derived_from_rtl: true}
+  # Catapult 2023.1 -> Verilog -> VCS V-2023.12, generic 45 nm, 5 ns. Three disclosed toolchain
+  # deviations apply to every number from it (PLANE_B.md, "Deviations").
+
+hardware_pins:
+  - voyager_accelerator
+  - voyager_compiler_accel_pair
+
+# Families this target DECLARES but cannot yet turn into a runnable capsule — recorded with a reason
+# rather than left silent.
+unmaterializable_families:
+  contraction: >-
+    no probe path today: merlin has no backend, no oracle adapter and no sim toolchain key for this
+    target, and no capsule corpus with an int24 accumulator. The first executable milestone (driving
+    ONE matmul's parameters through the release's own testbench from a merlin-produced buffer) is
+    specified step by step in merlin/experiments/voyager_h2h/VOYAGER_ACCEL_TARGET.md section 4.
+  elementwise_map: >-
+    the vector unit's instruction encoding (src/Params.h:526-725, src/vector_unit/VectorOps.h) was
+    not read in this pass, so no op vocabulary can be declared for it honestly (UNKNOWN U6).
+
+notes: >-
+  DRAFT / SCOPING ONLY. voyager_accel is not runnable: merlin has no fact-extractor family that can
+  read a Catapult/SystemC target (gap G1), so `merlin-onboard` will refuse this target rather than
+  fabricate a manifest — which is correct. The generated contract
+  (contracts/target_contract.yaml) is deliberately NOT written by hand. The full evidence-backed fact
+  map, the UNKNOWNs, the first-milestone step list and the ten-item gap list are in
+  merlin/experiments/voyager_h2h/VOYAGER_ACCEL_TARGET.md.

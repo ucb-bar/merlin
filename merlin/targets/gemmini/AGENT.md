@@ -16,6 +16,9 @@ real oracle and gate on three-way bit-exact equality
 - **Kernel codegen** (`runtime/backends/gemmini_codegen.py`): command buffer → bare-metal C using
   low-level `libgemmini` intrinsics. This is where the ISA mapping lives.
 - **Backend** (`runtime/backends/gemmini.py`): compile + run on the oracle, parse, gate.
+- **Reference programs** (`tools/baremetalc_corroborate.py`): builds the upstream bareMetalC
+  `mvin_mvout` test and `tiled_matmul_auto` with the backend's toolchain and checks them against the
+  `Tensor` goldens. Declared as `plugin.reference_programs`; shared callers load it through that key.
 
 ## Oracle ladder (see `contracts/target_contract.yaml`)
 - L0 merlin reference + command-buffer simulator — `derived_from_rtl: false`

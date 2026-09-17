@@ -2,10 +2,12 @@
 target: saturn
 dialect_name: saturn
 ops:
-  - {name: pack,    summary: "layout-pack an immutable RHS (resident-in-memory; no-cost copy on CPU)"}
-  - {name: matmul,  summary: "RVV widening matmul vs packed tensor -> e32 accumulator tile"}
-  - {name: commit,  summary: "apply epilogue + commit accumulator (scalar or RVV)"}
-  - {name: release, summary: "release the packed tensor (free the working-set budget)"}
+  - {name: pack,          summary: "layout-pack an immutable RHS (resident-in-memory; no-cost copy on CPU)"}
+  - {name: matmul,        summary: "RVV widening matmul vs packed tensor -> e32 accumulator tile"}
+  - {name: commit,        summary: "apply epilogue + commit accumulator (scalar or RVV)"}
+  - {name: release,       summary: "release the packed tensor (free the working-set budget)"}
+  - {name: vector_map,    summary: "RVV elementwise combine (add/mul/identity) + activation"}
+  - {name: vector_reduce, summary: "RVV reduction (sum)"}
 types:
   - {name: packed_tensor}
   - {name: accumulator}
@@ -14,6 +16,8 @@ lowering:
   - {from: interface.matmul,         to: saturn.matmul}
   - {from: interface.commit,         to: saturn.commit}
   - {from: interface.resident_evict, to: saturn.release}
+  - {from: interface.vector_map,     to: saturn.vector_map}
+  - {from: interface.vector_reduce,  to: saturn.vector_reduce}
 tests:
   - {lit: pack_roundtrip}
   - {lit: matmul_commit_epilogue}

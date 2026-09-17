@@ -23,3 +23,11 @@ targets:
 branches:
   rvv: {}
   gemmini: {}
+
+# Public repo names. Default is `<target>-mlir`, which is what both targets use: gemmini-mlir and
+# rvv-mlir. The `rvv` repo holds ALL host codegen -- scalar is simply the case where no vector unit
+# is declared, not a separate target -- so there is no second scalar repo to split the ABI, the
+# calling convention and the lowering across. (An earlier plan named it `host-mlir` for that reason;
+# the repo that actually exists is `rvv-mlir`, so the default applies and no override is needed.)
+# Precedence: --repo-name > env MERLIN_PUBLISH_REPO_NAME_<TARGET> > this map > `<target>-mlir`.
+repo_names: {}

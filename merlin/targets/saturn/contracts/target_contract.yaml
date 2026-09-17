@@ -6,11 +6,38 @@
 # (chipyard generators/saturn) before drawing RTL-level conclusions.
 name: saturn
 version: 0.1
+# WHERE this target's elaborated RTL is. Irreducible SETUP -- an SoC checkout holds many elaborations
+# and nothing in the RTL says which one is "saturn's", so the config is DECLARED here, in the target's
+# own contract, and read by merlin.targetgen.rtl.introspect.declared_rtl_source. Everything the
+# extractor then reports (geometry, SRAM capacities, element widths) is DERIVED from these artifacts;
+# no capacity, bank count or width is declared anywhere in this file.
+#   ext_root   a `.env` MERLIN_EXT_<NAME> key, so no absolute path is committed
+#   config     the chipyard TestHarness config that was elaborated
+#   generator  the source tree whose modules ARE this target's, as the FIRRTL's own
+#              `@[generators/<gen>/...]` provenance annotations record it (defaults to the target name)
+rtl_source:
+  ext_root: chipyard
+  config: DualSaturnV256D128ShuttleConfig
+  generator: saturn
+# Runtime backend, evicted from the core runtime/backends/ into this package's backend/ dir (a package of
+# saturn_vec.py + saturn_vec_codegen.py + saturn_vec_mlir.py). base._oot_backend_modules loads a reference
+# target's plugin.backend (the reference package root is injected as the path), so importing the backend
+# self-registers "saturn_vec" with zero env — the core no longer seeds a saturn reference backend.
+# Dialect, evicted from the shared library (xdsl_dialects/targets/saturn.py) into this package's
+# dialect/ dir. target_lowering._ensure_dialects_discovered loads a reference target's plugin.dialect
+# (the reference package root is injected as the path), so importing it self-registers saturn's
+# TargetSpec + op->opcode map — the core lowering no longer hardcodes a saturn dialect spec.
+plugin:
+  backend: backend
+  dialect: dialect
 features: [rvv, scalable_vl, multicore, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]
 types: [packed_tensor, accumulator]
 runtime:
   backends: [simulator, baremetal, vcs, zephyr]
+  # Default runtime backend the lowering pipeline stamps when a caller passes none (DERIVED from this
+  # contract, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: baremetal
 capabilities:
   ops: [matmul, bias_add, requant, relu]
   layouts: [packed_rhs]
@@ -25,6 +52,64 @@ vector:
   vl_policy: scalable_vl
   tail_policy: agnostic   # vsetvli ta,ma
   lmul_policy: static_m4_accumulate   # e8m1 loads widened into e32m4 accumulators
+# Datatype -> compute-unit -> op capability model (parsed by merlin.targetgen.compute_units). Saturn had
+# NO compute_units at all, which made it invisible to every consumer that asks "what engines does this
+# target have" -- the eligibility oracle, the engine audit, and the kind-routed fact extractor all read
+# this field, and an absent one reads as "no compute hardware" rather than "declared elsewhere".
+#
+# Neither unit below is a new claim. The lane engine is this contract's own `vector:` block restated in
+# the shared vocabulary (rv64gcv_zfh_zvfh, e8m1 loads widened into e32m4 accumulators); the array is the
+# one merlin/contract/matrix_units.yaml already declares, with the same pin.
+compute_units:
+  - name: rvv_lanes
+    kind: vector
+    # From `vector.isa: rv64gcv_zfh_zvfh` (V + Zfh/Zvfh) and `lmul_policy: static_m4_accumulate`.
+    dtypes: [int8, fp16, fp32]
+    ops: [matmul, elementwise]
+    scaling: none
+    requant: {ref: none}
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}     # e8m1 loads widened into e32m4 accumulators
+      - {in: fp16, weight: fp16, acc: f32}     # zvfh widening multiply-accumulate
+      - {in: fp32, weight: fp32, acc: f32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8, fp16, fp32]}
+      - {family: elementwise_map, dtypes: [int8, fp16, fp32]}
+      - {family: reduction, dtypes: [int8, fp16, fp32]}
+      - {family: movement, dtypes: [int8, fp16, fp32]}
+  # The outer-product matrix extension. `spatial` and not `systolic`: it reduces via rank-1
+  # outer-product accumulate into a tile of accumulator cells, not a stationary-weight wavefront --
+  # the distinction compute_units.KINDS draws, and the reason the two carry separate fact families.
+  #
+  # REVISION-CONTINGENT: present only in configs carrying the OPU, which is why it is pinned. A saturn
+  # checkout without it fails `check_provenance --verify-pins` on saturn_opu_int8 rather than silently
+  # crediting the target with an array it does not have.
+  - name: opu
+    kind: spatial
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: none
+    requant: {ref: none}
+    exposure: command_buffer          # driven by a command buffer, NOT by RoCC
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8]}
+    notes: >-
+      Declared by merlin/contract/matrix_units.yaml (unit saturn_opu, pin saturn_opu_int8): four
+      instructions in reserved even funct6 slots of the vector opcode, an int8 datapath accumulating in
+      int32, and a tile whose edge is the vector unit's VLMAX at e8/m1. Tile geometry is deliberately
+      not restated here -- it is an RTL-derived fact.
+measurement:
+  cycles_from: spike
+  wall_from: k1
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: rvv_lane_peak
+  citable_tier: rtl
+  notes:
+    - "The OPU half is command-buffer driven and revision-contingent, so a cycle count that includes it
+       is only citable on a checkout whose saturn_opu_int8 pin verifies."
 memory_model:
   resident: true
   accumulators: true      # vector register accumulators (e32m4 tiles)
