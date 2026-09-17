@@ -5,6 +5,7 @@ epilogue is present. ``K`` is surfaced here but, per the design decision, is use
 *policy endorsement* of ``resident_packed_tensor`` (the K>=256 mined condition), not for its
 structural legality — see ``design_pressure/synthesize.py``.
 """
+
 from __future__ import annotations
 
 from collections import Counter

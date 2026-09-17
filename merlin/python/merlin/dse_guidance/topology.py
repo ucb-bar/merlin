@@ -17,6 +17,7 @@ region roles and timing), adding the VLA workload-class taxonomy and the derived
 Hand-authored sidecar metadata is the first-class input (Level 0 reconstruction); IR-based
 region attribution (Level 1) and loop-preserving capture (Level 2) are future work.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,9 +25,9 @@ from dataclasses import dataclass, field
 from merlin.dse_guidance import temporal as T
 
 # Workload classes (how the action head is structured) — drives capture-fidelity severity.
-CLASS_FLOW_MATCHING = "flow_matching_action_head"      # Class A: iterative denoise/flow head
+CLASS_FLOW_MATCHING = "flow_matching_action_head"  # Class A: iterative denoise/flow head
 CLASS_REGRESSION_PARALLEL = "regression_parallel_head"  # Class B: single-shot regression head
-CLASS_AUTOREGRESSIVE = "autoregressive_decode"          # Class C: token-by-token decode
+CLASS_AUTOREGRESSIVE = "autoregressive_decode"  # Class C: token-by-token decode
 CLASS_UNKNOWN = "unknown"
 
 # How badly flattening hurts each class (the loop/rate structure it destroys).
@@ -105,13 +106,25 @@ class VlaRuntimeTopology:
         for r in self.head_phases():
             for s in r.consumes:
                 if s in produced_by_backbone:
-                    crossings.append({"state": s, "produced_by": produced_by_backbone[s],
-                                      "consumed_by": r.name, "reused_times": self.K})
+                    crossings.append(
+                        {
+                            "state": s,
+                            "produced_by": produced_by_backbone[s],
+                            "consumed_by": r.name,
+                            "reused_times": self.K,
+                        }
+                    )
             # Loop-invariant state listed on the head also crosses into the loop.
             for s in r.loop_invariant_state:
                 if s in produced_by_backbone and not any(c["state"] == s for c in crossings):
-                    crossings.append({"state": s, "produced_by": produced_by_backbone[s],
-                                      "consumed_by": r.name, "reused_times": self.K})
+                    crossings.append(
+                        {
+                            "state": s,
+                            "produced_by": produced_by_backbone[s],
+                            "consumed_by": r.name,
+                            "reused_times": self.K,
+                        }
+                    )
         return crossings
 
     def deadline_equation(self) -> str:
@@ -137,16 +150,23 @@ def to_report_dict(topo: VlaRuntimeTopology) -> dict:
         "topology": {
             "class": topo.workload_class,
             "timing": {
-                "K": topo.K, "H": topo.H, "control_rate_hz": topo.control_rate_hz,
+                "K": topo.K,
+                "H": topo.H,
+                "control_rate_hz": topo.control_rate_hz,
                 "replan_deadline_ms": topo.replan_deadline_ms,
                 "equation": topo.deadline_equation(),
             },
             "phases": [
-                {"id": r.name, "role": r.role, "cadence": r.cadence,
-                 "invocation_count": r.invocation_count or r.loop_trip_count,
-                 "loop_invariant_state": r.loop_invariant_state,
-                 "loop_carried_state": r.loop_carried_state,
-                 "produces": r.produces, "consumes": r.consumes}
+                {
+                    "id": r.name,
+                    "role": r.role,
+                    "cadence": r.cadence,
+                    "invocation_count": r.invocation_count or r.loop_trip_count,
+                    "loop_invariant_state": r.loop_invariant_state,
+                    "loop_carried_state": r.loop_carried_state,
+                    "produces": r.produces,
+                    "consumes": r.consumes,
+                }
                 for r in topo.temporal.regions
             ],
             "state_crossing_boundaries": topo.state_crossing_boundaries(),

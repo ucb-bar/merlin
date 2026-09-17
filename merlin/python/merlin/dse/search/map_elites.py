@@ -4,6 +4,7 @@ Fills a behavior-keyed archive (memory/control/granularity x workload regime). E
 picks a random elite, mutates it, evaluates, and inserts into its cell if it beats the
 incumbent. The output is a portfolio, not a single winner.
 """
+
 from __future__ import annotations
 
 import random
@@ -12,8 +13,9 @@ from merlin.dse.search.archive import best_overall, update_archive
 from merlin.dse.search.mutations import mutate
 
 
-def map_elites_search(seeds, evaluator, iterations: int = 40, seed: int = 0,
-                      workload_regime: str | None = None) -> dict:
+def map_elites_search(
+    seeds, evaluator, iterations: int = 40, seed: int = 0, workload_regime: str | None = None
+) -> dict:
     """Run MAP-Elites from ``seeds``. Returns ``{archive, best, occupied_cells}``."""
     rng = random.Random(seed)
     archive: dict = {}
@@ -28,5 +30,4 @@ def map_elites_search(seeds, evaluator, iterations: int = 40, seed: int = 0,
         child = mutate(parent, rng)
         update_archive(archive, child, evaluator.evaluate(child), workload_regime)
 
-    return {"archive": archive, "best": best_overall(archive),
-            "occupied_cells": len(archive)}
+    return {"archive": archive, "best": best_overall(archive), "occupied_cells": len(archive)}

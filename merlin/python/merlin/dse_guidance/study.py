@@ -8,6 +8,7 @@ runs the full guidance pipeline per workload, and aggregates a cross-workload ax
 The aggregate answers, across the whole supported workload set: *which DSE axis closes the most
 target gap, for which workloads, and on what evidence* — never a subjective verdict.
 """
+
 from __future__ import annotations
 
 import csv
@@ -21,7 +22,9 @@ from merlin.common.yaml import load_yaml
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import baseline_cost as BC
 from merlin.dse_guidance import models as M
-from merlin.dse_guidance import synth, temporal as T, topology as TOP
+from merlin.dse_guidance import synth
+from merlin.dse_guidance import temporal as T
+from merlin.dse_guidance import topology as TOP
 from merlin.dse_guidance.aet_ingest import CpuCoupling
 from merlin.dse_guidance.pipeline import GuidanceResult, run_guidance, write_artifacts
 
@@ -36,7 +39,7 @@ class WorkloadSpec:
     overrides: dict | None = None
     capture_facts: object | None = None
     attribution: object | None = None
-    source: str = "synthesized"   # "synthesized" | "measured_fixture" | "model_capture"
+    source: str = "synthesized"  # "synthesized" | "measured_fixture" | "model_capture"
 
 
 def discover_semantic_memory() -> list[str]:
@@ -45,13 +48,13 @@ def discover_semantic_memory() -> list[str]:
     return sorted(p.stem for p in d.glob("*.yaml"))
 
 
-def spec_from_region(name: str, region: dict, control_rate_hz: float = 30.0,
-                     target_fraction: float | None = 0.5) -> WorkloadSpec:
+def spec_from_region(
+    name: str, region: dict, control_rate_hz: float = 30.0, target_fraction: float | None = 0.5
+) -> WorkloadSpec:
     """Build a fully-synthesized (analytical) study spec from a region."""
     temporal = T.parse(synth.synth_temporal(region, control_rate_hz=control_rate_hz))
     baseline = BC.parse(synth.analytical_baseline_cost(region, target_fraction=target_fraction))
-    return WorkloadSpec(name=name, temporal=temporal, baseline=baseline,
-                        region=region, source="synthesized")
+    return WorkloadSpec(name=name, temporal=temporal, baseline=baseline, region=region, source="synthesized")
 
 
 def discover_specs() -> list[WorkloadSpec]:
@@ -87,14 +90,21 @@ def spec_from_model(base_model: str, capture_dirs: list[str]) -> WorkloadSpec:
     # shape_signature -> role) lives at merlin/benchmarks/dse_guidance/region_maps/<model>.yaml;
     # without it, facts + repeated-shape clusters are still extracted and roles stay unknown.
     topo = TOP.from_temporal(temporal)
-    map_path = (paths.bench_dir() / "dse_guidance" / "region_maps"
-                / f"{base_model}.yaml")
+    map_path = paths.bench_dir() / "dse_guidance" / "region_maps" / f"{base_model}.yaml"
     mapping = load_yaml(map_path) if map_path.is_file() else None
     attribution = ATTR.attribute(capture, topo, mapping_rules=mapping)
 
-    return WorkloadSpec(name=base_model, temporal=temporal, baseline=baseline,
-                        region=None, overrides=overrides, source=source,
-                        coupling=None, capture_facts=facts, attribution=attribution)
+    return WorkloadSpec(
+        name=base_model,
+        temporal=temporal,
+        baseline=baseline,
+        region=None,
+        overrides=overrides,
+        source=source,
+        coupling=None,
+        capture_facts=facts,
+        attribution=attribution,
+    )
 
 
 def discover_model_specs() -> list[WorkloadSpec]:
@@ -118,6 +128,7 @@ def run_model_study(out_dir: str | Path) -> dict:
 def _write_cost_calibration(out: Path) -> None:
     """Fit cycles/MAC against the real FASED measurements and emit the honest calibration."""
     from merlin.dse_guidance import cost_calibration as CC
+
     captures = M.discover_model_captures()
 
     def macs_of(model: str):
@@ -139,9 +150,14 @@ def _write_cost_calibration(out: Path) -> None:
         facts = M.capture_facts(M._prefer_capture(captures[p.model])) if p.model in captures else None
         if facts is None or not facts.parsed:
             continue
-        feature_rows.append({"cycles": p.measured_cycles, "macs": facts.total_macs,
-                             "act_bytes": facts.total_activation_bytes,
-                             "matmuls": facts.n_matmuls})
+        feature_rows.append(
+            {
+                "cycles": p.measured_cycles,
+                "macs": facts.total_macs,
+                "act_bytes": facts.total_activation_bytes,
+                "matmuls": facts.n_matmuls,
+            }
+        )
     md = CC.markdown(res)
     if len(feature_rows) >= 3:
         md += "\n" + CC.multifeature_report_md(CC.multifeature_calibration(feature_rows))
@@ -158,8 +174,7 @@ def _write_calibration_anchor(out: Path) -> None:
             continue
         rows.extend(M.calibration_rows(arch, M.capture_facts(M._prefer_capture(dirs))))
 
-    cols = ["workload", "quantity", "predicted", "measured", "error_pct", "evidence_type",
-            "interpretation"]
+    cols = ["workload", "quantity", "predicted", "measured", "error_pct", "evidence_type", "interpretation"]
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=cols)
     w.writeheader()
@@ -169,12 +184,16 @@ def _write_calibration_anchor(out: Path) -> None:
 
     L = ["# Calibration anchor — prediction vs measurement\n"]
     if not rows:
-        L.append("No real measured cycle total is available in the repo, so no calibration "
-                 "anchor was produced. (No fabricated values.)\n")
+        L.append(
+            "No real measured cycle total is available in the repo, so no calibration "
+            "anchor was produced. (No fabricated values.)\n"
+        )
     else:
-        L.append("The only durable real hardware measurement in the repo is the xr0 fp32 "
-                 "FireSim total (`docs/results.md`). We compare it against the analytical cost "
-                 "model's prediction — **honestly, including a large mismatch**.\n")
+        L.append(
+            "The only durable real hardware measurement in the repo is the xr0 fp32 "
+            "FireSim total (`docs/results.md`). We compare it against the analytical cost "
+            "model's prediction — **honestly, including a large mismatch**.\n"
+        )
         L.append("| workload | quantity | predicted | measured | error % | evidence |")
         L.append("|----------|----------|-----------|----------|---------|----------|")
         for r in rows:
@@ -183,15 +202,16 @@ def _write_calibration_anchor(out: Path) -> None:
             pred = r["predicted"]
             pred_s = f"{pred:.3e}" if isinstance(pred, (int, float)) else str(pred)
             err = "n/a" if r["error_pct"] is None else f"{r['error_pct']}"
-            L.append(f"| {r['workload']} | {r['quantity']} | {pred_s} | {meas_s} | {err} | "
-                     f"{r['evidence_type']} |")
+            L.append(f"| {r['workload']} | {r['quantity']} | {pred_s} | {meas_s} | {err} | {r['evidence_type']} |")
         L.append("")
         for r in rows:
             L.append(f"- **{r['workload']}/{r['quantity']}**: {r['interpretation']}")
-        L.append("\n**Conclusion:** the analytical cost model is not calibrated to real cycles. "
-                 "The structural/legality results (which axes the flat capture hides) stand on "
-                 "their own; the quantitative gap_closure magnitudes are analytical and must not "
-                 "be read as measured until the cost model is calibrated.\n")
+        L.append(
+            "\n**Conclusion:** the analytical cost model is not calibrated to real cycles. "
+            "The structural/legality results (which axes the flat capture hides) stand on "
+            "their own; the quantitative gap_closure magnitudes are analytical and must not "
+            "be read as measured until the cost model is calibrated.\n"
+        )
     Artifact("calibration_anchor.md", "\n".join(L)).write(out)
 
 
@@ -200,9 +220,15 @@ def run_study(specs: list[WorkloadSpec], out_dir: str | Path) -> dict:
     out = Path(out_dir)
     results: list[GuidanceResult] = []
     for spec in specs:
-        res = run_guidance(spec.temporal, spec.baseline, region=spec.region,
-                           coupling=spec.coupling, overrides=spec.overrides,
-                           capture_facts=spec.capture_facts, attribution=spec.attribution)
+        res = run_guidance(
+            spec.temporal,
+            spec.baseline,
+            region=spec.region,
+            coupling=spec.coupling,
+            overrides=spec.overrides,
+            capture_facts=spec.capture_facts,
+            attribution=spec.attribution,
+        )
         write_artifacts(res, out / spec.name)
         results.append(res)
 
@@ -210,14 +236,23 @@ def run_study(specs: list[WorkloadSpec], out_dir: str | Path) -> dict:
     summary_md = _summary_md(specs, results)
     Artifact("study_summary.csv", summary_csv).write(out)
     Artifact("study_summary.md", summary_md).write(out)
-    return {"workloads": [s.name for s in specs], "out": str(out),
-            "n_workloads": len(specs)}
+    return {"workloads": [s.name for s in specs], "out": str(out), "n_workloads": len(specs)}
 
 
 _SUMMARY_COLUMNS = [
-    "workload", "source", "representation", "axis", "family",
-    "gap_closure", "priority_score", "evidence_type", "confidence",
-    "legality", "cost_tier", "benefit", "baseline_unit",
+    "workload",
+    "source",
+    "representation",
+    "axis",
+    "family",
+    "gap_closure",
+    "priority_score",
+    "evidence_type",
+    "confidence",
+    "legality",
+    "cost_tier",
+    "benefit",
+    "baseline_unit",
 ]
 
 
@@ -228,26 +263,35 @@ def _summary_csv(specs: list[WorkloadSpec], results: list[GuidanceResult]) -> st
     for spec, res in zip(specs, results):
         for rep_name, tr in (("multirate", res.triage_multirate), ("flat", res.triage_flat)):
             for r in tr["axes"]:
-                w.writerow({
-                    "workload": spec.name, "source": spec.source,
-                    "representation": rep_name, "axis": r["axis"], "family": r["family"],
-                    "gap_closure": "" if r["gap_closure"] is None else r["gap_closure"],
-                    "priority_score": "" if r["priority_score"] is None else r["priority_score"],
-                    "evidence_type": r["evidence_type"], "confidence": r["confidence"],
-                    "legality": r["legality"], "cost_tier": r["cost_tier"],
-                    "benefit": r["benefit_ms"], "baseline_unit": res.baseline.unit,
-                })
+                w.writerow(
+                    {
+                        "workload": spec.name,
+                        "source": spec.source,
+                        "representation": rep_name,
+                        "axis": r["axis"],
+                        "family": r["family"],
+                        "gap_closure": "" if r["gap_closure"] is None else r["gap_closure"],
+                        "priority_score": "" if r["priority_score"] is None else r["priority_score"],
+                        "evidence_type": r["evidence_type"],
+                        "confidence": r["confidence"],
+                        "legality": r["legality"],
+                        "cost_tier": r["cost_tier"],
+                        "benefit": r["benefit_ms"],
+                        "baseline_unit": res.baseline.unit,
+                    }
+                )
     return buf.getvalue()
 
 
 def _summary_md(specs: list[WorkloadSpec], results: list[GuidanceResult]) -> str:
     L: list[str] = []
     L.append("# DSE guidance — exhaustive cross-workload study\n")
-    L.append("> Merlin does not perform DSE. Merlin prevents DSE from optimizing the wrong "
-             "abstraction.\n")
-    L.append(f"Workloads studied: **{len(specs)}**. Baselines marked _synthesized_ use the "
-             "analytical cost model (evidence tag `analytical`); measured fixtures override "
-             "them where available.\n")
+    L.append("> Merlin does not perform DSE. Merlin prevents DSE from optimizing the wrong abstraction.\n")
+    L.append(
+        f"Workloads studied: **{len(specs)}**. Baselines marked _synthesized_ use the "
+        "analytical cost model (evidence tag `analytical`); measured fixtures override "
+        "them where available.\n"
+    )
 
     # Per-workload top axis (multi-rate).
     L.append("## Top axis per workload (multi-rate)\n")
@@ -256,21 +300,27 @@ def _summary_md(specs: list[WorkloadSpec], results: list[GuidanceResult]) -> str
     for spec, res in zip(specs, results):
         top = _top(res.triage_multirate)
         if top is None:
-            why = ("capture did not parse; structural legality only"
-                   if "unparsed" in spec.source else "no axis with a positive gap")
-            L.append(f"| {spec.name} | {spec.source} | _{why}_ | n/a | n/a | n/a | "
-                     f"{res.baseline.unit} |")
+            why = (
+                "capture did not parse; structural legality only"
+                if "unparsed" in spec.source
+                else "no axis with a positive gap"
+            )
+            L.append(f"| {spec.name} | {spec.source} | _{why}_ | n/a | n/a | n/a | {res.baseline.unit} |")
             continue
         gc = "n/a" if top["gap_closure"] is None else f"{top['gap_closure']:.3f}"
         ps = "n/a" if top["priority_score"] is None else f"{top['priority_score']:.4f}"
-        L.append(f"| {spec.name} | {spec.source} | {top['axis']} | {gc} | {ps} | "
-                 f"{top['evidence_type']} | {res.baseline.unit} |")
+        L.append(
+            f"| {spec.name} | {spec.source} | {top['axis']} | {gc} | {ps} | "
+            f"{top['evidence_type']} | {res.baseline.unit} |"
+        )
     L.append("")
 
     # Cross-workload axis ranking.
     L.append("## Axis ranking across all workloads (multi-rate)\n")
-    L.append("For each axis: number of workloads where it is legal with a positive priority, "
-             "and the mean / max priority across those workloads.\n")
+    L.append(
+        "For each axis: number of workloads where it is legal with a positive priority, "
+        "and the mean / max priority across those workloads.\n"
+    )
     agg: dict[str, list[float]] = {}
     families: dict[str, str] = {}
     for res in results:
@@ -282,8 +332,7 @@ def _summary_md(specs: list[WorkloadSpec], results: list[GuidanceResult]) -> str
     L.append("|------|--------|------------|---------------|--------------|")
     for axis in sorted(agg, key=lambda a: -(sum(agg[a]) / len(agg[a]))):
         vals = agg[axis]
-        L.append(f"| {axis} | {families.get(axis,'')} | {len(vals)} | "
-                 f"{sum(vals)/len(vals):.4f} | {max(vals):.4f} |")
+        L.append(f"| {axis} | {families.get(axis, '')} | {len(vals)} | {sum(vals) / len(vals):.4f} | {max(vals):.4f} |")
     if not agg:
         L.append("| _none_ | | 0 | | |")
     L.append("")
@@ -291,9 +340,11 @@ def _summary_md(specs: list[WorkloadSpec], results: list[GuidanceResult]) -> str
     # Flat-vs-multirate legality flips: which axes BECOME legal once the loop is visible. This
     # is the structural thesis and holds even when magnitudes are unavailable (unparsed capture).
     L.append("## Representation flips (axes the flat capture hides)\n")
-    L.append("A flat whole-model capture reuses each weight once (0 contract facts, per "
-             "results.md). The multi-rate view re-exposes the decode/denoise loop, making these "
-             "axes legal:\n")
+    L.append(
+        "A flat whole-model capture reuses each weight once (0 contract facts, per "
+        "results.md). The multi-rate view re-exposes the decode/denoise loop, making these "
+        "axes legal:\n"
+    )
     L.append("| workload | becomes legal under multi-rate |")
     L.append("|----------|--------------------------------|")
     for spec, res in zip(specs, results):

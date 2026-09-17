@@ -3,6 +3,7 @@
 At the linalg view we can read op kinds, shapes, dtypes, reuse and lifetimes directly from
 the region. This cutpoint therefore surfaces the shape/reuse/lifetime/packing/memory metrics.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure.metrics.lifetimes import metric_lifetimes

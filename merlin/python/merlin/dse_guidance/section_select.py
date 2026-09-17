@@ -14,6 +14,7 @@ Spec forms (a single string or a list, mixed freely):
   * ``"fqn:<glob>"`` or a bare token         — fqn glob (``*self_attn``) or, without wildcards,
                                                an fqn substring (``self_attn``).
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -28,17 +29,20 @@ _LAYER_TOKENS = ("layers", "blocks", "transformer_blocks", "block", "layer", "h"
 @dataclass(frozen=True)
 class Section:
     """One selectable section: what it is + the join/slice keys it owns."""
-    label: str                     # region label (attention / linear / mlp / conv / norm / softmax)
-    fqn: str | None                # the nn.Module path the section occupies
-    role: str | None               # backbone_once / repeated_head / ... (role_from_fqn)
-    region_ids: tuple[str, ...]    # prov.region_ids the slicer keeps for this section
+
+    label: str  # region label (attention / linear / mlp / conv / norm / softmax)
+    fqn: str | None  # the nn.Module path the section occupies
+    role: str | None  # backbone_once / repeated_head / ... (role_from_fqn)
+    region_ids: tuple[str, ...]  # prov.region_ids the slicer keeps for this section
 
 
 def list_sections(capture_dir: str) -> tuple[Section, ...]:
     """The menu of selectable sections for a capture (compute regions only — those with region_ids)."""
     return tuple(
         Section(label=r.region_label, fqn=r.fqn_group, role=r.role, region_ids=r.region_ids)
-        for r in recognize_regions(capture_dir) if r.region_ids)
+        for r in recognize_regions(capture_dir)
+        if r.region_ids
+    )
 
 
 def _layer_index(fqn: str | None) -> int | None:
@@ -64,13 +68,14 @@ def _parse_layer_range(spec: str) -> tuple[int, int]:
 
 def _resolve_token(token: str, sections: tuple[Section, ...], all_ids: set[str]) -> set[str]:
     t = token.strip()
-    if t in all_ids:                                          # exact region_id
+    if t in all_ids:  # exact region_id
         return {t}
     if t.startswith("layers:"):
-        lo, hi = _parse_layer_range(t[len("layers:"):])
-        return {rid for s in sections if (li := _layer_index(s.fqn)) is not None and lo <= li <= hi
-                for rid in s.region_ids}
-    pattern = t[len("fqn:"):] if t.startswith("fqn:") else t
+        lo, hi = _parse_layer_range(t[len("layers:") :])
+        return {
+            rid for s in sections if (li := _layer_index(s.fqn)) is not None and lo <= li <= hi for rid in s.region_ids
+        }
+    pattern = t[len("fqn:") :] if t.startswith("fqn:") else t
     wild = any(c in pattern for c in "*?[")
     out: set[str] = set()
     for s in sections:

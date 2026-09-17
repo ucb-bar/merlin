@@ -5,6 +5,7 @@ analytical cost model -> a ``dse_result`` artifact. M1 runs cells in a single pr
 parallel fan-out (process pool / Workflow) is an M2 ergonomics concern. Reuses the
 ``dse_result`` schema so all approaches stay directly comparable.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,8 +17,7 @@ from merlin.dse.hardware_space import default_cost_model
 from merlin.dse.variants import VARIANTS, build_variants
 
 
-def evaluate_feature(workload: str, rpv: dict, feature: str,
-                     cost_model: dict | None = None) -> dict:
+def evaluate_feature(workload: str, rpv: dict, feature: str, cost_model: dict | None = None) -> dict:
     """Build the 4 variants for ``feature`` and return a schema-shaped ``dse_result``."""
     cm = cost_model or default_cost_model()
     plans = build_variants(rpv, feature)
@@ -36,9 +36,12 @@ def evaluate_feature(workload: str, rpv: dict, feature: str,
     return result
 
 
-def run_matrix(cells: list[tuple[str, dict]], features: list[str],
-               cost_model: dict | None = None,
-               out_base: str | Path | None = None) -> list[dict]:
+def run_matrix(
+    cells: list[tuple[str, dict]],
+    features: list[str],
+    cost_model: dict | None = None,
+    out_base: str | Path | None = None,
+) -> list[dict]:
     """Evaluate every (cell x feature). ``cells`` is a list of ``(workload_name, rpv)``.
 
     Writes ``<out_base>/<workload>/<feature>/dse_result.yaml`` when ``out_base`` is given.
@@ -51,7 +54,8 @@ def run_matrix(cells: list[tuple[str, dict]], features: list[str],
             out.append(res)
             if out_base is not None:
                 yaml_artifact(
-                    f"{workload}/{feature}/dse_result.yaml", res,
+                    f"{workload}/{feature}/dse_result.yaml",
+                    res,
                     header=f"dse_result: {workload} / {feature}",
                 ).write(out_base)
     return out

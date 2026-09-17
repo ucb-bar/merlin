@@ -22,6 +22,7 @@ aet ``summary_metrics.json`` key convention (dotted), per dispatch regime::
 aet runs are real executions, so their evidence tag defaults to ``measured``; a regime may
 downgrade itself to ``trace_derived`` via a ``cpu.<regime>.source`` key.
 """
+
 from __future__ import annotations
 
 import json
@@ -63,11 +64,11 @@ class CpuCoupling:
     def source(self) -> str:
         """Weakest evidence tag across the regimes (defaults to ``measured``)."""
         from merlin.dse_guidance.evidence import weakest_evidence
+
         tags = [r.source for r in self.regimes.values()] or ["measured"]
         return weakest_evidence(tags)
 
-    def per_replan(self, dispatches_per_step: int, K: int,
-                   num_regions: int = 1) -> dict:
+    def per_replan(self, dispatches_per_step: int, K: int, num_regions: int = 1) -> dict:
         """Measured cpu_dispatch_ms / sync_ms per replan, op-level vs batched.
 
         Op-level issues ``dispatches_per_step * K`` submits per replan; a batched command
@@ -94,10 +95,8 @@ class CpuCoupling:
             "batched": regime_cost(ba, n_ba),
         }
         if out["op_level"] and out["batched"]:
-            out["cpu_dispatch_ms_saved"] = (
-                out["op_level"]["cpu_dispatch_ms"] - out["batched"]["cpu_dispatch_ms"])
-            out["sync_ms_saved"] = (
-                out["op_level"]["sync_ms"] - out["batched"]["sync_ms"])
+            out["cpu_dispatch_ms_saved"] = out["op_level"]["cpu_dispatch_ms"] - out["batched"]["cpu_dispatch_ms"]
+            out["sync_ms_saved"] = out["op_level"]["sync_ms"] - out["batched"]["sync_ms"]
             out["source"] = self.source
         return out
 
@@ -116,10 +115,8 @@ def from_cpu_coupling_doc(doc: dict) -> CpuCoupling:
     """Parse a ``cpu_coupling`` YAML mapping into a :class:`CpuCoupling`."""
     schemas.validate_or_raise(doc, "cpu_coupling")
     measurements = doc.get("measurements") or {}
-    regimes = {name: _regime_from_mapping(name, m)
-               for name, m in measurements.items() if isinstance(m, dict)}
-    return CpuCoupling(workload=str(doc["workload"]), regimes=regimes,
-                       provenance="cpu_coupling_yaml")
+    regimes = {name: _regime_from_mapping(name, m) for name, m in measurements.items() if isinstance(m, dict)}
+    return CpuCoupling(workload=str(doc["workload"]), regimes=regimes, provenance="cpu_coupling_yaml")
 
 
 def from_aet_run(run_dir: str | Path, workload: str | None = None) -> CpuCoupling | None:
@@ -141,8 +138,7 @@ def from_aet_run(run_dir: str | Path, workload: str | None = None) -> CpuCouplin
     regimes: dict[str, Regime] = {}
     for regime in (OP_LEVEL, BATCHED):
         prefix = f"cpu.{regime}."
-        keys = {k[len(prefix):]: v for k, v in metrics.items()
-                if isinstance(k, str) and k.startswith(prefix)}
+        keys = {k[len(prefix) :]: v for k, v in metrics.items() if isinstance(k, str) and k.startswith(prefix)}
         if not keys:
             continue
         regimes[regime] = _regime_from_mapping(regime, keys)
@@ -153,9 +149,9 @@ def from_aet_run(run_dir: str | Path, workload: str | None = None) -> CpuCouplin
     return CpuCoupling(workload=str(wl), regimes=regimes, provenance=f"aet_run:{run}")
 
 
-def ingest(cpu_coupling_path: str | Path | None = None,
-           aet_run: str | Path | None = None,
-           workload: str | None = None) -> CpuCoupling | None:
+def ingest(
+    cpu_coupling_path: str | Path | None = None, aet_run: str | Path | None = None, workload: str | None = None
+) -> CpuCoupling | None:
     """Best-effort measured coupling from an explicit YAML or an aet run; ``None`` if absent."""
     if cpu_coupling_path:
         return from_cpu_coupling_doc(load_yaml(cpu_coupling_path))

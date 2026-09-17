@@ -21,6 +21,7 @@ Grounding / honesty:
   * The one measured latency anchor on real hardware is xr0 fp32 = 146.2 G cycles (FireSim),
     tagged ``measured``.
 """
+
 from __future__ import annotations
 
 import math
@@ -34,13 +35,16 @@ from merlin.design_pressure.ingest import mlir_m2m
 @dataclass
 class ModelArch:
     """Architecture facts for one base model (reference values; loop count tagged assumed)."""
+
     name: str
-    family: str                      # "flow_matching" | "diffusion" | "autoregressive_vla" | "llm"
-    loop_kind: str                   # "denoise_steps" | "action_token_decode" | "token_decode"
-    loop_count: int                  # K: host-side repetitions the single-pass capture hides
-    control_rate_hz: float | None    # real-time control budget (VLA action heads), else None
-    action_horizon: int | None       # H: actions per chunk, else None
-    loop_count_source: str = "assumed"   # reference value; override with a real measurement
+    family: str  # "flow_matching" | "diffusion" | "autoregressive_vla" | "llm"
+    #   | "feed_forward" (one pass per input, no host-side loop)
+    loop_kind: str  # "denoise_steps" | "action_token_decode" | "token_decode"
+    #   | "single_pass"
+    loop_count: int  # K: host-side repetitions the single-pass capture hides
+    control_rate_hz: float | None  # real-time control budget (VLA action heads), else None
+    action_horizon: int | None  # H: actions per chunk, else None
+    loop_count_source: str = "assumed"  # reference value; override with a real measurement
     measured_cycles: float | None = None  # FireSim cycle count, if recorded (evidence: measured)
     note: str = ""
 
@@ -48,39 +52,158 @@ class ModelArch:
 # Reference architecture table. Loop counts are reference values (tagged assumed) drawn from the
 # published model descriptions; override per-model with a measured temporal YAML when available.
 MODEL_ARCH: dict[str, ModelArch] = {
-    "smolvla": ModelArch("smolvla", "flow_matching", "denoise_steps", 10, 30.0, 50,
-                         note="SmolVLA flow-matching action head; K integration steps."),
-    "pi05": ModelArch("pi05", "flow_matching", "denoise_steps", 10, 50.0, 50,
-                      note="pi0.5 flow-matching action expert."),
-    "rdt": ModelArch("rdt", "diffusion", "denoise_steps", 5, 30.0, 64,
-                     note="RDT-1B diffusion policy; DPM-solver few-step denoise."),
-    "rdt2": ModelArch("rdt2", "diffusion", "denoise_steps", 5, 30.0, 64,
-                      note="RDT-style diffusion policy."),
-    "groot_n1d7": ModelArch("groot_n1d7", "diffusion", "denoise_steps", 4, 30.0, 16,
-                            note="GR00T N1.5 diffusion action head."),
-    "xr0": ModelArch("xr0", "diffusion", "denoise_steps", 5, None, None,
-                     measured_cycles=146.2e9, loop_count_source="assumed",
-                     note="DiT timestep model; num_steps=5 in source (was 10 — P19 config-drift fix); "
-                          "FireSim fp32 measured 146.2 G cycles."),
-    "openvla": ModelArch("openvla", "autoregressive_vla", "action_token_decode", 7, 5.0, 7,
-                         note="OpenVLA decodes a 7-DoF action as 7 autoregressive tokens."),
-    "molmoact": ModelArch("molmoact", "autoregressive_vla", "action_token_decode", 8, 5.0, 8,
-                          note="MolmoAct action reasoning; autoregressive action tokens."),
-    "bitvla": ModelArch("bitvla", "autoregressive_vla", "action_token_decode", 7, 5.0, 7,
-                        note="BitNet ternary VLA."),
+    "smolvla": ModelArch(
+        "smolvla",
+        "flow_matching",
+        "denoise_steps",
+        10,
+        30.0,
+        50,
+        note="SmolVLA flow-matching action head; K integration steps.",
+    ),
+    "pi05": ModelArch(
+        "pi05", "flow_matching", "denoise_steps", 10, 50.0, 50, note="pi0.5 flow-matching action expert."
+    ),
+    "rdt": ModelArch(
+        "rdt", "diffusion", "denoise_steps", 5, 30.0, 64, note="RDT-1B diffusion policy; DPM-solver few-step denoise."
+    ),
+    "rdt2": ModelArch("rdt2", "diffusion", "denoise_steps", 5, 30.0, 64, note="RDT-style diffusion policy."),
+    "groot_n1d7": ModelArch(
+        "groot_n1d7", "diffusion", "denoise_steps", 4, 30.0, 16, note="GR00T N1.5 diffusion action head."
+    ),
+    "xr0": ModelArch(
+        "xr0",
+        "diffusion",
+        "denoise_steps",
+        5,
+        None,
+        None,
+        measured_cycles=146.2e9,
+        loop_count_source="assumed",
+        note="DiT timestep model; num_steps=5 in source (was 10 — P19 config-drift fix); "
+        "FireSim fp32 measured 146.2 G cycles.",
+    ),
+    "openvla": ModelArch(
+        "openvla",
+        "autoregressive_vla",
+        "action_token_decode",
+        7,
+        5.0,
+        7,
+        note="OpenVLA decodes a 7-DoF action as 7 autoregressive tokens.",
+    ),
+    "molmoact": ModelArch(
+        "molmoact",
+        "autoregressive_vla",
+        "action_token_decode",
+        8,
+        5.0,
+        8,
+        note="MolmoAct action reasoning; autoregressive action tokens.",
+    ),
+    "bitvla": ModelArch("bitvla", "autoregressive_vla", "action_token_decode", 7, 5.0, 7, note="BitNet ternary VLA."),
     "openvla_oft": ModelArch("openvla_oft", "autoregressive_vla", "action_token_decode", 7, 5.0, 7),
-    "small_llama": ModelArch("small_llama", "llm", "token_decode", 7, None, None,
-                             loop_count_source="recovered_from_ir",
-                             note="LLaMA-style decoder; K=7 captured decode length (IR-recovered)."),
-    "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 7, None, None,
-                            loop_count_source="recovered_from_ir"),
+    "small_llama": ModelArch(
+        "small_llama",
+        "llm",
+        "token_decode",
+        7,
+        None,
+        None,
+        loop_count_source="recovered_from_ir",
+        note="LLaMA-style decoder; K=7 captured decode length (IR-recovered).",
+    ),
+    "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 7, None, None, loop_count_source="recovered_from_ir"),
+    # Captured on disk long before it was registered here, which made every one of its capture
+    # directories invisible to discover_model_captures() -- a model can be fully captured and still
+    # read as absent if its base name is not a key in this table.
+    "gemma2_2b": ModelArch(
+        "gemma2_2b",
+        "llm",
+        "token_decode",
+        7,
+        None,
+        None,
+        loop_count_source="assumed",
+        note="Gemma-2 2B decoder. Differs from the Llama-family entries in ways "
+        "the op inventory sees: GeGLU rather than SwiGLU, RMSNorm applied "
+        "both pre- and post-block in a (1+w) form, a tanh logit soft-cap, "
+        "and sliding-window attention on alternate layers.",
+    ),
     "small": ModelArch("small", "llm", "token_decode", 32, None, None),
+    # Feed-forward vision / audio / control workloads. loop_count is 1 BY CONSTRUCTION, not as a
+    # reference value: one input produces one output, so the single-pass capture hides no
+    # host-side repetition (unlike the diffusion and decode families above, whose flat capture
+    # hides a loop and therefore makes weight residency illegal until the loop is re-exposed).
+    "resnet50": ModelArch(
+        "resnet50",
+        "feed_forward",
+        "single_pass",
+        1,
+        None,
+        None,
+        loop_count_source="by_construction",
+        note="ResNet-50 v1.5 image classifier: convolution, batch norm, residual "
+        "add and a global average pool, one pass per input with no host-side "
+        "loop. The m2m workload directory is `resnet50_v1_5`, so a capture "
+        "of it resolves to this base by longest-prefix match; without an "
+        "entry here a fully captured ResNet reads as ABSENT, which is how a "
+        "declared roster model can go missing without anything saying so.",
+    ),
+    "spectformer": ModelArch(
+        "spectformer",
+        "feed_forward",
+        "single_pass",
+        1,
+        None,
+        None,
+        loop_count_source="by_construction",
+        note="SpectFormer-Ti classifier; blocks 0-3 spectral gating "
+        "(rfft2/irfft2 on the 14x14 token grid), 4-11 attention.",
+    ),
+    "lstmnetvit": ModelArch(
+        "lstmnetvit",
+        "feed_forward",
+        "single_pass",
+        1,
+        None,
+        None,
+        loop_count_source="by_construction",
+        note="vitfly ViT+LSTM depth-image controller. The real controller "
+        "threads the LSTM state across steps; the capture is one step "
+        "from a zero state, so K=1 describes the CAPTURE, not the loop.",
+    ),
+    "deepjscc": ModelArch(
+        "deepjscc",
+        "feed_forward",
+        "single_pass",
+        1,
+        None,
+        None,
+        loop_count_source="by_construction",
+        note="DiffJSCC's JSCC encoder+decoder codec only — NOT the "
+        "Stable-Diffusion refinement stage that produces its published "
+        "reconstruction quality.",
+    ),
+    "whisper_tiny": ModelArch(
+        "whisper_tiny",
+        "llm",
+        "token_decode",
+        1,
+        None,
+        None,
+        loop_count_source="by_construction",
+        note="Whisper-tiny encoder + ONE cross-attending decoder step. "
+        "Transcription length is data-dependent, so no reference K "
+        "is claimed; the capture is the per-step graph.",
+    ),
 }
 
 
 @dataclass
 class CaptureFacts:
     """Aggregate structural facts read from a model.mlir capture (analytical)."""
+
     n_matmuls: int
     total_macs: int
     total_weight_bytes: int
@@ -95,9 +218,21 @@ class CaptureFacts:
 def _base_model(dirname: str) -> str | None:
     """Map an output capture dirname to a base model name in MODEL_ARCH (longest match)."""
     stem = dirname
-    for suffix in ("_fp32_consistent", "_int8_consistent", "_fp8_consistent", "_consistent",
-                   "_fp32_biasfix", "_int8_biasfix", "_int8_recap", "_lower", "_phase2",
-                   "_rvv", "_host", "_spike", "_fixed"):
+    for suffix in (
+        "_fp32_consistent",
+        "_int8_consistent",
+        "_fp8_consistent",
+        "_consistent",
+        "_fp32_biasfix",
+        "_int8_biasfix",
+        "_int8_recap",
+        "_lower",
+        "_phase2",
+        "_rvv",
+        "_host",
+        "_spike",
+        "_fixed",
+    ):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
             break
@@ -111,6 +246,7 @@ def _base_model(dirname: str) -> str | None:
 def discover_model_captures() -> dict[str, list[str]]:
     """Map base model -> list of capture dirs (absolute) that have a model.mlir."""
     from merlin.common.artifacts import recaptures_dir
+
     out_root = recaptures_dir()  # artifacts/recaptures/ (symlinked to legacy output/ in transition)
     found: dict[str, list[str]] = {}
     if not out_root.is_dir():
@@ -141,8 +277,9 @@ def capture_facts(capture_dir: str) -> CaptureFacts:
     try:
         module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
     except Exception as e:  # newer/quantized captures may not parse with stock xDSL
-        return CaptureFacts(0, 0, 0, 0, False, None, parsed=False, capture_dir=capture_dir,
-                            note=f"parse failed: {str(e)[:60]}")
+        return CaptureFacts(
+            0, 0, 0, 0, False, None, parsed=False, capture_dir=capture_dir, note=f"parse failed: {str(e)[:60]}"
+        )
     matmuls = [op for op in module.walk() if op.name == "linalg.matmul"]
     total_macs = 0
     weight_bytes = 0
@@ -158,15 +295,16 @@ def capture_facts(capture_dir: str) -> CaptureFacts:
             total_macs += M * K * N
             bw = 4 if (rd or "f32").endswith("32") else (2 if "16" in (rd or "") else 1)
             abw = 4 if (ld or "f32").endswith("32") else (2 if "16" in (ld or "") else 1)
-            weight_bytes += K * N * bw           # weight matrix: reused across the decode loop
-            activation_bytes += (M * K + M * N) * abw   # input + output activations: not reusable
+            weight_bytes += K * N * bw  # weight matrix: reused across the decode loop
+            activation_bytes += (M * K + M * N) * abw  # input + output activations: not reusable
             dtype = dtype or rd
         # Captures use the prov.* provenance namespace (not m2m.*); addmm == matmul+bias.
         op_kind = mlir_m2m._attr(op, "prov.op") or mlir_m2m._attr(op, "m2m.op")
         if op_kind == "addmm":
             epilogue = True
-    return CaptureFacts(len(matmuls), total_macs, weight_bytes, activation_bytes, epilogue,
-                        dtype, parsed=True, capture_dir=capture_dir)
+    return CaptureFacts(
+        len(matmuls), total_macs, weight_bytes, activation_bytes, epilogue, dtype, parsed=True, capture_dir=capture_dir
+    )
 
 
 def temporal_doc(arch: ModelArch) -> dict:
@@ -178,13 +316,16 @@ def temporal_doc(arch: ModelArch) -> dict:
     # collapses both into a single pass; the multi-rate view separates them so residency is
     # attributed to the head, not the backbone.
     regions = [
-        {"name": "backbone", "cadence": "once_per_replan", "role": "backbone_once",
-         "invocation_count": 1},
-        {"name": f"{arch.loop_kind}", "cadence": "K_times_per_replan", "role": "repeated_head",
-         "invocation_count": K, "loop_trip_count": K,
-         "loop_invariant_state": (["weights"] if K > 1 else []),
-         "loop_carried_state": (["denoise_latent"] if arch.loop_kind == "denoise_steps"
-                                else ["kv_cache"])},
+        {"name": "backbone", "cadence": "once_per_replan", "role": "backbone_once", "invocation_count": 1},
+        {
+            "name": f"{arch.loop_kind}",
+            "cadence": "K_times_per_replan",
+            "role": "repeated_head",
+            "invocation_count": K,
+            "loop_trip_count": K,
+            "loop_invariant_state": (["weights"] if K > 1 else []),
+            "loop_carried_state": (["denoise_latent"] if arch.loop_kind == "denoise_steps" else ["kv_cache"]),
+        },
     ]
     return {
         "workload": arch.name,
@@ -203,6 +344,7 @@ def baseline_doc(arch: ModelArch, facts: CaptureFacts) -> dict:
     which honestly reports the prediction-vs-measurement gap.
     """
     from merlin.dse.hardware_space import default_cost_model
+
     cm = default_cost_model()
 
     compute = math.ceil(facts.total_macs / cm.get("mac_per_cycle", 256)) if facts.total_macs else 0
@@ -211,8 +353,7 @@ def baseline_doc(arch: ModelArch, facts: CaptureFacts) -> dict:
     weight_dma = facts.total_weight_bytes / cm["dram_bytes_per_cycle"]
     act_dma = facts.total_activation_bytes / cm["dram_bytes_per_cycle"]
     dma = weight_dma + act_dma
-    packing = facts.n_matmuls * cm["pack_startup_cycles"] + (
-        facts.total_weight_bytes / cm["pack_bytes_per_cycle"])
+    packing = facts.n_matmuls * cm["pack_startup_cycles"] + (facts.total_weight_bytes / cm["pack_bytes_per_cycle"])
     cpu_dispatch = facts.n_matmuls * cm["dispatch_fixed_cycles"]
 
     components = {
@@ -258,24 +399,29 @@ def calibration_rows(arch: ModelArch, facts: CaptureFacts) -> list[dict]:
     predicted = predicted_total_cycles(facts)
     measured = float(arch.measured_cycles)
     err = ((predicted - measured) / measured * 100.0) if measured else None
-    return [{
-        "workload": arch.name,
-        "quantity": "total_cycles",
-        "predicted": predicted,
-        "measured": measured,
-        "error_pct": None if err is None else round(err, 2),
-        "evidence_type": "measured",
-        "interpretation": (
-            "analytical single-pass matmul-only model vs whole-model FireSim total; "
-            f"off by {measured / predicted:.0f}x — the analytical cost model is NOT calibrated "
-            "to real cycles, so cross-workload gap_closure magnitudes are not trustworthy"
-            if predicted else "analytical prediction is zero (capture parsed no matmuls)"),
-    }, {
-        "workload": arch.name,
-        "quantity": "matmul_count",
-        "predicted": facts.n_matmuls,
-        "measured": "n/a",
-        "error_pct": None,
-        "evidence_type": "structural_bound",
-        "interpretation": "extraction sanity: linalg.matmul ops read from the real capture IR",
-    }]
+    return [
+        {
+            "workload": arch.name,
+            "quantity": "total_cycles",
+            "predicted": predicted,
+            "measured": measured,
+            "error_pct": None if err is None else round(err, 2),
+            "evidence_type": "measured",
+            "interpretation": (
+                "analytical single-pass matmul-only model vs whole-model FireSim total; "
+                f"off by {measured / predicted:.0f}x — the analytical cost model is NOT calibrated "
+                "to real cycles, so cross-workload gap_closure magnitudes are not trustworthy"
+                if predicted
+                else "analytical prediction is zero (capture parsed no matmuls)"
+            ),
+        },
+        {
+            "workload": arch.name,
+            "quantity": "matmul_count",
+            "predicted": facts.n_matmuls,
+            "measured": "n/a",
+            "error_pct": None,
+            "evidence_type": "structural_bound",
+            "interpretation": "extraction sanity: linalg.matmul ops read from the real capture IR",
+        },
+    ]

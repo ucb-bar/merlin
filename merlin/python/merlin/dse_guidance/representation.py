@@ -15,6 +15,7 @@ when a region is available, and from the temporal metadata's ``loop_invariant_st
 ``loop_carried_state`` otherwise. The region is optional: a headline VLA action head may be
 described purely by its temporal metadata + measured cost breakdown.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -70,7 +71,7 @@ COULD_BE_WRONG_IF: dict[str, list[str]] = {
 
 @dataclass
 class Representation:
-    name: str                               # "flat" | "multirate"
+    name: str  # "flat" | "multirate"
     workload: str
     K: int
     H: int | None
@@ -108,6 +109,7 @@ def _base_facts(temporal: TemporalMetadata, region: dict | None) -> dict:
 
     if region is not None:
         from merlin.design_pressure.pressure_vector import compute_rpv
+
         rpv = compute_rpv(region)
         m = rpv["metrics"]
         macs = int(m.get("macs", 0)) or None
@@ -160,23 +162,33 @@ def _legal(axis: str, facts: dict) -> bool:
 def _reason(axis: str, facts: dict, legal: bool) -> str:
     K = facts["K"]
     if axis == "resident_packed_weights":
-        return (f"action head reuses immutable weights across its K={K} loop (backbone excluded)"
-                if legal else "no repeated-head reuse of immutable weights is visible")
+        return (
+            f"action head reuses immutable weights across its K={K} loop (backbone excluded)"
+            if legal
+            else "no repeated-head reuse of immutable weights is visible"
+        )
     if axis == "resident_prefix_kv":
-        return (f"prefix/KV is loop-invariant across the K={K} loop" if legal
-                else "prefix/KV is not listed as loop-invariant state")
+        return (
+            f"prefix/KV is loop-invariant across the K={K} loop"
+            if legal
+            else "prefix/KV is not listed as loop-invariant state"
+        )
     if axis == "command_batching":
-        return (f"{facts['dispatches_per_replan']} dispatches per replan collapse to a batch"
-                if legal else "only one dispatch per replan is visible")
+        return (
+            f"{facts['dispatches_per_replan']} dispatches per replan collapse to a batch"
+            if legal
+            else "only one dispatch per replan is visible"
+        )
     if axis == "autonomous_K_loop":
-        return (f"bounded K={K} loop can run on-device" if legal
-                else "no bounded K-loop is visible (K<=1)")
+        return f"bounded K={K} loop can run on-device" if legal else "no bounded K-loop is visible (K<=1)"
     if axis == "accumulator_commit":
-        return ("matmul/conv + epilogue keeps the i32 accumulator live"
-                if legal else "no contraction+epilogue pattern present")
+        return (
+            "matmul/conv + epilogue keeps the i32 accumulator live"
+            if legal
+            else "no contraction+epilogue pattern present"
+        )
     if axis == "event_tokens":
-        return ("a producer/consumer dependency chain exists" if legal
-                else "no dependency chain to overlap")
+        return "a producer/consumer dependency chain exists" if legal else "no dependency chain to overlap"
     return ""
 
 
@@ -192,30 +204,32 @@ def _build(name: str, temporal: TemporalMetadata, base: dict) -> Representation:
 
     head_reuse = has_repeated_head and base["head_weights_immutable"]
     visible_weight_reuse = K_eff if head_reuse else 1
-    visible_prefix_kv_reuse = (K_eff if (has_repeated_head and base["prefix_kv_loop_invariant"])
-                               else 1)
+    visible_prefix_kv_reuse = K_eff if (has_repeated_head and base["prefix_kv_loop_invariant"]) else 1
     macs = base["macs_per_step"]
     work_per_dispatch = (macs / dps) if macs else None
 
     facts = dict(base)
-    facts.update({
-        "K": K_eff,
-        "has_k_loop": has_k_loop,
-        "has_repeated_head": has_repeated_head,
-        "prefix_kv_loop_invariant": base["prefix_kv_loop_invariant"] and has_repeated_head,
-        "dispatches_per_replan": dispatches_per_replan,
-        "visible_weight_reuse": visible_weight_reuse,
-        "visible_prefix_kv_reuse": visible_prefix_kv_reuse,
-        "work_per_dispatch": work_per_dispatch,
-    })
+    facts.update(
+        {
+            "K": K_eff,
+            "has_k_loop": has_k_loop,
+            "has_repeated_head": has_repeated_head,
+            "prefix_kv_loop_invariant": base["prefix_kv_loop_invariant"] and has_repeated_head,
+            "dispatches_per_replan": dispatches_per_replan,
+            "visible_weight_reuse": visible_weight_reuse,
+            "visible_prefix_kv_reuse": visible_prefix_kv_reuse,
+            "work_per_dispatch": work_per_dispatch,
+        }
+    )
 
     recommended, deprioritized = [], []
     for axis in _ABSTRACTION_AXES:
         legal = _legal(axis, facts)
         entry = {"axis": axis, "reason": _reason(axis, facts, legal)}
         if legal:
-            recommended.append({**entry, "evidence_type": "structural_bound",
-                                "could_be_wrong_if": COULD_BE_WRONG_IF.get(axis, [])})
+            recommended.append(
+                {**entry, "evidence_type": "structural_bound", "could_be_wrong_if": COULD_BE_WRONG_IF.get(axis, [])}
+            )
         else:
             deprioritized.append(entry)
 
@@ -238,9 +252,9 @@ def _build(name: str, temporal: TemporalMetadata, base: dict) -> Representation:
     )
 
 
-def build_representations(temporal: TemporalMetadata,
-                          region: dict | None = None,
-                          overrides: dict | None = None) -> dict[str, Representation]:
+def build_representations(
+    temporal: TemporalMetadata, region: dict | None = None, overrides: dict | None = None
+) -> dict[str, Representation]:
     """Return ``{"flat": Representation, "multirate": Representation}`` for the workload.
 
     ``overrides`` may supply base structural facts directly (``has_epilogue``,
@@ -255,9 +269,9 @@ def build_representations(temporal: TemporalMetadata,
         if "weights_immutable" in overrides and "head_weights_immutable" not in overrides:
             loop_inv = {s.lower() for s in temporal.loop_invariant_state()}
             base["head_weights_immutable"] = base["weights_immutable"] and (
-                any("weight" in s for s in loop_inv) or temporal.K > 1)
-    return {"flat": _build("flat", temporal, base),
-            "multirate": _build("multirate", temporal, base)}
+                any("weight" in s for s in loop_inv) or temporal.K > 1
+            )
+    return {"flat": _build("flat", temporal, base), "multirate": _build("multirate", temporal, base)}
 
 
 def to_report_dict(rep: Representation) -> dict:

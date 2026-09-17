@@ -3,7 +3,7 @@
 The agent reads an emitted insight-mining run and proposes critiques (over-claims, unsupported
 leaps, missing caveats) in the *interpretation* layer. Each proposed critique MUST quote an exact
 substring of a real artifact; the deterministic ``citation_gate`` rejects any critique that does
-not. This is the propose/dispose pattern from targetgen's kernel_slot, applied to prose review:
+not. This is the propose/dispose pattern from targetgen's gemmini_kernel_slot, applied to prose review:
 the agent never produces a number, and an ungrounded critique cannot enter the report.
 
 Usage (the agent is optional; the gate is always testable with an injected runner):

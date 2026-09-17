@@ -11,6 +11,7 @@ All parameters are measurable (``docs/dse.md`` forbids vague low/medium/high kno
 (plus ``mac_per_cycle`` for the constant compute term, and capacity knobs
 ``resident_store_bytes, accumulator_entries`` used for legality, not timing).
 """
+
 from __future__ import annotations
 
 import math
@@ -39,8 +40,9 @@ def evaluate_cost(rpv: dict, plan: dict, cost_model: dict) -> dict:
 
     weight_bytes = int(m.get("weight_bytes", 0))
     io_bytes = steps * (int(m.get("input_bytes_step", 0)) + int(m.get("final_output_bytes_step", 0)))
-    intermediate_bytes = (steps * int(m.get("intermediate_i32_bytes_step", 0))
-                          if plan.get("per_step_intermediate") else 0)
+    intermediate_bytes = (
+        steps * int(m.get("intermediate_i32_bytes_step", 0)) if plan.get("per_step_intermediate") else 0
+    )
     dram_bytes = int(plan["weight_loads"]) * weight_bytes + io_bytes + intermediate_bytes
     dram_cycles = dram_bytes / cm["dram_bytes_per_cycle"]
 

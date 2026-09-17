@@ -3,6 +3,7 @@
 Captures how strongly an immutable operand is reused across a region — the pressure that
 justifies a ``resident_packed_tensor`` contract.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

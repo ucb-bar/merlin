@@ -1,4 +1,5 @@
 """Emit a candidate_contracts payload (the I0–I3 ladder for a workload)."""
+
 from __future__ import annotations
 
 

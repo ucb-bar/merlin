@@ -10,6 +10,7 @@ xDSL-gated: requires ``uv sync --extra xdsl``. Parses with the standard dialects
 quantized exports use model2MLIR's custom ``quant_ext`` dialect and need its own loader; the
 fp32 exports parse with stock xDSL, so the parity path targets those.
 """
+
 from __future__ import annotations
 
 from merlin.common import mlir_query
@@ -19,6 +20,7 @@ def available() -> bool:
     """True iff xDSL is importable."""
     try:
         import xdsl  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -72,10 +74,14 @@ def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -
     region_name = _attr(op, "m2m.region_id") or "mlir_matmul"
     tensors = {
         "A": {"shape": lhs_shape, "dtype": lhs_dt, "lifetime": "single_use"},
-        "W": {"shape": rhs_shape, "dtype": rhs_dt, "mutable": False,
-              "lifetime": "reused_across_region", "reuse_count": H},
-        "Y": {"shape": out_shape or [lhs_shape[0], rhs_shape[-1]], "dtype": out_dt or rhs_dt,
-              "lifetime": "single_use"},
+        "W": {
+            "shape": rhs_shape,
+            "dtype": rhs_dt,
+            "mutable": False,
+            "lifetime": "reused_across_region",
+            "reuse_count": H,
+        },
+        "Y": {"shape": out_shape or [lhs_shape[0], rhs_shape[-1]], "dtype": out_dt or rhs_dt, "lifetime": "single_use"},
     }
     if epilogue:
         tensors["bias"] = {"shape": [rhs_shape[-1]], "dtype": "i32", "mutable": False}
@@ -87,9 +93,9 @@ def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -
         "op_sequence": list(ops),
         "tensors": tensors,
         "reuse": {"rhs_reuse_count": H, "rhs_mutable": False, "distinct_weights": 1},
-        "provenance": {"source": "model2MLIR", "file": mlir_path, "m2m_op": m2m_op,
-                       "host_loop_H": H},
+        "provenance": {"source": "model2MLIR", "file": mlir_path, "m2m_op": m2m_op, "host_loop_H": H},
     }
     from merlin.common.schemas import validate_or_raise
-    validate_or_raise(region, "workload_region")   # schemas/ rule: code validates what lives here
+
+    validate_or_raise(region, "workload_region")  # schemas/ rule: code validates what lives here
     return region

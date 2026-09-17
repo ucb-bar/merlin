@@ -4,6 +4,7 @@ Counts layout conversions implied by repacking the weight each use. In M1 this m
 baseline pack count (each repack is a layout conversion); richer layout-ping-pong accounting
 across heterogeneous consumers is M2.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

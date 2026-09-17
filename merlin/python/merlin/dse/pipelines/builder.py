@@ -6,6 +6,7 @@ each against ``merlin.dse.pipelines.registry`` and returns a :class:`Pipeline` t
 order to a starting cost-model plan. Unknown names default to identity (``strict=False``) so a
 forward-looking xDSL pass spec still runs; pass ``strict=True`` to require every pass to exist.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

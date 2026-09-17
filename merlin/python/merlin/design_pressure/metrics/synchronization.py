@@ -4,6 +4,7 @@ In M1 this reports only a boolean: whether DMA/compute overlap is beneficial (a 
 weight plus per-step activation transfer gives a copy/compute overlap window). Full
 event-count / barrier / pipeline-bubble accounting needs the trace cutpoint and is M2.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

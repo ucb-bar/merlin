@@ -6,6 +6,7 @@ name) so the guidance CLI accepts the same workload identifiers as ``merlin-desi
 Region interpretation (reuse, epilogue, M/K/N) is reused from
 :mod:`merlin.design_pressure.region` — this module only resolves *which* region to load.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,8 +15,7 @@ from merlin.common import paths
 from merlin.common.yaml import load_yaml
 
 
-def load_region(workload: str | None = None, region_yaml: str | None = None,
-                H: int = 16) -> dict:
+def load_region(workload: str | None = None, region_yaml: str | None = None, H: int = 16) -> dict:
     """Resolve a workload region dict.
 
     Precedence: ``region_yaml`` path > synthetic ``vla_action_chunk_decode`` > benchmark name
@@ -25,11 +25,10 @@ def load_region(workload: str | None = None, region_yaml: str | None = None,
         return load_yaml(region_yaml)
     if workload == "vla_action_chunk_decode":
         from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
+
         return build_region(H=H, reuse_count=H)
     if workload:
         bench = paths.bench_dir() / "semantic_memory" / f"{workload}.yaml"
         if bench.is_file():
             return load_yaml(bench)
-    raise SystemExit(
-        f"unknown workload '{workload}' (pass --region-yaml or a semantic_memory benchmark name)"
-    )
+    raise SystemExit(f"unknown workload '{workload}' (pass --region-yaml or a semantic_memory benchmark name)")

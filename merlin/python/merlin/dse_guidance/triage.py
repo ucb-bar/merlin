@@ -21,6 +21,7 @@ Edge handling, done explicitly rather than papered over:
   * ``gap_closure`` can exceed 1 (an axis that closes more than the gap); the raw value is kept
     in ``gap_closure_raw`` and the score uses the value clamped to ``[0, 1]``.
 """
+
 from __future__ import annotations
 
 from merlin.dse_guidance import evidence as E
@@ -30,17 +31,34 @@ from merlin.dse_guidance.representation import Representation
 
 # Column order for axis_triage.csv (also the canonical row-field order).
 TRIAGE_COLUMNS = [
-    "workload", "representation", "axis", "family",
-    "baseline_total", "target_total", "intervention_total",
-    "gap_closure", "gap_closure_raw", "baseline_share",
-    "affected_components", "evidence_type", "confidence", "legality",
-    "cost_tier", "priority_score", "reason",
+    "workload",
+    "representation",
+    "axis",
+    "family",
+    "baseline_total",
+    "target_total",
+    "intervention_total",
+    "gap_closure",
+    "gap_closure_raw",
+    "baseline_share",
+    "affected_components",
+    "evidence_type",
+    "confidence",
+    "legality",
+    "cost_tier",
+    "priority_score",
+    "reason",
 ]
 
 
-def _row(workload: str, representation: str, baseline_total: float,
-         target_total: float | None, target_gap: float | None,
-         ar: AxisResult) -> dict:
+def _row(
+    workload: str,
+    representation: str,
+    baseline_total: float,
+    target_total: float | None,
+    target_gap: float | None,
+    ar: AxisResult,
+) -> dict:
     confidence = E.confidence_for(ar.evidence_type)
     intervention_total = baseline_total - ar.benefit_ms
     baseline_share = (ar.benefit_ms / baseline_total) if baseline_total > 0 else None
@@ -101,19 +119,20 @@ def _sort_key(row: dict):
     return (0, share)
 
 
-def triage(representation: Representation, baseline: BaselineCost,
-           coupling_per_replan: dict | None = None) -> dict:
+def triage(representation: Representation, baseline: BaselineCost, coupling_per_replan: dict | None = None) -> dict:
     """Rank all axes for one representation. Returns a ``dse_axis_triage``-shaped dict."""
     baseline_total = baseline.baseline_total_ms
     target_total = baseline.target_total_ms
     target_gap = baseline.target_gap_ms
 
     results = evaluate_axes(representation.facts, baseline, coupling_per_replan)
-    rows = [_row(baseline.workload, representation.name, baseline_total,
-                 target_total, target_gap, ar) for ar in results]
+    rows = [
+        _row(baseline.workload, representation.name, baseline_total, target_total, target_gap, ar) for ar in results
+    ]
     rows.sort(key=_sort_key, reverse=True)
 
     from merlin.common.schemas import validate_or_raise
+
     out = {
         "workload": baseline.workload,
         "representation": representation.name,
@@ -122,5 +141,5 @@ def triage(representation: Representation, baseline: BaselineCost,
         "target_gap_ms": target_gap,
         "axes": rows,
     }
-    validate_or_raise(out, "dse_axis_triage")   # schemas/ rule: if it lives here, code validates it
+    validate_or_raise(out, "dse_axis_triage")  # schemas/ rule: if it lives here, code validates it
     return out

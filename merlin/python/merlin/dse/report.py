@@ -6,6 +6,7 @@ SRAM (area); adding the *interface* axis lets the DSE instead expose a small res
 accumulator-commit unit and reach lower latency at equal-or-less area — so the best design
 changes category. Produces a scoreboard, decision report, and Pareto CSVs.
 """
+
 from __future__ import annotations
 
 import csv
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from merlin.common import paths
 from merlin.dse.exploitability import exploitability
-from merlin.dse.hardware_space import (area_proxy, build_hardware_space, default_cost_model)
+from merlin.dse.hardware_space import area_proxy, build_hardware_space, default_cost_model
 from merlin.dse.interface_space import baseline_only, build_interface_space
 from merlin.dse.pareto import compute_pareto, frontier_dominates
 from merlin.dse.strategy import default_strategies, evaluate_strategy
@@ -34,16 +35,18 @@ def scoreboard(rpv: dict, strategies=None, cost_model: dict | None = None) -> li
     for s in strats:
         e = evals[s.id]
         speedup = base_cyc / e["cycles"] if e["cycles"] else 1.0
-        rows.append({
-            "strategy": s.id,
-            "variant_class": s.variant_class,
-            "features": ";".join(s.interface_features),
-            "cycles": round(e["cycles"], 1),
-            "energy": e["energy"],
-            "speedup_vs_baseline": round(speedup, 3),
-            "exploitability": round(exploitability(speedup, oracle_speedup), 3),
-            "area": area_proxy(cm, s.interface_features),
-        })
+        rows.append(
+            {
+                "strategy": s.id,
+                "variant_class": s.variant_class,
+                "features": ";".join(s.interface_features),
+                "cycles": round(e["cycles"], 1),
+                "energy": e["energy"],
+                "speedup_vs_baseline": round(speedup, 3),
+                "exploitability": round(exploitability(speedup, oracle_speedup), 3),
+                "area": area_proxy(cm, s.interface_features),
+            }
+        )
     return rows
 
 
@@ -52,11 +55,9 @@ def hardware_vs_interface(rpv: dict, hw_grid: dict | None = None) -> dict:
     hw_space = build_hardware_space(hw_grid)
     base_iface = baseline_only()
     # Buildable interfaces only — the oracle is a bound, not a candidate hardware design.
-    all_iface = build_interface_space(
-        variant_classes=["baseline", "hardware_managed", "software_visible"])
+    all_iface = build_interface_space(variant_classes=["baseline", "hardware_managed", "software_visible"])
     # A resident interface is only feasible where the resident store fits the packed weight.
-    need_bytes = int(rpv["metrics"].get("pack_bytes", 0)) * int(
-        rpv["metrics"].get("distinct_weights", 1))
+    need_bytes = int(rpv["metrics"].get("pack_bytes", 0)) * int(rpv["metrics"].get("distinct_weights", 1))
 
     def _feasible(s, cm) -> bool:
         if "resident_packed_tensor" in s.interface_features:
@@ -70,16 +71,18 @@ def hardware_vs_interface(rpv: dict, hw_grid: dict | None = None) -> dict:
                 if not _feasible(s, cm):
                     continue
                 e = evaluate_strategy(s, rpv, cm)
-                out.append({
-                    "cycles": round(e["cycles"], 1),
-                    "area": area_proxy(cm, s.interface_features),
-                    "strategy": s.id,
-                    "variant_class": s.variant_class,
-                    "features": list(s.interface_features),
-                    "dram_bytes_per_cycle": cm["dram_bytes_per_cycle"],
-                    "resident_store_bytes": cm["resident_store_bytes"],
-                    "dispatch_fixed_cycles": cm["dispatch_fixed_cycles"],
-                })
+                out.append(
+                    {
+                        "cycles": round(e["cycles"], 1),
+                        "area": area_proxy(cm, s.interface_features),
+                        "strategy": s.id,
+                        "variant_class": s.variant_class,
+                        "features": list(s.interface_features),
+                        "dram_bytes_per_cycle": cm["dram_bytes_per_cycle"],
+                        "resident_store_bytes": cm["resident_store_bytes"],
+                        "dispatch_fixed_cycles": cm["dispatch_fixed_cycles"],
+                    }
+                )
         return out
 
     hw_only = cells(base_iface)
@@ -124,18 +127,31 @@ def _csv(rows: list[dict], columns: list[str]) -> str:
     return buf.getvalue()
 
 
-def build_report(rpv: dict, workload: str = "vla_action_chunk_decode",
-                 cost_model: dict | None = None, hw_grid: dict | None = None,
-                 out_dir: str | Path | None = None) -> dict:
+def build_report(
+    rpv: dict,
+    workload: str = "vla_action_chunk_decode",
+    cost_model: dict | None = None,
+    hw_grid: dict | None = None,
+    out_dir: str | Path | None = None,
+) -> dict:
     """Produce the scoreboard, capstone frontiers, and a decision report; write artifacts."""
     board = scoreboard(rpv, cost_model=cost_model)
     capstone = hardware_vs_interface(rpv, hw_grid)
     rec = recommended_hw_features(capstone)
 
-    board_csv = _csv(board, ["strategy", "variant_class", "features", "cycles", "energy",
-                             "speedup_vs_baseline", "exploitability", "area"])
-    front_cols = ["area", "cycles", "strategy", "variant_class", "dram_bytes_per_cycle",
-                  "resident_store_bytes", "dispatch_fixed_cycles"]
+    board_csv = _csv(
+        board,
+        ["strategy", "variant_class", "features", "cycles", "energy", "speedup_vs_baseline", "exploitability", "area"],
+    )
+    front_cols = [
+        "area",
+        "cycles",
+        "strategy",
+        "variant_class",
+        "dram_bytes_per_cycle",
+        "resident_store_bytes",
+        "dispatch_fixed_cycles",
+    ]
     decision = _decision_md(workload, board, capstone, rec)
 
     artifacts = {
@@ -149,38 +165,48 @@ def build_report(rpv: dict, workload: str = "vla_action_chunk_decode",
         out.mkdir(parents=True, exist_ok=True)
         for name, text in artifacts.items():
             (out / name).write_text(text, encoding="utf-8")
-    return {"scoreboard": board, "capstone": capstone, "recommended_hw_features": rec,
-            "artifacts": artifacts}
+    return {"scoreboard": board, "capstone": capstone, "recommended_hw_features": rec, "artifacts": artifacts}
 
 
 def _decision_md(workload: str, board: list[dict], capstone: dict, rec: dict) -> str:
     hw_b, if_b = capstone["hardware_only_best"], capstone["interface_aware_best"]
     lines = [
-        f"# DSE decision report — {workload}", "",
-        "## Per-strategy scoreboard", "",
+        f"# DSE decision report — {workload}",
+        "",
+        "## Per-strategy scoreboard",
+        "",
         "| strategy | class | cycles | speedup | exploitability | area |",
         "| --- | --- | ---: | ---: | ---: | ---: |",
     ]
     for r in board:
-        lines.append(f"| {r['strategy']} | {r['variant_class']} | {r['cycles']} | "
-                     f"{r['speedup_vs_baseline']} | {r['exploitability']} | {r['area']} |")
+        lines.append(
+            f"| {r['strategy']} | {r['variant_class']} | {r['cycles']} | "
+            f"{r['speedup_vs_baseline']} | {r['exploitability']} | {r['area']} |"
+        )
     lines += [
-        "", "## Hardware-only vs interface-aware", "",
+        "",
+        "## Hardware-only vs interface-aware",
+        "",
         f"- hardware-only best: **{hw_b['strategy']}** "
         f"(cycles={hw_b['cycles']}, area={hw_b['area']}, "
         f"dram_bpc={hw_b['dram_bytes_per_cycle']}, resident={hw_b['resident_store_bytes']})",
         f"- interface-aware best: **{if_b['strategy']}** "
         f"(cycles={if_b['cycles']}, area={if_b['area']}, "
         f"dram_bpc={if_b['dram_bytes_per_cycle']}, resident={if_b['resident_store_bytes']})",
-        f"- interface-aware frontier dominates hardware-only: "
-        f"**{capstone['interface_dominates_hardware_only']}**",
+        f"- interface-aware frontier dominates hardware-only: **{capstone['interface_dominates_hardware_only']}**",
         f"- best design changes category: **{capstone['best_interface_changes_category']}**",
-        "", "## Recommended hardware features", "",
-        "```yaml", _yaml_block(rec), "```", "",
+        "",
+        "## Recommended hardware features",
+        "",
+        "```yaml",
+        _yaml_block(rec),
+        "```",
+        "",
     ]
     return "\n".join(lines)
 
 
 def _yaml_block(d: dict) -> str:
     from merlin.common.yaml import dump_yaml
+
     return dump_yaml(d).rstrip()

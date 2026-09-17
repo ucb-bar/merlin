@@ -4,6 +4,7 @@ The graph view (pre-linalg, op-level dataflow) is an honest pass-through in M1: 
 that the cutpoint was visited and carries the op list forward. Full graph-level dataflow
 analysis (producer/consumer distance, fusion boundaries) is M2.
 """
+
 from __future__ import annotations
 
 

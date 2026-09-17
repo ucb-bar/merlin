@@ -10,15 +10,16 @@ fixture (when present) overrides it.
 
 Component mapping (cost-model cycles -> named components), all tagged ``analytical``::
 
-    compute                       = ceil(macs / mac_per_cycle)
-    dma_memory                    = (steps*weight_bytes + io_bytes) / dram_bytes_per_cycle
-    packing                       = pack_count_baseline * (startup + pack_bytes/pack_bytes_per_cycle)
-    cpu_dispatch                  = dispatch_count * dispatch_fixed_cycles
-    intermediate_materialization  = steps*intermediate_i32_bytes_step / dram_bytes_per_cycle
+    compute = ceil(macs / mac_per_cycle)
+    dma_memory = (steps * weight_bytes + io_bytes) / dram_bytes_per_cycle
+    packing = pack_count_baseline * (startup + pack_bytes / pack_bytes_per_cycle)
+    cpu_dispatch = dispatch_count * dispatch_fixed_cycles
+    intermediate_materialization = steps * intermediate_i32_bytes_step / dram_bytes_per_cycle
 
 Units are the cost model's cycles (``unit: cycles``), not ms — gap_closure is a ratio, so the
 unit does not affect the ranking, and we never relabel cycles as milliseconds.
 """
+
 from __future__ import annotations
 
 import math
@@ -48,8 +49,7 @@ def analytical_baseline_cost(region: dict, target_fraction: float | None = 0.5) 
 
     pack_bytes = int(m.get("pack_bytes", 0))
     pack_count = int(m.get("pack_count_baseline", steps))
-    packing = pack_count * (cm["pack_startup_cycles"]
-                            + (pack_bytes / cm["pack_bytes_per_cycle"] if pack_bytes else 0))
+    packing = pack_count * (cm["pack_startup_cycles"] + (pack_bytes / cm["pack_bytes_per_cycle"] if pack_bytes else 0))
 
     cpu_dispatch = int(m.get("dispatch_count", steps)) * cm["dispatch_fixed_cycles"]
 

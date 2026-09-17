@@ -10,6 +10,7 @@ template (:mod:`.search_space`) then turns into knobs.
 Structural only: a family's enabled axes are the union of its members' candidate axes. No speedup,
 ranking, or cycle number.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -43,9 +44,13 @@ def _enabled_axes(pkg) -> list[str]:
 def family_rows(packages) -> list[FamilyRow]:
     rows = []
     for p in packages:
-        rows.append(FamilyRow(workload=p["case"].workload,
-                              family=family_of(p["case"].topo.workload_class),
-                              enabled_axes=_enabled_axes(p)))
+        rows.append(
+            FamilyRow(
+                workload=p["case"].workload,
+                family=family_of(p["case"].topo.workload_class),
+                enabled_axes=_enabled_axes(p),
+            )
+        )
     return sorted(rows, key=lambda r: (r.family, r.workload))
 
 
@@ -60,6 +65,9 @@ def family_axis_sets(packages) -> dict[str, set[str]]:
 
 def workload_family_csv(packages) -> str:
     from merlin.dse_guidance.corpus import _csv
-    rows = [{"workload": r.workload, "family": r.family,
-             "enabled_axes": "; ".join(r.enabled_axes)} for r in family_rows(packages)]
+
+    rows = [
+        {"workload": r.workload, "family": r.family, "enabled_axes": "; ".join(r.enabled_axes)}
+        for r in family_rows(packages)
+    ]
     return _csv(rows, ["workload", "family", "enabled_axes"])

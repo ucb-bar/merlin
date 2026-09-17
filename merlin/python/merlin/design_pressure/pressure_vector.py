@@ -9,6 +9,7 @@ the cost model and DSE consume it to decide which software-visible contract is w
 flat ``facts`` sub-dict whose keys match the ``when`` clauses of the mined policies in
 ``output/kernels/policy_rules.yaml`` (the bridge to ``merlin.kernels.policy.evaluate_when``).
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure.cutpoints.bufferized import cut_bufferized
@@ -74,16 +75,32 @@ def _facts(m: dict) -> dict:
 
 # Which metric keys belong to which architecture-independent pressure class.
 _CLASS_KEYS: dict[str, tuple[str, ...]] = {
-    "state": ("rhs_reuse_count", "rhs_mutable", "reuse_distance", "distinct_weights",
-              "state_bytes_per_step", "weight_immutable"),
-    "precision": ("intermediate_i32_bytes", "intermediate_i32_bytes_step",
-                  "final_output_bytes", "final_output_bytes_step", "has_epilogue"),
-    "layout": ("pack_bytes", "pack_count_baseline", "pack_count_resident",
-               "pack_bytes_baseline", "layout_conversions", "layout_convert_resident"),
+    "state": (
+        "rhs_reuse_count",
+        "rhs_mutable",
+        "reuse_distance",
+        "distinct_weights",
+        "state_bytes_per_step",
+        "weight_immutable",
+    ),
+    "precision": (
+        "intermediate_i32_bytes",
+        "intermediate_i32_bytes_step",
+        "final_output_bytes",
+        "final_output_bytes_step",
+        "has_epilogue",
+    ),
+    "layout": (
+        "pack_bytes",
+        "pack_count_baseline",
+        "pack_count_resident",
+        "pack_bytes_baseline",
+        "layout_conversions",
+        "layout_convert_resident",
+    ),
     "dispatch": ("dispatch_count", "work_per_dispatch", "steps"),
     "overlap": ("dma_compute_overlap_beneficial", "sync_event_count"),
-    "bandwidth": ("weight_bytes", "input_bytes_step", "dram_traffic_bytes_baseline",
-                  "dram_traffic_bytes_resident"),
+    "bandwidth": ("weight_bytes", "input_bytes_step", "dram_traffic_bytes_baseline", "dram_traffic_bytes_resident"),
     "compute": ("op", "op_mix", "M", "K", "N", "macs", "dtype_dist"),
 }
 

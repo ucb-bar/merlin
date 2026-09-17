@@ -11,6 +11,7 @@ strategy that exposes a contract the region does not legally support scores corr
 legality verifiers are the mined policies (via ``design_pressure.synthesize``); cost/speedup
 come from ``dse.strategy.evaluate_strategy`` over the supplied workload regions.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,21 +34,33 @@ class Score:
 
     @property
     def total(self) -> float:
-        return (self.correctness + self.compile_success + self.verifier_success
-                + self.coverage + self.exploitability + self.speedup
-                - self.complexity_penalty)
+        return (
+            self.correctness
+            + self.compile_success
+            + self.verifier_success
+            + self.coverage
+            + self.exploitability
+            + self.speedup
+            - self.complexity_penalty
+        )
 
     def priority_key(self) -> tuple:
         """Lexicographic key (higher is better): correctness first, speedup last."""
-        return (self.correctness, self.compile_success, self.verifier_success,
-                self.coverage, self.exploitability, self.speedup, -self.complexity_penalty)
+        return (
+            self.correctness,
+            self.compile_success,
+            self.verifier_success,
+            self.coverage,
+            self.exploitability,
+            self.speedup,
+            -self.complexity_penalty,
+        )
 
 
 class Evaluator:
     """Scores candidates over a fixed set of workload regions and a cost model."""
 
-    def __init__(self, regions: list[tuple[str, dict]], cost_model: dict | None = None,
-                 policies=None):
+    def __init__(self, regions: list[tuple[str, dict]], cost_model: dict | None = None, policies=None):
         if not regions:
             raise ValueError("Evaluator needs at least one (name, rpv) region")
         self.regions = regions
@@ -57,15 +70,13 @@ class Evaluator:
         self._baseline = defaults["baseline"]
         self._oracle = defaults["oracle"]
         # Per-region baseline / oracle cycles.
-        self._base = {n: evaluate_strategy(self._baseline, r, self.cost_model)["cycles"]
-                      for n, r in regions}
-        self._orc = {n: evaluate_strategy(self._oracle, r, self.cost_model)["cycles"]
-                     for n, r in regions}
+        self._base = {n: evaluate_strategy(self._baseline, r, self.cost_model)["cycles"] for n, r in regions}
+        self._orc = {n: evaluate_strategy(self._oracle, r, self.cost_model)["cycles"] for n, r in regions}
 
     def _legal_features(self, rpv: dict) -> set[str]:
-        return set(S.recommended_features(
-            rpv, self.policies,
-            resident_store_bytes=self.cost_model.get("resident_store_bytes")))
+        return set(
+            S.recommended_features(rpv, self.policies, resident_store_bytes=self.cost_model.get("resident_store_bytes"))
+        )
 
     def evaluate(self, candidate) -> Score:
         strategy = candidate.strategy() if hasattr(candidate, "strategy") else candidate
@@ -102,9 +113,14 @@ class Evaluator:
         complexity = 0.1 * len(feats) + 0.02 * len(effect_passes(strategy))
 
         return Score(
-            correctness=correctness, compile_success=compile_ok, verifier_success=verifier,
-            coverage=round(coverage, 4), exploitability=round(mean_expl, 4),
-            speedup=round(speedup_term, 4), complexity_penalty=round(complexity, 4))
+            correctness=correctness,
+            compile_success=compile_ok,
+            verifier_success=verifier,
+            coverage=round(coverage, 4),
+            exploitability=round(mean_expl, 4),
+            speedup=round(speedup_term, 4),
+            complexity_penalty=round(complexity, 4),
+        )
 
 
 def make_evaluator(regions, cost_model=None, policies=None) -> Evaluator:

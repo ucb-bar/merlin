@@ -3,6 +3,7 @@
 Counts how often the immutable weight is packed and the bytes moved doing so. Repeated
 packing of a reused immutable weight is the waste a ``resident_packed_tensor`` removes.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

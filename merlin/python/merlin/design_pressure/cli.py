@@ -4,6 +4,7 @@ Thin wrapper — logic lives in ``merlin.design_pressure``. Reads a workload reg
 synthetic ``vla_action_chunk_decode``, a benchmark name, or an explicit YAML path) and writes
 ``design_pressure.json`` + ``candidate_contracts.yaml`` under ``output/dse/<workload>/``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,14 +25,14 @@ from merlin.design_pressure.workloads.vla_action_chunk_decode import build_regio
 def _load_region(args) -> dict:
     if args.from_mlir:
         from merlin.design_pressure.ingest import mlir_m2m
+
         if not mlir_m2m.available():
             raise SystemExit("--from-mlir needs xdsl: uv sync --extra xdsl")
         return mlir_m2m.region_from_mlir(args.from_mlir, region_id=args.region_id, H=args.H)
     if args.region_yaml:
         return load_yaml(args.region_yaml)
     if args.workload == "vla_action_chunk_decode":
-        return build_region(H=args.H, reuse_count=args.reuse, dtype=args.dtype,
-                            epilogue=not args.no_epilogue, K=args.K)
+        return build_region(H=args.H, reuse_count=args.reuse, dtype=args.dtype, epilogue=not args.no_epilogue, K=args.K)
     # Otherwise treat --workload as a benchmark name under semantic_memory.
     bench = paths.bench_dir() / "semantic_memory" / f"{args.workload}.yaml"
     if bench.is_file():
@@ -41,8 +42,9 @@ def _load_region(args) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="merlin-design-pressure", description=__doc__)
-    ap.add_argument("--workload", default="vla_action_chunk_decode",
-                    help="synthetic name, benchmark name, or use --region-yaml")
+    ap.add_argument(
+        "--workload", default="vla_action_chunk_decode", help="synthetic name, benchmark name, or use --region-yaml"
+    )
     ap.add_argument("--region-yaml", default=None, help="explicit workload_region YAML path")
     ap.add_argument("--from-mlir", default=None, help="model2MLIR file to extract a region from")
     ap.add_argument("--region-id", default=None, help="m2m.region_id to select (with --from-mlir)")

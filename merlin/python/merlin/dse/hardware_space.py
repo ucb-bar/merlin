@@ -5,6 +5,7 @@ hardware design space (Cartesian product over ``DEFAULT_HW_GRID``) as cost-model
 ``dse.report``. ``cost_model_from_npu`` derives a cost-model point from an npu_model ``HardwareConfig``
 so the analytical model can be calibrated against the cycle-level simulator at a few points.
 """
+
 from __future__ import annotations
 
 
@@ -75,7 +76,7 @@ _AREA = {
     "base": 1000.0,
     "per_dram_bpc": 120.0,
     "per_pack_bpc": 40.0,
-    "dispatch_inv": 30000.0,   # cheaper dispatch (fewer fixed cycles) => more control area
+    "dispatch_inv": 30000.0,  # cheaper dispatch (fewer fixed cycles) => more control area
     "per_resident_byte": 0.012,
     "accumulator_unit": 600.0,
 }

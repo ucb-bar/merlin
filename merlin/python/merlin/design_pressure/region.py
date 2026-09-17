@@ -11,24 +11,41 @@ name prefix) that is sufficient for the synthetic ``vla_action_chunk_decode`` re
 ``semantic_memory`` benchmarks. The MLIR-ingest path (``ingest/mlir_m2m.py``) classifies by
 ``m2m.*`` operand metadata instead and feeds the same downstream code.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 # Byte width per element for the dtypes that appear in the benchmarks / synthetic regions.
 _DTYPE_BYTES: dict[str, int] = {
-    "i4": 1, "int4": 1,  # sub-byte packed; modelled as 1 byte for footprint purposes
-    "i8": 1, "int8": 1, "u8": 1, "uint8": 1, "fp8": 1, "f8": 1, "f8e4m3fn": 1,
-    "i16": 2, "int16": 2, "bf16": 2, "f16": 2, "fp16": 2, "half": 2,
-    "i32": 4, "int32": 4, "f32": 4, "fp32": 4, "float32": 4,
-    "i64": 8, "f64": 8,
+    "i4": 1,
+    "int4": 1,  # sub-byte packed; modelled as 1 byte for footprint purposes
+    "i8": 1,
+    "int8": 1,
+    "u8": 1,
+    "uint8": 1,
+    "fp8": 1,
+    "f8": 1,
+    "f8e4m3fn": 1,
+    "i16": 2,
+    "int16": 2,
+    "bf16": 2,
+    "f16": 2,
+    "fp16": 2,
+    "half": 2,
+    "i32": 4,
+    "int32": 4,
+    "f32": 4,
+    "fp32": 4,
+    "float32": 4,
+    "i64": 8,
+    "f64": 8,
 }
 
 # Ops that produce an accumulator (contraction ops).
 CONTRACTION_OPS = ("matmul", "gemm", "gemv", "conv", "conv2d", "depthwise_conv")
 # Epilogue ops that may run while the accumulator is still live.
-EPILOGUE_OPS = ("bias_add", "bias", "requant", "dequant", "relu", "silu", "gelu",
-                "activation", "add", "scale")
+EPILOGUE_OPS = ("bias_add", "bias", "requant", "dequant", "relu", "silu", "gelu", "activation", "add", "scale")
 
 
 def dtype_bytes(dtype: str | None) -> int:
@@ -103,23 +120,22 @@ def classify_tensors(region: dict) -> dict[str, str | None]:
 
     # rhs/weight: prefer an immutable, reused rank-2 tensor; tie-break by 'W' prefix.
     weight_candidates = [
-        n for n, t in rank2.items()
-        if _is_false(t.get("mutable")) and t.get("lifetime") != "single_use"
+        n for n, t in rank2.items() if _is_false(t.get("mutable")) and t.get("lifetime") != "single_use"
     ]
     if not weight_candidates:
         weight_candidates = [n for n, t in rank2.items() if _is_false(t.get("mutable"))]
     if weight_candidates:
-        roles["rhs"] = sorted(
-            weight_candidates, key=lambda n: (not n.upper().startswith("W"), n)
-        )[0]
+        roles["rhs"] = sorted(weight_candidates, key=lambda n: (not n.upper().startswith("W"), n))[0]
 
     # out: name starts with 'Y', else a single-use rank-2 tensor that is not the rhs.
     out = next((n for n in rank2 if n.upper().startswith("Y")), None)
     if out is None:
         out = next(
-            (n for n, t in rank2.items()
-             if n != roles["rhs"] and t.get("lifetime") == "single_use"
-             and not n.upper().startswith("A")),
+            (
+                n
+                for n, t in rank2.items()
+                if n != roles["rhs"] and t.get("lifetime") == "single_use" and not n.upper().startswith("A")
+            ),
             None,
         )
     roles["out"] = out
@@ -127,9 +143,7 @@ def classify_tensors(region: dict) -> dict[str, str | None]:
     # lhs: remaining rank-2 tensor that is not rhs/out; tie-break by 'A' prefix.
     lhs_candidates = [n for n in rank2 if n not in (roles["rhs"], roles["out"])]
     if lhs_candidates:
-        roles["lhs"] = sorted(
-            lhs_candidates, key=lambda n: (not n.upper().startswith("A"), n)
-        )[0]
+        roles["lhs"] = sorted(lhs_candidates, key=lambda n: (not n.upper().startswith("A"), n))[0]
     return roles
 
 

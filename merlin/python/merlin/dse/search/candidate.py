@@ -4,6 +4,7 @@ In M1 the primary candidate type is a ``compilation_strategy`` (wrapping a
 :class:`~merlin.dse.strategy.Strategy`). A candidate carries the artifact dict, the MAP-Elites
 behavior descriptors derived from it, a lineage of parent ids, and its last score.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -27,10 +28,13 @@ class Candidate:
 
 
 def _artifact_id(artifact: dict) -> str:
-    key = "|".join([
-        artifact.get("id", ""), artifact.get("lowering_pipeline", ""),
-        ",".join(sorted(artifact.get("interface_features", []))),
-    ])
+    key = "|".join(
+        [
+            artifact.get("id", ""),
+            artifact.get("lowering_pipeline", ""),
+            ",".join(sorted(artifact.get("interface_features", []))),
+        ]
+    )
     return "cand_" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
 
 

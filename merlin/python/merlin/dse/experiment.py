@@ -8,6 +8,7 @@ Always writes a deterministic ``phase_transition.csv`` (headless-safe). Writes a
 ``phase_transition.png`` only when matplotlib is available. Also emits exploitability reports
 for the residency and accumulator-commit features over the reuse sweep.
 """
+
 from __future__ import annotations
 
 import csv
@@ -27,9 +28,12 @@ from merlin.dse.variants import contract_plans
 CSV_COLUMNS = ["H", "reuse_count", "dtype", "epilogue", "contract", "cycles", "energy", "best"]
 
 
-def phase_transition(axes: dict | None = None, cost_model: dict | None = None,
-                     out_dir: str | Path | None = None,
-                     workload: str = "vla_action_chunk_decode") -> dict:
+def phase_transition(
+    axes: dict | None = None,
+    cost_model: dict | None = None,
+    out_dir: str | Path | None = None,
+    workload: str = "vla_action_chunk_decode",
+) -> dict:
     """Run the sweep and return ``{rows, exploitability, csv}``; write artifacts if out_dir.
 
     Each point sets ``reuse_count == H`` (the action loop reuses the same W every step). The
@@ -42,26 +46,29 @@ def phase_transition(axes: dict | None = None, cost_model: dict | None = None,
     for dtype in ax["dtype"]:
         for epilogue in ax["epilogue"]:
             for H in ax["H"]:
-                rpv = compute_rpv(build_region(H=H, reuse_count=H, dtype=dtype,
-                                               epilogue=epilogue, K=256, M=1, N=256))
-                lat = {c: evaluate_cost(rpv, p, cm)
-                       for c, p in contract_plans(rpv).items()}
+                rpv = compute_rpv(build_region(H=H, reuse_count=H, dtype=dtype, epilogue=epilogue, K=256, M=1, N=256))
+                lat = {c: evaluate_cost(rpv, p, cm) for c, p in contract_plans(rpv).items()}
                 best = min(lat, key=lambda c: lat[c]["cycles"])
                 for contract, cost in lat.items():
-                    rows.append({
-                        "H": H, "reuse_count": H, "dtype": dtype,
-                        "epilogue": epilogue, "contract": contract,
-                        "cycles": round(cost["cycles"], 2), "energy": cost["energy"],
-                        "best": contract == best,
-                    })
+                    rows.append(
+                        {
+                            "H": H,
+                            "reuse_count": H,
+                            "dtype": dtype,
+                            "epilogue": epilogue,
+                            "contract": contract,
+                            "cycles": round(cost["cycles"], 2),
+                            "energy": cost["energy"],
+                            "best": contract == best,
+                        }
+                    )
 
     # Exploitability over the reuse sweep (i8, epilogue on), per feature.
     expl = {}
     for feature in (FEATURE_RESIDENT, FEATURE_ACCUMULATOR):
         erows = []
         for reuse in ax["reuse_count"]:
-            rpv = compute_rpv(build_region(H=reuse, reuse_count=reuse, dtype="i8",
-                                           epilogue=True, K=256, M=1, N=256))
+            rpv = compute_rpv(build_region(H=reuse, reuse_count=reuse, dtype="i8", epilogue=True, K=256, M=1, N=256))
             erows.append(row_for(rpv, feature, reuse, cm))
         expl[feature] = compute_exploitability(workload, feature, "reuse_count", erows)
 
@@ -74,8 +81,9 @@ def phase_transition(axes: dict | None = None, cost_model: dict | None = None,
     out.mkdir(parents=True, exist_ok=True)
     (out / "phase_transition.csv").write_text(csv_text, encoding="utf-8")
     for feature, report in expl.items():
-        write_yaml(out / f"exploitability_{feature}.yaml", report,
-                   header=f"exploitability_report: {workload} / {feature}")
+        write_yaml(
+            out / f"exploitability_{feature}.yaml", report, header=f"exploitability_report: {workload} / {feature}"
+        )
     _maybe_plot(rows, out / "phase_transition.png")
     return result
 
@@ -93,6 +101,7 @@ def _maybe_plot(rows: list[dict], path: Path) -> bool:
     """Plot latency vs H for I0–I3 (i8, epilogue on). No-op if matplotlib is absent."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception:

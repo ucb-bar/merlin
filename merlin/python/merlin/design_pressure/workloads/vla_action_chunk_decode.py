@@ -14,6 +14,7 @@ dtype, and epilogue presence.
 ``H`` and ``reuse_count`` are independent axes (default ``reuse_count == H``) so the phase
 transition can separate "more steps" from "more reuse of the same W".
 """
+
 from __future__ import annotations
 
 from merlin.common.yaml import dump_yaml
@@ -21,9 +22,17 @@ from merlin.common.yaml import dump_yaml
 _OUT_DTYPE = {"i8": "i8", "fp8": "fp8", "bf16": "bf16"}
 
 
-def build_region(H: int = 16, reuse_count: int | None = None, dtype: str = "i8",
-                 epilogue: bool = True, K: int = 256, M: int = 1, N: int = 256,
-                 distinct_weights: int = 1, name: str = "vla_action_chunk_decode") -> dict:
+def build_region(
+    H: int = 16,
+    reuse_count: int | None = None,
+    dtype: str = "i8",
+    epilogue: bool = True,
+    K: int = 256,
+    M: int = 1,
+    N: int = 256,
+    distinct_weights: int = 1,
+    name: str = "vla_action_chunk_decode",
+) -> dict:
     """Build a ``workload_region``-schema dict for the action-chunk decode region.
 
     Args:
@@ -40,8 +49,13 @@ def build_region(H: int = 16, reuse_count: int | None = None, dtype: str = "i8",
 
     tensors = {
         "A": {"shape": [M, K], "dtype": dtype, "lifetime": "single_use"},
-        "W": {"shape": [K, N], "dtype": dtype, "lifetime": "reused_across_region",
-              "reuse_count": reuse, "mutable": False},
+        "W": {
+            "shape": [K, N],
+            "dtype": dtype,
+            "lifetime": "reused_across_region",
+            "reuse_count": reuse,
+            "mutable": False,
+        },
         "Y": {"shape": [M, N], "dtype": out_dtype, "lifetime": "single_use"},
     }
     if epilogue:
@@ -51,12 +65,12 @@ def build_region(H: int = 16, reuse_count: int | None = None, dtype: str = "i8",
         "name": name,
         "description": (
             "Synthetic VLA action-chunk decode: reused immutable weight, small-batch "
-            "GEMV/GEMM, quantized epilogue, repeated over the action horizon."),
+            "GEMV/GEMM, quantized epilogue, repeated over the action horizon."
+        ),
         "ops": ops,
         "region": {
             "loop": f"h in 1..{H}",
-            "body": ("Y_h = relu(requant(A_h @ W + bias))" if epilogue
-                     else "Y_h = A_h @ W"),
+            "body": ("Y_h = relu(requant(A_h @ W + bias))" if epilogue else "Y_h = A_h @ W"),
         },
         "tensors": tensors,
         "op_sequence": list(ops),
@@ -68,7 +82,8 @@ def build_region(H: int = 16, reuse_count: int | None = None, dtype: str = "i8",
         "parameters": {"H": H, "K": K, "dtype": dtype, "epilogue": epilogue},
     }
     from merlin.common.schemas import validate_or_raise
-    validate_or_raise(region, "workload_region")   # schemas/ rule: code validates what lives here
+
+    validate_or_raise(region, "workload_region")  # schemas/ rule: code validates what lives here
     return region
 
 

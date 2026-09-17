@@ -4,6 +4,7 @@ A simple (mu + lambda) loop with elitism and deterministic RNG. Selection and ac
 the shared ``Score.priority_key`` (correctness first), so search cannot trade correctness for
 speed. Keeps candidate lineage.
 """
+
 from __future__ import annotations
 
 import random
@@ -11,8 +12,7 @@ import random
 from merlin.dse.search.mutations import mutate
 
 
-def evolutionary_search(seeds, evaluator, generations: int = 10, population: int = 6,
-                        seed: int = 0) -> dict:
+def evolutionary_search(seeds, evaluator, generations: int = 10, population: int = 6, seed: int = 0) -> dict:
     """Evolve ``seeds`` for ``generations``. Returns ``{best, population, history}``."""
     rng = random.Random(seed)
 

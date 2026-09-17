@@ -3,6 +3,7 @@
 Determines whether a contraction's accumulator stays live across a fused epilogue (the fact
 ``accumulator_commit_policy`` keys on) and the per-step persistent-state footprint.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

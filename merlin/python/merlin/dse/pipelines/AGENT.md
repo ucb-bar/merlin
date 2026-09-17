@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/pipelines
+# AGENT.md — merlin/python/merlin/dse/pipelines
 
 ## Purpose
 

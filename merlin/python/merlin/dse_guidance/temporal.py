@@ -12,11 +12,12 @@ This module reads the small ``temporal_workload_metadata`` wrapper (see the sche
 same name), validates it, and derives the replan deadline. The headline timing budget the
 guidance reasons about is::
 
-    t_backbone + K * t_head_step  <=  H / control_rate_hz
+    t_backbone + K * t_head_step <= H / control_rate_hz
 
 The deadline ``replan_deadline_ms = 1000 * H / control_rate_hz`` is derived here; if the file
 also states it, the stated value is checked against the derived one.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -140,23 +141,25 @@ def parse(doc: dict) -> TemporalMetadata:
     for i, r in enumerate(doc.get("regions") or []):
         cadence = r.get("cadence")
         role = r.get("role") or _CADENCE_ROLE.get(cadence)
-        regions.append(Region(
-            name=str(r.get("name", f"region_{i}")),
-            cadence=cadence,
-            role=role,
-            invocation_count=(int(r["invocation_count"]) if r.get("invocation_count") is not None
-                              else None),
-            loop_trip_count=(int(r["loop_trip_count"]) if r.get("loop_trip_count") is not None
-                             else None),
-            loop_invariant_state=list(r.get("loop_invariant_state") or []),
-            loop_carried_state=list(r.get("loop_carried_state") or []),
-            produces=list(r.get("produces") or []),
-            consumes=list(r.get("consumes") or []),
-        ))
+        regions.append(
+            Region(
+                name=str(r.get("name", f"region_{i}")),
+                cadence=cadence,
+                role=role,
+                invocation_count=(int(r["invocation_count"]) if r.get("invocation_count") is not None else None),
+                loop_trip_count=(int(r["loop_trip_count"]) if r.get("loop_trip_count") is not None else None),
+                loop_invariant_state=list(r.get("loop_invariant_state") or []),
+                loop_carried_state=list(r.get("loop_carried_state") or []),
+                produces=list(r.get("produces") or []),
+                consumes=list(r.get("consumes") or []),
+            )
+        )
 
     return TemporalMetadata(
         workload=str(doc["workload"]),
-        K=K, H=H, control_rate_hz=control_rate_hz,
+        K=K,
+        H=H,
+        control_rate_hz=control_rate_hz,
         replan_deadline_ms=deadline,
         regions=regions,
         cls=doc.get("class"),
