@@ -22,8 +22,29 @@ from merlin.common.paths import repo_root
 SCRIPT = repo_root() / "build_tools/scripts/zephyr_firesim_leg.py"
 
 
+class _Source(str):
+    """Source text that answers `in` token-wise.
+
+    These assertions pin that a call or a guard is present in the code. Compared byte-for-byte, a
+    formatter re-wrapping `add_argument("--board", required=True)` across three lines reads as the
+    flag vanishing -- exactly what happened when the tree was run through ruff format. Whitespace and
+    the magic trailing comma a formatter adds are not part of what is being pinned; everything else
+    still has to match exactly.
+    """
+
+    @staticmethod
+    def _flat(text: str) -> str:
+        flat = "".join(text.split())
+        for closer in ")]}":
+            flat = flat.replace("," + closer, closer)
+        return flat
+
+    def __contains__(self, needle: object) -> bool:
+        return self._flat(str(needle)) in self._flat(str(self))
+
+
 def _src() -> str:
-    return SCRIPT.read_text(encoding="utf-8")
+    return _Source(SCRIPT.read_text(encoding="utf-8"))
 
 
 def test_the_driver_is_tracked_not_a_temp_file():

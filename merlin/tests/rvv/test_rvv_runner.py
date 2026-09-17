@@ -11,6 +11,28 @@ from merlin.mining import runner, k1
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+
+class _Source(str):
+    """Source text that answers `in` token-wise.
+
+    These assertions pin that a call or a guard is present in the code. Compared byte-for-byte, a
+    formatter re-wrapping `add_argument("--board", required=True)` across three lines reads as the
+    flag vanishing -- exactly what happened when the tree was run through ruff format. Whitespace and
+    the magic trailing comma a formatter adds are not part of what is being pinned; everything else
+    still has to match exactly.
+    """
+
+    @staticmethod
+    def _flat(text: str) -> str:
+        flat = "".join(text.split())
+        for closer in ")]}":
+            flat = flat.replace("," + closer, closer)
+        return flat
+
+    def __contains__(self, needle: object) -> bool:
+        return self._flat(str(needle)) in self._flat(str(self))
+
+
 _OBJDUMP_SAMPLE = """
    10362:\t0d07d557\tvsetvli\ta0,a5,e32,m1,ta,ma
    10366:\t0205e407\tvle32.v\tv8,(a1)
@@ -101,7 +123,7 @@ def test_the_wall_carries_the_conditions_and_protocol_it_was_measured_under():
 
     from merlin.mining import runner
 
-    src = inspect.getsource(runner.certify_rvv)
+    src = _Source(inspect.getsource(runner.certify_rvv))
     assert '"board_conditions": kr.get("board_conditions")' in src, (
         "the conditions run_on_k1 already probed must reach the measurement entry")
     assert '"warmup": warmup, "iters": iters' in src, (
@@ -116,7 +138,7 @@ def test_the_beam_node_carries_conditions_from_the_entry_the_wall_came_from():
 
     from merlin.mining import beam
 
-    src = inspect.getsource(beam._score)
+    src = _Source(inspect.getsource(beam._score))
     assert '"board_conditions": _cond' in src
     assert '"measurement_protocol": _proto' in src
     assert 'if _m.get("wall_ns") is not None and _m.get("wall_ns") == k1_wall' in src, (
@@ -188,7 +210,7 @@ def test_a_cli_expert_wall_must_declare_what_it_measured():
 def test_the_beam_driver_declares_its_baseline_and_its_bundle():
     """Both inert guards in the autonomous driver: the bare-float baseline and ours_bundle_id=None."""
     from merlin.common.paths import repo_root
-    src = (repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py").read_text()
+    src = _Source((repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py").read_text())
     assert "ExpertBaseline(wall_ns=float(ref[\"wall_ns\"])" in src
     assert 'xnn = ref["wall_ns"]' not in src, "the baseline is a bare float again"
     # both executorch_cell call sites declare the bundle ours was measured on
@@ -251,7 +273,7 @@ def test_bundles_are_resolved_from_disk_not_listed_in_the_driver():
     which reads as "not captured yet" rather than as a broken map."""
     mod = _beam_driver()
     assert not hasattr(mod, "_BUNDLE"), "the hardcoded bundle table is back"
-    src = open(mod.__file__).read()
+    src = _Source(open(mod.__file__).read())
     assert "_bundle_for(dtype, model)" in src
     # one resolver decides what a (model, variant) means -- this driver must not be a second one
     assert "from merlin.baselines import bundle as _bundle_mod" in src
@@ -270,6 +292,6 @@ def test_a_missing_bundle_is_reported_by_name_with_what_was_looked_for():
 
 def test_the_driver_refuses_a_run_where_no_cell_has_a_bundle():
     """Spending board time on a configuration that can only produce not_run is not a search."""
-    src = open(_beam_driver().__file__).read()
+    src = _Source(open(_beam_driver().__file__).read())
     assert 'if not any(i["present"] for i in audit.values()):' in src
     assert "refusing to run a search" in src
