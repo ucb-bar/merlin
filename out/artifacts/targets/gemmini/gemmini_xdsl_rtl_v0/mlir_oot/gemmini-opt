@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+from gemmini_opt import main
+
+raise SystemExit(main())
+

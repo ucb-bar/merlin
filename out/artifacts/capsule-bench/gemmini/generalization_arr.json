@@ -1,0 +1,100 @@
+{
+  "summary": {
+    "target": "gemmini",
+    "package": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/merlin_native_v0",
+    "graded": 10,
+    "overall": "5/10",
+    "acceleratable_region_recall_sampled": 0.5,
+    "per_family_recall": {
+      "contraction": "5/5",
+      "movement": "0/5"
+    },
+    "per_axis_recall": {
+      "shape": "5/10"
+    },
+    "skipped": [
+      [
+        "contraction.skinny_row",
+        "shape>64 (impractical to simulate)"
+      ],
+      [
+        "contraction.skinny_col",
+        "shape>64 (impractical to simulate)"
+      ],
+      [
+        "contraction.batched",
+        "batch/layout axis (materializer is plain 2-D; not yet handled)"
+      ],
+      [
+        "contraction.transpose",
+        "batch/layout axis (materializer is plain 2-D; not yet handled)"
+      ],
+      [
+        "movement.batched",
+        "batch/layout axis (materializer is plain 2-D; not yet handled)"
+      ]
+    ]
+  },
+  "rows": [
+    {
+      "probe": "contraction.tiny",
+      "family": "contraction",
+      "axis": "shape",
+      "verdict": "pass"
+    },
+    {
+      "probe": "contraction.tile_minus_1",
+      "family": "contraction",
+      "axis": "shape",
+      "verdict": "pass"
+    },
+    {
+      "probe": "contraction.tile",
+      "family": "contraction",
+      "axis": "shape",
+      "verdict": "pass"
+    },
+    {
+      "probe": "contraction.tile_plus_1",
+      "family": "contraction",
+      "axis": "shape",
+      "verdict": "pass"
+    },
+    {
+      "probe": "contraction.prime",
+      "family": "contraction",
+      "axis": "shape",
+      "verdict": "pass"
+    },
+    {
+      "probe": "movement.tiny",
+      "family": "movement",
+      "axis": "shape",
+      "verdict": "fail"
+    },
+    {
+      "probe": "movement.tile_minus_1",
+      "family": "movement",
+      "axis": "shape",
+      "verdict": "fail"
+    },
+    {
+      "probe": "movement.tile",
+      "family": "movement",
+      "axis": "shape",
+      "verdict": "fail"
+    },
+    {
+      "probe": "movement.tile_plus_1",
+      "family": "movement",
+      "axis": "shape",
+      "verdict": "fail"
+    },
+    {
+      "probe": "movement.skinny_row",
+      "family": "movement",
+      "axis": "shape",
+      "verdict": "fail"
+    }
+  ]
+}

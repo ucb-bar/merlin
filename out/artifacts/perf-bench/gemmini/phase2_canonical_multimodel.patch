@@ -1,0 +1,1053 @@
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/fpbuilder.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/fpbuilder.py
+index 9c02c27b..273a4fb7 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/fpbuilder.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/fpbuilder.py
+@@ -13,11 +13,42 @@ lowering in `host_linalg.py` targets.
+ from __future__ import annotations
+
+ from xdsl.dialects import llvm
+-from xdsl.dialects.builtin import Float32Type, FloatAttr, i16, i32, i64
++from xdsl.dialects.builtin import Float32Type, FloatAttr, IntegerType, i16, i32, i64
+ from xdsl.ir import SSAValue
++from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, result_def
+
+ F32 = Float32Type()
+
++
++@irdl_op_definition
++class FPToSIOp(IRDLOperation):
++    """LLVM's ordinary floating-point to signed-integer conversion.
++
++    The pinned xDSL LLVM dialect omits this operation class, even though the
++    downstream MLIR/LLVM toolchain implements ``llvm.fptosi``. Keeping the
++    standard LLVM operation in target-neutral IR lets each CPU backend select
++    its native conversion instead of expanding IEEE fields by hand.
++    """
++
++    name = "llvm.fptosi"
++    value = operand_def()
++    result = result_def()
++
++    def __init__(self, value: SSAValue, result_type: IntegerType):
++        super().__init__(operands=[value], result_types=[result_type])
++
++
++@irdl_op_definition
++class RoundEvenOp(IRDLOperation):
++    """The standard LLVM round-to-integer, ties-to-even intrinsic."""
++
++    name = "llvm.intr.roundeven"
++    value = operand_def()
++    result = result_def()
++
++    def __init__(self, value: SSAValue):
++        super().__init__(operands=[value], result_types=[value.type])
++
+ #: exp() range reduction.  `MAGIC` is 1.5 * 2**23: adding it to a float smaller than 2**22
+ #: forces the fractional bits out through round-to-nearest-even, so the mantissa's low bits
+ #: hold the rounded integer.  That is how the exponent is extracted without an fp->int op.
+@@ -244,47 +275,22 @@ class FpBuilder:
+         return self.fb.add(llvm.SIToFPOp(v, F32)).results[0]
+
+     def fptosi(self, x: SSAValue) -> SSAValue:
+-        """`(i64) x`, truncated TOWARD ZERO, built from the IEEE-754 fields of `x`.
++        """`(i64) x`, truncated toward zero by standard LLVM semantics.
+
+-        There is no `fptosi` in the LLVM dialect this package builds with, and the kernel is
+-        branch-free, so the conversion is arithmetic on the bit pattern:
+-        `|x| = mantissa * 2**(exponent - 23)`, and a truncation is the shift that drops the
+-        fractional bits.  Exact for every value an i64 can hold.
++        Values reaching this bridge are range-checked by the source program
++        (quantization clamps before narrowing). Emitting the target-neutral
++        operation exposes a native conversion to the selected CPU backend and
++        avoids rebuilding it from many integer operations per tensor element.
+         """
+-        fb = self.fb
+-        wide = fb.add(llvm.SExtOp(self.bits(x), i64)).results[0]
+-        sign = fb.ashr_i(wide, 63)                                     # 0 or -1
+-        exp = fb.sub_i(fb.and_i(fb.ashr_i(wide, 23), fb.const(0xFF)), fb.const(127))
+-        mant = fb.or_i(fb.and_i(wide, fb.const(0x7FFFFF)), fb.const(0x800000))
+-        # left shift when the exponent is past the mantissa's 23 fractional bits, right shift
+-        # otherwise; both amounts are clamped so no shift is wider than the i64 they act on.
+-        left = fb.smin(fb.max0(fb.sub_i(exp, fb.const(23))), fb.const(39))
+-        right = fb.smin(fb.max0(fb.sub_i(fb.const(23), exp)), fb.const(63))
+-        magnitude = fb.lshr_v(fb.shl_v(mant, left), right)
+-        return fb.sub_i(fb.xor_i(magnitude, sign), sign)               # negate iff sign == -1
++        return self.fb.add(FPToSIOp(x, i64)).results[0]
+
+     def round_near_even(self, x: SSAValue) -> SSAValue:
+-        """`x` rounded to the nearest integer, ties to EVEN, still an f32.
+-
+-        This is the ISA header's own `ROUND_NEAR_EVEN` (`gemmini_params.h`), which is the
+-        rounding the accumulator's scale unit applies before the readout clamps -- so the
+-        generated CPU-lane readout and the hardware store path agree element for element.
+-
+-        Branch-free, per R1.4: adding and then subtracting 2**23 (SIGNED LIKE `x`, so the sum
+-        never crosses zero) forces the IEEE round-to-nearest-even at the ulp of 1.0.  The
+-        magnitude matters -- with `|x| < 2**23` the sum lands in `[2**23, 2**24)`, where the f32
+-        ulp is EXACTLY 1, which is what makes the add round to an integer.  (The more familiar
+-        1.5 * 2**23 constant only holds for `|x| < 2**22`; checked against the header's own
+-        ROUND_NEAR_EVEN over 184k values, it disagrees on ~3% of them and this does not.)
+-        Every f32 with `|x| >= 2**23` is ALREADY an integer, so the two cases are BLENDED on the
+-        exponent (an integer compare of the IEEE bit patterns, whose order matches numeric order
+-        for non-negative floats) rather than branched on.
++        """Round to an integral float, ties to even, with the LLVM intrinsic.
++
++        The intrinsic exactly represents the source operation across targets;
++        no fast-math flags, reassociation, or approximation is used.
+         """
+-        magic = self.copysign(self.fconst(8388608.0), x)           # 2**23, signed like x
+-        rounded = self.fsub(self.fadd(x, magic), magic)
+-        small = self.ashr32(
+-            self.sub32(self.bits(self.fabs(x)), self.i32c(0x4B000000)), 31)
+-        return self.unbits(self.blend32(small, self.bits(rounded), self.bits(x)))
++        return self.fb.add(RoundEvenOp(x)).results[0]
+
+     # -- storage formats ---------------------------------------------------------------------
+     def round_bf16(self, x: SSAValue) -> SSAValue:
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/gemmini_module.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/gemmini_module.py
+index 2d628fa8..cd7514ee 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/gemmini_module.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/gemmini_module.py
+@@ -47,6 +47,7 @@ _OP_FOR_KIND = {
+     "host_segment": G.HostLaneProgramOp,
+     "im2col_row": G.Im2colRowOp,
+     "loop_ws_block": G.LoopWsBlockOp,
++    "loop_conv_ws": G.LoopConvWsOp,
+ }
+
+
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/llvm_emit.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/llvm_emit.py
+index e519b7c0..0976f2fe 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/codegen/llvm_emit.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/codegen/llvm_emit.py
+@@ -21,6 +21,7 @@ from ..tables import rtl_facts as F
+ from .builder import INT_TYPES, PTR, FnBuilder
+ from .fpbuilder import FpBuilder
+ from ..tables import loop_ws
++from ..tables import loop_conv
+ from .host_linalg import HostLinalg
+ from .loop_host_linalg import LoopHostLinalg
+
+@@ -331,6 +332,33 @@ class Emitter:
+             self.rocc(record[0], self.fb.const(record[1]), self.fb.const(record[2]))
+         self.rocc(launch[0], self.fb.const(launch[1]), self.fb.const(launch[2]))
+
++    def emit_loop_conv_ws(self, ins: Instr) -> None:
++        """Emit a slot-complete native convolution descriptor from the pinned public macro."""
++        a = ins.attrs
++        static_keys = (
++            "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
++            "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
++            "stride", "padding", "kernel_dim", "kernel_dilation", "pool_size",
++            "pool_stride", "pool_padding", "batches", "porows", "pocols", "pochs",
++            "krows", "kcols", "kchs", "lpad", "rpad", "upad", "dpad", "plpad",
++            "prpad", "pupad", "pdpad", "orows", "ocols", "in_stride",
++            "weight_stride", "out_stride", "no_bias", "no_pool", "downsample",
++            "wrot180", "input_dilated", "activation", "trans_output_1203",
++            "trans_weight_1203", "trans_weight_0132", "trans_input_3120",
++            "max_pixels_per_row", "dw", "a_spad_id", "b_spad_id")
++        config1, config2, config3, config4, launch = loop_conv.static_descriptor(
++            **{key: a[key] for key in static_keys})
++        for funct, rs1, rs2 in (config1, config2, config3, config4):
++            self.rocc(funct, self.fb.const(rs1), self.fb.const(rs2))
++        input_name, weight_name, output_name = ins.bufs
++        self.rocc(loop_conv.K_CONFIG_5,
++                  self.dram_addr(weight_name, int(a["weight_offset"])),
++                  (self.dram_addr(output_name, int(a["output_offset"]))
++                   if bool(a["write_output"]) else self.fb.const(0)))
++        self.rocc(loop_conv.K_CONFIG_6, self.fb.const(0),
++                  self.dram_addr(input_name, int(a["input_offset"])))
++        self.rocc(launch[0], self.fb.const(launch[1]), self.fb.const(launch[2]))
++
+     @property
+     def fp(self) -> FpBuilder:
+         """One `FpBuilder` per emitted function, so its constants are shared."""
+@@ -562,7 +590,7 @@ class Emitter:
+         loop_ws_state: dict[str, tuple[int, int, int]] = {}
+         for ins in self.instrs:
+             self._source_conv_owner = (ins.attrs.get("global_task_index")
+-                if ins.kind in {"im2col_row", "loop_ws_block"} else None)
++                if ins.kind in {"im2col_row", "loop_ws_block", "loop_conv_ws"} else None)
+             previous_last = {block: block.last_op for block in self.fb.region.blocks}
+             if ins.kind == "host_transpose":
+                 self.emit_transpose(ins)
+@@ -591,6 +619,9 @@ class Emitter:
+                         loop_ws_state["ld2"] = saved_ld2
+                     else:
+                         del loop_ws_state["ld2"]
++            elif ins.kind == "loop_conv_ws":
++                self.emit_loop_conv_ws(ins)
++                loop_ws_state.clear()
+             elif ins.kind == "host_epilogue":
+                 self.emit_epilogue(ins)
+             elif ins.kind == "host_linalg":
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/frontend/integer_prepare.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/frontend/integer_prepare.py
+index 54a88536..9a3033ae 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/frontend/integer_prepare.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/frontend/integer_prepare.py
+@@ -89,3 +89,229 @@ def prepare_int8_text(source_text: str) -> tuple[str, dict]:
+         "integer_pass_report": quant_report,
+         **common_stats,
+     }
++
++
++def _quant_op_name(op) -> str:
++    """Return the registered or unregistered operation name without provenance."""
++    if getattr(op, "name", None) != "builtin.unregistered":
++        return str(getattr(op, "name", ""))
++    return str(getattr(getattr(op, "op_name", None), "data", ""))
++
++
++def _integer_property(op, name: str) -> int | None:
++    attr = op.properties.get(name)
++    if attr is None:
++        attr = op.attributes.get(name)
++    raw = getattr(getattr(attr, "value", None), "data", None)
++    return int(raw) if isinstance(raw, int) else None
++
++
++def _transpose_source(value):
++    """Return ``(value-before-transpose, output-axis-map)`` for a rank-2 swap."""
++    owner = getattr(value, "owner", None)
++    if getattr(owner, "name", None) != "linalg.transpose":
++        return value, (0, 1)
++    try:
++        permutation = tuple(int(v) for v in owner.permutation.get_values())
++    except (AttributeError, TypeError, ValueError):
++        return None
++    if permutation != (1, 0):
++        return None
++    # output[j, i] reads input[i, j]: an input scale axis is moved to the
++    # output position whose permutation entry names it.
++    return owner.inputs[0], tuple(permutation.index(i) for i in range(2))
++
++
++def _symmetric_per_channel_i8(value) -> tuple[dict | None, str]:
++    """Recognise a calibrated i8 per-channel tensor consumed as f32.
++
++    The check deliberately proves all facts needed to factor the scale out of
++    the integer reduction.  Provenance, symbol names, model names and concrete
++    layer sizes are not consulted.
++    """
++    from xdsl.dialects.builtin import TensorType, f32, i8
++
++    unwrapped = _transpose_source(value)
++    if unwrapped is None:
++        return None, "unsupported_weight_transpose"
++    candidate, axis_map = unwrapped
++    dequant = getattr(candidate, "owner", None)
++    if _quant_op_name(dequant) != "quant_ext.dequantize_per_channel":
++        return None, "not_per_channel_i8_dequant"
++    if len(dequant.operands) < 3:
++        return None, "malformed_per_channel_dequant"
++    qvalue, scale, zero_point = dequant.operands[:3]
++    qtype, stype, ztype, outtype = qvalue.type, scale.type, zero_point.type, candidate.type
++    if not (isinstance(qtype, TensorType) and qtype.element_type == i8
++            and isinstance(stype, TensorType) and stype.element_type == f32
++            and isinstance(outtype, TensorType) and outtype.element_type == f32):
++        return None, "unsupported_weight_dequant_types"
++    qshape, sshape = list(qtype.get_shape()), list(stype.get_shape())
++    if list(outtype.get_shape()) != qshape:
++        return None, "weight_dequant_shape_mismatch"
++    if not isinstance(ztype, TensorType) or list(ztype.get_shape()) != sshape:
++        return None, "weight_zero_point_shape_mismatch"
++    axis = _integer_property(dequant, "axis")
++    if axis is None or not qshape:
++        return None, "missing_weight_scale_axis"
++    if axis < 0:
++        axis += len(qshape)
++    if not 0 <= axis < len(qshape):
++        return None, "invalid_weight_scale_axis"
++    if len(sshape) != 1 or int(sshape[0]) != int(qshape[axis]):
++        return None, "weight_scale_shape_mismatch"
++    if _splat_constant(zero_point) != 0:
++        return None, "weight_zero_point_not_proven_zero"
++    effective_axis = axis_map[axis] if len(qshape) == 2 else axis
++    return {"axis": effective_axis, "scale_extent": int(sshape[0])}, ""
++
++
++def _contraction_input_maps(op) -> tuple[list[list[int]], list[bool]] | None:
++    """Return operand iterator dimensions and reduction flags for a contraction."""
++    from xdsl.dialects.linalg import ops as L
++    from xdsl.ir.affine import AffineDimExpr
++
++    if op.name == "linalg.matmul":
++        return [[0, 2], [2, 1]], [False, False, True]
++    if op.name != "linalg.generic" or len(op.inputs) != 2:
++        return None
++    try:
++        maps = list(op.indexing_maps)
++        iters = [getattr(a, "data", a) for a in op.iterator_types]
++    except AttributeError:
++        return None
++    if len(maps) < 3 or not any(i == L.IteratorType.REDUCTION for i in iters):
++        return None
++    input_maps: list[list[int]] = []
++    for mapping in maps[:2]:
++        if any(not isinstance(expr, AffineDimExpr) for expr in mapping.data.results):
++            return None
++        input_maps.append([expr.position for expr in mapping.data.results])
++    return input_maps, [i == L.IteratorType.REDUCTION for i in iters]
++
++
++def _is_symmetric_per_tensor_i8(value) -> tuple[bool, str]:
++    """Recognise a static/dynamic activation QDQ that can be reused exactly."""
++    from xdsl.dialects.builtin import TensorType, f32, i8
++
++    dequant = getattr(value, "owner", None)
++    if _quant_op_name(dequant) != "quant_ext.dequantize_per_tensor":
++        return False, "plain_f32_activation"
++    if len(dequant.operands) < 3:
++        return False, "malformed_activation_dequant"
++    qtype, stype, ztype, outtype = (
++        dequant.operands[0].type, dequant.operands[1].type,
++        dequant.operands[2].type, value.type)
++    if not (isinstance(qtype, TensorType) and qtype.element_type == i8
++            and isinstance(stype, TensorType) and stype.element_type == f32
++            and not list(stype.get_shape())
++            and isinstance(ztype, TensorType) and not list(ztype.get_shape())
++            and isinstance(outtype, TensorType) and outtype.element_type == f32):
++        return False, "unsupported_activation_dequant_types"
++    if list(qtype.get_shape()) != list(outtype.get_shape()):
++        return False, "activation_dequant_shape_mismatch"
++    if _splat_constant(dequant.operands[2]) != 0:
++        return False, "activation_zero_point_not_proven_zero"
++    return True, ""
++
++
++def _dynamic_weight_only_selector(report: dict):
++    """Build the structural reach predicate for the scoped contraction pass."""
++    from xdsl.dialects.builtin import TensorType, f32
++
++    refused = report.setdefault("refused", {})
++
++    def refuse(reason: str) -> bool:
++        refused[reason] = refused.get(reason, 0) + 1
++        return False
++
++    def select(op) -> bool:
++        report["candidate_f32_contractions"] = report.get("candidate_f32_contractions", 0) + 1
++        view = _contraction_input_maps(op)
++        if view is None:
++            return refuse("noncanonical_contraction_maps")
++        input_maps, reduction_flags = view
++        weight_matches: list[tuple[int, dict]] = []
++        weight_reasons: list[str] = []
++        for operand_index, operand in enumerate(op.inputs):
++            info, reason = _symmetric_per_channel_i8(operand)
++            if info is not None:
++                weight_matches.append((operand_index, info))
++            else:
++                weight_reasons.append(reason)
++        if len(weight_matches) != 1:
++            if len(weight_matches) > 1:
++                return refuse("requires_exactly_one_per_channel_weight")
++            # Surface the safety-relevant reason rather than the generic absence.
++            safety = next((r for r in weight_reasons if r not in (
++                "not_per_channel_i8_dequant",)), "no_per_channel_i8_weight")
++            return refuse(safety)
++
++        weight_index, weight = weight_matches[0]
++        axis = int(weight["axis"])
++        if axis >= len(input_maps[weight_index]):
++            return refuse("weight_scale_axis_not_in_contraction_map")
++        iterator_dim = input_maps[weight_index][axis]
++        if iterator_dim >= len(reduction_flags) or reduction_flags[iterator_dim]:
++            # Per-K scales cannot be multiplied into the accumulator after the
++            # sum. Refusing here is required for arithmetic correctness.
++            return refuse("weight_scale_varies_along_reduction")
++
++        activation = op.inputs[1 - weight_index]
++        if not (isinstance(activation.type, TensorType)
++                and activation.type.element_type == f32):
++            return refuse("activation_is_not_f32")
++        static_activation, activation_reason = _is_symmetric_per_tensor_i8(activation)
++        if activation_reason not in ("", "plain_f32_activation"):
++            return refuse(activation_reason)
++        key = "eligible_static_activation_qdq" if static_activation else "eligible_dynamic_activation"
++        report[key] = report.get(key, 0) + 1
++        report["eligible"] = report.get("eligible", 0) + 1
++        return True
++
++    return select
++
++
++def prepare_dynamic_weight_only_text(source_text: str) -> tuple[str, dict]:
++    """Bridge canonical weight-only/QDQ contractions into explicit integer IR.
++
++    This is an opt-in numeric contract, not a claim that dynamically quantizing
++    a float activation preserves the original float matmul bit-for-bit. Only
++    structurally proven symmetric per-channel i8 weights whose scale varies
++    along an output dimension are admitted. Everything else remains on the
++    ordinary host path and is counted in ``selection.refused``.
++    """
++    # Use the backend's own grammar route here. It accepts the same custom
++    # multi-result linalg spelling that the normal whole-program path accepts;
++    # the analysis-only frontend parser is intentionally narrower. Once the
++    # selected rewrite has printed generic/upstream IR, common preprocessing
++    # can consume it through its ordinary route.
++    from mlir_oot.frontend.parse import parse_module
++
++    module = parse_module(source_text)
++    selection: dict = {"candidate_f32_contractions": 0, "eligible": 0, "refused": {}}
++    quant_report: dict[str, dict] = {}
++    quant_counts = apply_quant(
++        module,
++        passes=["contraction_int8"],
++        select=_dynamic_weight_only_selector(selection),
++        report_out=quant_report,
++    )
++    if quant_counts["contraction_int8"] == 0:
++        # A scoped bridge that selects nothing must be a true no-op. Besides
++        # avoiding needless whole-module churn, this retains custom linalg
++        # spellings accepted by the backend but not by the narrower common
++        # preprocessing parser (notably multi-result reductions).
++        return source_text, {
++            "integer_pass_counts": quant_counts,
++            "integer_pass_report": quant_report,
++            "selection": selection,
++            "common_preprocess": "skipped_no_selected_rewrite",
++        }
++    upstream_text, common_stats = passes_xdsl.preprocess_text(module_to_text(module))
++    return upstream_text, {
++        "integer_pass_counts": quant_counts,
++        "integer_pass_report": quant_report,
++        "selection": selection,
++        **common_stats,
++    }
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/gemmini_opt.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/gemmini_opt.py
+index abf0166a..d176b80e 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/gemmini_opt.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/gemmini_opt.py
+@@ -202,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
+     ap = argparse.ArgumentParser(prog="gemmini-opt", add_help=True)
+     ap.add_argument("--source-convolution", action="store_true", help="enable source-derived integer convolution task scheduling")
+     ap.add_argument("--integer-contract", choices=["designated_i32_staged_f32_v1"], help="explicitly adopt integer accumulation plus staged f32 epilogue; NOT original QDQ bit-equivalence")
++    ap.add_argument("--dynamic-weight-only-contract", choices=["symmetric_per_output_channel_roundeven_v1"], help="structurally bridge calibrated i8 weights plus f32/QDQ activations to integer contractions; explicit numeric contract, NOT f32 bit-equivalence")
+     ap.add_argument("--externalize-static-input-quantizer", action="store_true", help="explicit deployment ABI/timing boundary change; requires designated integer contract")
+     ap.add_argument("--verify-diagnostics", action="store_true")
+     ap.add_argument("--convert-iface-to-gemmini", action="store_true")
+@@ -215,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
+     original_text = text
+     preparation = None
+     input_prologue = None
++    if args.integer_contract is not None and args.dynamic_weight_only_contract is not None:
++        ap.error("--integer-contract and --dynamic-weight-only-contract are mutually exclusive")
+     if args.externalize_static_input_quantizer and args.integer_contract is None:
+         ap.error("external input prologue requires an explicit designated integer contract")
+     if args.integer_contract is not None:
+@@ -224,7 +227,12 @@ def main(argv: list[str] | None = None) -> int:
+             input_prologue = static_input_prologue(original_text)
+             if input_prologue is None:
+                 ap.error("no unique proven static input quantizer")
+-    pipe = Pipeline(text, enable_source_conv=args.source_convolution or args.integer_contract is not None,
++    if args.dynamic_weight_only_contract is not None:
++        from mlir_oot.frontend.integer_prepare import prepare_dynamic_weight_only_text
++        text, preparation = prepare_dynamic_weight_only_text(original_text)
++    pipe = Pipeline(text, enable_source_conv=(args.source_convolution
++                                             or args.integer_contract is not None
++                                             or args.dynamic_weight_only_contract is not None),
+                     input_prologue=input_prologue)
+
+     # ---- parse + verify ------------------------------------------------------------------
+@@ -245,6 +253,21 @@ def main(argv: list[str] | None = None) -> int:
+             "normalized_source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+             "preparation": preparation, "original_qdq_bit_equivalence": "NOT_CLAIMED",
+             "input_prologue_externalized": input_prologue is not None}
++    if pipe.plan is not None and args.dynamic_weight_only_contract is not None:
++        pipe.plan.command_buffer.setdefault("params", {})["dynamic_weight_only_contract"] = {
++            "name": args.dynamic_weight_only_contract,
++            "original_source_sha256": hashlib.sha256(original_text.encode()).hexdigest(),
++            "normalized_source_sha256": hashlib.sha256(text.encode()).hexdigest(),
++            "preparation": preparation,
++            "source_f32_bit_equivalence": "NOT_CLAIMED",
++            "weight_contract": "symmetric_per_channel_i8_zero_point_0_scale_on_parallel_dimension",
++            "activation_contract": {
++                "grouping": "per_non_reduction_slice",
++                "scale": "amax == 0.0 ? 1.0 : amax / 127.0",
++                "quantize": "fptosi(clamp(roundeven(x / scale), -127.0, 127.0))",
++                "rounding": "round_nearest_even",
++            },
++        }
+
+     # ---- command buffer ------------------------------------------------------------------
+     if args.emit_command_buffer:
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/ir/gemmini_dialect.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/ir/gemmini_dialect.py
+index 28dab7dd..6f103b09 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/ir/gemmini_dialect.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/ir/gemmini_dialect.py
+@@ -21,6 +21,7 @@ from xdsl.utils.exceptions import VerifyException
+ from ..tables import rtl_facts as F
+ from ..tables import isa
+ from ..tables import loop_ws
++from ..tables import loop_conv
+
+ DIM = F.DIM
+
+@@ -332,10 +333,72 @@ class LoopWsBlockOp(_GemminiOp):
+             raise VerifyException(f"{self.name}: {exc}") from exc
+
+
++@irdl_op_definition
++class LoopConvWsOp(_GemminiOp):
++    """One complete native convolution descriptor (functs 16--21 followed by 15)."""
++
++    name = "gemmini.loop_conv_ws"
++
++    def verify_(self) -> None:
++        _pointer_arguments(self, 3)
++        positive = (
++            "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
++            "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
++            "stride", "kernel_dim", "kernel_dilation", "pool_size", "pool_stride",
++            "batches", "porows", "pocols", "pochs", "krows", "kcols", "kchs",
++            "orows", "ocols", "in_stride", "weight_stride", "out_stride",
++            "max_pixels_per_row")
++        nonnegative = (
++            "padding", "pool_padding", "lpad", "rpad", "upad", "dpad", "plpad",
++            "prpad", "pupad", "pdpad", "input_offset", "weight_offset",
++            "output_offset", "activation", "a_spad_id", "b_spad_id")
++        boolean = (
++            "no_bias", "no_pool", "downsample", "wrot180", "input_dilated",
++            "trans_output_1203", "trans_weight_1203", "trans_weight_0132",
++            "trans_input_3120", "dw", "write_output")
++        _integer_fields(self, positive, 1)
++        _integer_fields(self, nonnegative, 0)
++        _integer_fields(self, boolean, 0)
++        if any(self.a(key) not in (0, 1) for key in boolean):
++            raise VerifyException(f"{self.name}: native convolution flags must be boolean")
++        if any(self.a(key) >= (1 << 16) for key in (
++                "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
++                "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
++                "batches", "porows", "pocols", "pochs", "krows", "kcols", "kchs",
++                "orows", "ocols", "in_stride", "weight_stride", "out_stride")):
++            raise VerifyException(f"{self.name}: a 16-bit descriptor field overflows")
++        if self.a("kernel_dilation") >= (1 << 10):
++            raise VerifyException(f"{self.name}: kernel_dilation overflows its 10-bit field")
++        common = dict(
++            stride=self.a("stride"), kernel_dilation=self.a("kernel_dilation"),
++            batches=self.a("batches"), porows=self.a("porows"),
++            pocols=self.a("pocols"), pochs=self.a("pochs"),
++            krows=self.a("krows"), kcols=self.a("kcols"), kchs=self.a("kchs"))
++        if (loop_conv.total_rows(accumulator=False, **common) > F.SPAD_ROWS // 2
++                or loop_conv.total_rows(accumulator=True, **common) > F.ACC_ROWS // 2):
++            raise VerifyException(f"{self.name}: tile exceeds double-buffered native capacity")
++        try:
++            loop_conv.static_descriptor(**{
++                key: self.a(key) for key in (
++                    "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
++                    "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
++                    "stride", "padding", "kernel_dim", "kernel_dilation", "pool_size",
++                    "pool_stride", "pool_padding", "batches", "porows", "pocols", "pochs",
++                    "krows", "kcols", "kchs", "lpad", "rpad", "upad", "dpad", "plpad",
++                    "prpad", "pupad", "pdpad", "orows", "ocols", "in_stride",
++                    "weight_stride", "out_stride", "no_bias", "no_pool", "downsample",
++                    "wrot180", "input_dilated", "activation", "trans_output_1203",
++                    "trans_weight_1203", "trans_weight_0132", "trans_input_3120",
++                    "max_pixels_per_row", "dw", "a_spad_id", "b_spad_id")})
++        except (KeyError, ValueError) as exc:
++            raise VerifyException(f"{self.name}: {exc}") from exc
++
++
+ GEMMINI_OPS = (
+     FlushOp, ConfigExOp, ConfigLdOp, ConfigStOp, MvinOp, MvoutOp, PreloadOp,
+     ComputeOp, FenceOp, ScratchOp, HostEpilogueOp, HostTransposeOp,
+     HostLaneProgramOp, Im2colRowOp, LoopWsBlockOp,
++    LoopConvWsOp,
+ )
+
+ GEMMINI = Dialect("gemmini", list(GEMMINI_OPS), [])
+diff --git a/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/native_conv_selector.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/native_conv_selector.py
+new file mode 100644
+index 00000000..31c53e1b
+--- /dev/null
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/native_conv_selector.py
+@@ -0,0 +1,56 @@
++"""Capability/semantics selector for the optional native convolution engine.
++
++This is deliberately a pure structural decision: it sees target facts, tensor encodings and
++operation semantics, never model or layer names.  Callers retain their existing generic route
++when this function returns false.
++"""
++from __future__ import annotations
++
++from ..tables import rtl_facts as F
++
++
++def select_native_loop_conv(c, activation, weight, dst, *, epilogue_stages=(), bias=None
++                            ) -> tuple[bool, str]:
++    """Return whether ``c`` is exactly representable by the pinned LOOP_CONV_WS contract."""
++    if not F.HAS_LOOP_CONV:
++        return False, "target_has_no_loop_conv"
++    if (c.output_dtype != F.OPERAND_DTYPE
++            or activation.dtype != F.OPERAND_DTYPE
++            or weight.dtype != F.OPERAND_DTYPE
++            or dst.dtype != F.OPERAND_DTYPE):
++        # LoopConvSt hardwires read_full=false; accepting i32 would silently saturate.
++        return False, "loop_conv_store_is_narrow_only"
++    if epilogue_stages or bias is not None:
++        # The first compiler-owned route is the exact bare-convolution subset.  Rich epilogues
++        # remain on Contraction until their scale/activation/bias semantics are represented here.
++        return False, "native_loop_conv_epilogue_not_yet_represented"
++    if (c.input_layout, c.weight_layout, c.output_layout) != ("NHWC", "HWIO", "NHWC"):
++        return False, "native_layout_contract_not_satisfied"
++    if c.kh != c.kw or c.stride_h != c.stride_w or c.dilation_h != c.dilation_w:
++        return False, "loop_conv_requires_uniform_2d_geometry"
++    if not (c.pad_top == c.pad_left == c.pad_bottom == c.pad_right):
++        return False, "loop_conv_requires_uniform_padding"
++    if c.pad_top < 0 or c.pad_top >= c.kh:
++        return False, "native_loop_conv_requires_0_le_padding_lt_kernel"
++    if min(c.batch, c.ci, c.hi, c.wi, c.co, c.kh, c.kw, c.ho, c.wo,
++           c.stride_h, c.dilation_h) < 1:
++        return False, "loop_conv_requires_positive_static_geometry"
++    expected_activation = [c.batch, c.hi, c.wi, c.ci]
++    expected_weights = ([c.kh, c.kw, c.ci, c.co], [c.kh * c.kw * c.ci, c.co])
++    expected_outputs = ([c.batch, c.ho, c.wo, c.co], [c.batch * c.ho * c.wo, c.co])
++    if (activation.shape != expected_activation
++            or weight.shape not in expected_weights or dst.shape not in expected_outputs):
++        return False, "buffer_shape_does_not_match_native_layout"
++    # Widths come directly from gemmini_loop_conv_ws.  Checking the physical row strides here is
++    # essential: channel padding can make them differ from logical C/CO.
++    fields16 = (c.batch, c.ci, c.hi, c.wi, c.co, c.kh, c.kw, c.ho, c.wo,
++                activation.pitch, weight.pitch, dst.pitch)
++    if any(value >= (1 << 16) for value in fields16):
++        return False, "native_loop_conv_16bit_field_overflow"
++    if c.stride_h >= (1 << 8) or c.pad_top >= (1 << 8):
++        return False, "native_loop_conv_8bit_field_overflow"
++    if c.dilation_h >= (1 << 10):
++        return False, "kernel_dilation_not_representable"
++    if c.kh * c.kw * c.ci * 128 * 128 > (1 << 31) - 1:
++        return False, "native_loop_conv_accumulator_may_overflow_i32"
++    return True, "selected"
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/plan.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/plan.py
+index c5f9b31b..cf936878 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/plan.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/plan.py
+@@ -11,8 +11,10 @@ from typing import Any
+
+ from ..frontend.reader import TensorDecl, Workload
+ from ..tables import rtl_facts as _F
++from .native_conv_selector import select_native_loop_conv
++from .source_conv_plan import Convolution
+
+-DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8,
++DTYPE_BYTES = {"i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8,
+                "f16": 2, "bf16": 2, "f32": 4}
+
+ #: opcodes the ABI treats as a whole-op command for the kernel argument order
+@@ -441,14 +443,14 @@ class Builder:
+         ho, wo = conv_out_dims(h, w, kh, kw, stride, padding, dilation)
+         if ho <= 0 or wo <= 0:
+             raise LoweringDeclined(f"conv2d output extent {ho}x{wo} is empty", op="conv2d")
+-        e_pre = _epilogue_from(node.attrs)
+-        if e_pre.has_pool and [int(v) for v in e_pre.pool_in_dims] != [ho, wo]:
++        e = _epilogue_from(node.attrs)
++        if e.has_pool and [int(v) for v in e.pool_in_dims] != [ho, wo]:
+             # The ABI states this cross-check outright: a fused pool's `pool_in_dims` is the
+             # conv's OWN output extent, and a disagreement with the geometry derived from
+             # kernel/stride/padding/dilation is REJECTED, never reconciled -- reconciling it
+             # pools over a window the convolution never produced.
+             raise LoweringDeclined(
+-                f"conv2d fused maxpool declares pool_in_dims {list(e_pre.pool_in_dims)} but the "
++                f"conv2d fused maxpool declares pool_in_dims {list(e.pool_in_dims)} but the "
+                 f"convolution's derived output extent is [{ho}, {wo}]",
+                 op="conv2d", shape=[ho, wo])
+         rows, kdim = bn * ho * wo, kh * kw * ci
+@@ -456,16 +458,51 @@ class Builder:
+             raise LoweringDeclined(
+                 f"conv2d weight {weight.shape} is not the [{kdim}, {co}] im2col packing",
+                 op="conv2d", shape=weight.shape)
+-        im2col = self.declare(f"{ifm.name}_im2col", [rows, kdim], ifm.dtype, "input")
+-        self.params.setdefault("im2col_recipes", []).append(
+-            {"source": ifm.name, "target": im2col.name, "kh": kh, "kw": kw, "ci": ci,
+-             "stride": stride, "padding": padding, "dilation": dilation, "layout": layout})
+-        e = _epilogue_from(node.attrs)
+         out_shape = epilogue_out_shape(rows, co, e)
+         if out_shape != node.out_shape:
+             raise LoweringDeclined(
+                 f"conv2d result {node.out_shape} disagrees with the derived shape {out_shape}",
+                 op="conv2d", shape=node.out_shape)
++        candidate_dst = Buffer(node.name, out_shape, e.output_dtype, "output")
++
++        # LOOP_CONV_WS consumes the interface's existing NHWC activation, flattened-HWIO
++        # [KH*KW*CI, CO] weight and flattened-NHWC [N*HO*WO, CO] result directly.  Select it
++        # only when the target advertises the sequencer and the operation needs none of the
++        # richer Contraction epilogue machinery.  Unsupported geometry remains on the exact
++        # im2col + Contraction route below; selection is never keyed on a model or layer name.
++        candidate = Convolution(
++            ifm.name, weight_name, node.name,
++            bn, ci, h, w, co, kh, kw, ho, wo,
++            stride[0], stride[1], dilation[0], dilation[1],
++            padding[0], padding[1], padding[2], padding[3],
++            input_layout="NHWC", weight_layout="HWIO", output_layout="NHWC",
++            output_dtype=e.output_dtype,
++        )
++        native_loop_conv, _reason = select_native_loop_conv(
++            candidate, ifm, weight, candidate_dst,
++            epilogue_stages=e.stages, bias=e.bias)
++        if native_loop_conv:
++            self.declare(node.name, out_shape, e.output_dtype, "output")
++            self.params.setdefault("convolution_lowering", {
++                "selection_policy": "capability_geometry_layout_semantics_v1",
++                "target_has_loop_conv": bool(_F.HAS_LOOP_CONV),
++                "target_has_im2col": bool(_F.HAS_IM2COL),
++            })
++            self.commands.append({
++                "opcode": "CONV2D",
++                "operands": {"ifm": ifm.name, "weight": weight_name, "dst": node.name},
++                "attributes": {
++                    "kernel": kernel, "stride": stride, "padding": padding,
++                    "dilation": dilation, "layout": "nhwc", "output_dtype": e.output_dtype,
++                },
++            })
++            self.tasks.append(candidate)
++            return
++
++        im2col = self.declare(f"{ifm.name}_im2col", [rows, kdim], ifm.dtype, "input")
++        self.params.setdefault("im2col_recipes", []).append(
++            {"source": ifm.name, "target": im2col.name, "kh": kh, "kw": kw, "ci": ci,
++             "stride": stride, "padding": padding, "dilation": dilation, "layout": layout})
+         self.declare(node.name, out_shape, e.output_dtype, "output")
+         acc = f"acc_{node.name}"
+         handle = node.ins[1]
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/schedule.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/schedule.py
+index 728fe879..6543eb93 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/schedule.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/schedule.py
+@@ -14,7 +14,9 @@ from ..tables import isa
+ from ..tables import rtl_facts as F
+ from .model_lane import HostSegment
+ from .source_conv_plan import Convolution
++from .native_conv_selector import select_native_loop_conv
+ from ..tables import loop_ws
++from ..tables import loop_conv
+
+ from .plan import (
+     Buffer,
+@@ -114,6 +116,8 @@ class Scheduler:
+         self._st_key: tuple | None = None
+         self._ex_key: tuple | None = None
+         self._stage_id = 0
++        self._current_task_index = -1
++        self._convolution_selections: list[dict[str, Any]] = []
+
+     # -- helpers -----------------------------------------------------------------------------
+     def emit(self, __kind: str, __bufs: list[str] | None = None, **attrs) -> None:
+@@ -171,6 +175,7 @@ class Scheduler:
+         device_writes: set[str] = set()
+         host_writes: set[str] = set()
+         for task_index, task in enumerate(self.plan.tasks):
++            self._current_task_index = task_index
+             instruction_start = len(self.instrs)
+             if receipt is not None:
+                 task_record = receipt["tasks"][task_index]
+@@ -241,6 +246,17 @@ class Scheduler:
+             receipt.update(schedule_instruction_count=len(self.instrs),
+                            prologue_instruction_range=[0, prologue_end],
+                            epilogue_instruction_range=[epilogue_start, len(self.instrs)])
++        conv_receipt = (self.plan.command_buffer.get("params") or {}).get(
++            "convolution_lowering")
++        if conv_receipt is not None:
++            conv_receipt.update(
++                native_loop_conv_count=sum(
++                    item["selected"] == "gemmini_loop_conv_ws"
++                    for item in self._convolution_selections),
++                fallback_count=sum(
++                    item["selected"] != "gemmini_loop_conv_ws"
++                    for item in self._convolution_selections),
++                selections=list(self._convolution_selections))
+         if len(self.instrs) > COMMAND_BUDGET:
+             raise LoweringDeclined(
+                 f"the tile schedule needs {len(self.instrs)} accelerator commands, past this "
+@@ -409,6 +425,23 @@ class Scheduler:
+         mvin/preload/compute instructions.
+         """
+         activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
++        native, _reason = self.native_convolution_eligibility(c)
++        self._convolution_selections.append({
++            "task_index": self._current_task_index,
++            "geometry": {"n": c.batch, "ci": c.ci, "hi": c.hi, "wi": c.wi,
++                         "co": c.co, "kh": c.kh, "kw": c.kw,
++                         "ho": c.ho, "wo": c.wo,
++                         "stride": [c.stride_h, c.stride_w],
++                         "dilation": [c.dilation_h, c.dilation_w],
++                         "padding": [c.pad_top, c.pad_left, c.pad_bottom, c.pad_right]},
++            "semantic_output_dtype": c.output_dtype,
++            "layouts": [c.input_layout, c.weight_layout, c.output_layout],
++            "selected": "gemmini_loop_conv_ws" if native else "streamed_row_im2col_loop_ws",
++            "reason": _reason,
++        })
++        if native:
++            self.native_convolution(c)
++            return
+         if activation.dtype != "i8" or weight.dtype != "i8" or dst.dtype != "i32":
+             raise LoweringDeclined(
+                 f"streamed conv requires i8 x i8 -> i32; got {activation.dtype} x "
+@@ -471,6 +504,83 @@ class Scheduler:
+                                 accumulate=k0 != 0, full_c=True,
+                                 implementation="gemmini_loop_ws")
+
++    def native_convolution_eligibility(self, c: Convolution) -> tuple[bool, str]:
++        """Whether the source semantics and physical encodings fit LOOP_CONV_WS exactly."""
++        activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
++        return select_native_loop_conv(c, activation, weight, dst)
++
++    def native_convolution(self, c: Convolution) -> None:
++        """Tile an eligible NHWC/HWIO convolution into complete LOOP_CONV_WS descriptors."""
++        activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
++        batches, porows, pocols, pochs, krows, kcols, kchs = loop_conv.auto_tile(
++            batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
++            stride=c.stride_h, kernel_dilation=c.dilation_h)
++        in_stride, weight_stride, out_stride = activation.pitch, weight.pitch, dst.pitch
++        self.config_st(stride=out_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0)
++        self.config_ex(dataflow=isa.WEIGHT_STATIONARY, act=isa.NO_ACTIVATION,
++                       acc_scale=1.0, a_stride=c.stride_h, c_stride=1)
++        for b in range(0, c.batch, batches):
++            for orow in range(0, c.ho, porows):
++                for ocol in range(0, c.wo, pocols):
++                    for poch in range(0, c.co, pochs):
++                        for krow in range(0, c.kh, krows):
++                            for kcol in range(0, c.kw, kcols):
++                                for kch in range(0, c.ci, kchs):
++                                    tile_b = min(batches, c.batch - b)
++                                    tile_or = min(porows, c.ho - orow)
++                                    tile_oc = min(pocols, c.wo - ocol)
++                                    tile_och = min(pochs, c.co - poch)
++                                    tile_kr = min(krows, c.kh - krow)
++                                    tile_kc = min(kcols, c.kw - kcol)
++                                    tile_kch = min(kchs, c.ci - kch)
++                                    irow = orow * c.stride_h + krow * c.dilation_h - c.pad_top
++                                    icol = ocol * c.stride_w + kcol * c.dilation_w - c.pad_left
++                                    dil_kr = tile_kr + (c.dilation_h - 1) * (tile_kr - 1)
++                                    dil_kc = tile_kc + (c.dilation_w - 1) * (tile_kc - 1)
++                                    irows = tile_or * c.stride_h + dil_kr - 1
++                                    icols = tile_oc * c.stride_w + dil_kc - 1
++                                    upad, lpad = max(0, -irow), max(0, -icol)
++                                    dpad = max(0, irow + irows - c.hi)
++                                    rpad = max(0, icol + icols - c.wi)
++                                    final = (krow + tile_kr == c.kh
++                                             and kcol + tile_kc == c.kw
++                                             and kch + tile_kch == c.ci)
++                                    self.emit(
++                                        "loop_conv_ws", [c.activation, c.weight, c.dst],
++                                        batch_size=c.batch, in_row_dim=c.hi,
++                                        in_col_dim=c.wi, in_channels=c.ci,
++                                        out_channels=c.co, out_row_dim=c.ho,
++                                        out_col_dim=c.wo, pool_out_row_dim=c.ho,
++                                        pool_out_col_dim=c.wo, stride=c.stride_h,
++                                        padding=c.pad_top, kernel_dim=c.kh,
++                                        kernel_dilation=c.dilation_h, pool_size=1,
++                                        pool_stride=1, pool_padding=0, batches=tile_b,
++                                        porows=tile_or, pocols=tile_oc, pochs=tile_och,
++                                        krows=tile_kr, kcols=tile_kc, kchs=tile_kch,
++                                        lpad=lpad, rpad=rpad, upad=upad, dpad=dpad,
++                                        plpad=0, prpad=0, pupad=0, pdpad=0,
++                                        orows=tile_or, ocols=tile_oc,
++                                        in_stride=in_stride, weight_stride=weight_stride,
++                                        out_stride=out_stride, no_bias=True, no_pool=True,
++                                        downsample=False, wrot180=False, input_dilated=False,
++                                        activation=isa.NO_ACTIVATION,
++                                        trans_output_1203=False, trans_weight_1203=False,
++                                        trans_weight_0132=False, trans_input_3120=False,
++                                        max_pixels_per_row=min(
++                                            tile_kc, max(1, DIM // tile_kch)), dw=False,
++                                        a_spad_id=0, b_spad_id=0,
++                                        input_offset=((b * c.hi * c.wi
++                                                       + (irow + upad) * c.wi
++                                                       + (icol + lpad)) * in_stride + kch),
++                                        weight_offset=((krow * c.kw * c.ci
++                                                        + kcol * c.ci + kch)
++                                                       * weight_stride + poch),
++                                        output_offset=((b * c.ho * c.wo
++                                                        + orow * c.wo + ocol)
++                                                       * out_stride + poch),
++                                        write_output=final,
++                                        implementation="gemmini_loop_conv_ws")
++
+     def contraction(self, c: Contraction) -> None:
+         lhs, rhs, dst = self.buf(c.lhs), self.buf(c.rhs), self.buf(c.dst)
+         if lhs.dtype != "i8" or rhs.dtype != "i8":
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/source_conv_plan.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/source_conv_plan.py
+index f98241c0..b3ce8b3d 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/lowering/source_conv_plan.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/lowering/source_conv_plan.py
+@@ -30,3 +30,7 @@ class Convolution:
+     pad_bottom: int
+     pad_right: int
+     direct_dma: bool = False
++    input_layout: str = "NCHW"
++    weight_layout: str = "CoK"
++    output_layout: str = "NCHW"
++    output_dtype: str = "i32"
+diff --git a/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/tables/loop_conv.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/tables/loop_conv.py
+new file mode 100644
+index 00000000..5c1b400f
+--- /dev/null
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/tables/loop_conv.py
+@@ -0,0 +1,145 @@
++"""Pinned Gemmini ``LOOP_CONV_WS`` descriptor encoding.
++
++The five static records below are a literal transcription of the public
++``gemmini_loop_conv_ws`` macro.  Address-bearing CONFIG_5/CONFIG_6 records are emitted by the
++LLVM layer because their values are runtime pointers.  Keeping all other bit packing here gives
++the verifier and code generator one auditable source of truth.
++"""
++from __future__ import annotations
++
++from . import isa
++from . import rtl_facts as F
++
++
++K_LOOP_CONV_WS = 15
++K_CONFIG_1 = 16
++K_CONFIG_2 = 17
++K_CONFIG_3 = 18
++K_CONFIG_4 = 19
++K_CONFIG_5 = 20
++K_CONFIG_6 = 21
++
++
++def _u64(value: int) -> int:
++    return int(value) & isa.MASK64
++
++
++def static_descriptor(*, batch_size: int, in_row_dim: int, in_col_dim: int,
++                      in_channels: int, out_channels: int, out_row_dim: int,
++                      out_col_dim: int, pool_out_row_dim: int, pool_out_col_dim: int,
++                      stride: int, padding: int, kernel_dim: int, kernel_dilation: int,
++                      pool_size: int, pool_stride: int, pool_padding: int,
++                      batches: int, porows: int, pocols: int, pochs: int,
++                      krows: int, kcols: int, kchs: int,
++                      lpad: int, rpad: int, upad: int, dpad: int,
++                      plpad: int, prpad: int, pupad: int, pdpad: int,
++                      orows: int, ocols: int, in_stride: int, weight_stride: int,
++                      out_stride: int, no_bias: bool, no_pool: bool,
++                      downsample: bool, wrot180: bool, input_dilated: bool,
++                      activation: int, trans_output_1203: bool,
++                      trans_weight_1203: bool, trans_weight_0132: bool,
++                      trans_input_3120: bool, max_pixels_per_row: int,
++                      dw: bool, a_spad_id: int, b_spad_id: int
++                      ) -> list[tuple[int, int, int]]:
++    """Return CONFIG_1..4 plus launch, exactly as the public macro packs them."""
++    config1 = (
++        K_CONFIG_1,
++        _u64((out_channels << 48) | (in_channels << 32) | (in_row_dim << 16)
++             | batch_size),
++        _u64((padding << 56) | (stride << 48) | (out_col_dim << 32)
++             | (pool_out_row_dim << 16) | out_row_dim),
++    )
++    config2 = (
++        K_CONFIG_2,
++        _u64((kernel_dim << 48) | (pool_out_col_dim << 32) | (pool_size << 16)
++             | (pool_stride << 8) | pool_padding),
++        _u64((batches << 48) | (porows << 32) | (pocols << 16) | pochs),
++    )
++    config3 = (
++        K_CONFIG_3,
++        _u64((krows << 48) | (kcols << 32) | (kchs << 16) | lpad),
++        _u64((rpad << 48) | (upad << 32) | (dpad << 24) | (plpad << 16)
++             | in_col_dim),
++    )
++    config4 = (
++        K_CONFIG_4,
++        _u64((orows << 48) | (prpad << 32) | (pupad << 21) | (pdpad << 10)
++             | kernel_dilation),
++        _u64((in_stride << 48) | (weight_stride << 32) | (out_stride << 16)
++             | ocols),
++    )
++    launch = (
++        K_LOOP_CONV_WS,
++        _u64((a_spad_id << 18) | (b_spad_id << 16) | (max_pixels_per_row << 8)
++             | (int(dw) << 6) | (int(trans_input_3120) << 5)
++             | (int(trans_weight_0132) << 4) | (int(trans_weight_1203) << 3)
++             | (int(trans_output_1203) << 2) | (int(wrot180) << 1)
++             | int(no_bias)),
++        _u64((int(activation) << 3) | (int(input_dilated) << 2)
++             | (int(downsample) << 1) | int(no_pool)),
++    )
++    for funct, _rs1, _rs2 in (config1, config2, config3, config4, launch):
++        isa.assert_legal(funct)
++    return [config1, config2, config3, config4, launch]
++
++
++def total_rows(*, accumulator: bool, stride: int, kernel_dilation: int,
++               batches: int, porows: int, pocols: int, pochs: int,
++               krows: int, kcols: int, kchs: int) -> int:
++    """Rows used by one no-pool NHWC/HWIO tile, matching tiled_conv_total_spad_rows."""
++    dilated_krows = krows + (kernel_dilation - 1) * (krows - 1)
++    dilated_kcols = kcols + (kernel_dilation - 1) * (kcols - 1)
++    irows = porows * stride + dilated_krows - 1
++    icols = pocols * stride + dilated_kcols - 1
++    in_channel_tiles = (kchs + F.DIM - 1) // F.DIM
++    out_channel_tiles = (pochs + F.DIM - 1) // F.DIM
++    a_rows = in_channel_tiles * batches * irows * icols
++    b_rows = out_channel_tiles * kcols * krows * kchs
++    c_rows = out_channel_tiles * batches * porows * pocols
++    return c_rows if accumulator else a_rows + b_rows
++
++
++def auto_tile(*, batch: int, ho: int, wo: int, co: int, kh: int, kw: int,
++              ci: int, stride: int, kernel_dilation: int) -> tuple[int, ...]:
++    """Capacity-select a native tile using Gemmini's public ``tiled_conv_stride_auto`` rule."""
++    args = [batch, ho, wo, co, kh, kw, ci]
++    maxima = list(args)
++    max_spad_rows, max_acc_rows = F.SPAD_ROWS // 2, F.ACC_ROWS // 2
++
++    def fits(candidate: list[int]) -> bool:
++        common = dict(stride=stride, kernel_dilation=kernel_dilation,
++                      batches=candidate[0], porows=candidate[1], pocols=candidate[2],
++                      pochs=candidate[3], krows=candidate[4], kcols=candidate[5],
++                      kchs=candidate[6])
++        return (total_rows(accumulator=False, **common) <= max_spad_rows
++                and total_rows(accumulator=True, **common) <= max_acc_rows)
++
++    while not fits(args):
++        candidates = [i for i, value in enumerate(args)
++                      if not (i == 2 and value <= F.DIM and args[1] > 1)]
++        index = max(candidates, key=lambda i: args[i])
++        if index in (3, 6):
++            args[index] = ((args[index] // F.DIM) * F.DIM
++                           if args[index] % F.DIM else args[index] - F.DIM)
++        else:
++            args[index] -= 1
++        args[index] = max(1, args[index])
++
++    # Preserve width utilization first, then greedily recover every legal extent.
++    while args[2] < maxima[2]:
++        candidate = list(args)
++        candidate[2] += 1
++        if not fits(candidate):
++            break
++        args = candidate
++    changed = True
++    while changed:
++        changed = False
++        for i in range(len(args)):
++            if args[i] >= maxima[i]:
++                continue
++            candidate = list(args)
++            candidate[i] += 1
++            if fits(candidate):
++                args, changed = candidate, True
++    return tuple(args)
+diff --git a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/tables/rtl_facts.py b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/tables/rtl_facts.py
+index 52ec90a1..0578b1ab 100644
+--- a/out/artifacts/perf-bench/gemmini/phase2_compiler_bf62_slot_complete_host_workspace_candidate_20260908/compiler/mlir_oot/tables/rtl_facts.py
++++ b/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908/compiler/mlir_oot/tables/rtl_facts.py
+@@ -38,6 +38,15 @@ LEGAL_FUNCTS = frozenset(
+      16, 17, 18, 19, 20, 21, 22, 23, 24, 126)
+ )
+
++# --- optional accelerator engines -----------------------------------------------------------
++# UniversalResNet50Configs.arrayConfig enables the loop-convolution unroller.  The same
++# elaborated GemminiConfig fixes hasIm2Col=false, so canonical convolution may use functs 15--21
++# but must never claim ExecuteController's separate im2col datapath.
++HAS_LOOP_CONV = True
++HAS_IM2COL = False
++HAS_TRAINING_CONVS = True
++HAS_MAX_POOL = True
++
+ #: funct -> decoder name, straight from the discovery table.
+ FUNCT_NAMES = {
+     0: "CONFIG_CMD", 1: "LOAD2_CMD", 2: "LOAD_CMD", 3: "STORE_CMD",
