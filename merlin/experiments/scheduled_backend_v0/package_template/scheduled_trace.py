@@ -28,6 +28,7 @@ from lowering.block_schedule import (  # noqa: F401 -- Geometry/Knobs are named 
     Load,
     Preload,
     Store,
+    gather_runs,
     schedule_contraction,
     schedule_convolution,
 )
@@ -35,6 +36,10 @@ from lowering.block_schedule import (  # noqa: F401 -- Geometry/Knobs are named 
 GEOMETRY = "@GEOMETRY@"
 KNOBS = "@KNOBS@"
 CONV_KNOBS = "@CONV_KNOBS@"
+#: Move a gathered block in one multi-row MVIN per run of DRAM rows at a fixed stride (and one zero-page
+#: MVIN per run of halo rows) instead of one MVIN per row. The same bytes reach the same rows; the target
+#: reads a multi-row load at the CONFIG_LD stride and serves a load from address 0 with its zero writer.
+COALESCE_GATHER = "@COALESCE_GATHER@"
 
 #: Epilogue stages the block schedule models (applied by the CONFIG_ST word, not by a block move).
 _SCHEDULED_EPILOGUE = ("relu", "acc_scale")
@@ -58,6 +63,18 @@ def _render(schedule: Any, tensors: dict[str, tuple[str, Any]], out_name: str, o
         if isinstance(op, Load):
             name, spec = tensors[op.role]
             stride, elem = isa._row_stride(spec), isa._elem_bytes(spec.dtype)
+            if op.gather is not None and COALESCE_GATHER:
+                for run in gather_runs(op.gather):
+                    if run.source is None:
+                        trace.append(isa._config_ld(0, channel=0))
+                        trace.append(isa.Instruction("MVIN", 0, isa._tile_word(op.row + run.offset, op.cols, run.rows)))
+                        continue
+                    trace.append(isa._config_ld(stride * max(run.row_step, 1), channel=0))
+                    source = isa.Address(name, run.source[0] * stride + run.source[1] * elem)
+                    trace.append(
+                        isa.Instruction("MVIN", source, isa._tile_word(op.row + run.offset, op.cols, run.rows))
+                    )
+                continue
             trace.append(isa._config_ld(stride, channel=0))
             if op.gather is None:
                 trace.append(

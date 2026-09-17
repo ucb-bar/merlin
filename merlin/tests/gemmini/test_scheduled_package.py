@@ -256,3 +256,46 @@ def test_minting_is_idempotent_and_refuses_a_parent_with_a_different_geometry(mi
     isa.write_text(isa.read_text().replace("SPAD_ROWS = 262144 // DIM", "SPAD_ROWS = 131072 // DIM", 1))
     with pytest.raises(SystemExit, match="different geometry"):
         mint.mint(TARGET, name, Knobs(), CONV_KNOBS, "bad", dest_root=tmp_path / "out", parents_root=fake_root)
+
+
+def _rows_moved(stream, convs_spec):
+    """Expand a raw conv stream to (on-chip row, DRAM source) per row plus the non-load instructions, so a
+    stream of one-row MVINs and a stream of multi-row runs can be compared for the bytes they move."""
+    ci = convs_spec["ci"]
+    ifm_stride = ((ci + 15) // 16) * 16
+    stride, out = None, []
+    for name, rs1, rs2 in stream:
+        if name == "CONFIG_LD":
+            stride = rs2
+        elif name == "MVIN" and (rs1 == 0 or rs1["tensor"] == "IFM"):
+            row, cols, rows = rs2 & 0xFFFFFFFF, (rs2 >> 32) & 0xFFFF, rs2 >> 48
+            for i in range(rows):
+                source = (
+                    None
+                    if rs1 == 0
+                    else (rs1["offset"] // ifm_stride + i * (stride // ifm_stride), rs1["offset"] % ifm_stride)
+                )
+                out.append(("row", row + i, cols, source))
+        elif name != "CONFIG_LD":
+            out.append((name, json.dumps(rs1, sort_keys=True), rs2))
+    return out
+
+
+def test_coalesced_gathers_move_the_same_rows_in_fewer_loads(minted, tmp_path):
+    """The multi-row rendering changes how many MVINs a gather takes, never which bytes reach which row."""
+    mint, packages = minted
+    if CONV_PARENT not in packages:
+        pytest.skip(f"{CONV_PARENT} is not in this checkout")
+    coalesced = mint.mint(
+        TARGET, CONV_PARENT, Knobs(), CONV_KNOBS, "coalesced", dest_root=tmp_path, coalesce_gather=True
+    )
+    try:
+        got, want = _streams(coalesced), _streams(PARENTS / CONV_PARENT)
+        for label, spec in CONVS.items():
+            if spec.get("pool") or spec.get("epilogue"):
+                continue
+            assert _rows_moved(got["conv"][label], spec) == _rows_moved(want["conv"][label], spec), label
+            loads = sum(1 for name, _, _ in got["conv"][label] if name == "MVIN")
+            assert loads < sum(1 for name, _, _ in want["conv"][label] if name == "MVIN"), label
+    finally:
+        mint.thaw(coalesced)

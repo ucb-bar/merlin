@@ -23,6 +23,11 @@ from the pass and a knob setting, so a measured scheduling result is the compile
 - **Generated, never edited.** A package is re-minted, not patched; same inputs, same package id.
 - **The pass is vendored verbatim.** `block_schedule.py` must import nothing from merlin (the package
   integrity scan rejects a merlin import); `merlin/tests/infra/test_block_schedule.py` pins that.
+- **Coalescing is opt-in (`--coalesce-gather`).** It moves a gathered conv block in one multi-row MVIN per
+  run of equally spaced DRAM rows (and one zero-page MVIN per run of halo rows), using the pass's
+  `gather_runs`. The bytes reaching each row are unchanged -- `test_scheduled_package.py` checks that row
+  by row against the one-MVIN-per-row stream -- but the stream is not op-for-op the parent's, so the
+  equivalence acceptance above uses it off.
 - **Unmodelled commands stay with the parent.** Transposed contractions and pooling epilogues route to the
   parent's `*_parent` lowering, unchanged — never approximated by the pass.
 - **Equivalence is the acceptance.** `merlin/tests/gemmini/test_scheduled_package.py` mints from each

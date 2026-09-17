@@ -181,6 +181,7 @@ def mint(
     dest_root: Path | None = None,
     parents_root: Path | None = None,
     freeze: bool = True,
+    coalesce_gather: bool = False,
 ) -> Path:
     import yaml
 
@@ -210,8 +211,9 @@ def mint(
         .replace('"@GEOMETRY@"', repr(dataclasses.replace(geometry, sources={})))
         .replace('"@KNOBS@"', repr(knobs))
         .replace('"@CONV_KNOBS@"', repr(conv_knobs))
+        .replace('"@COALESCE_GATHER@"', repr(bool(coalesce_gather)))
     )
-    if "@GEOMETRY@" in rendered or "@KNOBS@" in rendered:
+    if "@GEOMETRY@" in rendered or "@KNOBS@" in rendered or "@COALESCE_GATHER@" in rendered:
         raise SystemExit(f"{TEMPLATE} placeholders were not all rendered")
 
     dest_root.mkdir(parents=True, exist_ok=True)
@@ -243,6 +245,7 @@ def mint(
         "pass_module_sha256": hashlib.sha256(pass_bytes).hexdigest(),
         "knobs": dataclasses.asdict(knobs),
         "conv_knobs": dataclasses.asdict(conv_knobs),
+        "coalesce_gather": bool(coalesce_gather),
         "geometry": {f.name: getattr(geometry, f.name) for f in dataclasses.fields(geometry)},
         "source_digest": digest,
         "note": (
@@ -273,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--knobs", default="{}", help="JSON Knobs fields for matmul (defaults otherwise)")
     parser.add_argument("--conv-knobs", default=None, help="JSON Knobs fields for conv (default: --knobs)")
     parser.add_argument("--dest", default=None, help="root to mint into (default: out/artifacts/targets/<target>)")
+    parser.add_argument(
+        "--coalesce-gather",
+        action="store_true",
+        help="move a gathered block in one multi-row load per run of equally spaced DRAM rows",
+    )
     args = parser.parse_args(argv)
 
     def _knobs(text: str) -> Knobs:
@@ -285,7 +293,15 @@ def main(argv: list[str] | None = None) -> int:
     knobs = _knobs(args.knobs)
     conv_knobs = _knobs(args.conv_knobs) if args.conv_knobs is not None else knobs
     print(
-        mint(args.target, args.parent, knobs, conv_knobs, args.label, dest_root=Path(args.dest) if args.dest else None)
+        mint(
+            args.target,
+            args.parent,
+            knobs,
+            conv_knobs,
+            args.label,
+            dest_root=Path(args.dest) if args.dest else None,
+            coalesce_gather=args.coalesce_gather,
+        )
     )
     return 0
 

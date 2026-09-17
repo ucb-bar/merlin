@@ -222,6 +222,54 @@ class Load:
 
 
 @dataclass(frozen=True)
+class GatherRun:
+    """A maximal stretch of a gather that one multi-row load can move.
+
+    ``offset`` is the first gathered row, ``rows`` how many. ``source`` is the first DRAM ``(row, col)``,
+    and the run reads rows ``source[0] + i * row_step`` for ``i < rows`` at that column -- or ``source`` is
+    ``None`` and every row comes from the target's zero path (``row_step`` 0). A stride-``s`` convolution
+    gathers every ``s``-th pixel of an image row, so its runs have ``row_step == s``.
+    """
+
+    offset: int
+    rows: int
+    source: tuple[int, int] | None
+    row_step: int
+
+
+def gather_runs(gather: tuple[tuple[int, int] | None, ...]) -> tuple[GatherRun, ...]:
+    """Split a gather into the fewest runs of rows that are equally spaced in DRAM (or all zero).
+
+    A run's spacing is fixed by its first two entries and must be positive; a single entry is a run of
+    one. Joining the runs back, row by row, reproduces the gather exactly -- which is what lets a target
+    that can load several DRAM rows at a configured stride move a gather in a handful of loads instead of
+    one per row, without changing a single byte that reaches the chip.
+    """
+    runs: list[GatherRun] = []
+    index = 0
+    while index < len(gather):
+        first = gather[index]
+        length, step = 1, 0
+        if first is None:
+            while index + length < len(gather) and gather[index + length] is None:
+                length += 1
+        elif index + 1 < len(gather) and gather[index + 1] is not None:
+            nxt = gather[index + 1]
+            if nxt[1] == first[1] and nxt[0] > first[0]:
+                step = nxt[0] - first[0]
+                while (
+                    index + length < len(gather)
+                    and gather[index + length] is not None
+                    and gather[index + length][1] == first[1]
+                    and gather[index + length][0] == first[0] + length * step
+                ):
+                    length += 1
+        runs.append(GatherRun(index, length, first, step if first is not None and length > 1 else 0))
+        index += length
+    return tuple(runs)
+
+
+@dataclass(frozen=True)
 class Preload:
     """Name the accumulator block the next :class:`Compute` writes, and (when ``weight_row`` is not
     ``None``) make that weight block resident first; ``None`` keeps the resident block."""
