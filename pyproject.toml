@@ -161,7 +161,17 @@ line-length = 120
 # was 3.12, ruff reported seven working PEP 701 f-strings as INVALID SYNTAX -- a linter calling live
 # code broken is how a linter stops being read -- and the floor itself was wrong in the same way.
 target-version = "py312"
+# Formatter output is only comparable within one release line: the same tree measured 2,703 files
+# "would reformat" under an unpinned ruff and 1,176 under 0.16.8. CI pins the exact version.
+required-version = ">=0.16,<0.17"
 exclude = ["third_party", "out", ".venv"]
+# Benchmark INPUTS, not source. A capsule's PyTorch loader is what an agent under test compiles, and
+# generate_corpus.py promises a re-run is byte-stable against the committed file -- so restyling one
+# changes the benchmark between arms and breaks the generator's own stability guarantee at once.
+extend-exclude = [
+    "merlin/contract/capsules/**/capsule.pytorch.py",
+    "merlin/contract/capsules/**/capsule.loader_deps/**",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

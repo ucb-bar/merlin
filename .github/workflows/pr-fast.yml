@@ -110,5 +110,5 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: ruff lint + format check
         run: |
-          uvx ruff check .
-          uvx ruff format --check .
+          uvx ruff@0.16.8 check .
+          uvx ruff@0.16.8 format --check .
