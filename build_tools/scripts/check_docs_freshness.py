@@ -31,6 +31,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _front_matter  # noqa: E402  (sibling module, stdlib only)
+
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 
@@ -43,23 +46,7 @@ GENERATED = {"reference/cli.md", "reference/module_index.md", "reference/schemas
 RATCHET = ROOT / "build_tools" / "scripts" / "docs_freshness_ratchet.txt"
 
 
-def parse_front_matter(text: str) -> dict | None:
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---", 4)
-    if end == -1:
-        return None
-    fm: dict = {}
-    for line in text[4:end].splitlines():
-        if not line.strip() or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key, val = key.strip(), val.strip()
-        if val.startswith("[") and val.endswith("]"):
-            fm[key] = [x.strip() for x in val[1:-1].split(",") if x.strip()]
-        else:
-            fm[key] = val
-    return fm
+parse_front_matter = _front_matter.parse
 
 
 def _docs() -> list[Path]:
@@ -83,6 +70,13 @@ def schema_errors() -> list[str]:
         lv = fm.get("last_verified", "")
         if lv and not (len(lv) == 10 and lv[4] == "-" and lv[7] == "-"):
             errs.append(f"{rel}: last_verified {lv!r} not YYYY-MM-DD")
+        # A code_ref that does not resolve makes the drift signal unmeasurable for that doc: the
+        # ref reads as infinitely old and the doc is drifted forever, or -- worse -- the reader
+        # silently drops it. Four such refs were pointing at files that had moved under
+        # merlin/targets/<target>/backend/ when this rule was added (2026-09-16).
+        for ref in fm.get("code_refs") or []:
+            if not (ROOT / ref).exists():
+                errs.append(f"{rel}: code_ref {ref!r} does not exist")
     return errs
 
 

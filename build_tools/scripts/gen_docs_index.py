@@ -16,6 +16,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _front_matter  # noqa: E402  (sibling module, stdlib only)
+
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 OUT = DOCS / "README.md"
@@ -51,25 +54,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 """
 
 
-def parse_front_matter(text: str) -> dict | None:
-    """Minimal YAML front-matter parser (stdlib only): scalars + `[a, b]` lists."""
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---", 4)
-    if end == -1:
-        return None
-    fm: dict = {}
-    for line in text[4:end].splitlines():
-        line = line.rstrip()
-        if not line or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key, val = key.strip(), val.strip()
-        if val.startswith("[") and val.endswith("]"):
-            fm[key] = [x.strip() for x in val[1:-1].split(",") if x.strip()]
-        else:
-            fm[key] = val
-    return fm
+parse_front_matter = _front_matter.parse
 
 
 def discover() -> tuple[list[dict], dict[str, str]]:

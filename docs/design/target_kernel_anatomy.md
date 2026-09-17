@@ -7,9 +7,9 @@ last_verified: 2026-08-11
 related: [lowering_pipeline, target_agnostic_core, target_onboarding, triton_frontend]
 code_refs:
   - merlin/python/merlin/runtime/backends/base.py
-  - merlin/python/merlin/runtime/backends/muon.py
-  - merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py
-  - merlin/python/merlin/targetgen/rtl/muon_introspect.py
+  - merlin/targets/muon/backend/muon.py
+  - merlin/targets/gemmini/backend/gemmini_codegen_mlir.py
+  - merlin/targets/muon/backend/muon_introspect.py
   - merlin/tests/targetgen/test_radiance_backend.py
 ---
 

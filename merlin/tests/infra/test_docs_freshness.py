@@ -57,7 +57,8 @@ def test_freshness_ratchet_fails_on_new_drift_and_passes_when_ratcheted(tmp_path
     import shutil
     scripts = tmp_path / "build_tools" / "scripts"
     scripts.mkdir(parents=True)
-    shutil.copy(SCRIPTS / "check_docs_freshness.py", scripts / "check_docs_freshness.py")
+    for name in ("check_docs_freshness.py", "_front_matter.py"):
+        shutil.copy(SCRIPTS / name, scripts / name)
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.py").write_text("x = 1\n")
     doc = tmp_path / "docs" / "guides" / "g.md"
@@ -76,3 +77,59 @@ def test_freshness_ratchet_fails_on_new_drift_and_passes_when_ratcheted(tmp_path
     doc.write_text(doc.read_text().replace("2000-01-01", "2999-01-01"))
     r = subprocess.run(gate, cwd=tmp_path, capture_output=True, text=True)
     assert r.returncode == 0 and "no longer drift" in r.stdout, r.stdout + r.stderr
+
+
+def test_every_front_matter_spelling_of_a_list_is_read_the_same():
+    """The three spellings docs actually use must yield the same list.
+
+    A reader that understood only `[a, b]` did not reject the other two -- it mis-read them. A
+    block sequence became an EMPTY value, so 23 docs had no code_refs and could never drift; a
+    continued inline list became a raw string the caller then walked character by character.
+    Both are valid YAML, so the parser is what has to change.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(SCRIPTS))
+    import _front_matter
+
+    head = "---\ntitle: t\nkind: guide\nstatus: current\nowner: core\nlast_verified: 2026-01-01\n"
+    inline = head + "code_refs: [a/b.py, c/d.py]\n---\n"
+    continued = head + "code_refs: [a/b.py,\n            c/d.py]\n---\n"
+    block = head + "code_refs:\n  - a/b.py\n  - c/d.py\n---\n"
+
+    expected = ["a/b.py", "c/d.py"]
+    for spelling, text in (("inline", inline), ("continued", continued), ("block", block)):
+        assert _front_matter.parse(text)["code_refs"] == expected, spelling
+
+
+def test_a_quoted_scalar_reaches_the_reader_unquoted():
+    """`title: "Design: ..."` was reaching the generated hub with its quotes still attached, and
+    sorting under `"` instead of under D."""
+    import sys as _sys
+    _sys.path.insert(0, str(SCRIPTS))
+    import _front_matter
+
+    fm = _front_matter.parse('---\ntitle: "Design: a thing"\nkind: design\n---\n')
+    assert fm["title"] == "Design: a thing"
+
+
+def test_a_code_ref_that_does_not_resolve_is_a_schema_error(tmp_path):
+    """A doc citing a file that is not there cannot be checked for drift at all -- so it fails
+    closed rather than reading as drifted forever."""
+    import shutil
+    scripts = tmp_path / "build_tools" / "scripts"
+    scripts.mkdir(parents=True)
+    for name in ("check_docs_freshness.py", "_front_matter.py"):
+        shutil.copy(SCRIPTS / name, scripts / name)
+    doc = tmp_path / "docs" / "guides" / "g.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("---\ntitle: g\nkind: guide\nstatus: current\nowner: core\n"
+                   "last_verified: 2026-01-01\ncode_refs: [src/gone.py]\n---\n# g\n")
+    r = subprocess.run([sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
+                       cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 1 and "does not exist" in (r.stdout + r.stderr)
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "gone.py").write_text("x = 1\n")
+    r = subprocess.run([sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
+                       cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
