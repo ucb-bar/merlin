@@ -1,0 +1,15 @@
+# Commits that only restyle code (ruff format + import sorting), each proven AST-equivalent to its
+# parent. Skip them in blame so a line is attributed to the change that wrote it:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub's blame view reads this file automatically.
+
+# style(tooling): apply ruff format and import sorting to build_tools
+1d36cd0acf6a3d04efc133ff62f614d48f9fa846
+# style(merlin): apply ruff format and import sorting to the library
+44af9d17da02d61e5b8821e3d5c86811d1356cd0
+# style(tests): apply ruff format and import sorting to the test suite
+a18391c2a5faffe9941736b73dd169c6bc658ee4
+# style(experiments): apply ruff format and import sorting to experiments
+4abc71c41cbb649a950e6853334032f03fffa404
+# style(merlin): format insight_mining.py and setup.py
+adcb46d97a5db0f01fd8574c43d9bffabb75cf56

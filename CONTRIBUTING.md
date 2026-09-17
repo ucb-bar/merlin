@@ -42,7 +42,12 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
   .venv/bin/python -m pytest merlin/tests              # tests
   ```
 - Match the surrounding code style. C/C++ follows `.clang-format`/`.clang-tidy`; Python follows the
-  `[tool.ruff]` config in `pyproject.toml`.
+  `[tool.ruff]` config in `pyproject.toml`, formatted with the pinned ruff
+  (`uvx ruff@0.16.8 check --select I --fix <files> && uvx ruff@0.16.8 format <files>`). The pre-commit
+  hook refuses changed Python that is not formatted. If a formatter run moves a `# target-ok:`-style
+  marker off the line it excuses, pin that statement with `  # fmt: skip`.
+- Restyle-only commits are listed in `.git-blame-ignore-revs`; run
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so blame skips them.
 - Commit messages follow `type(scope): imperative summary` (e.g. `fix(runtime): ...`).
 
 ## Code of conduct

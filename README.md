@@ -28,7 +28,15 @@ uv sync --all-extras            # create .venv; install merlin (editable) + xDSL
 uv run pytest merlin/tests      # run the test suite
 ```
 
-(Without uv: `pip install -e '.[dev,xdsl]'`.)
+(Without uv: `pip install -e '.[dev,xdsl,targetgen]'` — `targetgen` supplies `jsonschema`, which the contract-validation tests import, so `[dev,xdsl]` alone does not run the suite.)
+
+Then run something. [`examples/triton/`](examples/README.md) takes one stock `@triton.jit` kernel all
+the way to an accelerator's command buffer, and is the only example that runs end to end from a fresh
+clone with **no toolchain**:
+
+```bash
+examples/triton/run.sh
+```
 
 **Cloning & submodules.** The Python package needs no submodules. The heavy trees under
 `third_party/` are opt-in per task: `third_party/llvm-project` is the LLVM monorepo (multi-GB — the

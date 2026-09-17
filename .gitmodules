@@ -4,20 +4,26 @@
 [submodule "third_party/baselines/buddy-mlir"]
 	path = third_party/baselines/buddy-mlir
 	url = https://github.com/buddy-compiler/buddy-mlir
+	ignore = dirty
 [submodule "third_party/baselines/exo"]
 	path = third_party/baselines/exo
 	url = https://github.com/ucb-bar/exo.git
+	ignore = dirty
 [submodule "third_party/baselines/llama.cpp"]
 	path = third_party/baselines/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
+	ignore = dirty
 [submodule "third_party/baselines/tvm"]
 	path = third_party/baselines/tvm
 	url = https://github.com/ucb-bar/tvm.git
 	branch = merlin/relax-onnx-fixes
+	ignore = dirty
 [submodule "third_party/baselines/executorch"]
 	path = third_party/baselines/executorch
 	url = https://github.com/ucb-bar/executorch.git
 	branch = merlin/rv64gcv-mmap-runner
+	ignore = dirty
 [submodule "third_party/baselines/merlin-iree"]
 	path = third_party/baselines/merlin-iree
 	url = https://github.com/ucb-bar/Merlin-IREE.git
+	ignore = dirty

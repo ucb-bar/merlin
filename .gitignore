@@ -39,13 +39,23 @@ selfcheck_out/
 /out/**/third_party/**
 /out/**/node_modules/**
 /out/**/.venv/**
+# Same class, observed in the wild: agent submission trees under out/runs/ vendor a whole xdsl
+# checkout (…/submission/mlir_oot/vendor/xdsl/…) and drop QA scratch beside it. Both carry their own
+# README.md/AGENT.md, which the depth-unbounded negations above would otherwise un-ignore.
+/out/**/vendor/**
+/out/**/_qa_work/**
 
 # The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
 # hand-authored source of truth is merlin/targets/<target>/) are fully regenerable. Don't track their
 # empty doc-only skeletons — on a fresh clone they'd be a directory tree of AGENT.md/README.md
 # placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
 # document the dir's purpose. Re-ignore the whole per-target subtree.
-/out/build/generated/merlin-target-*/**
+/out/build/generated/*/**
+# CPU-host campaign workspaces contain agent-authored README files.  They are generated treatment
+# output, not repository source; re-ignore the whole per-cell build tree after the depth-unbounded
+# README/AGENT skeleton exceptions above.  Otherwise creating cell 0 changes the frozen Git identity
+# and invalidates the remaining randomized cells.
+/out/build/cpu-host-compiler/*/**
 
 # GUARD (regenerable concern subtrees): recaptures/ (per-model captures), measurements/ (per-run
 # substrate dumps), selfcheck/ and cache/ each grow one fully-regenerable/purgeable subtree per
@@ -57,6 +67,14 @@ selfcheck_out/
 /out/artifacts/measurements/*/**
 /out/artifacts/selfcheck/*/**
 /out/artifacts/cache/*/**
+# Same idiom, four concern roots that were missed: delivery/ (per-bitstream/per-model delivery trees,
+# 26 GB in one of them), publish/ (per-package clone/ trees), runs/ (per-target aet run trees) and
+# model-comparison/ (per-version report products). Each grows nested README.md/AGENT.md that the
+# depth-unbounded negations re-exposed — 428 files were surfacing as untracked before this.
+/out/artifacts/delivery/*/**
+/out/build/publish/*/**
+/out/runs/*/**
+/out/artifacts/model-comparison/*/**
 
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
@@ -72,6 +90,8 @@ selfcheck_out/
 !/out/artifacts/presentation/gemmini_rtl_oracle_status.md
 !/out/artifacts/presentation/gemmini_target_prototype.md
 !/out/artifacts/presentation/saturn_vec_findings.md
+!/out/artifacts/presentation/k1_executorch_status_pi_summary.md
+!/out/artifacts/presentation/k1_vla_profile_summary_20260907.md
 
 # --- capsule-bench / perf-bench / targetgen-evals: keep the curated RESULTS STORY together. Each
 #     concern's hand-written methodology + report .md and the aggregated result ledgers
@@ -103,10 +123,32 @@ selfcheck_out/
 # also re-ignores any stray README.md/AGENT.md dropped inside these raw archive subtrees.)
 /out/artifacts/capsule-bench/gemmini/reports/**
 /out/artifacts/perf-bench/gemmini/reports/**
+/out/artifacts/capsule-bench/gemmini/e2e_smoke/**
+# The leave-one-family-out split definitions NAME held-out capsules (7 of them), so unlike the other
+# aggregated ledgers in this concern root they are an answer key, not part of the results story.
+/out/artifacts/capsule-bench/gemmini/leave_one_family_out.json
+# --- per-run archive subtrees under ANY concern root are raw dumps (agent workspaces, vendored
+#     compiler trees, .o/.elf/.gz), never the curated story. Measured 2026-09-13: ~1,500 files /
+#     ~200 MB force-added under capsule-bench/{atlas,radiance} and perf-bench/gemmini/<run>/ on
+#     09-02..09-08. The concern's OWN top-level files stay negatable above; everything one level
+#     deeper is re-ignored here (a later match than the depth-unbounded README/AGENT negations, so
+#     stray skeleton files inside a dump stay ignored too). Two run dirs are pytest FIXTURES read by
+#     hard asserts and are re-included by name; a new fixture needs its own reviewed line. ---
+/out/artifacts/capsule-bench/*/*/**
+/out/artifacts/perf-bench/*/*/**
+# read by merlin/tests/targetgen/test_radiance_application_family_audit.py (coverage.json etc.)
+!/out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/**
+# read by merlin/tests/runtime/test_gsim_result_page.py (only the verifier; the cases/ dumps stay out)
+!/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py
+!/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/README.md
 
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
-#     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked. ---
+#     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked.
+#     LOAD-BEARING, measured 2026-08-23: ~100 tests in merlin/tests/dse/test_dse_guidance.py are
+#     skipif-gated on `case_study/dse_contract.json` being present. Untracking this subtree does not
+#     fail those tests -- it SKIPS them, silently, on every fresh clone. It is 12 MB and roughly a
+#     third of the tracked tree; that is the price of the fixture, not an oversight. ---
 !/out/artifacts/dse-guidance/case_study/**
 /out/artifacts/dse-guidance/case_study/**/*.png
 /out/artifacts/dse-guidance/case_study/**/*.svg
@@ -129,13 +171,38 @@ selfcheck_out/
 !/out/artifacts/targets/rvv/hand_v0/**
 !/out/artifacts/targets/rvv/hand_v0_int8/**
 !/out/artifacts/targets/rvv/impr_tuned_*/**
+# A target descriptor's FROZEN host lane must be readable from the sandbox workspace, which is built
+# from tracked content -- an untracked package resolves to nothing there and the run dies in setup
+# before the agent starts. Track exactly the files the descriptor pins in `requires_paths` (the
+# schedule + knobs + manifest that ARE the codegen), never the package's regenerable measurement runs.
+!/out/artifacts/targets/rvv/rvv_tuned_*/manifest.yaml
+!/out/artifacts/targets/rvv/rvv_tuned_*/schedule.mlir
+!/out/artifacts/targets/rvv/rvv_tuned_*/knobs.yaml
 # hand-authored reference baselines for other targets that tests load (keep suite reproducible)
 !/out/artifacts/targets/gemmini/hand_v0/**
+!/out/artifacts/targets/radiance/hand_v0/**
 !/out/artifacts/targets/saturn_vec/hand_v0/**
 !/out/artifacts/targets/muon/reference_v0/**
+# the frozen OOT backend that certified 33/33 (a promoted champion; tests skipif on its gemmini_opt.py)
+!/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/**
+# hand-owned capability RESIDUAL side-inputs (the intent+prose the RTL facts can't ground) that
+# capability_manifests.manifest_for derives each target's contract from — the source of truth for the
+# discovered manifest set (rvv/mx_gemmini/radiance/atlas). Tracked; the generated target_contract.yaml
+# beside them stays ignored.
+!/out/artifacts/targets/*/contracts/residual.yaml
 # never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
 /out/artifacts/targets/**/mlir_oot/build/
 /out/artifacts/targets/**/__pycache__/
+# a vendored xdsl checkout inside a codegen package is a build INPUT (450 files, re-installable),
+# never a product; measured tracked once under gemmini_xdsl_rtl_v0/mlir_oot/xdsl/.
+/out/**/mlir_oot/xdsl/**
+/out/**/vendor/xdsl/**
+# compiled / archived outputs never belong in the curated story (no negated tree carried any of
+# these when this was added; a fixture that needs one must negate it explicitly BELOW this block).
+/out/**/*.gz
+/out/**/*.o
+/out/**/*.elf
+/out/**/*.bin
 
 # --- RTL facts are a GENERATED artifact, never hand-tracked. Our CIRCT/mlc tooling EXTRACTS them
 #     from the target's RTL on demand (merlin.targetgen.rtl.facts.ensure_facts ->
@@ -149,6 +216,18 @@ selfcheck_out/
 # --- output/ is DELETED/retired: recaptures now live in out/artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
 /output/
+
+# --- Same backstop for the other retired top-level generated roots. CLAUDE.md retires runs/,
+#     artifacts/ and build/ in favour of out/{runs,artifacts,build}/, but only output/ and results/
+#     had a guard — so a re-created /artifacts/ (66 files incl. weight blobs) was surfacing as
+#     untracked. /build/ stayed quiet only by accident, via venv-generated .gitignore files. ---
+/artifacts/
+/runs/
+/build/
+# figures/ was a fourth: paper-figure generators saved their renders beside themselves at the repo
+# root (33 files). Generators now live in build_tools/plots/paper_figures/ and render to
+# out/artifacts/paper-figures/<set>/.
+/figures/
 
 # --- Per-target generated scaffolds ---
 /merlin/targets/*/generated/**
@@ -229,6 +308,56 @@ merlin/experiments/**/runs/
 /config.local.json
 !/.env.example
 
+# Per-experiment tooling-path env (real machine paths, all arms) — only the .example is tracked.
+**/experiment.env
+!**/experiment.env.example
+
 # General ignore
 tmp
 .compat_lib/
+
+# ── Benchmark ANSWER KEYS — never tracked anywhere (public repo: github.com/ucb-bar/merlin) ──
+# Graded answers (golden outputs + required instruction coverage) and the held-out HIDDEN sets. These
+# are the answers an agent is graded against; committing them defeats the benchmark AND enables
+# cheating. Regenerable from the tracked generators + oracle; the public CONTRACT (capsule.interface.mlir
+# + capsule.yaml + MANIFEST.yaml, outside hidden/) stays tracked. Global — covers capsule_bench,
+# gemmini_perf_bench, agent_bench, and any future benchmark dir.
+**/golden.yaml
+**/golden_*.yaml
+**/expected_instruction_coverage.yaml
+**/hidden/
+# Externalized capsule weights are large regenerable binaries AND, for a whole-model capsule, the
+# thing the golden was computed from. The rule existed only in merlin/contract/capsules/.gitignore,
+# so it protected nothing under artifacts/, out/, or harness/full_public_capsules/ — where 11 weight
+# blobs were surfacing as untracked. Make it global, like every other rule in this section.
+**/*.safetensors
+**/*.safetensors.manifest.json
+
+# targetgen_evals grading rubrics + the declared holdout. A `golden/` DIRECTORY is an answer surface
+# (check_no_answer_keys.py matches it as a path component, as it already did for `hidden/`); the two
+# files the method's own prompt hands it are re-included below as declared stimulus.
+/merlin/experiments/targetgen_evals/datasets/*/golden/**
+!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_contract.yaml
+!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_dialect_features.yaml
+
+# dse-guidance case study: the generated tables are re-included by the negation above, but these two
+# subtrees are session working material (slide triage, positioning memos, one-off validation scripts)
+# that no tool produces or reads -- they are not artifacts.
+/out/artifacts/dse-guidance/case_study/final_presentation_pass/**
+/out/artifacts/dse-guidance/case_study/manual_validation/**
+# Point-in-time agent run notes: addressed to the operator, and they link private vaults / accounts.
+/out/artifacts/perf-bench/*/AUTONOMOUS_RUN_SUMMARY.md
+/out/artifacts/capsule-bench/*/AGENTIC_AB_RUNBOOK.md
+# llvm-lit writes a per-suite timing cache next to the tests on every run. It is scheduling state, not
+# a test input, and it reappears the moment anyone runs the suite -- so without this it shows up as an
+# untracked file in every session and eventually gets swept into someone's commit.
+merlin/tests/data/lit/.lit_test_times.txt
+
+# Voyager head-to-head: the comparative analysis stays internal. This repo is public, and these three
+# carry our positioning against another group's published work -- including a defect in their public
+# release and the paper claims we intend to make from it. The reproducible half of the experiment
+# (bridge, harnesses, concession register) stays tracked; only the analysis is held back. Copies live
+# under out/artifacts/presentation/merlin_retrospective_20260911/.
+/merlin/experiments/voyager_h2h/LESSONS.md
+/merlin/experiments/voyager_h2h/STATUS.md
+/merlin/experiments/voyager_h2h/PLANE_B.md
