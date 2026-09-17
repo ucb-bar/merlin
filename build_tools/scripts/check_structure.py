@@ -13,6 +13,7 @@ Pure stdlib. Exits non-zero on any failure.
 Usage:
     python build_tools/scripts/check_structure.py
 """
+
 from __future__ import annotations
 
 import os
@@ -32,7 +33,8 @@ def _discovered_targets():
     if not os.path.isdir(tdir):
         return []
     return sorted(
-        name for name in os.listdir(tdir)
+        name
+        for name in os.listdir(tdir)
         if os.path.isfile(os.path.join(tdir, name, "contracts", "target_contract.yaml"))
     )
 
@@ -68,50 +70,103 @@ for _t in _discovered_targets():
     REQUIRED_DIRS.append(f"merlin/targets/{_t}/generated")
 
 REQUIRED_SCHEMAS = [
-    "target_contract", "dialect_plan", "kernel_record", "abstraction_candidate",
-    "policy_rule", "workload_region", "design_pressure", "interface_candidate",
-    "dse_result", "exploitability_report", "compilation_strategy", "search_space",
+    "target_contract",
+    "dialect_plan",
+    "kernel_record",
+    "abstraction_candidate",
+    "policy_rule",
+    "workload_region",
+    "design_pressure",
+    "interface_candidate",
+    "dse_result",
+    "exploitability_report",
+    "compilation_strategy",
+    "search_space",
     # Runtime + TargetGen plans (Merlin-owned runtime model; targets adapt it).
-    "runtime_adapter_plan", "zephyr_plan", "llvm_extension_plan", "evidence_report",
-    "target_source_manifest", "command_buffer", "metrics", "trace",
+    "runtime_adapter_plan",
+    "zephyr_plan",
+    "llvm_extension_plan",
+    "evidence_report",
+    "target_source_manifest",
+    "command_buffer",
+    "metrics",
+    "trace",
     # Kernel-mining L6/L8 outputs (feed TargetGen's dialect_plan / llvm_extension_plan).
-    "runtime_candidate", "dialect_requirement", "llvm_requirement",
+    "runtime_candidate",
+    "dialect_requirement",
+    "llvm_requirement",
     # DSE-guidance + rvvgen subsystem schemas (were used but unlisted).
-    "baseline_cost", "cpu_coupling", "dse_axis_triage", "temporal_workload_metadata",
-    "rvv_package_manifest", "rvv_result",
+    "baseline_cost",
+    "cpu_coupling",
+    "dse_axis_triage",
+    "temporal_workload_metadata",
+    "rvv_package_manifest",
+    "rvv_result",
     # Frozen-compiler paper methodology (study input + one matrix-cell result).
-    "paper_study", "paper_run_result", "session_contract", "compiler_freeze",
-    "cpu_host_experiment", "deployment_profile",
+    "paper_study",
+    "paper_run_result",
+    "session_contract",
+    "compiler_freeze",
+    "cpu_host_experiment",
+    "deployment_profile",
     # Quantization-format registry entry schema (merlin.common.quant_formats).
     "quant_format",
 ]
 
 REQUIRED_DOCS = [
     # reference/ — durable, code-derived facts
-    "reference/architecture", "reference/repo_structure", "reference/contracts",
-    "reference/dialects", "reference/core_dialects", "reference/runtime", "reference/xdsl",
+    "reference/architecture",
+    "reference/repo_structure",
+    "reference/contracts",
+    "reference/dialects",
+    "reference/core_dialects",
+    "reference/runtime",
+    "reference/xdsl",
     "reference/generated_target_repos",
     # guides/ — task-oriented how-tos
     "guides/getting_started",
-    "guides/targetgen", "guides/kernel_mining", "guides/design_pressure", "guides/dse",
-    "guides/integrations", "guides/adding_a_target", "guides/compilation_strategies",
-    "guides/search", "guides/zephyr", "guides/llvm_integration",
+    "guides/targetgen",
+    "guides/kernel_mining",
+    "guides/design_pressure",
+    "guides/dse",
+    "guides/integrations",
+    "guides/adding_a_target",
+    "guides/compilation_strategies",
+    "guides/search",
+    "guides/zephyr",
+    "guides/llvm_integration",
     # design/ — rationale
     "design/parallel_workstreams",
 ]
 
 REQUIRED_BENCHMARKS = [
-    "repeated_rhs_matmul", "matmul_bias_requant_relu",
-    "no_reuse_matmul", "capacity_stress_reuse",
+    "repeated_rhs_matmul",
+    "matmul_bias_requant_relu",
+    "no_reuse_matmul",
+    "capacity_stress_reuse",
 ]
 
 # Directories whose contents are gitignored / exempt from the AGENT.md walk.
 # out/ is the single gitignored generated-output root (out/{runs,artifacts,build}; see CLAUDE.md
 # "Generated-output convention"); only its top-level AGENT.md skeletons are tracked.
 # generated_targets/ is retired (folded into out/artifacts/targets/, no symlink).
-SKIP_DIRS = {".git", "out", "build", "output", "runs", "artifacts", "results",
-             "_qa_ws", "tmp", "__pycache__",
-             ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+SKIP_DIRS = {
+    ".git",
+    "out",
+    "build",
+    "output",
+    "runs",
+    "artifacts",
+    "results",
+    "_qa_ws",
+    "tmp",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+}
 
 
 def check_required_dirs(errors):
@@ -172,19 +227,25 @@ def check_experiment_status(errors):
             continue  # a missing AGENT.md is check_agent_md's finding, not this one
         with open(md, encoding="utf-8") as fh:
             head = [next(fh, "") for _ in range(15)]
-        declared = [ln[len("Status:"):].strip() for ln in head if ln.startswith("Status:")]
+        declared = [ln[len("Status:") :].strip() for ln in head if ln.startswith("Status:")]
         if not declared or not declared[0]:
             errors.append(f"experiment declares no `Status:` in its AGENT.md: merlin/experiments/{sub}")
             continue
         word = declared[0].split()[0]
         if word not in EXPERIMENT_STATUSES:
-            errors.append(f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: "
-                          f"merlin/experiments/{sub}")
+            errors.append(
+                f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: merlin/experiments/{sub}"
+            )
         elif word == "frozen" and not os.path.isfile(os.path.join(sp, "FINDINGS.md")):
             errors.append(f"frozen experiment has no FINDINGS.md: merlin/experiments/{sub}")
 
 
 TARGET_MARKER_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "test_target_marker_ratchet.txt")
+MODULE_SIZE_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "module_size_ratchet.txt")
+#: Lines a library module may reach before it has to be split. Measured 2026-09-16 on formatted code:
+#: 26 modules were past it, led by targetgen/capsule_runner.py at 5,145 -- a size at which nobody holds
+#: the whole module in their head, which is how a second copy of a helper gets written beside the first.
+MODULE_SIZE_LIMIT = 1500
 TARGET_HEAVY_LITERALS = 5
 
 
@@ -204,6 +265,7 @@ def check_test_target_marker(errors):
     sys.path.insert(0, os.path.join(ROOT, "build_tools", "scripts"))
     try:
         import _target_roster
+
         names = sorted(_target_roster.target_names(ROOT))
     except Exception as exc:  # noqa: BLE001 -- no roster, nothing to measure against: say so
         errors.append(f"test target marker: target roster unreadable ({exc})")
@@ -218,8 +280,7 @@ def check_test_target_marker(errors):
     for bucket in sorted(os.listdir(tests)):
         bp = os.path.join(tests, bucket)
         # A bucket NAMED after a target (by the same derived roster) is about that target by construction.
-        if not os.path.isdir(bp) or bucket in names or bucket in SKIP_DIRS \
-                or bucket in ("fixtures", "data"):
+        if not os.path.isdir(bp) or bucket in names or bucket in SKIP_DIRS or bucket in ("fixtures", "data"):
             continue
         for fn in sorted(os.listdir(bp)):
             if not (fn.startswith("test_") and fn.endswith(".py")):
@@ -227,10 +288,34 @@ def check_test_target_marker(errors):
             rel = f"merlin/tests/{bucket}/{fn}"
             with open(os.path.join(bp, fn), encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
-            if _quoted_target_literals(text, names) < TARGET_HEAVY_LITERALS or "mark.target(" in text \
-                    or rel in ratchet:
+            if _quoted_target_literals(text, names) < TARGET_HEAVY_LITERALS or "mark.target(" in text or rel in ratchet:
                 continue
             errors.append(f"target-heavy test without `pytestmark = pytest.mark.target(...)`: {rel}")
+
+
+def check_module_size(errors):
+    """No library module may grow past MODULE_SIZE_LIMIT lines unless it is recorded debt.
+
+    Existing offenders are listed in module_size_ratchet.txt, which may only shrink; a module leaves it
+    by being split. A NEW module over the limit fails here. Counts physical lines of the file as
+    committed-shape source, i.e. after ruff format, so a formatter pass cannot push a module over.
+    """
+    ratchet = set()
+    if os.path.isfile(MODULE_SIZE_RATCHET):
+        with open(MODULE_SIZE_RATCHET, encoding="utf-8") as fh:
+            ratchet = {ln.split("#", 1)[0].strip() for ln in fh if ln.split("#", 1)[0].strip()}
+    pkg = os.path.join(ROOT, "merlin", "python", "merlin")
+    for dirpath, dirnames, filenames in os.walk(pkg):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and d != "_data" and not d.startswith("."))
+        for fn in sorted(filenames):
+            if not fn.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, fn)
+            rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                n = sum(1 for _ in fh)
+            if n > MODULE_SIZE_LIMIT and rel not in ratchet:
+                errors.append(f"module over {MODULE_SIZE_LIMIT} lines ({n}); split it: {rel}")
 
 
 def check_schemas(errors):
@@ -297,7 +382,8 @@ def check_test_layout(errors):
                 errors.append(
                     f"duplicate test module basename {f!r}: merlin/tests/{seen[f]}/{f} and "
                     f"merlin/tests/{b}/{f} — pytest imports test files by bare basename, so this "
-                    f"aborts collection for the WHOLE suite. Rename one after what it actually covers.")
+                    f"aborts collection for the WHOLE suite. Rename one after what it actually covers."
+                )
             else:
                 seen[f] = b
 
@@ -305,6 +391,7 @@ def check_test_layout(errors):
 def check_cli_docs(errors):
     """docs/cli.md must be in sync with pyproject [project.scripts] (single CLI source of truth)."""
     import subprocess
+
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_cli_docs.py")
     r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -314,6 +401,7 @@ def check_cli_docs(errors):
 def check_package_docs(errors):
     """docs/module_index.md fresh + every package has a non-stale AGENT.md (living package docs)."""
     import subprocess
+
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_package_docs.py")
     r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -327,6 +415,7 @@ def check_package_docs(errors):
 def check_doc_paths(errors):
     """No doc/AGENT.md references a RETIRED repo path (deny-list; see check_doc_paths.py)."""
     import subprocess
+
     chk = os.path.join(ROOT, "build_tools", "scripts", "check_doc_paths.py")
     r = subprocess.run([sys.executable, chk, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -339,9 +428,13 @@ def check_doc_paths(errors):
 
 # Misleading "scaffold-era" phrasing that must never reappear in the top-level entry docs
 # (the repo has working end-to-end pipelines; see Phase-0 of the docs restructure).
-ROOT_STALE_PHRASES = ("placeholder modules", "not working compiler",
-                      "do not implement major algorithms", "currently a scaffold",
-                      "status: **scaffold**")
+ROOT_STALE_PHRASES = (
+    "placeholder modules",
+    "not working compiler",
+    "do not implement major algorithms",
+    "currently a scaffold",
+    "status: **scaffold**",
+)
 
 
 def check_root_docs(errors):
@@ -360,6 +453,7 @@ def check_root_docs(errors):
 def check_docs_freshness(errors):
     """docs/ front-matter is schema-valid (drift is a soft signal; see check_docs_freshness.py)."""
     import subprocess
+
     chk = os.path.join(ROOT, "build_tools", "scripts", "check_docs_freshness.py")
     r = subprocess.run([sys.executable, chk, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -373,6 +467,7 @@ def check_docs_freshness(errors):
 def check_schema_docs(errors):
     """docs/reference/schemas.md is in sync with merlin/schemas/ (see gen_schema_docs.py)."""
     import subprocess
+
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_schema_docs.py")
     r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -382,6 +477,7 @@ def check_schema_docs(errors):
 def check_docs_index(errors):
     """docs/README.md hub is in sync with doc front-matter (see gen_docs_index.py)."""
     import subprocess
+
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_docs_index.py")
     r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -399,6 +495,7 @@ def check_schema_usage(errors):
     validated (validate/validate_or_raise/_SCHEMA/PLAN_SCHEMAS) or mirrored as a vocabulary spec
     (a code constant / generated view / docstring that names it). Zero references ⇒ dead schema."""
     import glob
+
     lib = os.path.join(ROOT, "merlin", "python")
     corpus = []
     for dp, _d, files in os.walk(lib):
@@ -450,6 +547,7 @@ def main():
         ("doc paths", check_doc_paths),
         ("test layout", check_test_layout),
         ("test target marker", check_test_target_marker),
+        ("module size", check_module_size),
     ]
     for label, fn in checks:
         before = len(errors)
