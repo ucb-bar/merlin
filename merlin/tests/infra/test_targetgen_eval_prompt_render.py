@@ -17,6 +17,8 @@ import pytest
 
 from merlin.common.paths import repo_root
 
+pytestmark = pytest.mark.target("gemmini", "radiance")
+
 _EVALS = repo_root() / "merlin" / "experiments" / "targetgen_evals"
 
 _TEMPLATED_METHODS = ["v0_naive_claude", "v2_schema_generator", "v3_evidence_graph", "v5_kernel_miner", "v6_full"]

@@ -18,6 +18,8 @@ from merlin.common.paths import repo_root
 sys.path.insert(0, str(repo_root() / "merlin/experiments/gemmini_perf_bench/scripts"))
 import perf_model as PM  # noqa: E402
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 def test_rank_n_batched_reduction_depth_comes_from_the_trailing_k_axis():
     cb = {

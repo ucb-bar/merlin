@@ -10,7 +10,11 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from merlin.common.paths import merlin_dir
+
+pytestmark = pytest.mark.target("gemmini")
 
 HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 

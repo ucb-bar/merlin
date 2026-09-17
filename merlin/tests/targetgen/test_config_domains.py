@@ -16,6 +16,8 @@ import pytest
 
 from merlin.targetgen import config_domains as CD
 
+pytestmark = pytest.mark.target("gemmini", "saturn_opu")
+
 
 def test_a_memory_depth_bounds_a_row_index():
     d = CD.derive_domains("gemmini")

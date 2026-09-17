@@ -12,7 +12,10 @@ import pytest
 
 from merlin.xdsl_dialects import _common
 
-pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+pytestmark = [
+    pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed"),
+    pytest.mark.target("gemmini", "atlas", "mx_gemmini", "radiance", "saturn_opu", "saturn_opu_rvv"),
+]
 
 TARGETS = ("gemmini", "atlas", "mx_gemmini", "radiance", "saturn_opu", "saturn_opu_rvv")
 

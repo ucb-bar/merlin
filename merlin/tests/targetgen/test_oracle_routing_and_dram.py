@@ -17,6 +17,8 @@ from merlin.common.paths import merlin_dir
 from merlin.targetgen import capsule_dram as D
 from merlin.targetgen import capsule_runner as CR
 
+pytestmark = pytest.mark.target("atlas", "gemmini")
+
 # ---- FAULT 1: oracle routing is contract-derived, never a silent gemmini fallback ----------------
 
 

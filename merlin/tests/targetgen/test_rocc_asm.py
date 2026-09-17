@@ -13,6 +13,8 @@ import pytest
 from merlin.targetgen.rocc import asm as A
 from merlin.targetgen.rocc import decode as RD
 
+pytestmark = pytest.mark.target("gemmini")
+
 _MATMUL = [
     ("CONFIG_EX", 0x0, 0),
     ("CONFIG_LD", 0x1, 16),

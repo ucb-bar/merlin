@@ -10,6 +10,8 @@ import pytest
 from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
 from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
+pytestmark = pytest.mark.target("gemmini", "radiance", "atlas")
+
 _GEM = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 _RAD = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 

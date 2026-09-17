@@ -15,6 +15,8 @@ import yaml
 
 from merlin.targetgen import publish as PB
 
+pytestmark = pytest.mark.target("radiance")
+
 
 def _score(**over):
     s = {

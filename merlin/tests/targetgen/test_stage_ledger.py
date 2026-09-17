@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from merlin.common.provenance import UNKNOWN
 from merlin.targetgen import stage_ledger as SL
+
+pytestmark = pytest.mark.target("atlas", "gemmini", "muon", "radiance", "saturn")
 
 
 def _tree(root, files: dict[str, str]):

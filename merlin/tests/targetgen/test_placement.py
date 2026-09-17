@@ -19,6 +19,8 @@ from merlin.system.model import Device, Host, System
 from merlin.system.place import HOST_DEVICE, host_units, place, units_for
 from merlin.targetgen.routing import OpDemand, _legal_on
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 _MM_I8 = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm")
 _SOFTMAX = OpDemand(op="softmax", in_fmt="fp32", weight_fmt=None, site="sm")
 _MM_MX = OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="mx")

@@ -41,6 +41,8 @@ from merlin.perf.envelope import (
 )
 from merlin.perf.headroom import Composition
 
+pytestmark = pytest.mark.target("atlas", "gemmini")
+
 # --- fixtures on disk ----------------------------------------------------------------------------
 
 

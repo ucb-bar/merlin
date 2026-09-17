@@ -12,6 +12,8 @@ from merlin.kernels import endpoints as EP
 from merlin.kernels.decode import derived_isa as MU
 from merlin.kernels.decode import rocc as RC
 
+pytestmark = pytest.mark.target("gemmini", "muon")
+
 
 class _I:
     """A minimal objdump RawInsn stand-in."""

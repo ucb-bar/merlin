@@ -15,6 +15,8 @@ import yaml
 from merlin.benchharness import hash_tree
 from merlin.common.paths import merlin_dir
 
+pytestmark = pytest.mark.target("gemmini")
+
 _SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 sys.path.insert(0, str(_SCRIPTS))
 _SOURCE = _SCRIPTS / "heldout_gsim_qualification.py"

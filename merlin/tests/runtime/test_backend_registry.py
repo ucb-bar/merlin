@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.runtime.backends import base
 from merlin.runtime.backends.base import BackendKind, TargetClass
+
+pytestmark = pytest.mark.target("gemmini", "muon")
 
 #: The backends this repo ships. An OUT-OF-TREE package may register more via `plugin.backend`, which
 #: is the seam working as designed — so these assertions pin the in-tree set and require anything extra

@@ -13,6 +13,8 @@ from merlin.targetgen.rtl import circt_introspect as CI
 from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.target_experiment import derived_readout_bits, load_capability_manifest
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def test_readout_bits_match_the_decoder_constants():
     enc = load_capability_manifest("gemmini").encoding

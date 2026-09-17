@@ -12,6 +12,8 @@ import pytest
 
 from merlin.targetgen import boundary as B
 
+pytestmark = pytest.mark.target("atlas", "radiance", "gemmini")
+
 
 class TestSequenceClassification:
     @pytest.mark.parametrize(

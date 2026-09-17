@@ -16,6 +16,8 @@ from merlin.common.paths import _dotenv
 from merlin.kernels import asm_audit as A
 from merlin.kernels import endpoints as EP
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "radiance", "saturn")
+
 
 def _ext(pattern: str) -> str:
     """Expand ``${KEY}`` in an external-corpus path against the process env, then .env.

@@ -22,6 +22,8 @@ import pytest
 
 from merlin.runtime.backends.base import get_backend
 
+pytestmark = pytest.mark.target("radiance", "muon")
+
 _B = get_backend("muon")
 muon = _B.muon
 H = _B.muon_harness

@@ -11,8 +11,12 @@ import importlib.util
 import json
 import sys
 
+import pytest
+
 from merlin import benchharness as B
 from merlin.common.paths import repo_root
+
+pytestmark = pytest.mark.target("gemmini")
 
 ROOT = repo_root()
 

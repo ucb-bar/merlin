@@ -53,6 +53,8 @@ from merlin.perf.envelope import (
 )
 from merlin.perf.headroom import Composition, composition_operator
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 BUCKET_KINDS = {
     "dma": ResourceKind.MOVEMENT,
     "mxu": ResourceKind.COMPUTE,

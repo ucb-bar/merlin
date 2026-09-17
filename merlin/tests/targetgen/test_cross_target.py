@@ -34,6 +34,8 @@ from merlin.targetgen.generate_bundles import generate_bundles
 from merlin.targetgen.rtl import mlc_bridge as B
 from merlin.targetgen.target_experiment import load_target_experiment
 
+pytestmark = pytest.mark.target("radiance", "atlas", "mx_gemmini", "gemmini", "muon")
+
 RUNGS = ["raw_baseline", "cpp_merlininfra", "merlin_assisted", "merlin_assisted_rtlchecks"]
 # Arms that are NOT rungs of that ladder: a modality variant granted beside arm-3 rather than
 # above it, so it carries no monotonic tool-count obligation and stays out of the gradient test.

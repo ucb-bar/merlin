@@ -8,11 +8,15 @@ tests pin that the derive path reproduces the residual field-for-field and that 
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.targetgen import capability_manifests as cm
 from merlin.targetgen import compute_units as cu
 from merlin.targetgen import families as fam
 from merlin.targetgen import routing as rt
 from merlin.targetgen.target_experiment import _primary_kind
+
+pytestmark = pytest.mark.target("radiance", "mx_gemmini", "atlas")
 
 
 def test_manifests_are_schema_valid():

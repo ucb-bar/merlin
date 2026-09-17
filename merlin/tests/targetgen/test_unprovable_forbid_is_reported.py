@@ -29,6 +29,8 @@ from merlin.common.paths import merlin_dir
 sys.path.insert(0, str(merlin_dir() / "contract" / "capsules"))
 import generate_corpus as GC  # noqa: E402
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def test_the_synth_role_matches_what_the_synthesizer_actually_stamps():
     """The two constants live in different packages and are compared as data. If they drift, every

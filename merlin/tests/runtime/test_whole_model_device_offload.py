@@ -17,6 +17,8 @@ import pytest
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.llvmlower.device_offload import load_sidecar
 
+pytestmark = pytest.mark.target("gemmini")
+
 _MODEL = """
 module {
   func.func @forward(%a: tensor<16x32xi8>, %b: tensor<32x16xi8>) -> tensor<16x16xi32> {

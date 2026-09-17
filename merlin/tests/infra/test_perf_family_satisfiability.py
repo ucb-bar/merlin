@@ -18,6 +18,8 @@ import yaml
 from merlin.common.paths import repo_root
 from merlin.perf import claim_reach as CR
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "mx_gemmini", "radiance", "saturn")
+
 PROFILE = repo_root() / "merlin" / "contract" / "capsules" / "profiles" / "_perf.yaml"
 
 

@@ -7,6 +7,8 @@ target, an engine or a signal name.
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.perf.occupancy import (
     align_offset,
     calibrate_state_idle,
@@ -14,6 +16,8 @@ from merlin.perf.occupancy import (
     merge_engines,
     subsumed_columns,
 )
+
+pytestmark = pytest.mark.target("muon", "saturn", "gemmini", "toy_npu")
 
 
 def _cols(**kw):

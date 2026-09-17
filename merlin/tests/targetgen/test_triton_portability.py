@@ -27,7 +27,10 @@ from merlin.triton.bridge import to_linalg
 
 GEMMINI_PACKAGE = repo_root() / "out/artifacts/targets/gemmini/hand_v0"
 
-pytestmark = pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed")
+pytestmark = [
+    pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed"),
+    pytest.mark.target("radiance", "saturn", "toy_npu", "gemmini"),
+]
 
 
 def staged_targets():

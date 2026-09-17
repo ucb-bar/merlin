@@ -20,6 +20,8 @@ from merlin.targetgen import capsule_runner
 from merlin.targetgen.sandbox import bwrap
 from merlin.targetgen.target_experiment import load_target_experiment
 
+pytestmark = pytest.mark.target("gemmini")
+
 #: A REAL frozen model capsule, not a synthetic dict.
 #:
 #: These tests are about host-lane package selection, and they monkeypatch `compile_model` so the

@@ -24,6 +24,8 @@ import pytest
 
 from merlin.targetgen import applications as APP
 
+pytestmark = pytest.mark.target("gemmini")
+
 _TARGET = "gemmini"
 
 

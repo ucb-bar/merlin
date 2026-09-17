@@ -14,6 +14,8 @@ import pytest
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
+pytestmark = pytest.mark.target("muon")
+
 _RMSNORM = """
 module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
   %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xf32>

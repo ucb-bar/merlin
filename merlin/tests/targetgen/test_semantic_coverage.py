@@ -4,6 +4,8 @@ eligibility oracle (the ARR denominator)."""
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.common.paths import repo_root
 from merlin.targetgen import capability_probes as cp
 from merlin.targetgen import compute_units as cu
@@ -14,6 +16,8 @@ from merlin.targetgen import generalization_splits as gs
 from merlin.targetgen import routing as rt
 from merlin.targetgen import semantic_families as sf
 from merlin.targetgen import semantic_fuzzer as fz
+
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance")
 
 # --- A1: canonical semantic-family vocabulary ---------------------------------------------------
 

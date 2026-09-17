@@ -11,6 +11,8 @@ from merlin.runtime.backends.base import get_backend
 from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 from merlin.targetgen.linalg_lower import lower_linalg_to_cb
 
+pytestmark = pytest.mark.target("muon", "radiance")
+
 KS = get_backend("muon").muon_kernel_selection
 CONTRACT = repo_root() / "merlin/experiments/capsule_bench/targets/radiance/contracts/kernel_library_pr1_v1.yaml"
 

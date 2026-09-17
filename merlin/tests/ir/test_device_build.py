@@ -23,6 +23,8 @@ import pytest
 
 from merlin.llvmlower.device_build import build_device_objects, kernel_symbol
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance", "saturn_opu_mxv256d128")
+
 _PKG = os.environ.get("MERLIN_TEST_DEVICE_PACKAGE")
 _SIGS = {"d0": (16, 16, 32), "d1": (8, 64, 128)}
 _DTS = {"d0": ("i8", "i8", "i32"), "d1": ("i8", "i8", "i32")}

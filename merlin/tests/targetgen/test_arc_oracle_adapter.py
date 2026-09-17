@@ -13,6 +13,8 @@ import pytest
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.rtl import mlc_bridge as B
 
+pytestmark = pytest.mark.target("gemmini", "radiance", "atlas")
+
 
 def test_program_cosim_wall_timeout_terminates_worker(monkeypatch, tmp_path):
     """A backend stuck below ``large_stack_call`` must not trap a grading worker forever."""

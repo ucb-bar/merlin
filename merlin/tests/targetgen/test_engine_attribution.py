@@ -17,6 +17,8 @@ import pytest
 from merlin.targetgen import compute_units as cu
 from merlin.targetgen import eligibility as el
 
+pytestmark = pytest.mark.target("atlas", "saturn", "radiance")
+
 _HYBRID = {
     "compute_units": [
         {

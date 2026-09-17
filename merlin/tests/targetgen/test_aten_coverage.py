@@ -14,6 +14,8 @@ import pytest
 from merlin.common.paths import artifacts_dir
 from merlin.targetgen import aten_coverage as AC
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def _captures() -> dict:
     root = artifacts_dir() / "recaptures"

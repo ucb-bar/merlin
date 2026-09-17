@@ -16,8 +16,12 @@ N but not M passes two of three, and naming the axis is the difference between "
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.targetgen import capability_probes as CP
 from merlin.targetgen.compute_units import SemanticCapability
+
+pytestmark = pytest.mark.target("atlas", "gemmini")
 
 
 def _cap(family="contraction", **kw):

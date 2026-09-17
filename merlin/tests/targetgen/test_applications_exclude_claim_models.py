@@ -17,6 +17,8 @@ import pytest
 from merlin.common.artifacts import recaptures_dir
 from merlin.common.paths import repo_root
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "radiance")
+
 _spec = importlib.util.spec_from_file_location(
     "ccc", repo_root() / "build_tools" / "scripts" / "check_conformance_coverage.py"
 )

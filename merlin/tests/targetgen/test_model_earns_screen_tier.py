@@ -17,6 +17,8 @@ import pytest
 
 from merlin.targetgen.capsule_runner import _model_tier_map, _rtl_tiers_of, _screen_tiers_of
 
+pytestmark = pytest.mark.target("gemmini")
+
 DECLARED = ["L0", "L1", "L2", "L3"]
 ON_MESH = {"matmul_layers_on_mesh": 12, "matmul_layers_host_fallback": 0}
 

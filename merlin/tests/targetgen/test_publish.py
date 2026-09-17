@@ -18,6 +18,8 @@ from merlin.common import paths
 from merlin.common.yaml import dump_yaml, load_yaml
 from merlin.targetgen import publish as pub
 
+pytestmark = pytest.mark.target("gemmini")
+
 # --------------------------------------------------------------------------- fixtures
 
 

@@ -13,6 +13,8 @@ from merlin.common.paths import repo_root
 from merlin.targetgen.rtl import circt_introspect as C
 from merlin.targetgen.rtl import mlc_bridge as B
 
+pytestmark = pytest.mark.target("gemmini", "radiance", "saturn_opu_mxv256d128")
+
 _MLC_OK = B.mlc_available()[0]
 
 

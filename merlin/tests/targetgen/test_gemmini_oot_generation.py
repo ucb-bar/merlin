@@ -15,11 +15,14 @@ gemmini is an all-residual prototype (no ``facts_source``).
 
 from __future__ import annotations
 
+import pytest
 import yaml
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import capability_manifests as cm
 from merlin.targetgen import target_registry as tr
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _curated() -> dict:

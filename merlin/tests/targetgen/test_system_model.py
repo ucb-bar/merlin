@@ -26,6 +26,8 @@ import pytest
 from merlin.system import device_for, host_from_board, link_for, system_for
 from merlin.system.model import ADDRESS_TRANSLATIONS, COMMAND_TRANSPORTS, OPERAND_PLACEMENTS, Device, Host, Link, System
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance", "saturn")
+
 # ------------------------------------------------------------------ fail-closed vocabularies
 
 

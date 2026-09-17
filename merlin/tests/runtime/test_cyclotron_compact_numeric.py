@@ -13,6 +13,8 @@ from merlin.runtime.backends.base import get_backend
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.isa_model import IsaModel
 
+pytestmark = pytest.mark.target("radiance", "muon")
+
 BACKEND = get_backend("muon")
 H = BACKEND.muon_harness
 MO = BACKEND.muon_oracles

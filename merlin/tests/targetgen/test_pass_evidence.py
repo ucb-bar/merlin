@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance")
+
 
 @pytest.fixture(autouse=True)
 def _frozen_bundle_double(monkeypatch):

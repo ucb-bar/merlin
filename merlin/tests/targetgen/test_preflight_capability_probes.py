@@ -23,6 +23,8 @@ from merlin.targetgen import program_oracle as PO
 from merlin.targetgen.isa_model import IsaModel
 from merlin.targetgen.target_experiment import load_target_experiment
 
+pytestmark = pytest.mark.target("atlas")
+
 
 def _descriptor(tmp_path: Path, preflight: str) -> Path:
     path = tmp_path / "target_experiment.yaml"

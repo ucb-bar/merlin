@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from merlin.perf import capture_store as STORE
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _sha(char: str) -> str:

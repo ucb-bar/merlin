@@ -22,6 +22,8 @@ import pytest
 
 from merlin.common.paths import repo_root
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "muon", "mx_gemmini", "radiance", "saturn")
+
 
 @pytest.fixture(scope="module")
 def gen():

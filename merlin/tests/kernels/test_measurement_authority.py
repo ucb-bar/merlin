@@ -13,6 +13,8 @@ import pytest
 
 from merlin.kernels import measurement as M
 
+pytestmark = pytest.mark.target("atlas", "muon", "radiance", "gemmini", "saturn")
+
 _DECL = {
     "measurement": {
         "cycles_from": "spike",

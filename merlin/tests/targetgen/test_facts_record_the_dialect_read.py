@@ -15,6 +15,8 @@ import pytest
 from merlin.common import provenance
 from merlin.targetgen.rtl import circt_introspect, mlc_bridge
 
+pytestmark = pytest.mark.target("atlas", "gemmini")
+
 _SENTINELS = {"unresolved", "missing"}
 
 

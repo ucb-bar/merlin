@@ -17,6 +17,8 @@ import pytest
 from merlin.targetgen import capsule_runner as R
 from merlin.targetgen.capsule_common import make_run_paths
 
+pytestmark = pytest.mark.target("radiance")
+
 
 @pytest.fixture()
 def paths(tmp_path):

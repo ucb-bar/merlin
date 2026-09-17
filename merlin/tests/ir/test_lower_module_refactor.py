@@ -30,6 +30,8 @@ import pytest
 
 from merlin.common.paths import repo_root
 
+pytestmark = pytest.mark.target("saturn")
+
 pytest.importorskip("xdsl")
 
 STAGES = ("input", "contract", "schedule", "interface", "target", "runtime")

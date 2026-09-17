@@ -17,7 +17,10 @@ import triton_kernels as K
 from merlin.common.paths import repo_root
 from merlin.triton import cli
 
-pytestmark = pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed")
+pytestmark = [
+    pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed"),
+    pytest.mark.target("saturn", "gemmini"),
+]
 
 VECTOR_ADD = str(repo_root() / "examples/triton/vector_add.py") + ":vector_add"
 MATMUL = str(repo_root() / "examples/triton/matmul_simple.py") + ":repeated_rhs_matmul"

@@ -27,6 +27,8 @@ from merlin.targetgen import coverage_report as _cr
 from merlin.targetgen import eligibility as _el
 from merlin.targetgen import semantic_families as sf
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance")
+
 PUBLIC = merlin_dir() / "experiments/capsule_bench/harness/full_public_capsules"
 CONTRACT = merlin_dir() / "contract/capsules"
 

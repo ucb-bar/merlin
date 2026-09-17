@@ -23,6 +23,8 @@ import pytest
 
 from merlin.compile_cli import _accumulator_capacity_elems, _capacity_fit_tile, capacity_fit
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def _acc(target="gemmini", dt="i32"):
     a = _accumulator_capacity_elems(target, dt)

@@ -7,6 +7,8 @@ import pytest
 from merlin.common.yaml import write_yaml
 from merlin.targetgen import target_registry as tr
 
+pytestmark = pytest.mark.target("radiance", "mx_gemmini", "gemmini")
+
 
 def _make_oot_target(root, name):
     """Write a minimal out-of-tree target package (contract + compute_units + plugin block)."""

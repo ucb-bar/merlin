@@ -20,6 +20,8 @@ from merlin.common.paths import merlin_dir
 from merlin.targetgen import conformance as CF
 from merlin.targetgen import corpus_synth as CS
 
+pytestmark = pytest.mark.target("gemmini", "mx_gemmini", "atlas", "radiance")
+
 _TARGETS = ["gemmini", "atlas", "radiance", "mx_gemmini"]
 
 

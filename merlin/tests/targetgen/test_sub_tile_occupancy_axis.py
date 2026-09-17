@@ -28,6 +28,8 @@ from merlin.targetgen import cert_cost as CC
 from merlin.targetgen import conformance as CF
 from merlin.targetgen import corpus_synth as CS
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def _resolve(token: str, tile: int) -> int:
     import importlib.util

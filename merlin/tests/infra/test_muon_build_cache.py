@@ -16,6 +16,8 @@ import pytest
 
 from merlin.targetgen import build_cache as BC
 
+pytestmark = pytest.mark.target("radiance", "muon")
+
 
 @pytest.fixture(autouse=True)
 def store(tmp_path, monkeypatch):

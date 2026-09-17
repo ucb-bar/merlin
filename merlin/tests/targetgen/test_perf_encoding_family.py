@@ -20,6 +20,8 @@ import yaml
 
 from merlin.common.paths import merlin_dir, repo_root
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "mx_gemmini")
+
 sys.path.insert(0, str(repo_root() / "merlin" / "contract" / "capsules"))
 
 _PERF = merlin_dir() / "contract" / "capsules" / "profiles" / "_perf.yaml"

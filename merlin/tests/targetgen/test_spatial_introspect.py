@@ -24,6 +24,8 @@ from merlin.targetgen.compute_units import KINDS
 from merlin.targetgen.rtl import mlc_bridge as B
 from merlin.targetgen.rtl import spatial_introspect as SI
 
+pytestmark = pytest.mark.target("gemmini", "muon", "saturn_opu_mxv256d128")
+
 _OPU_TARGET = "saturn_opu_mxv256d128"
 
 

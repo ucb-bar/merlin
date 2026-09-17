@@ -12,9 +12,10 @@ from merlin.runtime.backends.base import get_backend
 
 muon = get_backend("muon").muon  # evicted SIMT backend, resolved via plugin discovery
 
-pytestmark = pytest.mark.skipif(
-    not muon.available("cyclotron"), reason="cyclotron SIMT oracle / stock LLVM not available"
-)
+pytestmark = [
+    pytest.mark.skipif(not muon.available("cyclotron"), reason="cyclotron SIMT oracle / stock LLVM not available"),
+    pytest.mark.target("radiance", "muon"),
+]
 
 # A 2x2 gemm as LLVM-dialect MLIR (plain-pointer ABI, params in [weight, lhs, out] order).
 _KERNEL_MLIR = """module {

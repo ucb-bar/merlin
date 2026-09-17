@@ -18,6 +18,8 @@ import pytest
 
 from merlin.targetgen import conformance as CF
 
+pytestmark = pytest.mark.target("radiance", "atlas", "gemmini", "saturn")
+
 TARGET = "radiance"
 
 

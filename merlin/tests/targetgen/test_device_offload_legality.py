@@ -23,6 +23,8 @@ import pytest
 
 from merlin.system.offload import device_contraction_ranks, device_dtype_triples, offloadable_contractions, why_not
 
+pytestmark = pytest.mark.target("gemmini", "saturn_opu_mxv256d128", "atlas", "radiance")
+
 _TARGETS = ("gemmini", "saturn_opu_mxv256d128", "atlas", "radiance")
 
 

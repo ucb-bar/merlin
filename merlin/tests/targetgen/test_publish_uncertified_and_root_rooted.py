@@ -21,6 +21,8 @@ import pytest
 from merlin.common.yaml import dump_yaml
 from merlin.targetgen import publish as pub
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def _write(path: Path, text: str, *, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

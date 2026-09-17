@@ -18,6 +18,9 @@ from merlin.common.paths import merlin_dir
 sys.path.insert(0, str(merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts"))
 
 import functional_gsim_qualification as Q  # noqa: E402
+import pytest
+
+pytestmark = pytest.mark.target("gemmini", "atlas")
 
 
 class _Source:

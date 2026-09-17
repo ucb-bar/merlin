@@ -12,6 +12,8 @@ import pytest
 from merlin.kernels import action_catalog as AC
 from merlin.kernels import cca_contract as CC
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 def _has_rtl(target: str) -> bool:
     from merlin.targetgen.rtl import mlc_bridge

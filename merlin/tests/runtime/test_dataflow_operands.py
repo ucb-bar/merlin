@@ -11,7 +11,11 @@ that neither matters.
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.runtime.commandbuffer import PRODUCING_KEYS, dataflow_operands
+
+pytestmark = pytest.mark.target("atlas", "gemmini", "muon", "radiance", "saturn")
 
 
 def _cb(tensors, commands):

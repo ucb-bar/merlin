@@ -16,6 +16,8 @@ import pytest
 
 from merlin.targetgen.rtl import mlc_bridge as M
 
+pytestmark = pytest.mark.target("muon", "gemmini")
+
 
 class TestSelectionReadsTheSet:
     def test_a_hybrid_resolves_every_kind_it_declares(self):

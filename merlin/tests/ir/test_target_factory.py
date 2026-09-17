@@ -11,7 +11,10 @@ import pytest
 
 from merlin.xdsl_dialects import _common
 
-pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+pytestmark = [
+    pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed"),
+    pytest.mark.target("saturn", "toy_npu"),
+]
 
 
 def test_build_dialect_shape():

@@ -15,6 +15,8 @@ import pytest
 from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RUN
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "mx_gemmini", "radiance")
+
 
 def _facts(target):
     f = RUN.load_facts(target)

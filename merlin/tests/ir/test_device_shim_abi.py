@@ -19,6 +19,8 @@ import pytest
 
 from merlin.llvmlower.device_shim import emit_translation_unit, kernel_abi_for
 
+pytestmark = pytest.mark.target("gemmini")
+
 _CC = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
 
 _KERNEL_STUB = """

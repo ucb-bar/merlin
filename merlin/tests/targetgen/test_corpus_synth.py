@@ -26,6 +26,8 @@ import yaml
 from merlin.common.paths import merlin_dir
 from merlin.targetgen import corpus_synth as CS
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 def _spec(target: str) -> dict:
     p = merlin_dir() / "contract/capsules/conformance" / f"{target}.yaml"

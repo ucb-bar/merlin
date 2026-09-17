@@ -14,6 +14,8 @@ import pytest
 
 from merlin.targetgen import capsule_runner as CR
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 @pytest.fixture(autouse=True)
 def _descriptor_pinned_host_lane(monkeypatch):

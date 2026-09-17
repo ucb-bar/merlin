@@ -18,6 +18,8 @@ from merlin.compile import mesh as MESH
 from merlin.targetgen import capsule_source as CSrc
 from merlin.targetgen import routing as R
 
+pytestmark = pytest.mark.target("gemmini")
+
 _LINALG = (
     "builtin.module {\n"
     "  func.func @forward(%0: tensor<16x16xf32>, %1: tensor<16x16xf32>) -> tensor<16x16xf32> {\n"

@@ -15,6 +15,8 @@ import yaml
 from merlin.common.paths import repo_root
 from merlin.targetgen.capsule_runner import _split_ineligible
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 def _capsule(name: str) -> dict:
     base = pathlib.Path(repo_root()) / "merlin/contract/capsules"

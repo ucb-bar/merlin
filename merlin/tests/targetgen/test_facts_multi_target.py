@@ -27,6 +27,8 @@ import pytest
 
 from merlin.targetgen.rtl import introspect
 
+pytestmark = pytest.mark.target("atlas", "saturn")
+
 # A synthetic elaboration in FIRRTL's own surface syntax. Nothing here is any shipped target: the
 # generator directory, the module names and the memory names are invented, which is the point — a
 # reader that needs a real device to be exercised is a reader that cannot be trusted on a new one.

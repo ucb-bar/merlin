@@ -18,8 +18,12 @@ never again quoted as if they were one number.
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.targetgen import model_coverage as MC
 from merlin.targetgen.eligibility import RegionDescriptor
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _int8_contraction_spelled(op: str):

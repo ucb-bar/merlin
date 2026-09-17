@@ -11,6 +11,8 @@ import pytest
 
 from merlin.targetgen.precision_policy import best_format
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def test_the_top_ranked_admitted_format_is_chosen():
     r = best_format("gemmini")

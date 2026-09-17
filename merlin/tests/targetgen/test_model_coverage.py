@@ -11,6 +11,8 @@ import pytest
 from merlin.targetgen import model_coverage as MC
 from merlin.targetgen.eligibility import RegionDescriptor
 
+pytestmark = pytest.mark.target("gemmini", "radiance")
+
 
 def _regions():
     return (

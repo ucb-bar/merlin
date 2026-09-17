@@ -16,6 +16,8 @@ import pytest
 
 from merlin.mining import mine
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 class TestTheTargetSelectsTheLifter:
     def test_an_accelerator_target_resolves_its_endpoint(self):

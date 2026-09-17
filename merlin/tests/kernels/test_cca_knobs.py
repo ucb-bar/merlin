@@ -24,6 +24,8 @@ from merlin.kernels import knobs as K
 from merlin.targetgen import address_space as AS
 from merlin.targetgen import memory_regime as MR
 
+pytestmark = pytest.mark.target("gemmini", "k1_cpu", "muon")
+
 # ---- fixtures over REAL targets ---------------------------------------------------------------
 #
 # Skipped rather than faked when a target's artifact is unavailable in this checkout: a knob-derivation

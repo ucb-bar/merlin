@@ -15,6 +15,8 @@ from merlin.benchharness import hash_tree
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.corpus_spec import CorpusBinding
 
+pytestmark = pytest.mark.target("gemmini")
+
 _SOURCE = merlin_dir() / "experiments/gemmini_perf_bench/scripts/perf_holdout_corpus.py"
 _SPEC = importlib.util.spec_from_file_location("perf_holdout_corpus_under_test", _SOURCE)
 assert _SPEC is not None and _SPEC.loader is not None

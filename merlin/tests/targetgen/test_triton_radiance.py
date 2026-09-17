@@ -37,7 +37,10 @@ from merlin.xdsl_dialects._common import text
 RADIANCE_PACKAGE = repo_root() / "out/artifacts/targets/radiance/hand_v0"
 GEMMINI_PACKAGE = repo_root() / "out/artifacts/targets/gemmini/hand_v0"
 
-pytestmark = pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed")
+pytestmark = [
+    pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed"),
+    pytest.mark.target("radiance", "gemmini"),
+]
 
 
 def _package(path):

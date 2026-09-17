@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from merlin.targetgen.rocc import decode as RD
 from merlin.targetgen.rtl.facts import load_facts
 from merlin.targetgen.rtl.gen_isa_module import generate
 from merlin.targetgen.target_experiment import load_capability_manifest
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _generated_ns() -> dict:

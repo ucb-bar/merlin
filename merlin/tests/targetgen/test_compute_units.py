@@ -8,6 +8,8 @@ from merlin.common.paths import targets_dir
 from merlin.common.yaml import load_yaml
 from merlin.targetgen import compute_units as cu
 
+pytestmark = pytest.mark.target("gemmini", "toy_npu")
+
 
 def _contract(name: str) -> dict:
     return load_yaml(targets_dir() / name / "contracts" / "target_contract.yaml")

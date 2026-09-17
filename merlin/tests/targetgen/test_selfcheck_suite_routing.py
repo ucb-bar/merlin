@@ -18,6 +18,8 @@ import pytest
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.capsule_common import make_run_paths
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "radiance")
+
 
 def _write_parent(target: str) -> Path:
     """Where run_capsule lays a capsule's run dir for this target (parent of capsule_result.json)."""

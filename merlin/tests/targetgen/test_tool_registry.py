@@ -19,6 +19,8 @@ from merlin.targetgen import tool_registry as TR
 from merlin.targetgen.generate_bundles import _arm_manifest, generate_bundles
 from merlin.targetgen.target_experiment import load_target_experiment
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "muon", "radiance", "saturn")
+
 # One real descriptor is enough: every tool path in the registry is a literal shared by all targets, and
 # the single target-varying grant is exercised through the descriptor attribute that derives it.
 _DESCRIPTOR = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"

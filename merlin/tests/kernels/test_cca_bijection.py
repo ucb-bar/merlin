@@ -12,7 +12,11 @@ allowlisted gap is actually already closed — forcing KNOWN_OPEN to shrink to e
 
 from __future__ import annotations
 
+import pytest
+
 from merlin.kernels import cca_contract as cc
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def test_every_schema_field_is_classified():

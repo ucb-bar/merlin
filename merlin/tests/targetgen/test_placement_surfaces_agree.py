@@ -23,6 +23,8 @@ from merlin.common import mlir_query as mq
 from merlin.common.ir_lock import IR_LOCK
 from merlin.system.offload import device_dtype_triples, offloadable_contractions
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance", "saturn_opu_mxv256d128")
+
 _I8 = """
 module {{
   func.func @f(%a: tensor<{m}x{k}xi8>, %b: tensor<{k}x{n}xi8>) -> tensor<{m}x{n}xi32> {{

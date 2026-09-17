@@ -37,6 +37,8 @@ import pytest
 
 from merlin.targetgen.rtl.ports import elaboration_kind, port_facts
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "radiance", "mx_gemmini")
+
 _TARGETS = ("gemmini", "atlas", "radiance", "mx_gemmini")
 
 

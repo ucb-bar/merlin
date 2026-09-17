@@ -20,7 +20,10 @@ import pytest
 
 from merlin.xdsl_dialects import _common
 
-pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+pytestmark = [
+    pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed"),
+    pytest.mark.target("gemmini", "atlas", "toy_npu"),
+]
 
 # Same synthetic f32 mesh + vector contract as the engine splice test: target-agnostic lane routing.
 _F32_UNITS = {

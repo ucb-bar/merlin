@@ -13,6 +13,8 @@ import pytest
 
 from merlin.runtime.backends.base import get_backend
 
+pytestmark = pytest.mark.target("radiance", "muon")
+
 muon = get_backend("muon").muon  # evicted SIMT backend, resolved via plugin discovery
 
 

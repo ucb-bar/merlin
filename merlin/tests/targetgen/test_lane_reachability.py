@@ -28,6 +28,8 @@ import yaml
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.routing import reachable_lanes, reachable_lanes_on
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "radiance", "saturn_opu")
+
 
 @dataclass
 class _Unit:

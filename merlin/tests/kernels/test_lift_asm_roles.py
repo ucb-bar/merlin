@@ -15,6 +15,8 @@ import pytest
 from merlin.kernels import cca as C
 from merlin.kernels import endpoints as EP
 
+pytestmark = pytest.mark.target("atlas")
+
 
 class _D:
     """A role-tagged instruction, the shape every decoder in kernels.decode emits."""

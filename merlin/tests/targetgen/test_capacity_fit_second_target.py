@@ -19,6 +19,8 @@ import pytest
 
 from merlin.compile_cli import _dtype_bits, _operand_store_bytes, capacity_fit
 
+pytestmark = pytest.mark.target("gemmini", "atlas")
+
 
 @pytest.mark.parametrize(
     "tok,bits",

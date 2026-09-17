@@ -23,6 +23,8 @@ import pytest
 from merlin.kernels.opu_kernel import KernelSpec
 from merlin.llvmlower.opu_shim import DEFAULT_SCRATCH_BYTES, emit_translation_unit, scratch_bytes_for
 
+pytestmark = pytest.mark.target("saturn_opu")
+
 
 class _Enc:
     """A derived-encoding stand-in with the interface the emitter uses.

@@ -26,7 +26,10 @@ from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
 
 _FC = RR.find_filecheck()
-pytestmark = pytest.mark.skipif(_FC is None, reason="FileCheck binary not available")
+pytestmark = [
+    pytest.mark.skipif(_FC is None, reason="FileCheck binary not available"),
+    pytest.mark.target("gemmini", "radiance"),
+]
 _FACTS = load_facts("gemmini")
 # The behavioural role probe needs a live arc model (+ the mlc venv). Where it is present, the derived
 # roles are an ALWAYS-ON cross-check of the hand ABI semantic_class; where it is absent (CI without the

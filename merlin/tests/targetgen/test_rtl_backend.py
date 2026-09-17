@@ -8,6 +8,8 @@ import pytest
 from merlin.targetgen import rtl_backend as RB
 from merlin.targetgen.rtl import mlc_bridge as B
 
+pytestmark = pytest.mark.target("gemmini")
+
 _MLC_OK = B.mlc_available()[0]
 
 

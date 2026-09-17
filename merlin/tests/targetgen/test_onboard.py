@@ -20,6 +20,8 @@ from merlin.targetgen import families
 from merlin.targetgen.onboard import OnboardError, onboard
 from merlin.targetgen.target_experiment import load_target_experiment
 
+pytestmark = pytest.mark.target("atlas", "gemmini", "mx_gemmini", "radiance")
+
 
 def _real_desc(target: str) -> str:
     return str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml")

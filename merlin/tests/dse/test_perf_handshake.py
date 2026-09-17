@@ -13,6 +13,8 @@ import pytest
 from merlin.perf.handshake import FillDepth, HandshakeUnavailable, measure_fill_depth
 from merlin.targetgen.rtl import mlc_bridge
 
+pytestmark = pytest.mark.target("atlas", "gemmini")
+
 
 def _needs_circuit():
     if mlc_bridge.mlc_dir() is None or mlc_bridge.core_hw_mlir("atlas") is None:

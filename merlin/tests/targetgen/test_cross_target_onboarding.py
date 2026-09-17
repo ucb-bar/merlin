@@ -16,6 +16,8 @@ from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
 from merlin.targetgen.runner_config import runner_config_from_manifest
 from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
+pytestmark = pytest.mark.target("gemmini", "radiance", "saturn_opu_mxv256d128", "atlas", "muon", "mx_gemmini")
+
 _RAD_DESC = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 _SATURN_DESC = "merlin/experiments/capsule_bench/targets/saturn_opu/target_experiment.yaml"
 _SATURN_RESID = "merlin/experiments/capsule_bench/targets/saturn_opu/manifest_residual.yaml"

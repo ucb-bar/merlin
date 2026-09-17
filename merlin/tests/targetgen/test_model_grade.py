@@ -16,6 +16,8 @@ import pytest
 import merlin.compile_cli as cc
 from merlin.targetgen import capsule_runner as R
 
+pytestmark = pytest.mark.target("radiance")
+
 
 @pytest.fixture(autouse=True)
 def _frozen_bundle_double(monkeypatch):

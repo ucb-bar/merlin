@@ -17,8 +17,12 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from merlin.common.paths import merlin_dir
 from merlin.targetgen import semantic_families as SF
+
+pytestmark = pytest.mark.target("atlas", "gemmini", "muon", "radiance", "saturn")
 
 _CENSUS = merlin_dir() / "python/merlin/targetgen/oracle_helpers/isa_introspect.py"
 

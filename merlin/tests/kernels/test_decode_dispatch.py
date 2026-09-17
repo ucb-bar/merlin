@@ -20,6 +20,8 @@ import pytest
 from merlin.kernels import decode as D
 from merlin.kernels import endpoints as _ep
 
+pytestmark = pytest.mark.target("radiance", "gemmini")
+
 
 def _roles(decoded) -> collections.Counter:
     return collections.Counter(r for d in decoded for r in (getattr(d, "roles", ()) or ()))

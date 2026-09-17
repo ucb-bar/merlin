@@ -28,6 +28,8 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_source as CSRC
 from merlin.targetgen import routing as R
 
+pytestmark = pytest.mark.target("atlas", "gemmini")
+
 TARGETS = ("gemmini", "atlas")
 
 

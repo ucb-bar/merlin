@@ -23,6 +23,8 @@ import yaml
 from merlin.common.paths import merlin_dir
 from merlin.perf import emitter_reach as ER
 
+pytestmark = pytest.mark.target("gemmini", "atlas", "mx_gemmini", "radiance")
+
 sys.path.insert(0, str(merlin_dir() / "contract" / "capsules"))
 
 _TARGETS = ("gemmini", "atlas", "radiance", "mx_gemmini")
