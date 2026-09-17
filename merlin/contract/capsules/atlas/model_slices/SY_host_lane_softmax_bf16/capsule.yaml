@@ -1,0 +1,69 @@
+name: SY_host_lane_softmax_bf16
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the host lane: real captures contain 2 ''softmax''
+  region(s) at bf16, and this target''s manifest admits ''softmax'' at no such dtype
+  -- so every one of them must be placed on the host. A corpus with no capsule here
+  cannot tell a compiler that routes them correctly from one that does not'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: bf16
+operation:
+  op: softmax
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.000849609375
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeUnary
+  - TensorComputeBinary
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: softmax
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: softmax
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
+pass_requirements:
+- host-seam
+- target-isa-lowering
+- tile-schedule
+lanes:
+  forbid:
+  - on_mesh
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 0.018939208984375
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
+  applied_atol: 0.000849609375
+  golden_scale: 0.04248046875
+  rtol: 0.02
+  why: the declared absolute tolerance reached the falsifiability ceiling, so the
+    profile's own relative tolerance was applied at the golden's scale instead

@@ -30,6 +30,19 @@ formats:
     scale: {kind: none}
     aliases: [f16, half, float16]
     notes: IEEE-754 half (E5M10). Tight precision, reduced range.
+  fp64:
+    kind: float_ieee
+    element_bits: 64
+    exp_bits: 11
+    mant_bits: 52
+    signed: true
+    scale: {kind: none}
+    aliases: [f64, double, float64]
+    notes: >-
+      IEEE-754 double. Registered rather than parsed as a machine width because the `fp` spellings are
+      deliberately registry names here (`machine_bits("fp16")` returns None on purpose, so a width is
+      never guessed from a prefix) — and without an entry the same type was known as `f64` and unknown
+      as `fp64`, which made the address map refuse an ordinary double under one of its two names.
   bf16:
     kind: float_ieee
     element_bits: 16
@@ -71,7 +84,7 @@ formats:
     mant_bits: 3
     signed: true
     scale: {kind: per_tensor}
-    aliases: [e4m3, float8_e4m3fn]
+    aliases: [e4m3, float8_e4m3fn, f8E4M3FN]
     torchao_scheme: float8_weight_only_e4m3
     notes: OCP FP8 E4M3 (pmax 448).
   fp8_e5m2:
@@ -81,7 +94,7 @@ formats:
     mant_bits: 2
     signed: true
     scale: {kind: per_tensor}
-    aliases: [e5m2, float8_e5m2]
+    aliases: [e5m2, float8_e5m2, f8E5M2]
     torchao_scheme: float8_weight_only_e5m2
     notes: OCP FP8 E5M2 (wider range, less precision).
   fp6_e3m2:
@@ -92,7 +105,7 @@ formats:
     signed: true
     pack: {bits: 6, dim: -1}
     scale: {kind: none}
-    aliases: [e3m2]
+    aliases: [e3m2, f6E3M2FN]
     quant_ext_type: packed_int_tensor
     notes: OCP FP6 E3M2 (the request's FP6 spec). Sub-byte.
   fp6_e2m3:
@@ -103,7 +116,7 @@ formats:
     signed: true
     pack: {bits: 6, dim: -1}
     scale: {kind: none}
-    aliases: [e2m3]
+    aliases: [e2m3, f6E2M3FN]
     quant_ext_type: packed_int_tensor
     notes: OCP FP6 E2M3 variant (gemmini-mx fp6_0). Sub-byte.
   fp4_e2m1:
@@ -114,7 +127,7 @@ formats:
     signed: true
     pack: {bits: 4, dim: -1}
     scale: {kind: none}
-    aliases: [e2m1]
+    aliases: [e2m1, f4E2M1FN]
     quant_ext_type: packed_int_tensor
     notes: OCP FP4 E2M1 (the request's FP4 spec). Two per byte.
 
@@ -144,6 +157,19 @@ formats:
     torchao_scheme: mx_dyn_act_mx_weight_mx6
     quant_ext_type: mx_tensor
     notes: OCP MXFP6 — E3M2 elements, per-32 E8M0 block scale. True FP6 microscaling.
+  # The MX block SCALE type, not an operand format: mxfp4/6/8 each carry one of these per 32-element
+  # block (see their `scale: {kind: block_e8m0}`). It is registered because capsules declare scale
+  # planes as tensors with this dtype, and a dtype the registry does not know has its width written
+  # down somewhere else instead. Unsigned and mantissa-less: all 8 bits are exponent.
+  e8m0:
+    kind: fp_ocp
+    element_bits: 8
+    exp_bits: 8
+    mant_bits: 0
+    signed: false
+    scale: {kind: none}
+    aliases: [f8E8M0FNU, float8_e8m0fnu]
+    notes: OCP E8M0 block-scale exponent (power-of-two scale for the MX formats).
   mxfp8:
     kind: mx_block
     element_bits: 8
@@ -155,6 +181,20 @@ formats:
     torchao_scheme: mx_dyn_act_mx_weight_mx9
     quant_ext_type: mx_tensor
     notes: OCP MXFP8 (torchao "mx9") — E4M3 elements, per-32 E8M0 block scale.
+  mxint8:
+    kind: int_affine
+    element_bits: 8
+    signed: true
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    quant_ext_type: mx_tensor
+    notes: >-
+      OCP MXINT8 — int8 elements under a per-32 E8M0 block scale. `int_affine` rather than
+      `mx_block`, because the element is an integer: `mx_block` is validated as a self-describing
+      FLOAT element (1 + exp_bits + mant_bits must fill the width), which an int8 element has no
+      exponent to satisfy. The MX part of it is the scale, and that is what `scale` records.
+      Registered because the DRAM address map sizes every operand through this registry and fails
+      closed on an unknown token, so a capsule declaring mxint8 could not be placed at all.
 
   # --- NVIDIA NVFP4 ------------------------------------------------------------------------------
   nvfp4:

@@ -1,0 +1,1371 @@
+# Pinned external hardware sources — which RTL revision each piece of work is against.
+#
+# WHY THIS FILE EXISTS. A session certified a microkernel against the only saturn revision that
+# contains the outer-product unit, while the revision named for the tapeout does not contain that unit
+# at all. Both are "saturn-vectors", both were checked out at some point in the same tree, and nothing
+# anywhere recorded which one a result belonged to. A result attributed to the wrong hardware is worse
+# than no result, so the revision is now declared here, verified before use, and recorded into whatever
+# the run produces.
+#
+# THE SHA IS THE TRUTH. `branch` is informational: branches move, and the same branch name on a fork and
+# on upstream are different histories. `repo_canonical` is where the work is *supposed* to live;
+# `repo_observed_note` records where it actually is when those differ, because a personal fork hosting
+# the branch everything depends on is a fact worth writing down rather than rediscovering.
+#
+# VERIFY BY CONTENT, NOT BY NAME. `requires_paths` lists files whose PRESENCE is what the work actually
+# needs. That is what catches the failure above: a checkout can be the right repo, on a plausible
+# branch, and still be missing the unit entirely. Checking a path is cheap and does not care how the
+# revision was spelled.
+#
+# A PIN COVERS ONLY ITS OWN CHECKOUT, so containment is declared. Second measured failure, and the
+# reason `gemmini_isa_headers` exists below: `verify("gemmini_rtl")` returned ok=true while every int8
+# dtype claim about that target came out of ISA headers in a git repository NESTED inside the pinned one,
+# off the gitlink the container records, with one header locally edited on top. Presence, HEAD and
+# dirtiness all said nothing was wrong. Four fields address it, all optional:
+#   nested_in / nested_path  read the gitlink sha the CONTAINING pin's repo records, and compare it to
+#                            both this pin's commit and this checkout's HEAD (three revisions, all of
+#                            which can disagree)
+#   covers                   fold a child pin's verification into this one's, so verifying the coarse pin
+#                            cannot miss the fine one a claim actually depends on
+#   content_check            compare each read path's BYTES against that path at this pin's commit, out
+#                            of the object store. On by default when `nested_in` is set. This is the only
+#                            comparison that is right when HEAD itself is off the pin: `git status`
+#                            answers "differs from HEAD", which has the wrong subject then, and it got
+#                            both of the two real cases here exactly backwards.
+#   local_edits              path -> sha256 of bytes that are KNOWINGLY not the pinned revision's. Pins
+#                            the content so a DIFFERENT edit is still refused; never a way to quiet a
+#                            check, and never a claim that the file matches upstream.
+# Three states per file, never two: pinned / off_pin / undeterminable. "Nobody could tell which revision
+# these bytes are" is not a softer "wrong revision" — it means do not publish the claim at all.
+#
+# Consumed by `merlin.common.provenance`; gated by `build_tools/scripts/check_provenance.py`.
+version: 1
+
+pins:
+
+  saturn_opu_int8:
+    description: >-
+      The saturn revision that carries the OuterProductUnit (the int8 outer-product matrix extension).
+      This is the ONLY revision the OPU work can be built or certified against, because the unit does
+      not exist anywhere earlier.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    repo_observed_note: >-
+      The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
+      not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
+    commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
+    targets: [saturn_opu]
+    branch: opu-int8
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+      - benchmarks/common/bme.h
+      # In the read set because `local_edits` below declares its digest, and a declared digest that is
+      # never compared to anything is decoration. `verify` only reaches a local edit for a path it
+      # READS; while this one sat outside the read set the review below was inert.
+      - chipyard/OPUConfigs.scala
+    # This checkout carries the file below UNCOMMITTED, and the geometry derivation reads it, so the
+    # commit alone does not describe what would be read. The digest makes "ea373800 plus exactly these
+    # bytes" a nameable revision instead of an unexplained dirty tree: `verify` reports it as a note
+    # rather than drift while it matches, and as drift the moment it changes.
+    #
+    # WHAT THE EDIT IS: the EICG clock-gate passthrough (`WithEICGPassthrough`,
+    # `OPUV256D128ShuttleNoGateConfig` and the Kodiak configs). On FPGA the gate is combinational logic
+    # in the clock path, so the tools add a second global clock net that cannot be delay-matched to its
+    # parent -- 4.207 ns of skew and 258,620 hold-failing endpoints. It is ours, it is required for any
+    # FPGA build at this size, and it is not upstream because the fork is not ours to push to.
+    #
+    # This is a declaration to be reviewed, not a way to quiet the gate. Land it upstream and delete
+    # this block; do not add an entry here for an edit nobody has read.
+    local_edits:
+      chipyard/OPUConfigs.scala: "8cbea4f9f46f33ad808da1f68b34b0460240b2c07cd08a22b92066921576d258"
+    used_by:
+      - OPU microkernel emission and encoding derivation (kernels/opu_kernel, targetgen/rtl/opu_isa)
+      - OPU L3 numerical certification (kernels/opu_cert)
+    notes: >-
+      128 commits ahead of saturn_tapeout, which it descends from. Carries a sequencer hazard bug the L3
+      corpus found: the accumulate's LHS read-intent (rvs1_mask) is cleared every iteration while the RHS
+      is gated on row_idx_tail, so a younger write to the left operand is not blocked for the final
+      subtile. Our kernel works around it by rotating the left-operand register; see
+      docs/design/incremental_target_evolution_opu.md 8c.2.
+
+  saturn_tapeout:
+    description: >-
+      A saturn revision WITHOUT the outer-product unit: no OuterProductUnit, no OuterProductSequencer,
+      no opuInsns. Kept as the negative control for the hazard this whole file exists for — a result
+      claiming an OPU verdict must never be attributed to a revision that cannot execute one.
+
+      NAMING CORRECTION. This pin used to open "the saturn revision this tapeout uses", and read as an
+      assertion that the tapeout therefore has no OPU. MEASUREMENT REFUTES THAT READING. The taped-out
+      Kodiak executes OPMACC without trapping: an absent opcode faults into the handler, and instead
+      the OPU-routed spectformer image ran to DONE, bit-exact (cos 1.0, max_rel 0.0, 1000/1000), and
+      beat its own RVV control on the same part —
+      out/artifacts/measurements/zephyr_kodiak_silicon/spectformer_int8/opu_2core_v1_20260819T220019Z_9ccddc2.
+      So the silicon does contain an outer-product unit, and either this commit is not the revision the
+      part was built from or the unit reached it by another route. Which one cannot be determined from
+      this repo. This pin therefore describes A REVISION and never a verdict about the physical part.
+    repo_canonical: https://github.com/ucb-bar/saturn-vectors.git
+    commit: 249340a6ec64a2cb7dc6dbe7fd90e2fad2497bfa
+    branch: null                      # reachable from master and several opu-* branches; not pinned to one
+    root_env: MERLIN_CHIPYARD
+    path: generators/saturn
+    requires_paths:
+      - src/main/scala/common/Consts.scala
+      - src/main/scala/common/Parameters.scala
+    forbids_paths:                    # asserting the ABSENCE is the point of this pin
+      - src/main/scala/backend/OuterProductSequencer.scala
+      - src/main/scala/exu/OuterProductUnit.scala
+    used_by: []
+    notes: >-
+      Recorded so that nothing claims an OPU result against it. Any OPU work built on this base needs
+      the unit brought onto it first, at which point the sequencer hazard above must be re-checked
+      rather than assumed to carry over.
+
+      EXPECT `--verify-pins` TO REPORT DRIFT FOR THIS PIN ON A DEVELOPMENT CHECKOUT, and read that as
+      the control working rather than as a fault. `root_env`/`path` resolve the SAME directory as
+      `saturn_opu_int8`, and a working tree can only be on one revision at a time; a tree carrying the
+      OPU (which is what any OPU work requires) necessarily fails the `forbids_paths` this pin exists
+      to assert, and reports the fork as its origin because that is where the OPU branch lives. The
+      pin verifies only on a checkout deliberately placed on 249340a6. Said explicitly because a
+      permanently-red line that nobody can distinguish from a real regression stops being read at all,
+      and this one guards a claim — an OPU verdict attributed to a revision that cannot execute one —
+      that is exactly the kind nobody catches later.
+
+      EXPECTED TO REPORT DRIFT, PERMANENTLY — do not chase it. This pin shares root_env and path with
+      saturn_opu_int8 ($MERLIN_CHIPYARD/generators/saturn) while forbidding the exact files that pin
+      requires, so a single checkout cannot satisfy both, and the OPU work needs the other one. Do NOT
+      "fix" the drift by switching that checkout: other sessions build from it, and provenance is
+      deliberately incapable of mutating a tree. Verify this pin in a separate git worktree if a
+      verification is ever actually needed.
+
+  radiance_muon_rtl:
+    description: >-
+      The chipyard revision the SIMT (Muon) RTL configuration is elaborated from. Both the scratchpad
+      geometry the compiler tiles against and the warp/lane counts the emitter maps onto are read out of
+      this tree's Scala, so a different revision can silently change either.
+    repo_canonical: https://github.com/ucb-bar/chipyard.git
+    commit: "6a9b4cd95081100dc932e422cc52777bc9a98b2d"
+    targets: [radiance]
+    branch: graphics
+    root_env: MERLIN_CHIPYARD
+    path: generators/radiance
+    requires_paths:
+      - chipyard/RadianceConfigs.scala
+      - src/main/scala/radiance/subsystem/Configs.scala
+      - src/main/scala/radiance/virgo/VirgoSharedMemComponents.scala
+    used_by:
+      - SIMT scratchpad capacity + SIMT geometry derivation (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      This checkout carries uncommitted changes, so its commit alone does not describe what a derivation
+      reads — which is why every consumer also records a source_digest over the exact files it read. At the
+      revision above those files (RadianceConfigs.scala, subsystem/Configs.scala) are clean and the edits
+      are elsewhere in the tree, but that is a fact to record per run, not to assume. `generators/radiance`
+      is a plain directory in this worktree rather than an initialised submodule, so it carries no
+      independent revision of its own.
+
+  radiance_kernels:
+    description: >-
+      The SIMT target's own kernel corpus and runtime headers. It is the second, independent witness to
+      the scratchpad capacity (MU_SMEM_SIZE_BYTES) and the source of the boot/spawn conventions the
+      emitted scaffold has to agree with.
+    repo_canonical: https://github.com/ucb-bar/radiance-kernels.git
+    commit: "399757f6da3b2c75980821b2479e9f1ca732e8ea"
+    targets: [radiance]
+    branch: main
+    root_env: MERLIN_RADIANCE_KERNELS
+    path: ""
+    requires_paths:
+      - lib/include/VX_config.h
+      - lib/include/mu_intrinsics.h
+      - lib/src/mu_start.S
+      - lib/src/mu_schedule.cpp
+    used_by:
+      - SIMT aperture-vs-capacity cross-check (targets/radiance/hand_v0/derive_facts.py)
+    notes: >-
+      TWO CHECKOUTS OF THIS REPO EXIST ON THIS HOST AND ONLY ONE IS READ. $MERLIN_RADIANCE_KERNELS resolves
+      to the revision above (branch `main`); a second clone sits elsewhere on a different branch. The pin
+      was first written from the one that is NOT read, and verification caught it — which is the whole
+      reason this file exists. The facts happened to agree in both, but that was luck: always pin the tree
+      the code resolves, not the one that is convenient to read.
+      VX_config.h's SMEM_LOG_SIZE is the shared-memory ADDRESS WINDOW, not the capacity — the same header
+      derives IO_BASE_ADDR from it. The capacity comes from the RTL config in `radiance_muon_rtl`; this
+      checkout's MU_SMEM_SIZE_BYTES is used only to corroborate it, and a disagreement is refused rather
+      than resolved by preference.
+      PIN ADVANCED 56aad6e1620c -> 399757f6da3b after the checkout moved on. Verified by CONTENT before
+      moving it, which is the only thing that licenses the move: all four `requires_paths` are
+      BYTE-IDENTICAL across the range (`git diff 56aad6e..399757f -- <the four>` is empty) and 56aad6e is
+      an ancestor of 399757f, so the derivation reads exactly the bytes it read at the old pin. The commit
+      changed; what this pin is FOR did not. A drift whose sources actually DIFFER is regenerated, never
+      re-pinned.
+
+  muon_arc_model:
+    description: >-
+      The ModeLIR (mlc) checkout supplying the RTL-derived arc cosim model used as the SIMT oracle. Every
+      bit-exactness claim about SIMT execution is a claim about the model built here, so the model's own
+      identity is part of the result.
+    repo_canonical: git@github.com:copparihollmann/ModeLIR.git
+    repo_observed_note: >-
+      No upstream is known for this repository; the personal remote above is its only recorded home.
+      Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
+    commit: "add52b0a7c96d72e0079b7938e07ca5080871e82"
+    targets: [radiance]
+    branch: feature/discover-datapaths
+    root_env: MERLIN_MLC_DIR
+    path: ""
+    requires_paths:
+      - mlc/backends/cosim_muon.py
+      - runs/circt-arc/muon/native_run/libmuon_model.so
+      - runs/circt-arc/muon/outputs/muon_core_state.json
+    used_by:
+      - SIMT command-buffer execution grade (targets/radiance/hand_v0/backend.py)
+    notes: >-
+      The two `runs/` entries are BUILT products, not sources, and they are what makes the oracle usable at
+      all — hence their presence is required rather than merely expected. This checkout carries a
+      substantial number of uncommitted changes, so a consumer must record a digest of the model binary it
+      actually loaded; the commit identifies the recipe, not the artifact.
+      LOCATING IT: $MERLIN_MLC_DIR is normally UNSET, and `mlc_bridge.mlc_dir()` then falls back to a
+      sibling-checkout default. A pin cannot verify a path found by an implicit default, so a consumer must
+      resolve the path the way the code does and hand it over explicitly —
+      `provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`. Verifying the declared env var
+      instead would report drift for a checkout that is present and correct, which is worse than useless:
+      it trains people to ignore the check.
+      PIN ADVANCED 0c64b766e731 -> a13439e91d08 after the checkout moved. Unlike the radiance-kernels
+      pin this was NOT a fast-forward -- the branch moved sideways, so the old commit is not an ancestor
+      of the new one and "it only moved forward" licenses nothing here. What licenses it is content:
+      `mlc/backends/cosim_muon.py`, the single SOURCE among the requires_paths, is byte-identical across
+      the two commits and is clean in the working tree. The other two entries are BUILT products whose
+      identity a commit cannot carry at all, which is why the digest requirement above stands regardless
+      of what this field says.
+      PIN ADVANCED a13439e9 -> d38e5adc -> the sha above. Unlike the previous move this one IS a
+      fast-forward: the old commit is an ancestor of the new one and `mlc/backends/cosim_muon.py` is
+      unchanged between them, so nothing the oracle depends on moved. The advance records source that had
+      been sitting untracked in the working tree -- the activity-energy and boundary-traffic passes, the
+      circt_study/ abstraction frontier, and the characterization evidence base -- which mattered because
+      mlc is installed into merlin's venv as a PEP-660 editable package, so that untracked source was the
+      code merlin actually executed. Tree state and commit described different programs until now.
+      STILL DIRTY BY DESIGN, AND LESS SO. The checkout went from 35 dirty entries to 17. What remains is
+      generated: rendered figures under runs/plots/, one arc output, and the two third_party submodules
+      that carry their own pins (atlas_npu, gemmini_rtl). The digest requirement above therefore still
+      stands for the two BUILT products in requires_paths.
+      A CAUTION FOR ANYONE VERIFYING THIS BY HAND. mlc lives at $MERLIN_MLC_DIR, which is the `modeling/`
+      SUBDIRECTORY of a larger checkout that is itself a separate git repository tracking the same files.
+      Running git at the parent reports a different branch, a different HEAD, and ~971 dirty entries, and
+      reports this pin's commit as a missing object. That reading is wrong and looks alarming; resolve the
+      path the way the code does (`provenance.verify("muon_arc_model", checkout=mlc_bridge.mlc_dir())`).
+
+  gemmini_rtl:
+    description: >-
+      The Gemmini generator revision a systolic result is measured against. The mesh dimension the
+      compiler tiles to, the scratchpad/accumulator capacities it must respect, and the RoCC funct
+      encodings the emitter packs are all read out of this tree, so a different revision can change a
+      verdict without changing anything in merlin. Pinned separately from the chipyard root because it
+      is a submodule with its own revision: the outer tree can move while this one does not, and vice
+      versa, so recording only one of the two leaves the result ambiguous.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets: [gemmini]
+    branch: HEAD
+    root_env: MERLIN_CHIPYARD
+    path: generators/gemmini
+    requires_paths:
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+      # ELABORATED, NOT PARSED — and that is why it is in the read set. The three files above are read
+      # by fact extraction; this one is read by the Verilator ELABORATION that produces the counters a
+      # timing verdict is computed from. It carries an uncommitted edit, and because it was in no read
+      # set, `verify` reported "8 uncommitted change(s), none of them a source this reads" over a file
+      # that is compiled straight into the simulator. That sentence was true of the pin's declaration
+      # and false of the machine. A read set that omits what the RTL build consumes cannot answer the
+      # only question a performance claim asks of this pin.
+      - src/main/scala/gemmini/LoadController.scala
+    # CONTENT, not `git status`. Turned on for the same reason the sibling pin below turns it on: the
+    # dirty heuristic answers "differs from HEAD", and it cannot distinguish a reviewed edit whose
+    # bytes are declared here from an unreviewed one. With this on, each read path gets a per-file
+    # PINNED / OFF_PIN / UNDETERMINABLE verdict that `check_provenance.py` surfaces by name.
+    content_check: true
+    # DECLARED LOCAL EDIT, with the digest of the bytes actually elaborated.
+    #
+    # WHAT THE EDIT IS: `assert(block_stride >= rows)` in the mvin row counter is commented out (4 added
+    # lines, 1 removed; nothing else). A Chisel `assert` lowers to a verification statement only — in the
+    # emitted LoadController.sv it is an `$error` inside the simulation-only guard — so removing one
+    # changes no datapath, no FSM, and no counter increment condition. It changes exactly one thing: the
+    # simulator no longer $fatals on a workload the assertion rejects.
+    #
+    # WHICH LoadController THE COUNTER BUILD ELABORATED — measured 2026-09-02, not assumed. Chisel embeds
+    # the asserting SOURCE LINE in the message it emits, and that is a fingerprint of the file that was
+    # elaborated:
+    #   generated-src/.../gen-collateral/LoadController.sv and the linked
+    #   simulator-chipyard.harness-GemminiRocketConfig binary both carry
+    #     "at LoadController.scala:192 assert(... must load more than 0 bytes)"
+    #   working tree : that assert is at line 192, `block_stride >= rows` commented at 139
+    #   at 8c3f9923  : that assert is at line 189, `block_stride >= rows` live at 136
+    # 192 is the WORKING-TREE numbering, and `block_stride` appears nowhere in the emitted Verilog or in
+    # the binary. So the build elaborated THESE bytes, not the pinned revision's. (mtimes agree and are
+    # the weaker witness: the edit is 2026-08-11 12:47, the simulator 12:53, the collateral 16:01.)
+    #
+    # CONSEQUENCE FOR THE NUMBERS: the eta values in out/artifacts/perf-calibration/gemmini/ were counted
+    # on RTL built from these bytes. Because the delta is an assertion and nothing else, the LD/EX/ST
+    # busy counters are unaffected — but that is an argument, not a licence to call them pinned. They are
+    # "8c3f9923 plus these bytes", and `provenance.citation()` is what spells that.
+    local_edits:
+      src/main/scala/gemmini/LoadController.scala: "780ee0a292d8653fa8a822aee28e2fb2cffbc25301431b4332182008d34fcf6a"
+    # The ISA HEADERS this generator ships are a SEPARATE nested repository with its own revision, and
+    # every dtype claim about this target is read out of them. This pin cannot describe them (see the
+    # sibling below), so it declares that verifying it INCLUDES verifying them: a caller that verified
+    # only this pin and then reported an int8 dtype as "pinned" is the failure the sibling documents,
+    # and `covers` is what makes that impossible rather than merely discouraged.
+    covers:
+      - gemmini_isa_headers
+    used_by:
+      - RoCC encoding + mesh/capacity fact extraction (targetgen/rtl/introspect.py)
+      - run records for the systolic capsule suites (targetgen.provenance.toolchain_shas)
+    notes: >-
+      Detached HEAD is normal here — a submodule is checked out at the sha its superproject records,
+      not on a branch, so `branch` is informational and the sha is the fact. Shares a checkout root
+      with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
+
+      EXPECT THIS PIN TO REPORT DRIFT VIA `[gemmini_isa_headers]` ON A DEVELOPMENT CHECKOUT, and read it
+      as the coverage working rather than as a fault in this pin. What is off-pin there is the nested
+      header repository, and the whole point of `covers` is that that no longer hides behind this pin's
+      clean verdict.
+
+      EXPECT A SECOND, LOCAL OFF-PIN FINDING: `src/main/scala/gemmini/LoadController.scala`. Its bytes
+      are declared in `local_edits` above, so it is a REVIEWED off-pin file — the finding is the citation
+      form doing its job, not a fault to chase. This pin's other three Scala files ARE clean at 8c3f9923
+      and `source_status` reports them PINNED by content. Do not re-pin this commit to make the finding
+      go away: the edit is uncommitted and belongs to nobody's revision, so there is no sha to move to.
+      Land it upstream and delete the `local_edits` entry, or revert it in the checkout and rebuild.
+
+  gemmini_isa_headers:
+    description: >-
+      The systolic target's own ISA HEADERS — the software interface `targetgen.capability_discovery`
+      parses, and the sole source of every dtype claim about this target (elem_t / acc_t / full_t /
+      scale_t typedefs, the activation-mode enumeration, the feature #defines). They ship in a
+      repository NESTED inside the generator (`software/gemmini-rocc-tests`, a submodule), which has its
+      own revision, so the generator's pin cannot describe them.
+
+      WHY THIS IS A SIBLING PIN AND NOT MORE PATHS ON `gemmini_rtl`. A pin has exactly ONE `commit`, and
+      these headers do not belong to the generator's revision — they belong to 7c540b3a, the gitlink the
+      generator records, while the generator itself is 8c3f9923. Adding the header paths to
+      `gemmini_rtl.requires_paths` would make the presence check fire but would leave nowhere to write
+      down WHICH revision the headers are from, i.e. it would fix the symptom by collapsing two
+      revisions into one field — the exact ambiguity `gemmini_rtl`'s own description argues against
+      ("the outer tree can move while this one does not ... recording only one of the two leaves the
+      result ambiguous"). `atlas_fp_units` is pinned apart from `atlas_npu` for the same reason.
+
+      MEASURED FAILURE THIS PIN EXISTS FOR. `verify("gemmini_rtl")` returned ok=true while every int8
+      dtype claim came from a header that is not the pinned revision's. Three separate reasons it stayed
+      invisible, all now checked:
+        1. The headers were in no pin's `requires_paths` at all, so nothing looked at them.
+        2. The containing repo reported the whole nested tree as ONE dirty entry
+           `software/gemmini-rocc-tests` (a gitlink, spelled WITHOUT a trailing slash). The read-set
+           intersection matched only equality or a trailing-slash directory prefix, so it matched
+           nothing and `verify` concluded "8 uncommitted change(s), none of them a source this reads".
+        3. `git status` was the wrong question. Measured content, on this host:
+             include/gemmini.h        clean vs HEAD, bytes 007826db = e6df8b9f  -> OFF-PIN, silently
+             include/gemmini_params.h  MODIFIED vs HEAD, bytes 3758ae96 = 7c540b3a -> PINNED by content
+           The dirty check gets both cases exactly backwards. Hence `content_check`, which compares each
+           read path's bytes against that path at 7c540b3a out of the object store.
+    repo_canonical: https://github.com/ucb-bar/gemmini-rocc-tests.git
+    commit: "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    targets: [gemmini]
+    branch: null                      # a submodule sits at a sha, not on a branch; the gitlink is the fact
+    root_env: MERLIN_CHIPYARD
+    path: generators/gemmini/software/gemmini-rocc-tests
+    # The container and the gitlink inside it. `verify` reads the sha `gemmini_rtl`'s repository records
+    # here and compares it to BOTH this pin's declared commit and this checkout's actual HEAD — three
+    # revisions that can disagree, and on this host do:
+    #   pin declares / gemmini records : 7c540b3a  (int8: elem_t int8_t, acc_t int32_t)
+    #   this checkout's HEAD           : e6df8b9f  ("128x128 fp6 sw" — elem_t uint8_t,
+    #                                               ELEM_T_IS_LOWPREC_FLOAT, EXP_BITS 3, acc_t uint64_t)
+    nested_in: gemmini_rtl
+    nested_path: software/gemmini-rocc-tests
+    content_check: true               # implied by nested_in; stated because it is the load-bearing check
+    requires_paths:
+      - include/gemmini.h
+      - include/gemmini_params.h
+    # DECLARED LOCAL EDIT, with the digest of the bytes actually read.
+    #
+    # `include/gemmini_params.h` is reported modified by git because this checkout's HEAD is e6df8b9f (the
+    # fp6 revision), and the edit is a REVERT of the fp6 parameter block back to the int8 one. The bytes
+    # are byte-identical to 7c540b3a's, which is why `source_status` reports this path PINNED by content
+    # and not merely "declared": the digest below and the digest of `7c540b3a:include/gemmini_params.h`
+    # are the same string. It is recorded anyway so that a DIFFERENT edit to this file is still refused —
+    # the digest stops matching and the path drops to OFF_PIN with a message naming both digests.
+    #
+    # The int8 dtypes these bytes declare are independently corroborated by `merlin.targetgen.rtl.facts`
+    # straight from the RTL (operand int8, accumulate int32 — the discovery surface prints the agreement).
+    # That corroboration is why the claims are BELIEVED; it is not why they are pinned, and the two were
+    # being conflated. Nothing in the pin recorded which bytes the dtypes came from until now.
+    # `include/gemmini.h` is likewise OFF the pinned revision (these bytes are e6df8b9f's, this
+    # checkout's HEAD). Measured 2026-09-01, pinned 7c540b3a vs read bytes: 36 changed lines, and the
+    # delta is ADDITIVE MX surface plus one cast:
+    #   + `#define CONFIG_SCALE_MEM 26` and `gemmini_mxquant_config_mvout` (a funct-26 instruction)
+    #   + `gemmini_extended3_config_ex` grows 9 -> 13 args (act/wgt/out mx_fmt into RS1[15:10], uselut
+    #     into RS1[5]); all four in-header call sites pass 0 for the new fields, so RS1 is bit-identical
+    #   ~ RS2 shift becomes `(uint64_t)(uint32_t)(sys_shift)` where the pinned macro had `(sys_shift)`.
+    #     This differs ONLY for a NEGATIVE shift, where the pinned form sign-extends and corrupts
+    #     C_stride in RS2[63:48] -- i.e. the read bytes fix a latent bug. Every call site passes 0.
+    # So for everything this corpus emits, the encodings are identical to the pinned revision's.
+    #
+    # RESIDUAL RISK, recorded rather than resolved: the header EXPOSES funct 26 and the MX format fields,
+    # and the pinned RTL cannot execute them. Verified unused by run merlincirct_arm4_func_20260901_codex1
+    # (no CONFIG_SCALE_MEM / mxquant / mx_fmt / uselut anywhere in the submission or generated harness;
+    # zero funct-26 instructions across 28 emitted traces). A future round that reaches for that surface
+    # would be undefined on this RTL, and this declaration does not prevent it -- it only means the drift
+    # is described. Re-check the emitted traces before citing a result that used it.
+    local_edits:
+      include/gemmini_params.h: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+      include/gemmini.h: "007826db4fdaf35783e5d91ad3f21c2df9a310c1c51d53499f7745fc379974de"
+    used_by:
+      - every dtype / activation-mode / feature claim in the discovered capability surface
+        (targetgen/capability_discovery.py, via hardware_spec.isa_headers)
+      - the hwbringup ISA contract handed to every capsule-bench arm
+        (experiments/capsule_bench/targets/gemmini/.../isa_include -> a symlink into THIS checkout)
+    notes: >-
+      HOW THE HEADERS ARE REACHED, because it is not obvious and it is why nothing associated them with a
+      pin. The descriptor declares them as repo-relative paths under
+      `experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/`, and
+      `isa_include` is a tracked SYMLINK to
+      $MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/include. So
+      `capability_discovery._resolve_declared_path` resolves them at its FIRST candidate (`merlin_dir`)
+      and never reaches its pin-checkout branch — the resolved source therefore recorded `pin: None`, and
+      a source with no pin cannot be off-pin from anything. The bytes read are nonetheless this
+      checkout's, which is what this pin now describes.
+
+      EXPECT DRIFT ON A DEVELOPMENT CHECKOUT, AND DO NOT SILENCE IT. Two findings are expected here until
+      someone reconciles the submodule:
+        - the nested checkout is at e6df8b9f but gemmini_rtl records 7c540b3a (off the recorded gitlink);
+        - include/gemmini.h is OFF-PIN by content (007826db vs the pinned 18801f4e).
+      The second is the one that matters and it is NOT cosmetic: e6df8b9f's instruction header adds
+      `CONFIG_SCALE_MEM 26` and MX-format fields to `gemmini_extended3_config_ex` (act/wgt/out_mx_fmt,
+      uselut) that the pinned RTL revision 8c3f9923 does not implement. A capability surface derived from
+      it can therefore declare an ISA surface the pinned hardware cannot execute.
+
+      TWO DIFFERENT DIGESTS ARE IN PLAY AND THEY ARE NOT COMPARABLE — a trap for anyone reconciling a
+      capability surface against this pin. This registry's digests (`local_edits`, and what
+      `provenance.source_status` compares) are the PLAIN sha256 of a file's bytes, so they are stable
+      across hosts. `capability_discovery.ResolvedSource.digest` is `provenance.source_digest([abs_path])`,
+      which hashes the absolute PATH STRING together with the bytes and is therefore host-specific and
+      will never equal the value here. Measured on this host: the same
+      `include/gemmini_params.h` reads 3758ae96 as a content digest and 5d31e5b4 as that surface's
+      source_digest. Neither is wrong; they answer different questions. Compare like with like.
+
+      THE FIX IS IN THE CHECKOUT, NOT IN THIS FILE. `git -C generators/gemmini submodule update
+      --checkout software/gemmini-rocc-tests` would put the nested tree back on 7c540b3a — and this
+      registry's tooling deliberately CANNOT do that, because other sessions build from that tree and a
+      provenance check that moves someone's HEAD is a worse failure than the one it prevents. Do not
+      "fix" the drift by re-pinning this commit to e6df8b9f: that would attribute the int8 claims to the
+      fp6 revision, which is precisely the mis-attribution the registry exists to prevent. If the fp6
+      revision is genuinely what a piece of work wants, it needs its own pin and its own goldens.
+
+  gemmini_universal_rtl:
+    description: >-
+      The "Universal" Gemmini configuration -- a SECOND systolic revision of the same generator, and the
+      hardware a second capsule-bench systolic target would be graded against. It is a 16x16 int8 mesh
+      like `gemmini_rtl`'s GemminiRocketConfig and it is NOT the same device: the spatial array is
+      WEIGHT-STATIONARY ONLY (`dataflow = Dataflow.WS`), the accumulator has no full-width readout
+      (`acc_read_full_width = false`), the execute stage can neither read the accumulator nor write the
+      scratchpad (`ex_read_from_acc = false`, `ex_write_to_spad = false`), and the D operand is
+      hardcoded to GARBAGE_ADDR (`hardcode_d_to_garbage_addr = true`). Each of those removes programs
+      the pinned revision executes, so a verdict measured on one is not a verdict about the other.
+
+      WHY A COMMIT ALONE CANNOT NAME THIS DEVICE -- the reason this is a separate pin rather than a
+      note on `gemmini_rtl`. The checkout is at the SAME sha as `gemmini_rtl` (8c3f9923) and is not the
+      same hardware. Measured 2026-09-09: 25 tracked Scala sources carry 2879 added / 376 removed
+      uncommitted lines, and the configuration ITSELF lives in files that are UNTRACKED in both the
+      generator and its superproject --
+        src/main/scala/gemmini/UniversalResNet50Config.scala          (the parameter set)
+        chipyard/UniversalResNet50GemminiConfigs.scala                (the chipyard binding)
+        generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala  (FireSim wrapper,
+          in the superproject and covered by `gemmini_universal_chipyard` below)
+      So `verify("gemmini_rtl")` run against THIS checkout would report the declared commit, find its
+      three Scala read paths dirty, and say nothing at all about a weight-stationary-only array. The
+      bytes are therefore declared in `local_edits`, and what actually identifies the device is the
+      ELABORATION, declared as artifacts: `gemmini_universal_verilator_firrtl` (the TestHarness
+      elaboration a gsim/verilator cert would be built from) and `gemmini_universal_firesim_firrtl`.
+
+      GemminiISA.scala IS ONE OF THE EDITED FILES AND THE EDIT REACHES ENCODINGS, which is why it is in
+      the read set. Measured against 8c3f9923: `CONFIG_SCALE_MEM = 26.U` is added; `MvoutRs2` takes 3
+      bits out of its rows spacer for an `mx_chunk_id`; and CONFIG_EX RS1's two spacer fields are
+      replaced by `uselut` (1 bit) plus three 2-bit MX format fields. That is the RTL side of the same
+      delta `gemmini_isa_headers` records on the header side for revision e6df8b9f -- i.e. the header
+      surface that pin calls "undefined on this RTL" IS implemented here. Programs that pass 0 for the
+      new fields encode identically; a program that reaches for them is defined here and not there.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    repo_observed_note: >-
+      NOT the checkout `gemmini_rtl` reads. Observed at /scratch/jack/chipyard/generators/gemmini, a
+      tree owned by another user and READ ONLY from merlin. The root env var is deliberately a NEW one:
+      pointing $MERLIN_CHIPYARD at this tree would silently re-attribute every existing gemmini claim to
+      a WS-only device, so that must not be how this pin is reached. Unset by default, and `verify`
+      then reports "cannot be located" rather than passing.
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets: [gemmini_universal]
+    branch: HEAD
+    root_env: MERLIN_UNIVERSAL_CHIPYARD
+    path: generators/gemmini
+    # THE READ SET. Every path here is read by a derivation about this target: the two config files
+    # define it, GemminiConfigs.scala both declares the parameter class and GENERATES gemmini_params.h,
+    # GemminiISA.scala carries the encodings, and the remaining six are what the mesh/capacity/dataflow
+    # and accumulator-readout facts are derived from.
+    requires_paths:
+      - src/main/scala/gemmini/UniversalResNet50Config.scala
+      - chipyard/UniversalResNet50GemminiConfigs.scala
+      - src/main/scala/gemmini/GemminiConfigs.scala
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+      - src/main/scala/gemmini/Tile.scala
+      - src/main/scala/gemmini/PE.scala
+      - src/main/scala/gemmini/AccumulatorMem.scala
+      - src/main/scala/gemmini/ExecuteController.scala
+      - src/main/scala/gemmini/Scratchpad.scala
+    # NO forbids_paths, DELIBERATELY, and this is the honest answer rather than an omission. What is
+    # absent about this device -- the output-stationary datapath, the full-width accumulator readout, the
+    # execute-stage accumulator read and scratchpad write -- is absent because of PARAMETER VALUES in an
+    # untracked Scala file, not because a file is missing. Gemmini is one Chisel source set for every
+    # configuration: the OS branch lives in the same PE.scala either way. Declaring a path absent here
+    # would be a check that cannot fail, which this repo has been bitten by repeatedly, so the absences
+    # are pinned where they can actually be witnessed instead:
+    #   * by CONTENT, via the local_edits digest of UniversalResNet50Config.scala (the parameter values);
+    #   * in the ELABORATION, where they are constant-folded -- measured in
+    #     `gemmini_universal_verilator_firrtl`, PE's output-stationary branch is gated by a literal
+    #     `and(UInt<1>(0h0), ...)` and its propagate registers are SInt<8> rather than accumulator-wide,
+    #     so no OS program can be expressed by this netlist;
+    #   * in the generated ABI, where `#define ACC_READ_FULL_WIDTH` must be ABSENT (see gaps below).
+    #
+    # CONTENT_CHECK IS OFF, also deliberately, and NOT to quiet anything. `content_check` compares each
+    # read path's bytes against that path AT THIS PIN'S COMMIT out of the object store; it is the right
+    # question when HEAD has moved off the pin, which is not the case here -- HEAD IS 8c3f9923 and every
+    # divergence is uncommitted. Two of the eleven read paths exist in no revision at all, so the object
+    # store has no blob for them and `source_status` would return UNDETERMINABLE, which
+    # `check_provenance.py --verify-pins` treats as a gate FAILURE. Failing the gate for anyone who sets
+    # the root var would teach people to unset it, and would say nothing true that the digests below do
+    # not already say: with content_check off, `verify` intersects the dirty set with the read set and
+    # compares each touched path against `local_edits`, which covers all eleven -- including the two
+    # untracked ones, whose bytes are the whole configuration. Turn content_check on the day the config
+    # lands in a revision.
+    content_check: false
+    # DECLARED LOCAL EDITS -- the digests of the bytes a derivation about this target would actually
+    # read, measured 2026-09-09 at /scratch/jack/chipyard/generators/gemmini. This is what makes
+    # "8c3f9923 plus exactly these bytes" a nameable revision; it is NOT a claim that any of them match
+    # upstream, and every one of them differs from 8c3f9923's. The first two are UNTRACKED: they belong
+    # to no revision anywhere, which is why a result citing this pin must cite the digest and never the
+    # sha alone. UniversalResNet50Config.scala's digest independently agrees with the value Jack's own
+    # experiment records as `gemmini_array_overlay_scala`, which is the only cross-check available for a
+    # file git has never seen.
+    local_edits:
+      src/main/scala/gemmini/UniversalResNet50Config.scala: "cb6a5248cbeeab2d5ba9564d1e6ca5a3be17287512e5050991f2eb9edaffa8f5"
+      chipyard/UniversalResNet50GemminiConfigs.scala: "ee6f568f679ccec67165cbda95365b077e7595ea7c06baab9488645d6acf2fda"
+      src/main/scala/gemmini/GemminiConfigs.scala: "06d763189914715ced1a547dc56386f61066d18f9ae2c8d01ca3b19de6fd8416"
+      src/main/scala/gemmini/Configs.scala: "2b25c82a385a382acd35aa3ed4a704d91845916fb095d869b6dc7d1bf1f09da6"
+      src/main/scala/gemmini/GemminiISA.scala: "5be2e064806c005f06b1997a54a3caa8ad7626c9b1de6191c617b9bad408a218"
+      src/main/scala/gemmini/Mesh.scala: "36f776baa16c4023a130c7b05e82f9474e9466419b2d1979e51c5dab302fb067"
+      src/main/scala/gemmini/Tile.scala: "a6d73c30556244b64c6e811adb70affb9fa8f6660e0f6715bf16f8aaadd86af9"
+      src/main/scala/gemmini/PE.scala: "0ee6f576c4ef22c456fa0cda4b2bb2d932b3863198922e5e6d07da2faab858f0"
+      src/main/scala/gemmini/AccumulatorMem.scala: "d7f1adf823a8297765da3d12da14668429729bebb165614729895d54f59d8758"
+      src/main/scala/gemmini/ExecuteController.scala: "9588552cdcf63d89787cad8d682a99b352853be59158095fd6301a42fd87878f"
+      src/main/scala/gemmini/Scratchpad.scala: "a0586977c9e167bf1c2d2785a903b3c87479d691a16c793bb3e5a20027785a43"
+    used_by:
+      - candidate second systolic capsule-bench target (not yet wired; see gaps)
+    notes: >-
+      WHAT WAS VERIFIED BY CONTENT RATHER THAN BELIEVED, 2026-09-09. The configuration's own contract
+      file (/scratch/jack/experiments/universal_resnet50_gemmini_20260906/hardware/UNIVERSAL_GEMMINI_U250.yaml,
+      sha256 5d4aa1e286d83783f782bf0beac1f5042324432b18bd774faf076f9e40c06497) carries
+      `status: source_config_frozen_not_elaborated_not_built`, and the sibling PROVENANCE.yaml lists
+      "RTL elaboration" and "simulator invocation" under `explicitly_not_performed`. BOTH ARE STALE.
+      Two elaborations and a linked Verilator simulator exist and are declared as artifacts below.
+      Corroborated straight out of the FIRRTL: Mesh instantiates 256 Tiles each holding one PE (16x16,
+      tileRows=tileColumns=1); the scratchpad is four `UInt<8>[16] [4096]` memories = 256 KiB / 16384
+      rows; the accumulator is two banks of 2 x `UInt<256>[1] [512]` = 64 KiB / 1024 rows with
+      `addr : UInt<9>` and `data : SInt<32>[1][16]`. Those match the contract's declarations exactly.
+
+      THE ISA HEADERS ARE NOT PINNED HERE, ON PURPOSE, AND THIS IS THE OPEN BLOCKER. `gemmini_rtl` has a
+      sibling `gemmini_isa_headers` pin because every dtype claim about that target is read out of the
+      generated header. This configuration HAS NO GENERATED HEADER: searched the whole of
+      /scratch/jack on 2026-09-09 and every gemmini_params.h there belongs to some other config. The
+      nested submodule in THIS checkout is at 7c540b3a (the gitlink it records) with both headers locally
+      modified, and its gemmini_params.h (sha256 0b9c7b43...) declares BANK_ROWS 2048 / ACC_ROWS 512 and
+      `#define ACC_READ_FULL_WIDTH` -- i.e. HALF this device's scratchpad, HALF its accumulator, and a
+      readout port it does not have. Compiling against it would mis-size every tile and emit a
+      full-width accumulator mvout the hardware cannot service. Until the header is regenerated from
+      THIS parameter set there is no ABI for this target, and a sibling headers pin would have nothing
+      to name. Recorded as UNKNOWN rather than filled in with the plausible candidate: a header whose
+      #define set matches this config's declared `expected_generated_header` byte-for-byte does exist
+      (sha256 d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5, 149 copies under
+      /scratch/jack, differing from merlin's own gemmini_params.h by exactly the one line
+      `#define ACC_READ_FULL_WIDTH`), but it was written 2026-08-30, a week before this configuration
+      was authored, and nothing ties it to this elaboration. Shape agreement is not provenance.
+    gaps:
+      - >-
+        No generated gemmini_params.h for this configuration exists anywhere, so the software ABI is
+        UNKNOWN. Regenerate it from UniversalResNet50Configs.arrayConfig before any claim.
+      - >-
+        CLOSED 2026-09-09, and recorded because the first two places one would look say the opposite.
+        `acc_read_full_width = false` is NOT witnessable from AccumulatorMem: its read request still
+        carries a `full : UInt<1>` field, and this config's accumulator memory is the MX-era
+        `AsymmetricTwoPortSyncMem` (2 x UInt<256> banks) which exposes BOTH a full-row and a
+        chunk read. The absence lives one level out, in Scratchpad.scala's
+        `writer_data_width = if (acc_read_full_width) acc_w else spad_w`, and it IS in the elaboration:
+        `gemmini_universal_verilator_firrtl`'s StreamWriter carries `data : UInt<128>` (DIM x int8)
+        where the pinned revision's carries `data : UInt<512>` (DIM x int32). The mvout DMA on this
+        device physically cannot move an int32 accumulator row.
+      - >-
+        `spatialArrayOutputType = SInt(20.W)` IS INERT IN THIS CONFIGURATION, so the contract's declared
+        `spatial_output_type: sint20` does not describe the hardware. This tree's Mesh.scala passes
+        `meshAccPrecisionList(r)` as the tile's output type, and GemminiConfigs.scala:138 defaults an
+        empty `meshAccPrecisionList` to `Seq.fill(meshRows)(accType)`. The config declares
+        `meshAccPrecisionList = Seq()`, so the mesh elaborates at accType: measured in the elaborated
+        FIRRTL, PE carries `in_b/out_b/out_c : SInt<32>` where the pinned revision's PE carries
+        `SInt<20>`. The spatial partial-sum width is therefore 32, not 20, and any numeric claim that
+        cites the declared 20 is citing a value the netlist does not use.
+      - >-
+        The generated collateral directory of the Verilator elaboration is mode 0770 and owned by
+        another user, so its Verilog is unreadable from here. The .fir and the linked simulator are
+        readable; a REBUILD from this tree is not currently possible without that user's help.
+      - >-
+        `verify` cannot read either checkout's REVISION from this account and reports it UNKNOWN, not
+        "clean": git refuses a repository owned by another user ("detected dubious ownership") and the
+        observation collapses to UNDETERMINABLE, which is the correct fail-closed answer and not a fault
+        in the tree. Measured 2026-09-09: with the root var set, all 11 declared read-path digests match
+        on disk byte for byte, so the CONTENT half of this pin verifies while the revision half does not.
+        A caller that needs the revision must add that path to its own git `safe.directory` -- per
+        invocation (`git -c safe.directory=...`), never by editing a shared config, and never by touching
+        the tree.
+
+  gemmini_universal_chipyard:
+    description: >-
+      The SUPERPROJECT half of the Universal Gemmini configuration. Pinned apart from
+      `gemmini_universal_rtl` for the reason `gemmini_isa_headers` is pinned apart from `gemmini_rtl`: a
+      pin has exactly one `commit`, and these files belong to a different revision (chipyard e27c6561)
+      than the generator's (8c3f9923). It carries the FireSim target wrapper the config's own contract
+      names as `target_config`, plus the build.sbt edit without which the chipyard-side binding does not
+      compile -- `chipyard/UniversalResNet50GemminiConfigs.scala` sits OUTSIDE gemmini's src/main/scala
+      source root and is only reachable through it.
+    repo_canonical: https://github.com/ucb-bar/chipyard
+    repo_observed_note: >-
+      Observed at /scratch/jack/chipyard, another user's tree, READ ONLY from merlin. Same new root env
+      var as the generator pin, unset by default.
+    commit: "e27c6561c0066c1f60bf4eb4885a38391c850ac0"
+    targets: [gemmini_universal]
+    branch: HEAD
+    root_env: MERLIN_UNIVERSAL_CHIPYARD
+    path: ""
+    requires_paths:
+      - generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala
+      - build.sbt
+    content_check: false
+    local_edits:
+      generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala: "296db4f97b379a14c9c347c74da93d29ca1aa6fd3c02006c9c170bea01c52431"
+    notes: >-
+      UniversalResNet50TargetConfig.scala is UNTRACKED in chipyard, so its digest is the only thing that
+      names it. build.sbt is tracked-and-modified and its digest is NOT declared: the file is read by
+      the elaboration, not by any fact derivation, and declaring a digest for it would freeze an
+      unrelated developer's build edits into this registry. `verify` will therefore report it as an
+      unaccounted dirty read path, which is the correct reading -- the elaboration this pin describes is
+      identified by the artifact digests below, not by this file.
+    gaps:
+      - >-
+        Both Universal chipyard configs (`UniversalResNet50GemminiRocketConfig` and
+        `UniversalResNet50LoopFixedGemminiRocketConfig`) expand to the IDENTICAL Config chain -- byte
+        for byte the same four fragments. The "LoopFixed" name promises a non-MX LOOP_WS wiring repair
+        that its definition does not contain. Two separate elaborations exist under those two names; do
+        not treat the name as evidence of a difference.
+
+  atlas_npu:
+    description: >-
+      The atlas NPU generator revision an atlas capsule verdict is measured against. Everything the
+      compiler derives about this target comes out of this tree: the systolic mesh edge the emitter
+      tiles to, the MXU/VPU/DMA parameters, and the RTL the arc cosim (L3) and the Verilator sim (L4)
+      are elaborated from. A different revision can change a verdict without anything in merlin moving.
+    repo_canonical: https://github.com/ucb-bar/atlas-npu
+    commit: "569b7c317889a93427e9d27dff266f7cfd57b787"
+    targets: [atlas]
+    branch: master
+    root_env: MERLIN_EXT_ATLAS_NPU
+    requires_paths:
+      - src/main/scala/atlas/common/SystolicArrayParams.scala
+      - src/main/scala/atlas/common/MxuParams.scala
+      - src/main/scala/atlas/mxu/sa/PE.scala
+      - src/main/scala/atlas/mxu/sa/SystolicArray.scala
+    # The systolic sources this reads are carried UNCOMMITTED here (the configurable FMA pipeline
+    # depth). Declaring the digests names the bytes so "569b7c31 plus exactly these" is a revision a
+    # verdict can cite, and so a further edit re-raises as drift instead of blending into a tree that
+    # was already dirty.
+    #
+    # ⚠️ A digest pins CONTENT, not correctness. The edit's own comments claim the cut-set is strictly
+    # feed-forward and therefore bit-exact, adding latency only. That claim is still RECORDED, NOT
+    # VERIFIED -- see `notes`. Declaring it here says we know which bytes are read; it does not say the
+    # numbers they produce match the pinned revision's.
+    local_edits:
+      src/main/scala/atlas/common/SystolicArrayParams.scala: "a4f121498d189f5c061a335fab908d83c5af7144ed82174d8f1837463293ad8f"
+      src/main/scala/atlas/mxu/sa/PE.scala: "563e4bef88f38ca83ba87fa76ea5961257434540ce3d5cd3ac0606a22bbbf90f"
+      src/main/scala/atlas/mxu/sa/SystolicArray.scala: "2261aca4cd2eb9a309a7d5beeb753c9891f271f23636d33afbd82852323edd0b"
+    used_by:
+      - mesh geometry + ISA fact extraction for the atlas capsule corpus (targetgen/isa_model.py)
+      - the L3 arc cosim and L4 Verilator program oracles (targetgen/program_oracle.py)
+    notes: >-
+      This checkout carries UNCOMMITTED edits to the systolic sources (PE/SystolicArray/PEMesh/
+      SystolicArrayParams) that add a configurable FMA pipeline depth. Their own comments state the
+      cut-set is strictly feed-forward, so the change is bit-exact and adds latency only — that claim is
+      RECORDED here, not independently verified, and it is exactly why `verify` reports drift on the
+      sources this reads: the declared commit does not describe the bytes. Any atlas verdict produced
+      from this tree must carry the source digest alongside the commit.
+
+  atlas_fp_units:
+    description: >-
+      The fp8/bf16 arithmetic units the atlas MXU instantiates — a separate repository with its own
+      revision, pinned separately for the same reason gemmini_rtl is pinned apart from chipyard. This is
+      where the datapath's numeric contract lives, including the one property the capsule goldens had to
+      be corrected for: E4M3Mul treats an operand whose EXPONENT FIELD IS ZERO as zero (`aZero := aExp
+      === 0.U`), so a subnormal fp8 operand reaches the multiplier as a signed zero. The unit's own
+      header states the contract outright ("Clean ML contract: no NaN, Inf, subnormals").
+    repo_canonical: git@github.com:ucb-ee194-tapeout/sp26-fp-units.git
+    commit: "9a0cc09c41ab918a3548580185f39cca8d559e0d"
+    targets: [atlas]
+    branch: HEAD
+    root_env: MERLIN_EXT_ATLAS_NPU
+    path: dependencies/sp26-fp-units
+    requires_paths:
+      - src/main/scala/sp26-fp-units/E4M3Mul.scala
+      - src/main/scala/sp26-fp-units/E4M3ProdAddBF16.scala
+      - src/main/scala/sp26-fp-units/E4M3FMA.scala
+    # As for atlas_npu: the accumulate/FMA sources carry the same uncommitted pipelining edits, so
+    # their content is declared here to make the read-set nameable. E4M3Mul -- the subnormal-flush
+    # source the goldens were corrected for -- is UNMODIFIED and therefore needs no entry.
+    local_edits:
+      src/main/scala/sp26-fp-units/E4M3FMA.scala: "d8a18eb4458472adaf078276f8bbc9fb8c84c79d643b55cec57c29a151d2af4c"
+      src/main/scala/sp26-fp-units/E4M3ProdAddBF16.scala: "5adfe329ec5c5dce2f82c2691ed3ee53fe6c1623d8f6f085b1e934f4e5c28a28"
+    used_by:
+      - the fp8 operand-decode + bf16 accumulate contract the atlas capsule goldens model
+    notes: >-
+      E4M3Mul (the subnormal-flush source) is UNMODIFIED here; the accumulate/FMA files carry the same
+      uncommitted pipelining edits as atlas_npu, declared bit-exact by their own comments. `verify`
+      reports drift accordingly.
+
+  atlas_npu_model:
+    description: >-
+      The atlas model project: the shipped ISA definition merlin probes to derive encodings, the
+      assembler/operand layout the program oracle runs in the model venv, and the fast functional core
+      the L2 tier would use. Not RTL, but a verdict-bearing input — the encodings a kernel is graded on
+      are read out of this tree.
+    repo_canonical: git@github.com:ucb-ee194-tapeout/npu_model.git
+    commit: "11598ece27a4eed6638d74c5f212694bd8f45cab"
+    targets: [atlas]
+    branch: HEAD
+    root_env: MERLIN_EXT_NPU_MODEL
+    requires_paths:
+      - npu_model/configs/isa_definition.py
+      - npu_model/isa.py
+    used_by:
+      - ISA fact minting for the atlas reference package (out/artifacts/targets/atlas/gen_isa_facts.py)
+      - operand layout + assembly for the program oracle (targetgen/oracle_helpers/npu_emit.py)
+    notes: >-
+      Detached HEAD is normal (it is checked out inside the atlas-npu tree, not on a branch), so the sha
+      is the fact. Clean at the time of pinning apart from one untracked test file, which nothing reads.
+
+
+# BUILT ARTIFACTS — identified by their CONTENTS, because they have no revision of their own.
+#
+# A pin answers "which checkout was this read from". An FPGA bitstream, a compiled simulator and a packaged
+# image have no answer to that: they are outputs. What identifies them is the bytes, plus the revisions they
+# were elaborated FROM — so `built_from` names pins above rather than repeating their shas, and `config`
+# records which elaborated configuration the bytes are.
+#
+# `digest` may be absent while a build is still running. That is honest, and `verify_artifact` reports it as
+# a GAP rather than a pass: an artifact that verifies against nothing is self-certifying, which is exactly
+# what this registry exists to prevent. Fill it in when the build lands.
+#
+
+  gsim_compiler:
+    description: >-
+      The FIRRTL-to-C++ simulator compiler that emits the RTL-derived GSIM models. It is pinned because
+      it is part of the derivation: the same RTL through a different compiler is a different simulator,
+      and the emitted model carries no revision of its own. Measured on gemmini against the identical
+      ELF, GSIM answers in 3.31 s where Verilator takes 86.83 s (26.25x) with both reporting pass, so
+      this is the difference between a cert tier that runs per capsule and one affordable once per run.
+      The upstream commit alone does NOT describe the bytes that were read -- nine files carry 225 lines
+      of uncommitted local work WITHOUT WHICH THIS DESIGN DOES NOT COMPILE AT ALL, so each is declared
+      under local_edits and the diff itself is tracked at merlin/contract/external/gsim/. The load-bearing
+      hunks: parser/syntax.y accepts SMem/CMem/Flip as identifiers and `parameter PERIOD = 2.0`;
+      src/AST2Graph.cpp severs input->ext scheduling edges for clocked extmodules, which is what breaks
+      the false zero-delay loops GSIM manufactures through AXI/TL ready-valid paths.
+    repo_canonical: https://github.com/OpenXiangShan/gsim.git
+    # RECONCILED 2026-09-04 AGAINST THE CHECKOUT, BY CONTENT. The pin previously declared
+    # 50b371c60910/master and the checkout had moved to 65a1f89af195 on branch
+    # submission/ASPLOS2026-gsim, which `verify()` reported as two lines of drift. The drift is NOMINAL:
+    # 50b371c6 is an ANCESTOR of 65a1f89a, and all nine files in the read set are byte-identical to the
+    # `local_edits` digests below AND to their bytes at 65a1f89a -- i.e. the work that was uncommitted
+    # when this pin was written has since been COMMITTED on that branch, unchanged. Verified by
+    # comparing each file's sha256 in three places (worktree, HEAD, 50b371c6): worktree == HEAD for all
+    # nine, and all nine differ from 50b371c6, which is exactly the signature of "the patches landed".
+    # The commit is updated so the pin names the revision these bytes are actually at; the digests are
+    # unchanged because the bytes are unchanged, and they remain the load-bearing check. This is a
+    # reconciliation with evidence, not an adoption of whatever happened to be checked out.
+    commit: 65a1f89af195c62b365cd9a827fa4f5f2ca71d1f
+    branch: submission/ASPLOS2026-gsim
+    root_env: MERLIN_EXT_GSIM
+    # ALL NINE PATCHED FILES ARE IN THE READ SET, not the four the smoke path happened to name. A
+    # `local_edits` digest is only ever compared for a path the pin READS, so the five that sat outside
+    # this list were reviewed and then never checked: a different edit to any of them would have gone
+    # unnoticed while the pin still verified. The compiler is BUILT from all nine, and `build/gsim/gsim`
+    # below is that build's product, so the read set is the whole patch set by construction.
+    requires_paths:
+      - src/AST2Graph.cpp
+      - src/splitArray.cpp
+      - src/clockOptimize.cpp
+      - parser/syntax.y
+      - build/gsim/gsim
+      - include/Node.h
+      - src/Node.cpp
+      - src/cppEmitter.cpp
+      - src/graphPartition.cpp
+      - src/splitNodes.cpp
+    local_edits:
+      include/Node.h: 04de20f71880560a2f2566607352794969b89063b05058973d422f867765f549
+      parser/syntax.y: 73aca9db9a0fe8236b3a9a8df2a6f922d55628de4d705b1072dd803153254806
+      src/AST2Graph.cpp: 98661dea5b480602c20937d9ec4eda11db82a24f2d1ca75d7f3bcaa8035263a6
+      src/Node.cpp: 49fc4e55fe7ec23145f9b621d10491932b9fe439e0fb9271b43bd8b29654d6d6
+      src/clockOptimize.cpp: d1f57f4977ed54191283c559b880c9eab8272b4310d5fb743a221c84980ca4ff
+      src/cppEmitter.cpp: 3df277f416adf6ffa5d92e8516723ebf63119d071eb9b153f5d315f46d6c046a
+      src/graphPartition.cpp: 74c5fdec53753ff0ef0ac1193139d48d5e604287c5ded3d99bd49adac852eafb
+      src/splitArray.cpp: dfccdbb9a91ba15800c8e015123aad5fb1c22508ba8ed8f4e8279e8f0711afd0
+      src/splitNodes.cpp: 4026fb78d304b104f9d1a4391ba54918b1dea0e7549e49bfd2c1f828b7dbff9d
+    notes: >-
+      The patch set is reproduced at merlin/contract/external/gsim/gsim-merlin-patches.diff so it does not
+      live only in one developer's dirty working tree, which is how it was found. Build with clang >= 19
+      via merlin/contract/external/gsim/cxxwrap.sh (system clang is 18).
+
+
+# Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
+artifacts:
+
+  gemmini_gsim_model:
+    description: >-
+      The GSIM-emitted C++ model of the gemmini SoC, rooted at ChipTop. This entry is the thing the
+      smoke report said was missing -- it recorded claim_scope "smoke_only" precisely because the emitted
+      model was "not pinned to the certifying RTL revision". The elaboration is now named: the FIRRTL
+      this model was compiled from digests to 890d4677..., produced from the gemmini generator at the
+      `gemmini_rtl` pin (8c3f9923) inside the chipyard checkout, and compiled by the `gsim_compiler` pin
+      (50b371c plus its declared local edits). Rooted at ChipTop rather than TestHarness because the
+      TestHarness elaboration cannot be compiled at all: its harness clocks come from a
+      ClockSourceAtFreqMHz blackbox whose Clock-typed OUTPUT gsim mistakes for the module's clock input,
+      which orphans the whole clock net. Pruning to ChipTop removes it along with SimDRAM/SimTSI/SimUART/
+      SimJTAG, leaving exactly four blackboxes (plusarg_reader, the two IOCells, EICG_wrapper), all
+      pass-throughs or tie-offs. Measured against the identical ELF: GSIM 3.31 s vs Verilator 86.83 s,
+      both pass.
+    path: /scratch/agustin/projects/gsim-work/gemmini-soc/ChipTop.fir
+    digest: 890d4677c8b09134b323f2ced9da65f6c9779cfd7effa749159e8688a83af2aa
+    built_from:
+      - gemmini_rtl
+      - gsim_compiler
+    config: GemminiRocketConfig
+    notes: >-
+      The digest is of the pruned ChipTop FIRRTL, not of the emitted C++: the FIRRTL is what identifies
+      the hardware, while the .cpp is a compilation of it and moves whenever the compiler does (which
+      `gsim_compiler` pins separately). A cert produced by this model must record BOTH pins, since either
+      moving changes the simulator without changing the other.
+
+  gemmini_gsim_model_testharness:
+    description: >-
+      The GSIM-emitted C++ model actually used to run gemmini capsules, rooted at TestHarness. This is a
+      SEPARATE artifact from `gemmini_gsim_model`, which is rooted at ChipTop -- do not substitute one for
+      the other in a cert. It also CORRECTS that entry's standing claim that the TestHarness elaboration
+      "cannot be compiled at all": that was true only of the stock harness clocking. Chipyard config
+      GemminiGsimMonitorsConfig (= WithGsimHarnessClockInstantiator ++ GemminiRocketConfig) drives every
+      harness clock from the top-level TestHarness clock input instead of a ClockSourceAtFreqMHz blackbox,
+      and the elaboration then compiles. The accelerator and SoC are the SAME design as the Verilator
+      config: the only config delta is harness-level clock generation, which is outside the chip.
+      Measured on the identical ELF, this model reproduces the Verilator console exactly (CHK 10901, DONE,
+      exit 0) in 39.4 s of wall for 403432 cycles.
+    path: out/build/gsim/gemmini/gemmini_gsim_mon_serialclk.fir
+    repo_relative: true
+    digest: "477e16d0615508b434d373f9e4dcce1ebff6ec25041e534079f3d068044aedb7"
+    built_from:
+      - gemmini_rtl
+      - gsim_compiler
+    config: GemminiGsimMonitorsConfig
+    local_edits:
+      - path: out/build/gsim/gemmini/gemmini_gsim_mon_serialclk.fir
+        line: 643234
+        edit: >-
+          connect system.serial_tl_0.clock_in, serial_tl_0.clock_in
+        replaces: >-
+          connect system.serial_tl_0.clock_in, _system_serial_tl_0_clock_in_T
+        why: >-
+          The chip-side serial-TL clock reaches the SoC through a GenericDigitalInIOCell extmodule. GSIM
+          treats a clock driven by an extmodule OUTPUT as a constant, which froze the entire serial-TL
+          domain: the serdesser never ticked, the MSIP write to the CLINT never landed, and the core sat
+          in the bootrom wfi forever (measured: beat=0 head=0 tail=0 at 200k cycles). Bypassing the pad
+          cell on the CLOCK PATH ONLY removes that cell from GSIM's constant-clock list and the design
+          boots. COUNT CORRECTED 2026-09-01: an earlier revision of this entry said "8 to 5"; a direct
+          A/B measurement (stock GemminiGsimMonitorsConfig vs the bypass, same gsim revision 50b371c6 and
+          same flags) measured 6 -> 5, the single removed node being
+          chiptop0$iocell_serial_tl_0_clock_in$GenericDigitalInIOCell_6. The measured number stands; the
+          8 was carried over from a note and is not reproduced here.
+          It is the same class of transformation as WithGsimHarnessClockInstantiator (remove a blackbox
+          from a clock path) and touches no datapath.
+    gaps:
+      - >-
+        A CONFIG NOW EXISTS, BUT THESE BYTES ARE STILL THE HAND-EDITED ONES. `GemminiGsimSerialClkConfig`
+        (= WithGsimSerialTLClockPunchthrough ++ GemminiGsimMonitorsConfig, an OverrideIOBinder that
+        connects a Clock leaf straight through and hands every other leaf to the same IOCell factory with
+        the same instance names) elaborates the bypass with NO hand editing -- verified 2026-09-01: it
+        compiles, emits `connect system.serial_tl_0.clock_in, serial_tl_0.clock_in` with zero occurrences
+        of `_system_serial_tl_0_clock_in_T`, and its GSIM constant-clock set is IDENTICAL to this
+        hand-edited model's. The whole-file diff against these bytes is 300 lines and contains only the
+        removed clock cell, the GenericDigitalInIOCell renumbering that follows, and two import-induced
+        source-locator shifts.
+        The gap is NOT retired, because `path`/`digest` above still identify the HAND-EDITED bytes and
+        the config-derived elaboration is NOT byte-identical to them (it digests to
+        089d053b62523b5047e71ccca31dfbbe27d4e5daeab24050227a923e7b4628c8 in the verifying run). Retiring
+        it requires: re-point `config:` at GemminiGsimSerialClkConfig, replace `digest` with the
+        config-derived elaboration's, DELETE the `local_edits` block, rebuild the emulator from the new
+        .fir and re-record the binary digest WITH ITS TU/subStep COUNT CHECKED, and re-run the ELF
+        equivalence -- the existing "CHK 10901, DONE, exit 0 in 39.4 s" measurement does NOT transfer to
+        a different .fir.
+    notes: >-
+      The compiled emulator built from this FIRRTL digests to
+      e02c20ddfce90d0458b0a4e376136bdd51bacf12f844b7dc3a49e12538c6ab5c
+      (out/build/gsim/gemmini/emu_gemmini_gsim3, the binary MERLIN_GEMMINI_GSIM_EMU points at). As with
+      `gemmini_gsim_model`, the FIRRTL digest is what identifies the HARDWARE and the binary moves
+      whenever `gsim_compiler` does, so a cert must record BOTH pins. A build of this model that links
+      fewer than all 16 emitted translation units still links and runs while silently simulating an
+      incomplete design -- an OOM-killed compile leaves an EMPTY .err -- so verify the subStep count,
+      not just the exit status.
+
+  gemmini_gsim_model_serialclk:
+    description: >-
+      THE ELABORATION THE INSTALLED GEMMINI EMULATOR IS ACTUALLY BUILT FROM, and the one a cert produced
+      today is about. It is registered because it was not: `gemmini_gsim_model_testharness` declares the
+      HAND-EDITED bytes (477e16d0) and names emu_gemmini_gsim3 (e02c20dd), while the emulator resolved by
+      `merlin.targetgen.gsim_emulator` at out/build/rtl_engines/gemmini/gsim/emulator is 1a3de02a, built
+      from FIRRTL 089d053b -- a THIRD elaboration that no entry described. Both registered entries verify,
+      so nothing was reported wrong; the cert engine had simply moved to bytes the registry did not cover,
+      which is the wrong-device hazard in its quiet form.
+      These bytes are the config-derived elaboration of GemminiGsimSerialClkConfig
+      (= WithGsimSerialTLClockPunchthrough ++ GemminiGsimMonitorsConfig) that the
+      `gemmini_gsim_model_testharness` gap block named as its retirement path, with NO hand editing: the
+      OverrideIOBinder connects the serial-TL Clock leaf straight through instead of routing it via a
+      GenericDigitalInIOCell, whose extmodule OUTPUT gsim otherwise treats as a constant clock.
+      All four retirement conditions that gap listed are now met and were checked here rather than
+      assumed: the config-derived elaboration exists (089d053b); the emulator was rebuilt from it
+      (1a3de02a); the TU count was verified -- the link step consumes all sixteen TestHarness0..15 objects,
+      the check that entry warns about because a short link still runs while simulating an incomplete
+      design; and the ELF equivalence was re-run, yielding the 38-member certificate below.
+    path: out/build/rtl_engines/gemmini/gsim/model.fir
+    repo_relative: true
+    digest: "089d053b62523b5047e71ccca31dfbbe27d4e5daeab24050227a923e7b4628c8"
+    built_from:
+      - gemmini_rtl
+      - gsim_compiler
+    config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_firrtl
+    notes: >-
+      COPIED OUT OF PURGEABLE SCRATCH ON PURPOSE. Until 2026-09-04 these bytes existed only at
+      /scratch/agustin/tmp/gsim_cert_serialclk_v1/, a location the layout convention marks purgeable, and
+      the emulator certifying gemmini capsules was the only surviving evidence of what it modelled. The
+      elaboration, its model manifest (f822a628) and the equivalence certificate now sit beside the
+      emulator in its engine home, so the home answers "which hardware is this?" without reference to a
+      directory that is designed to be deleted.
+      Equivalence: out/build/rtl_engines/gemmini/gsim/equivalence_certificate.json -- 38 capsules run on
+      GSIM and on Verilator from the IDENTICAL ELF, every member AGREE with bytes_match and 0 unresolved,
+      GSIM binary 1a3de02a against Verilator simulator-chipyard.harness-GemminiRocketConfig (5b6c7021).
+      REPRODUCED 2026-09-04 from the installed emulator: capsule PL01_k16, ELF 8683753b, console stdout
+      digests to 0a765541 -- byte-identical to the certificate's recorded console for that member -- in
+      27.9 s wall, exit 0, 746 cycles.
+      As with the other GSIM entries the FIRRTL digest identifies the HARDWARE while the binary moves
+      whenever `gsim_compiler` does, so a cert must record BOTH pins.
+
+  rvv_host_lane_fp32:
+    description: >-
+      The frozen fp32 scalar/vector HOST compiler five targets' capsule-bench lanes are graded against.
+      Registered here because outside grading nothing pinned it: compile_cli.default_package resolves
+      the currently certified champion, and no fp32 package carries publication.champion, so the choice
+      falls out of publish._rank_key's newest-wins tie-break over 24 candidates. Minting one more fp32
+      package would silently redirect every unpinned compile and nothing would print a word. A tree
+      rather than a file: what identifies a compiler package is all of its bytes (manifest + schedule +
+      knobs), hashed with the same hasher the descriptor's host_lane pin uses.
+    path: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+    kind: tree
+    repo_relative: true
+    digest: "cc8a6bd4aad01c878d5dfdf4c9ce4c69398f4618f5a3f8cf78f55df93a60fea9"
+
+  rvv_host_lane_int8_w8a8:
+    description: >-
+      The frozen int8 (W8A8) host compiler gemmini's capsule-bench lane is graded against. Minted in
+      this tree by merlin.rvvgen.promote_champion at 20260726T121824Z and certified on k1_board by run
+      k1_int8_wholemodel_ab_tiny_llama; it was never published upstream, which is why its descriptor
+      declares provenance in_tree_minted and names no branch. The tree digest IS its identity.
+    path: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
+    kind: tree
+    repo_relative: true
+    digest: "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
+
+  firesim_opu_v256d128:
+    description: >-
+      FireSim bitstream for a single Shuttle core carrying the outer-product unit at vLen=256/dLen=128 —
+      a 32-lane int8 tile, matching the geometry the microkernel acceptance corpus is certified against.
+      Built because both pre-existing OPU bitstreams are 16-lane and one of them carries the unit on tile 1
+      only, so an image whose kernel runs on hart 0 finds no OPU there and takes an illegal instruction.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-08-13--07-53-16-alveo_u250_firesim_opu_v256d128_nogate/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV256D128ShuttleNoGateConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "6950194e7f85da43646c0799e23b80c83b7ae509eb71d6652391d2585bb1cd95"
+    built_from:
+      - saturn_opu_int8
+    config: FireSimOPUV256D128ShuttleNoGateConfig
+    notes: >-
+      Built 2026-08-13 at 25 MHz from the NoGate config, in ~2 h, closing timing outright:
+      "All user specified timing constraints are met" — WNS +0.083, WHS +0.010, TNS/THS 0.000, ZERO failing
+      endpoints of 869,789 setup / 868,829 hold, and 631,644 of 631,644 routable nets fully routed with no
+      routing errors.
+      WHY THE CONFIG IS THE NoGate ONE. The stock `FireSimOPUV256D128ShuttleConfig` does not close and cannot
+      be made to: an attempt on 2026-08-12 ran 15 h and was stopped at WHS −3.972 ns with 260,324 of 870,375
+      endpoints failing, 258,620 of them (99.3 %) inside the single intra-clock group
+      `uart_clock,clock_1000.0MHz,harnessbinder_clock,reference` — whose own SETUP slack was +16.520 ns, so
+      the design was nowhere near a frequency limit. Saturn gates the OPU cluster array's clock
+      (`exu/OuterProductUnit.scala:181`), which lowers to rocket-chip's `EICG_wrapper`: combinational logic in
+      the clock path that Golden Gate's ReplaceAbstractClockGates does not rewrite, so the tools insert a
+      SECOND global clock net to reach the gated domain's 131,585 loads. That net arrived 3.79 ns behind its
+      ungated parent (clock path skew 4.207 ns) while both ends share one clock name and are therefore
+      hold-checked at zero skew. `phys_opt_design -aggressive_hold_fix` moved THS by 0.7 % in 34 min where the
+      shipped v128d64 build managed 99.7 %, i.e. it was failing slowly rather than converging.
+      Replacing the gate model with a passthrough (`merlin/contract/rtl/eicg_passthrough.v`) removes the
+      second net and takes hold from −3.972 ns / 258,620 failing endpoints to +0.010 ns / 0. Frequency was
+      never the lever and is unchanged at 25 MHz; hold and skew are both period-independent.
+      FUNCTIONAL EQUIVALENCE IS MEASURED, NOT ASSUMED. Ungating is not free by inspection: OuterProductCell
+      .regs is written under an explicit `when`, but OuterProductCluster.pipe (the row-serial readout
+      register) is assigned unconditionally and so does rely on the gate to hold. 14 corpus cases chosen to
+      stress that register — ragged tails, single-row and single-column readouts, the widest tile sweeps, long
+      reductions, bias broadcast composed with the epilogue, and the 1x1000 classifier — are bit-exact against
+      BOTH the in-image scalar reference and the host digest (14/14, no gaps) on the matching Verilator
+      config.
+      PROVENANCE CAVEAT: the configs this was elaborated from (`chipyard/OPUConfigs.scala` in the saturn
+      checkout, and firechip `TargetConfigs.scala`) are additions not yet committed upstream, so the
+      reads-aware pin check reports drift against saturn_opu_int8. This bitstream is therefore
+      "pinned revision + those additions", and results citing it must say so until the additions land.
+
+  firesim_kodiak_opu_1core:
+    description: >-
+      FireSim bitstream for Kodiak's SoC at Kodiak's vector geometry (vLen=512/dLen=256 — a 64-lane int8
+      tile, 8x8 clusters of 4x4 cells) with the outer-product unit enabled. Built because every Kodiak
+      bitstream that existed before this one has NO OPU: the handed-over CTC bitstream pins saturn at
+      a898bdc, which does not contain OuterProductUnit.scala at all, and the branch named
+      "-opu-kernels" is one commit that adds a workload and re-points a submodule URL with the sha
+      unchanged. The workload existed; the hardware did not.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-08-14--13-15-10-alveo_u250_firesim_kodiak_opu_1core/cl_xilinx_alveo_u250-firesim-FireSim-FireSimKodiakOPU1CoreConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "f671be16ae5850c2765d897593010f4144654fe49bed0d5fe0d3ebdbd49d9462"
+    built_from:
+      - saturn_opu_int8
+    config: FireSimKodiakOPU1CoreConfig
+    notes: >-
+      ⚠️ ONE SHUTTLE CORE, NOT KODIAK'S TWO. This is the single most important thing to know before citing
+      it. The vector unit, TCM, L1/L2, scratchpad and bus widths are Kodiak's, so OPU datapath numbers and
+      whole-model grades from this bitstream are honest statements about Kodiak's vector unit. Nothing
+      about core count, inter-core traffic, or multi-core scaling can be read from it. Say "single-core
+      Kodiak" in any result that cites this digest.
+      WHY ONE CORE. The two-core config does not route on the U250 and this was measured, not guessed:
+      1,373,162 LUT post-place (79.47 %), post-placement estimated congestion of 128x128 in short /
+      32x32 in global, and after ~11 h the router ended Phase 8 with
+      "CRITICAL WARNING: [Route 35-162] 23531 signals failed to route due to routing congestion" and
+      26,865 residual node overlaps. The router named the culprit: `vopu_ctrl_reg_mrf_idx_7[*]`, the
+      matrix-register-file index fanning out to 1024 cells per unit. Dropping to one Shuttle core removed
+      600,948 LUT — matching one ShuttleTile's 601,039 almost exactly, which is how we know exactly one
+      tile came out and nothing else moved.
+      ⚠️ `Number of Failed Nets = 0` IS NOT SUCCESS and cost a day here. It counts only unrouted and
+      partially-routed nets. The failure is `Number of Node Overlaps` in the SAME table three lines below,
+      and the Router Utilization Summary is computed EXCLUDING failed nets — its own footnote says so.
+      Read both fields, and only at the end of Phase 9.
+      ⚠️ `WithNShuttleCores` APPENDS (`} ++ prev`, `NumTiles => up(NumTiles) + n`, shuttle
+      common/Configs.scala:20-37). Listing `(1)` ahead of a base carrying `(2)` silently yields THREE
+      cores with no elaboration error. The count is therefore threaded as a constructor parameter,
+      `WithKodiakBase(nShuttleCores)`, and was VERIFIED IN THE EMITTED VERILOG rather than assumed:
+      2 TilePRCIDomain (1 Rocket + 1 Shuttle), 1 ShuttleTile, 1 OuterProductUnit vopu,
+      1 OuterProductSequencer vos, 64 OuterProductCluster (8x8, matching the derived geometry for
+      dLen=256).
+      THIS BUILD: 15 MHz, TIMING strategy, 3 h 45 m, rc=0. 772,214 LUT post-place (44.69 %), 732,872 FF
+      (21.21 %). Route legal — 0 failed nets, 0 unrouted, 0 partially routed, 0 node overlaps, and Phase 8
+      "Verification completed successfully"; routing utilization 15.8 % vertical / 19.6 % horizontal, a
+      number that is meaningful here precisely because no nets were excluded from it. Timing MET:
+      WNS +0.116, TNS 0.000, WHS +0.008, THS 0.000. Hold needed the post-route phys_opt_design pass —
+      the router left WHS at −0.057 / THS −0.212 (one net), and physopt closed it with two buffers in
+      7 m 38 s. Had it not, `cl_firesim/scripts/implementation.tcl` reads STATS.WHS and falls through to
+      the IDR flow and then `ERROR: did not meet timing! / exit 1`, i.e. no bitstream at all.
+      FREQUENCY WAS NOT THE LEVER, AREA WAS. 15 MHz is well below what this design needs — setup closed at
+      placement with WNS positive throughout — and lowering it further could not have fixed either the
+      congestion or the hold, both of which are period-independent. It is left at 15 because that is what
+      was asked for; raising it would shorten every simulation run and costs nothing but a recipe edit.
+      The EICG passthrough (`merlin/contract/rtl/eicg_passthrough.v`) is mandatory at this size for the
+      reason recorded under firesim_opu_v256d128.
+      PROVENANCE CAVEAT: elaborated from saturn ea373800 with `chipyard/OPUConfigs.scala` MODIFIED in the
+      working tree (the WithKodiakBase / Kodiak* / KodiakOPU* configs) plus firechip `TargetConfigs.scala`
+      additions, none committed upstream. The saturn checkout is shared and also carries other sessions'
+      uncommitted work. This bitstream is therefore "ea373800 + those additions", and results citing it
+      must say so until the additions land.
+
+  firesim_opu_v128d64:
+    description: >-
+      The pre-existing 16-lane OPU bitstream: a single Shuttle core with the unit on it. Registered because
+      it is the one usable OPU bitstream that already exists — the other (shuttle_gemmini_opu) puts the unit
+      on tile 1 only.
+    root_env: MERLIN_CHIPYARD
+    path: sims/firesim/deploy/results-build/2026-03-20--01-24-38-alveo_u250_firesim-opu-v128-d64-shuttle/cl_xilinx_alveo_u250-firesim-FireSim-FireSimOPUV128D64ShuttleConfig-BaseXilinxAlveoU250Config/firesim.tar.gz
+    digest: "61565f4c9f3c045662a795ee6491356552c1a0945180e4612d5bde90069db8e0"
+    built_from: []                    # elaborated before the pin registry existed; unattributable, and said so
+    config: FireSimOPUV128D64ShuttleConfig
+    notes: >-
+      REPRODUCIBILITY CAVEAT: FireSimOPUV128D64ShuttleConfig no longer exists in the checkout's source, so
+      this bitstream can be USED but not REBUILT. `built_from` is empty rather than guessed — nothing records
+      which saturn revision it was elaborated from, and inventing one would be worse than admitting it.
+
+  atlas_arc_cycle_suite:
+    description: >-
+      The Atlas ground-truth cycle table: 21 kernels, each carrying the arc cosim's measured total and its
+      decomposition into dma_busy / mxu / vpu / none, plus the DMA read and write beat counts. Every
+      performance claim about Atlas is a claim against these numbers, so the table's own identity is part
+      of the result. Pinned by digest and not only by commit because it is a MEASUREMENT product: the same
+      source at the same sha produces a different table if the arc model, the program hex, or the geometry
+      in its `_meta` block changes.
+    root_env: MERLIN_MLC_DIR
+    path: mlc/validate/npu_model_suite.json
+    digest: "1c36e13f12e1451b7922d3d57d63d777936e4c55aa899fbb333e77720b873eaa"
+    built_from:
+      - muon_arc_model
+      - atlas_npu_model
+    config: DefaultHardwareConfig
+    notes: >-
+      The `_meta` block declares the geometry the table was measured under — beat_bytes 32, mxu_dim 32,
+      vpu_lanes 16, reset_cycles 12 — and names the arc shared object and state manifest it was produced
+      from. Those four numbers are DERIVED facts, not settings: a rule registry that re-derives them from
+      the RTL must reproduce these values, and a mismatch means the table and the model have drifted apart
+      rather than that the derivation is wrong.
+      WHY THE DIGEST IS THE FACT HERE. The table lives in a checkout that reports dirty by design (see
+      muon_arc_model), so its commit cannot carry its identity. A consumer that cites a cycle number from
+      this suite must record this digest, not the mlc sha.
+      NOT AN RTL TIER. These are arc cosim numbers — the authority Atlas itself declares
+      (`cycles_from: arc_program`, `cycles_tier: cycle_model`). They are not Verilator and not silicon, and
+      a result must not be reported at a tier this substrate cannot reach. The npu_model Python simulator's
+      own cycle counts are a DIFFERENT and much weaker thing: they disagree with the arc totals here by up
+      to 3x, so they may be recorded as a diagnostic but may never source a performance term.
+
+  atlas_core_firrtl_gsim:
+    description: >-
+      The FIRRTL the fast RTL simulator elaborates to run the Atlas core. It is the same top module the
+      Verilator oracle verilates, reached by a different route: Verilator builds from the gold emitted
+      SystemVerilog, this builds from the design's FIRRTL. Pinned because a cycle count produced on it is
+      a claim about THIS elaboration, and because the file cannot be identified any other way (see below).
+    root_env: SPECIR_ROOT
+    path: out/build/lifting-build/atlas-npu/AT0/AtlasCore.fir
+    digest: "eb99a31f19eed99bd05005e82236999660df664e6ac87d64fce303b548863d69"
+    built_from:
+      - atlas_npu
+    config: AT0
+    notes: >-
+      A COMMIT CANNOT IDENTIFY THIS FILE, so the digest is not a convenience — it is the only provenance
+      available. The file lives under `out/build/lifting-build`, which the producing repository gitignores
+      (.gitignore:51), inside a checkout that carries 67 uncommitted changes. Recording the producing
+      commit alone would name a recipe that does not determine this output.
+      THE TASK DIRECTORY IS PART OF THE IDENTITY. The lifting build emits one AtlasCore.fir per task
+      directory and they are NOT interchangeable: 13 directories yield 12 DISTINCT digests (only AT0 and
+      AT3W agree). Citing "the AtlasCore FIRRTL" without naming the task directory names 12 different
+      files. AT0 is the one measured; another directory is a different design until shown otherwise.
+      WHY WE BELIEVE IT IS THE SAME DESIGN THE VERILATOR TIER RUNS, and why that is evidence rather than
+      identity. Its FIRRTL io bundle matches the gold emitted AtlasCore.sv port list exactly
+      (imemTL/csrTL/dmaTL/vmemTL, same widths), and across 17 real capsule kernels the two independently
+      built simulators agree EXACTLY on cycles, output bytes, and DMA read and write counts. That is a
+      strong argument from content and it is the right kind of argument — but two artifacts agreeing on 17
+      programs is not a proof that they were elaborated from the same source, and this note should not be
+      read as one. A divergence found later is a finding about this pin, not a surprise.
+      WHAT IT DOES NOT FIX. The 1 MiB DRAM window that silently wraps is a property of the harnesses and
+      is present on every Atlas tier; elaborating this FIRRTL neither introduces nor repairs it. A result
+      whose footprint approaches that window is suspect regardless of which simulator produced it.
+
+  atlas_core_hw_dialect:
+    description: >-
+      The elaborated HW-dialect MLIR that RTL fact extraction and the per-module pipeline-depth walk both
+      read. Pipeline depths are counted by walking this graph, so a depth is a claim about THIS
+      elaboration -- the same RTL at the same commit yields different depths when elaboration parameters
+      change, because a pipeline-cut count is a constructor parameter and the derived latency is
+      literally numPipeCuts+1.
+    root_env: MERLIN_MLC_DIR
+    path: runs/circt-arc/atlas/outputs/atlas_hw.mlir
+    digest: "d0b4135afad84c6ac2c8f8cfe53129f5582f90c3931e8f1dc1becee6d9ae43d0"
+    built_from:
+      - muon_arc_model
+      - atlas_npu
+    config: circt-arc elaboration
+    notes: >-
+      A MEASUREMENT PRODUCT, so it is pinned by digest rather than by commit, for the same reason the arc
+      cycle table is: the commit names a recipe that does not determine this output.
+      IT IS NOT THE FILE THE CACHED FACTS CLAIM TO HAVE READ, and that gap is the reason this entry
+      exists. Two different resolvers are in play. `circt_introspect._soc_hw_path()` builds a cache-dir
+      path `<target>_soc.hw.mlir` that its own docstring calls a legacy fallback; for atlas that file does
+      not exist anywhere, so `_sha()` returned nothing and the cached facts record
+      `inputs.hw_mlir: "atlas_soc.hw.mlir"`, `inputs.hw_sha: "missing"`. Meanwhile
+      `mlc_bridge.core_hw_mlir()` globs mlc's arc outputs and resolves THIS file, which is what discovery
+      and the depth walk actually consume. So the facts name an input they did not read and do not name
+      the input they did. Pinning the real one is half the fix; making `inputs` record it is the other
+      half, and that half is not done.
+      CONSEQUENCE FOR ANY VALIDITY DOMAIN. A performance term derived from these facts cannot yet state
+      which elaboration it is valid for, because the artifact does not carry that field. Until `inputs`
+      records the resolved dialect, a term's domain is asserted rather than evidenced -- and this pin is
+      the only place the true input is written down.
+
+  gemmini_gsim_emulator:
+    description: >-
+      THE GSIM EMULATOR BINARY a gemmini cycle-accurate result was actually produced by, and the
+      candidate half of every GSIM/Verilator equivalence capture. Registered because the four artifacts
+      a capture is keyed on -- the two engine binaries and the two elaborations they were built from --
+      had exactly one entry between them (`gemmini_gsim_model_serialclk`), so nothing outside the
+      certificate itself could resolve what a capture was about. A capture is only valid for the engines
+      that produced it; a store keyed on the program alone would serve a rebuilt simulator's question
+      with the old simulator's answer, which is the whole reason these pins exist.
+      Built from the `gemmini_gsim_model_serialclk` elaboration (089d053b) by `gsim_compiler`.
+    path: /scratch/agustin/tmp/gsim_recert_20260904/emu_gemmini_gsim_recert
+    digest: "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
+    built_from:
+      - gemmini_gsim_model_serialclk
+      - gsim_compiler
+    config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_binary
+
+  gemmini_gsim_model_manifest:
+    description: >-
+      The generated-model manifest gsim emits beside the emulator, validated by
+      `produce_gsim_certificate.validate_model_manifest`. It is a pin in its own right because the
+      emulator and the FIRRTL do not between them establish WHICH generated sources were compiled: a
+      link that consumes fewer than all emitted translation units still runs while simulating an
+      incomplete design, and this file is what makes that countable.
+    path: /scratch/agustin/tmp/gsim_cert_serialclk_v1/gsim_generated_model_manifest.json
+    digest: "f822a628a3a809f64c91becea8b2d8bfae9c35633a7c4b21bbaced8a2ac6303d"
+    built_from:
+      - gemmini_gsim_model_serialclk
+      - gsim_compiler
+    config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_model
+
+  gemmini_verilator_firrtl:
+    description: >-
+      The elaboration the REFERENCE engine is built from. Distinct from the GSIM elaboration and not
+      interchangeable with it: the certificate's whole claim is that two engines built from two
+      elaborations of the same design agree on the same ELF, so recording only one of the two would
+      leave the reference half of every capture unattributed.
+    path: /scratch2/agustin/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir
+    digest: "fc1d1e715883a50e059a73026796dac7ee2e13f774b3f04f35e9ded933061070"
+    built_from:
+      - gemmini_rtl
+    config: GemminiRocketConfig
+    target: gemmini
+    role: verilator_firrtl
+
+  gemmini_verilator_simulator:
+    description: >-
+      THE REFERENCE SIMULATOR BINARY every equivalence capture's slow half was produced by. It is the
+      expensive engine -- a small multiple of a hundred cycles a second against the candidate's tens of
+      thousands -- which is why captures taken against it are cached rather than re-bought, and why the
+      cache key has to name this binary: a capture is an assertion about these two engines and no others.
+    path: /scratch2/agustin/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig
+    digest: "5b6c70217d18cf16b3944ee284ba7e3918b82c8bf4233160c709904256fe7421"
+    built_from:
+      - gemmini_verilator_firrtl
+      - gemmini_rtl
+    config: GemminiRocketConfig
+    target: gemmini
+    role: verilator_binary
+
+  gemmini_universal_verilator_firrtl:
+    description: >-
+      The TestHarness elaboration of the "Universal" Gemmini configuration -- the one a gsim or
+      Verilator model for a second systolic target would be built from, and the only Universal
+      elaboration in the shape merlin's fact extraction reads (`sims/verilator/generated-src/
+      chipyard.harness.TestHarness.<CONFIG>/<CONFIG>.fir` beside a `top_module_hierarchy.json`, which
+      `targetgen.rtl.introspect.find_artifacts` requires and the FireSim elaboration does not have).
+      Declared because the configuration's own contract says it was never elaborated and that is false:
+      this file exists, and a claim about this device has to name WHICH elaboration it came from.
+    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig.fir
+    digest: "92183c97a38d6f3ed4bed7169ceb8d17710eae06b1a773b7a5eef4a34964148a"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: verilator_firrtl
+    notes: >-
+      84 MB, elaborated 2026-09-07. Read-only from merlin; the sibling `gen-collateral/` directory is
+      mode 0770 and owned by another user, so the emitted Verilog is NOT readable from here and this
+      .fir plus the linked simulator are the whole readable surface.
+
+  gemmini_universal_module_hierarchy:
+    description: >-
+      The module hierarchy emitted beside `gemmini_universal_verilator_firrtl`. A pin in its own right
+      because `find_artifacts` refuses without it -- an extraction pointed at a .fir with no hierarchy
+      raises rather than proceeding -- so it is part of what makes the elaboration usable at all, and
+      nothing else records which hierarchy a fact set was walked against.
+    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/top_module_hierarchy.json
+    digest: "56a000c3a985438ecc4704208d1d80c9af1fda0d9c4371a1b97db7f0c3267735"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: module_hierarchy
+
+  gemmini_universal_verilator_simulator:
+    description: >-
+      A LINKED VERILATOR SIMULATOR for the Universal configuration, already built. Declared because its
+      existence contradicts both the configuration contract's `status:` field and its PROVENANCE.yaml's
+      `explicitly_not_performed: [RTL elaboration, simulator invocation]`, and because a cert produced by
+      it must name it: a path and an mtime cannot tell this binary from the default-config simulator
+      sitting in the same directory.
+    path: /scratch/jack/chipyard/sims/verilator/simulator-chipyard.harness-UniversalResNet50GemminiRocketConfig
+    digest: "0069d3816ec60f704cf8968bfe4595684b1216ebe435de259514ad7723238ebc"
+    built_from:
+      - gemmini_universal_verilator_firrtl
+      - gemmini_universal_rtl
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: verilator_binary
+    notes: >-
+      15,649,112 bytes, linked 2026-09-07 02:44 -- the same size class as this host's default-config
+      gemmini simulator, which is exactly why the digest and not the size is the identity. NOT yet
+      exercised from merlin: no ELF has been run against it from this repo, so nothing here yet says it
+      boots, and its per-capsule cost is UNKNOWN rather than assumed equal to the default config's.
+
+  gemmini_universal_firesim_firrtl:
+    description: >-
+      The FireSim elaboration of the Universal configuration -- the FPGA path, distinct from the
+      TestHarness elaboration above and NOT interchangeable with it. Its top module is `FireSim` and it
+      instantiates the FireSim bridge extmodules (FASED, TSI, UART, TracerV, RationalClock, BlockDev,
+      PeekPoke), which are implemented by the FireSim driver rather than by RTL, so it cannot be handed
+      to gsim or Verilator as-is. Recorded so the FPGA claim and the simulator claim cannot be conflated.
+    path: /scratch/jack/chipyard/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig.fir
+    digest: "ee0966a41993123812c8b4e329bbfdc8cf106d7a82a5594bc127aa85baaaa5a8"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: FireSimUniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: firesim_firrtl
+    notes: >-
+      50 MB / 417,736 lines / 2,700 modules, elaborated 2026-09-08 11:23 -- AFTER the PROVENANCE.yaml
+      that says no elaboration happened was written (2026-09-06), which is how that field went stale.
+
+      THE "LoopFixed" SIBLING IS THE SAME NETLIST, measured not assumed. A second elaboration exists at
+      .../firechip.chip.FireSim.FireSimUniversalResNet50LoopFixedGemminiRocketConfig/ and its .fir is
+      BYTE-IDENTICAL to this one -- the same sha256 ee0966a4... -- because both chipyard configs expand
+      to the same four Config fragments. The name promises a LOOP_WS wiring repair that the hardware does
+      not contain. Do not register it as a second device.
+    gaps:
+      - >-
+        The elaborated DTS reports `riscv,isa: rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket`,
+        while the configuration contract declares `isa: rv64gc_zicntr`. Those disagree in both
+        directions: zicntr is not in the elaborated string, and zfh/zba/zbb/zbs are not in the declared
+        one. The elaboration is the fact; the declaration is UNRELIABLE for the host ISA.

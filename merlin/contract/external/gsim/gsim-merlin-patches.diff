@@ -1,0 +1,356 @@
+diff --git a/include/Node.h b/include/Node.h
+index 25a28e8..389ef48 100644
+--- a/include/Node.h
++++ b/include/Node.h
+@@ -104,6 +104,8 @@ class Node {
+ 
+   std::string name;  // concat the module name in order (member in structure / temp variable)
+   std::string extraInfo; // ruw for memory
++  bool loopBreakInput = false; // EXT_IN that closes a false comb loop into its clocked ext; its
++                               // input->ext scheduling edge is kept severed across every reconnectAll
+   int id = -1;
+   NodeType type;
+   int width = -1;
+diff --git a/parser/syntax.y b/parser/syntax.y
+index dc12b98..3ee19ec 100644
+--- a/parser/syntax.y
++++ b/parser/syntax.y
+@@ -106,6 +106,9 @@ ALLID: ID {$$ = $1; }
+     | Printf { $$ = "printf"; }
+     | Assert { $$ = "assert"; }
+     | Mem { $$ = "mem"; }
++    | SMem { $$ = "smem"; }
++    | CMem { $$ = "cmem"; }
++    | Flip { $$ = "flip"; }
+     | Of { $$ = "of"; }
+     | Reg { $$ = "reg"; }
+     | Input { $$ = "input"; }
+@@ -321,6 +324,7 @@ params:                            { $$ = new PNode(P_PARAMS); }
+     ;
+ param: Parameter ALLID '=' String  { $$ = newNode(P_PARAM_STR, synlineno(), $2, 0); $$->appendExtraInfo($4); }
+     | Parameter ALLID '=' INT      { $$ = newNode(P_PARAM_INT, synlineno(), $2, 0); $$->appendExtraInfo($4); }
++    | Parameter ALLID '=' INT '.' ID { $$ = newNode(P_PARAM_STR, synlineno(), $2, 0); $$->appendExtraInfo($4); }
+     ;
+ extmodule: Extmodule ALLID ':' info INDENT ports ext_defname params DEDENT  { $$ = newNode(P_EXTMOD, synlineno(), $4, $2, 2, $6, $8); $$->appendExtraInfo($7); }
+     ;
+diff --git a/src/AST2Graph.cpp b/src/AST2Graph.cpp
+index e6518c9..495ba49 100644
+--- a/src/AST2Graph.cpp
++++ b/src/AST2Graph.cpp
+@@ -1649,12 +1649,81 @@ graph* AST2Graph(PNode* root) {
+     if (it->second->type == NODE_REG_SRC) it->second->updateDep();
+   }
+ 
++  /* A clocked (registered) external/blackbox module is a sequential element: its outputs reflect
++   * internal state sampled at the clock edge, NOT a combinational function of this cycle's inputs.
++   * GSIM models an extmodule as one node whose outputs all depend on all inputs (in -> ext -> out),
++   * which is the safe assumption for a *combinational* blackbox but manufactures a false zero-delay
++   * loop for a clocked one when the inputs are (legitimately) combinationally derived from the
++   * outputs through the surrounding fabric (e.g. an AXI ready/valid path through a crossbar back to
++   * a SimDRAM memory model). Verilator does not see this loop because the blackbox is clocked C++.
++   * Mirror that: for a clocked ext node, drop the input->ext scheduling edges so the ext node
++   * becomes a schedule source (like a register read), evaluated at cycle start from the inputs
++   * latched on the previous edge. The assignTree still references the inputs, so the emitted call
++   * still passes them; only the combinational ordering constraint is removed. This breaks the
++   * false cycle and gives the blackbox one-cycle (registered) latency, matching real hardware. */
++  /* Break the FALSE combinational loops GSIM's ext model manufactures, MINIMALLY. GSIM models a
++   * clocked ext as one node whose outputs all depend on all inputs; when an ext input is really a
++   * combinational function of that same ext's outputs (an AXI/TL ready-valid path looping back
++   * through a crossbar for SimDRAM, or an FPU pipe's resp.ready derived from the ext's resp.tag for
++   * CVFPU), that assumption closes a zero-delay cycle Verilator never sees (the blackbox is clocked
++   * C++). Sever ONLY those loop-closing input edges: for each clocked ext, compute the set of nodes
++   * combinationally reachable FROM its own outputs (forward along next, stopping at any sequential
++   * element), and drop the input->ext edge for every ext input in that set. The ext's real data
++   * inputs (a memory's addr/data held stable across the handshake; a compute unit's operands) are
++   * NOT reachable from its outputs, so they stay combinational -- a locally-pipelined ext keeps its
++   * native latency and its recomposer stays aligned, while the false cycle is gone. Marked inputs
++   * are recorded (loopBreakInput) so Node::updateConnect keeps them severed across every
++   * reconnectAll rebuild. */
+   for (auto it = allSignals.begin(); it != allSignals.end(); it ++) {
+-    it->second->constructSuperNode();
++    Node* ext = it->second;
++    if (!ext || ext->type != NODE_EXT || !ext->clock) continue;
++    // Nodes combinationally reachable FROM this ext's own outputs (forward along next, stopping at
++    // any sequential element). An ext input in this set is a false-loop closer.
++    std::set<Node*> reach;
++    std::stack<Node*> stk;
++    for (Node* out : ext->next) stk.push(out);          // the ext's EXT_OUT nodes
++    while (!stk.empty()) {
++      Node* n = stk.top(); stk.pop();
++      if (reach.count(n)) continue;
++      reach.insert(n);
++      if (n != ext && (n->type == NODE_REG_SRC || n->type == NODE_REG_DST
++                       || n->type == NODE_EXT || n->type == NODE_MEMORY)) continue;
++      for (Node* nx : n->next) if (!reach.count(nx)) stk.push(nx);
++    }
++    std::vector<Node*> ins(ext->prev.begin(), ext->prev.end());
++    /* How much to sever depends on what KIND of element the ext's C++ model is -- a fact of the
++     * model, carried by the ext defname (extraInfo):
++     *  - A REGISTERED state element (a memory/serial model: SimDRAM, SimTSI, SimUART, SimJTAG, and
++     *    any other clocked ext by default). Its outputs reflect internal state sampled at the clock
++     *    edge, so it must be a schedule SOURCE with one cycle of latency: sever ALL its inputs.
++     *    (Leaving it combinational makes a zero-latency memory whose ready/valid loops back through
++     *    the coherence crossbar and stalls the fabric -- the whole Muon then never issues.)
++     *  - A COMBINATIONAL-FEEDBACK compute unit whose C++ model already carries the pipeline latency
++     *    internally (CVFPU, ProfilerBlackBox), wrapped by feed-forward decompose/recompose logic
++     *    that expects the ext's NATIVE latency. GSIM's all-outputs-depend-on-all-inputs ext model
++     *    still manufactures ONE false loop -- the ext's resp.ready is a function of its own resp.tag
++     *    -- so sever ONLY the loop-closing inputs (those combinationally reachable from the ext's own
++     *    outputs), leaving the operands live. Full severing here would add a spurious extra cycle
++     *    that desyncs the recomposer, so the dependent FMA's running-sum accumulator (rs3) reads 0.
++     * Both kinds record loopBreakInput so Node::updateConnect keeps the severing across reconnectAll. */
++    bool combUnit = ext->extraInfo.find("CVFPU") != std::string::npos
++                 || ext->extraInfo.find("ProfilerBlackBox") != std::string::npos;
++    std::vector<Node*> toSever;
++    if (combUnit) { for (Node* in : ins) if (reach.count(in)) toSever.push_back(in); }
++    else          { toSever = ins; }
++    for (Node* in : toSever) {
++      in->loopBreakInput = true;
++      ext->erasePrev(in);
++      in->eraseNext(ext);
++    }
++  }
++
++  for (auto it = allSignals.begin(); it != allSignals.end(); it ++) {
++    if (it->second) it->second->constructSuperNode();   // guard: a null signal (e.g. from a blackbox ext output) must not deref
+   }
+   /* must be called after constructSuperNode all finished */
+   for (auto it = allSignals.begin(); it != allSignals.end(); it ++) {
+-    it->second->constructSuperConnect();
++    if (it->second) it->second->constructSuperConnect();
+   }
+   /* find all sources: regsrc, memory rdata, input, constant node */
+   for (Node* reg : g->regsrc) {
+diff --git a/src/Node.cpp b/src/Node.cpp
+index 192b31e..7f94167 100644
+--- a/src/Node.cpp
++++ b/src/Node.cpp
+@@ -17,8 +17,24 @@ void Node::updateConnect() {
+     q.pop();
+     Node* prevNode = top->getNode();
+     if (prevNode) {
+-      addPrev(prevNode);
+-      prevNode->addNext(this);
++      /* A clocked ext (blackbox) node: GSIM models it as one node whose outputs all depend on all
++       * inputs, which manufactures a false zero-delay loop when an input is (legitimately) derived
++       * combinationally from the ext's own outputs through the surrounding fabric -- an AXI/TL
++       * ready-valid path that loops back (SimDRAM), or an FPU pipe's resp.ready that is a function
++       * of the ext's resp.tag (CVFPU). AST2Graph marks exactly those loop-closing inputs
++       * (loopBreakInput). Do NOT build the input->ext scheduling edge for a marked input, so the
++       * ext is scheduled as if that input were registered (like a register read), which breaks the
++       * false cycle. Only the loop-closing inputs are dropped; the ext's real data inputs stay
++       * combinational, so a locally-pipelined ext keeps its native latency and its recomposer stays
++       * aligned. The assignTree still references the input, so the emitted call still passes it.
++       * updateConnect() is re-run by every reconnectAll() (exprOpt/splitNodes/commonExpr); keying on
++       * the persisted loopBreakInput flag keeps the severing stable across those rebuilds. */
++      if (type == NODE_EXT && prevNode->loopBreakInput) {
++        // scheduling edge intentionally dropped; the OP_EXT_FUNC valTree keeps the reference
++      } else {
++        addPrev(prevNode);
++        prevNode->addNext(this);
++      }
+     }
+     for (size_t i = 0; i < top->getChildNum(); i ++) {
+       if (top->getChild(i)) q.push(top->getChild(i));
+@@ -97,7 +113,8 @@ void Node::constructSuperNode() {
+       break;
+     }
+     case NODE_EXT_OUT:
+-      parent->constructSuperNode();
++      if (parent) parent->constructSuperNode();
++      else super = new SuperNode(this);  // orphan ext output (unlinked blackbox): give it its own super so it acts as a source instead of null-derefing
+       break;
+     default:
+       super = new SuperNode(this);
+diff --git a/src/clockOptimize.cpp b/src/clockOptimize.cpp
+index d09a8bf..5cd757d 100644
+--- a/src/clockOptimize.cpp
++++ b/src/clockOptimize.cpp
+@@ -101,6 +101,18 @@ clockVal* ENode::clockCompute() {
+       }
+       break;
+     }
++    case OP_EXT_FUNC:
++      // A clock sourced from an external-module output (e.g. a ClockSourceAtFreqMHz blackbox clock
++      // generator in a Chipyard harness). GSIM can only drive a clock that is a top-level input; an
++      // internally blackbox-generated clock is treated here as a constant clock (the C++ harness must
++      // drive it) so compilation proceeds instead of asserting. Matches the external-clock handling in
++      // Node::clockCompute. NOTE: for a correct sim the clock must be a top-level input, not blackbox.
++      ret = new clockVal(0);
++      printf("Warning: A clock signal driven by an external-module output is detected. "
++             "It is treated as a constant clock signal (drive it from the C++ harness). "
++             "This may cause wrong result during simulation.\n");
++      display();
++      break;
+     default:
+       Assert(0, "invalid op %d", opType);
+   }
+diff --git a/src/cppEmitter.cpp b/src/cppEmitter.cpp
+index 0e05e86..8788cd7 100644
+--- a/src/cppEmitter.cpp
++++ b/src/cppEmitter.cpp
+@@ -687,7 +687,19 @@ void graph::genResetAll() {
+   std::vector<SuperNode*> resetSuper;
+   for (SuperNode* super : allReset) {
+     if (super->resetNode->status == CONSTANT_NODE) {
+-      Assert(mpz_sgn(super->resetNode->computeInfo->consVal) == 0, "reset %s is always true", super->resetNode->name.c_str());
++      if (mpz_sgn(super->resetNode->computeInfo->consVal) != 0) {
++        // [atlas-M3] A reset that constant-folds to always-TRUE. GSIM normally
++        // asserts this can't happen. For Atlas AtlasRocketConfig-below-ChipTop the
++        // only such node is the debug (JTAG) reset synchronizer
++        // (debug_reset_syncd_debug_reset_sync$output_chain$reset), whose async reset
++        // folds to 1 when the chip-level debug bringup is not driven. Skip emitting a
++        // dynamic reset for it (as is already done for the always-FALSE case): the
++        // register keeps its normal update. Confined to the debug domain, which a
++        // normal (non-JTAG) run does not exercise. Documented relaxation; without it
++        // GSIM emits no runnable C++.
++        fprintf(stderr, "[atlas-M3 genResetAll] reset %s folds to always-true; skipping dynamic reset (debug-domain relaxation)\n",
++                super->resetNode->name.c_str());
++      }
+       continue;
+     }
+     genResetDef(super, super->superType == SUPER_UINT_RESET, 0);
+diff --git a/src/graphPartition.cpp b/src/graphPartition.cpp
+index 4a846cd..379822b 100644
+--- a/src/graphPartition.cpp
++++ b/src/graphPartition.cpp
+@@ -42,6 +42,49 @@ void graph::resort() {
+     }
+   }
+ 
++  if (sortedSuper.size() != prevSize) {
++    // [atlas-M3 diagnostic] resort() left superNodes unvisited => a cycle exists in
++    // the depPrev/depNext (register activation-ordering) relation, even though the
++    // prev/next loop detector reports "NO Loop!". Name the stuck superNodes' members
++    // so the wall can be pinned to specific design signals. Additive; no semantic change.
++    fprintf(stderr, "[atlas-M3 resort] %ld of %ld superNodes UNVISITED (depPrev/depNext cycle)\n",
++            prevSize - sortedSuper.size(), prevSize);
++    for (SuperNode* n : prevSuper) {
++      if (visited.find(n) != visited.end()) continue;
++      fprintf(stderr, "  stuck superNode id=%d type=%d members=%ld depPrev=%ld depNext=%ld\n",
++              n->id, (int)n->superType, (long)n->member.size(),
++              (long)n->depPrev.size(), (long)n->depNext.size());
++      int k = 0;
++      for (Node* m : n->member) {
++        fprintf(stderr, "      member: %s\n", m->name.c_str());
++        if (++k >= 8) break;
++      }
++      k = 0;
++      for (SuperNode* p : n->depPrev) {
++        int vis = visited.find(p) != visited.end();
++        const char* mn = (!p->member.empty() && p->member[0]) ? p->member[0]->name.c_str() : "<none>";
++        fprintf(stderr, "      depPrev id=%d visited=%d firstMember=%s\n", p->id, vis, mn);
++        if (++k >= 12) break;
++      }
++    }
++    // [atlas-M3 fallback] Break the depPrev/depNext cycle: append the unvisited
++    // superNodes in their prior topoSort order (prevSuper is already ordered w.r.t.
++    // the HARD prev/next dependency by the earlier topoSort pass). This relaxes ONLY
++    // the SOFT activation-ordering (activeFlags-clear-before) for the cycle members.
++    // For Atlas AtlasRocketConfig the cycle is confined to the debug (JTAG) clock-gate
++    // + reset-synchronizer domain (EICG_wrapper enable <-> debug_reset_sync), which is
++    // not exercised by a normal run. Documented semantics relaxation; datapath regs
++    // are unaffected. Without this, GSIM aborts here and emits no C++.
++    size_t before = sortedSuper.size();
++    for (SuperNode* n : prevSuper) {
++      if (visited.find(n) == visited.end()) {
++        visited.insert(n);
++        sortedSuper.push_back(n);
++      }
++    }
++    fprintf(stderr, "[atlas-M3 resort] appended %ld dep-cycle superNodes in topo order "
++                    "(relaxed soft activation ordering)\n", sortedSuper.size() - before);
++  }
+   Assert(sortedSuper.size() == prevSize, "invalid size %ld %ld\n", sortedSuper.size(), prevSize);
+   orderAllNodes();
+ }
+diff --git a/src/splitArray.cpp b/src/splitArray.cpp
+index 7698110..02d12fb 100644
+--- a/src/splitArray.cpp
++++ b/src/splitArray.cpp
+@@ -87,6 +87,53 @@ bool point2self(Node* node) {
+   return false;
+ }
+ 
++static void dumpRealCycle(graph* g) {
++  /* Find an actual combinational cycle among the stuck (non-fullyVisited) nodes by DFS
++   * along prev edges restricted to nodes that are not fullyVisited. Any real cycle must
++   * lie entirely within this set. Prints one concrete cycle for diagnosis. */
++  std::map<Node*, int> color; // 0=white,1=gray,2=black
++  auto blocked = [&](Node* n) { return fullyVisited.find(n) == fullyVisited.end(); };
++  int printed = 0;
++  for (Node* seed : partialVisited) {
++    if (color.count(seed)) continue;
++    std::vector<Node*> path;
++    std::stack<std::pair<Node*, std::vector<Node*>>> st;
++    std::stack<size_t> cursor;
++    { std::vector<Node*> prevs; for (Node* p : seed->prev) if (blocked(p)) prevs.push_back(p);
++      st.push({seed, prevs}); cursor.push(0); color[seed] = 1; path.push_back(seed); }
++    while (!st.empty()) {
++      Node* node = st.top().first;
++      auto& prevs = st.top().second;
++      size_t& ci = cursor.top();
++      bool descended = false;
++      while (ci < prevs.size()) {
++        Node* p = prevs[ci++];
++        if (color[p] == 1) {
++          // found a cycle: from p up to node in path
++          size_t start = 0;
++          for (size_t i = 0; i < path.size(); i++) if (path[i] == p) { start = i; break; }
++          printf("==== REAL COMBINATIONAL CYCLE (len %ld) ====\n", path.size() - start + 1);
++          for (size_t i = start; i < path.size(); i++)
++            printf("  [%ld] %s (type=%d prev=%ld next=%ld)\n", i - start,
++                   path[i]->name.c_str(), path[i]->type, path[i]->prev.size(), path[i]->next.size());
++          printf("  -> back to [0] %s\n", p->name.c_str());
++          if (++printed >= 3) return;
++          // continue searching for more distinct cycles
++          continue;
++        }
++        if (color[p] == 0) {
++          std::vector<Node*> pprevs; for (Node* pp : p->prev) if (blocked(pp)) pprevs.push_back(pp);
++          st.push({p, pprevs}); cursor.push(0); color[p] = 1; path.push_back(p);
++          descended = true; break;
++        }
++      }
++      if (descended) continue;
++      color[node] = 2; path.pop_back(); st.pop(); cursor.pop();
++    }
++  }
++  if (printed == 0) printf("==== no cycle found among blocked prev edges (unexpected) ====\n");
++}
++
+ Node* getSplitArray(graph* g) {
+   /* array points to itself */
+   for (Node* node : partialVisited) {
+@@ -112,6 +159,8 @@ Node* getSplitArray(graph* g) {
+     }
+   }
+ 
++  dumpRealCycle(g);
++
+   Panic();
+ 
+ }
+diff --git a/src/splitNodes.cpp b/src/splitNodes.cpp
+index 43c4739..c7295bb 100644
+--- a/src/splitNodes.cpp
++++ b/src/splitNodes.cpp
+@@ -200,7 +200,17 @@ NodeComponent* ENode::inferComponent(Node* n) {
+       componentEMap[this] = ret;
+       return ret;
+     }
+-    Assert(componentMap.find(node) != componentMap.end(), "%s is not visited when infer %s %p", node->name.c_str(), n->name.c_str(), this);
++    if (componentMap.find(node) == componentMap.end()) {
++      /* A clocked extmodule is scheduled as a source (its input->ext combinational edges are
++       * severed in AST2Graph to break false zero-delay loops), so a node it references may not be
++       * component-inferred yet. splitNodes is a bit-splitting optimization; treat an un-inferred
++       * reference opaquely (as the whole node) — always sound, it just declines to split across it. */
++      NodeComponent* ret = new NodeComponent();
++      ret->addElement(new NodeElement(ELE_NODE, node, width - 1, 0));
++      ret->addDirectElement(new NodeElement(ELE_NODE, node, width - 1, 0));
++      componentEMap[this] = ret;
++      return ret;
++    }
+     NodeComponent* ret = componentMap[node]->getbits(width-1, 0);
+     if (!ret->fullValid()) {
+       ret = new NodeComponent();

@@ -1,0 +1,186 @@
+# How each target's GSIM model is BUILT — the recipe, centralized.
+#
+# WHY THIS FILE EXISTS. GSIM models for four designs were built, measured and validated, and then the
+# knowledge of how to build them lived in one person's scratch directories and in a walkthrough inside a
+# different repository. The consequence was not that GSIM was broken — it was that GSIM was invisible.
+# Every cert kept running on Verilator, at ~20-30x the cost, and nothing in any run record said the fast
+# engine existed. "We had it working somewhere else" is the failure this file removes.
+#
+# WHAT IT IS. A DECLARATION, not a script. Each entry names the design, the FIRRTL that goes in, the
+# ordered stages, the fixes and harnesses each stage needs (all of them beside this file), and — the part
+# that matters most — an honest CAPABILITY line saying what the resulting model can and cannot do. Two
+# models here run programs; two only observe registers, and one of those is a full SoC that boots and
+# then stalls with nothing to execute. Calling all four "working GSIM" is true of the engine and false of
+# the cert tier, and that difference is exactly what a probe must not blur.
+#
+# WHERE THE BUILD LANDS. `out/build/rtl_engines/<target>/<engine>/` — the derived home
+# `merlin.targetgen.gsim_emulator.engine_home` resolves and the engine policy selects out of. An engine
+# installed there is REGISTERED; nothing else has to be exported.
+#
+# PROVENANCE. A built model must carry a `build_receipt.json` binding its bytes to the FIRRTL and the
+# tools that produced them (schema `merlin.gsim-model-build.v2`; written by
+# merlin/experiments/gemmini_perf_bench/scripts/produce_gsim_certificate.py). The resolver REFUSES a
+# model whose receipt describes different bytes and reports one with no receipt as UNRECORDED. Entries
+# below record which state each model is actually in — none of them claims more than it has.
+#
+# Consumed as data (target is a key, never a branch in library code).
+
+schema_version: merlin.gsim-model-build-recipes.v1
+
+toolchain:
+  compiler_pin: gsim_compiler          # hardware_pins.yaml; upstream base + the patch below
+  root_env: MERLIN_EXT_GSIM            # .env; the gsim checkout
+  binary: build/gsim/gsim              # relative to the checkout
+  patches: ../gsim-merlin-patches.diff # the merlin deltas against the pinned upstream base
+  cxx_wrapper: ../cxxwrap.sh           # the exact compiler invocation a build receipt pins
+  emit: "$GSIM/build/gsim/gsim [--cpp-max-size-KB=N] --dir=<outdir> <input.fir>"
+  notes: >-
+    The pin declares the UPSTREAM base commit and `gsim-merlin-patches.diff` carries merlin's deltas on
+    top of it; the working checkout has those deltas committed on its own branch, so `verify` reports
+    drift from the pin BY DESIGN and the diff is what reconciles it. The deltas are: FIRRTL 6/3.3.0
+    parser coverage, async-reset extmodule outputs, two SoC graph-construction guards, and two
+    relaxations confined to the chip debug/JTAG clock+reset domain (a depPrev/depNext cycle in the
+    activation ordering, and an always-true constant reset). None touches a datapath register.
+    A separate, STALE blocker is worth not rediscovering: "chipyard .fir is a dialect gsim rejects
+    (unexpected 'is')" is true only of Scala-FIRRTL-Compiler emissions. CIRCT/firtool emissions use
+    new-style `invalidate` and parse fine, so no firtool downgrade is ever needed.
+
+# The two capability classes. A model belongs to exactly one, and the difference decides whether it can
+# hold a cert tier at all.
+capability_classes:
+  program_oracle: >-
+    Loads a PROGRAM and returns results. This is what a capsule needs. Two shapes qualify: an
+    ELF-loading SoC (chipyard TestHarness kept, +loadmem/fesvr) and a bare-core model whose top ports
+    ARE the host interface (program words in over TileLink, results read back out). Installed under the
+    derived engine home, these hold the L3 elaborated-RTL tier.
+  register_observation: >-
+    Steps the design and exposes every register as a public member, but has no way to be given an
+    arbitrary program. Genuinely useful — this is the per-cycle substrate for cycle accounting — and
+    NOT a cert engine. A probe that reports one of these as an available cert tier is the silent
+    degradation the engine policy exists to prevent.
+
+targets:
+
+  gemmini:
+    - id: soc_serialclk
+      capability: program_oracle
+      status: working
+      design: chipyard TestHarness, config GemminiGsimSerialClkConfig
+      firrtl: chipyard-generated, elaborated by chipyard.Generator
+      stages: [elaborate, emit, patch, derive_filter, compile, link]
+      fixes: [gsim_fix_gemmini_codegen.py]
+      support: [gsim_printf_filter.cpp]
+      driven_by: "<emulator> <elf> +loadmem=<elf> +max-cycles=N"
+      config_note: >-
+        WithGsimSerialTLClockPunchthrough ++ GemminiGsimMonitorsConfig. The chip-side serial-TL clock
+        reaches the SoC through an IOCell extmodule, and GSIM treats a clock driven by an extmodule
+        OUTPUT as a constant — which froze the whole serial-TL domain, so the serdesser never ticked,
+        the MSIP write never landed, and the core sat in the bootrom wfi forever. The config connects
+        the Clock leaf straight through and hands every other leaf to the same IOCell factory, which is
+        what makes the harness elaborate WITHOUT a hand-edited .fir.
+      provenance: receipted
+      evidence: >-
+        A 38-member GSIM-vs-Verilator equivalence certificate on real capsules: every member AGREE,
+        bytes_match, 0 unresolved.
+
+    - id: soc_chiptop_bootrom
+      capability: register_observation
+      status: working
+      design: ChipTop (TestHarness pruned away), config GemminiRocketConfig
+      stages: [prune_to_dut, emit, patch, compile, link]
+      fixes: [gsim_prune_to_dut.py, gsim_fix_gemmini_codegen.py]
+      support: [gsim_soc_blackboxes.cpp, gsim_gemmini_soc_harness.cpp]
+      program_path: bootrom_baked
+      program_limit_bytes: 4096          # rom is UInt<64>[512], and GSIM re-drives it every step()
+      bake: [gsim_gemmini_bootrom.S, gsim_gemmini_bootrom_bake.py, gsim_gemmini_bootrom_patch_cpp.py]
+      support_exec: [gsim_gemmini_soc_matmul_harness.cpp]
+      provenance: unrecorded
+      limitation: >-
+        Pruning TestHarness removes SerialRAM/SimTSI, which is what made the design compile at all — and
+        is also the only path a program arrives on. A workload therefore has to be BAKED into the 4 KB
+        bootrom, and it must be DRAM-free (no mvin/mvout: the TLB/PTW is unsatisfied without a host).
+        That is a fine cycle-accounting substrate and it is not a capsule oracle.
+
+    - id: accel_only
+      capability: register_observation
+      status: working
+      design: Gemmini (accelerator incl. controllers)
+      stages: [emit, fix_vector_io, patch, compile, link]
+      fixes: [gsim_fix_vector_io.py, gsim_fix_gemmini_codegen.py]
+      support: [gsim_gemmini_harness.cpp, gsim_gemmini_cmd_harness.cpp, gsim_gemmini_cmd_encode.py]
+      provenance: unrecorded
+      limitation: >-
+        Driven by a RoCC command stream on io.cmd, not by a program. Measured cost curve on it:
+        compute_cycles = 15 + 31*num_computes, R^2 = 1.000000.
+
+  atlas:
+    - id: core_program_oracle
+      capability: program_oracle
+      status: working
+      design: AtlasCore (the lifted core; NOT a chipyard SoC)
+      firrtl: >-
+        Emitted by the out-of-tree "lifting" mill build, which instantiates AtlasCore directly with
+        explicit TLBundleParameters instead of letting chipyard diplomacy negotiate them — which is why
+        it needs no rocketchip/chipyard at all. Re-emit by pointing ATLAS_LIFT_SOURCE at the pinned
+        atlas_npu checkout.
+      stages: [emit, compile, link]
+      support: [gsim_atlas_core_program_harness.cpp, gsim_atlas_core_run.py]
+      driven_by: "run_program(words, preload, reads, max_cycles) via <engine home>/gsim_run.py"
+      interface_note: >-
+        The top's own ports ARE the host interface: imemTL takes the assembled u32 program words,
+        csrTL carries the start bit, dmaTL is mastered by the design and modelled as a slave by the
+        harness, and io.halted terminates the run. This target's graded artifact is an assembled
+        kernel.S, not an ELF, so none of the chipyard fesvr/TSI/loadmem stack applies — atlas is the
+        EASIER of the two, not the harder one.
+      provenance: unrecorded
+      evidence: >-
+        17 capsule program specs head-to-head against the Verilator oracle on the same design:
+        cycles_match 17/17, outputs_match 17/17, halted 17/17, mean ~32x faster.
+      capability_gap: >-
+        Returns {halted, cycles, outputs, reads, writes} and NO timing_observations -- the per-unit
+        busy / DMA-beat / overlap decomposition the Verilator harness reads off the design's own
+        activity ports. Reported as absent rather than fabricated, which is right, but it means
+        adopting this engine changes more than cost for anything reading occupancy telemetry. A
+        harness gap on the GSIM side, not a fidelity gap.
+      debt: >-
+        No build receipt, and the lifting worktree that produced AtlasCore.fir no longer exists — so the
+        revision it was lifted from is recorded nowhere. Re-elaborate from the pinned checkout and mint
+        a receipt before a verdict cites it.
+
+    - id: soc_chiptop
+      capability: register_observation
+      status: working
+      design: ChipTop of the full Atlas SoC (TestHarness pruned away), config AtlasRocketConfig
+      stages: [extract_subtree, emit, compile, link]
+      fixes: [gsim_extract_subtree.py]
+      support: [gsim_soc_blackboxes.cpp, gsim_atlas_soc_harness.cpp]
+      provenance: unrecorded
+      limitation: >-
+        The Rocket core boots the internal bootrom and retires a handful of instructions, then stalls:
+        axi4_mem_0 and serial_tl_0 are exposed but unmodelled, so no program ever arrives and the Atlas
+        tile's fetch PC stays at 0. Re-rooting one level deeper at DigitalTop is a dead end (its reset
+        tree becomes undriven and GSIM aborts in inferReset). This is per-cycle SoC observability and
+        nothing more; the capsule oracle for this target is core_program_oracle above.
+
+    - id: mxu_only
+      capability: register_observation
+      status: working
+      design: SystolicArray (the MXU)
+      stages: [emit, fix_vector_io, compile, link]
+      fixes: [gsim_fix_vector_io.py]
+      support: [gsim_atlas_mxu_harness.cpp]
+      provenance: unrecorded
+
+  radiance:
+    - id: soc_gsimconfig
+      capability: program_oracle
+      status: working
+      design: RadianceGsimConfig SoC
+      support_in: MERLIN_EXT_GSIM/radiance_harness   # main.cpp, blackboxes.cpp, cvfpu_model.cpp
+      driven_by: "<emulator> <soc.elf> +loadmem=<soc.elf> +max_core_cycles=0 +max-cycles=N"
+      provenance: unrecorded
+      debt: >-
+        The built emulator carries no receipt and no .fir beside it, so which RTL revision it models is
+        not recorded — and the radiance_muon_rtl pin cannot settle it either, since the checkout has
+        moved off the pinned commit. Its SOURCES are known (the gsim checkout's own radiance_harness/),
+        so a receipt-writing rebuild is a bounded job rather than a rediscovery.

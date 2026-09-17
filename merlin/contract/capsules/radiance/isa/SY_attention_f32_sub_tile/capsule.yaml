@@ -1,0 +1,67 @@
+name: SY_attention_f32_sub_tile
+kind: isa
+source_role: pytorch_model_slice
+source_reference: synthesized for conformance cell attention/f32/sub_tile (basis=observed_via_primitives,
+  admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Q
+  role: input
+  shape:
+  - 2
+  - 4
+  dtype: f32
+- name: K
+  role: input
+  shape:
+  - 4
+  - 4
+  dtype: f32
+- name: V
+  role: input
+  shape:
+  - 4
+  - 4
+  dtype: f32
+operation:
+  op: attention_full
+  attributes:
+    out: Y0
+    arg_order:
+    - Q
+    - K
+    - V
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: attention_full
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: attention
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.34587632585316896
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

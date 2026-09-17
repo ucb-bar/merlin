@@ -1,0 +1,112 @@
+name: MX0_interop_rvv_lane_lstm
+kind: model
+source_role: pytorch_model_slice
+source_reference: "lstmnetvit composed across the SIMT accelerator and the scalar/RVV\
+  \ host lane \u2014 a conv/recurrent op mix, so a different split from the decode\
+  \ stack"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 1
+  - 60
+  - 90
+  dtype: f32
+- name: I1
+  role: input
+  shape:
+  - 1
+  - 1
+  dtype: f32
+- name: I2
+  role: input
+  shape:
+  - 1
+  - 4
+  dtype: f32
+- name: I3
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
+- name: I4
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
+operation:
+  op: model
+  attributes:
+    model: lstmnetvit
+    dtype: f32
+    out: Y0
+    compile_dtype: fp32
+    arg_order:
+    - I0
+    - I1
+    - I2
+    - I3
+    - I4
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane
+pytorch_ref:
+  op: model
+  dtype: f32
+  loader: capsule.pytorch.py
+input_provenance:
+  workload: lstmnetvit
+  status: declared
+  synthetic_inputs: unknown
+  paper_ready: false
+  accuracy_claim_supported: false
+  accuracy_claim_withheld_because: the loader's declaration does not state whether
+    its inputs are real dataset samples
+  grades: compiler_correctness
+  note: 'This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces,
+    on these exact inputs, the reference the same loader produced. It is not a statement
+    about the model''s accuracy on real data; only a capture whose inputs are real
+    and attributed can support that.'
+  loader_env: {}
+  declared:
+    checkpoint: random_init
+    full_checkpoint: false
+    session_source: synthetic_seed_20260830
+    session_sha256: 0f6440531c9fabf577c530aab07189b9a79ffd4ff12495a2aab9aaa90a036a17
+    synthetic_session: true
+    paper_ready_requires_strict_checkpoint_and_attributed_session: true
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: model
+  must_accelerate: false
+  not_asserted_reason: the accelerator demand could not be derived from this model's
+    linalg against this target's declared capabilities and role census, so must_accelerate
+    is withheld rather than asserted ungrounded
+  eligible: auto
+numeric_falsifiability:
+  status: not_measured
+  why: no golden output could be sized

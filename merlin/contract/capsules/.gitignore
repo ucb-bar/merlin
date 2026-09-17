@@ -1,0 +1,31 @@
+# Capsule-bench ANSWER KEYS — never tracked (this repo is public: github.com/ucb-bar/merlin).
+# These are the graded answers; committing them defeats the benchmark. They are REGENERABLE from the
+# tracked generators (generate_corpus.py + <target>/generate_*_corpus.py) with the oracle model, so
+# untracking loses nothing. The public CONTRACT stays tracked: capsule.interface.mlir + capsule.yaml
+# (the op/shape/dtype the agent compiles against) and MANIFEST.yaml.
+golden.yaml
+expected_instruction_coverage.yaml
+
+# The held-out HIDDEN capsule set is never public — even the interfaces reveal held-out shapes, so the
+# entire hidden/ subtree (any target, at any depth) stays untracked and local-only.
+hidden/
+
+# The held-out capsule SPECIFICATION (op + dtype + exact shape) is itself an answer: the tracked
+# profile sits inside the `merlin/contract/` grant every arm gets read-only, so a holdout specified
+# there is readable by the agent under test. The spec lives in an untracked sidecar next to the
+# public profile; generate_corpus.py loads it when present and emits no hidden capsules when it is
+# absent (which is what a public clone should do).
+profiles/*.hidden.yaml
+
+# Whole-model capsule weights (externalized safetensors) — large regenerable binaries produced by
+# model2MLIR at generation time; never tracked (the linalg interface + capsule.yaml stay the contract).
+capsule.weights.safetensors
+*.safetensors
+*.safetensors.manifest.json
+
+# Solver counterexample INPUT VALUES are an answer key in the same sense as golden.yaml: they are the
+# exact inputs on which a refuted program disagrees with its specification. The emitter that wrote
+# these into a capsule directory has been removed (values now live under out/artifacts/verification/,
+# which is already ignored), but the pattern stays as defence in depth -- this repo is public, and the
+# file was ignored by nothing at all while that emitter existed.
+counterexample_inputs.json

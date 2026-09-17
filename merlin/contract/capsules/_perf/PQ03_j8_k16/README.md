@@ -1,0 +1,5 @@
+# PQ03_j8_k16
+
+PQ03_j8_k16: resident_reuse over W[16, 16]:i8, A0[16, 16]:i8, A1[16, 16]:i8, A2[16, 16]:i8, A3[16, 16]:i8, A4[16, 16]:i8, A5[16, 16]:i8, A6[16, 16]:i8, A7[16, 16]:i8, authored from barrier-count sweep: the same arithmetic issued as N independent jobs, once with a barrier after every job and once with the minimum pair. Job counts span 1..16 rather than 1..4 because the lever's cost is per barrier and real kernels issue thousands of them -- a three-point sweep over 1,2,4 cannot separate a saving that grows with the removed barrier count from noise. (tile=16; K=16; jobs=8, matmuls=[{'lhs': 'A0', 'out': 'Y0', 'M_tiles': 1}, {'lhs': 'A1', 'out': 'Y1', 'M_tiles': 1}, {'lhs': 'A2', 'out': 'Y2', 'M_tiles': 1}, {'lhs': 'A3', 'out': 'Y3', 'M_tiles': 1}, {'lhs': 'A4', 'out': 'Y4', 'M_tiles': 1}, {'lhs': 'A5', 'out': 'Y5', 'M_tiles': 1}, {'lhs': 'A6', 'out': 'Y6', 'M_tiles': 1}, {'lhs': 'A7', 'out': 'Y7', 'M_tiles': 1}]).
+
+kind=model_slice label=dev op=resident_reuse modes={'resident_reuse': True}

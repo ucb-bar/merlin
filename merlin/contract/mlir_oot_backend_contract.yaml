@@ -1,5 +1,6 @@
 # Out-of-tree MLIR backend contract (experiment ABI v0.1)
-# The artifact a package IS, and the four CLI entrypoints the runner invokes (subprocess only).
+# The artifact a package IS, the four required CLI entrypoints, and the optional one-pass analysis
+# entrypoint the runner may invoke (subprocess only).
 version: "0.1"
 artifact_type: mlir_oot_target_backend
 
@@ -9,7 +10,7 @@ manifest:
   required: [artifact_type, target, language, authoring, integrity_exempt, entrypoints, commands]
 
 llvm_pin:
-  # C++ packages build a real out-of-tree gemmini-opt against this exact LLVM/MLIR.
+  # C++ packages build a real out-of-tree {target}-opt against this exact LLVM/MLIR.
   version: "23.0.0git"
   commit: "a47bddccec30"
   source: third_party/llvm-project
@@ -42,17 +43,142 @@ entrypoints:
     purpose: "target dialect -> the target's codegen artifact (per endpoint_kind; not necessarily LLVM)"
     example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-target-artifact", "{input_mlir}"]
     output: "the target artifact on stdout (its kind is decided by the target's endpoint_kind)"
+  emit_analysis_bundle:
+    required: false
+    purpose: "optional one-pass whole-model analysis: emit both independently required artifacts"
+    example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+    output: "writes the command buffer to {output_json} and the target artifact to stdout"
+    fallback: "when absent, the runner invokes emit_command_buffer and lower_target_to_llvm separately"
 
 kernel_abi:
   # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness
   # embeds the deterministic leaf tensors (by name) and the output buffers, then prints
   # OUT/METRIC/DONE. The package only emits the kernel; the harness + link are the runner's.
-  symbol: gemmini_kernel
-  signature: "void gemmini_kernel(ptr weight, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1})"
-  arg_order: "[the single resident weight] ++ [matmul lhs in command order] ++ [commit outputs in command order]"
+  symbol: "{target}_kernel"
+  # THE POINTER LIST DEPENDS ON THE COMMAND SHAPE. There is not one argument order; there are three,
+  # and `arg_order_by_command_shape` below is the single source of truth for all of them. It used to
+  # say only the resident-matmul one, and the whole-op harness had quietly grown a different rule: a
+  # native CONV2D is called in the interface's DECLARATION order, so the four shipped conv capsules
+  # that declare the activation before the weight (`IFM, W, Y0`) were compiled weight-first against a
+  # harness that passed activation-first. The kernel then gathered activations out of the weight
+  # buffer and MVIN'd the weight with the activation's pitch. Four functional failures, one
+  # undocumented rule. Read the row whose `when` matches your buffer and no other.
+  # The resident_matmul shape's signature, kept concrete and first because single-shape readers
+  # consume this key. The other two shapes have a DIFFERENT arity and order.
+  signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}) - the resident_matmul command shape ONLY; other shapes: arg_order_by_command_shape[].signature"
+  # Kept as a flat string because readers that implement only the resident-matmul shape consume this
+  # key (merlin.llvmlower.device_shim.kernel_abi_for renders it into the emitted shim). It is the
+  # resident_matmul row restated and MUST NOT be read as the rule for any other shape.
+  arg_order: "resident_matmul shape ONLY: [each group's resident weight, in resident-pack order] ++ [every group's matmul lhs, group-major] ++ [every group's commit output, group-major] ++ [the bias of every commit declaring a fused bias stage, group-major -- empty when none does]. Other command shapes have a DIFFERENT order: see arg_order_by_command_shape."
+  # Rows are tried TOP-DOWN and the FIRST matching `when` decides the ABI; this mirrors the dispatch a
+  # runner-owned harness renderer performs, so a buffer that could match two rows is answered by the
+  # earlier one. `order` is the machine-checkable form: a list of tokens from `arg_order_tokens`, each
+  # expanding to zero or more pointer arguments, concatenated left to right. The prose and the token
+  # list say the same thing; `build_tools/scripts/check_kernel_abi_arg_order.py` renders each target's
+  # real harness for a probe buffer of every shape and fails if the emitted call disagrees with the
+  # tokens, so this document cannot drift from the code again.
+  arg_order_by_command_shape:
+    - shape: whole_program
+      when: "the buffer explicitly declares kernel_abi.kind = whole_program; this row is first, so an
+             explicit whole-program pointer boundary takes precedence over inference from its accelerator
+             command subset"
+      kernel_abi_kind: whole_program
+      signature: "void {target}_kernel(ptr arg_0 .. ptr arg_{N-1})"
+      order: [declared_whole_program_args]
+      prose: "kernel_abi.args[].tensor in declaration order. Every declared tensor buffer appears exactly
+              once; access declares allocation/materialization only, and outputs must exactly equal the
+              tensors whose role is output. The runner performs no model operation."
+    - shape: movement
+      when: "the buffer has NO RES_PACK command and at least one MOVEMENT (or an identity-combine VECTOR_MAP)"
+      signature: "void {target}_kernel(ptr src, ptr dst)"
+      order: [movement_src, movement_dst]
+      prose: "[the movement source] ++ [the movement destination]"
+    - shape: native_whole_op
+      when: "the buffer contains EXACTLY ONE whole-op command, whose opcode is one of `opcodes` below"
+      opcodes: [ATTENTION_QK, ATTENTION_PV, BATCHED_MATMUL, CONV2D]
+      signature: "void {target}_kernel(ptr t_0 .. ptr t_{N-1})"
+      order: [interface_external_tensors_in_declaration_order]
+      prose: "the interface's OWN external tensors (role input | weight | bias | output) in DECLARATION
+              order - NOT weight-first, and NOT operand-role order. A conv declaring `IFM, W, Y0` is
+              called `(IFM, W, Y0)`; the same conv declaring `W, IFM, Y0` is called `(W, IFM, Y0)`.
+              Batched matmul likewise preserves its interface declaration order and logical result rank.
+              A whole-op artifact receives neither a reordered weight nor a codegen-only derived buffer,
+              so an im2col matrix is an internal lowering detail and never a pointer argument."
+    - shape: resident_matmul
+      when: "otherwise - the RES_PACK / MATMUL(_RESIDENT) / COMMIT form, including a CONV2D the package
+             itself lowers to that form (its derived im2col lhs then IS a pointer argument)"
+      signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}, ptr bias_0 .. ptr bias_{B-1})"
+      order: [resident_weights_in_resident_pack_order, matmul_lhs_group_major, commit_outputs_group_major,
+              commit_biases_group_major]
+      prose: "up to four contiguous blocks: [each resident weight, in resident-pack (first-use) order] ++
+              [every matmul lhs] ++ [every commit output] ++ [the bias operand of every commit that
+              declares a fused bias epilogue stage]. Within the per-matmul blocks the order is
+              GROUP-MAJOR: all of the first weight's matmuls in command order, then the second weight's.
+              With one resident weight - the common case - this is weight, lhs..., out.... The bias block
+              is LAST and is EMPTY unless a commit declares a bias stage, so a buffer without one has
+              exactly the three-block signature it always had."
+  # The token vocabulary the `order` lists are written in. One token, one resolution rule, resolved
+  # against the command buffer; a token nobody can resolve is a REFUSAL, never a guessed position.
+  arg_order_tokens:
+    declared_whole_program_args: "kernel_abi.args[].tensor in array order, only when kernel_abi.kind is
+      whole_program; each arg also declares read|write|readwrite access, every tensors entry appears
+      exactly once, and kernel_abi.outputs equals exactly the role=output tensors"
+    movement_src: "the MOVEMENT/identity-VECTOR_MAP command's `src` (or `lhs`) operand"
+    movement_dst: "that command's `dst` operand"
+    interface_external_tensors_in_declaration_order: "every tensor in `tensors` whose role is input,
+      weight, bias or output, in the order the interface declared it (the command buffer preserves
+      declaration order as `tensors` insertion order). Resident handles are NOT external tensors."
+    resident_weights_in_resident_pack_order: "for each RES_PACK, its `src`, de-duplicated, in command order"
+    matmul_lhs_group_major: "each matmul's `lhs`, grouped by the resident weight its `rhs` resolves to,
+      groups in resident-pack order, commands in buffer order within a group"
+    commit_outputs_group_major: "the `dst` of the COMMIT that consumes each matmul's accumulator, in the
+      same group-major order as matmul_lhs_group_major"
+    commit_biases_group_major: "the bias tensor named by each COMMIT that declares a bias epilogue
+      stage (`bias_add`/`bias`), in the same group-major order as matmul_lhs_group_major. A commit
+      with no bias stage contributes NOTHING, so this token expands to the empty list for every
+      buffer that declares no fused bias. The name is read from the commit's `attributes.bias` or
+      its `operands.bias` (both are legitimate; a stage that names neither is a REFUSAL, never a
+      skipped argument). The pointee is in the ACCUMULATOR's dtype, not the operand dtype."
   pointee_layout: "row-major, edge tiles zero-padded to a multiple of 16 (DIM); weight/out as packed per the i8/i32 readout"
 
 build:
   optional: true
   purpose: "C++ packages declare a build block; the runner builds before first use"
   fields: {configure: "[argv]", command: "[argv]", tool_output: "relative path to built tool"}
+
+# The ADMISSION PARTITION. A package handed a program must land in exactly ONE route and must SAY
+# which; the routes are disjoint and together they cover every well-formed input. Enforced by
+# `build_tools/scripts/check_route_partition.py` over `merlin.runtime.route_partition`.
+#
+# This section exists because its absence was load-bearing. Nothing here required a decline, and
+# `validate_command_buffer` only ever read `declined` as an EXCUSE (it lets such a buffer skip the
+# operands-reference-a-tensor check). So a package that emitted nothing and said nothing was
+# contract-conformant, and no grader could tell it apart from one that correctly declined. Measured
+# 2026-09-07 across `out/runs`: 244 buffers empty with no decline, and 30 that decline an opcode and
+# then emit it anyway. Three cases were reproduced from a spec in one command each -- an `rmsnorm`,
+# a forbidden direct-scratchpad op and a stateful random op -- each exiting 0 with empty stderr and
+# the program's declared OUTPUT TENSOR silently absent from the buffer.
+admission:
+  routes:
+    A: "accepted -- the buffer emits target work for the admitted region"
+    H: "an explicit host or composed route; the seam is declared and checked separately"
+    D: "an explicit decline -- no target command, no target-visible effect, and a stated reason"
+  obligations:
+    exactly_one_route: "every well-formed input lands in exactly one of A, H, D"
+    disjoint: "a buffer may not both decline and emit. A consumer reading `declined` excuses the case
+      while a consumer reading `commands` executes it, so a buffer doing both simultaneously grades as
+      declined AND runs"
+    decline_is_explicit: "an empty `commands` list plus a zero exit code is NOT a decline. A decline
+      declares a `declined` object; absent that, an empty buffer is indistinguishable from a program
+      dropped on the floor and reported as success"
+    decline_states_a_reason: "`declined.reason` is required and must be readable by whoever has to act
+      on it. `declined.op` names the operation that was not lowered, when one operation is responsible"
+    no_silent_host_loss: "a decline may not drop a declared output. If the interface program commits an
+      output, declining means saying so -- never omitting the tensor and exiting 0"
+    unsupported_is_not_a_fourth_route: "a checker's or compiler's own out-of-model disposition must
+      resolve to H or D. It may never resolve to A, and it may never be left unstated"
+  declined:
+    purpose: "route D, stated in the command buffer itself so every consumer reads the same verdict"
+    required: [reason]
+    optional: [op]
+    example: {op: "rmsnorm", reason: "no lowering for this operation on this target yet"}

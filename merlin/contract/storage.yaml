@@ -1,0 +1,151 @@
+# Where generated state lives, for the tool that prices and reclaims it.
+#
+# The out/ root is found by merlin.common.paths and needs no entry here. What DOES need one is every
+# place a long-running experiment puts a workspace outside that root: an agent run freezes its
+# declared input closure as a sibling of its workspace, and a capsule-bench workspace lives beside
+# its target experiment, not under out/. merlin-storage was built to find exactly those and could
+# not see them -- measured 2026-09-15, 40 GB of completed closures and one 8.7 GB closure abandoned
+# mid-copy sat in workspaces the scan never reached.
+#
+# Declared here rather than spelled in code for the reason every other path in this directory is:
+# no library module names a checkout directory, so moving a workspace is an edit to this file.
+# Patterns are relative to merlin/ and may glob; a pattern matching nothing on disk is skipped, so a
+# checkout without a given experiment is not an error.
+scan_roots:
+  - experiments/capsule_bench/targets/*/_qa_ws
+
+# Trees whose integrity check reads the FILE MODE, named by the seal file that marks one.
+#
+# merlin-storage may re-point a frozen file at a shared content-store object, which makes the file
+# read-only and makes its mode a property shared with every other name for those bytes. A freeze
+# that treats "not writable" as evidence of its own integrity cannot survive that: chmod follows the
+# inode, so one consumer restoring a write bit -- including to delete its own tree -- breaks the
+# verification of every OTHER tree holding the same content. Measured while building the store: the
+# perf-bench source snapshot verifies exactly that way, so it deep-copies on purpose and dedup skips
+# any tree carrying its seal. Declared here rather than spelled in code so the next freeze with the
+# same property is opted out by an edit to data.
+mode_verified_seals:
+  - snapshot.*.json
+
+# Top-level roots `merlin-storage dedup` never walks.
+#
+# Collapsing two names onto one content-store object makes the file read-only, which is correct for a
+# finished product and wrong for a tree that is still being written: a compiler opening its output
+# with O_TRUNC gets EACCES rather than a rebuild. A build tree is rewritten in place by construction,
+# so it is excluded as a property rather than as a guess. Anything else still being written should be
+# kept out by naming the paths to walk instead of taking the default.
+dedup_excludes:
+  - build
+
+# The three top-level roots the generated-output convention names. Anything else under out/ is a
+# root the convention retired, or one nobody declared -- and the write guard only blocks what it
+# knows about, which is why four of them appeared without anyone noticing.
+out_roots:
+  - runs
+  - artifacts
+  - build
+
+# Every concern that may own a subtree of out/artifacts/, with what it holds.
+#
+# This list used to be a literal inside merlin-storage, and nobody edited it: 52 undeclared concerns
+# had accumulated against 16 declared ones by 2026-09-15, most of them well-formed
+# <concern>/<axis>/<unit> products whose only fault was that the roster was stale. A roster that
+# lives in code is a roster that drifts, so it lives here, and check_storage_layout.py fails when a
+# directory appears that this file does not name. Adding a concern is then a reviewed edit at the
+# time it is created rather than a cleanup fifty concerns later.
+concerns:
+  agentic-report: Anatomy and coverage reports for agent-driven capsule sessions.
+  applications: Per-target application studies above the kernel level.
+  archive: Products kept because something still cites them, whose concern is no longer active.
+  audits: Readiness and preflight studies -- what would block a campaign if it were launched now.
+  cache: Regenerable working caches, purgeable by convention. See cache_dir().
+  capsule-bench: Capsule-bench results, per target.
+  ceiling: Cross-cutting performance-ceiling studies.
+  compare: Cross-backend comparisons, per workload.
+  delivery: Bundles shipped outside the repo, and the evidence shipped with them.
+  design-pressure: Design-pressure DSE products, per workload.
+  dse: Design-space exploration products, per workload.
+  dse-guidance: Guidance derived from DSE, per workload.
+  handoff: Bundles handed to a collaborator, with the note that goes with them.
+  kernel-index: Kernel index, per framework.
+  kernel-mining: Mined kernels, per target.
+  measurements: Measurements keyed by substrate and model. See new_measurement().
+  optimization-surface: Optimization-surface products, per target.
+  perf-bench: The performance campaign's products, per target.
+  perf-studies: Standing performance instrumentation beside the campaign -- ledgers, calibration,
+    settling, counters, ablations, work-order and preflight records.
+  presentation: Paper and talk assets -- figures, captures, inputs, and the studies behind them.
+  probes: One-off diagnostics and detours. Kept because a report may cite one, grouped because a
+    standing concern and an afternoon's debugging should not be neighbours at the same level.
+  protocols: Frozen experiment protocols -- the declaration a run is held to.
+  recaptures: Model recaptures (PURGEABLE). See recaptures_dir().
+  rvv-development-corpus: The RVV development corpus, per target.
+  selfcheck: Output of the repository self-check.
+  source-data: Model source data held for reproduction, per model.
+  target-evolution: How a target's derived contract changed over time, per target.
+  targetgen-evals: Curated evaluation tables for the target generator, per target.
+  targets: Codegen packages minted for a target. See the artifact-layout skill.
+  verification: Evidence produced at each verification tier, per target.
+
+# Where a directory that predates the roster belongs, applied by ``merlin-storage organize``.
+#
+# Both paths are relative to the out/ root. A fold MOVES the directory and leaves a relative symlink
+# behind, because a product's path is quoted in manifests, reports and docs that this repo does not
+# own -- a tidy tree that broke those citations would be a poor trade. The symlink is not a
+# permanent fixture: it costs nothing, and it can be dropped once nothing resolves through it.
+folds:
+  - {from: audits, into: artifacts/audits}
+  - {from: analysis, into: artifacts/audits}          # merges: both hold readiness studies
+  - {from: protocols, into: artifacts/protocols}
+  - {from: diagnostics, into: artifacts/probes/diagnostics}
+
+  - {from: artifacts/paper-figures, into: artifacts/presentation/paper-figures}
+  - {from: artifacts/paper-inputs, into: artifacts/presentation/paper-inputs}
+  - {from: artifacts/paper-captures, into: artifacts/presentation/paper-captures}
+  - {from: artifacts/paper-study, into: artifacts/presentation/paper-study}
+  - {from: artifacts/paper-merlin-producers, into: artifacts/presentation/paper-merlin-producers}
+
+  - {from: artifacts/perf-ledger, into: artifacts/perf-studies/ledger}
+  - {from: artifacts/perf-records, into: artifacts/perf-studies/records}
+  - {from: artifacts/perf-calibration, into: artifacts/perf-studies/calibration}
+  - {from: artifacts/perf-settling, into: artifacts/perf-studies/settling}
+  - {from: artifacts/perf-ablation, into: artifacts/perf-studies/ablation}
+  - {from: artifacts/perf-workload, into: artifacts/perf-studies/workload}
+  - {from: artifacts/perf-preflight, into: artifacts/perf-studies/preflight}
+  - {from: artifacts/perf-counters, into: artifacts/perf-studies/counters}
+
+  - {from: artifacts/executorch-venv-rebuild, into: artifacts/archive/executorch-venv-rebuild}
+
+  - {from: artifacts/aaaaaa, into: artifacts/probes/aaaaaa}
+  - {from: artifacts/amax-reduction-ab, into: artifacts/probes/amax-reduction-ab}
+  - {from: artifacts/atlas, into: artifacts/probes/atlas-recovery-bundles}
+  - {from: artifacts/atlas44-atlasrocket-functional-relaunch-20260907,
+     into: artifacts/probes/atlas44-atlasrocket-functional-relaunch-20260907}
+  - {from: artifacts/atlas44-atlasrocket-vertical-slice-20260907,
+     into: artifacts/probes/atlas44-atlasrocket-vertical-slice-20260907}
+  - {from: artifacts/atlas44-resnet50-compile-probe-20260907,
+     into: artifacts/probes/atlas44-resnet50-compile-probe-20260907}
+  - {from: artifacts/atlas44-smolvla-compile-probe-20260907,
+     into: artifacts/probes/atlas44-smolvla-compile-probe-20260907}
+  - {from: artifacts/campaign_convergence_diagnosis_20260907,
+     into: artifacts/probes/campaign-convergence-diagnosis-20260907}
+  - {from: artifacts/capsule-bench-perf-eligible, into: artifacts/probes/capsule-bench-perf-eligible}
+  - {from: artifacts/cpu-host-authority, into: artifacts/probes/cpu-host-authority}
+  - {from: artifacts/cpu-host-frozen-environment, into: artifacts/probes/cpu-host-frozen-environment}
+  - {from: artifacts/dataset-accuracy, into: artifacts/probes/dataset-accuracy}
+  - {from: artifacts/gate-coverage-diagnosis, into: artifacts/probes/gate-coverage-diagnosis}
+  - {from: artifacts/headtohead, into: artifacts/probes/headtohead}
+  - {from: artifacts/lowering-trace, into: artifacts/probes/lowering-trace}
+  - {from: artifacts/model-comparison, into: artifacts/probes/model-comparison}
+  - {from: artifacts/movement-volume, into: artifacts/probes/movement-volume}
+  - {from: artifacts/overnight, into: artifacts/probes/overnight}
+  - {from: artifacts/pkg-cflags-ab, into: artifacts/probes/pkg-cflags-ab}
+  - {from: artifacts/publish, into: artifacts/probes/publish}
+  - {from: artifacts/rate-table, into: artifacts/probes/rate-table}
+  - {from: artifacts/recipe-select, into: artifacts/probes/recipe-select}
+  - {from: artifacts/reports, into: artifacts/probes/reports}
+  - {from: artifacts/scalar-remainder, into: artifacts/probes/scalar-remainder}
+  - {from: artifacts/triton-kernel, into: artifacts/probes/triton-kernel}
+  - {from: artifacts/verify, into: artifacts/probes/verify}
+  - {from: artifacts/w8a8-independence, into: artifacts/probes/w8a8-independence}
+  - {from: artifacts/w8a8-policy-ablation, into: artifacts/probes/w8a8-policy-ablation}

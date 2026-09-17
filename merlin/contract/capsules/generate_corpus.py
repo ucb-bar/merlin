@@ -1,225 +1,3286 @@
 #!/usr/bin/env python3
-"""Generate the capsule_bench_v0 corpus (ISA + layer + model-slice + hidden) deterministically.
+"""Unified capsule-corpus generator — ONE generator for every target.
 
-Every capsule is a compiler INPUT (interface MLIR + capsule.yaml + golden + expected coverage +
-README); nothing here is a kernel. Re-runnable: same output every time. Model slices come from
-``model_slice_export``; the matmul-family ISA/layer capsules are emitted here; movement (A1) and
-conv (B3/B4) capsules are emitted by their own generators once the v1 backend supports them.
+Replaces the two forked generators (this file's gemmini/integer predecessor + ``atlas/generate_atlas_corpus.py``
+atlas/float). For each target it loads the declarative ``profiles/<target>.yaml`` (the target-agnostic test
+DEFINITION — op + shapes-in-tiles + epilogue, plus the numeric datapath), derives the per-target binding from
+the target's descriptor via :mod:`merlin.targetgen.corpus_spec` (dtypes, tile dim, instruction classes, oracle
+tiers — nothing hand-set per target), builds each capsule, computes its golden with the regime's engine
+(integer = the :mod:`capsule_golden` recompute; float = the external ``specir`` fp8/bf16 refmodel), and writes
+the 5-file capsule dir into the target's own corpus root (``Path(te.capsule_corpus).parent`` — gemmini at the
+contract root, atlas under ``atlas/``). Only capsules named in a profile are (over)written; hand-authored
+capsules (e.g. gemmini's movement/conv) are left untouched.
 
-Usage:  .venv/bin/python merlin/contract/capsules/generate_corpus.py
+Run:  PYTHONPATH=$SPECIR_ROOT .venv/bin/python \
+          merlin/contract/capsules/generate_corpus.py            # all targets with a profile
+      ... merlin/contract/capsules/generate_corpus.py --target gemmini
 """
 from __future__ import annotations
 
-import pathlib
+import argparse
+import copy
+import dataclasses
+import hashlib
+import importlib.util
+import json
+import os
+import shutil
 import sys
+from fractions import Fraction
+from pathlib import Path
 
+import numpy as np
 import yaml
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "merlin" / "python"))
+# Bootstrap only: this module lives at ``<repo>/merlin/contract/capsules/`` and must put the
+# in-tree package on ``sys.path`` before it can import ``merlin.common.paths``. Everything after
+# the import derives its roots from that module rather than from ``__file__``.
+_MERLIN_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_MERLIN_DIR / "python"))
 
-from merlin.targetgen import capsule_golden as CG          # noqa: E402
-from merlin.targetgen import model_slice_export as MSE      # noqa: E402
-from merlin.targetgen.contract import schemas as S          # noqa: E402
+from merlin.common.paths import _dotenv, repo_root        # noqa: E402
+from merlin.perf import workload_gen as WG                   # noqa: E402
+from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
+from merlin.runtime.backends.base import (                   # noqa: E402
+    EXECUTION_CAPABILITIES, execution_capability_facts)
+from merlin.targetgen import capsule_golden as CG            # noqa: E402
+from merlin.targetgen import corpus_spec as CS               # noqa: E402
+from merlin.targetgen import numeric_falsifiability as NF    # noqa: E402
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
-CAP_ROOT = REPO / "merlin/contract" / "capsules"
-COMMON = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST",
-          "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
+REPO = repo_root()
+HERE = Path(__file__).resolve().parent
+PROFILES = HERE / "profiles"
+
+_PERFORMANCE_FIELDS = frozenset({
+    "level", "family", "lever", "member_class", "comparand", "falsifier", "gate", "regime",
+    "emitter", "cost",
+})
+_PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+#: WHAT A MEMBER IS FOR, which is not the same question as what it CLAIMS. A family declares a claim
+#: (does the law hold?); a member additionally has a job in the search, and the two had been conflated
+#: with a measurable cost.
+#:
+#: ``LAW``
+#:     The member exists to make a family's claim decidable -- it is a point in a fitted cohort. Its
+#:     cohort is EXACT (the analyzers refuse a partial one), so it can never be sampled; but its cycle
+#:     count is a property of the machine, not of how good today's candidate is, so re-measuring it on
+#:     every candidate buys nothing. Measured on a real sweep: the parallel-extents family is 16 of 38
+#:     members and 33% of the 36.9-minute serial sweep, for members worth under 2% of the objective.
+#: ``OBJECTIVE``
+#:     The member exists to BE optimised. Its cycles are the thing the search minimises, so it is
+#:     re-measured every candidate and it is what the total is summed over.
+#: ``REFERENCE``
+#:     The member is measured against a shipped hand-written implementation of the same shape, which
+#:     is the only place a RECOVERS claim has a denominator. Reported beside the objective, never
+#:     folded into it -- a fraction-of-reference and a sum-of-cycles are different quantities.
+#:
+#: Declared rather than inferred from the claim, because the mapping is not one-to-one: a DIFFERENTIAL
+#: family can be either, and inferring it would silently reclassify a family when its claim changed.
+_MEMBER_CLASSES = frozenset({"LAW", "OBJECTIVE", "REFERENCE"})
+#: The optimization LEVELS a performance family may declare. DOCUMENTED rather than enforced: several
+#: test fixtures declare synthetic levels to prove the validator is generic, so closing this set is a
+#: change to make deliberately alongside those fixtures rather than as a side effect. What it is for:
+#:
+#: The ladder is tile -> layer -> inter-layer -> global, and two rungs were missing from it. `L4_boundary`
+#: is the host/accelerator seam -- the H->A break-even and the cost of an A->H->A island -- which is
+#: where a placement decision is actually made and paid for. `L6_global` is the whole-program decision:
+#: quantization, packing, encoding, layout propagation. Declaring them here does not create the
+#: families; it makes them nameable, so a family that needs one is not forced to file under a level
+#: that means something else. `merlin.perf.profile` now carries the canonical trait an L6 family needs
+#: (`multiple_operand_encodings`), which was the part that could not be added in YAML at all.
+_PERFORMANCE_LEVELS = frozenset({
+    "L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer",
+    "L4_boundary", "L5_fusion", "L6_global",
+})
+_PERFORMANCE_NESTED_FIELDS = {
+    "comparand": frozenset({"kind", "against", "cancels", "demand_equal"}),
+    "falsifier": frozenset({"observation", "fires_when", "negative_control"}),
+    "gate": frozenset({"traits", "instrument", "capacity", "on_missing"}),
+    "regime": frozenset({"separation", "layout"}),
+    "emitter": frozenset({"status", "entry", "knobs"}),
+    "cost": frozenset({"tier", "runs", "projected_cycles", "basis"}),
+}
 
 
-def _matmul_capsule(*, name, kind, label, source_role, source_reference, M, K, N,
-                    lhs, weight, epilogue, output_dtype, acc_scale=None,
-                    modes=None, required=("L0", "L1", "L2", "L3"),
-                    forbidden=None, semantic=None):
-    modes = modes if modes is not None else {
-        "i8": output_dtype == "i8", "relu": "relu" in epilogue, "acc_scale": "acc_scale" in epilogue}
-    attrs = {"lhs": lhs, "weight": weight, "out": "Y0", "epilogue": epilogue,
-             "output_dtype": output_dtype}
-    if acc_scale is not None:
-        attrs["acc_scale"] = acc_scale
-    if semantic:
-        attrs["semantic"] = semantic
-    exp = {"instruction_classes": list(COMMON), "modes": modes}
-    if forbidden:
-        exp["forbidden_classes"] = forbidden
+def _document_digest(document) -> str:
+    """Stable digest for a parsed declaration/fact document."""
+    encoded = json.dumps(document, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_performance_block(block, *, owner: str) -> dict:
+    """Validate the claim-bearing contract before a family can be admitted.
+
+    Performance metadata is consumed later than corpus generation, so a partial
+    block otherwise succeeds here and turns into an unmeasurable family only
+    after an expensive run.  All claim, comparison, falsifier, applicability,
+    regime, emitter, and cost fields therefore fail closed at profile load.
+    """
+    if not isinstance(block, dict):
+        raise ValueError(f"{owner}: `performance` must be a mapping")
+    missing = sorted(_PERFORMANCE_FIELDS - block.keys())
+    if missing:
+        raise ValueError(f"{owner}: performance block missing required field(s) {missing}")
+    for field in ("level", "family", "lever"):
+        if not isinstance(block[field], str) or not block[field].strip():
+            raise ValueError(f"{owner}: performance.{field} must be a non-empty string")
+    claim = block.get("claim")
+    if claim not in _PERFORMANCE_CLAIMS:
+        raise ValueError(
+            f"{owner}: performance.claim must be one of {sorted(_PERFORMANCE_CLAIMS)}, got {claim!r}")
+    member_class = block.get("member_class")
+    if member_class not in _MEMBER_CLASSES:
+        raise ValueError(
+            f"{owner}: performance.member_class must be one of {sorted(_MEMBER_CLASSES)}, got "
+            f"{member_class!r} -- a member with no declared job is measured every candidate AND "
+            f"summed into the objective, which is how a law-fitting cohort came to weigh as much as "
+            f"the workload it was never meant to represent")
+    if member_class == "REFERENCE" and claim != "RECOVERS":
+        raise ValueError(
+            f"{owner}: a REFERENCE member is measured against a shipped implementation, so its claim "
+            f"must be RECOVERS; got {claim!r}")
+    gate_value = block.get("gate")
+    if isinstance(gate_value, dict) and "requires" in gate_value:
+        raise ValueError(
+            f"{owner}: performance.gate.requires is not accepted; use canonical `gate.traits`")
+    for field, required in _PERFORMANCE_NESTED_FIELDS.items():
+        value = block[field]
+        if not isinstance(value, dict):
+            raise ValueError(f"{owner}: performance.{field} must be a mapping")
+        absent = sorted(required - value.keys())
+        if absent:
+            raise ValueError(
+                f"{owner}: performance.{field} missing required field(s) {absent}")
+        for key in required - {"knobs"}:
+            nested = value[key]
+            if (nested is None or (isinstance(nested, str) and not nested.strip())
+                    or (isinstance(nested, (list, tuple, dict)) and not nested)):
+                raise ValueError(
+                    f"{owner}: performance.{field}.{key} must be non-empty")
+    gate = block["gate"]
+    names = gate["traits"]
+    if (not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or not name for name in names)):
+        raise ValueError(f"{owner}: performance.gate.traits must be a non-empty list of trait names")
+    if len(set(names)) != len(names):
+        raise ValueError(f"{owner}: performance.gate.traits contains duplicate names {names}")
+    unknown = sorted(set(names) - set(TRAITS))
+    if unknown:
+        raise ValueError(
+            f"{owner}: unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    execution_names = gate.get("execution_capabilities", [])
+    if (not isinstance(execution_names, list)
+            or any(not isinstance(name, str) or not name for name in execution_names)):
+        raise ValueError(
+            f"{owner}: performance.gate.execution_capabilities must be a list of names")
+    if len(set(execution_names)) != len(execution_names):
+        raise ValueError(
+            f"{owner}: performance.gate.execution_capabilities contains duplicate names "
+            f"{execution_names}")
+    unknown_execution = sorted(set(execution_names) - set(EXECUTION_CAPABILITIES))
+    if unknown_execution:
+        raise ValueError(
+            f"{owner}: unknown execution capability(s) {unknown_execution}; canonical capabilities "
+            f"are {list(EXECUTION_CAPABILITIES)}")
+    if gate["on_missing"] != "skip_with_evidence":
+        raise ValueError(
+            f"{owner}: performance.gate.on_missing must be 'skip_with_evidence'")
+    emitter = block["emitter"]
+    if not isinstance(emitter["status"], str) or not emitter["status"]:
+        raise ValueError(f"{owner}: performance.emitter.status must be non-empty")
+    if not isinstance(emitter["entry"], str) or not emitter["entry"]:
+        raise ValueError(f"{owner}: performance.emitter.entry must be non-empty")
+    if not isinstance(emitter["knobs"], dict):
+        raise ValueError(f"{owner}: performance.emitter.knobs must be a mapping")
+    return block
+
+
+def _comparison_roles(sweep: dict) -> list[str]:
+    roles = {str(role) for role in (sweep.get("comparison_roles") or []) if str(role)}
+    roles |= {str(group["role"])
+              for variant in (sweep.get("variants") or [])
+              if isinstance(variant, dict)
+              if isinstance((group := variant.get("comparison_group")), dict)
+              if group.get("role")}
+    return sorted(roles)
+
+
+def _validate_declared_fit_axes(sweep: dict, *, owner: str) -> None:
+    fit_axes = sweep.get("fit_axes") or []
+    if (not isinstance(fit_axes, list) or not fit_axes
+            or any(not isinstance(axis, str) or not axis for axis in fit_axes)):
+        raise ValueError(f"{owner}: fit_axes must be a non-empty list of axis names")
+    axes = sweep.get("axes") or {}
+    unknown = [axis for axis in fit_axes if axis not in axes]
+    if unknown:
+        raise ValueError(f"{owner}: fitted axes {unknown} are not declared in axes")
+    for axis in fit_axes:
+        points = axes[axis]
+        if isinstance(points, dict):
+            # A DERIVED axis cannot be checked here -- its points are a function of the target's own
+            # facts and no target is bound at profile load. What IS checkable at load is the promise:
+            # the declaration must ask for at least two points per band, and `expand_sweeps` re-checks
+            # the resolved values. A derivation that silently returned one point would otherwise ship a
+            # one-point fit under a contract that says it is fitted.
+            if str(points.get("derive") or "") not in _DERIVED_AXES:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} declares an unknown derivation "
+                    f"{points.get('derive')!r}; known derivations are {list(_DERIVED_AXES)}")
+            if int(points.get("points_per_regime", 0)) < 2:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} derives fewer than two points per regime; a rate "
+                    "and a fixed intercept are two parameters and one point cannot separate them")
+            continue
+        if not isinstance(points, list) or len({repr(point) for point in points}) < 2:
+            raise ValueError(
+                f"{owner}: fitted axis {axis} must declare at least two distinct points")
+
+
+def _performance_family_record(sweep: dict) -> dict:
+    performance = (sweep.get("base") or {}).get("performance") or sweep.get("performance") or {}
     return {
-        "name": name, "kind": kind, "source_role": source_role,
-        "source_reference": source_reference, "label": label,
-        "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": weight, "role": "weight", "shape": [K, N], "dtype": "i8"},
-                   {"name": lhs, "role": "input", "shape": [M, K], "dtype": "i8"}],
-        "operation": {"op": "matmul", "attributes": attrs},
-        "numeric_policy": {"compare": "exact_int", "dtype": output_dtype,
-                           **({"acc_scale": acc_scale} if acc_scale is not None else {})},
-        "expected": exp, "required_oracle_tiers": list(required),
-        "vcs": "optional", "firesim": "optional",
+        "family": performance.get("family") or sweep.get("id"),
+        "claim": performance.get("claim"),
+        "fit_axes": list(sweep.get("fit_axes") or []),
+        "comparison_roles": _comparison_roles(sweep),
     }
 
 
-def _write_single_matmul(cap, comment):
-    a = cap["operation"]["attributes"]
-    M, K = cap["inputs"][1]["shape"]
-    N = cap["inputs"][0]["shape"][1]
-    text = MSE.emit_interface_mlir(lhs=a["lhs"], weight=a["weight"], out="Y0", M=M, K=K, N=N,
-                                   epilogue=a["epilogue"], output_dtype=a["output_dtype"],
-                                   acc_scale=a.get("acc_scale"), comment=comment)
-    return _write_capsule_dir(cap, text, comment)
+def _target_local_perf_declarations(profile: dict) -> list[str]:
+    """Names of performance entries embedded in a target-owned profile.
+
+    Functional sweeps remain target-owned: they describe operation coverage for
+    that target.  Performance families do not.  Their shapes and comparison
+    structure must come from the one shared ``_perf.yaml`` template, otherwise
+    onboarding a target can quietly fork the experiment it is compared under.
+    """
+    found: list[str] = []
+    for entry in profile.get("capsules") or []:
+        if (isinstance(entry, dict)
+                and (entry.get("cat") in {"perf", "_perf"} or "performance" in entry)):
+            found.append(str(entry.get("name") or "<unnamed capsule>"))
+    for sweep in profile.get("sweeps") or []:
+        if not isinstance(sweep, dict):
+            continue
+        base = sweep.get("base") or {}
+        variants = sweep.get("variants") or []
+        if ((isinstance(base, dict)
+             and (base.get("cat") in {"perf", "_perf"} or "performance" in base))
+                or any(isinstance(v, dict)
+                       and (v.get("cat") in {"perf", "_perf"} or "performance" in v)
+                       for v in variants)):
+            found.append(str(sweep.get("id") or "<unnamed sweep>"))
+    return found
 
 
-def _write_capsule_dir(cap, interface_text, comment):
-    S.validate(cap, "capsule")
-    cap_for_golden = {**cap, "__dir__": ""}
-    gold = CG.golden(cap_for_golden)
-    sub = CAP_ROOT / ({"isa": "isa", "layer": "layers",
-                       "model_slice": "model_slices"}.get(cap["kind"], cap["kind"]))
-    d = sub / cap["name"]
+def _merge_shared_perf(profile: dict, *, source: Path) -> None:
+    """Merge the sole shared performance template into one target profile."""
+    shared_path = PROFILES / "_perf.yaml"
+    shared = yaml.safe_load(shared_path.read_text(encoding="utf-8")) or {}
+    misplaced = _target_local_perf_declarations(profile)
+    if misplaced:
+        raise ValueError(
+            f"{source} declares target-local performance template entries {misplaced}; "
+            f"move them to the shared {shared_path}")
+    if shared.get("capsules"):
+        raise ValueError(
+            f"shared performance template {shared_path} must generate entries through `sweeps`, "
+            "not hand-author `capsules`")
+    non_perf = [
+        str(s.get("id") or "<unnamed sweep>")
+        for s in (shared.get("sweeps") or [])
+        if not isinstance(s, dict) or (s.get("base") or {}).get("cat") != "_perf"
+    ]
+    if non_perf:
+        raise ValueError(
+            f"shared performance template {shared_path} contains non-performance sweeps {non_perf}")
+    sweeps = list(shared.get("sweeps") or [])
+    blocked = list(shared.get("blocked_unimplemented") or [])
+    family_records: list[dict] = []
+    seen: set[str] = set()
+    for sweep in sweeps:
+        sweep_id = str(sweep.get("id") or "").strip()
+        if not sweep_id:
+            raise ValueError(f"shared performance template {shared_path} has a sweep without an id")
+        performance = _validate_performance_block(
+            (sweep.get("base") or {}).get("performance"), owner=f"shared sweep {sweep_id}")
+        _validate_declared_fit_axes(sweep, owner=f"shared sweep {sweep_id}")
+        if performance["family"] != sweep_id:
+            raise ValueError(
+                f"shared sweep {sweep_id}: performance.family must equal the sweep id")
+        if sweep_id in seen:
+            raise ValueError(f"shared performance template repeats family {sweep_id!r}")
+        seen.add(sweep_id)
+        family_records.append(_performance_family_record(sweep))
+    for item in blocked:
+        if not isinstance(item, dict):
+            raise ValueError(f"shared {shared_path}: blocked_unimplemented entries must be mappings")
+        family = str(item.get("family") or "").strip()
+        if not family or not str(item.get("reason") or "").strip():
+            raise ValueError(
+                f"shared {shared_path}: blocked_unimplemented needs family and reason")
+        performance = _validate_performance_block(
+            item.get("performance"), owner=f"blocked performance family {family}")
+        if performance["family"] != family:
+            raise ValueError(
+                f"blocked family {family}: performance.family must equal its family")
+        if family in seen:
+            raise ValueError(f"shared performance template repeats family {family!r}")
+        seen.add(family)
+        family_records.append({
+            "family": family,
+            "claim": performance.get("claim"),
+            "fit_axes": list(item.get("fit_axes") or []),
+            "comparison_roles": list(item.get("comparison_roles") or []),
+        })
+    profile["sweeps"] = list(profile.get("sweeps") or []) + sweeps
+    # Recorded repo-root-relative so a consumer can resolve it against `repo_root()` alone.
+    # It is derived from the same `shared_path` this function read, never re-spelled by hand: a
+    # hand-typed (or mis-rooted) prefix is exactly how this record went stale after the tree moved
+    # under `merlin/` and the campaign gate started refusing its own corpus.
+    try:
+        template_path = shared_path.relative_to(REPO).as_posix()
+    except ValueError:
+        # A template outside the checkout (test fixtures point PROFILES at a tmp dir) can only be
+        # named absolutely. Consumers resolve an absolute record as-is and refuse it when it does
+        # not exist, so this stays fail-closed rather than becoming a second relative spelling.
+        template_path = str(shared_path)
+    profile["_performance_template"] = {
+        "path": template_path,
+        "sha256": _document_digest(shared),
+        "families": family_records,
+        "blocked_unimplemented": copy.deepcopy(blocked),
+    }
+
+
+def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
+    """The target's functional profile plus shared perf and the private holdout sidecar.
+
+    The holdout spec (op + dtype + exact shape) is an answer, not a contract: the tracked profile lives
+    inside the ``merlin/contract/`` tree every arm is granted read-only, so a holdout declared there is
+    readable by the agent under test. It therefore lives in ``profiles/<target>.hidden.yaml``, which is
+    gitignored and masked by :mod:`merlin.targetgen.sandbox.answer_surfaces`. When the sidecar is absent
+    -- a public clone, or a sandbox where it is masked -- this returns the public profile unchanged and
+    the run simply emits no hidden capsules, which is the correct behaviour rather than an error.
+
+    ``include_holdouts=False`` for any caller whose OUTPUT is public: a published artifact that
+    enumerates the holdouts leaks them just as the profile did.
+    """
+    public = PROFILES / f"{target}.yaml"
+    prof = yaml.safe_load(public.read_text(encoding="utf-8")) or {}
+    _merge_shared_perf(prof, source=public)
+    # SYNTHESIZED ENTRIES, appended after the hand-authored ones. They come from the target's own
+    # derived conformance requirement (build_tools/scripts/synth_capsule_corpus.py --write) and carry
+    # the cell each was synthesized for in `source_reference`. Appended rather than prepended so
+    # `expand_sweeps`' documented declaration-order semantics are untouched; its `seen` set already
+    # raises on a duplicate name, and every synthesized name is `SY_`-prefixed, so a collision with a
+    # hand-authored capsule is impossible rather than merely unlikely.
+    synth = PROFILES / f"{target}.synth.yaml"
+    if synth.is_file():
+        doc = yaml.safe_load(synth.read_text(encoding="utf-8")) or {}
+        extra = list(doc.get("capsules") or ())
+        if extra:
+            prof["capsules"] = list(prof.get("capsules") or []) + extra
+    # SOLVER-DERIVED ENTRIES. `verify.counterexamples` writes `<target>.smt.yaml` -- a counterexample
+    # the deterministic fill cannot reach, found by the SMT layer at a shape it can still decide. It
+    # was written to a filename nothing read: this chain was three hardcoded names, and
+    # `counterexamples.py` documented a glob that does not exist ("load_profile already merges
+    # profiles/<target>.*.yaml sidecars"). No `.smt.yaml` has ever been committed, which is consistent
+    # with the path never having worked end to end.
+    smt = PROFILES / f"{target}.smt.yaml"
+    if smt.is_file():
+        doc = yaml.safe_load(smt.read_text(encoding="utf-8")) or {}
+        extra = list(doc.get("capsules") or ())
+        if extra:
+            prof["capsules"] = list(prof.get("capsules") or []) + extra
+
+    side = PROFILES / f"{target}.hidden.yaml"
+    if include_holdouts and side.is_file():
+        held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
+        misplaced = _target_local_perf_declarations(held)
+        if misplaced:
+            raise ValueError(
+                f"{side} declares target-local performance template entries {misplaced}; "
+                f"move them to the shared {PROFILES / '_perf.yaml'}")
+        prof["capsules"] = list(prof.get("capsules") or []) + list(held.get("capsules") or [])
+        # HOLDOUTS ARE GENERATED TOO, and without this line the sidecar's `sweeps:` block is read and
+        # silently dropped -- the points expand for the disjointness gate, which reads the sidecar
+        # itself, and then never become capsules. Generating them is the point: a hand-authored holdout
+        # is written by someone who has just read the public profile, and an audit of this repo found
+        # holdouts that were public capsules under another name, scoring memorisation as transfer. A
+        # sweep states the OBLIGATION and lets the tile edge compute the points.
+        prof["sweeps"] = list(prof.get("sweeps") or []) + list(held.get("sweeps") or [])
+    return prof
+
+
+def profile_targets() -> list[str]:
+    """Target profile stems, excluding shared templates, sidecars, and every DOTTED stem.
+
+    ⚠️ A DOTTED STEM IS A SIDECAR, NEVER A TARGET. `Path.stem` strips only the LAST suffix, so
+    `gemmini.synth.yaml` yields the stem `gemmini.synth` -- and this function returned it as a target
+    beside `gemmini`. Measured: six real targets came back as twelve, and `main()` uses this list as
+    the default when `--target` is absent, so a bare run generated six phantom corpora whose profiles
+    are fragments. Excluding `.hidden` by filename alone was the same bug avoided one case at a time;
+    the rule is now structural -- a target name has no dot in it, which is also what
+    `check_phase_split` and `retire_hand_capsules` already assume when they enumerate targets.
+    """
+    return sorted(
+        path.stem for path in PROFILES.glob("*.yaml")
+        if not path.name.startswith("_") and "." not in path.stem)
+
+
+# ------------------------------------------------------------------------------------------------
+# deterministic local-path scrub (tracked-file hygiene — no /tmp, /scratch, /home paths ever ship).
+# The m2m capture externalizes weights to a NON-deterministic temp dir and stamps its ABSOLUTE path into
+# the captured linalg's ``prov.weights_file`` module attribute; the whole-model writer relativizes it but
+# the fused/mapped op writer (in capsule_source, outside this file's edit boundary) does not — so we scrub
+# the written capsule dir HERE, at the one place this generator owns. Op capsules ship NO weights file
+# (their operands come from golden.yaml provenance), so the attribute is non-load-bearing and is STRIPPED;
+# an already-relative value (the whole-model ``capsule.weights.safetensors``) is left untouched. Captured
+# whole-model loader SOURCES (capsule.pytorch.py) may also carry upstream local-path env-defaults / docstring
+# examples — those local-path tokens are redacted. Deterministic (temp-dir name never survives) + idempotent;
+# structural string ops only (no regex).
+# ------------------------------------------------------------------------------------------------
+_LOCAL_ROOTS = ("/tmp", "/scratch", "/home")
+_PATH_TERMINATORS = set("\"'") | set(" \t\r\n),]}>")
+
+
+def _strip_weights_attr(text: str) -> str:
+    """Strip an ABSOLUTE ``prov.weights_file = "<abs>"`` module attribute (with its separating comma); leave
+    an already-relative value alone. There is exactly one per captured-linalg module."""
+    key = 'prov.weights_file = "'
+    i = text.find(key)
+    if i == -1:
+        return text
+    j = text.find('"', i + len(key))
+    if j == -1:
+        return text
+    if "/" not in text[i + len(key):j]:          # already relative (e.g. capsule.weights.safetensors)
+        return text
+    start, end = i, j + 1
+    if text[end:end + 2] == ", ":                # attribute is first: drop trailing ", "
+        end += 2
+    elif text[start - 2:start] == ", ":          # attribute is later: drop leading ", "
+        start -= 2
+    return text[:start] + text[end:]
+
+
+def _redact_local_paths(text: str) -> str:
+    """Replace any absolute local-filesystem path token (``/tmp*`` / ``/scratch*`` / ``/home*``, consumed up
+    to the next quote / whitespace / bracket) with the stable placeholder ``<path>``. Idempotent (the
+    placeholder contains no local root)."""
+    for root in _LOCAL_ROOTS:
+        while True:
+            i = text.find(root)
+            if i == -1:
+                break
+            j = i + len(root)
+            while j < len(text) and text[j] not in _PATH_TERMINATORS:
+                j += 1
+            text = text[:i] + "<path>" + text[j:]
+    return text
+
+
+def _scrub_capsule_dir(d) -> None:
+    """Scrub every tracked-shippable text file in a written capsule dir of non-deterministic / local paths:
+    strip the absolute ``prov.weights_file`` from ``*.mlir`` and redact local-path tokens from ``*.mlir`` +
+    ``*.py``. Only rewrites a file when its content actually changes (keeps regenerations byte-stable)."""
+    if d is None:
+        return
+    for p in sorted(Path(d).iterdir()):
+        if p.suffix not in (".mlir", ".py") or not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8")
+        scrubbed = text
+        if p.suffix == ".mlir":
+            scrubbed = _strip_weights_attr(scrubbed)
+        scrubbed = _redact_local_paths(scrubbed)
+        if scrubbed != text:
+            p.write_text(scrubbed, encoding="utf-8")
+
+
+# ------------------------------------------------------------------------------------------------
+# float golden engine (generation-time only; needs the external specir refmodel)
+# ------------------------------------------------------------------------------------------------
+def _specir():
+    root = os.environ.get("SPECIR_ROOT") or _dotenv().get("SPECIR_ROOT")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from specir.oracle import dtypes as D
+    from specir.oracle.refmodel import fp_reduce
+    return D, fp_reduce
+
+
+# specir fp8 format handle per canonical operand dtype token (fail closed if the refmodel lacks it).
+_SPECIR_FP8_ATTR = {"fp8_e4m3": "FP8_E4M3", "fp8_e5m2": "FP8_E5M2"}
+
+
+def _specir_fp8(D, fmt_token: str):
+    attr = _SPECIR_FP8_ATTR.get(fmt_token)
+    if attr is None or not hasattr(D, attr):
+        raise ValueError(f"specir refmodel has no fp8 format for operand dtype {fmt_token!r} "
+                         f"(known: {sorted(_SPECIR_FP8_ATTR)})")
+    return getattr(D, attr)
+
+
+def _det_fp8(D, name, shape, salt, fmt_token, d_fp8):
+    """Structured, format-DERIVED operand bytes: distinct rows AND columns + asymmetric (so a wrong row
+    stride / base offset / transposed load changes the output), spanning the fp8 format's representable
+    range. Replaces the old 11-magnitude flat-hash fill (~6 distinct values, ~11/32 distinct rows) that hid
+    those bug classes. See merlin.targetgen.corpus_operands."""
+    from merlin.targetgen import corpus_operands as CO
+    salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
+    vals = CO.operand_values(tuple(shape), fmt_token, salt_int)
+    raw = [D.encode_float(v, d_fp8) for v in vals]
+    # Self-enforcing rigor: fail generation loudly if the ENCODED bytes are not distinct-per-row/col +
+    # asymmetric (e.g. a future palette/fill change, or an encode that collapsed distinct values). A weak
+    # operand silently hides addressing/stride/transpose bugs — never let a regeneration ship one.
+    if len(shape) == 2:
+        problems = CO.rigor_findings([float(b) for b in raw], tuple(shape))
+        if problems:
+            raise AssertionError(f"non-rigorous operand {name}{tuple(shape)}: {problems}")
+    return raw, vals
+
+
+def _operand_decoder(D, fmt, *, flush_subnormals: bool):
+    """Decode a raw operand code the way the DATAPATH decodes it, exactly.
+
+    By default that is the format's own exact value. A datapath that admits only NORMAL operands sees
+    zero wherever the operand's exponent field is zero, and a reference model that decodes those codes
+    to their tiny nonzero value is modelling different hardware — every later add carries the
+    difference. Whether the target does that is a measured property of its compute unit, declared in
+    its profile's ``datapath`` block (``subnormal_operand_flush``); nothing here assumes it.
+
+    The subnormal test is DERIVED from the format descriptor the refmodel hands back (the exponent
+    field, located by the format's own ``mant_bits``/``exp_bits``), so it holds for any exponent /
+    mantissa split rather than one hardcoded byte layout.
+    """
+    if not flush_subnormals:
+        return lambda raw: D.decode_float_exact(int(raw), fmt)
+    exp_mask = (1 << fmt.exp_bits) - 1
+
+    def decode(raw):
+        raw = int(raw)
+        if ((raw >> fmt.mant_bits) & exp_mask) == 0:     # exponent field zero => subnormal (or zero)
+            return Fraction(0)
+        return D.decode_float_exact(raw, fmt)
+    return decode
+
+
+#: MEMOIZE THE GOLDEN ENGINES. A golden is DERIVED and fully deterministic -- operands come from a
+#: name-salted fill with no RNG -- so identical inputs always produce an identical answer and
+#: recomputing them is pure waste. The engines are deliberately slow: `fp_reduce` accumulates in the
+#: device's own order, one step at a time, in pure Python, because a numpy dot product would round
+#: differently from the hardware. Measured 2026-09-05: an atlas regeneration spends ~90 minutes there
+#: and a radiance one ~40, nearly all of it recomputing capsules that nothing changed.
+#:
+#: ⚠️ THE KEY INCLUDES THE ENGINE'S OWN SOURCE, not just the entry. On this same date a conv2d branch
+#: was added to the SIMT engine and an attention statement to the composed micro model. A cache keyed
+#: on the entry alone would have served the pre-change goldens straight through both edits -- and a
+#: stale golden does not fail loudly, it grades a backend against the wrong answer, which is precisely
+#: the failure class this corpus exists to catch. Four things move a golden and all four are in the
+#: key: the entry, the binding, the engine, and the operand synthesis.
+#:
+#: The store is a PURGEABLE cache namespace: deleting it costs time, never correctness.
+_GOLDEN_CACHE_DISABLED = os.environ.get("MERLIN_NO_GOLDEN_CACHE", "").strip() not in ("", "0")
+
+
+def _source_digest_of(obj) -> str:
+    """Digest of the SOURCE FILE that defines ``obj`` -- the bytes actually on disk.
+
+    A dirty working tree changes this even when the commit does not, which is the property that makes
+    an edit-in-progress invalidate its own cached results.
+    """
+    import inspect
+    try:
+        return hashlib.sha256(Path(inspect.getfile(obj)).read_bytes()).hexdigest()
+    except (TypeError, OSError):      # no resolvable source -> never cache against an unknown engine
+        return "unresolvable"
+
+
+def _golden_cache_key(fn, entry, binding, facts_sha: str = "") -> str:
+    """Digest of everything that determines the answer.
+
+    ``facts_sha`` is the target's RTL-facts digest -- the same one the corpus manifest records. The
+    goldens are deliberately INDEPENDENT of the RTL (an oracle derived from the device would be the
+    device grading itself), but the RTL still reaches them INDIRECTLY: the binding's tile edge, dtypes
+    and subnormal handling are derived from the capability manifest, and an entry's extents come from
+    facts like memory capacity and array geometry. Keying on the facts digest invalidates
+    conservatively -- more often than strictly required, never less -- so a changed device can never be
+    answered from a cache built against the previous one. An empty digest means the caller could not
+    establish which device this is, and is carried as its own distinct key rather than treated as
+    "no change".
+    """
+    from merlin.targetgen import corpus_operands as CO
+    h = hashlib.sha256()
+    h.update(_document_digest(entry).encode("utf-8"))
+    h.update(repr(binding).encode("utf-8"))          # frozen dataclass -> stable repr
+    h.update(fn.__name__.encode("utf-8"))
+    h.update(_source_digest_of(fn).encode("utf-8"))  # the engine that will answer
+    h.update(_source_digest_of(CO).encode("utf-8"))  # how its operands are synthesized
+    h.update(str(facts_sha).encode("utf-8"))         # WHICH DEVICE this corpus is about
+    return h.hexdigest()
+
+
+def _golden_cached(fn, entry, binding, facts_sha: str = ""):
+    """``fn(entry, binding)``, answered from the cache when every input digest matches."""
+    if _GOLDEN_CACHE_DISABLED or _source_digest_of(fn) == "unresolvable":
+        return fn(entry, binding)
+    from merlin.common.artifacts import cache_dir
+    key = _golden_cache_key(fn, entry, binding, facts_sha)
+    path = Path(cache_dir("capsule_goldens")) / key[:2] / f"{key}.json"
+    if path.is_file():
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            return rec["outputs"], rec["prov"]
+        except Exception:             # noqa: BLE001 -- a damaged entry is a MISS, never a wrong answer
+            pass
+    outputs, prov = fn(entry, binding)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"outputs": outputs, "prov": prov}), encoding="utf-8")
+        tmp.replace(path)             # atomic: a concurrent reader never sees a half-written entry
+    except OSError:                   # an unwritable cache must not fail a generation
+        pass
+    return outputs, prov
+
+
+def _float_golden(entry, binding):
+    """A capsule's fp8->bf16 golden + input provenance from the specir refmodel (independent of the RTL)."""
+    D, fp_reduce = _specir()
+    fmt_token = binding.operand_dtype                    # e.g. "fp8_e4m3" — DERIVED, not assumed
+    FP8, BF16 = _specir_fp8(D, fmt_token), D.BF16
+    dec = _operand_decoder(D, FP8, flush_subnormals=binding.subnormal_operand_flush)
+    salt, dim = entry["name"], binding.tile_dim
+    prov, outputs = {}, {}
+
+    def reg(name, shape, *, declared_shape=None):
+        """Register one input operand. ``shape`` is the 2-D shape the STIMULUS is built (and rigor-checked)
+        at; ``declared_shape`` is the shape the capsule declares for the same flat row-major bytes, when the
+        two differ. They differ for a rank-4 activation: `operand_values` builds a matrix, and an NHWC
+        image with N=1 IS the matrix [H*W, Ci] in row-major order -- so the rigor guarantee (distinct rows,
+        distinct columns, asymmetric) lands on exactly the axes a conv can get wrong, spatial position and
+        channel, instead of being skipped because the declared rank is not two."""
+        raw, vals = _det_fp8(D, name, shape, salt, fmt_token, FP8)
+        prov[name] = {"shape": list(declared_shape or shape),
+                      "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
+        return raw
+
+    def reg_acc(name, shape):
+        """An operand that lives in the ACCUMULATOR's format, not the input format.
+
+        A bias is added to the accumulator, so it is declared and generated there. Its VALUES still come
+        from the operand format's palette, and that is the load-bearing part: the accumulator format's
+        own palette spans its entire exponent range, which for bf16 reaches ~1e-31, and a bias that
+        small added to a matmul output of order one rounds away to nothing. The golden would then be
+        byte-identical to the unfused matmul's, so a backend that DROPPED the bias entirely would pass
+        the fused capsule -- the failure mode where a gate is satisfied by arithmetic nobody performed.
+        Drawing from the operand palette keeps the addend on the same scale as the sum it lands on.
+
+        Returns the decoded values (not raw codes): everything downstream of an accumulator-format
+        operand is float arithmetic, and the byte-level palette-preload path is for input operands.
+        """
+        from merlin.targetgen import corpus_operands as CO
+        if len(shape) == 2:
+            _, vals = _det_fp8(D, name, shape, salt, fmt_token, BF16)
+        else:
+            # A bias is a VECTOR, and `operand_values` shapes a matrix. Ask it for one row and flatten.
+            # The per-row/per-column rigor `_det_fp8` enforces is not the right check for a vector --
+            # it has one row -- but the part that still matters is: a constant bias is satisfied by a
+            # kernel that adds any single number, and would not detect a broadcast along the wrong
+            # axis. So distinctness ALONG the vector is asserted here instead of skipped.
+            (n,) = shape
+            salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
+            vals = list(CO.operand_values((1, n), fmt_token, salt_int))
+            if n > 1 and len(set(vals)) < 2:
+                raise AssertionError(
+                    f"non-rigorous bias {name}({n},): every element is {vals[0]!r}, so a kernel that "
+                    f"broadcast one value along the wrong axis would still match the golden")
+        prov[name] = {"shape": list(shape), "decoded": vals}
+        return vals
+
+    def rnd(x):
+        return D.round_to_format(x, BF16, "rne")
+
+    #: MEMOIZED PRODUCT. ``rnd(dec(a) * dec(b))`` is a pure function of the OPERAND CODE PAIR, so
+    #: caching it on that pair is bit-identical by construction -- same inputs, same function, same
+    #: answer -- rather than an approximation traded for speed. It is worth doing because the operand
+    #: fill draws from a small deterministic alphabet, so a deep-K contraction re-derives the same few
+    #: products millions of times: measured, this engine ran ~33.7 ms per unit of K, which is ~37
+    #: minutes for the single k65536 residency member and ~86 minutes across the four deep-K ones.
+    #:
+    #: THE REDUCTION IS DELIBERATELY NOT TOUCHED. ``fp_reduce`` accumulates in the device's own order,
+    #: one step at a time, and that sequencing is the whole reason this engine is not a numpy dot
+    #: product. Only the per-element product -- which carries no order -- is cached.
+    _prod_cache: dict = {}
+
+    def _prod(a_code, b_code):
+        key = (a_code, b_code)
+        hit = _prod_cache.get(key)
+        if hit is None:                       # `is None` not truthiness: a rounded product may be 0
+            hit = rnd(dec(a_code) * dec(b_code))
+            _prod_cache[key] = hit
+        return hit
+
+    def mm(a_raw, ashape, w_raw, wshape):
+        m, k = ashape
+        _, n = wshape
+        out = [[0] * n for _ in range(m)]
+        for i in range(m):
+            a_row = a_raw[i * k:(i + 1) * k]
+            for j in range(n):
+                prods = [_prod(a_row[p], w_raw[p * n + j]) for p in range(k)]
+                out[i][j] = fp_reduce(prods, BF16, order="index_sequential", cadence="per_step", rm="rne")
+        return out
+
+    def floats(y):
+        return [[D.decode_float(v, BF16) for v in row] for row in y]
+
+    op = entry.get("op", "matmul")
+    if op in ("matmul", "linear"):
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        a = reg(entry.get("lhs", "A0"), (M, K))
+        w = reg(entry.get("weight", "W"), (K, N))
+        y = mm(a, (M, K), w, (K, N))
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            s = Fraction(entry["acc_scale"]).limit_denominator(1 << 20)
+            y = [[rnd(D.decode_float_exact(v, BF16) * s) for v in row] for row in y]
+        if "relu" in epi:
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "fused_matmul_bias":
+        # The matmul branch above with the bias stage, which is where the op name says it happens. The
+        # addend is in the accumulator format (see `reg_acc`) because that is where it lands.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        a = reg(entry.get("lhs", "A0"), (M, K))
+        w = reg(entry.get("weight", "W"), (K, N))
+        y = mm(a, (M, K), w, (K, N))
+        # EXACT rationals, like the acc_scale stage above: `round_to_format` needs a Fraction, and a
+        # bf16 palette value is a dyadic rational, so Fraction(v) is exact -- no limit_denominator,
+        # which would perturb the very addend whose effect the golden has to record.
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        y = [[rnd(D.decode_float_exact(v, BF16) + b[j]) for j, v in enumerate(row)] for row in y]
+        if "relu" in entry.get("epilogue", []):
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "bias_add":
+        # The same addition standing alone. Both operands are in the accumulator format, because this op
+        # IS the fused capsule's bias stage lifted out of it -- so the two members add the same numbers.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        x = [Fraction(v) for v in reg_acc(entry.get("src", "X"), (M, N))]
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        outputs[entry.get("out", "Y0")] = floats([[rnd(x[i * N + j] + b[j]) for j in range(N)]
+                                                  for i in range(M)])
+    elif op in ("gemv_batched", "batch_matmul"):
+        # A BATCHED CONTRACTION IS B INDEPENDENT ONES, and that is the whole of it: the device's shim
+        # loops over B calling the same (M,N,K) kernel per slice, so the golden is the same `mm` per
+        # slice with source-visible shape [B,M,N]. It exists because the corpus could not
+        # express a rank-3 region on this datapath at all -- the only batched golden was block-scaled,
+        # so a target whose contract admits batching had its `contraction.batched` requirement reported
+        # as "no builder materializes a rank-3 region" while the rewrite, the device kernel and the
+        # shim's B loop were all already there.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        batches: list = []
+        for b in range(B):
+            # One operand PER SLICE, salted by the slice index. Reusing one operand across B would make
+            # every slice's output identical, and a kernel that computed one slice and broadcast it
+            # would match the golden exactly -- the degeneracy this corpus already refuses elsewhere.
+            a = reg(f"{lhs}_b{b}", (M, K))
+            w = reg(f"{weight}_b{b}", (K, N))
+            batches.append(floats(mm(a, (M, K), w, (K, N))))
+        outputs[entry.get("out", "Y0")] = batches
+    elif op == "movement":
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        x = reg(entry.get("src", "X"), (M, N))
+        outputs[entry.get("out", "Y0")] = floats([[rnd(dec(x[i * N + j]))
+                                                   for j in range(N)] for i in range(M)])
+    elif op == "resident_reuse":
+        K = entry.get("K_tiles", 1) * dim
+        N = entry.get("N_tiles", 1) * dim
+        w = reg(entry["weight"], (K, N))
+        for m in entry["matmuls"]:
+            M = m.get("M_tiles", 1) * dim
+            a = reg(m["lhs"], (M, K))
+            outputs[m["out"]] = floats(mm(a, (M, K), w, (K, N)))
+    elif op == "attention_qk":
+        M = entry.get("M_tiles", 1) * dim
+        Kd = entry.get("K_tiles", 1) * dim
+        q = reg(entry.get("q", "Q"), (M, Kd))
+        k = reg(entry.get("k", "K"), (M, Kd))
+        kt = [0] * (M * Kd)
+        for i in range(M):
+            for j in range(Kd):
+                kt[j * M + i] = k[i * Kd + j]
+        outputs[entry.get("out", "Y0")] = floats(mm(q, (M, Kd), kt, (Kd, M)))
+    elif op == "conv2d":
+        # AN IM2COL CONV IS A CONTRACTION OVER GATHERED WINDOWS, and that is the whole of it: the device
+        # gathers [Ho*Wo, Kh*Kw*Ci] out of the NHWC activation and runs the same reduction the matmul
+        # branch runs. So the golden reuses `mm` over the runtime's OWN gather (`conv_im2col`, the single
+        # source of truth shared with the runner harness and the integer engine) rather than a second
+        # transcription of the window arithmetic -- a second transcription is how a golden and a harness
+        # come to disagree about which tap a window reads.
+        #
+        # The gather is a permutation-with-zero-fill of raw operand CODES, so it is dtype-blind: an
+        # out-of-bounds tap contributes code 0, which every float format here decodes to +0.0, exactly the
+        # zero-pad the integer engine applies. Nothing about this branch is target-specific; the geometry
+        # comes from the entry and the formats from the binding.
+        from merlin.runtime.commandbuffer import conv_im2col, conv_out_dims
+        from merlin.runtime.tensor import Tensor
+        if "maxpool" in [str(s) for s in (entry.get("epilogue") or [])]:
+            # Fail closed rather than emit an unpooled reference for a capsule that declares pooling: a
+            # golden that silently skipped the stage would agree with a backend that skipped it too.
+            raise ValueError(f"float conv2d golden: capsule {entry['name']!r} declares a maxpool "
+                             f"epilogue, which this engine does not model")
+        ci = int(entry.get("ci", entry.get("Cin", 4)))
+        cout = int(entry.get("N", entry.get("Cout", dim)))
+        Himg, Wimg = int(entry.get("Himg", 8)), int(entry.get("Wimg", 8))
+        kh, kw = int(entry.get("kh", 3)), int(entry.get("kw", 3))
+        stride = tuple(entry.get("stride", [1, 1]))
+        padding = tuple(entry.get("padding", [0, 0, 0, 0]))
+        dilation = tuple(entry.get("dilation", [1, 1]))
+        layout = entry.get("layout", "nhwc")
+        Ho, Wo = conv_out_dims(Himg, Wimg, kh, kw, stride, padding, dilation)
+        Kdim = kh * kw * ci
+        ifm_name, w_name = entry.get("ifm", "IFM"), entry.get("weight", "W")
+        # Stimulus built as the [H*W, Ci] matrix the NHWC image is in row-major order (see `reg`), so the
+        # operand rigor gate applies; declared to the capsule at its rank-4 shape.
+        ifm = reg(ifm_name, (Himg * Wimg, ci), declared_shape=(1, Himg, Wimg, ci))
+        w = reg(w_name, (Kdim, cout))
+        cols = conv_im2col(Tensor((1, Himg, Wimg, ci), list(ifm), "u8"),   # raw operand CODES, gathered
+                           kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                           dilation=dilation, layout=layout)
+        y = mm(cols.data, (Ho * Wo, Kdim), w, (Kdim, cout))
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            s = Fraction(entry["acc_scale"]).limit_denominator(1 << 20)
+            y = [[rnd(D.decode_float_exact(v, BF16) * s) for v in row] for row in y]
+        if "relu" in epi:
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
+    else:
+        raise ValueError(f"no float golden for op {op!r}")
+    return outputs, prov
+
+
+# ------------------------------------------------------------------------------------------------
+# MX (microscaling block-scaled FP) golden engine — HARDWARE semantics via mlc's mx_ref, NOT specir
+# (specir is the atlas fp8 refmodel; MX is a different datapath: 16-deep systolic per-column accumulate
+# schedule + one E8M0 scale per 32-element K group). mx_ref is transcribed bit-exactly from the target's
+# own reference (radiance-kernels lib/golden/{mx_fp_math.h,mx_golden.cpp}, mirroring the RTL).
+# ------------------------------------------------------------------------------------------------
+def _mx_ref():
+    """Import mlc's ``validate/mx_ref.py`` BY FILE PATH (like the specir import) so we do NOT trigger
+    ``mlc/validate/__init__.py`` (which carries concurrent work and heavy imports)."""
+    root = os.environ.get("MERLIN_MLC_DIR") or _dotenv().get("MERLIN_MLC_DIR")
+    path = Path(root) / "mlc" / "validate" / "mx_ref.py"
+    if not path.exists():
+        raise FileNotFoundError(f"mx_ref not found at {path} (set MERLIN_MLC_DIR to the mlc modeling root)")
+    spec = importlib.util.spec_from_file_location("merlin_mx_ref", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _salt(name: str, tensor: str) -> int:
+    return sum((i + 1) * ord(c) for i, c in enumerate(f"{name}|{tensor}")) or 1
+
+
+def _mx_value_codes(mx, fmt_token: str):
+    """value(float) -> device code, DERIVED by decoding every code with mx_ref's own decoder (no baked
+    table). fp8: 8-bit e4m3 code; fp4: 4-bit e2m1 nibble; fp6: 6-bit e3m2 code."""
+    if fmt_token == "fp8_e4m3":
+        rng, dec = range(256), mx.fp8_e4m3_decode
+    elif fmt_token == "fp4_e2m1":
+        rng, dec = range(16), mx.fp4_e2m1_decode
+    elif fmt_token == "fp6_e3m2":
+        rng, dec = range(64), mx.fp6_e3m2_decode
+    else:
+        raise ValueError(f"no MX code table for {fmt_token!r}")
+    table: dict[float, int] = {}
+    for c in rng:
+        v = dec(c)
+        if v == v and abs(v) != float("inf"):        # finite; keep the FIRST (lowest) code per value
+            table.setdefault(float(v), c)
+    return table
+
+
+def _mx_golden(entry, binding):
+    """MX matmul golden (bf16 output) + provenance, computed by mx_ref in hardware semantics. Operands are
+    format-derived + rigor-gated; the E8M0 block-scale streams are rigor-gated too (a mis-indexed per-lane
+    scale must change the output)."""
+    from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
+    from merlin.targetgen import corpus_operands as CO
+    mx = _mx_ref()
+    tok = canonical_float(binding.operand_dtype)          # fp8_e4m3 / fp6_e3m2 / fp4_e2m1
+    op = entry.get("op", "matmul")
+    if op not in ("matmul", "linear"):
+        raise ValueError(f"MX regime supports matmul/linear only (got op {op!r} in {entry['name']!r})")
+    dim = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    K = entry.get("K", entry.get("K_tiles", 1) * dim)
+    N = entry.get("N", entry.get("N_tiles", 1) * dim)
+    if tok == "fp8_e4m3":
+        fmt, max_alpha, G = mx.FMT_FP8, None, 0
+    elif tok == "fp4_e2m1":
+        fmt, max_alpha, G = mx.FMT_FP4, None, 0
+    elif tok == "fp6_e3m2":
+        fmt, max_alpha, G = mx.FMT_FP6, 16, 5             # single 16-entry LUT (fp6 is LUT-indexed)
+    else:
+        raise ValueError(f"unsupported MX operand dtype {tok!r}")
+    codes = _mx_value_codes(mx, tok)
+    lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
+
+    def synth(name, shape):
+        # MX operands are kept small (|v| <= 4): a wide E8M0 block scale over a long-K bf16 accumulate would
+        # otherwise saturate to inf (a golden any broken kernel matches). See rand_fp8 in lib/golden.
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), max_alphabet=max_alpha, mag_cap=4.0)
+        problems = CO.rigor_findings(vals, shape)
+        if problems:
+            raise AssertionError(f"non-rigorous MX operand {name}{shape}: {problems}")
+        return np.array(vals, dtype=np.float64).reshape(shape)
+
+    A = synth(lhs, (M, K))
+    W = synth(weight, (K, N))
+
+    def enc(v):
+        c = codes.get(float(np.float32(v)))
+        if c is None:                                     # exactly-representable palette -> exact hit expected
+            raise AssertionError(f"MX value {v!r} not exactly representable in {tok}")
+        return c
+
+    A_codes = np.vectorize(enc)(A).astype(np.uint8)
+    B_codes = np.vectorize(enc)(W).astype(np.uint8)
+    # Same partial-block refusal as _mx_requant_blocks: one E8M0 scale per WHOLE group, so a K with a
+    # remainder would emit scale streams covering only K - (K % GROUP) elements while the operand codes
+    # cover all K. The mismatch is silent -- the scales simply stop early.
+    if K % mx.GROUP:
+        raise ValueError(
+            f"MX golden needs K to be a whole multiple of the {mx.GROUP}-element block-scale group; got "
+            f"K={K} for capsule {entry.get('name')!r} ({K % mx.GROUP} element(s) in a partial final "
+            f"group). One E8M0 scale is emitted per whole group, so the scale stream would cover only "
+            f"{mx.GROUP * (K // mx.GROUP)} of {K} K elements.")
+    GK = K // mx.GROUP
+    SA = np.array(CO.e8m0_scale_codes((GK, M), _salt(entry["name"], "SA")), dtype=np.uint8)
+    SB = np.array(CO.e8m0_scale_codes((GK, N), _salt(entry["name"], "SB")), dtype=np.uint8)
+    for nm, sc in (("SA", SA), ("SB", SB)):
+        prob = CO.scale_rigor_findings(sc.tolist())
+        if prob:
+            raise AssertionError(f"non-rigorous E8M0 scale stream {nm}{sc.shape}: {prob}")
+
+    lutA = lutB = None
+    if fmt == mx.FMT_FP8:
+        Ab, Bb = A_codes, B_codes
+    else:
+        if fmt == mx.FMT_FP6:                             # nibbles index a shared 16-entry LUT of e3m2 codes
+            lut = np.array(sorted({int(c) for c in A_codes.reshape(-1)} |
+                                  {int(c) for c in B_codes.reshape(-1)}), dtype=np.uint8)
+            assert lut.size <= 16, f"fp6 LUT overflow ({lut.size} > 16)"
+            lut = np.pad(lut, (0, 16 - lut.size))[:16]
+            idx = {int(v): i for i, v in enumerate(lut)}
+            A_nib = np.vectorize(lambda c: idx[int(c)])(A_codes).astype(np.uint8)
+            B_nib = np.vectorize(lambda c: idx[int(c)])(B_codes).astype(np.uint8)
+            # mx_ref indexes the LUT as ``L[(row_or_col >> G) * 16 + nib]`` — ONE 16-entry block per
+            # ``1<<G`` rows (A) / cols (B). Supply exactly that many blocks (a single global palette shared
+            # by all groups is replicated: every block is identical, so ``(g)*16 + nib`` always resolves to
+            # lut[nib]). Prior code shipped a lone block, so any fp6 capsule with M or N > 1<<G (e.g. N=64)
+            # indexed past it and crashed.
+            grp = 1 << G
+            nblk_A = (A_codes.shape[0] + grp - 1) // grp      # blocks along A rows (M)
+            nblk_B = (B_codes.shape[1] + grp - 1) // grp      # blocks along B cols (N)
+            lutA = np.tile(lut.reshape(1, 16), (nblk_A, 1))
+            lutB = np.tile(lut.reshape(1, 16), (nblk_B, 1))
+        else:
+            A_nib, B_nib = A_codes, B_codes               # fp4 nibble == code
+        Ab = ((A_nib[1::2, :] << 4) | (A_nib[0::2, :] & 0xF)).astype(np.uint8)     # pack along M
+        Bb = ((B_nib[:, 1::2] << 4) | (B_nib[:, 0::2] & 0xF)).astype(np.uint8)     # pack along N
+
+    C = mx.mx_matmul(Ab, Bb, SA, SB, M, N, K, fmt=fmt, lutA=lutA, lutB=lutB, G=G)
+    y = [[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)]
+    prov = {
+        lhs: {"shape": [M, K], "decoded": A.reshape(-1).tolist()},
+        weight: {"shape": [K, N], "decoded": W.reshape(-1).tolist()},
+        "SA_e8m0_codes": SA.tolist(), "SB_e8m0_codes": SB.tolist(),
+        # The SAME scales again, keyed by the operand names the capsule DECLARES, as ordinary per-tensor
+        # specs. The two lists above are non-tensor provenance that `canonical_input_raws` skips by
+        # design, so before this the scales reached the reference kernel (which bakes them) and no one
+        # else -- a submitted backend was handed block-scaled element bytes and no scales, which is half
+        # a number. Recorded additively: the oracle keeps reading the lists above.
+        f"{lhs}_scale": {"shape": [GK, M], "decoded": SA.reshape(-1).tolist(),
+                         "note": "E8M0 exponent codes, one per block of K elements per lhs row"},
+        f"{weight}_scale": {"shape": [GK, N], "decoded": SB.reshape(-1).tolist(),
+                            "note": "E8M0 exponent codes, one per block of K elements per weight column"},
+        "scale_example": {"SA[0][0]": int(SA[0, 0]), "as_scale": e8m0_decode(int(SA[0, 0]))},
+        # RAW device operand bytes exactly as mx_ref consumed them (fp8: one byte/elt; fp4/fp6: packed) —
+        # the ``decoded`` floats above lose precision through YAML, so a bit-exact grade re-runs the MX
+        # datapath oracle over THESE codes, not the decoded values. fmt/dims/LUTs ride along so the grade
+        # is self-contained and reproduces the golden exactly.
+        "operand_codes": {
+            "lhs": lhs, "weight": weight, "fmt": tok, "M": M, "N": N, "K": K, "G": G,
+            "A_bytes": Ab.reshape(-1).tolist(), "A_shape": list(Ab.shape),
+            "B_bytes": Bb.reshape(-1).tolist(), "B_shape": list(Bb.shape),
+            "lutA": lutA.tolist() if lutA is not None else None,
+            "lutB": lutB.tolist() if lutB is not None else None,
+        },
+    }
+    return {out: y}, prov
+
+
+# ------------------------------------------------------------------------------------------------
+# MX FUSED FLASH-ATTENTION golden — COMPOSED from the SAME validated mx_ref engine used above:
+#   S = mx_matmul(Q, K^T)   (block-scaled E8M0, bf16)  -> scaled by 1/sqrt(head) [+ optional soft-cap]
+#   P = bf16 row-softmax(S)                             (numpy, bf16-rounded)
+#   O = mx_matmul(P_requant, V)  (block-scaled E8M0, bf16)
+# The intermediate P is requantized to the MX code space exactly as the MX PE does before the second GEMM:
+# a per-(K-group,row) E8M0 scale brings each block to O(1) mantissas (the mx_ref accumulator carries only
+# 4-bit column exponents, so DECODED codes must stay small and the E8M0 scale carry the magnitude — same
+# convention as the synthesized Q/K/V operands), then each element rounds to the nearest representable value
+# in that format's palette. NOTHING is fabricated: both matmuls are the mlc mx_ref hardware datapath (same
+# codec as the R6/R7 fp6/fp4 tiles: fp8 = one byte/code, fp4 = e2m1 nibble, fp6 = e3m2 nibble + per-group
+# 16-entry LUT); only the softmax + the standard MX requant of P are numpy. Parameterized by operand format
+# (mxfp8 / mxfp6 / mxfp4).
+# ------------------------------------------------------------------------------------------------
+def _mx_safe_palette(mx, tok: str) -> list:
+    """The requant candidate values for ``tok``: exactly-representable decoded values in the |v|<=4 window
+    the operand synthesizer uses (so a requant code never overflows the 4-bit column accumulator). fp6 is
+    capped to the SAME 16-value pool the synthesizer draws from (``derive_palette(...,16)``), so the fused
+    PV union LUT (P-codes ∪ V-codes) stays within the 16-entry fp6 LUT."""
+    from merlin.targetgen import corpus_operands as CO
+    if tok == "fp6_e3m2":
+        return sorted(CO.derive_palette("fp6_e3m2", 16, mag_cap=4.0))
+    if tok == "fp8_e4m3":
+        vals = {float(mx.fp8_e4m3_decode(c)) for c in range(256)}
+    elif tok == "fp4_e2m1":
+        vals = {float(mx.fp4_e2m1_decode(c)) for c in range(16)}
+    else:
+        raise ValueError(f"no MX palette for {tok!r}")
+    return sorted(v for v in vals if v == v and abs(v) <= 4.0)
+
+
+def _mx_requant_blocks(P, palette, *, group: int, target: float = 2.0):
+    """Requantize float ``P[M,K]`` to (DECODED values ``[M,K]`` drawn from ``palette``, E8M0 scale codes
+    ``[K/group, M]``) as the MX PE does before a GEMM: one shared power-of-two E8M0 scale per (K-group, row)
+    — the (group, lane) granularity ``mx_matmul`` indexes SA with — chosen so the block max maps to
+    ~``target``, then nearest-palette rounding of each scaled element. Returns DECODED values (not codes) so
+    the caller re-encodes them through the SAME codec as the synth operands (fp8 byte / fp4 nibble / fp6
+    LUT). The block scale is applied back by mx_matmul via the E8M0 code (2**(code-127))."""
+    import math
+    import numpy as np
+    M, K = P.shape
+    # FAIL CLOSED ON A PARTIAL BLOCK. `K // group` silently drops the elements past the last whole group,
+    # and every array here is zero-initialised, so the tail comes back as zeros and the golden simply does
+    # not depend on that part of its own input. MEASURED: at K=33 one column is dropped; at K=48 sixteen of
+    # forty-eight are -- a THIRD of the reduction -- and perturbing A[0,32] with K=33 leaves the result
+    # bit-identical. That is a silently wrong golden, which is worse than no golden: it would certify a
+    # backend that also ignored the tail and fail one that did not.
+    #
+    # No capsule on disk trips this (every MX K is 32 or 64), so refusing here changes nothing today and
+    # turns the trap into a message. It is also the reason MX coverage is aligned-only: a non-aligned MX
+    # capsule cannot be minted, so the tail path has never been exercised. Supporting it means giving the
+    # tail group its own E8M0 scale over a short block -- a real change to this reference, not a relaxation
+    # of this guard.
+    if K % group:
+        raise ValueError(
+            f"MX requant needs K to be a whole multiple of the {group}-element block-scale group; got "
+            f"K={K} ({K % group} element(s) in a partial final group). The reference assigns one E8M0 "
+            f"scale per whole group and would silently zero the tail, producing a golden that ignores "
+            f"{K % group} of its own K elements. Use a K that is a multiple of {group}, or extend this "
+            f"reference to scale a partial final group.")
+    G = K // group
+    pv = sorted(palette)
+    dec = np.zeros((M, K), dtype=np.float64)
+    scodes = np.zeros((G, M), dtype=np.uint8)
+    for m in range(M):
+        for g in range(G):
+            blk = P[m, g * group:(g + 1) * group]
+            mabs = float(np.max(np.abs(blk)))
+            e = 0 if mabs == 0.0 else int(round(math.log2(mabs / target)))
+            scodes[g, m] = max(0, min(254, e + 127))
+            s = 2.0 ** (int(scodes[g, m]) - 127)
+            for j in range(group):
+                t = float(blk[j]) / s
+                dec[m, g * group + j] = min(pv, key=lambda val: abs(val - t))
+    return dec, scodes
+
+
+def _mx_stage_matmul(mx, A_dec, B_dec, SA, SB, M, N, K, tok):
+    """ONE MX GEMM over DECODED operands + E8M0 scales at ``tok`` (mxfp8 / mxfp6 / mxfp4), using the SAME
+    codec as the R6/R7 tiles: fp8 = one code byte per element; fp4 = e2m1 nibble packed (A along rows, B
+    along cols); fp6 = e3m2 nibble packed indexing a per-group union 16-entry LUT (G=log2 rows/cols per LUT
+    block). Returns (C_float[M][N] bf16-decoded, packing-artifacts dict for provenance). A_dec/B_dec must be
+    exactly representable in ``tok`` (synth operands + palette-requantized P both are)."""
+    import numpy as np
+    codes = _mx_value_codes(mx, tok)
+
+    def enc(X):
+        return np.vectorize(lambda v: codes[float(np.float32(v))])(X).astype(np.uint8)
+
+    A_codes, B_codes = enc(A_dec), enc(B_dec)
+    lutA = lutB = None
+    if tok == "fp8_e4m3":
+        fmt, G = mx.FMT_FP8, 0
+        Ab, Bb = A_codes, B_codes
+    else:
+        if tok == "fp6_e3m2":
+            fmt, G = mx.FMT_FP6, 5
+            lut = np.array(sorted({int(c) for c in A_codes.reshape(-1)} |
+                                  {int(c) for c in B_codes.reshape(-1)}), dtype=np.uint8)
+            assert lut.size <= 16, f"fp6 LUT overflow ({lut.size} > 16) — requant/synth palette too wide"
+            lut = np.pad(lut, (0, 16 - lut.size))[:16]
+            idx = {int(v): i for i, v in enumerate(lut)}
+            A_nib = np.vectorize(lambda c: idx[int(c)])(A_codes).astype(np.uint8)
+            B_nib = np.vectorize(lambda c: idx[int(c)])(B_codes).astype(np.uint8)
+            grp = 1 << G
+            lutA = np.tile(lut.reshape(1, 16), ((A_codes.shape[0] + grp - 1) // grp, 1))
+            lutB = np.tile(lut.reshape(1, 16), ((B_codes.shape[1] + grp - 1) // grp, 1))
+        else:                                                    # fp4: nibble == code
+            fmt, G = mx.FMT_FP4, 0
+            A_nib, B_nib = A_codes, B_codes
+        Ab = ((A_nib[1::2, :] << 4) | (A_nib[0::2, :] & 0xF)).astype(np.uint8)     # pack along M (rows)
+        Bb = ((B_nib[:, 1::2] << 4) | (B_nib[:, 0::2] & 0xF)).astype(np.uint8)     # pack along N (cols)
+    C = np.asarray(mx.mx_matmul(Ab, Bb, SA, SB, M, N, K, fmt=fmt, lutA=lutA, lutB=lutB, G=G))
+    Cf = [[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)]
+    art = {"A_bytes": Ab.reshape(-1).tolist(), "A_shape": list(Ab.shape),
+           "B_bytes": Bb.reshape(-1).tolist(), "B_shape": list(Bb.shape), "G": G,
+           "lutA": lutA.tolist() if lutA is not None else None,
+           "lutB": lutB.tolist() if lutB is not None else None}
+    return Cf, art
+
+
+def _mx_attention_golden(entry, binding):
+    """Fused MX flash-attention golden (bf16 output) + provenance, composed from mx_ref (QK & PV, at the
+    entry's operand format) + a numpy bf16 row-softmax + a per-(K-group,row) E8M0 requant of P. Shapes:
+    M queries, H head dim (K of QK), Skv keys, Dv value dim. fp8 tiles by DIM=16; fp6/fp4 tile by 32, so
+    for a sub-format M, Skv, Dv must all be multiples of 32 (a smaller tile yields a degenerate all-zero
+    GEMM). Optional Gemma-2 logit soft-cap via ``softcap``."""
+    import math
+
+    import numpy as np
+
+    from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
+    from merlin.targetgen import corpus_operands as CO
+    mx = _mx_ref()
+    tok = canonical_float(binding.operand_dtype)               # fp8_e4m3 / fp6_e3m2 / fp4_e2m1
+    if tok not in ("fp8_e4m3", "fp6_e3m2", "fp4_e2m1"):
+        raise ValueError(f"MX attention operand dtype {binding.operand_dtype!r} -> {tok!r} unsupported")
+    sub = (tok != "fp8_e4m3")
+    max_alpha = 16 if tok == "fp6_e3m2" else None              # fp6 draws from a 16-value LUT pool
+    dim = binding.tile_dim
+    # ONE definition of this datapath's shape granularity, shared with the requirement and the
+    # synthesizer (corpus_spec.shape_quantum). The local `32 if sub else DIM` said the same thing for
+    # this format and said it in a second place, so the DEFAULTS below -- which are what an attention
+    # entry actually gets, since a cell carries only M/K/N -- kept spelling `dim` and `2*dim` and landed
+    # under the row tile for every sub-byte format.
+    _q = CS.shape_quantum(binding.operand_dtype, tile_dim=dim,
+                          scale_block=(binding.scale_block or mx.GROUP))
+    row_tile, red_q = int(_q["row"]), int(_q["reduction"])
+    def _up(n: int, q: int) -> int:
+        return -(-int(n) // int(q)) * int(q)
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    H = entry.get("H", entry.get("head_dim", _up(2 * dim, red_q)))   # QK contraction (head dim), %GROUP
+    Skv = entry.get("Skv", entry.get("keys", _up(2 * dim, red_q)))   # key positions
+    Dv = entry.get("Dv", _up(dim, row_tile))                         # value dim
+    if H % mx.GROUP or Skv % mx.GROUP or M % row_tile or Dv % row_tile:
+        raise ValueError(f"MX attention dims must satisfy H%{mx.GROUP}=Skv%{mx.GROUP}=0 and "
+                         f"M%{row_tile}=Dv%{row_tile}=0 for {tok} (got M={M} H={H} Skv={Skv} Dv={Dv})")
+    att_scale = float(entry.get("scale", 1.0 / math.sqrt(H)))
+    softcap = entry.get("softcap")                             # Gemma-2 logit soft-cap (None to disable)
+    q, k, v, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("v", "V"), entry.get("out", "Y0")
+
+    def synth(name, shape):
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), max_alphabet=max_alpha, mag_cap=4.0)
+        prob = CO.rigor_findings(vals, shape)
+        if prob:
+            raise AssertionError(f"non-rigorous MX attention operand {name}{shape}: {prob}")
+        return np.array(vals, dtype=np.float64).reshape(shape)
+
+    def scales(name, shape):
+        sc = np.array(CO.e8m0_scale_codes(shape, _salt(entry["name"], name)), dtype=np.uint8)
+        prob = CO.scale_rigor_findings(sc.tolist())
+        if prob:
+            raise AssertionError(f"non-rigorous E8M0 stream {name}{shape}: {prob}")
+        return sc
+
+    def bf16_round(a):
+        u = np.asarray(a, dtype=np.float32).view(np.uint32)
+        return ((u >> 16) << 16).view(np.float32).astype(np.float64)
+
+    Q = synth(q, (M, H))
+    K = synth(k, (Skv, H))
+    V = synth(v, (Skv, Dv))
+    Kt = np.ascontiguousarray(K.T)                             # device consumes K pre-transposed (K^T)
+
+    # stage 1: S = mx_matmul(Q[M,H], K^T[H,Skv]) -> bf16 scores [M, Skv] (UNSCALED; the logit scale +
+    # optional soft-cap are applied inside stage 2, in the datapath-faithful order the kernel uses).
+    SA_q = scales("SA_q", (H // mx.GROUP, M))
+    SB_k = scales("SB_k", (H // mx.GROUP, Skv))
+    S_rows, qk_art = _mx_stage_matmul(mx, Q, Kt, SA_q, SB_k, M, Skv, H, tok)
+    SB_v = scales("SB_v", (Skv // mx.GROUP, Dv))
+
+    if not sub:
+        # stages 2-5, DATAPATH-FAITHFUL (mxfp8): the EXACT flash-kernel order — a bf16 softmax over the
+        # UNNORMALIZED exp-P, the online-softmax row denominator l (kernel reduction order), a per-32-block
+        # e4m3 requant of the UNNORMALIZED P, the PV MX matmul, then finalize O = O_unnorm * bf16(1/bf16(l)).
+        # The reference (mx_flash_ref) is validated bit-exact vs the cyclotron RTL, so the generator and the
+        # kernel share ONE arithmetic — a regeneration reproduces exactly what the kernel computes.
+        from merlin.targetgen import mx_flash_ref as MXF
+        O_arr, _P_codes, SA_p, _l, P_dec, pv_art = MXF.flash_attention_fp8(
+            mx, S_rows, V, SB_v, M=M, Skv=Skv, Dv=Dv, att_scale=att_scale, softcap=softcap)
+        O_rows = [[float(O_arr[m, j]) for j in range(Dv)] for m in range(M)]
+    else:
+        # sub-formats (mxfp6/mxfp4): the flash kernel's e4m3 requant is not defined for these, so keep the
+        # palette-requant composition unchanged (these goldens fail closed at grade time and stay identical).
+        S = bf16_round(np.array(S_rows) * att_scale)
+        if softcap is not None:
+            cap = float(softcap)
+            S = bf16_round(cap * np.tanh(S / cap))
+        # bf16 row-softmax (numerically stable: subtract row max) -> P [M, Skv]
+        P = np.zeros((M, Skv), dtype=np.float64)
+        for m in range(M):
+            r = bf16_round(S[m] - float(np.max(S[m])))
+            e = bf16_round(np.exp(r))
+            P[m] = bf16_round(e / float(np.sum(e)))
+        # requant P into the format palette (per (K-group,row) E8M0), then O = mx_matmul(P, V)
+        palette = _mx_safe_palette(mx, tok)
+        P_dec, SA_p = _mx_requant_blocks(P, palette, group=mx.GROUP)  # SA_p shape [Skv/32, M]
+        O_rows, pv_art = _mx_stage_matmul(mx, P_dec, V, SA_p, SB_v, M, Dv, Skv, tok)
+
+    prov = {
+        q: {"shape": [M, H], "decoded": Q.reshape(-1).tolist()},
+        k: {"shape": [Skv, H], "decoded": K.reshape(-1).tolist()},
+        v: {"shape": [Skv, Dv], "decoded": V.reshape(-1).tolist()},
+        "SA_q_e8m0_codes": SA_q.tolist(), "SB_k_e8m0_codes": SB_k.tolist(),
+        "SB_v_e8m0_codes": SB_v.tolist(),
+        "scale_example": {"SA_q[0][0]": int(SA_q[0, 0]), "as_scale": e8m0_decode(int(SA_q[0, 0]))},
+        # The four scale streams under the operand names the capsule declares, so a submitted backend is
+        # handed them alongside the elements. P_scale is the exponent the softmax intermediate is
+        # requantized against: chosen HERE when the golden was built, so the kernel cannot derive it.
+        f"{q}_scale": {"shape": [H // mx.GROUP, M], "decoded": SA_q.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per query row"},
+        f"{k}_scale": {"shape": [H // mx.GROUP, Skv], "decoded": SB_k.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of H per key row"},
+        f"{v}_scale": {"shape": [Skv // mx.GROUP, Dv], "decoded": SB_v.reshape(-1).tolist(),
+                       "note": "E8M0 codes, one per block of Skv per value column"},
+        "P_scale": {"shape": [Skv // mx.GROUP, M], "decoded": SA_p.reshape(-1).tolist(),
+                    "note": "E8M0 codes the softmax intermediate P is requantized against"},
+        # RAW device operand bytes exactly as mx_ref consumed them (per stage, format-packed) + LUTs, so a
+        # bit-exact grade re-runs the two MX GEMMs + the pinned softmax/requant over THESE codes.
+        "attention_codes": {
+            "q": q, "k": k, "v": v, "fmt": tok, "M": M, "H": H, "Skv": Skv, "Dv": Dv,
+            "att_scale": att_scale, "softcap": (None if softcap is None else float(softcap)),
+            "SA_q": SA_q.reshape(-1).tolist(), "SB_k": SB_k.reshape(-1).tolist(),
+            "SB_v": SB_v.reshape(-1).tolist(), "SA_p": SA_p.reshape(-1).tolist(),
+            "qk_stage": qk_art, "pv_stage": pv_art,
+            # the requantized P intermediate DECODED values (derived from the softmax; NOT an input operand).
+            "P_decoded": P_dec.reshape(-1).tolist(),
+        },
+    }
+    return {out: O_rows}, prov
+
+
+def _mx_gemv_batched_golden(entry, binding):
+    """Batched MX matmul golden (radiance-kernels decode-time gemv_batched, MX regime): ``B`` independent
+    MX GEMMs ``A_b[M,H] @ W_b[H,N]`` on the block-scaled mx_pe, returned as ``[B,M,N]`` bf16.
+    (The MX PE tiles N by ``DIM``=16, so N must be a multiple of 16 — a literal N=1 gemv is not expressible
+    on the mx_ref datapath; this is the faithful batched analog.) mxfp8 only; golden from mlc mx_ref."""
+    import numpy as np
+
+    from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
+    from merlin.targetgen import corpus_operands as CO
+    mx = _mx_ref()
+    tok = canonical_float(binding.operand_dtype)
+    if tok != "fp8_e4m3":
+        raise ValueError(f"MX gemv_batched supports mxfp8 only (got {binding.operand_dtype!r} -> {tok!r})")
+    dim = binding.tile_dim
+    B = int(entry.get("B", 2))
+    M = entry.get("M", entry.get("M_tiles", 1) * dim)
+    H = entry.get("H", entry.get("K", 2 * dim))               # contraction dim, %32
+    N = entry.get("N", dim)                                    # %16
+    if H % mx.GROUP or M % mx.DIM or N % mx.DIM:
+        raise ValueError(f"MX gemv_batched dims: H%{mx.GROUP}=0, M%{mx.DIM}=N%{mx.DIM}=0 "
+                         f"(got B={B} M={M} H={H} N={N})")
+    codes = _mx_value_codes(mx, tok)
+    lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
+
+    def synth(name, shape):
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name), mag_cap=4.0)
+        prob = CO.rigor_findings(vals, shape)
+        if prob:
+            raise AssertionError(f"non-rigorous MX gemv operand {name}{shape}: {prob}")
+        return np.array(vals, dtype=np.float64).reshape(shape)
+
+    def enc(A):
+        return np.vectorize(lambda x: codes[float(np.float32(x))])(A).astype(np.uint8)
+
+    rows_out: list = []
+    A_dec, W_dec, batches = [], [], []
+    for b in range(B):
+        A = synth(f"{lhs}{b}", (M, H))
+        W = synth(f"{weight}{b}", (H, N))
+        SA = np.array(CO.e8m0_scale_codes((H // mx.GROUP, M), _salt(entry["name"], f"SA{b}")), dtype=np.uint8)
+        SB = np.array(CO.e8m0_scale_codes((H // mx.GROUP, N), _salt(entry["name"], f"SB{b}")), dtype=np.uint8)
+        for nm, sc in ((f"SA{b}", SA), (f"SB{b}", SB)):
+            prob = CO.scale_rigor_findings(sc.tolist())
+            if prob:
+                raise AssertionError(f"non-rigorous E8M0 stream {nm}{sc.shape}: {prob}")
+        C = np.asarray(mx.mx_matmul(enc(A), enc(W), SA, SB, M, N, H, fmt=mx.FMT_FP8))
+        rows_out.append([[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)])
+        A_dec.append(A.reshape(-1).tolist())
+        W_dec.append(W.reshape(-1).tolist())
+        batches.append({"A_bytes": enc(A).reshape(-1).tolist(), "W_bytes": enc(W).reshape(-1).tolist(),
+                        "SA": SA.reshape(-1).tolist(), "SB": SB.reshape(-1).tolist()})
+    prov = {
+        lhs: {"shape": [B, M, H], "decoded": A_dec},
+        weight: {"shape": [B, H, N], "decoded": W_dec},
+        "batched_codes": {"lhs": lhs, "weight": weight, "fmt": tok, "B": B, "M": M, "H": H, "N": N,
+                          # The MX reference emitter retains a flattened physical backing buffer, but
+                          # that layout is not the logical result type exposed by the capsule.
+                          "stacked_out_shape": [B * M, N], "logical_output_shape": [B, M, N],
+                          "batches": batches},
+        "scale_example": {"SA0[0][0]": batches[0]["SA"][0],
+                          "as_scale": e8m0_decode(int(batches[0]["SA"][0]))},
+        # The per-batch scale streams under the operand names the capsule declares, so a submitted
+        # backend is handed them the same way it is handed the elements (see the single-GEMM path).
+        f"{lhs}_scale": {"shape": [B, H // mx.GROUP, M],
+                         "decoded": [c for bt in batches for c in bt["SA"]],
+                         "note": "E8M0 exponent codes per batch, one per block of H per lhs row"},
+        f"{weight}_scale": {"shape": [B, H // mx.GROUP, N],
+                            "decoded": [c for bt in batches for c in bt["SB"]],
+                            "note": "E8M0 exponent codes per batch, one per block of H per weight column"},
+    }
+    return {out: rows_out}, prov
+
+
+def _simt_golden(entry, binding):
+    """SIMT (CVFPU) golden in ordinary IEEE float — fp32 accumulate, format-rounded operands. Covers the
+    matmul / attention / rmsnorm shapes; independent of any accelerator model (the SIMT cores do plain IEEE
+    math). Operands are format-derived + rigor-gated."""
+    from merlin.runtime.fp8_formats import canonical_float
+    from merlin.targetgen import corpus_operands as CO
+    tok = canonical_float(binding.operand_dtype)          # fp16 / bf16 / f32
+    dim = binding.tile_dim
+    op = entry.get("op", "matmul")
+
+    def q(arr):
+        a = np.asarray(arr, dtype=np.float64)
+        if tok == "fp16":
+            return a.astype(np.float16).astype(np.float64)
+        if tok == "bf16":                                 # operands are exact bf16 already; identity round
+            u = a.astype(np.float32).view(np.uint32)
+            return ((u >> 16) << 16).view(np.float32).astype(np.float64)
+        return a.astype(np.float32).astype(np.float64)
+
+    def synth(name, shape):
+        vals = CO.operand_values(shape, tok, _salt(entry["name"], name))
+        problems = CO.rigor_findings(vals, shape)
+        if problems:
+            raise AssertionError(f"non-rigorous SIMT operand {name}{shape}: {problems}")
+        return q(np.array(vals, dtype=np.float64).reshape(shape))
+
+    def rnd_out(y):
+        return [[float(np.float32(v)) for v in row] for row in np.asarray(y)]
+
+    prov, outputs = {}, {}
+    if op in ("matmul", "linear"):
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        A = synth(entry.get("lhs", "A0"), (M, K))
+        W = synth(entry.get("weight", "W"), (K, N))
+        y = (A.astype(np.float32) @ W.astype(np.float32)).astype(np.float64)
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            y = y * float(entry["acc_scale"])
+        if "relu" in epi:
+            y = np.maximum(y, 0.0)
+        prov[entry.get("lhs", "A0")] = {"shape": [M, K], "decoded": A.reshape(-1).tolist()}
+        prov[entry.get("weight", "W")] = {"shape": [K, N], "decoded": W.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op in ("gemv_batched", "batch_matmul"):
+        # B independent GEMMs with source-visible output [B,M,N] -- the same decomposition the integer and
+        # specir engines make, because it is the one the device's shim performs: a loop over B calling
+        # the (M,N,K) kernel once per slice. One operand PER SLICE, salted by index, so a kernel that
+        # computed one slice and broadcast it does not match.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        A = np.stack([synth(f"{lhs}_b{b}", (M, K)) for b in range(B)])
+        W = np.stack([synth(f"{weight}_b{b}", (K, N)) for b in range(B)])
+        y = [(A[b].astype(np.float32) @ W[b].astype(np.float32)).astype(np.float64)
+             for b in range(B)]
+        prov[lhs] = {"shape": [B, M, K], "decoded": A.reshape(-1).tolist()}
+        prov[weight] = {"shape": [B, K, N], "decoded": W.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = [rnd_out(batch) for batch in y]
+    elif op == "movement":
+        # A load->store movement (mvin/mvout) moves data and computes nothing, so the reference is the
+        # operand itself at the OUTPUT format. Its value as a capsule is that it exercises the movement
+        # family the contract declares, on a datapath whose only job is to not corrupt what it carries.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        X = synth(entry.get("src", "X"), (M, N))
+        prov[entry.get("src", "X")] = {"shape": [M, N], "decoded": X.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(X)
+    elif op == "attention_qk":
+        M = entry.get("M_tiles", 1) * dim
+        Kd = entry.get("K_tiles", 1) * dim
+        Q = synth(entry.get("q", "Q"), (M, Kd))
+        Kk = synth(entry.get("k", "K"), (M, Kd))
+        y = (Q.astype(np.float32) @ Kk.astype(np.float32).T).astype(np.float64)
+        prov[entry.get("q", "Q")] = {"shape": [M, Kd], "decoded": Q.reshape(-1).tolist()}
+        prov[entry.get("k", "K")] = {"shape": [M, Kd], "decoded": Kk.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "rmsnorm":
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        eps = float(entry.get("eps", 1.0 / 65536.0))
+        X = synth(entry.get("src", "X"), (M, K))
+        gamma = synth(entry.get("gamma", "G"), (1, K))[0]
+        y = np.empty((M, K), dtype=np.float64)
+        for m in range(M):
+            row = X[m].astype(np.float32)
+            ss = np.float32(0.0)
+            for k in range(K):
+                ss = np.float32(ss + np.float32(row[k] * row[k]))
+            mean = np.float32(ss / np.float32(K))
+            rms = np.float32(1.0) / np.float32(np.sqrt(np.float32(mean + np.float32(eps))))
+            for k in range(K):
+                y[m, k] = float(np.float32(np.float32(row[k] * rms) * np.float32(gamma[k])))
+        prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
+        prov[entry.get("gamma", "G")] = {"shape": [1, K], "decoded": gamma.tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "rmsnorm_qkv":
+        # fused pre-norm QKV projection: H = rmsnorm(X, gamma); Y = H @ Wqkv. Both stages IEEE fp32-accum.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        eps = float(entry.get("eps", 1.0 / 65536.0))
+        X = synth(entry.get("src", "X"), (M, K))
+        gamma = synth(entry.get("gamma", "G"), (1, K))[0]
+        Wqkv = synth(entry.get("weight", "Wqkv"), (K, N))
+        Hn = np.empty((M, K), dtype=np.float64)
+        for m in range(M):
+            row = X[m].astype(np.float32)
+            ss = np.float32(0.0)
+            for k in range(K):
+                ss = np.float32(ss + np.float32(row[k] * row[k]))
+            rms = np.float32(1.0) / np.float32(np.sqrt(np.float32(np.float32(ss / np.float32(K)) + np.float32(eps))))
+            for k in range(K):
+                Hn[m, k] = float(np.float32(np.float32(row[k] * rms) * np.float32(gamma[k])))
+        y = (Hn.astype(np.float32) @ Wqkv.astype(np.float32)).astype(np.float64)
+        prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
+        prov[entry.get("gamma", "G")] = {"shape": [1, K], "decoded": gamma.tolist()}
+        prov[entry.get("weight", "Wqkv")] = {"shape": [K, N], "decoded": Wqkv.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "rope_qkv":
+        # fused QKV projection + RoPE: H = X @ Wqkv; Y = rope(H). GPT-NeoX/Llama rotation (theta=10000),
+        # position = row index, identical convention to the pytorch RP8 rope (capsule_source._rope).
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        X = synth(entry.get("src", "X"), (M, K))
+        Wqkv = synth(entry.get("weight", "Wqkv"), (K, N))
+        H = (X.astype(np.float32) @ Wqkv.astype(np.float32)).astype(np.float64)
+        half = N // 2
+        theta = float(entry.get("rope_theta", 10000.0))
+        freq = 1.0 / (theta ** (np.arange(0, half, dtype=np.float64) / half))
+        pos = np.arange(M, dtype=np.float64)
+        ang = pos[:, None] * freq[None, :]
+        cos = np.concatenate([np.cos(ang), np.cos(ang)], axis=1)
+        sin = np.concatenate([np.sin(ang), np.sin(ang)], axis=1)
+        x1, x2 = H[:, :half], H[:, half:]
+        rot = np.concatenate([-x2, x1], axis=1)
+        y = (H.astype(np.float32) * cos.astype(np.float32)
+             + rot.astype(np.float32) * sin.astype(np.float32)).astype(np.float64)
+        prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
+        prov[entry.get("weight", "Wqkv")] = {"shape": [K, N], "decoded": Wqkv.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "conv2d":
+        # AN IM2COL CONV IS A CONTRACTION OVER GATHERED WINDOWS, exactly as in the float engine, and it
+        # reuses the runtime's OWN gather (`conv_im2col`) for the same reason that one does: a second
+        # transcription of the window arithmetic is how a golden and a harness come to disagree about
+        # which tap a window reads. The gather is a permutation-with-zero-fill and never arithmetic, so
+        # it carries already-format-rounded IEEE values through untouched and its out-of-bounds tap is a
+        # real +0.0 -- the same zero pad the integer and float engines apply.
+        from merlin.runtime.commandbuffer import conv_im2col, conv_out_dims
+        from merlin.runtime.tensor import Tensor
+        if "maxpool" in [str(s) for s in (entry.get("epilogue") or [])]:
+            # Fail closed rather than emit an unpooled reference for a capsule that declares pooling: a
+            # golden that silently skipped the stage would agree with a backend that skipped it too.
+            raise ValueError(f"SIMT conv2d golden: capsule {entry['name']!r} declares a maxpool "
+                             f"epilogue, which this engine does not model")
+        ci = int(entry.get("ci", entry.get("Cin", 4)))
+        cout = int(entry.get("N", entry.get("Cout", dim)))
+        Himg, Wimg = int(entry.get("Himg", 8)), int(entry.get("Wimg", 8))
+        kh, kw = int(entry.get("kh", 3)), int(entry.get("kw", 3))
+        stride = tuple(entry.get("stride", [1, 1]))
+        padding = tuple(entry.get("padding", [0, 0, 0, 0]))
+        dilation = tuple(entry.get("dilation", [1, 1]))
+        layout = entry.get("layout", "nhwc")
+        Ho, Wo = conv_out_dims(Himg, Wimg, kh, kw, stride, padding, dilation)
+        Kdim = kh * kw * ci
+        ifm_name, w_name = entry.get("ifm", "IFM"), entry.get("weight", "W")
+        # Built as the [H*W, Ci] matrix the NHWC image is in row-major order (so the operand rigor gate
+        # applies at a 2-D shape it understands); declared to the capsule at its rank-4 shape.
+        ifm = synth(ifm_name, (Himg * Wimg, ci))
+        Wt = synth(w_name, (Kdim, cout))
+        cols = conv_im2col(Tensor((1, Himg, Wimg, ci), ifm.reshape(-1).tolist(), tok),
+                           kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                           dilation=dilation, layout=layout)
+        A = np.array(cols.data, dtype=np.float64).reshape(Ho * Wo, Kdim)
+        y = (A.astype(np.float32) @ Wt.astype(np.float32)).astype(np.float64)
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            y = y * float(entry["acc_scale"])
+        if "relu" in epi:
+            y = np.maximum(y, 0.0)
+        prov[ifm_name] = {"shape": [1, Himg, Wimg, ci], "decoded": ifm.reshape(-1).tolist()}
+        prov[w_name] = {"shape": [Kdim, cout], "decoded": Wt.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    else:
+        raise ValueError(f"no SIMT golden for op {op!r}")
+    return outputs, prov
+
+
+def _entry_regime(entry, binding):
+    """Route an entry to its numeric regime + return a per-entry binding (operand/accum overridden). ``int``
+    (gemmini), ``specir`` (atlas fp8), ``mx`` (microscaling block-scaled FP), ``simt`` (IEEE fp16/bf16/f32).
+    Routed purely by the entry's operand dtype token — no target name."""
+    tok = entry.get("operand_dtype") or binding.operand_dtype
+    # ONE definition of the routing, in corpus_spec, so the synthesizer can ask the same question this
+    # answers. A second copy here drifted from the synthesizer's view and let entries be emitted that no
+    # writer could materialize.
+    regime = CS.regime_for_dtype(tok)
+    acc = {"mx": "bf16", "simt": "f32"}.get(regime, binding.accum_dtype)
+    eb = dataclasses.replace(
+        binding, operand_dtype=tok, accum_dtype=acc, integer=(regime == "int"),
+        compare=("exact_int" if regime == "int" else "tolerance_float"))
+    return regime, eb
+
+
+# ------------------------------------------------------------------------------------------------
+def _write_capsule(entry, binding, out_root, facts_sha: str = ""):
+    """Write one capsule, then GUARANTEE it carries its generalization-intent block.
+
+    The stamp is a post-step rather than something each writer does, because there are four writers
+    (direct-MLIR, pytorch-sourced, spec-sourced, whole-model) and three of them build their capsule dict
+    themselves and return early. Stamping inside ``corpus_spec.build`` alone left 14 of atlas's 33
+    capsules unannotated -- exactly the silent-gap failure mode this block exists to close -- so it is
+    applied here, at the one point every path must pass through.
+    """
+    written = _write_capsule_inner(entry, binding, out_root, facts_sha)
+    if not written:
+        return written
+    d = Path(written) if not isinstance(written, Path) else written
+    capf = d / "capsule.yaml" if d.is_dir() else None
+    if capf is None or not capf.exists():
+        return written
+    cap = yaml.safe_load(capf.read_text()) or {}
+    dirty = False
+    if not (cap.get("semantic") or {}).get("generalization_axis"):
+        _, eb = _entry_regime(entry, binding)
+        cap["semantic"] = CS._semantic_block(entry, eb)
+        dirty = True
+    dirty = _backfill_required_classes(cap, binding) or dirty
+    _validate_lane_declaration(entry, binding)
+    dirty = _carry_declared_blocks(entry, cap) or dirty
+    # AFTER the declared blocks are carried, because `lanes` reaches the capsule THERE. Checking before
+    # it read an empty lanes block and passed everything -- a verification that cannot see what it
+    # verifies is worse than none, because it reports the assertion as checked.
+    _verify_a_forbidden_lane_is_provable(d, cap, getattr(binding, "target", None))
+    dirty = _cap_oracle_tiers(entry, cap) or dirty
+    dirty = _stamp_member_geometry(cap, binding) or dirty
+    # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
+    # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
+    # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
+    # for a datapath error budget and the wrong shape for a small-magnitude output: a softmax capsule
+    # whose golden spans 0.0139..0.1523 was graded at `atol: 0.25`, so zeros, the mean and the midrange
+    # all passed it. It reported a numeric pass and proved nothing.
+    _gp = d / "golden.yaml"
+    if _gp.is_file() and (cap.get("numeric_policy") or {}).get("atol") is not None:
+        _gdoc = yaml.safe_load(_gp.read_text(encoding="utf-8")) or {}
+        _pol, _prov = NF.falsifiable_policy(cap["numeric_policy"], _gdoc.get("outputs") or {},
+                                            name=str(entry.get("name") or d.name))
+        if cap.get("numeric_policy") != _pol or cap.get("numeric_falsifiability") != _prov:
+            cap["numeric_policy"] = _pol
+            cap["numeric_falsifiability"] = _prov
+            dirty = True
+    if dirty:
+        capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    _write_capsule_readme(entry, cap, d)
+    return written
+
+
+#: Profile-entry keys that describe what a capsule is FOR rather than what it computes, and which every
+#: writer must carry through untouched. They are stamped in the same post-step as the generalization
+#: block, and for the same reason: three of the four writers build their capsule dict themselves, so a
+#: key handled in only one of them is silently absent from two thirds of the corpus.
+#:
+#: ``performance``      which optimization level the capsule exercises and which schedule lever its cycle
+#:                      count can see. A capsule is otherwise mute about this, so a perf corpus and a
+#:                      functional corpus are indistinguishable once generated.
+#: ``comparison_group`` the capsule's place in a set whose cycle counts are comparable to one another --
+#:                      a fused implementation against the parts it replaces. The field has been declared
+#:                      on four capsules since they were written and consumed by nothing, which is the
+#:                      same thing as not existing.
+#: ``pass_requirements`` the compiler-obligation classes a capsule demands, which is the ONLY link
+#:                      between a catalogued pass and a concrete capsule that requires it
+#:                      (``check_pass_obligations.py`` rejects a pass no capsule obliges). It was
+#:                      hand-written onto two capsules and unknown to this generator, so every
+#:                      regeneration silently deleted the corpus's only pass obligations.
+#: ``lanes``               the interop/negative-lane contract: which execution lanes must have carried
+#:                      work, and (``forbid``) which must have carried none. Only the whole-model writer
+#:                      emitted it, so a model_slice capsule declaring lanes silently lost them -- which
+#:                      is how the first host-only capsule generated with `lanes: None` and asserted
+#:                      nothing at all.
+_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements", "lanes",
+                    # The oracle-tier ceiling and the sibling a capped member rests on. Declared
+                    # once in a profile and carried onto every member derived from it, so the
+                    # link between a screened member and the capsule that certifies it is
+                    # machine-readable rather than prose. See merlin.targetgen.tier_policy.
+                    "max_oracle_tier", "max_timing_tier", "extends")
+
+
+def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
+    """Copy the profile entry's declared intent blocks onto the capsule. Never overwrites one already
+    there (a hand-authored capsule is the source of record), and never invents one."""
+    dirty = False
+    for key in _DECLARED_BLOCKS:
+        value = entry.get(key)
+        if value is None or cap.get(key) is not None:
+            continue
+        cap[key] = dict(value) if isinstance(value, dict) else value
+        dirty = True
+    return dirty
+
+
+def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
+    """Trim a capsule's required tiers to the deepest one its SIZE can afford, and say what it rests on.
+
+    ``corpus_spec.build`` gives every capsule the target's full tier list, which is right for a
+    capsule sized to the tile edge and wrong for one sized to an application: a shape too large to
+    simulate cycle-accurately cannot demand the cycle-accurate tier, and demanding it anyway makes
+    the whole corpus unrunnable rather than making the capsule affordable.
+
+    ``extends`` is carried onto the capsule for the same reason it exists at all -- an L2-only
+    capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
+    on has to be readable from the capsule itself rather than inferred from a naming convention.
+    """
+    cap_to = str(entry.get("max_oracle_tier") or "")
+    if not cap_to:
+        return False
+    tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
+    if cap_to not in tiers:
+        raise ValueError(
+            f"{cap.get('name')!r} caps its oracle tier at {cap_to!r}, which is not among the tiers "
+            f"this target declares ({tiers}); a cap onto a tier that does not exist would silently "
+            f"leave the capsule demanding everything")
+    trimmed = tiers[:tiers.index(cap_to) + 1]
+    changed = trimmed != tiers
+    cap["required_oracle_tiers"] = trimmed
+    if entry.get("extends"):
+        cap["extends"] = str(entry["extends"])
+        changed = True
+    return changed
+
+
+#: ``source_role`` the corpus synthesizer stamps on every entry it derives. Mirrors
+#: ``corpus_synth.SOURCE_ROLE``; compared as data so a hand-authored capsule and a derived
+#: one can be told apart where the two need different handling.
+SYNTH_ROLE = "derived_sweep"
+
+
+class UnprovableForbid(ValueError):
+    """A capsule forbids the mesh on a program the target would legitimately accelerate.
+
+    A distinct type because the right response depends on who wrote the capsule. A HAND-AUTHORED one
+    is a contradiction its author must resolve, and aborting is how they find out. A SYNTHESIZED one
+    is not: synthesis is pure -- it derives entries from the requirement without building or
+    classifying anything -- so the axis genuinely cannot know that `normalization` decomposes into
+    regions this target admits. The generator is the first place that fact exists, and the honest
+    response there is to drop the capsule and REPORT the family as uncovered, which is the same
+    fail-closed shape as `host_only_unsynthesizable`: a requirement that produced no capsule stays
+    visible, and nothing can pass in its place.
+    """
+
+
+def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None") -> None:
+    """A capsule may only forbid the mesh if its own program has nothing the mesh may legitimately take.
+
+    CLASSIFIED, not predicted. Whether a capsule is host-only is a property of the regions its written
+    interface contains, and the only honest way to know is to ask the classifier the coverage gate asks
+    (`boundary.profile_capsule`). Deriving it from the family instead is nearly right and not right
+    enough: `normalization` decomposes into a reduction and an elementwise map, so the family-level rule
+    catches a target that admits either -- and still passed a target admitting NEITHER whose rmsnorm
+    program turned out to contain an eligible region anyway.
+
+    Why it must raise rather than quietly drop the assertion. `forbid: [on_mesh]` says the submission
+    must NOT accelerate this; on a program containing admitted work that is a demand to leave
+    performance on the table, and a compiler doing the right thing is recorded as violating a lane. The
+    capsule is wrong, not the compiler, and the generator is where that is still cheap to fix.
+    """
+    if not target:
+        return
+    forbid = {str(x) for x in ((cap.get("lanes") or {}).get("forbid") or ())}
+    if "on_mesh" not in forbid:
+        return
+    from merlin.targetgen import boundary as BD
+    prof = BD.profile_capsule(d, str(target))
+    if prof.kind == BD.HOST_ONLY:
+        return
+    raise UnprovableForbid(
+        f"{cap.get('name')!r} forbids `on_mesh`, but {str(target)!r} classifies its program as "
+        f"{prof.kind!r} rather than host-only: it contains region(s) the manifest admits, so the "
+        f"assertion demands the compiler decline work it is entitled to do. Choose a family whose "
+        f"decomposition this target admits nothing of, or drop the forbid")
+
+
+def _validate_lane_declaration(entry: dict, binding) -> None:
+    """Refuse an unreachable or self-contradictory lane declaration AT GENERATION TIME.
+
+    The whole-model writer already ran ``_checked_lanes``; the other writers did not, because they never
+    carried lanes at all. Now that every writer does, the check has to move with it -- a bar the target's
+    declared units make unreachable is not a capability test, it is a wall, and the place to catch it is
+    where an author can still fix it.
+    """
+    lanes = entry.get("lanes") or {}
+    if not lanes:
+        return
+    from merlin.targetgen.capsule_source import _checked_lanes
+    _checked_lanes(entry, binding)                      # raises on an unreachable `require`
+    forbid = [str(x) for x in (lanes.get("forbid") or ())]
+    both = sorted(set(str(x) for x in (lanes.get("require") or ())) & set(forbid))
+    if both:
+        raise ValueError(f"{entry.get('name')!r}: lane(s) {both} are both required and forbidden; one "
+                         f"of the two assertions can never hold")
+    target = getattr(binding, "target", None)
+    if forbid and target:
+        from merlin.targetgen.routing import reachable_lanes
+        unreachable = sorted(set(forbid) - reachable_lanes(target))
+        if unreachable:
+            raise ValueError(
+                f"{entry.get('name')!r}: forbids lane(s) {unreachable} that {target!r} cannot populate "
+                f"anyway, so the assertion is vacuously true and tests nothing")
+
+
+
+def _stamp_member_geometry(cap: dict, binding) -> bool:
+    """Record which shape class an OBJECTIVE member occupies, and whether real models present it.
+
+    A perf member exists to make generated code faster on shapes that matter, and nothing in a
+    generated capsule said which shapes those were. MEASURED on this repo's corpus: 27 of the 29
+    classifiable OBJECTIVE members sit in a geometric class the target's own census -- derived from
+    real captures -- does not contain, and every reachable class in that census has no members. That
+    was invisible from every artifact and answerable only by running a script.
+
+    Stamped here for the same reason the generalization block is: four writers build their capsule
+    dict themselves, so a key handled in one of them is absent from three quarters of the corpus.
+
+    DELIBERATELY NOT A GATE. The census's mass-carrying class is recorded as unbuildable on this
+    target, so refusing off-census members would emit an empty corpus. Recording the placement makes
+    the hole readable from the tracked capsule; deciding what to do about it is the corpus's job, not
+    the writer's.
+    """
+    perf = cap.get("performance")
+    if not isinstance(perf, dict) or perf.get("member_class") != "OBJECTIVE":
+        return False
+    target = str(getattr(binding, "target", "") or "")
+    if not target:
+        return False
+    from merlin.perf.member_geometry import stamp_for
+
+    block = stamp_for(cap, target=target)
+    # None and a block saying `in_census: false` are different answers: the first is "this member's
+    # geometry is unreadable here", the second is "it was read and no capture presents it". Writing
+    # the first as the second would turn an unpriced op into a coverage claim.
+    if block is None or perf.get("shape_geometry") == block:
+        return False
+    perf["shape_geometry"] = block
+    return True
+
+
+def _write_capsule_readme(entry: dict, cap: dict, d: Path) -> None:
+    """Write the capsule's ``README.md`` -- the 5th of the five files a capsule is DEFINED to have.
+
+    The generator only ever emitted four of them, so every generated capsule was incomplete by the
+    corpus's own definition and the materialized public view failed its own completeness check the moment
+    a capsule arrived without a hand-written README. Derived from the profile entry and the capsule, so it
+    cannot go stale: the prose is the entry's ``comment`` when it has one, otherwise a sentence built from
+    the op, the source it was authored from, and the operand shapes/dtypes. Never overwrites a README that
+    is already there -- the hand-written ones are the frozen source-of-record."""
+    rd = d / "README.md"
+    if rd.exists():
+        return
+    name = cap.get("name") or entry.get("name", "")
+    prose = (entry.get("comment") or "").strip()
+    if not prose:
+        op = (cap.get("operation") or {}).get("op") or entry.get("op") or "unknown"
+        ops = ", ".join(f"{i.get('name')}{list(i.get('shape') or [])}:{i.get('dtype')}"
+                        for i in (cap.get("inputs") or []) if i.get("name"))
+        src = cap.get("source_reference") or entry.get("source_reference") or ""
+        prose = f"{name}: {op}" + (f" over {ops}" if ops else "")
+        prose += f", authored from {src}." if src else "."
+    line = " ".join(f"{k}={v}" for k, v in (
+        ("kind", cap.get("kind") or entry.get("kind")),
+        ("label", cap.get("label") or entry.get("label")),
+        ("op", (cap.get("operation") or {}).get("op") or entry.get("op")),
+        ("modes", (cap.get("expected") or {}).get("modes", {})),
+    ) if v is not None)
+    rd.write_text(f"# {name}\n\n{prose}\n\n{line}\n", encoding="utf-8")
+
+
+def _backfill_required_classes(cap: dict, binding) -> bool:
+    """Fill an EMPTY ``expected.instruction_classes`` from the target's own derived taxonomy.
+
+    The source-backed writers (pytorch / spec / model) build their capsule dict themselves and leave this
+    empty, so a contraction authored in PyTorch shipped with no coverage requirement at all while the
+    direct-MLIR twin next to it carried the full systolic sequence -- the L1 coverage assertion silently
+    did not apply to exactly the frontend-faithful capsules the generalization corpus is made of.
+
+    Derived, never hardcoded: the slots come from the op's family in the closed vocabulary and are mapped
+    to class names through THIS target's role census. Fail-closed at every step -- an op that owes no
+    contraction, an undecidable taxonomy, or a role the target does not have all leave the list empty
+    rather than inventing a demand. Only ever fills an empty list; never edits an authored one."""
+    exp = cap.get("expected")
+    if not isinstance(exp, dict) or exp.get("instruction_classes"):
+        return False
+    op = (cap.get("operation") or {}).get("op")
+    if not op:
+        return False
+    attrs = (cap.get("operation") or {}).get("attributes", {}) or {}
+    modes = exp.get("modes", {}) or {}
+    from merlin.targetgen import isa_taxonomy as IT
+    tax = IT.taxonomy_for_target(binding.target)   # {} when the target ships no ISA definition
+    if not tax or not tax.get("by_class"):
+        return False
+    want = IT.required_classes_for_op(
+        tax, op=op,
+        output_dtype=attrs.get("output_dtype") or (cap.get("numeric_policy") or {}).get("dtype"),
+        epilogue=tuple(attrs.get("epilogue", []) or []),
+        movement=op in ("movement", "copy") or bool(modes.get("movement")),
+    )
+    if not want:
+        return False
+    exp["instruction_classes"] = list(want)
+    return True
+
+
+def _roster_captures() -> dict:
+    """Captured bundles available as derivation evidence, keyed by model name.
+
+    Same store and key normalisation as `check_conformance_coverage._captures`, so a micro model is
+    derived from exactly the captures the requirement was derived from.
+    """
+    from merlin.common.paths import artifacts_dir
+
+    root = artifacts_dir() / "recaptures"
+    if not root.is_dir():
+        return {}
+    out = {}
+    for d in sorted(root.iterdir()):
+        m = d / "model.mlir"
+        if m.is_file():
+            out[d.name.replace("_fp32_consistent", "").replace("_consistent", "")] = m
+    return out
+
+
+def _emit_micro_model_loader(entry: dict, target: str, out_root) -> bool:
+    """Write the derived micro model's loader into its capsule directory, or say why not.
+
+    `micro_model.spec` states what a target's minimal whole-model capsule must contain -- one layer per
+    admitted family, one per family real captures contain that the manifest does not admit, sized to the
+    target's own tile edge, host layers interleaved into the INTERIOR. `emit_pytorch` turns that into the
+    loader. Doing it here rather than in `corpus_synth` is deliberate: the spec needs the captures, which
+    is I/O, and the synthesizer is pure.
+    """
+    from merlin.targetgen import micro_model as MM
+
+    captures = _roster_captures()
+    if not captures:
+        print(f"  [skip] {entry['name']}: no captured model is available to derive the inventory from")
+        return False
+    try:
+        spec = MM.spec(target, captures)
+        src = MM.emit_pytorch(spec)
+    except MM.UnwritableLayer as exc:
+        print(f"  [skip] {entry['name']}: {exc}")
+        return False
+    except Exception as exc:                       # noqa: BLE001 -- an underivable spec is not a crash
+        print(f"  [skip] {entry['name']}: micro-model spec unavailable: {type(exc).__name__}: {exc}")
+        return False
+    d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
-    (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False))
-    (d / "capsule.interface.mlir").write_text(interface_text)
-    (d / "golden.yaml").write_text(yaml.safe_dump(
-        {"golden_source": "merlin_tensor_int", "outputs": gold}, sort_keys=False))
-    (d / "expected_instruction_coverage.yaml").write_text(yaml.safe_dump(cap["expected"], sort_keys=False))
-    (d / "README.md").write_text(f"# {cap['name']}\n\n{comment}\n\n"
-                                 f"kind={cap['kind']} label={cap['label']} "
-                                 f"op={cap['operation']['op']} "
-                                 f"modes={cap['expected'].get('modes')}\n")
+    loader = d / "capsule.pytorch.py"
+    loader.write_text(src, encoding="utf-8")
+    entry["loader"] = str(loader)
+    entry.setdefault("model", entry["name"])
+    print(f"  [micro] {entry['name']}: {spec.composition()} over {len(spec.layers)} derived layer(s)")
+    return True
+
+
+def _write_capsule_inner(entry, binding, out_root, facts_sha: str = ""):
+    regime, eb = _entry_regime(entry, binding)
+    # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
+    # host torch-eager output, GATED so it runs only after the op suite proves itself. Additive: skipped
+    # (loudly) when the m2m venv is absent.
+    if entry.get("kind") == "model" or entry.get("op") == "model":
+        from merlin.targetgen import capsule_source as CSRC
+        src = CSRC.PytorchRefSource()
+        if not src.available():
+            print(f"  [skip] {entry['name']}: model capsule needs the m2m venv (set MERLIN_M2M_PYTHON)")
+            return None
+        # A DERIVED micro model writes its own loader first. Without this the entry names a loader that
+        # does not exist, and the capsule that the composition axis exists to produce cannot be built.
+        if entry.get("micro_model") and not _emit_micro_model_loader(entry, eb.target, out_root):
+            return None
+        return CSRC.write_model_capsule(entry, eb, out_root, source=src)
+    # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR
+    # with a host torch-eager golden. Opt in per entry (``source: pytorch``). Restricted to the float
+    # regime: a host-eager float reference is graded with tolerance, matching the merlin_iface float
+    # interface; int/MX datapaths keep the direct-MLIR engines below (the endorsed fallback for the
+    # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
+    if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
+        # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
+        # so the float-regime restriction below does not apply to it. The restriction exists because a
+        # host-eager float reference cannot grade an int/MX datapath -- but that is a statement about
+        # the DEFAULT weight-only capture, which emits a float matmul over dequantized weights. A W8A8
+        # scheme emits `aten._int_mm` accumulating in i32, which IS the mesh's arithmetic, and torch
+        # eager then computes the same quantized math, so the golden is right by construction.
+        if entry.get("quant_scheme"):
+            pass
+        elif regime != "simt":
+            raise ValueError(f"pytorch source for capsule {entry['name']!r} needs a float dtype "
+                             f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
+                             f"via the direct-MLIR engine")
+        from merlin.targetgen import capsule_source as CSRC
+        src = CSRC.PytorchRefSource()
+        if not src.available():
+            # A pytorch capsule needs the m2m venv (torch) at generation time. It is additive: skip it
+            # (loudly) rather than sink the whole target, so a checkout without the venv still regenerates
+            # the direct-MLIR corpus. A capture that STARTS but fails (opaque/crash) still raises.
+            print(f"  [skip] {entry['name']}: pytorch source needs the m2m venv (set MERLIN_M2M_PYTHON)")
+            return None
+        return CSRC.write_pytorch_capsule(entry, eb, out_root, source=src)
+    # Spec source: a capsule whose PROGRAM + bit-exact golden come from the specir verification spec itself
+    # (``spec_ref: '<gen>:op.<name>'``). Additive: a gen without a specir program emitter (or no specir) is
+    # skipped loudly rather than sinking the target.
+    if entry.get("source") == "spec" or entry.get("spec_ref"):
+        from merlin.targetgen import capsule_source as CSRC
+        src = CSRC.SpecRefSource()
+        if not src.available():
+            print(f"  [skip] {entry['name']}: spec source needs specir (set SPECIR_ROOT)")
+            return None
+        try:
+            return CSRC.write_spec_capsule(entry, eb, out_root, source=src)
+        except CSRC.SpecProgramUnavailable as e:
+            print(f"  [skip] {entry['name']}: {e}")
+            return None
+    cap, mlir = CS.build(entry, eb)
+    d = Path(out_root) / entry["cat"] / entry["name"]
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    (d / "capsule.interface.mlir").write_text(mlir, encoding="utf-8")
+    (d / "expected_instruction_coverage.yaml").write_text(
+        yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8")
+    if regime == "int":
+        (d / "golden.yaml").write_text(yaml.safe_dump(
+            {"golden_source": "merlin_tensor_int", "outputs": CG.golden({**cap, "__dir__": ""})},
+            sort_keys=False), encoding="utf-8")
+    elif regime == "specir":
+        outputs, prov = _golden_cached(_float_golden, entry, eb, facts_sha)
+        (d / "golden.yaml").write_text(yaml.safe_dump({
+            "golden_source": "specir_refmodel_fp8_bf16",
+            "oracle_provenance": {
+                "engine": "specir.oracle.dtypes + specir.oracle.refmodel.fp_reduce",
+                "datapath": "acc <- round_bf16(acc + round_bf16(a*w)); k index_sequential; per_step; rne",
+                # How the datapath decodes an operand code. A unit that admits only normal operands
+                # reads a zero exponent field as zero; the golden decodes it the same way, so the two
+                # references implement ONE datapath (see the target's profile ``datapath`` block).
+                "operand_decode": ("subnormal_flush_to_zero" if eb.subnormal_operand_flush
+                                   else "exact"),
+                "operand_dtype": eb.cap_dtype(eb.operand_dtype),
+                "accum_dtype": eb.cap_dtype(eb.accum_dtype), "output_dtype": "bf16",
+                "note": "INDEPENDENT of the target RTL (not self-oracle); specir refmodel is the reference.",
+                "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
+                "inputs": prov},
+            "outputs": outputs}, sort_keys=False), encoding="utf-8")
+    elif regime == "mx":
+        # matmul/linear -> the single MX GEMM golden; attention_mx -> the fused flash-attention composition
+        # (two MX GEMMs + a bf16 softmax), both over the SAME validated mx_ref engine.
+        if entry.get("op") == "attention_mx":
+            outputs, prov = _golden_cached(_mx_attention_golden, entry, eb, facts_sha)
+            engine = ("mlc.validate.mx_ref.mx_matmul x2 (QK & PV, transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
+                      "lib/golden/mx_golden.cpp) + numpy bf16 row-softmax; P requantized to mxfp8 per-row")
+            datapath = ("O = mx_matmul(softmax(mx_matmul(Q,K^T)/sqrt(H) [+softcap]), V); E8M0 per 32-elt "
+                        "K group; bf16 accumulate + bf16 softmax")
+        elif entry.get("op") == "gemv_batched":
+            outputs, prov = _golden_cached(_mx_gemv_batched_golden, entry, eb, facts_sha)
+            engine = ("mlc.validate.mx_ref.mx_matmul x B (independent batched MX GEMMs stacked row-major)")
+            datapath = ("B x [M,H]@[H,N] on the mx_pe; one E8M0 scale per 32-elt K group; bf16 accumulate")
+        else:
+            outputs, prov = _golden_cached(_mx_golden, entry, eb, facts_sha)
+            engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
+                      "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)")
+            datapath = ("16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
+                        "32-elt K group; bf16 accumulate")
+        (d / "golden.yaml").write_text(yaml.safe_dump({
+            "golden_source": "mlc_mx_ref_hardware_semantics",
+            "oracle_provenance": {
+                "engine": engine,
+                "datapath": datapath,
+                "operand_dtype": eb.cap_dtype(eb.operand_dtype), "block_scale": "e8m0", "output_dtype": "bf16",
+                "note": "NOT specir (specir is atlas fp8); MX is a distinct block-scaled datapath.",  # target-ok: descriptive note contrasting atlas-fp8 vs mx datapath, not control flow
+                "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
+                "inputs": prov},
+            "outputs": outputs}, sort_keys=False), encoding="utf-8")
+    else:                                                     # simt (IEEE fp16/bf16/f32)
+        outputs, prov = _golden_cached(_simt_golden, entry, eb, facts_sha)
+        (d / "golden.yaml").write_text(yaml.safe_dump({
+            "golden_source": "ieee_simt_f32_accumulate",
+            "oracle_provenance": {
+                "engine": "numpy IEEE float (CVFPU fp32 accumulate; format-rounded operands)",
+                "operand_dtype": eb.cap_dtype(eb.operand_dtype), "accum_dtype": "f32", "output_dtype": "f32",
+                "note": "SIMT cores do ordinary IEEE math; reference is independent of any accelerator model.",
+                "grade_policy": {"compare": eb.compare, "atol": eb.atol, "rtol": eb.rtol},
+                "inputs": prov},
+            "outputs": outputs}, sort_keys=False), encoding="utf-8")
     return d
 
 
-# --- A6 resident-reuse (two matmuls, one resident weight) -------------------------------------
-def _resident_reuse_capsule(name, label="public"):
-    K = N = 16
-    matmuls = [{"lhs": "A0", "out": "Y0", "epilogue": [], "output_dtype": "i32"},
-               {"lhs": "A1", "out": "Y1", "epilogue": ["relu"], "output_dtype": "i32"}]
-    cap = {
-        "name": name, "kind": "isa", "source_role": "handauthored_compiler_test",
-        "source_reference": "resident weight reuse across two matmuls", "label": label,
-        "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": "W", "role": "weight", "shape": [K, N], "dtype": "i8"},
-                   {"name": "A0", "role": "input", "shape": [16, K], "dtype": "i8"},
-                   {"name": "A1", "role": "input", "shape": [16, K], "dtype": "i8"}],
-        "operation": {"op": "resident_reuse",
-                      "attributes": {"weight": "W", "matmuls": matmuls, "semantic": "resident_reuse"}},
-        "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
-        "expected": {"instruction_classes": list(COMMON),
-                     "modes": {"resident_reuse": True}},
-        "required_oracle_tiers": ["L0", "L1", "L2", "L3"], "vcs": "optional", "firesim": "optional",
+#: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
+#: Spelled the way `kernels/opu_corpus.py` already spells tile-relative extents
+#: ("tile", "tile/2"), so one convention covers both corpora.
+_TILE_TOKEN = "tile"
+
+#: A sweep may not silently become a thousand capsules. Exceeding this raises;
+#: it is never truncated, because a corpus that quietly dropped points reads as
+#: "covered everything" when it did not.
+_MAX_SWEEP_CAPSULES = 128
+
+
+#: Entry keys whose value is a SHAPE EXTENT, and may therefore be written tile-relative.
+_EXTENT_KEYS = ("M", "K", "N", "H", "Skv", "Dv", "B")
+
+
+def _resolve_flat_extents(entry: dict, binding) -> dict:
+    """Resolve tile-relative extent tokens on a FLAT capsule entry.
+
+    ``resolve_extent`` was reachable only from sweep axes, so a flat entry had to spell its shape as
+    integers -- which bakes one target's geometry into a file that is supposed to describe a shape
+    RELATIVE to whatever edge the hardware has. Synthesized entries are written ``tile`` / ``tile-1``
+    precisely so the same entry means the same thing on a target with a different edge, and this is
+    where that promise is kept.
+
+    Inert on every existing entry: an int passes through ``resolve_extent`` unchanged, and a key that
+    is absent is not touched.
+    """
+    tile = getattr(binding, "tile_dim", None)
+    if not tile:
+        return entry
+    out = None
+    for key in _EXTENT_KEYS:
+        value = entry.get(key)
+        if not isinstance(value, str):
+            continue
+        if out is None:
+            out = dict(entry)
+        out[key] = resolve_extent(value, int(tile))
+    resolved = out if out is not None else entry
+    # A POOLING EPILOGUE NEEDS ITS SPATIAL SHAPE, and this is the first point at which it can be had:
+    # the entry's rows are known only after the tile-relative tokens resolve. A synthesized entry
+    # declares the pool WINDOW (a 2x2 with stride 2 is the shape every pooling datapath has) and leaves
+    # the input geometry to be derived, because the number of rows to factor is the target's tile edge.
+    if "maxpool" in [str(x) for x in (resolved.get("epilogue") or ())] and not resolved.get("pool_in_dims"):
+        rows = int(resolved.get("M") or 0)
+        side = int(rows ** 0.5)
+        if side >= 2 and side * side == rows:
+            resolved = {**resolved, "pool_in_dims": [side, side]}
+        else:
+            # NOT a square number of rows: there is no H x W the rows can mean. Left absent so the
+            # builder refuses with its own message rather than this inventing a geometry that silently
+            # pools over the wrong axis.
+            pass
+    return resolved
+
+
+def target_encodings(target: str) -> list[str]:
+    """The operand encodings this target can compute a contraction in, in capsule spelling.
+
+    The axis an ``L6_global`` (encoding / packing / layout) family sweeps. Derived from the same place
+    the gate trait ``multiple_operand_encodings`` reads -- the contraction family's declared dtypes --
+    so the family's members and the gate that admits it cannot disagree about how many encodings exist.
+
+    Sorted, because the corpus must regenerate byte-identically and a capability map is a mapping.
+    Empty when the map cannot be resolved: a family that needs a choice then has none to make, and the
+    gate refuses it with evidence rather than this inventing one.
+    """
+    try:
+        from merlin.targetgen.conformance import capsule_dtype
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap = (capability_map_for_target(target) or {}).get("contraction")
+    except Exception:                              # noqa: BLE001 -- an unresolvable map is no choice
+        return []
+    out = []
+    for d in sorted(getattr(cap, "dtypes", ()) or ()):
+        try:
+            out.append(capsule_dtype(str(d)))
+        except Exception:                          # noqa: BLE001 -- keep an unmappable token visible
+            out.append(str(d))
+    return list(dict.fromkeys(out))
+
+
+def resolve_encoding(token, encodings: "list[str]") -> str:
+    """Resolve a sweep ENCODING token against the target's own encodings.
+
+    ``encoding<N>`` selects the Nth encoding the target declares for a contraction, exactly as
+    ``resolve_extent`` selects a geometry relative to the tile edge -- and for the same reason: a
+    profile must never write down a dtype. `_perf.yaml` is shared by every target, so a family that
+    named ``int8`` and ``bf16`` would be describing one machine and silently mis-describing the rest.
+
+    An index past the end RAISES. That case means the family was admitted on a target with fewer
+    encodings than it compares, which the gate is supposed to have refused; resolving it to the last
+    one instead would emit a comparison group whose two members are the same encoding, and a
+    differential over identical work always reads as "no effect".
+    """
+    if not isinstance(token, str):
+        raise ValueError(f"sweep encoding {token!r} is not an encoding token")
+    head, digits = token.strip(), ""
+    prefix = "encoding"
+    if not head.startswith(prefix) or not head[len(prefix):].isdigit():
+        raise ValueError(f"sweep encoding {token!r} is not of the form 'encoding<N>'")
+    digits = head[len(prefix):]
+    idx = int(digits)
+    if idx >= len(encodings):
+        raise ValueError(
+            f"sweep encoding {token!r} asks for encoding {idx} of a target declaring "
+            f"{len(encodings)} ({encodings}); the family's gate should have refused it here rather "
+            f"than letting two members resolve to the same encoding")
+    return encodings[idx]
+
+
+def resolve_extent(token, tile: int) -> int:
+    """Resolve a sweep extent token against *tile* (the binding's tile edge).
+
+    Accepts a plain int, or a tile-relative expression of the form
+    ``[<mult>*]tile[+<n>|-<n>|/<div>]`` — e.g. ``tile``, ``tile-1``, ``tile+1``,
+    ``tile/2``, ``2*tile``, ``2*tile-1``. Parsed structurally (``partition``), not
+    by pattern-matching, so an unsupported spelling raises instead of silently
+    resolving to something plausible.
+
+    The point of tile-relative tokens is that a profile never hardcodes a
+    geometry: the same sweep produces edge cases for a 16-wide command-buffer
+    tile and for a 64-wide VLMAX tile without being edited.
+    """
+    if isinstance(token, bool):
+        raise ValueError(f"sweep extent {token!r} is a bool, not an extent")
+    if isinstance(token, int):
+        if token < 1:
+            raise ValueError(f"sweep extent {token!r} must be >= 1")
+        return token
+    if not isinstance(token, str):
+        raise ValueError(f"sweep extent {token!r} is neither an int nor a tile expression")
+
+    text = token.strip()
+    mult_text, star, rest = text.partition("*")
+    if star:
+        mult = int(mult_text.strip())
+        rest = rest.strip()
+    else:
+        mult, rest = 1, text
+
+    for op in ("+", "-", "/"):
+        head, found, tail = rest.partition(op)
+        if found:
+            if head.strip() != _TILE_TOKEN:
+                raise ValueError(f"sweep extent {token!r}: expected {_TILE_TOKEN!r} before {op!r}")
+            operand = int(tail.strip())
+            base = mult * tile
+            if op == "+":
+                value = base + operand
+            elif op == "-":
+                value = base - operand
+            else:
+                if operand == 0:
+                    raise ValueError(f"sweep extent {token!r}: division by zero")
+                value = base // operand
+            break
+    else:
+        if rest.strip() != _TILE_TOKEN:
+            raise ValueError(f"sweep extent {token!r} is not a recognized tile expression")
+        value = mult * tile
+
+    if value < 1:
+        raise ValueError(f"sweep extent {token!r} resolves to {value} at tile={tile}; must be >= 1")
+    return value
+
+
+#: Axis DERIVATIONS a sweep may name in place of writing extents down. A derived axis exists for the
+#: same reason ``encoding<N>`` does: the points the family needs are a function of the target's own
+#: derived facts, and any literal the one shared template wrote down would describe a single machine.
+#:
+#: ``memory_regime_reduction_depth`` is the residency axis. A performance model is only valid in the
+#: regimes it was fitted in, and a rate cannot be separated from a fixed fill/drain intercept from one
+#: point -- so this axis asks the target's OWN operand store for several reduction depths inside each
+#: residency band, spread across the band rather than piled against its edge. Measured on the
+#: interlocked target here before it existed: the whole `_perf` corpus sat in ``fits_double`` while the
+#: overwhelming majority of contraction regions in the real captures land in ``spills``, so every
+#: coefficient was fitted where almost no real work lands.
+_DERIVED_AXES = ("memory_regime_reduction_depth",)
+
+
+class AxisDerivationUnavailable(ValueError):
+    """The declaration is well formed but THIS target cannot host the axis it derives.
+
+    Kept distinct from a plain ``ValueError`` on purpose. A malformed declaration is an authoring
+    error and must stop generation; a target that declares no operand store simply cannot be given a
+    residency ladder, and that is the same kind of answer a refuted trait gate gives -- a skip with
+    evidence. Conflating them meant one such target aborted `expand_sweeps` outright and took every
+    OTHER family's members down with it, which reads downstream as "the corpus has no perf families"
+    rather than "this family does not apply here".
+    """
+
+
+def _memory_regime_axis(spec: dict, *, owner: str, target: str, tile: int, dtype: "str | None",
+                        fixed: "dict[str, list[int]]") -> tuple[list[int], dict, dict]:
+    """``(K extents, {extent: regime}, derivation record)`` for a residency-banded reduction sweep.
+
+    The parallel extents are read from the sweep's OWN ``M``/``N`` axes so the two cannot disagree
+    about the shape whose residency is being banded; each must be single-valued, because a band is a
+    property of one shape family and crossing it with a second parallel extent would put two different
+    residency ladders under one name.
+    """
+    from merlin.targetgen import memory_regime as MR
+
+    regimes = [str(r) for r in (spec.get("regimes") or MR.ORDER)]
+    points_per_regime = int(spec.get("points_per_regime", 2))
+    if points_per_regime < 2:
+        raise ValueError(
+            f"{owner}: points_per_regime={points_per_regime} -- a rate and a fixed intercept are two "
+            "parameters and cannot be separated by fewer than two points in the same regime")
+    ceiling = float(spec.get("spills_max_fraction_of_capacity", 2.0))
+    tiles = {}
+    for axis in ("M", "N"):
+        points = fixed.get(axis) or []
+        if len(set(points)) != 1:
+            raise ValueError(
+                f"{owner}: a memory-regime reduction axis needs a single-valued {axis} axis "
+                f"(got {points}); the band is a property of one parallel shape")
+        extent = int(points[0])
+        if extent % tile:
+            raise ValueError(f"{owner}: {axis}={extent} is not a whole number of {tile}-wide tiles")
+        tiles[axis] = extent // tile
+    record = MR.reduction_depth_regimes(
+        target, regimes, tile_dim=tile, dtype=dtype, m_tiles=tiles["M"], n_tiles=tiles["N"],
+        points_per_regime=points_per_regime, spills_max_fraction=ceiling)
+    values: list[int] = []
+    labels: dict[int, str] = {}
+    for regime in regimes:
+        got = (record["by_regime"] or {}).get(regime) or {}
+        for point in got.get("points") or []:
+            k = int(point["K"])
+            if k in labels:                                  # bands cannot overlap; check, do not trust
+                raise ValueError(
+                    f"{owner}: reduction depth {k} was assigned to both {labels[k]!r} and {regime!r}")
+            labels[k] = regime
+            values.append(k)
+    if not values:
+        raise AxisDerivationUnavailable(
+            f"{owner}: no regime in {regimes} is reachable on {target!r}: "
+            + "; ".join(f"{r}: {(record['by_regime'].get(r) or {}).get('unreachable')}"
+                        for r in regimes))
+    return values, labels, record
+
+
+def _resolve_derived_axis(spec: dict, *, owner: str, axis: str, target: str, tile: int,
+                          dtype: "str | None", fixed: "dict[str, list[int]]"):
+    """Dispatch one ``axes: {<name>: {derive: ...}}`` declaration to its derivation."""
+    kind = str(spec.get("derive") or "")
+    if kind not in _DERIVED_AXES:
+        raise ValueError(
+            f"{owner}: axis {axis!r} declares derive={kind!r}; known derivations are "
+            f"{list(_DERIVED_AXES)}")
+    if kind == "memory_regime_reduction_depth":
+        if axis != "K":
+            raise ValueError(
+                f"{owner}: {kind!r} derives the REDUCTION depth, so it must be declared on K, not "
+                f"{axis!r}")
+        return _memory_regime_axis(spec, owner=owner, target=target, tile=tile, dtype=dtype,
+                                   fixed=fixed)
+    raise ValueError(f"{owner}: axis derivation {kind!r} has no resolver")  # unreachable; fail closed
+
+
+def _performance_facts(target: str) -> dict:
+    """Canonical hardware-trait and backend-execution facts, derived once for this target."""
+    profile = derive_profile(target).to_dict()
+    execution = execution_capability_facts(target)
+    document = {"target_profile": profile, "execution_capabilities": execution}
+    return {
+        "target": target,
+        "traits": profile["traits"],
+        "execution_capabilities": execution,
+        "target_profile_sha256": _document_digest(profile),
+        "execution_capabilities_sha256": _document_digest(execution),
+        "sha256": _document_digest(document),
     }
-    text = (
-        '// A6 resident reuse: one resident weight reused across two matmuls (16x16 tiles).\n'
-        'module attributes {merlin_iface.version = "0.1", merlin_iface.target = "gemmini", '
-        'merlin_iface.abi_version = "0.1"} {\n'
-        '  %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<16x16xi8>\n'
-        '  %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<16x16xi8>\n'
-        '  %A1 = merlin_iface.tensor {name = "A1", role = "input"} : tensor<16x16xi8>\n'
-        '  %W_res = merlin_iface.resident_pack %W {layout = "packed_rhs"} '
-        ': (tensor<16x16xi8>) -> !merlin_iface.resident\n'
-        '  %acc0 = merlin_iface.matmul %A0, %W_res '
-        ': (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
-        '  %Y0 = merlin_iface.commit %acc0 {name = "Y0", epilogue = [], output_dtype = "i32"} '
-        ': (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n'
-        '  %acc1 = merlin_iface.matmul %A1, %W_res '
-        ': (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
-        '  %Y1 = merlin_iface.commit %acc1 {name = "Y1", epilogue = ["relu"], output_dtype = "i32"} '
-        ': (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n'
-        '  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n'
-        '}\n')
-    return cap, text
 
 
-def main() -> int:
-    written = []
+def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
+    """Require every hardware trait and software execution capability to be true with evidence.
 
-    # --- ISA capsules (matmul family) ---
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A0_config_smoke", kind="isa", label="public",
-        source_role="handauthored_compiler_test",
-        source_reference="CONFIG_EX/LD/ST smoke via a single 16x16 matmul",
-        M=16, K=16, N=16, lhs="A0", weight="W", epilogue=[], output_dtype="i32"),
-        "A0: CONFIG_EX/CONFIG_LD/CONFIG_ST smoke (trace must contain all three config classes)."))
+    The structured decision deliberately carries False and None separately. A
+    refuted capability makes a family inapplicable; an unestablished one means
+    the instrument/fact coverage is incomplete. Neither is admitted, and
+    neither is silently reduced to Python truthiness.
+    """
+    if not isinstance(gate, dict):
+        raise ValueError("performance gate must be a mapping")
+    if "requires" in gate:
+        raise ValueError("performance gate.requires is not accepted; use canonical gate.traits")
+    names = gate.get("traits")
+    if (not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or not name for name in names)):
+        raise ValueError("performance gate.traits must be a non-empty list")
+    unknown = sorted(set(names) - set(TRAITS))
+    if unknown:
+        raise ValueError(f"unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    execution_names = gate.get("execution_capabilities", [])
+    if (not isinstance(execution_names, list)
+            or any(not isinstance(name, str) or not name for name in execution_names)):
+        raise ValueError("performance gate.execution_capabilities must be a list")
+    unknown_execution = sorted(set(execution_names) - set(EXECUTION_CAPABILITIES))
+    if unknown_execution:
+        raise ValueError(
+            f"unknown execution capability(s) {unknown_execution}; canonical capabilities are "
+            f"{list(EXECUTION_CAPABILITIES)}")
+    facts = (trait_facts or {}).get("traits", trait_facts or {})
+    selected: dict[str, dict] = {}
+    for name in names:
+        raw = facts.get(name)
+        if not isinstance(raw, dict):
+            raw = {
+                "satisfied": None,
+                "tier": "not_established",
+                "evidence": "canonical trait fact was not supplied",
+                "missing": ["derive_profile(target) result for this trait"],
+            }
+        selected[name] = {
+            "satisfied": raw.get("satisfied") if raw.get("satisfied") in (True, False) else None,
+            "tier": raw.get("tier") or "not_established",
+            "evidence": raw.get("evidence") or "no evidence recorded",
+            "missing": list(raw.get("missing") or []),
+        }
+    refuted = [name for name, fact in selected.items() if fact["satisfied"] is False]
+    unestablished = [name for name, fact in selected.items() if fact["satisfied"] is None]
+    satisfied = [name for name, fact in selected.items() if fact["satisfied"] is True]
+    execution_source = (trait_facts or {}).get("execution_capabilities", {})
+    selected_execution: dict[str, dict] = {}
+    for name in execution_names:
+        raw = execution_source.get(name) if isinstance(execution_source, dict) else None
+        if not isinstance(raw, dict):
+            raw = {
+                "satisfied": None,
+                "tier": "not_established",
+                "evidence": "canonical execution capability fact was not supplied",
+                "missing": ["execution_capability_facts(target) result for this capability"],
+            }
+        selected_execution[name] = {
+            "satisfied": raw.get("satisfied") if raw.get("satisfied") in (True, False) else None,
+            "tier": raw.get("tier") or "not_established",
+            "evidence": raw.get("evidence") or "no evidence recorded",
+            "missing": list(raw.get("missing") or []),
+        }
+    execution_refuted = [name for name, fact in selected_execution.items()
+                         if fact["satisfied"] is False]
+    execution_unestablished = [name for name, fact in selected_execution.items()
+                               if fact["satisfied"] is None]
+    execution_satisfied = [name for name, fact in selected_execution.items()
+                           if fact["satisfied"] is True]
+    any_refuted = bool(refuted or execution_refuted)
+    any_unknown = bool(unestablished or execution_unestablished)
+    outcome = "refuted" if any_refuted else ("unestablished" if any_unknown else "satisfied")
+    decision = {
+        "outcome": outcome,
+        "required_traits": list(names),
+        "satisfied": satisfied,
+        "refuted": refuted,
+        "unestablished": unestablished,
+        "facts": selected,
+        "required_execution_capabilities": list(execution_names),
+        "satisfied_execution_capabilities": execution_satisfied,
+        "refuted_execution_capabilities": execution_refuted,
+        "unestablished_execution_capabilities": execution_unestablished,
+        "execution_capability_facts": selected_execution,
+    }
+    return outcome == "satisfied", decision
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A2_single_tile_matmul", kind="isa", label="public",
-        source_role="uplifted_from_bareMetalC", source_reference="bareMetalC/matmul_ws.c",
-        M=16, K=16, N=16, lhs="A0", weight="W", epilogue=[], output_dtype="i32"),
-        "A2: single 16x16 i8 matmul -> i32 (CONFIG, MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT)."))
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A3_k_accumulation", kind="isa", label="public",
-        source_role="uplifted_from_bareMetalC", source_reference="bareMetalC/tiled_matmul_ws.c",
-        M=16, K=32, N=16, lhs="A0", weight="W", epilogue=[], output_dtype="i32",
-        modes={"k_accumulate": True}),
-        "A3: K=32 (> tile dim) forces K-accumulation (accumulate-onto PRELOAD across K tiles)."))
+def _accum_for_encoding(target: str, operand: str, fallback: "str | None") -> str:
+    """The accumulate format ``target`` declares for a contraction whose operands are ``operand``.
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A4_acc_scale_i8", kind="isa", label="public",
-        source_role="uplifted_from_bareMetalC", source_reference="bareMetalC/transpose_scale.c",
-        M=16, K=16, N=16, lhs="A0", weight="W", epilogue=["acc_scale"], output_dtype="i8",
-        acc_scale=0.0625, modes={"i8": True, "acc_scale": True}),
-        "A4: int32 accumulator -> f32 acc_scale (0.0625) -> saturating i8 readout."))
+    ASKED OF THE ROUTER, not re-derived. `routing._legal_on` is the one predicate that answers "what
+    does this unit accumulate this contraction in", and it answers by taking the FIRST declared
+    accumulate rule that matches -- which is what every other path in the repo computes for the same
+    contraction. A second derivation here would be a second answer to one question, and on a target
+    declaring several rules for one operand (atlas declares both bf16 and f32 for fp8_e4m3, which is a
+    real capability rather than an ambiguity) the two would disagree.
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A5_relu_epilogue", kind="isa", label="public",
-        source_role="handauthored_compiler_test", source_reference="relu activation",
-        M=16, K=16, N=16, lhs="A0", weight="W", epilogue=["relu"], output_dtype="i32",
-        modes={"relu": True}),
-        "A5: relu activation (activation bits set in CONFIG_ST; exact relu numerics)."))
+    Falls back to the corpus binding's accumulator only when no unit accepts the operand at all, and
+    raises when there is no fallback either: a member whose accumulator is unknown cannot be built,
+    and guessing one emits a capsule that measures arithmetic the target does not perform.
+    """
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen.routing import OpDemand, _legal_on        # noqa: PLC2701 -- one predicate
+    from merlin.targetgen.target_registry import load_contract
 
-    cap, text = _resident_reuse_capsule("A6_resident_reuse")
-    written.append(_write_capsule_dir(cap, text,
-        "A6: one resident (packed/stationary) weight reused across two matmuls without reload."))
+    demand = OpDemand(op="matmul", in_fmt=operand, weight_fmt=operand, site="encoding_probe")
+    try:
+        units = list(_cu.compute_units(load_contract(target)))
+    except Exception:                              # noqa: BLE001 -- an unreadable contract is no answer
+        units = []
+    for unit in (_cu.effective(u, units) for u in units):
+        legal, acc = _legal_on(unit, demand)
+        if legal and acc:
+            return str(acc)
+    if fallback:
+        return str(fallback)
+    raise ValueError(
+        f"no unit of {target!r} declares an accumulate rule for operand {operand!r}, and no corpus "
+        f"binding accumulator is available; an encoding member cannot be built without knowing which "
+        f"datapath it accumulates in")
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="A7_edge_padding", kind="isa", label="public",
-        source_role="handauthored_compiler_test", source_reference="bareMetalC/padded.c",
-        M=20, K=24, N=12, lhs="A0", weight="W", epilogue=[], output_dtype="i32",
-        modes={"padded_edge": True}),
-        "A7: non-16-multiple dims (20x24x12); backend zero-pads to tiles, valid window is exact."))
 
-    # --- layer capsules ---
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="B0_quantized_linear_i8", kind="layer", label="public",
-        source_role="pytorch_model_slice", source_reference="nn.Linear + per-tensor requant",
-        M=16, K=32, N=16, lhs="X", weight="W", epilogue=["acc_scale"], output_dtype="i8",
-        acc_scale=0.0625, modes={"i8": True, "acc_scale": True, "k_accumulate": True},
-        semantic="quantized_linear"),  # K=32 => 2 K-tiles: trace must show accumulate (cf. H2_k_accum)
-        "B0: quantized linear (i8 x i8 -> i32 -> acc_scale -> i8)."))
+def _resolve_target_oracle_evidence(performance: dict, target: str) -> dict:
+    """Resolve ``$target_oracle:<tier>`` evidence placeholders from the target's own oracle route.
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="B1_linear_relu_i8", kind="layer", label="public",
-        source_role="pytorch_model_slice", source_reference="nn.Linear + ReLU",
-        M=16, K=32, N=16, lhs="X", weight="W", epilogue=["relu"], output_dtype="i32",
-        modes={"relu": True}, semantic="linear_relu"),
-        "B1: linear + relu (i32 readout)."))
+    The shared profile must not name one target's simulator binary.  At generation time the target is
+    known, so its contract supplies ordinary tiers and its RTL-engine policy supplies the concrete L3
+    implementation selected for an elaborated-RTL fidelity.  The resolved names are frozen into the
+    capsule acceptance contract together with the placeholders they came from.
+    """
+    acceptance = performance.get("acceptance")
+    evidence = acceptance.get("evidence") if isinstance(acceptance, dict) else None
+    if not isinstance(evidence, dict):
+        return performance
+    prefix = "$target_oracle:"
+    pending = {key: value for key, value in evidence.items()
+               if isinstance(value, str) and value.startswith(prefix)}
+    if not pending:
+        return performance
+    from merlin.targetgen.target_experiment import load_capability_manifest
 
-    written.append(_write_single_matmul(_matmul_capsule(
-        name="B2_linear_acc_scale_relu_i8", kind="layer", label="public",
-        source_role="pytorch_model_slice", source_reference="nn.Linear + requant + ReLU",
-        M=16, K=32, N=16, lhs="X", weight="W", epilogue=["acc_scale", "relu"], output_dtype="i8",
-        acc_scale=0.0625, modes={"i8": True, "acc_scale": True, "relu": True},
-        semantic="linear_acc_scale_relu"),
-        "B2: linear + acc_scale + relu -> i8."))
+    contract = load_capability_manifest(target).contract
+    declared = (contract.get("runner") or {}).get("tier_sim") or {}
+    resolved_from: dict[str, str] = {}
+    for key, placeholder in pending.items():
+        tier = placeholder[len(prefix):]
+        if not tier:
+            raise ValueError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
+        concrete = None
+        if tier == "L3":
+            # L3 is a fidelity and may have several implementations. Resolve it through the same
+            # target-neutral policy grading uses, so a faster available engine changes the frozen
+            # evidence by derivation rather than by editing the shared profile.
+            from merlin.targetgen.capsule_runner import describe_l3_engine
+            selection = describe_l3_engine(target)
+            if selection.get("available") and selection.get("engine"):
+                concrete = str(selection["engine"])
+        if concrete is None and declared.get(tier):
+            concrete = str(declared[tier])
+        if not concrete or concrete == "elaborated_rtl":
+            raise ValueError(
+                f"{target}: target oracle route does not resolve {tier} to a concrete simulator "
+                f"(declared={declared.get(tier)!r})")
+        evidence[key] = concrete
+        resolved_from[key] = placeholder
+    evidence["resolved_from"] = resolved_from
+    return performance
 
-    # --- model slices C0..C6 ---
-    for cap in MSE.standard_model_slices():
-        d = MSE.export_capsule_dir(CAP_ROOT / "model_slices", cap)
-        written.append(d)
 
-    print(f"wrote {len(written)} capsules:")
-    for d in written:
-        print(f"  {d.relative_to(REPO)}")
+def _materialize_performance_entry(entry: dict, binding) -> dict:
+    """Resolve a performance member onto a runnable direct corpus path.
 
-    # Provenance manifest: capsules this generator emits (regenerable) vs the hand-authored remainder
-    # (movement A1, conv B3/B4, hidden H*). Keeps "what's generated vs curated" machine-readable.
-    gen_rel = sorted(str(d.relative_to(CAP_ROOT)) for d in written)
-    all_caps = sorted(str(p.parent.relative_to(CAP_ROOT)) for p in CAP_ROOT.rglob("capsule.yaml"))
-    hand = [c for c in all_caps if c not in set(gen_rel)]
-    (CAP_ROOT / "MANIFEST.yaml").write_text(
-        "# Capsule corpus provenance — regenerable (generate_corpus.py) vs hand-authored.\n"
-        "# Rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.\n"
-        + yaml.safe_dump({"generated_by": "merlin/contract/capsules/generate_corpus.py",
-                          "generated": gen_rel, "hand_authored": hand}, sort_keys=False))
-    print(f"wrote MANIFEST.yaml ({len(gen_rel)} generated, {len(hand)} hand-authored)")
+    Dtypes come from workload_gen's capability-manifest accessor and must agree
+    with the corpus binding selected for the same target.  The shared template
+    therefore contains neither a target dtype nor a frontend choice.
+    """
+    target = str(getattr(binding, "target", "") or "")
+    if not target:
+        raise ValueError("performance materialization needs binding.target")
+    binding_operand = getattr(binding, "operand_dtype", None)
+    binding_accum = getattr(binding, "accum_dtype", None)
+    declared = entry.pop("_encoding_variant", None)
+    derived_axes = entry.pop("_derived_axes", None)
+    if declared:
+        # AN ENCODING FAMILY'S WHOLE CONTENT IS THAT ITS MEMBERS DIFFER HERE. This function otherwise
+        # overwrites `operand_dtype` with the target's single corpus binding, which is right for every
+        # other family -- they compare geometry or fusion at ONE datapath and must not drift off it --
+        # and fatal for an L6_global comparison: both members would collapse onto the same encoding and
+        # the differential would read "no effect" for a lever that was never exercised.
+        #
+        # The accumulate format is DERIVED for that operand rather than carried over from the binding:
+        # an accumulator belongs to the datapath the operand feeds, and pairing one encoding's operand
+        # with another's accumulator describes a machine that does not exist.
+        operand_dtype = str(declared)
+        accum_dtype = _accum_for_encoding(target, operand_dtype, binding_accum)
+        datatype_basis = "declared_encoding_variant"
+    elif binding_operand and binding_accum:
+        # This is the binding _write_capsule will actually consume, derived by
+        # corpus_spec from the target experiment + numeric profile. Prefer it
+        # over re-deriving through a second capability-manifest representation.
+        operand_dtype, accum_dtype = str(binding_operand), str(binding_accum)
+        datatype_basis = "corpus_binding"
+    else:
+        operand_dtype, accum_dtype = WG.datapath_formats(target, accum_dtype=binding_accum)
+        datatype_basis = "merlin.perf.workload_gen.datapath_formats"
+    op = str(entry.get("op") or "")
+    if op not in CS.BUILDERS:
+        raise ValueError(
+            f"performance member {entry.get('name', '?')}: direct corpus source has no runnable "
+            f"builder for {op!r}")
+    entry["source"] = "direct"
+    entry["operand_dtype"] = operand_dtype
+    performance = copy.deepcopy(entry["performance"])
+    performance = _resolve_target_oracle_evidence(performance, target)
+    performance["emitter"] = copy.deepcopy(performance["emitter"])
+    performance["emitter"]["resolved"] = {
+        "source": "direct",
+        "operand_dtype": operand_dtype,
+        "accum_dtype": accum_dtype,
+        "datatype_basis": datatype_basis,
+        "builder": "merlin.targetgen.corpus_spec.build",
+    }
+    if derived_axes:
+        # THE UNREACHABLE REGIMES TRAVEL WITH THE CAPSULE. The derivation knows which bands it could
+        # not reach and why, and that answer is worth exactly as much as the points it did reach: a
+        # regime nothing covers because nothing CAN is a result, while one that is merely absent from
+        # the corpus is a hole. Recorded on every member so a corpus-side gate can read it out of the
+        # tracked capsule rather than out of a generation report that may not have been rewritten.
+        performance["emitter"]["derived_axes"] = copy.deepcopy(derived_axes)
+    entry["performance"] = performance
+    return entry
+
+
+def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
+                  skipped: "list | None" = None,
+                  blocked_unimplemented: "list | None" = None,
+                  errors: "list | None" = None,
+                  traits: "dict | None" = None) -> list[dict]:
+    """Return the profile's capsule entries with any ``sweeps:`` block expanded.
+
+    A performance family's ``performance.gate.traits`` are evaluated against
+    :func:`derive_profile`'s canonical tri-state records. Every trait must be
+    exactly True. False and None both skip admission but remain distinct, with
+    their evidence and evidence tier, in ``skipped``.
+
+    A sweep is a cross-product over named axes plus a shared ``base``, producing
+    exactly the flat entry dicts the per-capsule pipeline already consumes — so
+    ``_write_capsule`` and every golden path are untouched by this feature.
+
+    Two rules are enforced rather than documented:
+
+    * **Every fitted axis needs at least two distinct points.** K is always
+      fitted when present because one reduction depth cannot separate a tiled
+      unit's rate from fixed overhead. Other axes opt in through ``fit_axes``;
+      a one-point fit prices a parameter confidently and wrongly.
+    * **Names must be unique across generated and hand-authored entries.** A
+      collision would have one capsule overwrite another's directory, silently
+      shrinking the corpus.
+
+    Hand-written entries in ``capsules:`` are kept verbatim and come first, so a
+    profile can mix a sweep with cases whose prose is worth writing by hand.
+    """
+    entries = list(profile.get("capsules") or [])
+    sweeps = profile.get("sweeps") or []
+    if not sweeps:
+        return entries
+    # Compatibility for the public/holdout disjointness checker, which passes
+    # this old keyword even for purely functional profiles. It is never used to
+    # admit performance: the first performance sweep below rejects it.
+    legacy_traits_supplied = traits is not None
+
+    tile = int(getattr(binding, "tile_dim", 0) or 0)
+    if tile < 1:
+        raise ValueError("sweeps need a tile edge; the binding reports none")
+
+    seen = {e.get("name") for e in entries if isinstance(e, dict)}
+    generated: list[dict] = []
+
+    for sweep in sweeps:
+        if not isinstance(sweep, dict):
+            raise ValueError(f"sweep entry {sweep!r} is not a mapping")
+        sweep_id = str(sweep.get("id") or "").strip()
+        if not sweep_id:
+            raise ValueError("every sweep needs an `id` (it prefixes the generated names)")
+        base = dict(sweep.get("base") or {})
+        variant_performance = [i for i, variant in enumerate(sweep.get("variants") or [])
+                               if isinstance(variant, dict) and "performance" in variant]
+        if variant_performance:
+            raise ValueError(
+                f"sweep {sweep_id!r}: performance blocks belong on `base`, not variants "
+                f"{variant_performance}; every member of a family shares one claim contract")
+        performance = base.get("performance")
+        is_performance = base.get("cat") in {"perf", "_perf"} or performance is not None
+        gate_decision = None
+        if is_performance:
+            if legacy_traits_supplied:
+                raise ValueError(
+                    f"performance sweep {sweep_id}: legacy ad-hoc `traits` cannot gate performance; "
+                    "pass canonical derive_profile(target) records through `trait_facts`")
+            performance = _validate_performance_block(
+                performance, owner=f"performance sweep {sweep_id}")
+            if performance["family"] != sweep_id:
+                raise ValueError(
+                    f"performance sweep {sweep_id}: performance.family must equal the sweep id")
+            facts = trait_facts
+            if facts is None:
+                target = str(getattr(binding, "target", "") or "")
+                if not target:
+                    raise ValueError(
+                        f"performance sweep {sweep_id}: no trait facts supplied and binding.target is absent")
+                facts = _performance_facts(target)
+            ok, decision = evaluate_gate(performance["gate"], facts)
+            gate_decision = decision
+            if not ok:
+                if skipped is not None:
+                    skipped.append({
+                        "family": sweep_id,
+                        "sweep": sweep_id,
+                        "status": "skipped_inapplicable",
+                        "gate": decision,
+                        "fit_axes": list(sweep.get("fit_axes") or []),
+                        "comparison_roles": _comparison_roles(sweep),
+                    })
+                continue
+            emitter_status = str(performance["emitter"]["status"])
+            if emitter_status != "existing":
+                if blocked_unimplemented is not None:
+                    blocked_unimplemented.append({
+                        "family": sweep_id,
+                        "status": "blocked_unimplemented",
+                        "reason": f"declared emitter {emitter_status!r} is not implemented",
+                        "emitter": copy.deepcopy(performance["emitter"]),
+                        "fit_axes": list(sweep.get("fit_axes") or []),
+                        "comparison_roles": _comparison_roles(sweep),
+                    })
+                continue
+        axes = sweep.get("axes") or {}
+        if not isinstance(axes, dict) or not axes:
+            raise ValueError(f"sweep {sweep_id!r} declares no axes")
+        encodings = target_encodings(str(getattr(binding, "target", "") or ""))
+
+        # Resolve each axis to concrete extents, preserving declaration order so
+        # the generated corpus is reproducible.
+        resolved: dict[str, list[int]] = {}
+        derived_axes = {a: t for a, t in axes.items() if isinstance(t, dict)}
+        for axis, tokens in axes.items():
+            if axis in derived_axes:
+                continue
+            if not isinstance(tokens, list) or not tokens:
+                raise ValueError(f"sweep {sweep_id!r} axis {axis!r} must be a non-empty list")
+            resolved[axis] = [resolve_extent(t, tile) for t in tokens]
+        # DERIVED axes come second, because a derivation reads the literal axes it is banded against
+        # (a residency band is a property of one parallel shape). The order is a dependency, not a
+        # convenience: resolving them together would make the M/N a derivation sees depend on dict
+        # iteration order.
+        axis_labels: dict[str, dict] = {}
+        axis_records: dict[str, dict] = {}
+        unhostable = None
+        for axis, spec in derived_axes.items():
+            try:
+                values, labels, record = _resolve_derived_axis(
+                    spec, owner=f"sweep {sweep_id!r}", axis=axis,
+                    target=str(getattr(binding, "target", "") or ""), tile=tile,
+                    dtype=getattr(binding, "operand_dtype", None), fixed=resolved)
+            except AxisDerivationUnavailable as exc:
+                unhostable = {"axis": axis, "derive": str(spec.get("derive")), "detail": str(exc)}
+                break
+            resolved[axis] = values
+            axis_labels[axis] = labels
+            axis_records[axis] = record
+        if unhostable is not None:
+            if skipped is not None:
+                skipped.append({
+                    "family": sweep_id,
+                    "sweep": sweep_id,
+                    "status": "skipped_inapplicable",
+                    "reason": unhostable["detail"],
+                    "axis_derivation": unhostable,
+                    "gate": gate_decision,
+                    "fit_axes": list(sweep.get("fit_axes") or []),
+                    "comparison_roles": _comparison_roles(sweep),
+                })
+            continue
+
+        declared_fit_axes = sweep.get("fit_axes") or []
+        if not isinstance(declared_fit_axes, list) or any(
+                not isinstance(axis, str) or not axis for axis in declared_fit_axes):
+            raise ValueError(f"sweep {sweep_id!r}: `fit_axes` must be a list of axis names")
+        fitted_axes = list(dict.fromkeys(
+            (["K"] if "K" in resolved else []) + declared_fit_axes))
+        unknown_fit_axes = [axis for axis in fitted_axes if axis not in resolved]
+        if unknown_fit_axes:
+            raise ValueError(
+                f"sweep {sweep_id!r} fits undeclared axis/axes {unknown_fit_axes}; "
+                f"declared axes are {sorted(resolved)}")
+        for axis in fitted_axes:
+            if len(set(resolved[axis])) < 2:
+                detail = ("a tiled unit needs at least TWO distinct K points, because one cannot "
+                          "separate the rate from the per-tile overhead" if axis == "K" else
+                          "every fitted parameter needs at least TWO distinct points")
+                raise ValueError(
+                    f"sweep {sweep_id!r} fits {axis} over {resolved[axis]} — {detail}")
+
+        combos = _cross_product(resolved)
+        if len(combos) > _MAX_SWEEP_CAPSULES:
+            raise ValueError(
+                f"sweep {sweep_id!r} would generate {len(combos)} capsules (cap {_MAX_SWEEP_CAPSULES}); "
+                f"narrow the axes rather than letting it be truncated")
+
+        # A sweep may also cross the extents with a list of NON-EXTENT overrides. The motivating case is
+        # a fusion comparison: three capsules that must sit at the IDENTICAL shape and differ only in
+        # which op they ask for, so that `cycles(fused)` and `cycles(part) + cycles(part)` are about the
+        # same work. Expressing that as an axis is impossible -- an axis value is an extent, resolved
+        # against the tile -- and expressing it as three hand-authored entries would hardcode the shape
+        # in three places, where the whole point is that the three shapes are the same one.
+        variants = sweep.get("variants") or [{}]
+        if not isinstance(variants, list) or any(not isinstance(v, dict) for v in variants):
+            raise ValueError(f"sweep {sweep_id!r}: `variants` must be a list of mappings")
+
+        # A comparison group whose members cannot be compared is a declaration with no content. The
+        # field was carried on four shipped capsules for a year while every one of them sat alone in
+        # its group, so nothing could ever do the arithmetic it exists for.
+        _groups: dict[str, int] = {}
+        for v in variants:
+            g = v.get("comparison_group")
+            gname = g.get("name") if isinstance(g, dict) else g
+            if gname:
+                _groups[str(gname)] = _groups.get(str(gname), 0) + 1
+        _lonely = sorted(g for g, n in _groups.items() if n < 2)
+        if _lonely:
+            raise ValueError(
+                f"sweep {sweep_id!r} declares comparison group(s) {_lonely} with a single member; a "
+                "group of one cannot be compared to anything, so declare the other members or drop "
+                "the group")
+
+        template = str(sweep.get("name") or "{id}_{i:02d}")
+        index = 0
+        for combo in combos:
+            for variant in variants:
+                entry = copy.deepcopy(base)
+                entry.update(combo)
+                rendered = _render_variant(variant, combo)
+                # An `operand_dtype: encoding<N>` variant names an encoding POSITIONALLY, so the shared
+                # template never writes a dtype down. Resolved here, where the target is known, and
+                # stashed under a private key so `_materialize_performance_entry` can tell "this member
+                # chose its encoding" from "this member inherited the corpus binding".
+                enc_token = rendered.get("operand_dtype")
+                if isinstance(enc_token, str) and enc_token.startswith("encoding"):
+                    rendered["operand_dtype"] = resolve_encoding(enc_token, encodings)
+                    rendered["_encoding_variant"] = rendered["operand_dtype"]
+                entry.update(rendered)
+                # A derived axis contributes a LABEL as well as a value, so a member can be named by
+                # the band it was derived for (`{K_label}` -> "spills") rather than only by an extent
+                # whose meaning a reader would have to recompute against the store.
+                name_ns = {**combo, **variant}
+                for _axis, _labels in axis_labels.items():
+                    name_ns[f"{_axis}_label"] = _labels.get(combo.get(_axis), "unknown")
+                entry["name"] = template.format(id=sweep_id, i=index, **name_ns)
+                index += 1
+                entry.setdefault("source_role", "derived_sweep")
+                # Provenance survives generation: say which sweep and which point.
+                reference = sweep.get("source_reference") or f"generated by sweep {sweep_id!r}"
+                axis_note = ", ".join(f"{k}={v}" for k, v in sorted(combo.items()))
+                if variant:
+                    axis_note += "; " + ", ".join(f"{k}={v}" for k, v in sorted(variant.items())
+                                                  if not isinstance(v, dict))
+                if axis_records:
+                    entry["_derived_axes"] = {
+                        a: {"derive": str(axes[a].get("derive")), "value": combo.get(a),
+                            "label": axis_labels[a].get(combo.get(a)), "derivation": r}
+                        for a, r in axis_records.items()}
+                    axis_note += "; " + ", ".join(
+                        f"{a}={combo.get(a)} is {axis_labels[a].get(combo.get(a))}"
+                        for a in sorted(axis_records))
+                entry["source_reference"] = f"{reference} (tile={tile}; {axis_note})"
+                if entry["name"] in seen:
+                    raise ValueError(
+                        f"sweep {sweep_id!r} generated duplicate capsule name {entry['name']!r}")
+                seen.add(entry["name"])
+                if is_performance:
+                    try:
+                        _materialize_performance_entry(entry, binding)
+                    except Exception as exc:  # noqa: BLE001 - persisted as a generation error
+                        if errors is None:
+                            raise
+                        errors.append({
+                            "family": sweep_id,
+                            "member": entry["name"],
+                            "status": "error",
+                            "error_type": type(exc).__name__,
+                            "detail": str(exc)[:500],
+                        })
+                        continue
+                generated.append(entry)
+
+    # A GROUP REDUCED TO ONE MEMBER IS NOT A COMPARISON. The declaration-time check above refuses a
+    # group AUTHORED with a single member, but a member can also disappear afterwards: materialization
+    # is allowed to fail per member and record an error, and the survivors were shipped anyway. A lone
+    # member then carries a `comparison_group` and a DIFFERENTIAL claim with nothing to difference
+    # against -- which is the same silent vacuity the single-member check exists to prevent, arriving by
+    # a different route. Measured while opening the encoding family: one target's second encoding could
+    # not resolve its accumulator, and the first shipped alone.
+    if generated:
+        members: dict[str, int] = {}
+        for e in generated:
+            g = e.get("comparison_group")
+            name = g.get("name") if isinstance(g, dict) else g
+            if name:
+                members[str(name)] = members.get(str(name), 0) + 1
+        lonely = {g for g, n in members.items() if n < 2}
+        if lonely:
+            kept = []
+            for e in generated:
+                g = e.get("comparison_group")
+                name = str(g.get("name") if isinstance(g, dict) else g or "")
+                if name in lonely:
+                    fam = (e.get("performance") or {}).get("family")
+                    if errors is not None:
+                        errors.append({
+                            "family": fam, "member": e.get("name", "?"), "status": "error",
+                            "error_type": "IncompleteComparisonGroup",
+                            "detail": (f"comparison group {name!r} kept only this member; a "
+                                       f"differential needs both, so it is dropped rather than "
+                                       f"shipped as a comparison against nothing"),
+                        })
+                    continue
+                kept.append(e)
+            generated = kept
+
+    return entries + generated
+
+
+def _render_variant(variant: dict, combo: dict) -> dict:
+    """A variant override with its string fields resolved against the shape point it is paired with.
+
+    Only ``{extent}`` substitution, one level into a nested mapping -- enough for a comparison group to
+    name the shape its members share (``fmb_{M}x{K}x{N}``) without any entry writing that shape down.
+    A field with no placeholder is copied through untouched.
+    """
+    out: dict = {}
+    for key, value in variant.items():
+        if isinstance(value, str):
+            out[key] = value.format(**combo)
+        elif isinstance(value, dict):
+            out[key] = {k: (v.format(**combo) if isinstance(v, str) else v) for k, v in value.items()}
+        else:
+            out[key] = value
+    return out
+
+
+def _cross_product(axes: dict) -> list[dict]:
+    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
+    combos: list[dict] = [{}]
+    for axis, values in axes.items():
+        combos = [{**combo, axis: value} for combo in combos for value in values]
+    return combos
+
+
+def _descriptor_for(target: str) -> Path:
+    from merlin.common.paths import repo_root
+    return (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
+            / "target_experiment.yaml")
+
+
+def _ensure_contract_on_path(descriptor: Path) -> None:
+    """If the descriptor names an out-of-tree ``target_contract`` (e.g. radiance's contract lives under
+    the ``radiance`` target package), prepend its package root to ``MERLIN_TARGET_PATH`` so the registry
+    resolves the manifest. Read from the descriptor, so it stays target-agnostic."""
+    from merlin.common.paths import repo_root
+    raw = yaml.safe_load(descriptor.read_text())
+    tc = (raw.get("hardware_spec") or {}).get("target_contract")
+    if not tc:
+        return
+    pkg = (repo_root() / tc).resolve().parent.parent      # .../contracts/target_contract.yaml -> package root
+    cur = os.environ.get("MERLIN_TARGET_PATH", "")
+    if str(pkg) not in cur.split(os.pathsep):
+        os.environ["MERLIN_TARGET_PATH"] = os.pathsep.join([str(pkg), cur]) if cur else str(pkg)
+
+
+def generate_target(target: str) -> list[Path]:
+    descriptor = _descriptor_for(target)
+    _ensure_contract_on_path(descriptor)
+    te = load_target_experiment(descriptor)
+    profile = load_profile(target)
+    binding = CS.derive_binding(te, profile.get("datapath", {}))
+    out_root = Path(te.capsule_corpus).parent                 # target's corpus root, derived (no move)
+    # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
+    # everything downstream — builders, goldens, coverage — is unchanged.
+    facts = _performance_facts(target)
+    _sweep_skips: list = []
+    _runtime_blocked: list = []
+    _performance_errors: list = []
+    entries = expand_sweeps(
+        profile, binding, trait_facts=facts, skipped=_sweep_skips,
+        blocked_unimplemented=_runtime_blocked, errors=_performance_errors)
+    entries = [_resolve_flat_extents(e, binding) for e in entries]
+    for _s in _sweep_skips:
+        _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
+        print(f"  [skip] performance family {_s['family']}: {_why}")
+    template = copy.deepcopy(profile.get("_performance_template") or {})
+    declared_families = [dict(row) for row in (template.get("families") or [])]
+    family_counts = {
+        row["family"]: {"admitted_members": 0, "written_members": 0}
+        for row in declared_families
+    }
+    for entry in entries:
+        family = (entry.get("performance") or {}).get("family")
+        if family:
+            family_counts.setdefault(family, {"admitted_members": 0, "written_members": 0})
+            family_counts[family]["admitted_members"] += 1
+    # SCRUB EACH CAPSULE AS IT IS WRITTEN, not after the whole corpus succeeds. Scrubbing at the end
+    # means one unrelated failure -- a capture that needs an external exporter, say -- aborts the run
+    # with every capsule written so far still carrying its absolute `prov.weights_file` path. Measured:
+    # a run that died on the last entry left `/scratch/.../capsule_m2m_<rand>/weights.safetensors` in
+    # tracked MLIR across six capsules, in a repo that is published. Hygiene that only holds on the
+    # happy path is not hygiene.
+    #
+    # ONE FAILING CAPSULE MUST NOT DESTROY THE WHOLE CORPUS. Letting the exception propagate meant a
+    # single entry that needs an external exporter took every entry after it down with it: measured, a
+    # capture that torch.export refuses (an LSTM whose `_flat_weights` are assigned rather than
+    # registered) aborted the run before any of the tail-path sweep capsules were written, so a coverage
+    # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
+    # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
+    written, failures, unbuilt_roster, unprovable_forbids = [], [], [], []
+    for e in entries:
+        family = (e.get("performance") or {}).get("family")
+        try:
+            w = _write_capsule(e, binding, out_root, facts.get("sha256", ""))
+        except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
+            detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+            if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:
+                # See `UnprovableForbid`. The capsule is removed rather than left on disk: a directory
+                # the corpus does not list is exactly the kind of half-written state the seal cannot
+                # see, and a stale one would be picked up by the next glob as though it had been built.
+                shutil.rmtree(out_root / str(e.get("cat") or "") / str(e.get("name") or ""),
+                              ignore_errors=True)
+                unprovable_forbids.append({"capsule": e.get("name", "?"),
+                                           "family": e.get("op"), "reason": str(exc)[:400]})
+                print(f"  [lane] {e.get('name')}: NOT BUILT — its forbid is not provable on this target")
+                continue
+            if _is_roster_capsule(e):
+                # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
+                # whole-model capsule per model the target's `workload_spec` names, at the format the
+                # target admits -- and whether a given network can be CAPTURED at that format depends on
+                # things outside this repo: whether the loader's dataset is present, whether the m2m venv
+                # has the model's package, whether torchAO's scheme runs on this host, whether
+                # torch.export accepts the module under quantization. Measured on the four declared
+                # models: one captures, one needs an ImageNet npz, one needs a package the venv lacks,
+                # one is refused by torch.export under W8A8 while its weight-only capture succeeds.
+                #
+                # Aborting the corpus for those would make a fact about the ROSTER read as a broken
+                # generator, and would take every other capsule down with it. Recording it keeps the rule
+                # that matters -- a requirement that produced no capsule is never indistinguishable from
+                # one that is met -- because the manifest names the model and the reason, and no capsule
+                # exists to be graded, so nothing can pass in its place.
+                why = _capture_failure_reason(exc)
+                unbuilt_roster.append({"capsule": e.get("name", "?"), "model": e.get("model"),
+                                       "operand_dtype": e.get("operand_dtype"),
+                                       "quant_scheme": e.get("quant_scheme"),
+                                       "status": "not_built", "reason": why})
+                print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
+                continue
+            failures.append((e.get("name", "?"), detail))
+            if family:
+                _performance_errors.append({
+                    "family": family, "member": e.get("name", "?"), "status": "error",
+                    "error_type": type(exc).__name__, "detail": str(exc)[:500],
+                })
+            continue
+        if w:
+            _scrub_capsule_dir(w)
+            written.append(w)
+            if family:
+                family_counts[family]["written_members"] += 1
+        elif family:
+            _performance_errors.append({
+                "family": family, "member": e.get("name", "?"), "status": "error",
+                "error_type": "NoOutput", "detail": "capsule writer returned no output",
+            })
+    if failures:
+        print(f"  [FAIL] {len(failures)} capsule(s) could not be written:")
+        for name, why in failures:
+            print(f"    - {name}: {why}")
+    # Record provenance for what we just emitted. The MANIFEST header has always CLAIMED the generator
+    # rewrites it, but no writer existed, so it drifted silently as soon as the corpus grew.
+    declared_blocked = [{
+        "family": row["family"],
+        "status": "blocked_unimplemented",
+        "reason": row["reason"],
+        "emitter": copy.deepcopy(row["performance"]["emitter"]),
+        "fit_axes": list(row.get("fit_axes") or []),
+        "comparison_roles": list(row.get("comparison_roles") or []),
+    } for row in (template.get("blocked_unimplemented") or [])]
+    generated_members = sum(row["written_members"] for row in family_counts.values())
+    performance_record = {
+        "shared_template": {"path": template.get("path"), "sha256": template.get("sha256")},
+        "facts": {"target": target, "sha256": facts["sha256"]},
+        "phase": {
+            "category": "_perf",
+            "label": "dev",
+            "included_in_functional_grade": False,
+            "exclusion": "TargetExperiment.corpus_siblings excludes underscore-prefixed categories",
+        },
+        "families": declared_families,
+        "counts": {
+            "declared_families": len(declared_families),
+            "generated_families": sum(1 for row in family_counts.values()
+                                      if row["written_members"] > 0),
+            "generated_members": generated_members,
+            "by_family": family_counts,
+        },
+        "skipped_inapplicable": _sweep_skips,
+        "blocked_unimplemented": declared_blocked + _runtime_blocked,
+        "errors": _performance_errors,
+    }
+    if unbuilt_roster:
+        print(f"  [roster] {len(unbuilt_roster)} declared roster model(s) could not be captured at this "
+              f"target's derived format; they are recorded as not_built, never as covered")
+    if unprovable_forbids:
+        print(f"  [lane] {len(unprovable_forbids)} synthesized host-lane capsule(s) were dropped: their "
+              f"program contains regions this target admits, so the forbid they assert is not provable")
+    superseded = _prune_superseded_synth(entries, written, target=target)
+    if superseded:
+        print(f"  [prune] {len(superseded)} synthesized capsule(s) whose requirement cell no longer "
+              f"exists were removed: {', '.join(superseded)}")
+    update_provenance_manifest(written, target=target, performance_record=performance_record,
+                               unbuilt_roster=unbuilt_roster, unprovable_forbids=unprovable_forbids,
+                               superseded=superseded)
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
+            f"rest of the corpus was written, so re-running after fixing them is cheap")
+    return written
+
+
+def _prune_superseded_synth(entries, written, *, target: str) -> list:
+    """Remove synthesized capsule directories the profile no longer asks for, and name them.
+
+    THE PROFILE IS THE WHOLE AUTHORITY for `derived_sweep` capsules -- it is regenerated from the
+    requirement, so a directory of that role which is not in it is evidence for a cell that is no
+    longer required. Nothing removed one, and they do not merely sit there: a superseded
+    `SY_kdepth_certified` inflated a sealed cohort count by one and broke the MANIFEST, and twelve
+    superseded MX capsules survived the alignment classes their own datapath cannot express, each one
+    still offering itself to the cover as evidence for a cell the requirement had dropped.
+
+    Deliberately narrow: only directories whose capsule declares this generator's synthesized role, and
+    only under the roots this target just wrote to. A hand-authored capsule is never touched, and a
+    target whose profile carries no synthesized entries at all prunes nothing (a profile that failed to
+    synthesize must not be read as "every cell was dropped").
+    """
+    keep = {str(e.get("name")) for e in entries if str(e.get("source_role") or "") == SYNTH_ROLE}
+    if not keep:
+        return []
+    roots = {d.parent for d in written if isinstance(d, Path)}
+    removed = []
+    for root in sorted(roots):
+        for cy in sorted(root.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if str(cap.get("source_role") or "") != SYNTH_ROLE or name in keep:
+                continue
+            shutil.rmtree(cy.parent, ignore_errors=True)
+            removed.append(name)
+    return sorted(removed)
+
+
+def _capture_failure_reason(exc: Exception) -> str:
+    """The one line that says WHY a capture failed, safe to write into a tracked file.
+
+    Two things go wrong with the obvious ``str(exc)[:300]``. A capture failure carries the worker's
+    stderr, and a traceback puts its cause LAST -- so the leading 300 characters are the frames that
+    name nothing, and the recorded reason ends mid-path with no error in it, which is the same as
+    recording nothing. And the frames are absolute local paths, which must not reach MANIFEST.yaml:
+    this repo is published.
+
+    So: the last UNINDENTED line, with local paths redacted by the same helper the capsule scrubber
+    uses. Indentation is the structural signal, not a guess about wording -- a traceback indents its
+    frame and source lines and leaves the exception flush left, so the last flush-left line is the
+    thing that was raised. Taking merely the last non-empty line got this wrong on a real case: the
+    export refusal ends with a trailing frame, and the recorded reason came out as ``next(self.gen)``.
+    """
+    lines = [ln for ln in str(exc).splitlines() if ln.strip()]
+    flush = [ln for ln in lines if ln[:1] not in (" ", "\t")]
+    tail = (flush or lines or [f"{type(exc).__name__} with no message"])[-1].strip()
+    return _redact_local_paths(f"{type(exc).__name__}: {tail}")[:400]
+
+
+def _is_roster_capsule(entry: dict) -> bool:
+    """A whole-model capsule the ROSTER axis emitted, as opposed to any other model capsule.
+
+    Read off the entry's own generalization axis rather than its name, so a renamed prefix does not
+    silently reclassify a capsule into the lane that is allowed not to build.
+    """
+    return (str(entry.get("kind")) == "model"
+            and str((entry.get("semantic") or {}).get("generalization_axis") or "") == "roster")
+
+
+def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
+                               performance_record: "dict | None" = None,
+                               unbuilt_roster: "list | None" = None,
+                               unprovable_forbids: "list | None" = None,
+                               superseded: "list | None" = None) -> Path:
+    """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
+
+    The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
+    hand-maintained and silently drifted the moment the corpus grew -- 19 capsules appeared on disk that
+    it never listed, and the only thing that noticed was a test telling you to "re-run generate_corpus.py",
+    which did not do it.
+
+    MERGE, never replace. A path this run emitted is ``generated``; everything else on disk keeps whatever
+    classification it already had, defaulting to ``hand_authored`` for a capsule with no generator. That
+    ordering matters: rebuilding the split from scratch would reclassify the frozen hand-authored
+    source-of-record (A1, B3/B4, the held-out hidden set) as generated the first time a run happened to
+    emit something at the same path.
+
+    Scoped to the SHARED corpus (``<category>/<capsule>``, rel-depth 2). A target with its own nested
+    corpus (``atlas/<category>/<capsule>``) carries its own provenance and is deliberately untouched.
+
+    HOLDOUTS ARE COUNTED, NEVER NAMED. This file is tracked and sits inside the ``merlin/contract/``
+    tree every arm is granted read-only, so listing a ``hidden/<capsule>`` path told the agent under
+    test the op family of a held-out capsule. The generated/hand_authored split is provenance about
+    the PUBLIC corpus; the holdouts contribute only a count, which reveals nothing.
+    """
+    root = Path(cap_root) if cap_root else Path(__file__).resolve().parent
+    man_path = root / "MANIFEST.yaml"
+    man = yaml.safe_load(man_path.read_text(encoding="utf-8")) if man_path.is_file() else {}
+    gen, hand = set(man.get("generated") or []), set(man.get("hand_authored") or [])
+
+    def _rel(d):
+        try:
+            r = Path(d).resolve().relative_to(root)
+        except ValueError:
+            return None
+        return str(r) if len(r.parts) == 2 else None
+
+    def _held(rel: str) -> bool:
+        return rel.split("/", 1)[0] == "hidden"
+
+    for d in written or []:
+        rel = _rel(d)
+        if rel:
+            gen.add(rel); hand.discard(rel)
+    on_disk = {str(rel) for c in root.rglob("capsule.yaml")
+               if len((rel := c.parent.relative_to(root)).parts) == 2}
+    hand |= (on_disk - gen - hand)          # never seen by a generator -> frozen source-of-record
+    gen &= on_disk; hand &= on_disk         # drop entries whose capsule is gone
+
+    # Split the holdouts back out: they are counted here, never named (see the docstring).
+    held_gen, held_hand = {r for r in gen if _held(r)}, {r for r in hand if _held(r)}
+    gen -= held_gen; hand -= held_hand
+
+    man["generated_by"] = "merlin/contract/capsules/generate_corpus.py"
+    man["generated"] = sorted(gen)
+    man["hand_authored"] = sorted(hand)
+    man["held_out"] = {"n_generated": len(held_gen), "n_hand_authored": len(held_hand)}
+    if target is not None:
+        per_target = dict(man.get("performance_generation") or {})
+        per_target[target] = copy.deepcopy(performance_record or {})
+        man["performance_generation"] = per_target
+        # WHICH DECLARED ROSTER MODELS THIS TARGET HAS NO WHOLE-MODEL CAPSULE FOR, and why. Recorded
+        # per target and rewritten on every full run, so a model that starts capturing stops being
+        # listed rather than lingering as stale debt. An EMPTY list is written -- "no roster model is
+        # unbuilt" is a result -- while ``None`` leaves the record untouched, because a caller that did
+        # not walk the roster (a test rebuilding the split, say) has not learned that nothing is
+        # missing. The two absences must not be spelled the same way.
+        if unbuilt_roster is not None:
+            per_roster = dict(man.get("roster_generation") or {})
+            per_roster[target] = {"not_built": copy.deepcopy(unbuilt_roster)}
+            man["roster_generation"] = per_roster
+        # WHICH SYNTHESIZED NEGATIVE-LANE CAPSULES THIS TARGET HAS NONE OF, and why. Same two-absence
+        # rule as the roster above: an empty list is the result "every forbid this axis derived is
+        # provable", while `None` means nobody looked. Without this the family simply vanishes between
+        # the requirement and the corpus, which is the one failure mode the whole axis exists to avoid.
+        if unprovable_forbids is not None:
+            per_lane = dict(man.get("lane_generation") or {})
+            per_lane[target] = {"forbid_not_provable": copy.deepcopy(unprovable_forbids)}
+            man["lane_generation"] = per_lane
+        # WHICH SYNTHESIZED CAPSULES THIS RUN REMOVED because the requirement stopped asking for their
+        # cell. Recorded for the same reason as the two above: a capsule that quietly disappears between
+        # one regeneration and the next is indistinguishable from one that was never derived, and the
+        # cover would go on citing it from disk until somebody noticed the count.
+        if superseded is not None:
+            per_sup = dict(man.get("superseded_generation") or {})
+            per_sup[target] = {"removed": list(superseded)}
+            man["superseded_generation"] = per_sup
+    head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
+    man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
+    return man_path
+
+
+def build_comparison_manifest(targets: list[str]) -> dict:
+    """Group capsules that exercise the SAME op across targets into comparison sets, so a shared op (e.g.
+    rmsnorm/gelu/gemv_batched) can be compared across each target's own precision (MXFP8 on mx vs FP8-E4M3
+    on atlas vs fp16 on radiance). Keyed by ``comparison_group`` when the profile declares one, else by op."""
+    groups: dict[str, list[dict]] = {}
+    for t in targets:
+        # public half only: this manifest is a published artifact, and one that names the holdouts
+        # leaks exactly what splitting them out of the profile was meant to stop.
+        prof = load_profile(t, include_holdouts=False)
+        for e in prof["capsules"]:
+            if e.get("kind") == "model" or e.get("op") == "model":
+                continue
+            key = e.get("comparison_group") or e.get("op", "unknown")
+            groups.setdefault(key, []).append(
+                {"target": t, "name": e["name"],
+                 "dtype": e.get("operand_dtype", prof.get("datapath", {}).get("operand_dtype", "")),
+                 "label": e.get("label", "public")})
+    # a comparison set is only interesting when >1 target covers the op
+    cross = {k: v for k, v in sorted(groups.items()) if len({m["target"] for m in v}) > 1}
+    return {"comparison_sets": cross,
+            "note": "each set is one op exercised across multiple targets in each target's own precision; "
+                    "same inner op name across targets makes target-vs-target numerics directly comparable"}
+
+
+def write_comparison_manifest(targets: list[str]) -> Path:
+    from merlin.common.paths import artifacts_dir
+    manifest = build_comparison_manifest(targets)
+    out = Path(artifacts_dir()) / "compare" / "capsule_comparison_manifest.yaml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(manifest, sort_keys=True), encoding="utf-8")
+    return out
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Unified descriptor-driven capsule-corpus generator.")
+    ap.add_argument("--target", default=None, help="one target (default: every target with a profile)")
+    ap.add_argument("--comparison-manifest", action="store_true",
+                    help="also emit the cross-target op-comparison manifest under out/artifacts/compare/")
+    a = ap.parse_args(argv)
+    targets = [a.target] if a.target else profile_targets()
+    for t in targets:
+        written = generate_target(t)
+        print(f"{t}: wrote {len(written)} capsules -> {written[0].parent.parent if written else '(none)'}")
+    if a.comparison_manifest or not a.target:
+        allt = profile_targets()
+        m = write_comparison_manifest(allt)
+        print(f"comparison manifest: {m} ({len(build_comparison_manifest(allt)['comparison_sets'])} sets)")
     return 0
 
 

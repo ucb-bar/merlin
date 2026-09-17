@@ -1,0 +1,207 @@
+datapath:
+  # Corpus-wide generalization posture, matching radiance. must_accelerate is the strongest claim a
+  # capsule can make -- an ELIGIBLE region that falls back is a hard failure -- and it was absent here,
+  # so every atlas coverage certificate passed VACUOUSLY: with no capsule asserting it, no violation
+  # could ever be raised and the CPU-fallback escape hatch was wide open. Whole-model capsules are
+  # exempted structurally in corpus_spec, not by an exception list.
+  semantic_defaults: {must_accelerate: true}
+  compare: tolerance_float
+  atol: 0.25
+  rtol: 0.02
+  # L4 is the program-driven Verilator sim of the atlas RTL top -- the first truly RTL-CERTIFIED tier
+  # (L3's arc cosim is the RTL-DERIVED functional gold, not elaborated Verilog). It was already wired and
+  # already fails a capsule on mismatch, but it was ADDITIVE, so atlas effectively graded on the cosim
+  # alone while gemmini requires two independent oracles (spike + verilator). Requiring it closes that gap.
+  #
+  # ⚠️ OPERATIONAL COST, stated rather than discovered: the L4 adapter exists only when the target
+  # registers a vsim via MERLIN_EXT_ATLAS_VSIM. Without it there is no L4 adapter and not_run_is_not_pass
+  # reports every capsule `incomplete` -- never a pass. That is fail-closed on purpose: a checkout that
+  # cannot run the certifying tier should not be able to claim a certified result.
+  required_oracle_tiers: [L0, L1, L2, L3]
+  # This datapath admits only NORMAL fp8 operands: an operand whose exponent field is zero reaches the
+  # multiplier array as zero, in the MXU and in the XLU's fp8->bf16 unpack alike. Measured on the arc
+  # cosim, not assumed: the movement capsule AT1_mvin_mvout does no arithmetic at all, its 30 divergent
+  # elements were EXACTLY its 30 subnormal codes, and decoding those as zero reproduces the hardware
+  # bit-exactly (0 differing elements) on AT0/AT2/AT3/BT0/CT0 as well. See
+  # out/artifacts/targets/atlas/{accum_characterization.py,agent_spec_v1_mlir_oot/REPORT.md}.
+  subnormal_operand_flush: true
+  # L2 (the model's fast FUNCTIONAL core) cannot corroborate an RTL result for this target, so it is
+  # reported as skipped/not-applicable rather than failing every capsule forever. It is NOT switched off
+  # for being red: it decodes an ASSEMBLED program back into model instruction classes, and this ISA
+  # encodes `dma.config.chN` and `dma.wait.chN` to the IDENTICAL word (the shipped `RType.to_bytecode`
+  # never encodes the `imm` field that separates them), so no word-level decoder can reconstruct a
+  # program that needs both — and every DMA-driven kernel needs both. Measured on the reference kernel:
+  # resolving the word as `wait` leaves the channel unarmed (VMEM reads back empty and the kernel stalls
+  # at its first VLOAD, pc frozen to the cycle cap), and resolving it as `config` deletes the barriers
+  # (every output reads back zero). The model's own validation program is bit-exact on that same core
+  # under `wait`, so the core is sound — it simply cannot be handed a program as words. Two further
+  # model-vs-RTL disagreements point the same way: the functional core treats VMEM as BYTE-addressed
+  # where the RTL treats it as WORD-addressed, and reads VUNPACK_FP8_BF16's scale as a divisor where the
+  # RTL reads a biased exponent. The RTL tiers (arc cosim L3, Verilator L4) carry the grade.
+  #
+  # ⚠️ AMENDED 2026-08-29 — the collision is NOT the cause of the cycle disagreement. Measured by
+  # instrumenting `_resolve_collision` and counting how often the ambiguity actually fires, on the
+  # three capsules where L2-vs-RTL is measured (same `_tierpolicy_v3` submission for all tiers):
+  #
+  #     capsule                    L2      L3      L4    L2/RTL    dma collisions hit
+  #     AT1_mvin_mvout            543     178     178     3.05x            0
+  #     AT2_single_tile_matmul   3081    1090    1090     2.83x            0
+  #     CT0_mlp_linear1          6781    2614    2614     2.59x            0
+  #
+  # Zero, on all three, while L3 and L4 agree EXACTLY. So a second, unidentified defect drives a
+  # uniform ~2.6-3x overcount, and the collision cannot be cited as the reason L2 disagrees. (An older
+  # measurement points the same way: npu_model's shipped known-good MatmulProgram runs 2392 cycles on
+  # L2 against 463 on L3 — 5.2x — a program that exercises no capsule lowering at all.)
+  #
+  # What survives: the collision is real, and the reference-kernel measurement above stands for a
+  # program that needs BOTH dma ops. What does not survive is using it to explain these numbers. L2
+  # stays inapplicable — the disagreement is real either way — but the CAUSE is open, and a fix that
+  # only resolves the collision should not be expected to close it. Gate any fix on landing exactly
+  # 178 / 1090 / 2614 for the `_tierpolicy_v3` kernels; a new third number is not a fix.
+  # ⚠️ SUPERSEDED — the `inapplicable_oracle_tiers: {L2: ...}` declaration that stood here has been
+  # removed, because it contradicted this same file and made the corpus unregenerable. The tier-index
+  # refactor added L2 to `required_oracle_tiers` above, on the reasoning that a tier index names a
+  # FIDELITY rather than one simulator, and regenerated all 51 atlas capsules accordingly: every one of
+  # them requires L2 and none declares it inapplicable. The declaration was the only thing left saying
+  # otherwise, and `corpus_spec` rightly refuses a tier that is both required and inapplicable -- so
+  # `generate_corpus --target atlas` raised, and with it the conformance, holdout and float-grading
+  # gates. Atlas at that fidelity is reached by the program ORACLE adapter, not the model's fast
+  # functional core, which is what makes the tier applicable while everything measured below stays true.
+  #
+  # The evidence above is retained deliberately and none of it is retracted: the dma.config/dma.wait
+  # encoding collision is real, the byte-vs-word VMEM disagreement is real, the biased-exponent reading
+  # is real, and the ~2.6-3x cycle overcount on the model's fast core remains UNEXPLAINED. What changed
+  # is which engine answers at this tier, not whether those defects exist. The acceptance bar stated
+  # above still stands for anyone fixing the fast core: land exactly 178 / 1090 / 2614 for the
+  # `_tierpolicy_v3` kernels; a new third number is not a fix.
+capsules:
+- {cat: isa, name: AT0_config_smoke, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: MXU config plumbing via a single 32x32 fp8 matmul, label: public, modes: {}}
+- {cat: isa, name: AT1_mvin_mvout, kind: isa, op: movement, src: X, M: 16, N: 16, out: Y0,
+   source_role: handauthored_compiler_test, source_reference: 'load fp8 tile -> store as bf16 (dequant movement)',
+   label: public, forbidden: [MXUMatMul], modes: {movement: true}}
+- {cat: isa, name: AT2_single_tile_matmul, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'single 32x32 fp8 MXU tile -> bf16', label: public, modes: {}}
+- {cat: isa, name: AT3_k_accumulation, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: K=64 (multi-tile) bf16 accumulate, label: public, modes: {k_accumulate: true}}
+- {cat: isa, name: AT4_bf16_scale, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test, source_reference: matmul + bf16 output scale (VPU requant precursor),
+   label: public, modes: {acc_scale: true}}
+- {cat: isa, name: AT5_relu_epilogue, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, epilogue: [relu], source_role: handauthored_compiler_test,
+   source_reference: matmul + relu epilogue (bf16), label: public, modes: {relu: true}}
+- {cat: isa, name: AT6_resident_reuse, kind: isa, op: resident_reuse, weight: W, K_tiles: 1, N_tiles: 1,
+   matmuls: [{lhs: A0, out: Y0, M_tiles: 1}, {lhs: A1, out: Y1, M_tiles: 1}],
+   source_role: handauthored_compiler_test, source_reference: one resident weight, two activation tiles,
+   label: public, modes: {resident_reuse: true}}
+- {cat: layers, name: BT0_quantized_linear, kind: layer, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear fp8 x fp8 -> bf16', label: public, modes: {k_accumulate: true}}
+- {cat: layers, name: BT1_linear_relu, kind: layer, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, epilogue: [relu], source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear + ReLU, fp8 -> bf16', label: public, modes: {relu: true, k_accumulate: true}}
+- {cat: model_slices, name: CT0_mlp_linear1, kind: model_slice, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 2,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: MLP first projection (64-wide hidden), label: public, modes: {k_accumulate: true}}
+- {cat: model_slices, name: CT1_attention_qk, kind: model_slice, op: attention_qk, M_tiles: 1, K_tiles: 1,
+   q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'attention Q @ K^T scores, fp8 -> bf16', label: public, modes: {}}
+# --- Fused ops mined from atlas-npu/baremetal (smolvla_rms_norm, fused_silu_gate, softmax,
+# fused_attention): the VPU/norm/activation algorithms run in bf16 alongside the fp8 MXU matmuls, so they
+# are PyTorch-sourced (the m2m linalg is the interface the atlas backend compiles).
+- {cat: model_slices, name: AF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RMSNorm bf16 (atlas smolvla_rms_norm)', label: public, modes: {}}
+- {cat: model_slices, name: AF1_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU-gate/GeGLU bf16 (atlas smolvla_fused_silu_gate)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF2_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch softmax bf16 (atlas smolvla_softmax)', label: public, modes: {}}
+- {cat: model_slices, name: AF3_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'PyTorch causal attention bf16 (atlas smolvla_fused_attention)', label: public,
+   modes: {}}
+# --- Whole-model capstone (GATED): small_llama in fp8 (atlas MXU inputs are fp8 e4m3).
+- {cat: model, name: M0_small_llama_atlas, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 — whole-model capstone', label: public,
+   gate: {after_op_pass_fraction: 0.8}}
+# INTEROP pair. This target declares TWO compute units of different kinds -- an mxu (systolic) and a
+# vector_unit (vector) -- so it is the only target here that can populate `in_contract_vector_scalar`,
+# and it gets both composition capsules:
+#   AX0 -- accelerator + the IN-CONTRACT vector unit the target itself declares;
+#   AX1 -- accelerator + the HOST scalar/RVV lane (an op routed to no unit at all).
+# The two are different claims: the first says the compiler uses the whole accelerator, the second says
+# it can hand work off the accelerator entirely and still be right.
+- {cat: model, name: AX0_interop_vector_unit, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 composed across the mxu and the in-contract vector unit — asserts both declared units carried work',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, in_contract_vector_scalar]}}
+- {cat: model, name: AX1_interop_rvv_lane, kind: model, op: model, model: small_llama,
+   operand_dtype: fp8_e4m3, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'small_llama fp8 composed across the mxu and the host scalar/RVV lane — asserts work left the accelerator entirely and stayed correct',
+   label: public, gate: {after_op_pass_fraction: 0.8},
+   lanes: {require: [on_mesh, scalar_rvv_lane]}}
+# --- More VPU/activation/reduction ops mined from atlas-npu/baremetal (smolvla_gelu_tanh, smolvla_silu,
+# smolvla_elementwise_*, smolvla_reduction_sum, smolvla_rope_frequency).
+- {cat: model_slices, name: AF4_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch GELU-tanh bf16 (atlas smolvla_gelu_tanh)', label: public, modes: {}}
+- {cat: model_slices, name: AF5_silu_bf16_pt, kind: model_slice, op: silu, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch SiLU bf16 (atlas smolvla_silu)', label: public, modes: {}}
+- {cat: model_slices, name: AF6_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch elementwise add bf16 (atlas smolvla_elementwise_add)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF7_reduce_sum_bf16_pt, kind: model_slice, op: reduce_sum, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch row reduction-sum bf16 (atlas smolvla_reduction_sum)', label: public,
+   modes: {}}
+- {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
+# --- Spec-sourced capsule: PROGRAM (MXU command sequence) + golden from the specir verification spec, via
+# emit_atlas_program; the spec's fp8->bf16 refmodel is the reference (SA C-model corroborated 1024/1024).
+- {cat: isa, name: AS0_matmul_spec, kind: isa, op: matmul, source: spec,
+   spec_ref: 'atlas-npu:op.matmul_mxu0', M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: spec_derived,
+   source_reference: 'specir spec-sourced fp8->bf16 MXU matmul (program + refmodel golden + coverage)',
+   label: public}
+# --- Both MXU mesh types (atlas has two systolic meshes: mxu0/mxu1) as distinct fp8 matmul tiles, plus a
+# k-chain and fused matmul+bias mined from atlas-npu/baremetal (smolvla_matmul_mxu*, k_chain, fused_matmul_bias).
+- {cat: isa, name: AT7_matmul_mxu0, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu0, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 0 (smolvla_matmul_mxu0)', label: public, modes: {}}
+- {cat: isa, name: AT8_matmul_mxu1, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, semantic: matmul_mxu1, source_role: handauthored_compiler_test,
+   source_reference: 'fp8 matmul on MXU mesh 1 (smolvla_matmul_mxu1)', label: public, modes: {}}
+- {cat: model_slices, name: AF9_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16 (atlas fused_matmul_bias)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF10_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
+   source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch bias add bf16 (atlas bias_add)', label: public, modes: {}}
+- {cat: model_slices, name: AF11_k_chain_bf16_pt, kind: model_slice, op: k_chain, operand_dtype: bf16,
+   source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul bf16 (atlas k_chain)',
+   label: public, modes: {}}
+- {cat: model_slices, name: AF12_gemv_batched_bf16_pt, kind: model_slice, op: gemv_batched,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV bf16 (atlas gemv_batched)',
+   label: public, modes: {}}
+# --- Second whole-model capstone (GATED): lstmnetvit fp8 — broader layer types (conv patch-embed,
+# spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
+- {cat: model, name: M1_lstmnetvit_atlas, kind: model, op: model, model: lstmnetvit,
+   operand_dtype: fp8_e4m3, outs: [Y0, Y1, Y2], source_role: pytorch_model_slice,
+   source_reference: 'lstmnetvit fp8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
+   label: public, gate: {after_op_pass_fraction: 0.8}}

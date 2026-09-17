@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=none
+title: CPU Host Compiler Agentic Experiment
+purpose: >-
+  Versioned four-arm protocol for generating and improving a reusable scalar/RVV CPU-host compiler,
+  with fixed generic development data, holdout isolation, AET/Chia telemetry, and K1 silicon promotion.
+required_top_level_fields:
+  - version
+  - status
+  - label
+  - target_contract
+  - analysis
+  - development_corpus
+  - paper_holdouts
+  - arms
+  - agent
+  - telemetry
+  - grading
+  - search
+  - environment
+  - freeze
+example: |
+  version: 1
+  status: draft
+  label: cpu_host
+  target_contract: merlin/targets/example/contracts/target_contract.yaml
+  analysis: {plan: analysis_plan.yaml, sha256: unresolved}
+  development_corpus: {manifest: corpus.yaml, sha256: unresolved}
+  paper_holdouts: [model]
+  arms: []
+  agent: {driver: codex, model: gpt, orchestrator: chia}
+  telemetry: {sink: aet, raw_events: true, arrival_timestamps: true, token_subsets: true}
+  grading: {grader: path/to/grader.py, levels: [L0, L1, L2, L3]}
+  replacement: {}
+  environment: {manifest: unresolved, sha256: unresolved}
+  freeze: {forbid_model_name_dispatch: true, required_empty_sweeps: 1}

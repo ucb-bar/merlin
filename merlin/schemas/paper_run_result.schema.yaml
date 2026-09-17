@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=none
+title: Frozen Compiler Paper Run Result
+purpose: >-
+  One lifecycle-complete cell in the K1 paper matrix. A cell distinguishes build, execution,
+  correctness, task quality, exact timing scope, peak memory, execution mode, and provenance.
+  A build-only or silently-fallback execution can never be recorded as a passing measurement.
+  Before final result sealing, every cell must add a measurement_receipt reference that binds the
+  normalized result to a reconciled raw adapter/board measurement and a finalized native AET
+  lifecycle (run_record.json plus logs/events.jsonl). Non-agentic benchmark cells record token
+  accounting as not_applicable; they must not invent zero-token agent telemetry.
+required_top_level_fields:
+  - schema_version
+  - run_id
+  - timestamp
+  - git_sha
+  - study_label
+  - target
+  - model
+  - checkpoint
+  - artifact_sha256
+  - fidelity
+  - backend
+  - runtime
+  - precision
+  - quantization
+  - core_count
+  - session
+  - lifecycle
+  - correctness
+  - quality
+  - timing
+  - memory
+  - execution
+  - provenance
+example: |
+  schema_version: 2
+  run_id: 20260830T000000Z_merlin_frozen_seed000_deadbee
+  timestamp: 20260830T000000Z
+  git_sha: deadbee
+  study_label: rvv_mlir_k1_paper
+  target: k1
+  model: resnet50_v1_5
+  checkpoint: torchvision/resnet50
+  artifact_sha256: 0123456789abcdef
+  fidelity: full
+  backend: merlin_frozen
+  runtime: merlin
+  precision: w8a8
+  quantization: static_per_channel
+  core_count: 8
+  session: {kind: image_stream, observations: 256, measurement_repeats: 5}
+  lifecycle: {built: true, ran: true, status: pass, reason: null}
+  correctness: {gate_ok: true, cosine: 0.999, max_relative_error: 0.01}
+  quality: {gate_ok: true, metric: top1_agreement, value: 1.0}
+  timing: {unit: ns, scope: end_to_end, sample_unit: complete_session, timed_stages: [classify], excluded_stages: [], samples: [1000, 1001, 999, 1002, 998], stage_samples: {}, median: 1000, p95: 1002}
+  memory: {policy: resident, peak_rss_bytes: 1000000}
+  execution: {mode: rvv_openmp, requested_mode: rvv_openmp, fallback_used: false,
+              core_count: 8, requested_core_count: 8, affinity_source: sched_getaffinity,
+              n_routed: null, n_eligible: null, n_candidates: null}
+  provenance: {compiler_policy_sha256: abc, runtime_sha256: def, vlen_bits: 256, vlen_source: csr,
+               board_conditions: {before: {governor: performance, current_khz: 1600000,
+                                            max_khz: 1600000, max_thermal_millic: 41000},
+                                  after: {governor: performance, current_khz: 1600000,
+                                          max_khz: 1600000, max_thermal_millic: 42000}}}
+  measurement_receipt: {path: /absolute/retained/cell-receipt.yaml,
+                        sha256: 0123456789abcdef, aet_run_id: run-id-above,
+                        command_sha256: 0123456789abcdef}

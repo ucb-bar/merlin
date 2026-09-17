@@ -1,0 +1,70 @@
+name: AF11_k_chain_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch chained matmul bf16 (atlas k_chain)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: W
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: W2
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+operation:
+  op: k_chain
+  attributes:
+    out: Y0
+    arg_order:
+    - A0
+    - W
+    - W2
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: k_chain
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+comparison_group: k_chain
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 8.05
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

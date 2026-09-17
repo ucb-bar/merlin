@@ -1,0 +1,42 @@
+# Corpus locations the library reads. Resolved ONLY through merlin.targetgen.corpora — no library
+# module spells a corpus path, checkout directory or corpus-selecting environment variable itself, so
+# adding a corpus (or moving one) is an edit here, not in core code.
+
+# Capsule corpora the library screens, relative to merlin/, canonical first. A root that is not on disk
+# is skipped by the reader. The second root is the perf-bench corpus: library-consumed (the RTL checks
+# screen it), so its proper home is merlin/benchmarks/; relocating it waits on the perf-bench scripts that
+# still read it in place. When it moves, change the line below — every reader already comes through here.
+capsule_corpora:
+  - contract/capsules
+  - experiments/gemmini_perf_bench/kernels
+
+# Expert kernel corpora the kernel-mining layer builds from (keyed by framework name, which is also the
+# framework_contracts/<name>.yaml stem). Per corpus:
+#   sources          kernel.source spellings that name this corpus (matched case-insensitively)
+#   layout           standalone_benchmarks — each benchmark dir ships its own kernel TU + harness, so it
+#                    builds and runs as-is (the kernel ceiling and the guaranteed asm path);
+#                    single_tu — a framework kernel TU compiled best-effort against include_subdirs
+#   checkout         directory name of a local clone under <repo>/tmp/kernels/
+#   ext              optional fallback inside a configured external checkout: ext_path(name)/subpath
+#   benchmarks       (standalone_benchmarks) the benchmark tree under the corpus root
+#   include_subdirs  (single_tu) header roots under the corpus root, in -I order ("" = the root itself)
+# The root is MERLIN_<NAME>_REPO when set (the same convention the kernel-index CLI uses), else the local
+# clone when present, else the ext fallback when present, else the local clone path (so an error names the
+# place a clone is expected).
+kernel_corpora:
+  saturn:
+    sources: [saturn, saturn_vectors, saturn-vectors]
+    layout: standalone_benchmarks
+    checkout: saturn-vectors
+    ext: {name: chipyard, subpath: generators/saturn}
+    benchmarks: benchmarks
+  xnnpack:
+    sources: [xnnpack]
+    layout: single_tu
+    checkout: XNNPACK
+    include_subdirs: ["", src, include]
+  openblas:
+    sources: [openblas]
+    layout: single_tu
+    checkout: OpenBLAS
+    include_subdirs: ["", kernel/riscv64]

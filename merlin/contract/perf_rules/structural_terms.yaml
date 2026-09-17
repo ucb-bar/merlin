@@ -1,0 +1,108 @@
+# Rules whose term is a STRUCTURAL constant of the machine: a geometry, a fill, a beat width, a
+# fixed per-transfer cost. Each one is fitted from an axis a functional corpus already carries, so
+# the experiment that settles it is one a target has usually already paid for without noticing.
+#
+# Every rule here obeys the same discipline as the terms it produces: it names what it gates on,
+# what it would settle, what a compiler could do with the answer, and which declared constant the
+# result is cross-checked against. `cross_check` names a key in the measurement instrument's own
+# metadata -- when the instrument declares one, the recovered value is compared to it; when it does
+# not, the recovery stands on its fit and its residuals alone.
+
+schema_version: 1
+
+rules:
+
+  - id: datapath_pipeline_fill
+    constant: pipeline_fill_cycles
+    term: "<compute unit>.pipeline_fill_cycles"
+    when:
+      traits:
+        structural_pipeline_depth: [satisfied, unestablished]
+      datapath_kind: [systolic, spatial]
+    axis: compute_group_count
+    fit_form: affine
+    recover:
+      from: slope
+      unit: cycles
+    optimization_family: pipeline_amortization
+    experiment_family: shape_sweep
+    rationale: >-
+      A fill is an INTERCEPT, not a rate, and a rate-only model mispredicts every small workload --
+      which is most of a corpus. It is separable from the program's own scheduled delays because
+      those are stated in the program: subtract them from the measured busy and what remains is the
+      unit's own contribution per drained result. The structural walk cannot supply this: a
+      sequenced unit's outputs are reached through feedback, so no finite wiring depth IS its
+      latency, and the container depth that does resolve is a LOWER BOUND on the fill rather than
+      the fill (the element grid and the datapath that skews and drains it have differed by a factor
+      of two on a measured elaboration).
+    cross_check: ""
+
+  - id: datapath_dimension
+    constant: datapath_dimension
+    term: "<compute unit>.structural_dimension"
+    when:
+      traits:
+        structural_pipeline_depth: [satisfied, unestablished]
+      datapath_kind: [systolic, spatial]
+    axis: compute_group_count
+    fit_form: affine
+    recover:
+      from: law_inverse
+      of: slope
+      law: systolic_2d
+      unit: elements
+    optimization_family: tile_shaping
+    experiment_family: shape_sweep
+    rationale: >-
+      The dimension is what the fill is a function of, so the same sweep settles both -- the fill by
+      fitting it, the dimension by evaluating the declared fill law forwards until it reproduces the
+      fitted value. Inverting the law by search rather than by algebra keeps the law stated in
+      exactly one place, so a law added to the fill-law table is invertible the moment it exists. A
+      fitted fill that NO dimension produces refutes the law for this unit, which is a finding and
+      not a fitting problem.
+    cross_check: mxu_dim
+
+  - id: movement_beat_width
+    constant: beat_bytes
+    term: data_movement.beat_bytes
+    when:
+      traits:
+        explicit_dma: [satisfied, unestablished]
+    axis: moved_byte_footprint
+    fit_form: proportional
+    recover:
+      from: ratio
+      unit: bytes
+    optimization_family: transfer_shaping
+    experiment_family: ratio_probe
+    rationale: >-
+      The beat is the granule a transfer actually moves in, and it is the conversion between the two
+      things the instrument reports: the beats it counted and the bytes the program touched. It is a
+      pure ratio with no intercept -- a transfer of zero beats moves zero bytes -- so one parameter,
+      and the residuals say directly whether the granule is uniform across the corpus. This is the
+      constant that makes a bytes-moved bound possible at all, and a bound built on the bytes an
+      algorithm NEEDS rather than the bytes a program MOVES is optimistic by the amplification
+      factor.
+    cross_check: beat_bytes
+
+  - id: movement_base_latency
+    constant: base_latency_cycles
+    term: data_movement.base_latency_cycles
+    when:
+      traits:
+        explicit_dma: [satisfied, unestablished]
+    axis: movement_beat_count
+    fit_form: affine
+    recover:
+      from: intercept
+      unit: cycles
+    optimization_family: transfer_batching
+    experiment_family: size_sweep
+    rationale: >-
+      Where movement dominates the cycle count this is the term to buy first, and it is exactly the
+      one the structural walk refuses: a sequenced engine's latency is a function of state and byte
+      count, so no wiring depth is its latency. Two parameters, so at least four points at two
+      distinct sizes -- a single rate cannot separate the per-beat cost from the cost paid once per
+      transfer, and the two lead to opposite optimizations (move fewer bytes versus move them in
+      fewer transfers).
+    cross_check: ""

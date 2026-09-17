@@ -1,0 +1,66 @@
+name: SY_geometry_projection_like
+kind: isa
+source_role: derived_sweep
+source_reference: 'synthesized for geometry class ''projection_like'': real captures
+  present 148 contraction region(s) of this aspect ratio carrying 0.002062 of all
+  contraction MAC work, and the heaviest of them is M=56 K=480 N=160. Every other
+  synthesized capsule is square, so without this the corpus cannot tell a compiler
+  that tiles this ratio well from one that does not. 8960 written output elements
+  exceeds the 875 a 300.0s certification budget affords on this target, so it is graded
+  at L2 and rests on ''SY_contraction_i8_aligned'''
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 480
+  - 160
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 56
+  - 480
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: shape_geometry
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+max_oracle_tier: L2
+extends: SY_contraction_i8_aligned

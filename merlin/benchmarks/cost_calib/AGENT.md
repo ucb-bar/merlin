@@ -10,7 +10,7 @@ experiment.
 - `*_ablation.c` — the paired on/off ablation harnesses (hand-authored; cannot be generated).
 
 ## Used by
-- `merlin.cost_model.calibrate` (compiles + runs them to derive per-event cycle costs).
+- `merlin/targets/gemmini/cost_model/calibrate.py` (compiles + runs them to derive per-event cycle costs).
 - `merlin/experiments/kernel_policy/stageF/run_l2.py` (the Stage-F harness — an experiment that reads
   this benchmark input; direction is fine).
 

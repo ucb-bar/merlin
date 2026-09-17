@@ -1,7 +1,0 @@
-instruction_classes:
-- GMEM_LD
-- GMEM_ST
-forbidden_classes:
-- FMA
-modes:
-  movement: true

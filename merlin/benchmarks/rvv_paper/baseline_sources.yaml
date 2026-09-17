@@ -1,0 +1,33 @@
+# Candidate source pins for the K1 paper comparison. freeze_study additionally records a content
+# digest over the exact source trees and generated shims used by each measured backend.
+version: 2
+captured_at: 2026-08-31
+sources:
+  rvv_hand_v0_int8:
+    repository: https://github.com/ucb-bar/rvv-mlir.git
+    branch: baseline-int8_w8a8
+    commit: 642b81e387df9d8948e8c5d5af2dc3d29dce03ef
+    checkout: out/artifacts/targets/rvv/hand_v0_int8
+    payload_schedule_sha256: 928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4
+    payload_knobs_sha256: 514e9798b0c0c5c260e2227eda84292aa4f06f78c9065dd346554f8f93e18497
+    role: frozen unoptimized W8A8 control
+    verification: local schedule and knobs byte-match the named upstream commit
+  rvv_tuned_v1_d1_vfmacc_outerproduct:
+    repository: https://github.com/ucb-bar/rvv-mlir.git
+    branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+    commit: 6aa7c570e5a125249b8491544019a37355559dce
+    checkout: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+    payload_schedule_sha256: dec409ddd8a08eec90f4aefea8e4f73d5f02770b5d358bc6c340c73add9fc3c1
+    payload_knobs_sha256: a8d2d970ce5837eecdecea2836ef42f68f392177d554dcd7898a43e9520833d6
+    role: prior FP32 tuned reference for provenance only, never a holdout-selected policy
+    verification: local schedule and knobs byte-match the named upstream commit
+  xnnpack:
+    repository: https://github.com/google/XNNPACK.git
+    commit: c5ed6a9f35d043e91fe331e574ab5025ae9a68d8
+    checkout: tmp/kernels/XNNPACK
+    role: controlled RVV-kernel swap and ExecuTorch XNNPACK delegate
+  openblas:
+    repository: https://github.com/OpenMathLib/OpenBLAS.git
+    commit: c097a72ac679659ffeaea741c52f4cf24b33f2d7
+    checkout: tmp/kernels/OpenBLAS
+    role: controlled RVV GEMM-kernel swap

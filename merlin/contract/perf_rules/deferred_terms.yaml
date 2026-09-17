@@ -1,0 +1,122 @@
+# Rules whose term matters and whose axis a functional corpus does NOT carry.
+#
+# These are here on purpose. A registry that only listed the rules it can run would make "and no
+# others" a curation decision; listing them makes it a COMPUTED one -- each rule below applies to
+# the same targets as its neighbours in `structural_terms.yaml` and comes back as a deferral naming
+# the observation that would settle it. That deferral list is the measurement backlog, and it is
+# derived rather than chosen.
+#
+# None of these may be worked around by fitting the axis that IS available. Each `rationale` says
+# what the substitute fit would actually be measuring, because in every case it is something else.
+
+schema_version: 1
+
+rules:
+
+  - id: datapath_initiation_interval
+    constant: initiation_interval_cycles
+    term: "<compute unit>.initiation_interval_cycles"
+    when:
+      traits:
+        structural_pipeline_depth: [satisfied, unestablished]
+      datapath_kind: [systolic, spatial]
+    axis: back_to_back_compute
+    fit_form: affine
+    recover:
+      from: slope
+      unit: cycles
+    optimization_family: issue_packing
+    experiment_family: packing_sweep
+    rationale: >-
+      The initiation interval and the completion latency are different numbers and a shipped cost
+      model has conflated them: a flat per-op latency table stated one value where the RTL carries an
+      II, a completion latency roughly three times larger, and an in-flight depth, and the corpus
+      schedules to both. Importing the flat table would have made the corpus look under-delayed.
+      Recovering the II needs programs that accumulate several computes into one drained result, at
+      more than one packing depth. A corpus with one such program has one point; the difference
+      between its measured cost and the naive extension of the single-compute law is a real finding
+      and is recorded UNKNOWN rather than fitted, because two points showing a law is wrong do not
+      show what is right.
+    cross_check: ""
+
+  - id: operand_store_capacity
+    constant: capacity_bytes
+    term: operand_store.capacity_bytes
+    when:
+      traits:
+        managed_scratchpad: [satisfied, unestablished]
+    axis: working_set_bytes
+    fit_form: affine
+    recover:
+      from: intercept
+      unit: bytes
+    optimization_family: residency
+    experiment_family: residency_sweep
+    rationale: >-
+      A capacity shows itself as the knee where the cost per byte changes, which requires observing
+      both sides of it. An instrument that reports no residency and no spill signal cannot see the
+      knee at all, and the declared capacities that do exist have disagreed with each other -- where
+      two sources state a capacity and differ, the term is UNKNOWN naming both, because silently
+      preferring one is how a manifest ends up asserting a number nobody can reproduce.
+    cross_check: ""
+
+  - id: fixed_startup
+    constant: startup_cycles
+    term: fixed.startup_cycles
+    when: {}
+    axis: zero_work_program
+    fit_form: proportional
+    recover:
+      from: ratio
+      unit: cycles
+    optimization_family: startup_amortization
+    experiment_family: isolation_probe
+    rationale: >-
+      Reset, program load and the first issue are not properties of the wiring, so no static fact
+      carries them, and they are separable only by a program whose first instruction is the halt.
+      The tempting substitute -- the intercept of total cycles against op count over the whole corpus
+      -- does not measure startup: it measures everything that is constant across those programs,
+      startup included, and reports the sum under startup's name.
+    cross_check: reset_cycles
+
+  - id: transfer_amplification
+    constant: amplification_factor
+    term: data_movement.amplification_factor
+    when:
+      traits:
+        explicit_dma: [satisfied, unestablished]
+    axis: algorithmic_bytes
+    fit_form: proportional
+    recover:
+      from: ratio
+      unit: bytes
+    optimization_family: transfer_shaping
+    experiment_family: ratio_probe
+    rationale: >-
+      Bytes moved are measured; bytes needed are not derivable from an artifact that carries no
+      shape or dtype field. Supplying the denominator by hand produces a ratio that looks measured
+      and is not, and the amplification factor is large enough that a bound built on it decides which
+      lever is worth pulling -- so it fails closed until the measurement artifact carries shapes.
+    cross_check: ""
+
+  - id: overlap_coefficient
+    constant: overlap_efficiency
+    term: composition.overlap_efficiency
+    when:
+      traits:
+        explicit_completion: [satisfied, unestablished]
+    axis: concurrent_unit_busy
+    fit_form: proportional
+    recover:
+      from: ratio
+      unit: ratio
+    optimization_family: overlap_policy
+    experiment_family: overlap_probe
+    rationale: >-
+      The composition operator is never defaulted to max. Textbook roofline takes the max of compute
+      and memory time, which assumes perfect overlap; a machine that takes turns sums instead, and
+      deriving max where the truth is sum understates runtime in the flattering direction. The
+      coefficient cannot come from per-unit buckets that partition the cycle count -- those return
+      zero overlap whether or not overlap exists -- so it needs an instrument reporting simultaneous
+      busy, or the issue-to-wait distance in the program.
+    cross_check: ""

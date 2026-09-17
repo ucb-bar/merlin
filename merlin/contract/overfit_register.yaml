@@ -1,0 +1,194 @@
+# Every place the target-agnostic core is welded to a specific target — declared, costed, countable.
+#
+# WHY THIS FILE EXISTS. The repo's cardinal rule is "derive, never hardcode": library code must not bake
+# in facts about one piece of hardware. The gates that enforce it kept their exemptions in flat
+# allowlists and announced them on a PASSING line ("36 allowlisted entries"), which reads as "nothing to
+# see" when it means 36 places the rule is suspended. An overfit that passes a gate quietly stops being
+# work anyone can see. This file makes each one say what it costs and what would remove it.
+#
+# THE COUNT MAY ONLY FALL. `check_overfit_register.py` re-measures the live tree on every run: a coupled
+# module that is not declared here FAILS the gate (new debt must be declared, not absorbed), and a
+# declared module that no longer couples is reported as ready to delete. So the register cannot drift
+# from reality in either direction, which is the failure mode of every hand-maintained debt list.
+#
+# TRIAGE IS PART OF THE SCHEMA, ON PURPOSE. An entry is `status: triaged` only when someone has actually
+# read the code and can state why the fact is not derivable, what it blocks, and what would remove it.
+# Everything else is `status: untriaged` and must say when and how it surfaced. Without that distinction
+# a required-fields schema just pressures people into inventing plausible rationales, and a fabricated
+# `removal_condition` is worse than an honest "nobody has looked at this yet" — it reads as rigour.
+#
+# Required fields: id, kind, status, items, owner.
+#   `status: triaged`   also requires why, blocks, removal_condition.
+#   `status: untriaged` also requires surfaced_by, surfaced_on.
+#
+# kinds:
+#   target_name        a target-name string literal in code that should resolve the target at runtime
+#   target_coupling    a module with no target in its name that depends on a specific target
+#   runtime_concession a limit taken at run time because a general path does not work on some hardware
+#   dead_seam          a declared extension point that nothing consumes
+#
+# NOT YET MIGRATED. Two sibling ratchets still hold their own entries and are counted here without being
+# restated, because inventing rationales for them would violate the paragraph above:
+#   build_tools/scripts/regex_allowlist.txt      (23 entries)
+#   build_tools/scripts/provenance_ratchet.txt   (28 entries)
+# Prose ledger of the same debt, task-numbered: docs/design/target_agnostic_core.md (T1–T13).
+version: 1
+
+entries:
+
+  # ---------------------------------------------------------------- fact-provenance gate
+  - id: fact-provenance-gate-names-the-sources-it-forbids
+    kind: target_name
+    status: triaged
+    owner: targetgen
+    items:
+      - build_tools/scripts/check_fact_provenance.py
+    why: >-
+      This gate exists to answer "was this hardware fact derived from the RTL, or from something that
+      merely models it". Answering that requires NAMING the non-RTL sources -- a cycle model, a
+      functional ISS, a hand-written device model -- because the distinction is not structural: the
+      cycle model's config is vendored inside the RTL repository, beside the Chisel it models, so a
+      path test cannot separate them. The names are the subject of the check, not a shortcut around
+      resolving a target. They are literals for the same reason the no-regex gate's own name list is:
+      a gate that had to resolve what it forbids at run time could not run before the thing it guards.
+    blocks: >-
+      Nothing. The names appear only in the classification tables of the gate itself; no library code
+      imports them, and the gate produces no fact of its own.
+    removal_condition: >-
+      When each source declares its own provenance class -- an arc model, a cycle model, an ISS -- in a
+      manifest the gate can read, the tables become a lookup and the literals go. That declaration does
+      not exist today for any of them.
+
+  # ---------------------------------------------------------------- oracle + runner dispatch
+  - id: oracle-and-runner-dispatch-names-reference-targets
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/oot_runner.py
+    why: >-
+      The inputs to oracle selection are already declarative — endpoint_kind and sim_via come from the
+      capability manifest and the contract — but the DISPATCH on them is a hardcoded if-chain that
+      imports a reference target's module directly (`sim_via == "cyclotron"` -> muon_oracles,
+      `sim_via == "chipyard"` -> the gemmini backend). There is no registry to route through: nothing
+      like `register_oracle_engine(sim_via, factory)`, `register_suite(name, build_fn)` or
+      `register_fact_extractor(kind, fn)` exists. `runtime/backends/base.py` is the only seam in the repo
+      that is complete end to end, and these predate it.
+    blocks: >-
+      Evicting any reference accelerator backend, and adding a new target's oracle without editing core.
+      A package can already supply a runtime backend via plugin.backend; it cannot supply an oracle, a
+      conformance suite, or an RTL fact extractor.
+    removal_condition: >-
+      Registries exist for oracle engines, suites and fact extractors, modelled on
+      runtime/backends/base.py (register + file-path discovery via a plugin.<key> contract entry), and
+      these modules route through them instead of importing a target.
+
+  # ---------------------------------------------------------------- merged-in coupling, not yet read
+  - id: answer-surface-and-prompt-name-reference-targets
+    kind: target_coupling
+    status: untriaged
+    owner: capsule-bench
+    items:
+      - merlin/python/merlin/targetgen/sandbox/answer_surfaces.py
+    surfaced_by: >-
+      The overfit-register gate, on merging reconcile/gemmini-feat-v2 into feat/target-generalization for
+      the gemmini arm-4 model-comparison campaign. Both modules gained the coupling on that side of the
+      merge, not in this branch's work; the register itself merged clean and so did not carry a matching
+      declaration. Declared rather than absorbed, per this file's own rule. Nobody has yet read either
+      module to say whether the fact is derivable, so no rationale or removal condition is invented here.
+    surfaced_on: 2026-08-18
+
+  # ---------------------------------------------------------------- cost model / calibration
+  - id: cost-model-and-calibration-bound-to-an-instance
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py
+    why: >-
+      The cost-model half is resolved: `perf/linear_cost.LinearCostModel.for_target(target)` reads a
+      target's coefficients and vocabulary from `merlin/targets/<target>/cost_model/`, and the
+      per-target calibration driver lives there too. What remains is the npu oracle helper, which
+      imports the model package's own ISA module (`npu_model.isa`) by name to encode instructions,
+      because nothing in core resolves a target to its functional model's ISA definition.
+    blocks: >-
+      Running the same oracle helper against a second functional model without editing core.
+    removal_condition: >-
+      A seam resolves a target to its functional model's ISA module (a contract key naming it), and
+      npu_emit imports through that seam.
+
+  # ---------------------------------------------------------------- run-time concession
+  - id: simt-spawn-width-capped-below-declared-hardware
+    kind: runtime_concession
+    status: triaged
+    owner: targetgen
+    items:
+      - out/artifacts/targets/radiance/hand_v0/backend.py
+    why: >-
+      The target's contract correctly declares 8 warp slots (its RTL config sets
+      `WithSIMTConfig(numWarps = 8)`), but 8 does not produce correct results on the arc oracle we grade
+      against, while 4 does: measured with three unrelated kernel bodies, at 8 warps every case returned
+      the manager warp's element as zero with the rest correct. The mechanism is deliberately NOT asserted
+      — the same oracle also drops stores that little execution follows, which would explain the identical
+      table with no spawn defect at all.
+    blocks: >-
+      Using half the declared machine, and any performance number from this path being read as the
+      hardware's capability rather than the oracle's.
+    removal_condition: >-
+      The oracle's store-visibility behaviour is resolved and 8 warps grades correctly, at which point the
+      cap and this entry are deleted together. It is reported per run (`warps_used` vs `warps_declared`)
+      so a capped run cannot be mistaken for a full-width one in the meantime.
+
+  # ---------------------------------------------------------------- prose that names a target
+  - id: target-names-in-human-facing-prose
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/compile_cli.py
+      - merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py
+      - merlin/python/merlin/targetgen/rtl/circt_introspect.py
+      - merlin/python/merlin/targetgen/rtl_checks.py
+    why: >-
+      Read line by line. Each of these names a target inside text meant for a person: an error message
+      ("no multicore Saturn Verilator sim built"), a report paragraph, a plot axis label, a comment in
+      emitted C, a generated-file banner, a remediation hint ("bracket the kernel with gemmini_fence").
+      None is a value any code branches on. They are NOT docstrings, which is why the whole-identifier
+      gate exempts them and the coupling scan does not.
+      They are declared rather than exempted because prose is where a fixed assumption hides in plain
+      sight: a message that names one target reads as instruction on any other, and a report that says
+      "Gemmini" while grading something else is a wrong result presented confidently.
+    blocks: >-
+      Nothing at run time. What it costs is that a second target's user is shown another target's name
+      in a diagnostic, which is how someone concludes the tool does not support their hardware.
+    removal_condition: >-
+      Human-facing text carries the RUN's target rather than a literal — messages and report templates
+      interpolate the resolved target name. Cheap per site and worth doing when each file is next
+      touched; not worth a sweep of its own, which is why this is one entry rather than eight.
+
+  # ---------------------------------------------------------------- surfaced by the derived roster
+  - id: names-surfaced-when-the-target-roster-was-derived
+    kind: target_coupling
+    status: triaged
+    owner: targetgen
+    items:
+      - merlin/python/merlin/baselines/buddy.py
+      - merlin/python/merlin/baselines/profile.py
+      - merlin/python/merlin/compare/frozen_environment.py
+      - merlin/python/merlin/llvmlower/impr_features.py
+      - merlin/python/merlin/mining/k1.py
+    why: >-
+      Invisible until 2026-09-14, when the no-target-name gate's name set was derived from the target
+      registries instead of listed. Three bake one board's clock into generated C: `K1_CPU_HZ` in the
+      buddy and profile timing harnesses and in mining/k1.py's sustained-mode source is the k1_cpu
+      target's clock. frozen_environment.py persists a `k1_cpu_probe_version` key in a frozen study
+      manifest, and impr_features.py cites the `saturn_opu_int8` hardware pin by id in a feature
+      description.
+    blocks: >-
+      A second CPU-host target reusing the buddy/profile timing harness: it would be timed against
+      another board's clock constant and report wrong wall times with no error.
+    removal_condition: >-
+      The timing harnesses read the clock from the target contract's measurement block, mining/k1.py
+      folds into a parameterized board bench, the frozen manifest key is renamed at its next schema
+      version, and the feature description resolves the pin through the pin registry. Delete each path
+      from this list as it lands.

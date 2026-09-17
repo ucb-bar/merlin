@@ -1,0 +1,52 @@
+name: SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l3
+kind: layer
+source_role: model_derived
+source_reference: 'synthesized for the application axis: behavioural class contraction/i8/aligned/unknown/rank2/wide_skinny,
+  representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model
+  against a 300.0s certification budget'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: exact_int
+  dtype: f32
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: application
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule

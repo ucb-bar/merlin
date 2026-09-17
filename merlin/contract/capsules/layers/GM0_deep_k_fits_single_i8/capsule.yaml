@@ -1,0 +1,57 @@
+name: GM0_deep_k_fits_single_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: 'derived memory-mapping coverage: a contraction whose operands occupy
+  12288 of the operand store''s 16384 rows (75.0%) -- it fits ONCE and cannot be double-buffered,
+  so serialising movement against compute is correct here and failing to stage is
+  not a defect'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 6144
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 6144
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: shape
+  must_accelerate: true
+  eligible: auto

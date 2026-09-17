@@ -1,0 +1,153 @@
+name: PL02_k64
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared cross-regime amortization pair: one pushed weight reused
+  by one tile versus by four, at identical per-tile work (tile=32; K=64; matmuls=[{''lhs'':
+  ''A0'', ''out'': ''Y0'', ''M_tiles'': 1}])'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: fp8_e4m3
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: bf16
+    semantic: resident_reuse
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PL
+  lever: cross_regime_amortization
+  member_class: OBJECTIVE
+  claim: DIFFERENTIAL
+  comparand:
+    kind: paired_regime
+    against: same_lever_at_tile_and_layer_scale
+    cancels:
+    - operation
+    - datapath
+    - lever
+    demand_equal:
+    - per_tile_pass_work
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: per_tile_pass_saving_by_regime
+    fires_when: saving_changes_beyond_the_declared_band
+    negative_control: tile_scale_member
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count_and_preflight
+    capacity: non_aliasing_DRAM_and_non_binding_IMEM
+    on_missing: skip_with_evidence
+  regime:
+    separation: tile_scale_versus_promoted_layer_scale
+    layout: identical_lever_with_looped_layer_emission
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      promotion: passing_tile_member_to_layer_sibling
+    resolved:
+      source: direct
+      operand_dtype: fp8_e4m3
+      accum_dtype: bf16
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 2
+    runs: derived_after_tier_one_promotion
+    projected_cycles: derived_at_preflight
+    basis: only_passing_tier_one_members_are_promoted
+  noise_band:
+    kind: measured_replicate_dispersion
+    declared_constant: null
+    minimum_replicate_count: 2
+    predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - tile_regime
+    - layer_regime
+    expected_faster: layer_regime
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2
+  shape_geometry:
+    M: 32
+    K: 64
+    N: 32
+    out_elements: 1024
+    geometry_class: squareish_gemm
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.094393
+    census_out_elements: 196608
+    census_regions: 289
+comparison_group:
+  name: amort_k64
+  role: tile_regime
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 342.24
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

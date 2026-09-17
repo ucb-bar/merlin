@@ -1,0 +1,106 @@
+name: SY_model_resnet50
+kind: model
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the roster axis: whole model ''resnet50'' at int8,
+  the highest-ranked precision this target''s manifest admits for a contraction out
+  of the declared preference [''int8'', ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'',
+  ''fp32''], captured with int8_dyn_act_int8_weight so the program contains the target''s
+  own arithmetic rather than a float matmul over dequantized weights. Accuracy in
+  that format is not_established'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 3
+  - 224
+  - 224
+  dtype: f32
+operation:
+  op: model
+  attributes:
+    model: resnet50
+    dtype: i8
+    out: Y0
+    compile_dtype: int8
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - MVOUT
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+performance:
+  global_objective: true
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+pytorch_ref:
+  op: model
+  dtype: i8
+  loader: capsule.pytorch.py
+input_provenance:
+  workload: resnet50_v1_5
+  status: declared
+  synthetic_inputs: true
+  paper_ready: false
+  accuracy_claim_supported: false
+  accuracy_claim_withheld_because: the inputs are a seeded SYNTHETIC stream, not real
+    dataset samples; the reference is self-consistent with them, which proves the
+    compiler and says nothing about accuracy
+  grades: compiler_correctness
+  note: 'This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces,
+    on these exact inputs, the reference the same loader produced. It is not a statement
+    about the model''s accuracy on real data; only a capture whose inputs are real
+    and attributed can support that.'
+  loader_env:
+    M2M_RESNET_RANDOM: '1'
+  declared:
+    checkpoint: torchvision/resnet50/IMAGENET1K_V2
+    checkpoint_sha256: 8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0
+    full_checkpoint: true
+    input_source: synthetic_seed_20260830
+    input_sha256: a2e53a0c019358234bee1b63350121b533fb43c34f43ae7a5ffae549fdf4fe5b
+    preprocessing: synthetic
+    synthetic_inputs: true
+    paper_ready_requires_pretrained_and_attributed_real_inputs: true
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: movement
+  generalization_axis: roster
+  must_accelerate: false
+  not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+    under test, so host-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require, which fails unless every named lane actually carried
+    work.'
+  eligible: auto
+pass_requirements:
+- region-partition
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 3.2596368980407715
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
