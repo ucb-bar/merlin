@@ -53,6 +53,15 @@ NEST = "nest"
 ROLE = "role"
 GROUPINGS = (NEST, ROLE)
 
+#: Loop axes, named by the ``Contraction`` dimension each iterates in blocks: ``K`` the reduction axis
+#: (the width of the streamed operand, the depth of the resident one), ``N`` the resident operand's
+#: output axis, ``M`` the streamed operand's rows. ``loop_order`` is a permutation of the three,
+#: outermost first.
+K = "k"
+N = "n"
+M = "m"
+AXES = (K, N, M)
+
 #: ``placement`` values for the resident operand's region. The streamed operand always starts at row 0.
 #: ``OPPOSITE_END``: flush with the end of the store, growing back toward the streamed operand.
 #: ``BANK_ALIGNED``: the first bank boundary at or after the streamed region (separating the two
@@ -168,7 +177,8 @@ class Knobs:
     anywhere else -- on that corpus the best value differed per shape and per substrate.
     """
 
-    #: Load an operand block only when its block index changes, instead of once per inner iteration.
+    #: Load an operand block only when a compute first needs it -- a block, once loaded into its own rows,
+    #: stays resident -- instead of re-loading it in every emission group that reads it.
     load_on_index_change: bool = True
     #: Reduction steps of lookahead. ``0`` issues a load in its nest position; ``d`` issues step
     #: ``i + d``'s loads before step ``i``'s computes; ``None`` hoists every load ahead of every
@@ -181,6 +191,11 @@ class Knobs:
     load_grouping: str = ROLE
     #: Where the resident operand's region starts; one of :data:`PLACEMENTS`.
     placement: str = OPPOSITE_END
+    #: The block nest, outermost first -- a permutation of :data:`AXES`. The default is
+    #: reduction-major, which keeps one resident block live across every streamed block that reads it.
+    #: An emission group is one iteration of the two OUTER loops, and a lookahead "step" is one iteration
+    #: of the outermost; so under the default a step is a reduction step, as the knobs above describe.
+    loop_order: tuple[str, ...] = (K, N, M)
 
     def validate(self) -> None:
         if tuple(self.operand_order) not in ((LHS, WEIGHT), (WEIGHT, LHS)):
@@ -189,6 +204,8 @@ class Knobs:
             raise BlockScheduleError(f"load_grouping must be one of {GROUPINGS}, got {self.load_grouping!r}")
         if self.placement not in PLACEMENTS:
             raise BlockScheduleError(f"placement must be one of {PLACEMENTS}, got {self.placement!r}")
+        if sorted(self.loop_order) != sorted(AXES):
+            raise BlockScheduleError(f"loop_order must be a permutation of {AXES}, got {tuple(self.loop_order)!r}")
         if self.lookahead_steps is not None and self.lookahead_steps < 0:
             raise BlockScheduleError(f"lookahead_steps must be None or >= 0, got {self.lookahead_steps!r}")
 
@@ -377,9 +394,11 @@ def check_residency(schedule: BlockSchedule) -> None:
 def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Knobs | None = None) -> BlockSchedule:
     """Schedule ``contraction`` on ``geometry`` under ``knobs``, or refuse.
 
-    The nest is reduction-major (step, then resident-operand block, then streamed-operand block), which
-    is what keeps one weight block resident across the streamed blocks that read it. ``knobs`` decides
-    only WHERE each load is emitted relative to the computes, and where the resident region sits.
+    The nest is ``knobs.loop_order`` -- reduction-major by default (step, then resident-operand block,
+    then streamed-operand block), which is what keeps one weight block resident across the streamed
+    blocks that read it. ``knobs`` decides the nest, WHERE each load is emitted relative to the computes,
+    and where the resident region sits; every order computes the same products, and
+    :func:`check_residency` refuses any that would read an overwritten block.
     """
     knobs = knobs or Knobs()
     knobs.validate()
@@ -416,42 +435,116 @@ def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Kn
             kk,
         )
 
-    # Per (step, resident block) the loads that become due, and the computes that read them. A streamed
-    # block is due once per (mi, kk) when load_on_index_change, else once per (mi, kk, nj).
-    groups: list[tuple[int, int, list[Load], list[Op]]] = []
-    for kk in range(k_blocks):
-        for nj in range(j_blocks):
-            due_lhs = [_lhs_load(mi, kk) for mi in range(i_blocks) if nj == 0 or not knobs.load_on_index_change]
-            body: list[Op] = []
-            for mi in range(i_blocks):
+    # One emission group per iteration of the two OUTER loops. Each compute carries the loads that
+    # become due for it: a block is due the first time a compute needs it -- per group without
+    # load_on_index_change, per nest with it. Nothing here names a particular loop as the one whose index
+    # change triggers a load; under the default order this is exactly "a streamed block is loaded when its
+    # (mi, kk) index first appears", i.e. at nj == 0.
+    extent = {K: k_blocks, N: j_blocks, M: i_blocks}
+    outer, middle, inner = knobs.loop_order
+    groups: list[tuple[int, list[tuple[list[Load], list[Op]]]]] = []
+    loaded_in_nest: set[tuple] = set()
+    resident_weight: tuple[int, int] | None = None
+    for a in range(extent[outer]):
+        for b in range(extent[middle]):
+            loaded_in_group: set[tuple] = set()
+            computes: list[tuple[list[Load], list[Op]]] = []
+            for c in range(extent[inner]):
+                index = {outer: a, middle: b, inner: c}
+                kk, nj, mi = index[K], index[N], index[M]
+                due: list[Load] = []
+                for load in (_weight_load(kk, nj), _lhs_load(mi, kk)):
+                    identity = (load.role, load.block)
+                    seen = loaded_in_nest if knobs.load_on_index_change else loaded_in_group
+                    if identity not in seen:
+                        seen.add(identity)
+                        due.append(load)
                 rows, cols = min(d, contraction.m - mi * d), min(d, contraction.n - nj * d)
                 acc_row = (mi * j_blocks + nj) * d
-                body.append(
+                fresh = resident_weight != (kk, nj)
+                resident_weight = (kk, nj)
+                ops_here: list[Op] = [
                     Preload(
-                        weight_base + (kk * j_blocks + nj) * d if mi == 0 else None,
-                        (kk, nj) if mi == 0 else None,
+                        weight_base + (kk * j_blocks + nj) * d if fresh else None,
+                        (kk, nj) if fresh else None,
                         acc_row,
                         kk > 0,
                         rows,
                         cols,
-                        min(d, contraction.k - kk * d) if mi == 0 else None,
-                    )
-                )
-                body.append(
-                    Compute(
-                        lhs_base + (mi * k_blocks + kk) * d, (mi, kk), rows, min(d, contraction.k - kk * d), mi == 0
-                    )
-                )
+                        min(d, contraction.k - kk * d) if fresh else None,
+                    ),
+                    Compute(lhs_base + (mi * k_blocks + kk) * d, (mi, kk), rows, min(d, contraction.k - kk * d), fresh),
+                ]
                 if kk == k_blocks - 1:
-                    body.append(Store(mi * d, nj * d, rows, cols, acc_row))
-            # Nest order inside a group: the resident block's load sits at the outer position, the
-            # streamed blocks at the inner one. ROLE grouping reorders this; NEST keeps it.
-            groups.append((kk, nj, [_weight_load(kk, nj)] + due_lhs, body))
+                    ops_here.append(Store(mi * d, nj * d, rows, cols, acc_row))
+                computes.append((due, ops_here))
+            groups.append((a, computes))
 
-    ops = _emit(groups, k_blocks, knobs)
+    ops = _emit(groups, knobs)
     schedule = BlockSchedule(tuple(ops), contraction, geometry, knobs, regions, tuple(notes))
     check_residency(schedule)
     return schedule
+
+
+def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
+    """Run ``schedule`` on host arrays exactly as an in-order device would, and return the output.
+
+    The schedule's own oracle: every row a load writes, every block a preload makes resident, every
+    accumulate and every drain is simulated at the addresses the schedule names -- nothing is recomputed
+    from the contraction. So a schedule that addresses the wrong rows, drains the wrong accumulator block
+    or reuses a stale resident block produces a wrong ``out``, which a direct ``lhs @ weight`` exposes in
+    milliseconds, before any backend or simulator is involved.
+    """
+    import numpy as np
+
+    c = schedule.contraction
+    lhs, weight = np.asarray(lhs), np.asarray(weight)
+    if lhs.shape != (c.m, c.k) or weight.shape != (c.k, c.n):
+        raise BlockScheduleError(
+            f"operands {lhs.shape} x {weight.shape} are not the scheduled {c.m}x{c.k} x {c.k}x{c.n} contraction"
+        )
+    dram = {LHS: lhs, WEIGHT: weight}
+    rows_on_chip: dict[int, Any] = {}
+    accumulator: dict[int, Any] = {}
+    out = np.zeros((c.m, c.n), dtype=np.result_type(lhs, weight, np.int64))
+    resident = None
+    target_row, accumulate = None, False
+
+    def _row(row: int, what: str) -> Any:
+        if row not in rows_on_chip:
+            raise BlockScheduleError(f"{what} reads on-chip row {row}, which no load ever wrote")
+        return rows_on_chip[row]
+
+    def _accumulated(row: int, what: str) -> Any:
+        if row not in accumulator:
+            raise BlockScheduleError(f"{what} reads accumulator block {row}, which no compute ever wrote")
+        return accumulator[row]
+
+    for op in schedule.ops:
+        if isinstance(op, Load):
+            block = dram[op.role][op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols]
+            for offset in range(op.rows):
+                rows_on_chip[op.row + offset] = block[offset].copy()
+        elif isinstance(op, Preload):
+            if op.weight_row is not None:
+                resident = np.stack(
+                    [_row(op.weight_row + r, "a preload")[: op.cols] for r in range(op.weight_rows or op.rows)]
+                )
+            target_row, accumulate = op.accumulator_row, op.accumulate
+        elif isinstance(op, Compute):
+            if resident is None:
+                raise BlockScheduleError("a compute ran with no resident block")
+            streamed = np.stack([_row(op.input_row + r, "a compute")[: op.cols] for r in range(op.rows)])
+            product = streamed.astype(out.dtype) @ resident.astype(out.dtype)
+            if accumulate:
+                accumulator[target_row] = _accumulated(target_row, "an accumulating compute") + product
+            else:
+                accumulator[target_row] = product
+        elif isinstance(op, Store):
+            out[op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols] = _accumulated(
+                op.accumulator_row, "a store"
+            )[: op.rows, : op.cols]
+    return out
 
 
 def _ordered(loads: list[Load], knobs: Knobs) -> list[Load]:
@@ -464,56 +557,51 @@ def _ordered(loads: list[Load], knobs: Knobs) -> list[Load]:
     return ordered
 
 
-def _emit(groups: list[tuple[int, int, list[Load], list[Op]]], k_blocks: int, knobs: Knobs) -> list[Op]:
+def _emit(groups: list[tuple[int, list[tuple[list[Load], list[Op]]]]], knobs: Knobs) -> list[Op]:
     """Place each group's loads relative to the computes, per ``lookahead_steps``.
 
-    At depth 0 the emission group is one (step, resident block) pair and a load sits in its nest
-    position. At depth ``d`` the group is a whole reduction step, issued ``d`` steps early. At ``None``
-    every load is hoisted ahead of every compute, and the whole prologue is one group.
+    At depth 0 the emission group is one iteration of the two outer loops, and a load sits in its nest
+    position -- immediately before the compute that first needs it -- or, under ``ROLE`` grouping, with
+    the group's other loads ahead of its computes. At depth ``d`` the group is a whole outer step, issued
+    ``d`` steps early. At ``None`` every load is hoisted ahead of every compute, and the whole prologue is
+    one group.
     """
     if knobs.lookahead_steps == 0:
         ops: list[Op] = []
-        for _, _, loads, body in groups:
+        for _, computes in groups:
             if knobs.load_grouping == NEST:
-                # Nest position: the resident block's load, then each streamed block immediately
-                # before the compute that reads it.
-                streamed = [load for load in loads if load.role == LHS]
-                ops.extend(load for load in loads if load.role == WEIGHT)
-                pending = list(streamed)
-                for op in body:
-                    if isinstance(op, Preload) and pending:
-                        ops.append(pending.pop(0))
-                    ops.append(op)
-                ops.extend(pending)
+                for due, body in computes:
+                    ops.extend(due)
+                    ops.extend(body)
             else:
-                ops.extend(_ordered(loads, knobs))
-                ops.extend(body)
+                ops.extend(_ordered([load for due, _ in computes for load in due], knobs))
+                ops.extend(op for _, body in computes for op in body)
         return ops
 
     by_step: dict[int, list[Load]] = {}
     bodies: dict[int, list[Op]] = {}
-    for kk, _, loads, body in groups:
-        by_step.setdefault(kk, []).extend(loads)
-        bodies.setdefault(kk, []).extend(body)
+    for step, computes in groups:
+        by_step.setdefault(step, []).extend(load for due, _ in computes for load in due)
+        bodies.setdefault(step, []).extend(op for _, body in computes for op in body)
     steps = sorted(bodies)
     if knobs.lookahead_steps is None:
         prologue: list[Load] = []
-        for kk in steps:
-            prologue.extend(by_step.get(kk, ()))
+        for step in steps:
+            prologue.extend(by_step.get(step, ()))
         ops = list(_ordered(prologue, knobs))
-        for kk in steps:
-            ops.extend(bodies[kk])
+        for step in steps:
+            ops.extend(bodies[step])
         return ops
 
     depth = knobs.lookahead_steps
     ops = []
-    for kk in steps[:depth]:
-        ops.extend(_ordered(by_step.get(kk, []), knobs))
-    for index, kk in enumerate(steps):
+    for step in steps[:depth]:
+        ops.extend(_ordered(by_step.get(step, []), knobs))
+    for index, step in enumerate(steps):
         ahead = index + depth
         if ahead < len(steps):
             ops.extend(_ordered(by_step.get(steps[ahead], []), knobs))
-        ops.extend(bodies[kk])
+        ops.extend(bodies[step])
     return ops
 
 

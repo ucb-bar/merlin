@@ -244,3 +244,86 @@ def test_the_defaults_are_the_documented_ones():
 def test_an_unknown_knob_value_is_refused(bad):
     with pytest.raises(BlockScheduleError):
         schedule_contraction(Contraction(m=16, k=16, n=16), _geometry("t_narrow", **NARROW), bad)
+
+
+# --------------------------------------------------------------------------- loop order + execution
+
+import itertools
+
+import numpy as np
+
+from merlin.compile.scheduling import AXES, K, M, N, execute
+
+ORDERS = list(itertools.permutations(AXES))
+
+
+def _operands(contraction, seed=0):
+    rng = np.random.default_rng(seed)
+    return (rng.integers(-128, 128, size=(contraction.m, contraction.k)),
+            rng.integers(-128, 128, size=(contraction.k, contraction.n)))
+
+
+@pytest.mark.parametrize("name", sorted(GEOMETRIES))
+@pytest.mark.parametrize("order", ORDERS, ids=lambda o: "".join(o))
+@pytest.mark.parametrize("knobs", [
+    Knobs(load_on_index_change=False, lookahead_steps=0, load_grouping=NEST),
+    Knobs(load_on_index_change=True, lookahead_steps=0, load_grouping=NEST),
+    Knobs(lookahead_steps=1, load_grouping=ROLE),
+    Knobs(lookahead_steps=None, load_grouping=NEST),
+], ids=["v0", "l1", "la1", "hoist"])
+def test_every_loop_order_computes_the_contraction_exactly(name, order, knobs):
+    """Executed at the addresses the schedule names, every nest gives ``lhs @ weight`` -- on ragged edges
+    in all three axes, so partial blocks are exercised too."""
+    geometry = _geometry(f"t_{name}", **GEOMETRIES[name])
+    d = geometry.block
+    contraction = Contraction(m=2 * d + 3, k=3 * d + 1, n=2 * d + 5)
+    lhs, weight = _operands(contraction)
+    schedule = schedule_contraction(contraction, geometry,
+                                    Knobs(**{**knobs.__dict__, "loop_order": order}))
+    assert np.array_equal(execute(schedule, lhs, weight), lhs @ weight)
+
+
+@pytest.mark.parametrize("order", ORDERS, ids=lambda o: "".join(o))
+def test_load_on_index_change_loads_each_block_once_in_any_order(order):
+    geometry = _geometry("t_narrow", **NARROW)
+    d = geometry.block
+    contraction = Contraction(m=2 * d, k=2 * d, n=3 * d)                  # 2 x 2 x 3 blocks
+    once = schedule_contraction(contraction, geometry, Knobs(loop_order=order))
+    assert len(_loads(once, LHS)) == 2 * 2 and len(_loads(once, WEIGHT)) == 2 * 3
+    assert once.count(Compute) == 2 * 2 * 3
+
+
+def test_the_default_order_is_reduction_major():
+    assert Knobs().loop_order == (K, N, M)
+
+
+def test_a_loop_order_that_is_not_a_permutation_is_refused():
+    with pytest.raises(BlockScheduleError, match="permutation"):
+        schedule_contraction(Contraction(16, 16, 16), _geometry("t_narrow", **NARROW),
+                             Knobs(loop_order=(K, K, M)))
+
+
+def test_execution_catches_a_schedule_that_drains_the_wrong_accumulator_block():
+    """The executor is an oracle, not a restatement: corrupt one drain and the product is wrong; drain a
+    block nothing computed and it refuses."""
+    geometry = _geometry("t_narrow", **NARROW)
+    d = geometry.block
+    contraction = Contraction(m=2 * d, k=d, n=d)
+    schedule = schedule_contraction(contraction, geometry, Knobs())
+    lhs, weight = _operands(contraction)
+    stores = [i for i, op in enumerate(schedule.ops) if isinstance(op, Store)]
+    first, second = schedule.ops[stores[0]], schedule.ops[stores[1]]
+
+    def _with(index, op):
+        ops = list(schedule.ops)
+        ops[index] = op
+        return type(schedule)(tuple(ops), schedule.contraction, schedule.geometry, schedule.knobs,
+                              schedule.regions, schedule.notes)
+
+    stale = _with(stores[1], Store(second.dram_row, second.dram_col, second.rows, second.cols,
+                                   first.accumulator_row))
+    assert not np.array_equal(execute(stale, lhs, weight), lhs @ weight)
+    early = _with(stores[0], Store(first.dram_row, first.dram_col, first.rows, first.cols,
+                                   second.accumulator_row))
+    with pytest.raises(BlockScheduleError, match="no compute ever wrote"):
+        execute(early, lhs, weight)

@@ -9,6 +9,7 @@ which is the wrong contract for a pass whose vocabulary is deliberately generic 
 from __future__ import annotations
 
 from .block_schedule import (
+    AXES,
     BANK_ALIGNED,
     CONTIGUOUS,
     GROUPINGS,
@@ -24,17 +25,26 @@ from .block_schedule import (
     Compute,
     Contraction,
     Geometry,
+    K,
     Knobs,
     Load,
+    M,
+    N,
     Op,
     Preload,
     Store,
     check_residency,
+    execute,
     schedule_contraction,
     schedule_interface_program,
 )
 
 __all__ = [
+    "AXES",
+    "K",
+    "M",
+    "N",
+    "execute",
     "BANK_ALIGNED",
     "CONTIGUOUS",
     "GROUPINGS",
