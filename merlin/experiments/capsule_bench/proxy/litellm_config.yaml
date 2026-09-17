@@ -1,0 +1,85 @@
+# LiteLLM proxy — the scaffold-swap bridge for capsule-bench.
+#
+# WHY THIS EXISTS
+# The campaign wants to separate "which model" from "which agentic harness". opencode is natively
+# multi-provider, but the two harnesses we want to compare against are each locked to one wire protocol:
+#
+#   codex-cli 0.147.0  speaks ONLY the OpenAI Responses API   (wire_api="chat" was removed; the binary
+#                      contains exactly one endpoint string, /v1/responses)
+#   claude 2.1.234     speaks the Anthropic Messages API      (redirectable via ANTHROPIC_BASE_URL)
+#
+# This proxy exposes both shapes over the same Bedrock-backed models, so the SAME model can be driven by
+# three different harnesses and the harness becomes the only variable.
+#
+# ⚠️ The bridge is itself a confound until proven otherwise. Every campaign that uses it must also run the
+# proxy-vs-direct control (the same model through opencode-direct and through the proxy); if those two
+# diverge, the experiment is measuring LiteLLM. See proxy_canary.py.
+#
+# Auth: AWS_BEARER_TOKEN_BEDROCK from .env, inherited from the launching environment. No key is written
+# into this file, which is tracked.
+
+model_list:
+  # ---- open models under test -------------------------------------------------------------------
+  - model_name: nemotron
+    litellm_params:
+      model: bedrock/nvidia.nemotron-super-3-120b
+      aws_region_name: us-east-1
+    model_info:
+      # MEASURED from the provider's own 400, not a vendor page.
+      max_input_tokens: 131072
+      max_output_tokens: 8000
+
+  - model_name: glm5
+    litellm_params:
+      model: bedrock/zai.glm-5
+      aws_region_name: us-east-1
+    model_info:
+      max_input_tokens: 202752
+      max_output_tokens: 8000
+
+  # ---- the control ------------------------------------------------------------------------------
+  # NOT gpt-5.6-sol: ``openai.gpt-5.6-sol`` appears in this account's Bedrock catalogue but is not
+  # enabled on it ("is not available for this account"), so codex-cli's own model cannot be reached a
+  # second way. Probed 2026-08-19; a listing is not an entitlement.
+  #
+  # Opus is the control instead, and it is a better one: it is invocable on Bedrock, it has a known
+  # baseline on this exact bench (19/20 L3-certified via the claude CLI), and BOTH harnesses reach it
+  # natively -- so claude-vs-opencode on Opus measures the harness with no bridge in the path at all.
+  # It is listed here only for the separate proxy-vs-direct control (same harness, same model, once
+  # native and once forced through this proxy), which is what shows the bridge is faithful.
+  - model_name: opus
+    litellm_params:
+      model: bedrock/us.anthropic.claude-opus-4-6-v1
+      aws_region_name: us-east-1
+
+litellm_settings:
+  drop_params: true          # a harness may send a param a given model does not accept; do not 400 on it
+  request_timeout: 1800
+  num_retries: 3
+
+# Absorb provider-side capacity errors HERE rather than letting them reach the CLI. Bedrock answers a
+# busy pool with "We're currently experiencing high demand, which may cause temporary errors"; the
+# driving CLI sees only a broken SSE stream, retries a handful of times, then ends the round with a
+# non-zero exit and no usage record. Retrying inside the proxy is invisible to the harness, so a
+# transient throttle costs seconds instead of a round.
+#
+# RateLimitErrorRetries is deliberately the largest: it is the only class here that is both common and
+# certain to clear on its own. Auth and bad-request failures are NOT retried -- they are configuration
+# errors and retrying them only delays the report.
+router_settings:
+  retry_policy:
+    RateLimitErrorRetries: 8
+    InternalServerErrorRetries: 5
+    TimeoutErrorRetries: 3
+    ContentPolicyViolationErrorRetries: 0
+    AuthenticationErrorRetries: 0
+    BadRequestErrorRetries: 0
+  allowed_fails_policy:
+    # Do not cool a deployment down for being throttled -- we have exactly one deployment per model, so
+    # a cooldown converts a transient 429 into a hard outage for the rest of the run.
+    RateLimitErrorAllowedFails: 1000
+    AuthenticationErrorAllowedFails: 0
+  cooldown_time: 30
+
+general_settings:
+  master_key: os.environ/MERLIN_PROXY_KEY

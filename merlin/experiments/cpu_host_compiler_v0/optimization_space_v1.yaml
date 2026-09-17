@@ -1,0 +1,109 @@
+version: 1
+status: frozen_definition
+label: generic_k1_cpu_optimization_space
+max_sweeps: 12
+screen_samples_per_family: 2
+confirmation_samples_per_family: 1
+confirmation_families: [contraction, elementwise_map, reduction, movement_layout,
+  fusion_epilogue, runtime_parallel]
+confirmation_width: 1
+measurement_repeats: 6
+noise_margin: 0.160
+minimum_families: 3
+required_empty_sweeps: 1
+board_environment:
+  online: 0-7
+  governor: performance
+  frequency_khz: 1600000
+  frequency_core_count: 8
+  frequency_relative_tolerance: 0.005
+  maximum_temperature_millic: 80000
+  maximum_pair_temperature_delta_millic: 3000
+  maximum_load_1m: 4.0
+  maximum_pair_load_delta: 1.0
+  settle_attempts: 12
+  settle_interval_seconds: 5
+  maximum_invalid_pair_replacements_per_capsule: 2
+search_package:
+  submitted_manifest_requires_real_build: true
+  controller_private_prebuild: true
+  private_build_override: [/bin/true]
+  candidate_time_build_then_forbidden: true
+selection:
+  screen: trusted_spike_mcycle_train
+  rank_split: k1_train_confirmation
+  promotion_split: k1_validation_confirmation
+  heldout_visible: false
+  paired_measurements: true
+  correctness_required: true
+  emitted_code_change_required: true
+  reject_any_validation_regression_over_margin: true
+  minimum_pairwise_wins: 5
+  interpretation: adaptive_descriptive_selection_only
+budget:
+  arm_wall_seconds: 32000
+  reserved_agent_seconds: 1800
+  maximum_distinct_incumbents: 10
+  maximum_screen_candidate_evaluations: 104
+  maximum_confirmation_requests: 20
+  confirmation_package_builds: 40
+  confirmation_compiler_invocations: 280
+  confirmation_spike_checks: 240
+  k1_program_invocations: 1920
+  expected_seconds_per_k1_program: 5.8
+  planning_upper_seconds_per_k1_program: 7.5
+  expected_spike_screen_seconds: 8500
+  planning_upper_spike_screen_seconds: 10000
+  expected_seconds_per_confirmation_package_build: 0.025
+  planning_upper_seconds_per_confirmation_package_build: 0.05
+  expected_seconds_per_confirmation_compiler_invocation: 0.25
+  planning_upper_seconds_per_confirmation_compiler_invocation: 0.5
+  expected_seconds_per_confirmation_spike_check: 4.0
+  planning_upper_seconds_per_confirmation_spike_check: 20.0
+  expected_confirmation_overhead_seconds: 1031
+  planning_upper_confirmation_overhead_seconds: 4942
+  expected_search_seconds: 17883
+  planning_upper_search_seconds: 29342
+actions:
+  - {id: dynamic_vl, group: vector_length, action_class: heuristic, stage: 10,
+     value: scalable, affected_families: [contraction, elementwise_map, reduction,
+       movement_layout, fusion_epilogue, runtime_parallel], evidence: [target_contract]}
+  - {id: fixed_vlen_256_guarded, group: vector_length, action_class: heuristic, stage: 10,
+     value: 256, affected_families: [contraction, elementwise_map, reduction,
+       movement_layout, fusion_epilogue, runtime_parallel], evidence: [same_run_csr_vlen]}
+  - {id: lmul_1, group: lmul, action_class: knob, stage: 20, value: 1,
+     affected_families: [contraction, elementwise_map, reduction, movement_layout,
+       fusion_epilogue, runtime_parallel], evidence: [register_pressure]}
+  - {id: lmul_2, group: lmul, action_class: knob, stage: 20, value: 2,
+     affected_families: [contraction, elementwise_map, reduction, movement_layout,
+       fusion_epilogue, runtime_parallel], evidence: [register_pressure]}
+  - {id: lmul_4, group: lmul, action_class: knob, stage: 20, value: 4,
+     affected_families: [contraction, elementwise_map, reduction, movement_layout,
+       fusion_epilogue, runtime_parallel], evidence: [register_pressure]}
+  - {id: output_tile_4, group: output_tile, action_class: knob, stage: 30, value: 4,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: output_tile_8, group: output_tile, action_class: knob, stage: 30, value: 8,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: output_tile_16, group: output_tile, action_class: knob, stage: 30, value: 16,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: k_unroll_2, group: k_unroll, action_class: knob, stage: 40, value: 2,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: k_unroll_4, group: k_unroll, action_class: knob, stage: 40, value: 4,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: k_unroll_8, group: k_unroll, action_class: knob, stage: 40, value: 8,
+     affected_families: [contraction, fusion_epilogue], evidence: [generic_contraction_capsules]}
+  - {id: rhs_panel_8, group: rhs_layout, action_class: heuristic, stage: 50, value: panel8,
+     affected_families: [contraction, fusion_epilogue], evidence: [xnnpack_rvv, openblas_rvv]}
+  - {id: rhs_panel_16, group: rhs_layout, action_class: heuristic, stage: 50, value: panel16,
+     affected_families: [contraction, fusion_epilogue], evidence: [xnnpack_rvv, openblas_rvv]}
+  - {id: fuse_legal_epilogues, group: epilogue_fusion, action_class: pass, stage: 60,
+     value: legal_only, affected_families: [fusion_epilogue], evidence: [generic_fusion_capsules]}
+  - {id: retain_immutable_packs, group: pack_lifetime, action_class: pass, stage: 70,
+     value: session_resident, affected_families: [contraction, fusion_epilogue],
+     evidence: [generic_reuse_capsules]}
+  - {id: deterministic_static_partition, group: parallel_schedule, action_class: heuristic,
+     stage: 80, value: exact_cover, affected_families: [runtime_parallel],
+     evidence: [generic_runtime_capsules]}
+  - {id: persistent_worker_pool, group: worker_lifetime, action_class: pass, stage: 90,
+     value: session_resident, affected_families: [runtime_parallel],
+     evidence: [generic_runtime_capsules]}

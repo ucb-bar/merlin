@@ -1,0 +1,370 @@
+# Declarative per-target experiment SETUP — the RARE non-derivable exception (see the derive-first rule).
+#
+# Everything DERIVABLE about the hardware (the legal ISA / opcode set, the memory map, the mesh DIM,
+# the live functional model) is discovered from the RTL by mlc for `target` — it is NOT listed here.
+# This descriptor holds only the irreducible SETUP a run needs: which RTL repo, which hardware-spec
+# files to give every arm, which capsule corpus to grade against, and how to run the simulator. A new
+# accelerator plugs in by dropping its own descriptor (+ registering its RTL with mlc); no code changes.
+target: gemmini
+
+rtl:
+  via: mlc            # RTL facts are DERIVED from mlc discovery (MERLIN_MLC_DIR, the target above)
+
+# The shared hardware spec given to ALL arms (a correct backend needs the target's defined ISA — this is
+# a constant input, not Merlin assistance). Repo-root-relative.
+# Path strings are given EXACTLY as the arm bundles grant them (the bundle-stager convention:
+# tmp/... is repo-root-relative, experiments/... resolves under merlin/). This lets the descriptor be
+# the single source of truth the bundle-consistency check compares against.
+hardware_spec:
+  isa_headers:
+    - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini.h
+    - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
+  hwbringup_set: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
+  # Curated baremetal C harness (linker/crt/headers only, NO kernels) the agent's rv64 compiler links
+  # against — per-target setup, relative to this experiment dir. arc/cyclotron targets omit it.
+  curated_harness: contracts/harness_curated/gemmini-rocc-tests
+
+# The capsule corpus the arms author against and are graded on. Sibling corpora (layers/model_slices)
+# and the hidden set are discovered beside it (globbed), not hardcoded.
+capsule_corpus: merlin/contract/capsules/isa
+
+# The shared, legacy Gemmini source pool also contains bf16 PyTorch model slices.  The frozen Gemmini
+# capability contract exposes only int8 operand datapaths, so those slices cannot be admitted to this
+# experiment's formal denominator.  Keep the boundary explicit and name every excluded source-pool
+# member: the readiness gate independently proves that this list is exactly the set whose operand dtype
+# is absent from every declared Gemmini capability.  Everything admitted after this boundary must reach
+# the formal L3 tier; the post-freeze grader rejects even one unmeasured admitted capsule.
+grading:
+  # Cardinalities are frozen without making the hidden names public. Any source-pool deletion/addition,
+  # or any cohort filter that moves a row outside this declared boundary, makes readiness fail closed.
+  #
+  # RE-SEALED 2026-09-03: 62/48 -> 75/61, from thirteen capsules four derivation axes added. Each was
+  # enumerated against the previous pool rather than inferred from the count, and no row LEFT the pool:
+  #
+  #   the epilogue axis (4)     SY_epilogue_relu / acc_scale / bias_add / maxpool -- one per fusion
+  #                             stage this target's ISA declares it can fuse onto a contraction. The
+  #                             cells can say a fused-only family must ride an epilogue; they cannot
+  #                             say WHICH stage, so nothing previously demanded these.
+  #   the host lane (2)         SY_host_lane_elementwise_map_f32 / _reduction_f32 -- (family, dtype)
+  #                             pairs real captures contain and this target's manifest admits at no
+  #                             dtype, so the compiler must leave them on the host. They are
+  #                             capability-INELIGIBLE by construction and that is the point: see the
+  #                             note below on why they are nonetheless inside the boundary.
+  #   accumulation depth (3)    SY_kdepth_fits_double / fits_single / spills -- 256, 512 and 1024
+  #                             accumulation passes, the depths this target's operand store admits.
+  #                             All i8/i8 on the declared datapath, and all CERTIFIED: a reduction
+  #                             writes one output tile whatever its depth, so the deepest costs about
+  #                             what the shallowest does.
+  #   the sub-tile class (4)    SY_*_i8_sub_tile -- a barely-occupied tile, which neither `aligned`
+  #                             nor `partial` could express (`partial` rags one axis by one element,
+  #                             so it yields a NEARLY FULL tile). Extents of 2/4/7/8/9/10/12 against a
+  #                             16-wide tile occur 45 times among hand-authored capsules and had zero
+  #                             derived counterparts. ~4.1s each to certify.
+  #
+  # Every one of the ten is `label: public` under a graded root, which is what puts it in the source
+  # pool, and every one carries an operand dtype the frozen capability contract declares -- except the
+  # two host-lane rows, which are deliberately the opposite and are handled by the boundary below.
+  #
+  # WHY THE TWO HOST-LANE ROWS ARE ADMITTED rather than capability-excluded. The exclusion boundary
+  # exists so an int8 accelerator is not asked to CERTIFY bf16 arithmetic. A host-lane capsule asks the
+  # opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler does NOT accelerate work
+  # the device cannot hold. Withholding it deletes the test -- the absent datapath is its premise, not
+  # its problem -- so `capsule_runner._split_ineligible` now keeps a capsule that forbids the mesh, and
+  # the readiness gate's independently recomputed set once again equals the eleven named below. That
+  # also closed a pre-existing disagreement on GN0_layernorm_host_only_bf16_pt, which materialize
+  # admitted while readiness proved it excludable.
+  #
+  # THE COST OF THE ADMITTED SET WAS MEASURED, not assumed, because a bigger denominator is only honest
+  # if it still runs. The instrument is merlin.targetgen.cert_cost's calibrated law
+  # (seconds = 0.20509 * written_output^1.0782, fitted on four cycle-accurate runs at 512/1024/2048/4096
+  # written elements, log-log r2 0.9976), read through build_tools/scripts/check_cert_affordability.py --
+  # the same tool the corpus's own affordability ratchet is written from. The admitted set costs 1.74 h
+  # of predicted L3 wall-clock across its 66 shape-resolvable L3-demanding rows, and its most expensive
+  # single capsule is 361 s. The two store-filling SY_regime_* rows that would have cost 39.6 h and 18.8
+  # h alone stop at L2 and carry `extends: SY_contraction_i8_aligned`, resting on a certified sibling.
+  #
+  # WHY SY_model_tiny_llama IS RESOURCE-EXCLUDED, and why the capability argument that used to keep it
+  # inside the boundary is left standing rather than deleted. Everything the earlier note said about the
+  # CAPABILITY boundary is still true and still independently checked:
+  #   * it is `label: public` under merlin/contract/capsules/model/, which is what puts it in the source
+  #     pool at all;
+  #   * its operands are i8/i8, precisely the datapath the frozen Gemmini capability contract declares.
+  #     Run through the hardware predicate directly it comes back eligible, so the boundary this block
+  #     guards -- "no row whose operand dtype is absent from every declared capability" -- is not
+  #     crossed. It is NOT one of the bf16 rows named below and must never be listed among them:
+  #     excluding it there would be a false hardware claim about a datapath this target has;
+  #   * it is `kind: model`, so readiness's capability split never reaches it (that split runs over the
+  #     non-model rows), and it landed in admitted by subtraction.
+  # What that argument never established is that anyone can AFFORD to certify it -- and everything
+  # admitted after this boundary must reach the formal L3 tier. Measured on the law above, it cannot:
+  #   * it writes 256,000 elements (the 1x8x32000 logits), 62.5x past the largest calibrated run,
+  #     priced at 139,030 s = 38.6 h for that one capsule. The whole remaining admitted cohort is
+  #     1.74 h, so this single row would be 96% of the bill;
+  #   * and 38.6 h is only the OUTPUT side. Its largest single operand is the 32000x2048 embedding --
+  #     65,536,000 elements, exactly 1000x cert_cost.MEASURED_MAX_OPERAND_ELEMENTS -- with 1.10 billion
+  #     operand elements in total behind a 1.3 GB weights file. The law is explicitly silent about
+  #     moving that, so 38.6 h is a floor with an unpriced term on top, not an estimate;
+  #   * build_tools/scripts/cert_affordability_ratchet.txt already carries `model/SY_model_tiny_llama`
+  #     as the single largest piece of unaffordable L3 debt in the entire corpus. The corpus gate had
+  #     been saying this; the graded denominator had simply never been reconciled with it.
+  # That is the same shape as M0/M1/GX0 below, only larger by two orders of magnitude: a full-size
+  # capstone that is eligible on the frozen contract, kept in the source pool, and held out of the
+  # formal denominator by a declared resource policy rather than by a hardware claim. `resource_bound`
+  # is the per-target instrument for exactly that, so that is where it goes.
+  #
+  # AND WHY SY_micro_model IS NOT EXCLUDED WITH IT, though both are SY_ model rows that arrived by
+  # synthesis rather than by hand. It writes 1,024 elements and its largest operand is 1,024 -- both
+  # well inside the calibrated range -- for 361 s, which is under the 30-minute per-capsule bar this
+  # policy has always applied. Three model_slice rows already admitted (C0_mlp_linear1,
+  # C1_mlp_activation_linear2, SY_rank_contraction_batched) cost that same 361 s, so holding it out
+  # would be a resource exclusion with no resource behind it. It is the composition-axis capstone --
+  # one layer per admitted family, one per family a real capture contains that the manifest does not
+  # admit, host layers interleaved into the interior -- so it is named a REQUIRED admitted model rather
+  # than merely tolerated. The formal model cohort is therefore three (full-model representative,
+  # host/accelerator seam, composition), which is MORE model coverage than the policy declared before,
+  # for +361 s.
+  # RE-SEALED 2026-09-06 from 111/96 to 113/97. Two generated public sources entered the pool:
+  # SY_epilogue_requant is a reduced, bounded L3 epilogue witness and is admitted; the full-size
+  # SY_model_resnet50 is retained as Phase 2's static/analytical global objective but explicitly
+  # resource-excluded from mandatory L3. This keeps the iteration loop representative without
+  # turning a multi-hour model simulation into a prerequisite. The arithmetic enforced below is
+  # 113 == 97 + 16.
+  #
+  # RE-SEALED 2026-09-03 from 75/61 to 87/73. The exclusion list is UNCHANGED at 14 rows -- every added
+  # capsule is eligible on the frozen contract -- so the whole delta is +12 on both sides, and it is
+  # enumerated rather than asserted:
+  #   * 5 shape-geometry rows (gemv_like, tall_skinny, wide_skinny, squareish_gemm, odd_tail_heavy) --
+  #     the aspect-ratio axis. Every previously synthesized capsule was square while the captures
+  #     present five classes, so a compiler that tiles a 448:1 convolution badly passed everything;
+  #   * 4 rank rows -- the batched (rank-3) regions, which became expressible when the batched
+  #     contraction got a golden in the integer engine rather than only the block-scaled one;
+  #   * 2 host-lane rows and 1 host-only row -- negative-lane pairs the corpus itself presents that the
+  #     manifest does not admit, which nothing previously asserted must stay off the mesh.
+  # None of the twelve is a hand-added row: each carries the axis that asked for it in
+  # `source_reference`, and `synth_capsule_corpus.py --check` re-derives the set from the requirement.
+  #
+  # RE-SEALED 2026-09-04 from 87/73 to 87/72, on the measured certification cost recorded above. The
+  # SOURCE POOL IS UNCHANGED at 87 -- no capsule was added, deleted or renamed -- and the whole delta is
+  # one row crossing from admitted to excluded, enumerated rather than inferred from the count:
+  #   * SY_model_tiny_llama moves into `resource_bound.exclude_capsules`, taking the exclusion list from
+  #     14 rows to 15. Capability exclusions are still exactly the eleven bf16 rows named below and did
+  #     not move; resource exclusions go from three to four.
+  # `required_admitted_models` also gains SY_micro_model, which changes no count at all -- it was
+  # already admitted -- but it is now DECLARED, and that is the point: the descriptor and the corpus had
+  # disagreed about which model capsules are graded (the corpus admitted four, the descriptor named
+  # two), and readiness proves that equality independently rather than taking either side's word.
+  #
+  # RE-SEALED 2026-09-05 from 87/72 to 111/96, after the corpus was re-derived from this target's own
+  # conformance requirement (merlin/contract/capsules/conformance/gemmini.yaml). THE EXCLUSION LISTS DID
+  # NOT MOVE -- still eleven capability rows and four resource rows -- so the whole delta is +24 on both
+  # sides, and it is enumerated against the previous pool rather than inferred from the count:
+  #
+  #   +3  the batched / padded / strided sources (GB0_batched_matmul_i8, GC7_conv2d_pad_i8,
+  #       GC8_conv2d_stride2_i8). These landed in the shared pool on 2026-09-04 and were simply never
+  #       re-sealed; all three are i8 on the declared datapath, so nothing about the boundary changes.
+  #   +12 the application axis (SY_app_contraction_i8_*), one per class in the requirement's
+  #       `application_shapes.required` -- six shapes a real capture presents, each as an L3 capsule
+  #       plus the L2 extension that rests on it via `extends`.
+  #   +10 the convolution-window axis (SY_conv_*), one per window in `conv_geometry.required`. Every
+  #       window is recovered structurally from the captures; a window whose padding the capture does
+  #       not carry is minted at zero padding and says so in its name and provenance rather than
+  #       guessing an identity.
+  #   +1/-2 the shape-geometry axis: SY_geometry_projection_like is minted, and
+  #       SY_geometry_gemv_like / SY_geometry_tall_skinny are not, because the re-derived class
+  #       representatives for those two exceed `shape_geometry.materialization_ceiling_elements`
+  #       (262144). Their classes are still REQUIRED by the requirement and are reported as refused at
+  #       mint time; the corpus does not pretend to cover them.
+  #
+  # THE COST WAS RE-MEASURED for the new admitted set on the same law and the same tool
+  # (build_tools/scripts/check_cert_affordability.py): 2.38 h of predicted L3 wall-clock across its 85
+  # shape-resolvable L3-demanding rows, up from 1.74 h across 66, and the most expensive single capsule
+  # is unchanged at 361 s. The gate names none of the added rows in any over-budget, beyond-evidence or
+  # unpriceable list.
+  #
+  # WHAT DID NOT ENTER THE POOL, and why that is the point. The same regeneration also left 34
+  # `SY_app_contraction_f32_*` / `_bf16_*` directories on disk, which would have taken discovery to 145.
+  # They are NOT admitted and NOT excluded -- they were removed, because the requirement itself refuses
+  # their classes by name: `application_shapes.refused` records, for each one, "this target's manifest
+  # does not admit contraction/f32, so the work in this class belongs on the HOST lane and not on the
+  # accelerator ... an accelerator capsule here would demand an offload the datapath cannot perform and
+  # could not pass under any correct behaviour". They are stale output of a generator run that predated
+  # that refusal. Admitting them would have grown the capability-exclusion list from 11 rows to 45; the
+  # recomputed hardware-ineligible set after removing them is again EXACTLY the eleven bf16 rows named
+  # below, which is the independent check that the pool is the pool the requirement asks for.
+  #
+  # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
+  # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
+  # is exactly that shape: one row in, one row out, same count, different cohort. What does catch it is
+  # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
+  # these integers, when the question is whether the cohort is the SAME cohort.
+  expected_cohort:
+    source_capsules: 115
+    admitted_capsules: 97
+  hidden_capability_admission:
+    source_capsules: 15
+    admitted_capsules: 14
+  # Exactly the source-pool rows the frozen Gemmini operand capabilities prove ineligible. Readiness
+  # recomputes this set from the hardware contract and requires exact equality.
+  capability_exclude_capsules:
+    - GC1_depthwise_bf16_pt
+    - GC2_maxpool_bf16_pt
+    - GC3_avgpool_bf16_pt
+    - GC4_global_avg_bf16_pt
+    - GC5_fused_matmul_bias_bf16_pt
+    - GC6_bias_add_bf16_pt
+    - GF1_softmax_bf16_pt
+    - GF2_attn_full_bf16_pt
+    - GF3_geglu_bf16_pt
+    - GF4_add_bf16_pt
+    - GF5_gelu_bf16_pt
+  resource_bound:
+    # Full-size capstones are retained in the source pool but excluded by an explicit resource policy,
+    # not by the hardware predicate: every one of them is eligible on the frozen contract and is priced
+    # out of the cycle-accurate tier. The three representatives that ARE certified, with their predicted
+    # L3 cost on the law cited above: M2 the full-model representative (4 s), M3 the focused
+    # accelerator->host->accelerator seam (171 s), and SY_micro_model the composition capstone (361 s).
+    # All three run without a model time ceiling. SY_model_tiny_llama is the fourth exclusion, at 38.6 h
+    # predicted for that one capsule and an unpriced 1.10-billion-element operand side.
+    policy: representative_l3_capstones_v1
+    exclude_capsules:
+      - GX0_interop_rvv_lane
+      - M0_small_llama_gemmini
+      - M1_lstmnetvit_gemmini
+      - SY_model_resnet50
+      - SY_model_tiny_llama
+      # Added 2026-09-10 with source_capsules 113 -> 115. `SY_model_smolvla` and
+      # `M4_smolvla_denoise_gemmini` were committed to the shared corpus while runs were in
+      # flight, and every run on THIS descriptor then failed closed with `source cohort drift:
+      # descriptor expects 113, discovered 115`. They are whole-model rows, so they belong in
+      # the same resource exclusion as the four above rather than in the graded set. Verified
+      # on a scratch copy before applying: admitted_capsules stays 97, so the denominator every
+      # run on this descriptor is compared on does NOT move.
+      - SY_model_smolvla
+      - M4_smolvla_denoise_gemmini
+    required_admitted_models:
+      - M2_microvit_gemmini
+      - M3_host_island_seam_gemmini
+      - SY_micro_model
+
+# Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces). This is
+# an experiment CHOICE (which finished backends to hide), so it is declared here rather than derived.
+# Names resolve under artifacts/targets/<target>/.
+answer_surfaces:
+  prior_backends: [merlin_native_v0, hand_smoke_oot, agent_spec_v0_mlir_oot, agent_spec_v1_mlir_oot]
+
+# Phase 2 must optimize an honest complete model already certified by the immutable 92/96 Phase 1
+# snapshot. M2 is that run's deliberately reduced (~4 s L3) full-model representative. This explicit
+# declaration prevents a size-based selector from substituting the smaller M3 host-island seam. A future
+# Phase 1 snapshot containing a capsule-level global objective must agree with this declaration.
+performance:
+  global_objective_capsule: M2_microvit_gemmini
+
+# How the simulator runs (correctness L2 / RTL L3). spike + verilator come from the chipyard conda env.
+toolchain:
+  sim_via: chipyard
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE HOST THIS TARGET'S LANE COMPILES FOR, a key of merlin.runtime.boards.
+#
+# Declared because nothing derives it: the board is a fact about the SoC the accelerator sits in, not
+# about the accelerator. Its absence was silent -- `system_for` yields host=None, `place.host_units`
+# then synthesizes a SCALAR-ONLY host, and work that belongs on the host vector lane lands on a scalar
+# one with no error, because "no board declared" and "a board with no vector unit" were the same value.
+#
+# chipyard_kodiak, not chipyard_riscv64, on this target's own evidence: `toolchain.sim_via: chipyard`
+# says the SoC is chipyard, and `host_lane` below pins an RVV package -- so the host must have a vector
+# unit, and chipyard_kodiak is the chipyard board that declares vector harts (2 of 3, VLEN 512).
+host:
+  board: chipyard_kodiak
+
+# THE ONLY INPUT CAPSULE SYNTHESIS CANNOT DERIVE. Everything else about this target's corpus comes
+# from its own conformance requirement (admitted x observed, at the boundaries its RTL declares).
+#
+# `models` names which workloads this target is FOR -- the requirement's `observed` half is a census of
+# real captures, and without a declared roster the denominator of a tracked requirement is an untracked
+# directory listing. `precision_preference` RANKS the dtypes the target already admits, to break ties on
+# axes no required cell pins; it is filtered against the admitted set and can never widen it, and a
+# token that does not survive is reported rather than silently ignored.
+workload_spec:
+  # THE GRADED ROSTER — the models this target's generalization CLAIM is measured on, and the
+  # denominator `report_generalization_claim` computes over. Both are claim models: held out of
+  # derivation entirely, so the corpus is never built from what it is then said to generalize to.
+  # `smolvla` and `lstmnetvit` left this list when they became derivation sources below; counting a
+  # model you derived FROM as a model you generalize TO is the circularity the holdout exists to stop.
+  models: [resnet50, tiny_llama, smolvla]
+  # THE DERIVATION APPLICATIONS — the exported models this target is FOR, whose real contraction shapes
+  # the corpus is built from. Named as bundles in the recapture store rather than as a directory, so the
+  # statement is reviewable here instead of depending on which subdirectories a generated tree happens
+  # to hold. `check_conformance_coverage._applications` raises if any of these is a claim model.
+  #
+  # The pretransposed variants are deliberately absent: they are layout rewrites of the captures below,
+  # not separate applications, and the layout they differ in is already a class axis.
+  applications:
+    - smolvla_fp32_consistent
+    - smolvla_int8_consistent
+    - smolvla_denoise_step_fp32_app
+    - lstmnetvit_fp8_consistent
+    - lstmnetvit_int8_consistent
+    - lstmnetvit_int8_w8a8_consistent
+  # Seconds one cycle-accurate certification may take. DECLARED, so the application axis records
+  # `budget_source: declared` rather than silently inheriting a default nobody chose.
+  cert_budget_s: 300
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
+host_lane:
+  description: >-
+    The int8 RVV host compiler: the scalar/vector lane every partitioned Gemmini model capsule falls
+    back to for the work the accelerator does not admit (normalization, reduction, activation tails).
+    All of this experiment's whole-model capstones declare compile_dtype=int8, so the frozen package
+    must declare dtype_strategy=int8_w8a8. Frozen for the duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS, declared so the profile key is checkable at load time. `resolve`
+  # cross-checks it against the package's own knobs, so a package filed under the wrong precision is
+  # refused instead of quietly grading a submission against arithmetic it cannot produce.
+  dtype_strategy: int8_w8a8
+  # NOT `published`, and `branch: UNKNOWN` was the honest answer to a question that should not have
+  # been asked. This package never existed upstream: its manifest records
+  # `authoring.mode: deterministic_generated_from_spec` and
+  # `publication.promoted_by: merlin.rvvgen.promote_champion` at 20260726T121824Z, certified by
+  # k1_board on run k1_int8_wholemodel_ab_tiny_llama. A branch name here would be a fiction; the pin
+  # is the package tree digest, which is a content check and strictly stronger than a name.
+  provenance: in_tree_minted
+  package: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

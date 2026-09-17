@@ -5,11 +5,11 @@ Extract evidence records from selected source files and write `evidence_graph.js
 under the run's `contracts/` directory. Used by v3_evidence_graph and v6_full methods.
 
 ## Allowed inputs (read-only)
-- `datasets/gemmini/source_snapshot/`
-- `datasets/gemmini/selected_docs/`
-- `datasets/gemmini/selected_rtl/`
-- `datasets/gemmini/selected_kernels/`
-- `datasets/gemmini/selected_traces/`
+- `datasets/{target}/source_snapshot/`
+- `datasets/{target}/selected_docs/`
+- `datasets/{target}/selected_rtl/`
+- `datasets/{target}/selected_kernels/`
+- `datasets/{target}/selected_traces/`
 
 ## Allowed outputs (write)
 - `<run_dir>/contracts/evidence_graph.jsonl`
@@ -30,6 +30,6 @@ print(f'{len(records)} evidence records OK')
 ```
 
 ## Success criteria
-- `evidence_graph.jsonl` contains ≥ 10 records covering core Gemmini concepts
+- `evidence_graph.jsonl` contains ≥ 10 records covering core {target} concepts
 - Every record has `concept`, `source`, and `quote` fields
 - No records reference files outside the selected_* directories

@@ -17,16 +17,24 @@ def _add_tracking_args(p: argparse.ArgumentParser) -> None:
         choices=("local", "mlflow", "full", "debug"),
         help="Tracking mode (default: local)",
     )
-    p.add_argument("--mlflow-tracking-uri", default=None, metavar="URI",
-                   help="MLflow tracking server URI (e.g. http://localhost:5000)")
-    p.add_argument("--experiment-name", default=None, metavar="NAME",
-                   help="MLflow experiment name")
-    p.add_argument("--otel-endpoint", default=None, metavar="URL",
-                   help="OpenTelemetry OTLP endpoint (e.g. http://localhost:4318/v1/traces)")
+    p.add_argument(
+        "--mlflow-tracking-uri",
+        default=None,
+        metavar="URI",
+        help="MLflow tracking server URI (e.g. http://localhost:5000)",
+    )
+    p.add_argument("--experiment-name", default=None, metavar="NAME", help="MLflow experiment name")
+    p.add_argument(
+        "--otel-endpoint",
+        default=None,
+        metavar="URL",
+        help="OpenTelemetry OTLP endpoint (e.g. http://localhost:4318/v1/traces)",
+    )
 
 
 def cmd_init_run(args: argparse.Namespace) -> int:
     from harness.materialize_run import materialize
+
     return materialize(
         root=_root(),
         target=args.target,
@@ -44,6 +52,7 @@ def cmd_init_run(args: argparse.Namespace) -> int:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     from harness.run_experiment import validate_run
+
     return validate_run(
         run_path=Path(args.run_path),
         root=_root(),
@@ -56,8 +65,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     from harness.compare_runs import compare
-    output_dir = Path(args.output_dir) if args.output_dir else (
-        _root().parents[2] / "out" / "artifacts" / "targetgen-evals" / args.target)
+
+    output_dir = (
+        Path(args.output_dir)
+        if args.output_dir
+        else (_root().parents[2] / "out" / "artifacts" / "targetgen-evals" / args.target)
+    )
     return compare(root=_root(), target=args.target, output_dir=output_dir)
 
 
@@ -73,11 +86,14 @@ def main() -> None:
     p_init.add_argument("--method", required=True, help="Method name (e.g. v0_naive_claude)")
     p_init.add_argument("--seed", type=int, required=True, help="Random seed integer")
     p_init.add_argument("--force", action="store_true", help="Overwrite existing run directory")
-    p_init.add_argument("--smoke", action="store_true", default=True,
-                        help="Mark as smoke test (default: true; use --no-smoke for real baseline)")
+    p_init.add_argument(
+        "--smoke",
+        action="store_true",
+        default=True,
+        help="Mark as smoke test (default: true; use --no-smoke for real baseline)",
+    )
     p_init.add_argument("--no-smoke", dest="smoke", action="store_false")
-    p_init.add_argument("--budget", default="cheap_smoke",
-                        help="Budget profile name (default: cheap_smoke)")
+    p_init.add_argument("--budget", default="cheap_smoke", help="Budget profile name (default: cheap_smoke)")
     _add_tracking_args(p_init)
 
     p_val = sub.add_parser("validate", help="Validate a run directory")

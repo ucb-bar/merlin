@@ -9,9 +9,9 @@ Does NOT exercise creative discretion — it is a code emitter, not a designer.
 - `<run_dir>/contracts/lowering_plan.yaml`
 
 ## Allowed outputs (write)
-- `<run_dir>/generated/gemmini-mlir/xdsl/<dialect_name>.py`
-- `<run_dir>/generated/gemmini-mlir/xdsl/lowering.py`
-- `<run_dir>/generated/gemmini-mlir/xdsl/__init__.py`
+- `<run_dir>/generated/{target}-mlir/xdsl/<dialect_name>.py`
+- `<run_dir>/generated/{target}-mlir/xdsl/lowering.py`
+- `<run_dir>/generated/{target}-mlir/xdsl/__init__.py`
 
 ## Forbidden modifications
 - `<run_dir>/contracts/` — schema is read-only for this role
@@ -24,6 +24,6 @@ python -m harness.cli validate <run_dir>  # checks R1, R2, R3
 ```
 
 ## Success criteria
-- `generated/gemmini-mlir/xdsl/` is non-empty (R2 passes)
+- `generated/{target}-mlir/xdsl/` is non-empty (R2 passes)
 - No `.td` or `.cpp` files present (R3 passes)
 - Every op in `dialect_plan.yaml` has a corresponding class in the generated Python

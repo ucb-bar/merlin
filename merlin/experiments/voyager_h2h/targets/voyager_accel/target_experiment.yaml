@@ -1,0 +1,99 @@
+# DRAFT descriptor for `voyager_accel` — the Voyager accelerator release as a merlin target.
+#
+# Subject: the pinned `voyager_accelerator` release (e3a725db, code.stanford.edu/voyager/accelerator),
+# checked out read-only at out/build/external/voyager-accelerator. The full evidence-backed fact map
+# this file is derived from — every value with its file:line — is
+# merlin/experiments/voyager_h2h/VOYAGER_ACCEL_TARGET.md.
+#
+# WHY THIS FILE IS HERE AND NOT UNDER merlin/experiments/capsule_bench/targets/ — this is the
+# promotion boundary, and it is deliberate. `descriptor_for()` resolves this path just the same
+# (target_experiment.py:665-666, glob `*/targets/{t}/{f}`), so every tool that asks for the
+# voyager_accel descriptor finds it. What capsule_bench/targets/ ADDITIONALLY means is membership of
+# the LIVE roster: merlin/tests/infra/test_sandbox_isolation.py globs exactly that directory and
+# generates + audits a bundle for every descriptor in it, and build_tools/scripts/_target_roster.py
+# reads it to extend the no-target-name gate. Measured: moving this file there makes 6 sandbox tests
+# fail, correctly — this target has no capsule corpus, no backend, no oracle adapter and no sim
+# toolchain, so no bundle can be built for it. MOVING THIS FILE INTO capsule_bench/targets/ IS THE
+# ACT THAT MAKES voyager_accel LIVE; do it when the first milestone (VOYAGER_ACCEL_TARGET.md
+# section 4) runs, not before.
+#
+# STATUS: SCOPING DRAFT. This target is NOT runnable yet. `merlin-onboard` will refuse it (correctly:
+# merlin has no fact-extractor family that can read a Catapult/SystemC target — gap G1 in the fact
+# map), and no capsule corpus, backend, oracle adapter or sim toolchain exists for it. Nothing here
+# claims otherwise, and no grading / host_lane / capsule_corpus block is declared, because declaring
+# one would assert a cohort this target cannot run.
+#
+# NAMING: distinct from every pin name on purpose. `voyager_accelerator` and
+# `voyager_compiler_accel_pair` are hardware/toolchain revisions; `voyager_accel` is the merlin
+# target. It is already the run-dir axis (out/runs/voyager_accel/plane_b/...).
+target: voyager_accel
+
+# Registry pins this target's every result depends on. BOTH are required, and both are verified by
+# content: the accelerator generator alone cannot produce a program — the paired compiler revision is
+# the only one whose IR the release's own flow consumes (STATUS.md, "Voyager's current compiler does
+# not target its own public hardware release").
+hardware_pins:
+  - voyager_accelerator
+  - voyager_compiler_accel_pair
+
+rtl:
+  # NOT `mlc`. This target's RTL is produced by Catapult HLS from SystemC/Matchlib templates, not
+  # elaborated from Chisel/FIRRTL, so mlc/CIRCT discovery has nothing to read. There is no `via:`
+  # value that fits today; see gap G1. Left UNSET deliberately rather than set to a value that would
+  # route fact extraction at a reader that would return nothing and be recorded as "no facts".
+  #
+  # repo: the pin resolves it (root_env MERLIN_EXT_VOYAGER_ACCELERATOR, hardware_pins.yaml:896).
+  #
+  # operand_store: NOT declared, and this is a derived absence, not an omission. The device has NO
+  # software-addressable on-chip memory: its three buffers (input 2x1024x128b = 32 KiB, weight
+  # 2x1024x128b = 32 KiB, accumulator 1x1024x384b = 48 KiB, total 112 KiB for the INT8 16x16 build)
+  # are filled only by the units' own address generators from parameters.
+  # cite: src/MatrixUnit.h:42,74,110 + src/ArchitectureParams.h:309-327 + src/DoubleBuffer.h:12-16
+  #       + src/DualPortBuffer.h:9-16; confirmed in the built RTL (DoubleBuffer_1024_128 x2,
+  #       DualPortBuffer_Pack1D_DataTypes_int24_16UL_1024 x1).
+  # The capacity bound that actually binds a program is the loop-tile bound, not a byte budget:
+  #   x0*c0 <= INPUT_BUFFER_SIZE ; k0*c0*IC_DIMENSION <= WEIGHT_BUFFER_SIZE ; x0*k0 <= ACCUM_BUFFER_SIZE
+  # cite: test/common/Tiling.cc:524-560 (the release's own tiler enforces exactly these).
+  # See gap G5: merlin's memory_model axis cannot express a unit-mastered, no-scratchpad device.
+
+hardware_spec:
+  # NO `isa_headers`. This is the defining fact about this target and it is derived, not assumed:
+  # the control interface is NOT an ISA. Each unit owns a queue of 64-bit words; the host bit-packs a
+  # MatrixParams / VectorParams struct in Marshall order and streams it; ParamsDeserializer rebuilds
+  # it. There is no opcode, no length field, no tag and no framing — a deserializer pops exactly
+  # ceil(T::width/64) words and reassembles the struct.
+  # cite: src/Accelerator.h:22,64,110,139,173 (the queues); src/ParamsDeserializer.h:15-26
+  #       (get_serialized_params<T,64>); src/Params.h:205-305 (the Marshall order).
+  #
+  # NO `hwbringup_set`, NO `curated_harness`: neither exists. The release's own testbench
+  # (test/common/Harness.cc) is driven by its legacy param.proto model.txt, not by a merlin artifact;
+  # what it would take to drive ONE matmul from a merlin-produced buffer is the step list in
+  # VOYAGER_ACCEL_TARGET.md section 4.
+  #
+  # The DECLARED contract (a declaration, deliberately not an override).
+  target_contract: merlin/targets/voyager_accel/contracts/target_contract.yaml
+
+toolchain:
+  # UNKNOWN. There is no merlin-side simulator for this target. The release's own flow is
+  # Catapult HLS -> Verilog -> VCS (and a pre-HLS SystemC model), driven today only by
+  # merlin/experiments/voyager_h2h/scripts/plane_b_regression.sh. Registering a `sim_via` would
+  # claim a sandbox toolchain key that does not exist.
+  sim_via: ""
+
+# NO `capsule_corpus`. A voyager_accel corpus would need int8 x int8 -> int24 goldens (the INT8 build
+# accumulates in int24, cite: src/ArchitectureParams.h:96 + datatypes/DataTypes.h:34), which matches
+# no shipped corpus: the gemmini integer corpus is i8xi8->i32. Declaring one would grade this target
+# against the wrong accumulator width.
+
+# NO `grading:` block: this target runs no cohort yet.
+# NO `host_lane:`: there is no host lane — the device has no host-side software stack in the release.
+# NO `host.board:`: the release ships no SoC (gap: UNKNOWN U2/U3 in the fact map).
+# NO `preflight:`: nothing is runnable to preflight.
+
+# Free-form note for a reader who arrives here first.
+# THE CAP THAT RIDES ON EVERY NUMBER FROM THIS TARGET, verified and reproduced:
+# src/MatrixProcessor.h:24 is `static constexpr int FIFO_DEPTH = SUPPORT_MX ? 8 : 1;` and SUPPORT_MX
+# is true only for MXINT8/MXNF4 (src/ArchitectureParams.h:106-147), so every INT8/E4M3/posit build
+# ships a depth-1 accumulate-to-writeback FIFO and is capped at ~50% of its own matrix throughput. A
+# head-to-head against a merlin backend on this RTL must build BOTH sides patched, or report the cap
+# in the cell. Evidence and the one-line A/B: merlin/experiments/voyager_h2h/PLANE_B.md.

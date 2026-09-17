@@ -5,8 +5,20 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 `sys.path`); **nothing in the library depends on them** (one-way — safe to move/prune).
 
 - Small workstream experiments: `kernel_policy/`, `gemmini_cert/`.
-- Benchmark harnesses: `agent_bench/` (target-agnostic reference scaffold), `gemmini_capsule_bench_v0/`,
-  `gemmini_perf_bench/`, `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated eval project).
+- Benchmark harnesses: `capsule_bench/` (the multi-target capsule benchmark — six targets, one
+  harness), `agent_bench/` (target-agnostic reference scaffold), `gemmini_perf_bench/`,
+  `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated; 0 real runs — do not cite it).
+- Cross-compiler studies: `llm_kernel_vs_compiler_v0/`, `voyager_h2h/` (merlin vs the Voyager
+  compiler, same-hardware and home-turf planes), `dataset_accuracy/` (full-validation-set accuracy;
+  first milestone reproduces Voyager's Table 3 ImageNet cells with Voyager's own quantizer).
+
+## Status (enforced)
+Every experiment's AGENT.md carries a `Status:` line in its first 15 lines: `active`, `frozen`
+(finished; its results are in `FINDINGS.md`, which must exist) or `reference` (a scaffold other
+experiments copy, with no runs of its own). `check_structure.py` "experiment status" enforces it.
+There is no `retired` status: retiring an experiment means deleting its directory, and git history is
+the archive. Decide by citation, not commit age -- a quiet experiment a guide still cites is frozen,
+not abandoned.
 
 ## What lives here (curated inputs only)
 - Task specs, `input_bundles/`, method specs, per-target guides, and the harness drivers that run them.
@@ -14,8 +26,9 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 
 ## What does NOT belong here
 - **Reusable library code** → lift into `merlin/python/merlin/`.
-- **Generated output** → `runs/<target>/<suite>/` (runs) or `artifacts/` (products). Never in-tree —
-  the `check_artifact_layout` gate forbids `experiments/*/reports/` and `experiments/*/runs/`.
+- **Generated output** → `out/runs/<target>/<suite>/` (runs) or `out/artifacts/` (products). Never
+  in-tree — the `check_artifact_layout` gate forbids `experiments/*/reports/` and
+  `experiments/*/runs/`. The top-level `runs/`/`artifacts/`/`build/` roots are retired.
 
 ## The rule (consumption direction)
 Experiments **only consume** the library; **nothing in `merlin/python/merlin/` may read an

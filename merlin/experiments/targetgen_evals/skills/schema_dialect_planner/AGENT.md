@@ -8,7 +8,7 @@ Every op claim must be evidence-grounded.
 ## Allowed inputs (read-only)
 - `<run_dir>/contracts/evidence_graph.jsonl` (if produced by evidence_extractor)
 - `<run_dir>/contracts/kernel_records.jsonl` (if produced by kernel mining)
-- `datasets/gemmini/golden/expected_dialect_features.yaml` (reference only)
+- `datasets/{target}/golden/expected_dialect_features.yaml` (reference only)
 - `harness/schemas/*.schema.json`
 
 ## Allowed outputs (write)

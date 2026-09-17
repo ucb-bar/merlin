@@ -1,43 +1,80 @@
 #!/usr/bin/env python3
-"""Assemble a run's perf_results.json from the per-kernel <id>.json files (the source of truth).
+"""Verify that per-replicate Arm4 files exactly compose the sealed result sequence.
 
-run_perf_bench writes perf_results.json scoped to ONLY the kernels of its invocation, so a sweep done
-in several batches (spike-only resume, etc.) would clobber it. Each kernel's <id>.json is written
-incrementally and complete, so we rebuild perf_results.json by collecting them in corpus order. Run
-this, then merge_iree_arm.py, then gen_perf_report.py.
-
-Usage: assemble_results.py [--run-id perf_full_0001]
+``perf_results.json`` is sealed by the runner and is the sole reporting input.  This command never
+rewrites or reorders it; it only proves that each independently written pair file agrees with it.
 """
 from __future__ import annotations
 
 import argparse
 import json
-
-import yaml
+from pathlib import Path
 
 import _pbcommon as PB
+import perf_reporting as PR
+
+
+def _run_dir(run_id: str) -> Path:
+    if not run_id or Path(run_id).name != run_id or run_id in (".", ".."):
+        raise PR.ReportingGateError("performance run ID must be an explicit simple directory name")
+    return PB.RUNS / run_id
+
+
+def _pair_file(run: Path, identity: tuple[str, str, str]) -> Path:
+    family, capsule, replicate = identity
+    return run / f"{family}__{capsule}__{replicate}.json"
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--run-id", default="perf_full_0001")
-    a = ap.parse_args(argv)
-    run = PB.RUNS / a.run_id
-    doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
-    order = [k["id"] for sec in ("golden_kernels", "model_kernels", "attention_kernels",
-                                 "conv_kernels", "movement_kernels")
-             for k in (doc.get(sec) or [])]
-    rows, missing = [], []
-    for kid in order:
-        f = run / f"{kid}.json"
-        if f.is_file():
-            rows.append(json.loads(f.read_text()))
-        else:
-            missing.append(kid)
-    (run / "perf_results.json").write_text(json.dumps(rows, indent=2))
-    print(f"assembled {len(rows)} kernels into {run}/perf_results.json")
-    if missing:
-        print(f"  not yet run ({len(missing)}): {', '.join(missing)}")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", required=True)
+    args = parser.parse_args(argv)
+    run = _run_dir(args.run_id)
+    campaign, sealed_rows, counts = PR.load_reportable_run(run)
+    expected = PR.expected_identities(campaign)
+
+    assembled: list[dict] = []
+    used_paths: set[Path] = set()
+    offset = 0
+    while offset < len(expected):
+        family, capsule, _simulator, replicate = expected[offset]
+        base = (family, capsule, replicate)
+        pair_expected = expected[offset:offset + 2]
+        if (len(pair_expected) != 2
+                or any((row[0], row[1], row[3]) != base for row in pair_expected)):
+            raise PR.ReportingGateError(
+                f"expected identities do not form one simulator pair: {base}")
+        path = _pair_file(run, base)
+        if path in used_paths:
+            raise PR.ReportingGateError(f"multiple identities resolve to per-replicate file {path}")
+        used_paths.add(path)
+        if path.is_symlink() or not path.is_file():
+            raise PR.ReportingGateError(f"per-replicate result is absent or linked: {path}")
+        try:
+            pair = json.loads(path.read_bytes())
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            raise PR.ReportingGateError(
+                f"per-replicate result is unreadable at {path}: {exc}") from exc
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise PR.ReportingGateError(
+                f"per-replicate result must contain exactly two cells: {path}")
+        observed = tuple(
+            PR.identity_tuple(row.get("identity"), owner="per-replicate result")
+            if isinstance(row, dict) else PR.identity_tuple(None, owner="per-replicate result")
+            for row in pair
+        )
+        if observed != pair_expected:
+            raise PR.ReportingGateError(
+                f"per-replicate result {path.name!r} disagrees with expected identities")
+        assembled.extend(pair)
+        offset += 2
+
+    if assembled != sealed_rows:
+        raise PR.ReportingGateError(
+            "per-replicate result files do not compose the exact sealed perf_results sequence")
+    PR.validate_rows(assembled, expected, counts)
+    print(f"verified {len(assembled)} sealed Arm4 cells from {len(used_paths)} "
+          f"per-replicate files; left {run / 'perf_results.json'} unchanged")
     return 0
 
 

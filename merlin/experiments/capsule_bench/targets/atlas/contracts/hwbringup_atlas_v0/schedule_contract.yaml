@@ -1,0 +1,201 @@
+# Explicit-issue scheduling facts for the self-hosted Atlas ISA.
+#
+# This is target data, not compiler logic. The generic ISA linter consumes the same schema for any
+# accelerator that exposes a frontend delay instruction instead of dynamic resource interlocks.
+version: 1
+delay_instruction:
+  mnemonic: DELAY
+  cycles_operand: imm
+control_flow:
+  relative_branches:
+    - mnemonics: [BEQ, BNE, BLT, BGE, BLTU, BGEU]
+      immediate_operand: imm
+      immediate_bits: 13
+      # The assembler accepts word offsets and encodes twice that value; the word-indexed scalar PC
+      # divides the decoded immediate by two.
+      decoded_immediate_units_per_instruction: 2
+      comparison_registers: [rs1, rs2]
+      destination_operand: rd
+      source_operands: [rs1, rs2]
+      zero_register: 0
+      reinitialization_severity: error
+      evidence:
+        kind: target_assembler_and_rtl
+        sources:
+          - baremetal/assembler.py
+          - src/main/scala/atlas/scalar/ScalarCore.scala
+    - mnemonics: [JAL]
+      immediate_operand: imm
+      immediate_bits: 21
+      decoded_immediate_units_per_instruction: 2
+      out_of_program_severity: error
+minimum_issue_gap:
+  - name: tensor_lsu_resource
+    producers: [VLOAD, VSTORE]
+    consumers: [VLOAD, VSTORE]
+    cycles: 34
+    severity: error
+    evidence:
+      kind: target_execution_unit
+      sources:
+        - npu_model/hardware/lsu.py
+    rationale: >-
+      The tensor LSU occupies its execution resource for 34 cycles. A DELAY 33 instruction yields a
+      35-cycle issue distance because the producer and delay instruction each consume an issue cycle.
+  - name: vpu_vli_resource
+    producers: [VLI_ALL, VLI_ROW, VLI_COL, VLI_ONE]
+    consumers: &vpu_ops
+      [VLI_ALL, VLI_ROW, VLI_COL, VLI_ONE,
+       VADD_BF16, VSUB_BF16, VMUL_BF16, VMINIMUM_BF16, VMAXIMUM_BF16, VMOV,
+       VRECIP_BF16, VEXP_BF16, VEXP2_BF16, VPACK_BF16_FP8, VUNPACK_FP8_BF16,
+       VRELU_BF16, VSIN_BF16, VCOS_BF16, VTANH_BF16, VLOG2_BF16,
+       VSQRT_BF16, VSQUARE_BF16, VCUBE_BF16, VTRPOSE_XLU,
+       VREDSUM_BF16, VREDMIN_BF16, VREDMAX_BF16,
+       VREDSUM_ROW_BF16, VREDMIN_ROW_BF16, VREDMAX_ROW_BF16]
+    cycles: 65
+    severity: error
+    evidence: &vpu_latency_evidence
+      kind: target_execution_unit
+      sources: [npu_model/hardware/vpu.py]
+  - name: vpu_simple_resource
+    producers: &vpu_simple_bf16
+      [VADD_BF16, VSUB_BF16, VMUL_BF16, VMINIMUM_BF16, VMAXIMUM_BF16, VMOV,
+       VRECIP_BF16, VEXP_BF16, VEXP2_BF16, VPACK_BF16_FP8, VUNPACK_FP8_BF16,
+       VRELU_BF16, VSIN_BF16, VCOS_BF16, VTANH_BF16, VLOG2_BF16,
+       VSQRT_BF16, VSQUARE_BF16, VCUBE_BF16, VTRPOSE_XLU]
+    consumers: *vpu_ops
+    cycles: 66
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_column_reduction_resource
+    producers: &vpu_column_reductions [VREDSUM_BF16, VREDMIN_BF16, VREDMAX_BF16]
+    consumers: *vpu_ops
+    cycles: 130
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_sum_resource
+    producers: [VREDSUM_ROW_BF16]
+    consumers: *vpu_ops
+    cycles: 39
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_minmax_resource
+    producers: &vpu_row_minmax [VREDMIN_ROW_BF16, VREDMAX_ROW_BF16]
+    consumers: *vpu_ops
+    cycles: 34
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: mxu0_transfer_resource
+    producers: [VMATPUSH_WEIGHT_MXU0, VMATPUSH_ACC_FP8_MXU0, VMATPUSH_ACC_BF16_MXU0,
+                VMATPOP_FP8_ACC_MXU0, VMATPOP_BF16_ACC_MXU0]
+    consumers: &mxu0_ops
+      [VMATPUSH_WEIGHT_MXU0, VMATPUSH_ACC_FP8_MXU0, VMATPUSH_ACC_BF16_MXU0,
+       VMATMUL_MXU0, VMATMUL_ACC_MXU0, VMATPOP_FP8_ACC_MXU0, VMATPOP_BF16_ACC_MXU0]
+    cycles: 32
+    severity: error
+    evidence: &mxu_latency_evidence
+      kind: target_execution_unit
+      sources: [npu_model/hardware/mxu.py]
+  - name: mxu0_matmul_resource
+    producers: [VMATMUL_MXU0, VMATMUL_ACC_MXU0]
+    consumers: *mxu0_ops
+    cycles: 96
+    severity: error
+    evidence: *mxu_latency_evidence
+  - name: mxu1_transfer_resource
+    producers: [VMATPUSH_WEIGHT_MXU1, VMATPUSH_ACC_FP8_MXU1, VMATPUSH_ACC_BF16_MXU1,
+                VMATPOP_FP8_ACC_MXU1, VMATPOP_BF16_ACC_MXU1]
+    consumers: &mxu1_ops
+      [VMATPUSH_WEIGHT_MXU1, VMATPUSH_ACC_FP8_MXU1, VMATPUSH_ACC_BF16_MXU1,
+       VMATMUL_MXU1, VMATMUL_ACC_MXU1, VMATPOP_FP8_ACC_MXU1, VMATPOP_BF16_ACC_MXU1]
+    cycles: 32
+    severity: error
+    evidence: *mxu_latency_evidence
+  - name: mxu1_matmul_resource
+    producers: [VMATMUL_MXU1, VMATMUL_ACC_MXU1]
+    consumers: *mxu1_ops
+    cycles: 35
+    severity: error
+    evidence: *mxu_latency_evidence
+
+# Result-visibility constraints are register-sensitive: independent VPU work may overlap, but a use of
+# a just-produced BF16 register pair must wait for that producer's declared execution latency. These
+# values come from the target model's execution-unit contract, not from any benchmark outcome.
+register_dependency_gap:
+  - name: vpu_simple_bf16_result_to_compute
+    producers: *vpu_simple_bf16
+    consumers: &vpu_bf16_consumers
+      [VADD_BF16, VSUB_BF16, VMUL_BF16, VMINIMUM_BF16, VMAXIMUM_BF16, VMOV,
+       VRECIP_BF16, VEXP_BF16, VEXP2_BF16, VRELU_BF16, VSIN_BF16, VCOS_BF16,
+       VTANH_BF16, VLOG2_BF16, VSQRT_BF16, VSQUARE_BF16, VCUBE_BF16, VTRPOSE_XLU,
+       VREDSUM_BF16, VREDMIN_BF16, VREDMAX_BF16, VREDSUM_ROW_BF16,
+       VREDMIN_ROW_BF16, VREDMAX_ROW_BF16]
+    producer_destination_operand: vd
+    consumer_source_operands: [vs1, vs2]
+    register_span: 2
+    cycles: 66
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_simple_bf16_result_to_store
+    producers: *vpu_simple_bf16
+    consumers: [VSTORE]
+    producer_destination_operand: vd
+    consumer_source_operands: [vd]
+    register_span: 2
+    cycles: 66
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_column_reduction_result_to_compute
+    producers: *vpu_column_reductions
+    consumers: *vpu_bf16_consumers
+    producer_destination_operand: vd
+    consumer_source_operands: [vs1, vs2]
+    register_span: 2
+    cycles: 130
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_column_reduction_result_to_store
+    producers: *vpu_column_reductions
+    consumers: [VSTORE]
+    producer_destination_operand: vd
+    consumer_source_operands: [vd]
+    register_span: 2
+    cycles: 130
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_sum_result_to_compute
+    producers: [VREDSUM_ROW_BF16]
+    consumers: *vpu_bf16_consumers
+    producer_destination_operand: vd
+    consumer_source_operands: [vs1, vs2]
+    register_span: 2
+    cycles: 39
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_sum_result_to_store
+    producers: [VREDSUM_ROW_BF16]
+    consumers: [VSTORE]
+    producer_destination_operand: vd
+    consumer_source_operands: [vd]
+    register_span: 2
+    cycles: 39
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_minmax_result_to_compute
+    producers: *vpu_row_minmax
+    consumers: *vpu_bf16_consumers
+    producer_destination_operand: vd
+    consumer_source_operands: [vs1, vs2]
+    register_span: 2
+    cycles: 34
+    severity: error
+    evidence: *vpu_latency_evidence
+  - name: vpu_row_minmax_result_to_store
+    producers: *vpu_row_minmax
+    consumers: [VSTORE]
+    producer_destination_operand: vd
+    consumer_source_operands: [vd]
+    register_span: 2
+    cycles: 34
+    severity: error
+    evidence: *vpu_latency_evidence

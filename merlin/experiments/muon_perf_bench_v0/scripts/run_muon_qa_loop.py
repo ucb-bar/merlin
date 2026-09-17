@@ -15,6 +15,7 @@ Usage:
   run_muon_qa_loop.py --run-id muon_circt_0001 --model claude-opus-4-8 [--effort high]
                       [--max-rounds 6] [--round-timeout 3600]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,10 +33,12 @@ for _c in (_HERE, *_HERE.parents):
         sys.path.insert(0, str(_c / "merlin" / "python"))
         break
 sys.path.insert(0, str(_HERE))
-import agent_selfcheck as SC                      # noqa: E402  (grade())
-from merlin.benchharness import runs_root          # noqa: E402  (canonical out/runs root)
-from merlin.targetgen import experiment_tokens as ET   # noqa: E402  (canonical transcript parser)
-from merlin.targetgen.rtl.facts import rtl_facts_path   # noqa: E402  (target-agnostic facts dir)
+import agent_selfcheck as SC  # noqa: E402  (grade())
+
+from merlin.benchharness import runs_root  # noqa: E402  (canonical out/runs root)
+from merlin.common import arrival_stamp as AS  # noqa: E402  (one arrival-time convention)
+from merlin.targetgen import experiment_tokens as ET  # noqa: E402  (canonical transcript parser)
+from merlin.targetgen.rtl.facts import rtl_facts_path  # noqa: E402  (target-agnostic facts dir)
 
 EXP = _REPO / "merlin/experiments/muon_perf_bench_v0"
 KERNELS = EXP / "kernels"
@@ -72,8 +75,10 @@ def assemble_workspace(ws: Path) -> None:
                 shutil.copy(f, d / f.name)
     # docs (the +CIRCT advisory + the how-to) and the self-check tool — advisories are optional;
     # skip any that aren't present (e.g. MUON_DIGEST.md is produced by muon_introspect, may be absent)
-    for src, dst in ((FACTS / "MUON_DIGEST.md", "MUON_DIGEST.md"),
-                     (BUNDLE / "MUON_BACKEND_GUIDE.md", "MUON_BACKEND_GUIDE.md")):
+    for src, dst in (
+        (FACTS / "MUON_DIGEST.md", "MUON_DIGEST.md"),
+        (BUNDLE / "MUON_BACKEND_GUIDE.md", "MUON_BACKEND_GUIDE.md"),
+    ):
         if src.is_file():
             shutil.copy(src, ws / dst)
         else:
@@ -98,29 +103,43 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, rnd: int, tim
     if rnd == 0:
         build_task(ws, run_dir)
     ws_task = ws / "TASK.md"
-    inner = (f"claude --print --model {model} --effort {effort} "
-             f"--permission-mode bypassPermissions --add-dir {ws} "
-             f"--output-format stream-json --verbose < {ws_task}")
+    inner = (
+        f"claude --print --model {model} --effort {effort} "
+        f"--permission-mode bypassPermissions --add-dir {ws} "
+        f"--output-format stream-json --verbose < {ws_task}"
+    )
     (run_dir / "rounds").mkdir(parents=True, exist_ok=True)
     tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
     epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
-    with open(tpath, "w") as tf, open(epath, "w") as ef:
-        proc = subprocess.run(["bash", "-c", inner], cwd=str(ws), stdout=tf, stderr=ef,
-                              timeout=timeout)
-    return proc.returncode
+    # Streamed, not redirected: a straight stdout redirect leaves no process able to observe a line,
+    # so the transcript carries no per-event wall time and a trajectory has to synthesise its axis.
+    # arrival_stamp appends `arrived_at` to every event, in the same shape every other driver writes.
+    return AS.stream_stamped(
+        ["bash", "-c", inner],
+        cwd=ws,
+        transcript=tpath,
+        stderr_path=epath,
+        timeout=timeout,
+        raw_path=run_dir / "rounds" / f"round_{rnd:02d}.stream.raw.jsonl",
+    )
 
 
 def grade_round(ws: Path, run_dir: Path, rnd: int, timeout: int) -> dict:
     runs = run_dir / "_qa_work" / f"runs_{rnd:02d}"
     if not (ws / "submission" / "manifest.yaml").exists():
-        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 0,
-                   "package_failure": {"plane": "schema", "detail": "no submission/manifest.yaml"},
-                   "per_capsule": []}
+        verdict = {
+            "all_pass": False,
+            "n_passed": 0,
+            "n_capsules": 0,
+            "package_failure": {"plane": "schema", "detail": "no submission/manifest.yaml"},
+            "per_capsule": [],
+        }
     else:
         verdict = SC.grade(str(ws / "submission"), str(ws / "capsules"), str(runs), timeout)
     (run_dir / "qa_history").mkdir(parents=True, exist_ok=True)
     (run_dir / "qa_history" / f"verdict_round_{rnd:02d}.json").write_text(
-        json.dumps(verdict, indent=2), encoding="utf-8")
+        json.dumps(verdict, indent=2), encoding="utf-8"
+    )
     (ws / "qa").mkdir(exist_ok=True)
     (ws / "qa" / "verdict.json").write_text(json.dumps(verdict, indent=2), encoding="utf-8")
     return verdict
@@ -132,40 +151,67 @@ def _transcript_usage(tpath: Path) -> dict:
     s = ET.parse_transcript(tpath)
     if not s.get("available"):
         return {"cost_usd": 0, "input_tokens": 0, "output_tokens": 0}
-    return {"cost_usd": s.get("estimated_cost_usd", 0) or 0,
-            "input_tokens": s.get("tokens_input", 0) or 0,
-            "output_tokens": s.get("tokens_output", 0) or 0}
+    return {
+        "cost_usd": s.get("estimated_cost_usd", 0) or 0,
+        "input_tokens": s.get("tokens_input", 0) or 0,
+        "output_tokens": s.get("tokens_output", 0) or 0,
+    }
 
 
-def finalize_report(run_dir: Path, model: str, effort: str, rounds: list[dict],
-                    verdict: dict, wall_s: float) -> None:
+def finalize_report(run_dir: Path, model: str, effort: str, rounds: list[dict], verdict: dict, wall_s: float) -> None:
     last = verdict
-    lines = [f"# Muon merlin+CIRCT agentic run — {run_dir.name}", "",
-             f"- model: `{model}`  effort: `{effort}`  rounds: {len(rounds)}  "
-             f"wall: {wall_s/60:.1f} min",
-             f"- result: **{last['n_passed']}/{last['n_capsules']} public capsules pass** "
-             f"({'ALL PASS' if last['all_pass'] else 'incomplete'})",
-             f"- FP peak = 32 GFLOP/s (64 flop/cycle @ 500 MHz)", "",
-             "## Per-capsule (final round)", "",
-             "| capsule | status | cycles | % FP peak |", "|---|---|---:|---:|"]
+    lines = [
+        f"# Muon merlin+CIRCT agentic run — {run_dir.name}",
+        "",
+        f"- model: `{model}`  effort: `{effort}`  rounds: {len(rounds)}  wall: {wall_s / 60:.1f} min",
+        f"- result: **{last['n_passed']}/{last['n_capsules']} public capsules pass** "
+        f"({'ALL PASS' if last['all_pass'] else 'incomplete'})",
+        f"- FP peak = 32 GFLOP/s (64 flop/cycle @ 500 MHz)",
+        "",
+        "## Per-capsule (final round)",
+        "",
+        "| capsule | status | cycles | % FP peak |",
+        "|---|---|---:|---:|",
+    ]
     for r in last.get("per_capsule", []):
-        lines.append(f"| {r['capsule']} | {r['status']} | {r.get('cycles') or '-'} | "
-                     f"{(str(r.get('pct_fp_peak'))+'%') if r.get('pct_fp_peak') is not None else '-'} |")
-    lines += ["", "## Effort per round", "", "| round | cost $ | in tok | out tok | passed |",
-              "|---|---:|---:|---:|---:|"]
+        lines.append(
+            f"| {r['capsule']} | {r['status']} | {r.get('cycles') or '-'} | "
+            f"{(str(r.get('pct_fp_peak')) + '%') if r.get('pct_fp_peak') is not None else '-'} |"
+        )
+    lines += [
+        "",
+        "## Effort per round",
+        "",
+        "| round | cost $ | in tok | out tok | passed |",
+        "|---|---:|---:|---:|---:|",
+    ]
     total_cost = 0.0
     for i, rr in enumerate(rounds):
         u = rr["usage"]
         total_cost += u["cost_usd"] or 0
-        lines.append(f"| {i} | {u['cost_usd']:.2f} | {u['input_tokens']} | {u['output_tokens']} | "
-                     f"{rr['verdict']['n_passed']}/{rr['verdict']['n_capsules']} |")
+        lines.append(
+            f"| {i} | {u['cost_usd']:.2f} | {u['input_tokens']} | {u['output_tokens']} | "
+            f"{rr['verdict']['n_passed']}/{rr['verdict']['n_capsules']} |"
+        )
     lines.append("")
     lines.append(f"**total cost ≈ ${total_cost:.2f}**")
     (run_dir / "final_report.md").write_text("\n".join(lines), encoding="utf-8")
-    (run_dir / "run_manifest.json").write_text(json.dumps(
-        {"run_id": run_dir.name, "model": model, "effort": effort, "rounds": len(rounds),
-         "wall_s": wall_s, "all_pass": last["all_pass"], "final_verdict": last,
-         "total_cost_usd": total_cost}, indent=2), encoding="utf-8")
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_dir.name,
+                "model": model,
+                "effort": effort,
+                "rounds": len(rounds),
+                "wall_s": wall_s,
+                "all_pass": last["all_pass"],
+                "final_verdict": last,
+                "total_cost_usd": total_cost,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -198,8 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         verdict = grade_round(ws, run_dir, rnd, a.grade_timeout)
         usage = _transcript_usage(run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl")
         rounds.append({"round": rnd, "rc": rc, "verdict": verdict, "usage": usage})
-        print(f"  -> {verdict['n_passed']}/{verdict['n_capsules']} pass "
-              f"(cost ${usage['cost_usd']:.2f})", flush=True)
+        print(f"  -> {verdict['n_passed']}/{verdict['n_capsules']} pass (cost ${usage['cost_usd']:.2f})", flush=True)
         if verdict["all_pass"]:
             print(f"  ALL PASS at round {rnd}", flush=True)
             break
@@ -209,9 +254,10 @@ def main(argv: list[str] | None = None) -> int:
         # keep the submission, drop the bulky symlinked workspace scaffold
         sub = ws / "submission"
         if sub.exists():
-            shutil.copytree(sub, run_dir / "submission", dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("__pycache__", "build"))
-    print(f"\nwrote {run_dir/'final_report.md'}")
+            shutil.copytree(
+                sub, run_dir / "submission", dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "build")
+            )
+    print(f"\nwrote {run_dir / 'final_report.md'}")
     return 0 if verdict["all_pass"] else 1
 
 

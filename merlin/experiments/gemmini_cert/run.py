@@ -6,6 +6,7 @@
 Skips cells already marked correct in the ledger, so a long Verilator/FireSim sweep can be
 killed and resumed. Writes FINDINGS-style results to stdout and the ledger.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -13,8 +14,8 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen.eval.gemmini_dispatcher import run_sweep, summarize
 from merlin.common.paths import repo_root
+from merlin.targetgen.eval.gemmini_dispatcher import run_sweep, summarize
 
 HERE = Path(__file__).resolve().parent
 
@@ -36,9 +37,14 @@ def main() -> int:
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args()
-    rows = run_sweep(args.rungs.split(","), args.simulators.split(","),
-                     runs_root=args.runs_root, ledger_path=args.ledger,
-                     force=args.force, timeout=args.timeout)
+    rows = run_sweep(
+        args.rungs.split(","),
+        args.simulators.split(","),
+        runs_root=args.runs_root,
+        ledger_path=args.ledger,
+        force=args.force,
+        timeout=args.timeout,
+    )
     print(summarize(rows))
     n_ok = sum(1 for r in rows if r["correct"])
     print(f"\n{n_ok}/{len(rows)} cells correct")

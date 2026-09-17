@@ -10,17 +10,17 @@ from pathlib import Path
 
 import yaml
 
-from harness import architecture_rules, collect_metrics
 from harness import (
-    validate_schema,
-    validate_evidence,
-    validate_xdsl,
-    validate_passes,
+    architecture_rules,
+    collect_metrics,
     validate_dialect_design,
-    validate_runtime_mock,
+    validate_evidence,
     validate_merlin_integration,
+    validate_passes,
+    validate_runtime_mock,
+    validate_schema,
+    validate_xdsl,
 )
-
 
 _VALIDATOR_MAP = {
     "schema": validate_schema,
@@ -81,10 +81,12 @@ def validate_run(
         enabled_validators = list(_VALIDATOR_MAP.keys())
 
     from harness.materialize_run import git_root
+
     repo_root = git_root(root)  # the merlin subject checkout (discovered, not root.parent)
 
     # Start logger
     from harness.tracking import TargetGenRunLogger
+
     logger = TargetGenRunLogger.start(
         target=manifest.get("target", "unknown"),
         method=manifest.get("method", "unknown"),
@@ -97,11 +99,13 @@ def validate_run(
         otel_endpoint=otel_endpoint or obs.get("opentelemetry", {}).get("endpoint"),
     )
     logger.log_event("validation.started", {"budget": budget_name})
-    logger.log_params({
-        "budget": budget_name,
-        "git_hash": manifest.get("git_hash_at_init"),
-        "is_smoke_test": manifest.get("is_smoke_test", True),
-    })
+    logger.log_params(
+        {
+            "budget": budget_name,
+            "git_hash": manifest.get("git_hash_at_init"),
+            "is_smoke_test": manifest.get("is_smoke_test", True),
+        }
+    )
 
     start_time = time.monotonic()
 
@@ -131,9 +135,12 @@ def validate_run(
             except Exception as e:
                 result = {"validator": name, "errors": [f"EXCEPTION: {e}"]}
                 validator_results[name] = result
-        logger.log_event(f"validation.{name}.completed", {
-            "errors": result.get("errors", []),
-        })
+        logger.log_event(
+            f"validation.{name}.completed",
+            {
+                "errors": result.get("errors", []),
+            },
+        )
         numeric = {k: v for k, v in result.items() if isinstance(v, (int, float, bool))}
         if numeric:
             logger.log_metrics(numeric, prefix=name)
@@ -188,8 +195,7 @@ def validate_run(
         f"## Architecture Rules\n\n"
         f"Passed: {arch_passed} / {arch_passed + arch_failed}\n\n"
         + "\n".join(
-            f"- {'✓' if r['passed'] else '✗'} **{r['rule_id']}** {r['name']}: {r['message']}"
-            for r in arch_rules
+            f"- {'✓' if r['passed'] else '✗'} **{r['rule_id']}** {r['name']}: {r['message']}" for r in arch_rules
         )
         + f"\n\n## Overall: `{report['overall']}`\n\n"
         f"{''.join(chr(10) + '- ' + e for e in all_errors) if all_errors else '*No errors.*'}\n"

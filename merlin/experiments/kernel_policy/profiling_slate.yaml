@@ -37,14 +37,14 @@ fidelity_levels:
     use: rank insights, compute exploitability = gain(compiler_variant) / gain(oracle).
     cost: seconds per workload — runs in CI.
   L2_5_calibrated:
-    implemented: merlin/python/merlin/cost_model/{gemmini.py,calibrate.py}
+    implemented: merlin/python/merlin/perf/linear_cost.py + merlin/targets/gemmini/cost_model/calibrate.py
     source: >-
       Linear event->cycle model: cycles = const + sum_e coeff[e]*n_e over Gemmini commands
       (config, mvin_A, mvin2_B, compute[+preload], mvout, fence). Coefficients fit by
       relative-error-weighted least squares on isolation microbenchmarks
       (calib/gemmini_costmodel_calib.c) run under the cycle-exact Verilator sim; predictions
       for the full grid then come from L2 Spike events in seconds. Frozen in
-      cost_model/gemmini_cost_coeffs.json with its error band.
+      merlin/targets/gemmini/cost_model/coefficients.json with its error band.
     calibrated:
       sim: GemminiRocketConfig (Verilator, dim=16)
       coeffs_cycles_per_cmd: {const: -32, config: 4.9, mvin_A: 29.1, mvin2_B: 29.9,

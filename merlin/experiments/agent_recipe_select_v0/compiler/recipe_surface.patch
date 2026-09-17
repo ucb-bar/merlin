@@ -1,0 +1,711 @@
+--- a/lowering/isa.py
++++ b/lowering/isa.py
+@@ -9,6 +9,8 @@
+ from ir_ingest import InterfaceProgram, TensorSpec
+ from targetgen.synthesize.tiling import tile_matmul
+ 
++from .recipe import Recipe, blocks, resolve_auto
++
+ DIM = 16
+ ADDR_LEN = 32
+ SPAD_ROWS = 262144 // DIM
+@@ -112,7 +114,9 @@
+ 
+ 
+ def _matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name: str, out_name: str,
+-                  attrs: dict[str, Any], *, transpose_b: bool = False) -> list[Instruction]:
++                  attrs: dict[str, Any], *, transpose_b: bool = False,
++                  recipe: Recipe | None = None) -> list[Instruction]:
++    recipe = recipe or Recipe()
+     lhs, weight, out = program.tensors[lhs_name], program.tensors[weight_name], program.tensors[out_name]
+     m, k = lhs.shape
+     if transpose_b:
+@@ -139,43 +143,164 @@
+         _config_st(out_stride, attrs, out.dtype),
+     ]
+     if not transpose_b:
+-        # Mirror sp_tiled_matmul_ws exactly: K -> N -> M. The first M block
+-        # preloads B and uses COMPUTE_PRELOADED; later M blocks consume those
+-        # resident systolic weights with COMPUTE_ACCUMULATE. Re-preloading B for
+-        # every M block leaves the later block's pipeline empty on this RTL.
+-        for kk, k0 in enumerate(range(0, k, DIM)):
+-            td = min(DIM, k - k0)
+-            for nj, n0 in enumerate(range(0, n, DIM)):
+-                tc = min(DIM, n - n0)
+-                b_spad = b_base + (kk * j_blocks + nj) * DIM
++        # Mirror sp_tiled_matmul_ws exactly: K -> N -> M. The first M block preloads B and uses
++        # COMPUTE_PRELOADED; later M blocks consume those resident systolic weights with
++        # COMPUTE_ACCUMULATE. Re-preloading B for every M block leaves the later block's pipeline
++        # empty on this RTL.
++        #
++        # RECIPE. Three of the decisions in that schedule are choices, not requirements. The
++        # enumeration and the per-shape legality live in `lowering/recipe.py`; this is where each
++        # value becomes instructions.
++        #
++        #   residency      WHERE operand transfers sit relative to the loop nest. The frozen value
++        #                  `per_tile` re-moves A[mi,kk] once per N block; `panel` hoists it one level,
++        #                  to once per K step; `a_prefetch` hoists every A transfer into a prologue;
++        #                  `prefetch_all` hoists B's as well, leaving a pure compute nest. All four
++        #                  are legal for the same reason: `a_spad`/`b_spad` are already functions of
++        #                  (mi,kk) and (kk,nj) alone, so the whole grid is allocated in every value
++        #                  and hoisting changes only WHEN a tile is fetched, never where it lands.
++        #   drain          whether an output tile is stored the moment its last K step retires, or in
++        #                  one sweep afterwards. The store COUNT is invariant either way, which the
++        #                  RTL FileCheck requires.
++        #   config_policy  whether a CONFIG_LD precedes every transfer (the frozen behaviour) or only
++        #                  the transfers that actually change the load stride.
++        #
++        # ⚠️ WHY `on_change` IS SAFE HERE, since the obvious version of it is not. A shared
++        # load-stride config bleeding across the A and B DMAs produced WRONG VALUES once already
++        # (docs/iteration_notes.md). This does not hoist a config out of anything -- it emits one
++        # whenever the stride DIFFERS from the one currently programmed, tracked below, so every
++        # transfer is still preceded by a config carrying its own stride. That is the same
++        # "re-emit only on change" form the in-tree emitter already proves.
++        residency = recipe.activation_residency
++        if residency == "auto":
++            residency = resolve_auto(m, n, k, dim=DIM, spad_rows=SPAD_ROWS)
++        cfg_on_change = recipe.config_policy == "on_change"
++
++        # BLOCKING. The frozen schedule staged both operand grids whole and kept every output tile
++        # live, so it needed Kt*(Mt+Nt) <= SPAD_ROWS/DIM and Mt*Nt <= ACC_ROWS/DIM -- and CHECKED
++        # NEITHER. Measured consequence: of the 21 distinct ResNet-50 contraction shapes and the 5
++        # TinyLlama ones, ZERO satisfied both bounds.
++        #
++        # ⚠️ BE PRECISE ABOUT WHAT WENT WRONG, because the obvious claim is too strong and was
++        # MEASURED to be false. Past the bound the operand regions overlap, but an overlap is not
++        # automatically a wrong answer: at Nt=1 under `per_tile` each tile is written and consumed in
++        # the same iteration, so the aliased partners are never live together. `PR06_spills_k8208`
++        # (Kt=513, a 32-row overlap) runs and PASSES on GSIM, at 28118 cycles. What is unambiguously
++        # broken is a shape whose weight base goes NEGATIVE -- ResNet-50's conv1 computes
++        # b_base = -109056 -- and what is broken in general is that the compiler cannot tell the two
++        # cases apart. It has no capacity predicate at all, so "this happens to be safe" was never
++        # something it established. Blocking replaces luck with a bound.
++        #
++        # `blocks()` cuts the shape into pieces both stores can hold and REFUSES when no cut exists.
++        # The loop order is (M block, N block, K block): a block's output tiles stay in the
++        # accumulator across its whole K sweep, so K blocking costs re-fetched operands and never
++        # accumulator space. A shape that already fit yields exactly one block, and the body below is
++        # then instruction-for-instruction the frozen schedule -- byte-identity is structural here,
++        # not a coincidence to be checked for.
++        plan = blocks(recipe, m=m, n=n, k=k, dim=DIM, spad_rows=SPAD_ROWS, acc_rows=ACC_ROWS)
++        if not plan.ok:
++            raise ValueError(f"matmul {m}x{n}x{k}: {plan.reason}")
++        if plan.n_blocks > 1 and pool:
++            # The pooled store walks a whole flattened image out of the accumulator in one MVOUT, so
++            # it cannot see an output tile that a later block has not computed yet. Refusing is the
++            # honest answer; silently pooling a partial image would be a wrong result.
++            raise ValueError(
++                f"matmul {m}x{n}x{k} with a fused max-pool needs {plan.n_blocks} blocks, but the "
++                f"pooled store reads the whole accumulator image at once and cannot be split")
++
++        programmed_stride: list[int | None] = [None]
++
++        def _ld(stride: int) -> list[Instruction]:
++            """CONFIG_LD for ``stride``, elided only when that stride is already programmed."""
++            if cfg_on_change and programmed_stride[0] == stride:
++                return []
++            programmed_stride[0] = stride
++            return [_config_ld(stride, channel=0)]
++
++        def _emit_block(m_lo: int, n_lo: int, k_lo: int, *, first_k: bool, last_k: bool) -> None:
++            """One (M, N, K) block: the frozen K->N->M nest, over this block's extents only.
++
++            Every scratchpad address is BLOCK-LOCAL (tile indices restart at zero and the weight base
++            is recomputed from this block's tile counts) while every DRAM address stays absolute, so
++            a block reads the right memory and writes the right rows.
++            """
++            m_hi, n_hi, k_hi = min(m, m_lo + plan.bm), min(n, n_lo + plan.bn), min(k, k_lo + plan.bk)
++            mt_b = -(-(m_hi - m_lo) // DIM)
++            nt_b = -(-(n_hi - n_lo) // DIM)
++            kt_b = -(-(k_hi - k_lo) // DIM)
++            a_base_b = 0
++            b_base_b = SPAD_ROWS - kt_b * nt_b * DIM
++
++            def _mvin_a(mi: int, m0: int, kk: int, k0: int) -> list[Instruction]:
++                td_, tr_ = min(DIM, k_hi - k0), min(DIM, m_hi - m0)
++                a_spad = a_base_b + (mi * kt_b + kk) * DIM
++                a_offset = m0 * lhs_stride + k0 * _elem_bytes(lhs.dtype)
++                return _ld(lhs_stride) + [Instruction("MVIN", Address(lhs_name, a_offset),
++                                                      _tile_word(a_spad, td_, tr_))]
++
++            def _mvin_b(kk: int, k0: int, nj: int, n0: int) -> list[Instruction]:
++                td_, tc_ = min(DIM, k_hi - k0), min(DIM, n_hi - n0)
++                b_spad = b_base_b + (kk * nt_b + nj) * DIM
+                 b_offset = k0 * weight_stride + n0 * _elem_bytes(weight.dtype)
+-                trace.extend([
+-                    _config_ld(weight_stride, channel=0),
+-                    Instruction("MVIN", Address(weight_name, b_offset),
+-                                _tile_word(b_spad, tc, td)),
+-                ])
+-                for mi, m0 in enumerate(range(0, m, DIM)):
+-                    tr = min(DIM, m - m0)
+-                    a_spad = a_base + (mi * k_blocks + kk) * DIM
+-                    a_offset = m0 * lhs_stride + k0 * _elem_bytes(lhs.dtype)
+-                    trace.extend([
+-                        _config_ld(lhs_stride, channel=0),
+-                        Instruction("MVIN", Address(lhs_name, a_offset),
+-                                    _tile_word(a_spad, td, tr)),
+-                    ])
+-                    c_index = nj * i_blocks + mi if pool else mi * j_blocks + nj
+-                    c_addr = c_base + c_index * DIM
+-                    dst = c_addr if kk else c_addr & ~ACC_ACCUMULATE
+-                    pre_spad = b_spad if mi == 0 else GARBAGE_ADDR
+-                    trace.append(Instruction("PRELOAD", _tile_word(pre_spad, tc, td),
+-                                             _tile_word(dst, tc, tr)))
+-                    compute = "COMPUTE_PRELOADED" if mi == 0 else "COMPUTE_ACCUMULATE"
+-                    trace.append(Instruction(compute, _tile_word(a_spad, td, tr),
+-                                             _tile_word(GARBAGE_ADDR, DIM, DIM)))
+-                    if kk == k_blocks - 1 and not pool:
+-                        out_offset = m0 * out_stride + n0 * _elem_bytes(out.dtype)
+-                        trace.append(Instruction("MVOUT", Address(out_name, out_offset),
+-                                                 _tile_word(c_addr, tc, tr)))
++                return _ld(weight_stride) + [Instruction("MVIN", Address(weight_name, b_offset),
++                                                        _tile_word(b_spad, tc_, td_))]
++
++            # Prologue: whatever this residency value hoists out of the nest entirely.
++            if residency == "prefetch_all":
++                for kk, k0 in enumerate(range(k_lo, k_hi, DIM)):
++                    for nj, n0 in enumerate(range(n_lo, n_hi, DIM)):
++                        trace.extend(_mvin_b(kk, k0, nj, n0))
++            if residency in ("a_prefetch", "prefetch_all"):
++                for kk, k0 in enumerate(range(k_lo, k_hi, DIM)):
++                    for mi, m0 in enumerate(range(m_lo, m_hi, DIM)):
++                        trace.extend(_mvin_a(mi, m0, kk, k0))
++
++            deferred: list[Instruction] = []
++            for kk, k0 in enumerate(range(k_lo, k_hi, DIM)):
++                td = min(DIM, k_hi - k0)
++                if residency == "panel":
++                    for mi, m0 in enumerate(range(m_lo, m_hi, DIM)):
++                        trace.extend(_mvin_a(mi, m0, kk, k0))
++                for nj, n0 in enumerate(range(n_lo, n_hi, DIM)):
++                    tc = min(DIM, n_hi - n0)
++                    b_spad = b_base_b + (kk * nt_b + nj) * DIM
++                    if residency != "prefetch_all":
++                        trace.extend(_mvin_b(kk, k0, nj, n0))
++                    for mi, m0 in enumerate(range(m_lo, m_hi, DIM)):
++                        tr = min(DIM, m_hi - m0)
++                        a_spad = a_base_b + (mi * kt_b + kk) * DIM
++                        if residency == "per_tile":
++                            trace.extend(_mvin_a(mi, m0, kk, k0))
++                        c_index = nj * mt_b + mi if pool else mi * nt_b + nj
++                        c_addr = c_base + c_index * DIM
++                        # Accumulate onto the tile unless this is the FIRST K step of the FIRST K
++                        # block: the output tile must survive the whole reduction, and a K reduction
++                        # split across blocks is still one reduction.
++                        dst = c_addr if (kk or not first_k) else c_addr & ~ACC_ACCUMULATE
++                        pre_spad = b_spad if mi == 0 else GARBAGE_ADDR
++                        trace.append(Instruction("PRELOAD", _tile_word(pre_spad, tc, td),
++                                                 _tile_word(dst, tc, tr)))
++                        compute = "COMPUTE_PRELOADED" if mi == 0 else "COMPUTE_ACCUMULATE"
++                        trace.append(Instruction(compute, _tile_word(a_spad, td, tr),
++                                                 _tile_word(GARBAGE_ADDR, DIM, DIM)))
++                        # The store retires an output tile, so it may only happen once the LAST K
++                        # block has contributed. Any epilogue rides on that store for the same
++                        # reason -- applying it per K block would scale a partial sum.
++                        if last_k and kk == kt_b - 1 and not pool:
++                            out_offset = m0 * out_stride + n0 * _elem_bytes(out.dtype)
++                            store = Instruction("MVOUT", Address(out_name, out_offset),
++                                                _tile_word(c_addr, tc, tr))
++                            (deferred if recipe.drain == "deferred" else trace).append(store)
++            # Empty unless `drain=deferred`. Flushed per (M,N) block rather than once at the end,
++            # because a later block reuses these accumulator rows.
++            trace.extend(deferred)
++
++        for m_lo in range(0, m, plan.bm):
++            for n_lo in range(0, n, plan.bn):
++                k_starts = list(range(0, k, plan.bk))
++                for i_k, k_lo in enumerate(k_starts):
++                    _emit_block(m_lo, n_lo, k_lo,
++                                first_k=(i_k == 0), last_k=(i_k == len(k_starts) - 1))
+         if pool:
+             # The public Gemmini store API selects its spatial max-pool walk
+             # with rows=0.  Accumulator tiles are N-major here so each channel
+@@ -440,7 +565,12 @@
+     return trace
+ 
+ 
+-def build_trace(program: InterfaceProgram) -> list[Instruction]:
++def build_trace(program: InterfaceProgram, recipe: Recipe | None = None) -> list[Instruction]:
++    # Resolve the recipe HERE so every caller is served by one seam: `llvm_artifact` and the
++    # command-buffer path both call this with no recipe, and an explicit argument still wins over the
++    # environment. An unset environment yields Recipe(), which is the frozen schedule exactly.
++    if recipe is None:
++        recipe = getattr(program, "recipe", None) or Recipe.from_env()
+     if not program.is_contract_module:
+         return [Instruction("FENCE"), Instruction("FLUSH", 0, 0)]
+     trace: list[Instruction] = [Instruction("FENCE"), Instruction("FLUSH", 0, 0)]
+@@ -454,7 +584,8 @@
+             pending_matmuls[ops["dst"]] = (ops["lhs"], resident_sources[ops["rhs"]])
+         elif opcode == "COMMIT":
+             lhs, weight = pending_matmuls[ops["src"]]
+-            trace.extend(_matmul_trace(program, lhs, weight, ops["dst"], command["attributes"]))
++            trace.extend(_matmul_trace(program, lhs, weight, ops["dst"], command["attributes"],
++                                       recipe=recipe))
+         elif opcode == "MOVEMENT":
+             trace.extend(_movement_trace(program, command))
+         elif opcode == "CONV2D":
+--- /dev/null
++++ b/lowering/recipe.py
+@@ -0,0 +1,461 @@
++"""The recipe: the only thing a caller may choose, and the compiler's own statement of what is legal.
++
++This package is ``integrity_exempt: false``, so it may not import ``merlin`` -- the recipe therefore
++arrives as data (an env var or a CLI value) and is validated here, with stdlib only.
++
++WHY THE COMPILER OWNS THE LEGAL SET. A caller that can name a value the emitter cannot emit, or that
++the machine cannot hold, turns a search into a walk over fictional points. So the enumeration and the
++per-workload legality verdict both come from THIS file, beside the emitter that has to honour them,
++and a refusal names its reason instead of returning an empty list.
++
++THE DEFAULT IS THE FROZEN SCHEDULE, EXACTLY. ``Recipe()`` selects the branch that is the original,
++unmodified code path; the equivalence gate requires it to emit a byte-identical instruction trace to
++the certified package. Every other value is a deviation measured against it.
++"""
++from __future__ import annotations
++
++import json
++import os
++from dataclasses import dataclass, asdict, field, fields
++
++#: The env var the harness threads a recipe through. Generic on purpose: `oot_runner._resolve_argv`
++#: fails closed on any argv placeholder it does not know, so a per-candidate value cannot ride in the
++#: manifest's frozen argv, and an env var is inherited by `subprocess.run` without a library change.
++RECIPE_ENV = "MERLIN_CODEGEN_RECIPE"
++
++#: dimension -> (values, one-line meaning). The FIRST value of each is the frozen default.
++CHOICES: dict[str, list[tuple[str, str]]] = {
++    "activation_residency": [
++        ("per_tile",
++         "the frozen schedule: the A tile is re-moved inside the innermost M loop, so it is fetched "
++         "once per N block (Kt*Nt*Mt activation transfers)"),
++        ("panel",
++         "the A tile for (kk, mi) is moved once per K step and reused across the whole N sweep "
++         "(Kt*Mt activation transfers); needs the activation grid resident"),
++        ("a_prefetch",
++         "every activation transfer is hoisted into a prologue before the compute nest -- the same "
++         "Kt*Mt count as `panel`, but front-loaded, so it trades DMA/compute overlap for locality"),
++        ("prefetch_all",
++         "both operand grids are staged in a prologue and the nest is pure compute -- the structure "
++         "the attention path in this same emitter already uses"),
++        ("auto",
++         "the PROPOSED NEW DEFAULT. Resolves to `panel` on every shape this lowering can emit, "
++         "because `panel` is never slower (equal at Nt=1, better otherwise) and never less "
++         "expressible (both values reserve the same rows). Needs no agent and no per-workload "
++         "selection"),
++    ],
++    "config_policy": [
++        ("per_mvin",
++         "the frozen behaviour: a CONFIG_LD precedes EVERY transfer, so Kt*Nt*(1+Mt) of them are "
++         "emitted where the stride only ever takes two values"),
++        ("on_change",
++         "a CONFIG_LD is emitted only when the load stride DIFFERS from the one already programmed. "
++         "NOT a hoist: every transfer is still preceded by a config carrying its own stride, which "
++         "is what keeps it clear of the A/B stride bleed that produced wrong values once before"),
++    ],
++    "block_m": [
++        ("auto",
++         "the DERIVED default: the compiler picks the largest legal M block for this shape. Any "
++         "positive multiple of the tile edge is also accepted, and is refused with a reason if the "
++         "resulting block does not fit both stores"),
++    ],
++    "block_n": [
++        ("auto",
++         "as `block_m`, for the N extent. N is the weight-reuse axis, so a larger N block moves "
++         "fewer weight tiles per unit of work and a smaller one frees operand rows for K"),
++    ],
++    "block_k": [
++        ("auto",
++         "as `block_m`, for the reduction extent. K blocking is what makes a deep contraction "
++         "expressible at all: the operand store holds Kt*(Mt+Nt) tiles, so a real layer's K must be "
++         "cut before anything else fits. Output tiles stay live across K blocks, so this costs "
++         "re-fetching, never accumulator space"),
++    ],
++    "drain": [
++        ("inline",
++         "the frozen schedule: each output tile is stored the moment its last K step retires"),
++        ("deferred",
++         "every output tile is stored in one sweep after the compute nest; the same NUMBER of stores, "
++         "clustered differently"),
++    ],
++}
++
++DEFAULTS = {d: vals[0][0] for d, vals in CHOICES.items()}
++
++
++#: The dimensions whose legal set depends on the SHAPE and the machine, not on an enumeration. They
++#: are validated for form here and for legality in `blocks()`, which is the only place that knows the
++#: scratchpad and accumulator geometry.
++BLOCK_DIMS = ("block_m", "block_n", "block_k")
++
++@dataclass(frozen=True)
++class Recipe:
++    """One point of the exposed surface. Unknown keys are refused, never ignored."""
++
++    activation_residency: str = DEFAULTS["activation_residency"]
++    config_policy: str = DEFAULTS["config_policy"]
++    drain: str = DEFAULTS["drain"]
++    block_m: str = DEFAULTS["block_m"]
++    block_n: str = DEFAULTS["block_n"]
++    block_k: str = DEFAULTS["block_k"]
++
++    def __post_init__(self) -> None:
++        for f in fields(self):
++            got = getattr(self, f.name)
++            if f.name in BLOCK_DIMS:
++                # A block extent's legal set is SHAPE-dependent, so it cannot be enumerated here.
++                # What can be checked without a shape is the form: `auto`, or a positive integer.
++                # Whether that integer fits the two stores is decided by `blocks()` against the
++                # machine, which is the only place that knows.
++                if got == "auto":
++                    continue
++                try:
++                    v = int(got)
++                except (TypeError, ValueError):
++                    raise ValueError(f"{f.name}={got!r} must be 'auto' or a positive integer "
++                                     f"number of elements") from None
++                if v <= 0:
++                    raise ValueError(f"{f.name}={got!r} must be positive")
++                continue
++            legal = [v for v, _d in CHOICES[f.name]]
++            if got not in legal:
++                raise ValueError(f"{f.name}={got!r} is not a value this compiler can emit; "
++                                 f"legal: {legal}")
++
++    @property
++    def is_default(self) -> bool:
++        return asdict(self) == DEFAULTS
++
++    def as_dict(self) -> dict:
++        return asdict(self)
++
++    @classmethod
++    def parse(cls, spec: "str | dict | None") -> "Recipe":
++        """A recipe from a JSON string, a path to a JSON file, or a dict. ``None`` -> the default."""
++        if spec is None or spec == "":
++            return cls()
++        if isinstance(spec, dict):
++            data = spec
++        else:
++            text = str(spec)
++            if not text.lstrip().startswith("{"):
++                with open(text, "r", encoding="utf-8") as fh:
++                    text = fh.read()
++            data = json.loads(text)
++        if not isinstance(data, dict):
++            raise ValueError(f"a recipe must be a JSON object, got {type(data).__name__}")
++        unknown = sorted(set(data) - set(DEFAULTS))
++        if unknown:
++            raise ValueError(f"unknown recipe dimension(s) {unknown}; this compiler exposes "
++                             f"{sorted(DEFAULTS)}")
++        return cls(**{k: str(v) for k, v in data.items()})
++
++    @classmethod
++    def from_env(cls) -> "Recipe":
++        return cls.parse(os.environ.get(RECIPE_ENV) or None)
++
++
++# --------------------------------------------------------------------------- legality
++
++@dataclass(frozen=True)
++class Fit:
++    """Whether a recipe can be emitted for a shape on THIS machine, and why not when it cannot."""
++
++    ok: bool
++    reason: str = ""
++    operand_rows: int = 0
++    operand_capacity: int = 0
++    accum_rows: int = 0
++    accum_capacity: int = 0
++
++
++def resolve_auto(m: int, n: int, k: int, *, dim: int, spad_rows: int) -> str:
++    """THE PROPOSED DEFAULT behind ``activation_residency="auto"``: always ``panel``.
++
++    ⚠️ THIS STARTED OUT AS A CAPACITY PREDICATE AND THE MEASUREMENT KILLED THE PREDICATE, not the
++    conclusion. The intended rule was "panel where the operand store can hold both grids, per_tile
++    otherwise". It is wrong, because the two values have the SAME operand footprint: the frozen
++    lowering allocates the whole activation grid either way (``a_spad`` spans Mt*Kt tiles at
++    ``isa.py:159`` in both branches, and ``b_base`` reserves Kt*Nt for the weights regardless). What
++    ``panel`` changes is how many times a tile is TRANSFERRED, never how many rows are RESERVED.
++
++    So there is no shape where ``per_tile`` is preferable:
++
++    * it is never faster -- measured on GSIM, all bit-exact: 780 -> 717 cycles at 32x32x32,
++      3466 -> 2730 at 64x64x64, 45304 -> 18827 at 16x512x256, and exactly equal at Nt=1 where the
++      saving ``Mt*Kt*(Nt-1)`` is identically zero;
++    * it is never more expressible -- both need ``Kt*(Mt+Nt) <= spad_rows/dim``, so a shape that
++      defeats one defeats the other. A shape past that bound is a COMPILER COVERAGE gap needing a
++      blocked-residency value, not a reason to keep this one.
++
++    Which makes the compiler change a plain default flip rather than a derived rule, and that is the
++    stronger result: nothing has to be selected per workload, and there is no predicate to get wrong.
++    ``auto`` is retained as the name of the proposed default and is provably identical to ``panel``
++    on every shape this lowering can emit -- a property the test suite asserts rather than assumes.
++    """
++    return "panel"
++
++
++@dataclass(frozen=True)
++class BlockPlan:
++    """How a shape is cut into pieces the two stores can hold, and why a cut was refused.
++
++    ``ok=False`` is a real answer and callers must honour it: the frozen lowering's failure mode for
++    an oversized shape is a NEGATIVE weight base and an accumulator index past the end -- a plausible
++    wrong result rather than an error -- so the only safe thing to do with a shape that cannot be cut
++    is refuse to emit it.
++    """
++
++    ok: bool
++    bm: int = 0
++    bn: int = 0
++    bk: int = 0
++    reason: str = ""
++    derived: bool = True
++    n_blocks: int = 0
++
++    def as_dict(self) -> dict:
++        return {"ok": self.ok, "block_m": self.bm, "block_n": self.bn, "block_k": self.bk,
++                "n_blocks": self.n_blocks, "derived": self.derived, "reason": self.reason}
++
++
++def _fits(mt: int, nt: int, kt: int, *, dim: int, spad_rows: int, acc_rows: int) -> bool:
++    """Both stores, in TILES. The same two inequalities `fit` states, applied to ONE block."""
++    return (mt * nt * dim <= acc_rows) and (kt * (mt + nt) * dim <= spad_rows)
++
++
++def derive_blocks(m: int, n: int, k: int, *, dim: int, spad_rows: int,
++                  acc_rows: int) -> "tuple[int, int, int]":
++    """The largest legal block for this shape, derived from the machine -- never a tuned constant.
++
++    This is the rule the compiler applies when nobody chooses, and it is the reason a real layer is
++    expressible at all. It is an EXHAUSTIVE maximisation, not a heuristic: the accumulator caps
++    ``mt*nt`` at ``acc_rows/dim`` (64 on this machine), so there are at most a few hundred candidate
++    ``(mt, nt)`` pairs and the best ``kt`` for each is closed-form. Searching them all makes the
++    result provably maximal under the model rather than merely plausible.
++
++    The objective is the block's MAC volume ``mt*nt*kt``. Maximising work per block minimises the
++    number of blocks, and every extra block is re-fetched operands -- the cost blocking exists to
++    trade against. Ties break towards the larger N block, because N is the weight-reuse axis: a wider
++    N block moves the same weight tiles for more output.
++
++    Note what is NOT assumed: no preference for square blocks, no fixed K cut, no minimum size. A
++    shape whose K alone exceeds the operand store still gets ``kt`` cut until it fits, which is
++    precisely the TinyLlama case (K=5632 -> Kt=352, against 1024 operand tiles shared with N).
++    """
++    ceil = lambda x: -(-x // dim)                                            # noqa: E731
++    mt_all, nt_all, kt_all = ceil(m), ceil(n), ceil(k)
++    acc_tiles, spad_tiles = acc_rows // dim, spad_rows // dim
++
++    best = None
++    for mt in range(1, min(mt_all, acc_tiles) + 1):
++        max_nt = min(nt_all, acc_tiles // mt)
++        if max_nt < 1:
++            break
++        for nt in range(1, max_nt + 1):
++            kt = min(kt_all, spad_tiles // (mt + nt))
++            if kt < 1:
++                continue
++            if not _fits(mt, nt, kt, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows):
++                continue
++            key = (mt * nt * kt, nt, mt)
++            if best is None or key > best[0]:
++                best = (key, mt, nt, kt)
++    if best is None:
++        return 0, 0, 0
++    _, mt, nt, kt = best
++    return min(m, mt * dim), min(n, nt * dim), min(k, kt * dim)
++
++
++def blocks(recipe: Recipe, *, m: int, n: int, k: int, dim: int, spad_rows: int,
++           acc_rows: int) -> BlockPlan:
++    """The block plan for one (recipe, shape): the derived default, or the caller's override, checked.
++
++    An override is not trusted. It is rounded to whole tiles (a partial tile is not addressable) and
++    then put through the SAME two inequalities the derived value satisfies, so a caller cannot select
++    a block that collides -- which is the one thing the frozen lowering would have done silently.
++    """
++    ceil = lambda x: -(-x // dim)                                            # noqa: E731
++    d_bm, d_bn, d_bk = derive_blocks(m, n, k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
++    if d_bm == 0:
++        return BlockPlan(False, reason=(
++            f"no legal block exists for {m}x{n}x{k} on a machine with {acc_rows} accumulator rows "
++            f"and {spad_rows} operand rows: even one tile of each operand does not fit"))
++
++    chosen, derived = {}, True
++    for name, dflt, extent in (("block_m", d_bm, m), ("block_n", d_bn, n), ("block_k", d_bk, k)):
++        raw = getattr(recipe, name)
++        if raw == "auto":
++            chosen[name] = dflt
++            continue
++        derived = False
++        want = int(raw)
++        if want % dim and want < extent:
++            return BlockPlan(False, reason=(
++                f"{name}={want} is not a whole number of {dim}-element tiles; a partial tile has no "
++                f"scratchpad address"), derived=False)
++        chosen[name] = min(want, extent)
++
++    bm, bn, bk = chosen["block_m"], chosen["block_n"], chosen["block_k"]
++    mt, nt, kt = ceil(bm), ceil(bn), ceil(bk)
++    if not _fits(mt, nt, kt, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows):
++        accum, operand = mt * nt * dim, kt * (mt + nt) * dim
++        why = (f"the accumulator must hold all {mt}x{nt} output tiles of the block ({accum} rows) "
++               f"but has {acc_rows}" if accum > acc_rows else
++               f"the operand store must hold the block's activation and weight grids together "
++               f"({operand} rows) but has {spad_rows}")
++        return BlockPlan(False, bm, bn, bk, reason=(
++            f"block {bm}x{bn}x{bk} does not fit: {why}. The derived block for this shape is "
++            f"{d_bm}x{d_bn}x{d_bk}"), derived=derived)
++
++    n_blocks = ceil(m) and (-(-m // bm)) * (-(-n // bn)) * (-(-k // bk))
++    return BlockPlan(True, bm, bn, bk, derived=derived, n_blocks=n_blocks)
++
++
++def fit(recipe: Recipe, *, m: int, n: int, k: int, dim: int, spad_rows: int,
++        acc_rows: int) -> Fit:
++    """Capacity verdict for one (recipe, shape).
++
++    Two independent stores have to hold the working set, and the frozen lowering checks NEITHER on the
++    matmul path -- it stages the whole A and B grids and indexes the accumulator for every output tile,
++    so an oversized shape collides instead of spilling. (`_conv_loop_trace` does raise on its own
++    footprint; this is that guard, applied where it was missing.)
++
++    * the OPERAND store holds the activation grid and the weight grid together;
++    * the ACCUMULATOR holds every output tile at once, because a K reduction keeps them all live from
++      the first K step to the last -- so this bound is independent of ``drain``, and deferring the
++      stores costs no extra accumulator space.
++    """
++    mt = -(-m // dim)
++    nt = -(-n // dim)
++    kt = -(-k // dim)
++
++    # `auto` is a predicate, not a placement: it is legal exactly where the value it resolves to is.
++    if recipe.activation_residency == "auto":
++        recipe = Recipe(activation_residency=resolve_auto(m, n, k, dim=dim, spad_rows=spad_rows),
++                        config_policy=recipe.config_policy, drain=recipe.drain)
++
++    a_rows = mt * kt * dim
++    b_rows = kt * nt * dim
++    operand = a_rows + b_rows
++    accum = mt * nt * dim
++
++    if accum > acc_rows:
++        return Fit(False,
++                   f"the accumulator must hold all {mt}x{nt} output tiles at once ({accum} rows) but "
++                   f"has {acc_rows}: a K reduction keeps every output tile live across the whole "
++                   f"reduction, so this bound does not depend on the drain policy",
++                   operand, spad_rows, accum, acc_rows)
++    if operand > spad_rows:
++        return Fit(False,
++                   f"the operand store must hold the activation grid ({a_rows} rows) and the weight "
++                   f"grid ({b_rows} rows) together ({operand} rows) but has {spad_rows}: this "
++                   f"lowering stages both grids whole, so Kt*(Mt+Nt)={kt * (mt + nt)} may not exceed "
++                   f"{spad_rows // dim}",
++                   operand, spad_rows, accum, acc_rows)
++    return Fit(True, "", operand, spad_rows, accum, acc_rows)
++
++
++def block_values(extent: int, *, dim: int) -> "list[str]":
++    """The block sizes offered for one axis of one shape: ``auto``, then whole-tile powers of two.
++
++    Offering every multiple of the tile would be honest and useless -- a 12544-wide layer has 784 of
++    them, and a search over that is a search over noise. Powers of two span the range in a handful of
++    values, which is the granularity at which the two stores actually change behaviour (each step
++    halves the block count and doubles the per-block footprint). ``auto`` stays first because it is
++    the derived default, and a caller that wants the compiler's answer should not have to name a
++    number to get it.
++
++    The full extent is always included, so "do not cut this axis" is always sayable.
++    """
++    vals, v = ["auto"], dim
++    while v < extent:
++        vals.append(str(v))
++        v *= 2
++    if extent >= dim or extent not in (0,):
++        vals.append(str(extent))
++    return list(dict.fromkeys(vals))
++
++
++def catalog(*, m: int, n: int, k: int, dim: int, spad_rows: int, acc_rows: int) -> dict:
++    """The agent-facing answer to "what may I choose for THIS workload".
++
++    Every value carries its own legality verdict for this shape, so a caller never has to infer a
++    refusal from an omission.
++
++    ⚠️ LEGALITY IS DECIDED BY ``blocks``, NOT BY ``fit``. ``fit`` answers the pre-blocking question --
++    "does the whole shape fit both stores at once" -- and for every shape in ResNet-50 and TinyLlama
++    the answer is no. What decides whether the compiler can EMIT a shape is whether a legal cut
++    exists, so that is what the catalog reports; ``fit`` is kept, and reported beside it, because
++    "needs no cutting" is a real and useful property of a shape.
++
++    The point enumeration is CAPPED. Blocking makes the space large (hundreds of points on a real
++    layer), and dumping all of them would defeat the thing this experiment measures -- whether a
++    compiler-mediated loop needs fewer tokens than a code-writing one. So the counts are always
++    computed and the list is returned only when it is small enough to be worth reading.
++    """
++    mt, nt, kt = -(-m // dim), -(-n // dim), -(-k // dim)
++    whole = fit(Recipe(), m=m, n=n, k=k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
++    derived = derive_blocks(m, n, k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
++    out: dict = {
++        "shape": {"M": m, "N": n, "K": k, "Mt": mt, "Nt": nt, "Kt": kt},
++        "machine": {"dim": dim, "operand_rows": spad_rows, "accumulator_rows": acc_rows},
++        "default": dict(DEFAULTS),
++        "fits_without_cutting": whole.ok,
++        "why_cutting_is_needed": "" if whole.ok else whole.reason,
++        "derived_block": {"block_m": derived[0], "block_n": derived[1], "block_k": derived[2]},
++        "dimensions": {},
++    }
++
++    per_dim: dict[str, list[str]] = {}
++    for d, vals in CHOICES.items():
++        if d in BLOCK_DIMS:
++            extent = {"block_m": m, "block_n": n, "block_k": k}[d]
++            values = block_values(extent, dim=dim)
++            doc = vals[0][1]
++        else:
++            values = [v for v, _ in vals]
++            doc = None
++        entries = []
++        for v in values:
++            probe = Recipe(**{**DEFAULTS, d: v})
++            pl = blocks(probe, m=m, n=n, k=k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
++            means = doc if doc is not None else dict(vals)[v]
++            if d in BLOCK_DIMS and v != "auto":
++                means = f"cut this axis into blocks of {v} elements"
++            entries.append({"value": v, "means": means,
++                            "legal_with_others_default": pl.ok, "reason": pl.reason,
++                            "is_default": v == DEFAULTS[d],
++                            "n_blocks": pl.n_blocks if pl.ok else None})
++        out["dimensions"][d] = entries
++        # ⚠️ Offer EVERY value, not only the ones legal beside the other dimensions' defaults. The
++        # block extents INTERACT -- `block_m=64` is illegal next to the derived `block_n=1024` and
++        # legal next to `block_n=256`, because the accumulator bounds their PRODUCT. Filtering each
++        # axis against the others' defaults would delete that whole region of the space and quietly
++        # narrow what a search could ever find. The per-value flag above says what it is worth
++        # (legality holding everything else at default); the joint verdict is `blocks`, and `build`
++        # refuses an illegal combination with its reason.
++        per_dim[d] = [e["value"] for e in entries]
++
++    stack: list[dict] = [{}]
++    for d in CHOICES:
++        stack = [dict(c, **{d: v}) for c in stack for v, _ in
++                 ([(x, None) for x in per_dim[d]] or [(DEFAULTS[d], None)])]
++    combos = []
++    n_legal = 0
++    for c in stack:
++        pl = blocks(Recipe(**c), m=m, n=n, k=k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
++        if pl.ok:
++            n_legal += 1
++        if len(stack) <= 64:
++            combos.append({"recipe": c, "legal": pl.ok, "reason": pl.reason,
++                           "n_blocks": pl.n_blocks})
++    out["points"] = combos
++    out["points_elided"] = (len(stack) > 64)
++    if out["points_elided"]:
++        out["points_note"] = (f"{len(stack)} points: too many to list. Every value's own verdict is "
++                              f"in `dimensions`; combine them and `build` will refuse an illegal "
++                              f"combination with its reason.")
++    out["n_legal"] = n_legal
++    out["n_total"] = len(stack)
++    return out

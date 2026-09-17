@@ -1,0 +1,115 @@
+# Declarative per-target experiment SETUP for SATURN_OPU (the Saturn OuterProductUnit spatial tensor
+# tile) — a NON-SYSTOLIC, ISA-less accelerator: a cluster x cell grid of accumulator cells driven by a
+# COMMAND BUFFER over one-hot op ports (macc / mvin / shift), with int8 and fp8 e4m3/e5m2 datapaths. It
+# exercises the SPATIAL fact family (merlin.targetgen.rtl.spatial_introspect) and the command_buffer
+# codegen endpoint — the ladder's generality for an accelerator CLASS that has NO RoCC/.insn command ISA
+# at all (contrast the systolic MXUs and the SIMT core, which are both .insn+CSR).
+#
+# STATUS: RUNNABLE (readiness 16/16, 4 checks N/A for an ISA-less endpoint). This block previously read
+# "render-only prototype ... NOT yet runnable" and named three TODOs; all three are closed and the note
+# is kept because it is the first thing a reader sees and a stale one is worse than none:
+#   * the grader is the mlc arc OuterProductUnit cosim, reached by the DEFAULT arc path (see `sim_via`
+#     below) — there was never a bespoke engine to wire, only a second name for the same model;
+#   * the corpus is this target's own, generated from profiles/saturn_opu.yaml against the target's own
+#     derived tile_dim of 16 (capsules bracket 15/16/17), and declares `required_oracle_tiers: [L3]`;
+#   * the graded suite is 28 public (isa + layers + model_slices) + 3 hidden, and readiness section I
+#     grades a well-formed empty submission through the SAME roots the run uses — 28/28 graded, 0 passed.
+# Onboarding proof unchanged: {RTL facts + a generated contract + this descriptor} -> a correct
+# spatial/command_buffer brief, with ZERO target-specific code in the core generators.
+#
+# The capability contract is GENERATED (regenerable), not hand-authored: spatial_introspect extracts the
+# tile geometry / MRF depth / int8+fp8 datapaths from the OuterProductUnit state manifest + hw.mlir, and
+# capability_manifests.derive_manifest grounds them onto the small residual (manifest_residual.yaml).
+target: saturn_opu_mxv256d128
+
+rtl:
+  via: mlc            # facts via spatial_introspect (OuterProductUnit state manifest); RoCC funct discovery is N/A
+
+hardware_spec:
+  # The contract the tooling ACTUALLY reads (target_registry resolves it by target name) and the one this
+  # file's own prose describes -- it is the derive_manifest output, regenerable from the residual.yaml
+  # beside it. This used to declare .../saturn_opu_oot/contracts/target_contract.yaml, which is a
+  # DIFFERENT file: the earlier "render-only prototype", carrying no residual and naming the fp8
+  # datapaths fp8_e4m3/fp8_e5m2 where the derived one records `float8` + `unnamed_float_datapaths` --
+  # i.e. the fail-closed form, since the RTL does not name the format and capability_manifests refuses to
+  # fabricate one from bit width. Nothing read the declaration (no field on TargetExperiment held it), so
+  # the disagreement was invisible; readiness section J now compares the two and fails on a mismatch.
+  target_contract: out/artifacts/targets/saturn_opu_mxv256d128/contracts/target_contract.yaml
+
+# This target's OWN corpus, generated from profiles/saturn_opu.yaml. It previously pointed at the
+# generic op-capsule set on the reasoning that a matmul golden is op-derived and target-neutral. The
+# GOLDEN is; the rest of the capsule is not. Those capsules declare expected instruction classes
+# (CONFIG_EX / CONFIG_LD / CONFIG_ST / PRELOAD / COMPUTE_PRELOADED / MVIN / MVOUT / FLUSH) belonging to a
+# RoCC machine, and this one is a command buffer over one-hot op ports with no instruction decode at all
+# -- so no submission could satisfy them, however good. Readiness section H now fails on exactly that.
+capsule_corpus: merlin/contract/capsules/saturn_opu/isa
+
+# The OPU's RTL oracle is the mlc arc OuterProductUnit cosim, NOT spike/verilator and not the systolic
+# arc MXU command-buffer model.
+#
+# `sim_via` used to read `opu_cosim`, naming a BESPOKE sim engine to be wired later. There is nothing to
+# wire: mlc registers an arc model under this target's own name, and the DEFAULT arc path already reaches
+# it — `arc_available('saturn_opu_mxv256d128')` is true and `arc_run_command_buffer` executes a command
+# buffer against it, returning RTL-derived metrics and a hardware fingerprint (kind mlc.arc,
+# derived_from_rtl, hw_sha 4dc2f2f9b78cc623). `opu_cosim` was a second name for that same model.
+#
+# Declaring it anyway was not harmless. `_sim_engine_adapters` contributes nothing for an unknown engine,
+# so oracle_adapters silently fell back to arc-only and the DECLARED oracle never ran — a target that
+# looked like it had a bespoke grading tier and did not. Empty means arc-only, the same shape atlas uses,
+# and it is now what actually happens rather than an intention.
+toolchain:
+  sim_via: ""
+
+answer_surfaces:
+  prior_backends: []
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+host_lane:
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

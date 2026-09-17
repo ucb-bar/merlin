@@ -1,0 +1,210 @@
+# Declarative per-target experiment SETUP for ATLAS (an NPU with an MXU) — the 2nd target proving the
+# 4-arm ladder generalizes beyond gemmini. Everything DERIVABLE (the ISA/opcode set, the mesh DIM=32,
+# the memory map) is discovered from atlas's RTL by mlc (arc model libatlas_model.so + atlas_hw.mlir);
+# only the irreducible SETUP is declared here. A matmul capsule is target-neutral, so atlas reuses the
+# generic op-capsule corpus; its goldens are the target-agnostic math oracle and its RTL oracle is the
+# mlc arc MXU model (arc_available=True) — no bespoke sim toolchain needed.
+target: atlas
+
+rtl:
+  via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+  # WHERE the elaborated RTL is. Irreducible SETUP: the checkout holds many elaborations and nothing
+  # in the RTL says which one is atlas's, so the config is DECLARED (here, in atlas's own descriptor)
+  # and everything downstream of it is DERIVED. Read by
+  # merlin.targetgen.rtl.introspect.declared_rtl_source; nothing in library code names this config.
+  #
+  # This is the second, INDEPENDENT reader of atlas's RTL: mlc discovery answers the ISA/decode
+  # question (`via: mlc` above) and returns no memory map, while the FIRRTL census answers the
+  # structural one -- the SRAMs, their banks/depths/row widths, and the PE array -- straight out of
+  # the elaboration. They are complementary, and both are recorded so a disagreement is visible.
+  #   ext_root   a `.env` MERLIN_EXT_<NAME> key (this target elaborates in its OWN chipyard checkout,
+  #              which is why nothing had ever pointed the FIRRTL reader at it)
+  #   generator  the source tree whose modules ARE atlas's, per the FIRRTL's own
+  #              `@[generators/<gen>/...]` provenance annotations
+  elaboration:
+    ext_root: chipyard_atlas
+    config: AtlasRocketConfig
+    generator: atlas
+  # NO `operand_store` is declared, deliberately. The capacity_fit contract obligation needs to know
+  # this device's on-chip operand store, and mlc discovers all 39 of its SRAMs and then refuses to
+  # classify them ("no memory map discovered"), so the obligation is UNDECIDABLE here and reports itself
+  # as such rather than guessing. Two candidates were considered and one was MEASURED AND REFUTED:
+  #   - the matrix register file (32 discovered `mreg/banks_N_ext` banks x 64 x 32 B = 65536 B, matching
+  #     the shipped ISA model's num_m_registers(64) x mrf_depth(32) x mrf_width(32 B)) is NOT it: a
+  #     32x256x256 layer needs 73728 elements against that 65536 and RUNS UNBLOCKED on the arc cosim,
+  #     producing output. Declaring it would make the runtime split layers the device handles, which on
+  #     this bf16 accumulator also changes the reduction order.
+  #   - VMEM is the likelier store, but its two sources disagree (the RTL constant AtlasMemMap.VMEM_SIZE
+  #     is 0x180000 = 1.5 MiB; the shipped model config declares vmem_size = 1 MiB) and mlc's discovered
+  #     memory list contains no VMEM bank at all, so there is nothing to sum. Declaring an unvalidated
+  #     number is worse than reporting the obligation undecidable.
+  # To close this: measure the extent at which this backend actually declines, and declare the store
+  # that predicts it. Never declare one that has not been checked against the device.
+
+# The shared hardware spec given to ALL arms — a constant input (a correct backend needs the target's
+# defined ISA), NOT Merlin assistance. Repo-root-relative bundle-convention path strings: `experiments/...`
+# resolves under merlin/, so these point at the curated Atlas bring-up set below. This lets the descriptor
+# be the single source of truth the bundle-consistency check compares against. The cycle-accurate FACTS
+# (exact encodings, DIM, memory map) are still DERIVED from the RTL by mlc — the ISA reference here is
+# orientation material (the green card + the model's authoritative ISA definition), not a merlin ISA.
+hardware_spec:
+  isa_headers:
+    - experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
+    - experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0
+
+# The ATLAS-CORRECT capsule corpus: fp8-e4m3 operands, bf16 accumulate/output, FLOAT (tolerance)
+# goldens produced by an INDEPENDENT oracle (the specir refmodel's fp8/bf16 datapath — the same
+# primitives `specc testbench --gen atlas-npu --op op.matmul_mxu0` uses), NOT the shared gemmini
+# INTEGER corpus (i8xi8->i32, exact_int) that a float MXU physically cannot match. Points at the `isa`
+# subdir; `layers`/`model_slices` siblings + `hidden` are auto-discovered from the parent (corpus_siblings).
+# Regenerate with: PYTHONPATH=<specir> .venv/bin/python merlin/contract/capsules/generate_corpus.py --target atlas
+capsule_corpus: merlin/contract/capsules/atlas/isa
+
+# The mlc arc model is the RTL oracle (default); atlas has no separate bespoke sim wired.
+toolchain:
+  sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)
+
+# Pre-flight end-to-end oracle smoke: a KNOWN-GOOD, self-contained npu_model Program that ships its own
+# golden_result. The pre-flight assembles it, runs it on the arc cosim, reads back the output, and asserts
+# a BIT-EXACT match against that golden — proving the grading oracle produces a correct verdict end-to-end
+# BEFORE a paid run (not merely that arc_available is True). MatmulProgram is the model's canonical single
+# fp8->bf16 MXU matmul validation program (npu_model.configs.programs.__all__), the same known-good program
+# the L4 verilator equivalence test uses. A per-target SETUP choice, so declared here — the ISA/datapath it
+# exercises is still DERIVED from the RTL by mlc.
+preflight:
+  smoke_program: MatmulProgram
+  capability_probes:
+    # Exercise a definitely-taken backward branch on the same cycle-accurate backend used for grading.
+    # A straight-line smoke cannot expose disagreement between an assembler's byte displacement and a
+    # target whose internal PC uses another address unit.  The fixture deliberately makes an incorrect
+    # target restart the loop, so both halt and the observable trip count are checked.
+    - capability: control_flow.relative_branch
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/taken_backward_branch.S
+        assembler: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 1000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: BNE}
+    - capability: scalar_memory.load_store_roundtrip
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/scalar_memory_nonzero.S
+        assembler: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 10000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: LW}
+          - {domain: instruction, dialect: atlas, operation: SW}
+          - {domain: instruction, dialect: atlas, operation: LBU}
+          - {domain: instruction, dialect: atlas, operation: SB}
+          - {domain: instruction, dialect: atlas, operation: LHU}
+          - {domain: instruction, dialect: atlas, operation: SH}
+
+answer_surfaces:
+  # The reference backend is a WORKING atlas compiler, so it is an answer key: an agent that reads it is
+  # copying the solution rather than deriving it. Listing it here is what makes the sandbox mask it.
+  prior_backends: [agent_spec_v1_mlir_oot]
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE WORKLOAD SPEC — the only input capsule synthesis cannot derive.
+#
+# Three keys, and every one of them is a DECISION rather than a fact about the hardware, which is why
+# they are declared here instead of extracted: which real networks this target is meant to compile, in
+# what order to prefer precisions when the requirement leaves the choice open, and how many synthesized
+# capsules are acceptable. Everything else about the corpus -- families, dtypes, alignments, memory
+# regimes, lanes, compositions, extents, goldens, oracle tiers -- is derived from the RTL facts and the
+# capability manifest by `merlin.targetgen.corpus_synth`.
+#
+# The ranking is narrowest-first and is the same one gemmini and radiance declare; it is filtered
+# against what THIS target admits (bf16 and fp8_e4m3 for a contraction), so int8 and mxfp8 are simply
+# rejected here as not-admitted rather than silently widening anything. `precision_policy.best_format`
+# reports each rejection with its reason.
+workload_spec:
+  # THE GRADED ROSTER — the models this target's generalization CLAIM is measured on, and the
+  # denominator `report_generalization_claim` computes over. Both are claim models: held out of
+  # derivation entirely, so the corpus is never built from what it is then said to generalize to.
+  # `smolvla` and `lstmnetvit` left this list when they became derivation sources below; counting a
+  # model you derived FROM as a model you generalize TO is the circularity the holdout exists to stop.
+  models: [resnet50, tiny_llama]
+  # THE DERIVATION APPLICATIONS — the exported models this target is FOR, whose real contraction shapes
+  # the corpus is built from. Named as bundles in the recapture store rather than as a directory, so the
+  # statement is reviewable here instead of depending on which subdirectories a generated tree happens
+  # to hold. `check_conformance_coverage._applications` raises if any of these is a claim model.
+  #
+  # The pretransposed variants are deliberately absent: they are layout rewrites of the captures below,
+  # not separate applications, and the layout they differ in is already a class axis.
+  applications:
+    - smolvla_fp32_consistent
+    - smolvla_int8_consistent
+    - smolvla_denoise_step_fp32_app
+    - lstmnetvit_fp8_consistent
+    - lstmnetvit_int8_consistent
+    - lstmnetvit_int8_w8a8_consistent
+  # Seconds one cycle-accurate certification may take. DECLARED, so the application axis records
+  # `budget_source: declared` rather than silently inheriting a default nobody chose.
+  cert_budget_s: 300
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
+host_lane:
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

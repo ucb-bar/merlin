@@ -6,34 +6,48 @@ Gemmini dialect via IREE) and compares cycles / wall-time / utilization / correc
 capsule_bench_v0 libraries (capsule emit, deterministic golden, ELF->sim->cycles path).
 
 Repo-root discovery + run/report routing are shared via ``merlin.benchharness``; the perf-specific
-constants + math (DIM, PEAK, align/matmul_macs/utilization_pct) stay here.
+math (align/matmul_macs/utilization_pct) stays here; the array geometry it needs is
+derived from the target's RTL facts, not declared.
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-# Self-contained bootstrap (git first, parents[] fallback), then put merlin/python on the path.
+# An explicit snapshot root takes precedence over the enclosing live git checkout.
 _HERE = Path(__file__).resolve()
-_git = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
-                      capture_output=True, text=True).stdout.strip()
-REPO = Path(_git) if _git else _HERE.parents[4]
+_root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
+if not _root:
+    _root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent), capture_output=True, text=True
+    ).stdout.strip()
+REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.benchharness import runs_root, reports_root  # noqa: E402
+from merlin.benchharness import reports_root, runs_root  # noqa: E402
 from merlin.common.paths import env as _env  # noqa: E402
+from merlin.perf.workload_gen import tile_geometry  # noqa: E402
 
 EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
-KERNELS = EXP / "kernels"                                  # one capsule dir per kernel + corpus.yaml
-RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
-REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
+KERNELS = EXP / "kernels"  # one capsule dir per kernel + corpus.yaml
+RUNS = runs_root("gemmini", "perf-bench")  # runs/gemmini/perf-bench
+REPORTS = reports_root("plots", "gemmini", "perf-bench")  # artifacts/plots/gemmini/perf-bench
 # External model corpus — resolve via .env (MERLIN_M2M_DIR), NOT a "/path/to/..." placeholder.
-MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", "/scratch/agustin/projects/model2MLIR")) / "workloads"
+MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", str(REPO.parent / "model2MLIR"))) / "workloads"
 
-# Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.
-DIM = 16
-PEAK_MACS_PER_CYCLE = DIM * DIM
+# The systolic array's edge, DERIVED from this target's own RTL discovery rather than written down.
+# The hardcoded 16 was correct for the config this bench happened to run and silently wrong for the
+# 8x8 and 32x32 Gemmini configs that are also built on disk: every utilization number would have been
+# off by the square of the ratio, with nothing in the output saying which array it was about.
+# `tile_geometry` fails closed when RTL discovery reports no array, so an underivable edge is an error
+# here rather than a plausible default that produces a wrong percentage.
+TARGET = "gemmini"  # this bench is ABOUT one target; the geometry still is not
+_MESH = tile_geometry(TARGET)
+DIM = _MESH.rows
+PEAK_MACS_PER_CYCLE = _MESH.rows * _MESH.cols
 
 
 def align(n: int, m: int = DIM) -> int:

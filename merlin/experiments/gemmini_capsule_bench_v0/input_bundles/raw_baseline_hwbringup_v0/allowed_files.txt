@@ -1,8 +1,0 @@
-merlin/contract/
-merlin/contract/capsules/isa/
-merlin/contract/capsules/layers/
-merlin/contract/capsules/model_slices/
-tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
-tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
-experiments/gemmini_capsule_bench_v0/task/
-third_party/llvm-install/

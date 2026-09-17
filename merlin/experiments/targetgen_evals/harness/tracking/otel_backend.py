@@ -36,18 +36,21 @@ class OtelBackend:
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
-            resource = Resource.create({
-                "service.name": config.service_name,
-                "target": config.target,
-                "method": config.method,
-                "seed": str(config.seed),
-                "run_id": config.run_id,
-            })
+            resource = Resource.create(
+                {
+                    "service.name": config.service_name,
+                    "target": config.target,
+                    "method": config.method,
+                    "seed": str(config.seed),
+                    "run_id": config.run_id,
+                }
+            )
             provider = TracerProvider(resource=resource)
 
             if config.otel_endpoint:
                 try:
                     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
                     exporter = OTLPSpanExporter(endpoint=config.otel_endpoint)
                 except Exception as e:
                     local.warn(f"OTel OTLP exporter setup failed ({e}); using console exporter")
@@ -77,6 +80,7 @@ class OtelBackend:
             with self._tracer.start_as_current_span(name, attributes=attributes or {}) as span:
                 try:
                     from opentelemetry import trace
+
                     ctx = trace.get_current_span().get_span_context()
                     if ctx.is_valid:
                         self._trace_id = format(ctx.trace_id, "032x")

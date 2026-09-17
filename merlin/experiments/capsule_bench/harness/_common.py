@@ -1,0 +1,140 @@
+"""Shared helpers for the target-neutral capsule-bench isolation harness.
+
+Thin shim over ``merlin.benchharness`` (the shared harness primitives). This module is imported by
+harness scripts BEFORE they add merlin/python to sys.path, so it bootstraps the repo root itself
+(git first, parents[] fallback), puts merlin/python on the path, then re-exports the shared helpers.
+Public symbols (REPO/HARNESS/EXP/RUNS/REPORTS/BUNDLES/sh/hash_tree/repo_sha) are preserved for callers.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# Self-contained bootstrap (runs before merlin is importable).
+_HERE = Path(__file__).resolve()
+_root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
+if not _root:
+    _root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent), capture_output=True, text=True
+    ).stdout.strip()
+REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
+sys.path.insert(0, str(REPO / "merlin" / "python"))
+
+from merlin.benchharness import hash_tree, repo_sha, reports_root, runs_root, sh  # noqa: E402
+
+# The harness lives in its own TARGET-NEUTRAL home (experiments/capsule_bench/harness); HARNESS is that
+# home. EXP is the SELECTED TARGET's data dir (descriptor + task + input_bundles), under
+# experiments/capsule_bench/targets/<target>/ — chosen by MERLIN_TARGET_EXPERIMENT (a path to any
+# target's target_experiment.yaml) or defaulting to gemmini. The overridden dir must carry the run
+# scaffolding (task/ + input_bundles/); require_scaffolding() below fails loudly if it does not.
+HARNESS = _HERE.parent
+_override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
+if _override:
+    _desc = Path(_override).expanduser()
+    if not _desc.is_file():
+        raise SystemExit(f"MERLIN_TARGET_EXPERIMENT={_override!r} is not a readable descriptor file")
+    EXP = _desc.resolve().parent
+    # Normalize the env var to an ABSOLUTE path so child processes (host-side brokers, the sandboxed
+    # agent's tools) that inherit it resolve the descriptor regardless of their cwd. A relative override
+    # resolves here (main process runs from the repo root) but breaks a broker chdir'd elsewhere.
+    os.environ["MERLIN_TARGET_EXPERIMENT"] = str(_desc.resolve())
+else:
+    _desc = REPO / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"  # default target
+    EXP = _desc.parent
+
+
+def _source_experiment_env(exp_dir: Path) -> list[str]:
+    """Auto-source the per-experiment tooling-PATH env file (``<exp_dir>/experiment.env``) into
+    ``os.environ`` for ALL arms, setting ONLY keys not already present (the process environment always
+    wins). Target-AGNOSTIC: keyed off the resolved experiment dir, so it works for any
+    ``targets/<target>/`` with no target literal. The file holds ONLY machine-specific tooling PATHS
+    (MERLIN_MLC_DIR, MERLIN_EXT_*) shared by every arm; it is gitignored (the tracked
+    ``experiment.env.example`` documents the var names). This is what makes ``MERLIN_MLC_DIR`` present for
+    a run without exporting it by hand — its absence is exactly what read as an unavailable arc oracle.
+    KEY=VALUE lines, ``#`` comments; structured parse (no regex). Returns the keys it set (for logging)."""
+    f = exp_dir / "experiment.env"
+    set_keys: list[str] = []
+    if not f.is_file():
+        return set_keys
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k and k not in os.environ:  # process env WINS — never override an exported var
+            os.environ[k] = v
+            set_keys.append(k)
+    return set_keys
+
+
+# Load it now so every downstream import (mlc_bridge.mlc_dir, ext_path, the oracle preflight) sees the
+# shared tooling paths regardless of which harness entry point ran.
+SOURCED_EXPERIMENT_ENV = _source_experiment_env(EXP)
+
+try:
+    import yaml as _yaml
+
+    TARGET = (_yaml.safe_load(_desc.read_text()) or {}).get("target") if _desc.is_file() else None
+except Exception:  # noqa: BLE001
+    TARGET = None
+TARGET = TARGET or EXP.name.split("_")[0]  # fallback: the dir-name stem before _capsule_bench
+#: The SELECTED target's descriptor file itself. Exported so a harness script can load the descriptor
+#: (answer surfaces, oracle routing) instead of re-deriving its path from EXP and guessing the filename.
+DESCRIPTOR = _desc
+RUNS = runs_root(TARGET, "capsule-bench")  # runs/<target>/capsule-bench
+REPORTS = reports_root("capsule-bench", TARGET)  # artifacts/capsule-bench/<target>
+BUNDLES = EXP / "input_bundles"
+
+
+def require_scaffolding() -> None:
+    """Fail loudly (before a run starts) if the selected experiment dir lacks the run scaffolding a
+    driver needs — the task prompts and staged input bundles. A target that only ships a descriptor
+    (atlas/radiance/mx_gemmini today) has its bundles GENERATED by generate_bundles but still needs its
+    task/ prompts authored; this guard says exactly what is missing instead of a deep KeyError/FileNotFound."""
+    missing = [d for d in ("task", "input_bundles") if not (EXP / d).is_dir()]
+    if missing:
+        raise SystemExit(
+            f"experiment dir {EXP} (target={TARGET}) is missing run scaffolding: {', '.join(missing)}.\n"
+            f"  • input_bundles/: generate with `merlin.targetgen.generate_bundles` for this descriptor\n"
+            f"  • task/: author the per-target task prompts (TASK_full.md / TASK_realistic.md)\n"
+            f"Only descriptor-driven steps (bundle generation, governance checks) work without them."
+        )
+
+
+def experiment_conditions() -> list[str]:
+    """The A/B experiment (hw-bringup) conditions this target actually ships, DERIVED from the
+    materialized bundle dirs rather than hardcoded — gemmini ships ``{hwbringup_v0,
+    hwbringup_nokernel_v0}``; a target with no no-kernel variant (e.g. atlas) ships ``{hwbringup_v0}``.
+    A bundle dir is ``<arm>_<cond>`` and the launcher's condition family is exactly the ``hwbringup*``
+    set (``launch_ab_batch._bundle_for`` keys on ``*_hwbringup_v0``); ``public_v0`` / ``realistic_v0``
+    are release/other variants the A/B run does not launch, so they are intentionally excluded from the
+    governance gates. Arm-name-independent (extracts the condition from ``hwbringup`` onward), so the
+    ``merlin_assisted`` / ``merlin_assisted_rtlchecks`` prefix overlap does not matter."""
+    conds: set[str] = set()
+    for d in BUNDLES.glob("*_hwbringup*"):
+        i = d.name.find("hwbringup")
+        if i > 0 and d.is_dir() and (d / "input_bundle_manifest.yaml").is_file():
+            conds.add(d.name[i:])
+    return sorted(conds) or ["hwbringup_v0"]
+
+
+__all__ = [
+    "REPO",
+    "EXP",
+    "HARNESS",
+    "TARGET",
+    "RUNS",
+    "REPORTS",
+    "BUNDLES",
+    "sh",
+    "hash_tree",
+    "repo_sha",
+    "require_scaffolding",
+    "experiment_conditions",
+    "SOURCED_EXPERIMENT_ENV",
+]

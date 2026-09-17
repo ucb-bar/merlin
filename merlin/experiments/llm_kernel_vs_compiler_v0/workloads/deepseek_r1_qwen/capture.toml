@@ -1,0 +1,3 @@
+venv = "${MERLIN_M2M_DIR}/.venv"
+python = "3.12"
+deps = ["transformers"]

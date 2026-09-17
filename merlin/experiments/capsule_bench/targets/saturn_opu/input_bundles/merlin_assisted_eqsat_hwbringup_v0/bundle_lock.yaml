@@ -1,0 +1,12 @@
+allowed_tree_sha256:
+  merlin/contract: fbec7cdb753395e51898c9e755f2ed01c5fdd811cdd9e63c3749ed0bd3fa2f54
+  merlin/contract/capsules/saturn_opu/isa: 1c434622277dd61e57a1fb95644c9ee79b32937419a6f6382d63bf2ff82ad8d9
+  merlin/contract/capsules/saturn_opu/layers: 8a601766b470b3780855c36054a05d1ad28fa5cba4300c7ad3b02837863cd3cb
+  merlin/contract/capsules/saturn_opu/model_slices: 6a9ccc9329c6d8a7c702ad3c2f4fdc06dfd6cbe9fe9a4eb22477e8fa7abb57ff
+  merlin/python/merlin/targetgen/generate: 308b316826cbc93f72e6072253aff603494b095cd53e39412277cf1cf06aaec3
+  merlin/python/merlin/targetgen/oot_starterkit: 6a227c722f295287abc605a60e4fdaa693d10344ce3e810ff6138d6ea034da6a
+  merlin/python/merlin/targetgen/synthesize: 38ae86099853c5a18cf0a584a1430fe6c9231e5858f61729b515df822be0290e
+  merlin/python/merlin/xdsl_dialects: b7866e6b597bd13fc1c0e302f24b1f17d2145246c3f66258d8e29e0918295e44
+  third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
+unresolvable_grants:
+- experiments/capsule_bench/targets/saturn_opu/task

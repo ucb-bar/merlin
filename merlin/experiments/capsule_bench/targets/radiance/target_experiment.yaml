@@ -1,0 +1,315 @@
+# Declarative per-target experiment SETUP for RADIANCE (the RadianceMuon / Muon SIMT config) — a real,
+# working 3rd target that stresses the ladder's generality: radiance is a SIMT tensor-core GPU (16
+# lanes/warp, CVFPU fp32/fp16/bf16) that ALSO embeds a gemmini-mx MX PE for low-bit (mxfp4/6/8/int8)
+# matmul. It is matmul-capable and has a validated model — it simply exercises a DIFFERENT oracle path
+# than gemmini/atlas.
+#
+# Authoritative source: the materialized (regenerable) target contract at
+#   out/artifacts/targets/radiance/contracts/target_contract.yaml
+# derived by `capability_manifests.write_oot_target("radiance", ...)` from the hand-owned residual +
+# the RTL-derived Muon facts (family=simt_tensor, ops=[matmul, elementwise], compute_units
+# simt_cluster + mx_pe, cyclotron sim). The contract is gitignored (generated); the residual is tracked.
+# Plug it into Merlin via MERLIN_TARGET_PATH; its facts are extracted deterministically from the real
+# RadianceMuonConfig RTL by muon_introspect (elaborated FIRRTL + cyclotron config + ISA docs ->
+# muon_facts.json), the SIMT analog of the arc decoder-derived ISA.
+#
+# Oracle (what is genuinely per-target here): radiance's RTL oracle is the bespoke CYCLOTRON perf model
+# (muon_oracles.cyclotron_adapter, same adapter signature as the arc/gemmini path; MuonUnavailable is
+# the honest fail-closed signal), NOT the arc MXU command-buffer model. So arc_available("radiance") is
+# False by design — radiance is not an mlc arc-matmul target — and that is correct, not a gap. Validated
+# fidelity per the perf comparison: M1 functional bit-exact and M3 data-movement exact vs the RTL, with
+# M2 cycles present + 3-way cross-checked but carrying a large, honestly-bracketed SIMT-GEMM overcount
+# (~2x on gemm_simt: occupancy / latency-hiding is the documented frontier item, not fitted to look
+# tight). Status: prototype, not RTL-certified (requires_human_review).
+target: radiance
+
+# This experiment target is served by the MUON core package (the SIMT core inside RadianceMuonConfig),
+# so its contracts/ — and therefore the rtl_facts / irdl bundle pins the CIRCT arm is granted — live
+# under merlin/targets/muon, NOT merlin/targets/radiance (which does not exist). Declared because it
+# cannot be inferred from the target name: inferring it produced a bundle that claimed to grant the
+# CIRCT arm its RTL-extracted facts while pointing at a path that can never exist.
+backend_package_dir: merlin/targets/muon
+
+# Registry pins (merlin/contract/hardware_pins.yaml) this target's hardware sources live behind.
+# Declared so a tool asking "where is this target's RTL" resolves it the same way every other target
+# does -- through the pin registry, which verifies BY CONTENT -- instead of carrying a path of its own.
+# Consumed by merlin.targetgen.isa_rtl_crosscheck.rtl_source_roots (the encoding cross-check reads this
+# target's Chisel decode patterns) and by the provenance recorder.
+hardware_pins:
+  - radiance_muon_rtl
+  - radiance_kernels
+
+rtl:
+  via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
+
+hardware_spec:
+  target_contract: out/artifacts/targets/radiance/contracts/target_contract.yaml
+  # Shipped ISA doc for the derived assembler/disassembler/linter — the stock-LLVM-emittable Vortex CUSTOM0
+  # warp-control surface (derived from radiance-kernels vx_intrinsics.h + RISCVInstrInfoVX.td). Self-contained
+  # (no model venv); the merlin IsaModel introspects it in-process. Fork-only 64-bit/mnemonic ops are residue.
+  isa_headers:
+    - experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0
+
+# Three explicit information treatments. A deeper denial makes the no-kernel cell genuinely omit the
+# example kernel even though its parent bring-up directory remains visible. The library cell receives a
+# byte-pinned, read-only export of the target authors' PR#1 kernel families; it is authoring evidence,
+# never a link-time dependency of a submitted compiler.
+information_sets:
+  hwbringup_v0:
+    condition: kernels
+  hwbringup_nokernel_v0:
+    condition: no-kernels
+    denied:
+      - path: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/example_kernel/
+        reason: no-kernel information treatment
+  hwbringup_kernellibrary_v0:
+    condition: kernel-library
+    allowed:
+      - path: out/artifacts/targets/radiance/kernel_library_pr1_v1/
+        as: radiance-kernels-pr1
+        mode: ro
+        note: exact pinned PR#1 kernel-library snapshot for schedule and compiler-rule mining
+    source_pins: [radiance_kernels]
+
+# Radiance's OWN corpus root (mirrors atlas's per-target subtree) — SIMT fp32/fp16/bf16 GEMM + a norm +
+# an attention tile (PR#1 op shapes) composed with the contained MX tensor path (simt_cluster contains
+# mx_pe), generated from profiles/radiance.yaml. SIMT goldens are ordinary IEEE float; the MX capsule's
+# golden comes from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless for SIMT-fp / MX).
+capsule_corpus: merlin/contract/capsules/radiance/isa
+
+# Radiance's RTL oracle is its bespoke cyclotron sim (the muon capsule path), NOT the arc MXU model.
+toolchain:
+  sim_via: cyclotron
+
+# Scope of the PAID agentic loop: which whole-model capsules each round is scored on.
+#
+# A model capsule costs one cyclotron invocation per matmul layer, and that cost is the MODEL's size,
+# not the compiler's difficulty. Measured on this target: M0's 15 layers take ~45 min per arm, while the
+# four together are 297 layers (M0 15, M1 37, M3 90, M2 155) — ~15 h per arm per ROUND, which put a
+# 12-round A/B out of reach. The first A/B where both arms cleared the op gate spent its entire budget
+# grading M1 and never reached round 1.
+#
+# M0 is kept because it is the one that answers the question: "does a whole model run on the target
+# mesh", certified at L2 with mesh_ran/mesh_fell_back counters. The other three re-ask it at 6-20x the
+# price. They are still graded outside the loop (grade_agent_run against a frozen submission), where
+# paying once is fine; withholding them here is a statement about the LOOP's budget, not about the
+# corpus. The excluded names appear in the run manifest and the denominator moves with them.
+# 2026-08-28: M0 joins them FOR A LADDER RUN, on the same "LOOP's budget" grounds stated above and now
+# measured rather than estimated. The note says "M0's 15 layers take ~45 min per arm"; on a 4-arm ladder
+# an arm sat on M0 for over 3 HOURS -- 4x that -- with its own grade dir still empty, because the
+# whole-model path drove ONE warp of the then-selected Cyclotron model's 2 configured cores x 8 warps
+# (measured: 0.286 IPC on c0t0 while c0t1/c1t0/c1t1 retire 37 instructions and park). That model geometry
+# is not the hardware fact: the elaborated RadianceMuonConfig contains 1 MuonCore, so the two-core
+# Cyclotron setting is now treated as an explicit fidelity disagreement. The run was also slow because
+# its per-layer mesh sims land in /tmp, on a
+# root filesystem at 97%, rather than in the TMPDIR the launcher exports (the sandbox does not propagate
+# it). Four arms x that cost does not fit any budget, and the ladder's question is the OP corpus: what
+# does each nested bundle add? M0 answers a different question and answers it identically for every arm.
+#
+# This does NOT retire the whole-model capstone. M0 has passed in-loop (v14, v17) and its 80% gate is
+# demonstrated in BOTH directions (v20 gated it out at 54%; v21 earned it), so the capability is evidenced.
+# It goes back in the loop once warp utilization makes it affordable -- that is the fix, not a smaller model.
+grading:
+  # THREE DIFFERENT QUESTIONS, THREE DIFFERENT STAGES.
+  #
+  # 1. SEARCH learns to compile the shapes actually derived from the declared applications.  It uses
+  #    sixteen full application-shape L2 members: the original fourteen contraction classes plus exact
+  #    elementwise add and multiply regions observed in the declared application captures. No
+  #    PR-kernel-shaped capsule is allowed to steer convergence.
+  # 2. DERIVED GSIM EVALUATION freezes the candidate and reruns those exact sixteen capsules directly
+  #    on the elaborated-RTL GSIM engine.  The smaller `_l3` siblings remain useful smoke tests, but must
+  #    not substitute for this same-workload evaluation.  Encoding/protocol/numerics become certification
+  #    evidence here, once after search rather than once per paid round.
+  # 3. KERNEL-LIBRARY COMPARISON runs only after the derived GSIM stage passes.  It asks whether the
+  #    frozen compiler independently recovered the schedules represented by Radiance PR #1; the library
+  #    remains read-only authoring evidence and is never copied, linked, called, or used for dispatch.
+  #
+  # Keeping these stages separate prevents the previous 29-member mixture from teaching to the external
+  # kernel suite while simultaneously calling that suite an evaluation. The pre-audit convergence
+  # cohort was 14 contractions; this one is 16 application-derived members. The family census at
+  # out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908 records why the
+  # elementwise members were added and which captured families still have no search member.
+  expected_cohort:
+    source_capsules: 168
+    admitted_capsules: 16
+  search_cohort:
+    policy: radiance_model_derived_l2_convergence_v2
+    include_capsules:
+      - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2
+      - SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
+      - SY_app_elementwise_add_f32_rank3_1x113x1_l2
+      - SY_app_elementwise_mul_f32_rank1_32_l2
+  evaluation_cohorts:
+    derived_gsim:
+      policy: radiance_model_derived_l3_frozen_candidate_v2
+      # Executable dependency: evaluation_cohort refuses to materialize this stage until an exact
+      # 16/16 L2 score and the candidate/source-tree digests have been sealed together.
+      after: search_l2_pass
+      oracle_tier: L3
+      oracle_engine: gsim
+      # Correctness-only observation budget. The exact Stage-1 count is sealed per capsule and the
+      # Stage-2 adapter computes max(minimum, L2*multiplier, compute_floor*floor_multiplier). Exhausting
+      # this bound is UNAVAILABLE, never a numeric verdict. The explicit multiplier absorbs the timing-
+      # model/GSIM fidelity gap; it is experiment policy, not a claimed performance relationship.
+      cycle_budget:
+        source: sealed_predecessor_tier
+        multiplier: 8
+        minimum_cycles: 120000
+        compute_floor_multiplier: 2
+      require_source_roles: [model_derived]
+      include_capsules:
+        - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2
+        - SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
+        - SY_app_elementwise_add_f32_rank3_1x113x1_l2
+        - SY_app_elementwise_mul_f32_rank1_32_l2
+    kernel_library_comparison:
+      policy: radiance_pr1_frozen_candidate_comparison_v1
+      after: derived_gsim_pass
+      oracle_tier: L3
+      oracle_engine: gsim
+      include_capsules:
+        - R0_gemm_fp32
+        - R1_gemm_fp16
+        - R2_gemm_bf16
+        - R4_rmsnorm_fp32
+        - R5_mx_tile_mxfp8
+        - R6_mx_tile_mxfp6
+        - R7_mx_tile_mxfp4
+        - R8_flash_attention_mx
+        - R9_flash_attn_mx_gqa
+        - R11_gemv_batched_mx
+        - R13_flash_attn_mx_fp4
+        - RF0_rmsnorm_qkv_fp16
+        - RF1_rope_qkv_bf16
+        - RP4_softmax_fp32_pt
+        - RP5_layernorm_fp32_pt
+        - RP6_geglu_bf16_pt
+        - RP7_attn_full_fp16_pt
+        - RP11_logit_softcap_fp32_pt
+        - RP12_embed_scale_fp32_pt
+        - RP13_gemma_4norm_bf16_pt
+        - RP14_patch_embed_bf16_pt
+        - RP15_fused_matmul_bias_bf16_pt
+        - RP16_bias_add_fp32_pt
+        - RP17_k_chain_fp16_pt
+
+answer_surfaces:
+  # Both of these are WORKING radiance compilers sitting in out/artifacts/targets/radiance/, which is
+  # exactly what atlas declares for its own reference package: an agent that reads one is copying the
+  # solution instead of deriving it. The list was empty while both were on disk, so nothing masked
+  # them -- the mask set is DERIVED from this list (sandbox/answer_surfaces.py), so an unlisted
+  # surface is simply not masked. `hand_v0` is the full hand-authored package (backend + dialect +
+  # lowering + derive_facts); `radiance_mlir` is the generated dialect/lowering pair, which answers
+  # the dialect-authoring half of the task on its own.
+  prior_backends: [hand_v0, radiance_mlir]
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE ONLY INPUT CAPSULE SYNTHESIS CANNOT DERIVE. Everything else about this target's corpus comes
+# from its own conformance requirement (admitted x observed, at the boundaries its RTL declares).
+#
+# `models` names which workloads this target is FOR -- the requirement's `observed` half is a census of
+# real captures, and without a declared roster the denominator of a tracked requirement is an untracked
+# directory listing. `precision_preference` RANKS the dtypes the target already admits, to break ties on
+# axes no required cell pins; it is filtered against the admitted set and can never widen it, and a
+# token that does not survive is reported rather than silently ignored.
+workload_spec:
+  # THE GRADED ROSTER — the models this target's generalization CLAIM is measured on, and the
+  # denominator `report_generalization_claim` computes over. Both are claim models: held out of
+  # derivation entirely, so the corpus is never built from what it is then said to generalize to.
+  # `smolvla` and `lstmnetvit` left this list when they became derivation sources below; counting a
+  # model you derived FROM as a model you generalize TO is the circularity the holdout exists to stop.
+  models: [resnet50, tiny_llama]
+  # THE DERIVATION APPLICATIONS — the exported models this target is FOR, whose real contraction shapes
+  # the corpus is built from. Named as bundles in the recapture store rather than as a directory, so the
+  # statement is reviewable here instead of depending on which subdirectories a generated tree happens
+  # to hold. `check_conformance_coverage._applications` raises if any of these is a claim model.
+  #
+  # The pretransposed variants are deliberately absent: they are layout rewrites of the captures below,
+  # not separate applications, and the layout they differ in is already a class axis.
+  applications:
+    - smolvla_fp32_consistent
+    - smolvla_int8_consistent
+    - smolvla_denoise_step_fp32_app
+    - lstmnetvit_fp8_consistent
+    - lstmnetvit_int8_consistent
+    - lstmnetvit_int8_w8a8_consistent
+  # Seconds one cycle-accurate certification may take. DECLARED, so the application axis records
+  # `budget_source: declared` rather than silently inheriting a default nobody chose.
+  cert_budget_s: 300
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
+host_lane:
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

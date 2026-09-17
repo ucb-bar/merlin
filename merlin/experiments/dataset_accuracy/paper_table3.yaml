@@ -1,0 +1,72 @@
+# Voyager (arXiv 2509.15205v1, DAC 2026), Table 3 "Accuracy of vision and NLP models across different
+# data types" (\label{tab:accuracy}), transcribed from the arXiv e-print source 6_results.tex (not from a
+# rendered PDF). Top-1 accuracy in percent. This file is the comparison baseline of run_table3.py; the
+# paper's performance claims live in merlin/contract/perf_reference_targets.yaml, which carries no
+# accuracy entries.
+#
+# What the paper says about how the table was produced (6_results.tex, "Exploring Datatypes and
+# Quantization Schemes"): "Using the bit-accurate C++ model, Voyager allows running inference on entire
+# datasets to evaluate hardware-level accuracy ... We use pre-trained models from torchvision, timm, and
+# transformers". It names no weights revision, calibration set, evaluation-set size or block size.
+# What the public compiler's own accuracy path does is recorded in AGENT.md ("Which Voyager path made
+# Table 3").
+source:
+  paper: "Voyager, arXiv 2509.15205v1"
+  file: 6_results.tex
+  label: tab:accuracy
+  eprint: https://arxiv.org/e-print/2509.15205v1
+columns: [FP32, BF16, E4M3, Posit8, INT8, MXINT8]
+metric: top1_percent
+rows:
+  resnet18:
+    display: ResNet-18
+    dataset: ImageNet
+    params: 11.7M
+    top1: {FP32: 71.5, BF16: 70.0, E4M3: 69.2, Posit8: 69.1, INT8: 71.5, MXINT8: 70.7}
+  resnet50:
+    display: ResNet-50
+    dataset: ImageNet
+    params: 25.6M
+    top1: {FP32: 80.4, BF16: 81.1, E4M3: 78.8, Posit8: 79.4, INT8: 78.7, MXINT8: 79.8}
+  vit_b:
+    display: ViT (Base)
+    dataset: ImageNet
+    params: 86M
+    top1: {FP32: 84.1, BF16: 84.3, E4M3: 83.8, Posit8: 84.0, INT8: 75.4, MXINT8: 84.0}
+  mobilenet_v2:
+    display: MobileNetV2
+    dataset: ImageNet
+    params: 3.5M
+    top1: {FP32: 71.1, BF16: 70.1, E4M3: 62.5, Posit8: 63.8, INT8: 66.0, MXINT8: 71.3}
+  mobilebert_tiny:
+    display: MobileBERT-TINY
+    dataset: SST-2
+    params: 15M
+    top1: {FP32: 90.8, BF16: 90.7, E4M3: 90.6, Posit8: 90.4, INT8: 90.4, MXINT8: 91.1}
+  bert_base:
+    display: BERT (Base)
+    dataset: SST-2
+    params: 110M
+    top1: {FP32: 93.2, BF16: 93.0, E4M3: 93.1, Posit8: 92.8, INT8: 92.4, MXINT8: 93.1}
+
+# A second, in-repo reference for the SAME pipeline: the gold table the accelerator's accuracy
+# regression checks itself against (voyager-accelerator@e3a725db, run_regression.py ACCURACY_RESULTS,
+# pass = |measured - gold| < 1.0). That flow is test_codegen --dump_dataset (first 1000 ImageNet images;
+# the full 872-sentence SST-2 validation split) into the bit-accurate C++ AccuracyTester. It has no BF16
+# column; CFLOAT is its no-quantization (fp32) run. It differs from Table 3 by up to 2.0 points (ResNet-18
+# INT8 69.5 vs 71.5), so both are carried and every cell is compared to both.
+accelerator_regression_gold:
+  source:
+    repo: voyager-accelerator
+    commit: e3a725db5459bde947e5cb542ccd7f5b10bdd905
+    file: run_regression.py
+    symbol: ACCURACY_RESULTS
+    tolerance_points: 1.0
+  column_map: {CFLOAT: FP32, E4M3: E4M3, P8_1: Posit8, INT8: INT8, MXINT8: MXINT8}
+  top1:
+    resnet18: {FP32: 70.8, E4M3: 69.3, Posit8: 69.7, INT8: 69.5, MXINT8: 70.3}
+    resnet50: {FP32: 81.2, E4M3: 79.5, Posit8: 80.2, INT8: 78.6, MXINT8: 81.2}
+    mobilebert_tiny: {FP32: 90.83, E4M3: 90.94, Posit8: 90.02, INT8: 90.6, MXINT8: 91.28}
+    bert_base: {FP32: 92.89, E4M3: 93.0, Posit8: 92.78, INT8: 92.32, MXINT8: 93.0}
+    vit_b: {FP32: 84.7, E4M3: 84.5, Posit8: 84.0, INT8: 77.1, MXINT8: 84.6}
+    mobilenet_v2: {FP32: 70.0, E4M3: 62.5, Posit8: 63.8, INT8: 66.0, MXINT8: 72.1}

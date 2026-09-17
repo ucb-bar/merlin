@@ -1,0 +1,766 @@
+"""Per-round DEV-CONFORMANCE verdict — did the agent actually DEVELOP the way its arm mandates?
+
+This is a first-class completion gate while leaving the capsule ORACLE grade unchanged: numeric evidence
+still reports when a round is non-conformant, but that round cannot be frozen as a valid arm-N result.
+It catches the case where a run scores 0 by NOT using the mandated tooling (an invented encoding, a regex
+parser, no lever enumeration), which the numeric grade alone cannot distinguish from a genuine capability
+wall.
+
+Every signal derives from PERSISTED artifacts — the round transcript + the frozen submission tree — so
+it is computable post-hoc on any recorded run and needs no live sandbox. Fully target-agnostic (no
+accelerator name, no golden); the only "regex" here is the repo's own check_no_regex AST scan, reused.
+
+Checks (each TOOL-SET-APPLICABLE — skipped where the resolved bundle does not grant the tool, so it is
+never a false fail):
+  * no_regex_ok    — the submission's own .py author no regex (the repo cardinal rule)
+  * isa_tools_used — an assisted arm exercised the derived ISA dev tools (lint/disasm/asm/debug) at all
+  * asm_used       — an external_backend arm assembled words via `isa_tools asm` (external_backend only)
+  * cca_used       — the CCA lever-set enumeration ran (check_bijection / escalation_ladder, CLI or API)
+  * full_selfcheck — a self-check covering ALL capsules ran (not just one capsule)
+  * rtl_derived_levers_used — an RTL-tools bundle actually derived its backend levers
+  * rtl_facts_used — an RTL-tools bundle loaded its target's frozen RTL facts
+  * scaffold_generators_used — an RTL-tools bundle ran a real scaffold generator (not merely read it)
+  * rtl_checks_read — an RTL-tools bundle successfully read the harness's ``rtl_checks`` feedback
+  * arm4_discovery_before_submission_mutation — CCA + RTL discovery + scaffold preceded the first edit
+``conformant`` is the AND of the applicable checks.
+"""
+from __future__ import annotations
+
+import ast
+import hashlib
+import importlib.util
+import json
+import shlex
+from collections.abc import Iterable
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+_ASSISTED = ("merlin_assisted", "merlin_rtlchecks")
+
+
+def _load_scan_file():
+    """Reuse build_tools/scripts/check_no_regex.py's per-file AST scanner (the canonical repo rule) rather
+    than re-implement it. Driver-side only (merlin importable); returns None if unavailable."""
+    try:
+        from merlin.common.paths import repo_root
+        p = repo_root() / "build_tools" / "scripts" / "check_no_regex.py"
+        spec = importlib.util.spec_from_file_location("_check_no_regex", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod._scan_file
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@lru_cache(maxsize=1)
+def _vendored_xdsl_hashes() -> frozenset[str]:
+    """Hashes of the xDSL dependency a package is permitted to vendor.
+
+    The no-regex treatment applies to code the AGENT authors. A self-contained package may copy the
+    granted xDSL runtime byte-for-byte; charging that upstream dependency to the agent both misstates
+    the treatment and makes an otherwise perfect run impossible to freeze. Content identity is the
+    boundary deliberately: a modified or newly authored file under a directory merely NAMED ``xdsl`` is
+    not exempt, so the exemption cannot be claimed by putting authored code in a suggestively named
+    folder.
+    """
+    try:
+        spec = importlib.util.find_spec("xdsl")
+    except (ImportError, AttributeError, ValueError):
+        return frozenset()
+    locations = tuple(spec.submodule_search_locations or ()) if spec is not None else ()
+    hashes: set[str] = set()
+    for location in locations:
+        root = Path(location)
+        if not root.is_dir():
+            continue
+        for py in root.rglob("*.py"):
+            try:
+                hashes.add(hashlib.sha256(py.read_bytes()).hexdigest())
+            except OSError:
+                continue
+    return frozenset(hashes)
+
+
+def _submission_regex_evidence(sub_dir: Path) -> tuple[list[dict], list[dict]]:
+    """``(authored hits, byte-identical vendored files)`` -- attributed separately, never merged."""
+    scan = _load_scan_file()
+    if scan is None or not sub_dir.exists():
+        return [], []
+    hits: list[dict] = []
+    vendored: list[dict] = []
+    allowed_hashes = _vendored_xdsl_hashes()
+    for py in sorted(sub_dir.rglob("*.py")):
+        if "__pycache__" in py.parts or "build" in py.parts:
+            continue
+        try:
+            file_hits = list(scan(py))
+            if not file_hits:
+                continue
+            relative = str(py.relative_to(sub_dir))
+            if hashlib.sha256(py.read_bytes()).hexdigest() in allowed_hashes:
+                vendored.append({"file": relative, "n_hits": len(file_hits),
+                                 "attribution": "byte_identical_granted_xdsl"})
+                continue
+            for line, kind in file_hits:
+                hits.append({"file": relative, "line": line, "kind": kind})
+        except Exception:  # noqa: BLE001
+            continue
+    return hits, vendored
+
+
+def _submission_regex(sub_dir: Path) -> list[dict]:
+    """List regex use in agent-AUTHORED Python. Empty means the authored compiler is clean."""
+    return _submission_regex_evidence(sub_dir)[0]
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """One executed tool request paired with the result the agent actually received."""
+
+    name: str
+    input: dict
+    tool_use_id: str
+    result_present: bool
+    succeeded: bool
+    result_text: str
+
+
+def _content_text(content) -> str:
+    """Flatten the persisted tool-result body without interpreting it.
+
+    Claude-family transcripts use either a string or a list of typed content blocks.  Keeping the
+    returned text lets checks which are specifically about *reading feedback* prove that the named block
+    was actually returned, rather than crediting a command that merely mentioned its filename.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(block.get("text") or block.get("content") or "")
+            if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _tool_calls(tpath: Path) -> list[ToolCall]:
+    """Every assistant tool request, correlated with its persisted result.
+
+    Merely mentioning or issuing a required command is not evidence that the tool was available.  Codex
+    records an explicit ``is_error`` bit and is checked strictly.  Older translated drivers did not all
+    persist that bit, so they retain compatibility only when a correlated result is present; a missing
+    result always fails closed.
+    """
+    events: list[dict] = []
+    if not tpath.exists():
+        return []
+    for ln in tpath.read_text(errors="ignore").splitlines():
+        try:
+            e = json.loads(ln)
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(e, dict):
+            events.append(e)
+
+    driver = next((str(e.get("driver") or "") for e in events
+                   if e.get("type") == "system" and e.get("subtype") == "init"), "")
+    results: dict[str, dict] = {}
+    for e in events:
+        if e.get("type") != "user":
+            continue
+        for block in (e.get("message") or {}).get("content", []) or []:
+            if (isinstance(block, dict) and block.get("type") == "tool_result"
+                    and block.get("tool_use_id")):
+                results[str(block["tool_use_id"])] = block
+
+    out: list[ToolCall] = []
+    anonymous = 0
+    for e in events:
+        if e.get("type") != "assistant":
+            continue
+        message = e.get("message") or {}
+        message_id = str(message.get("id") or "")
+        for b in message.get("content", []):
+            if isinstance(b, dict) and b.get("type") == "tool_use":
+                inp = b.get("input")
+                # Native Claude/OpenCode blocks carry ``id``.  The Codex translator stores the same
+                # correlation id on the enclosing assistant message and on the later tool_result.
+                tool_id = str(b.get("id") or message_id)
+                if not tool_id:
+                    anonymous += 1
+                    tool_id = f"__missing_tool_id_{anonymous}"
+                result = results.get(tool_id)
+                explicit_error = result.get("is_error") if result is not None else None
+                succeeded = bool(result is not None and (
+                    explicit_error is False
+                    or (driver != "codex" and explicit_error is not True)
+                ))
+                out.append(ToolCall(
+                    name=str(b.get("name") or ""),
+                    input=inp if isinstance(inp, dict) else {"_raw": inp},
+                    tool_use_id=tool_id,
+                    result_present=result is not None,
+                    succeeded=succeeded,
+                    result_text=_content_text(result.get("content")) if result is not None else "",
+                ))
+    return out
+
+
+def _exec_str(call: ToolCall) -> str:
+    """The COMMAND actually executed by this tool call — the bash command, not a written file's content.
+    (Matching the whole serialized input would count a tool named only in prose inside a write_file, which
+    is exactly the false positive we must avoid: an agent that WRITES 'run isa_tools.py asm' in its plan but
+    never runs it is not conformant.)"""
+    cmd = (call.input.get("command") or call.input.get("cmd")
+           or call.input.get("_raw") or "")
+    return f"{call.name} {cmd}"
+
+
+def _any(calls: list[ToolCall], *needles: str) -> bool:
+    return any(call.succeeded and any(n in _exec_str(call) for n in needles) for call in calls)
+
+
+def _shell_tokens(command: str) -> list[str]:
+    """Tokenize one simple shell command, stripping unquoted comments.
+
+    Evidence commands deliberately reject shell composition.  That makes ``true # derived_levers(...)``
+    and ``echo 'load_facts(...)'`` data, not executable API evidence, while quoted Python ``-c`` source
+    remains one token.
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError:
+        return []
+
+
+_SHELL_CONTROLS = {";", "&&", "||", "|", "&", ">", ">>", "<", "<<"}
+
+#: Executables that WRITE. One source of truth: the composed-command path and the simple-command
+#: path must agree on what counts as mutating, or the discovery boundary moves depending on how the
+#: agent happened to spell an equivalent command.
+_MUTATING_EXECUTABLES = {"cp", "mv", "install", "mkdir", "touch", "rm", "tee", "truncate", "patch"}
+
+
+def _executable(tokens: list[str]) -> tuple[str, list[str]] | None:
+    """Return (basename, argv) for an uncomposed command, allowing env assignments and timeout."""
+    if not tokens or any(t in _SHELL_CONTROLS for t in tokens):
+        return None
+    i = 0
+    if tokens and tokens[0] == "env":
+        i += 1
+    while i < len(tokens) and "=" in tokens[i] and not tokens[i].startswith(("/", "./")):
+        i += 1
+    if i < len(tokens) and tokens[i] == "timeout":
+        i += 2  # timeout + duration
+    if i >= len(tokens):
+        return None
+    return Path(tokens[i]).name, tokens[i + 1:]
+
+
+_SHELL_WRAPPERS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+
+def _unwrap_shell(command: str, depth: int = 0) -> str:
+    """Return the command a ``bash -lc "<command>"`` wrapper actually runs.
+
+    Agents routinely wrap their work this way (the codex driver emits ``/bin/bash -lc`` for every
+    call), so a matcher that reads only the outer argv sees a shell, never the Python inside it."""
+    if depth > 3:
+        return command
+    tokens = _shell_tokens(command)
+    if len(tokens) < 3 or Path(tokens[0]).name not in _SHELL_WRAPPERS:
+        return command
+    for i, tok in enumerate(tokens[1:-1], start=1):
+        if tok.startswith("-") and tok.endswith("c"):
+            return _unwrap_shell(tokens[i + 1], depth + 1)
+    return command
+
+
+def _simple_commands(tokens: list[str]) -> list[list[str]]:
+    """Split a token list on shell control operators into individual simple commands."""
+    out: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in _SHELL_CONTROLS:
+            out.append([])
+        else:
+            out[-1].append(tok)
+    return [seg for seg in out if seg]
+
+
+def _resolved_commands(command: str) -> list[tuple[str, list[str]]]:
+    """``(basename, argv)`` for EVERY simple command in a possibly-composed shell string.
+
+    ``_executable`` returns None the moment it sees a shell control operator, so a single redirect
+    (``... check-bijection atlas > /tmp/b.json``) or two steps joined by a newline made the whole
+    call yield no evidence. ``_python_fragments`` already decomposes instead of rejecting, for the
+    Python-API spelling of the same work; the SCRIPT spelling kept the all-or-nothing rule, so the
+    identical honest command was credited one way and refused the other.
+
+    Anti-forgery is unchanged: each segment is still resolved structurally, so ``echo
+    'cca_contract.py check-bijection'`` resolves to ``echo`` and yields nothing.
+    """
+    out: list[tuple[str, list[str]]] = []
+    # A NEWLINE IS A COMMAND SEPARATOR and shlex drops it, so a heredoc body merges every command
+    # that follows it into one segment whose "executable" is the heredoc delimiter. Measured on the
+    # atlas arm-4 run of 2026-09-07: three real `action_catalog.py escalation-ladder` invocations
+    # ended up inside a segment resolving to `PY`, and the ladder index stayed None. Tokenising per
+    # physical line keeps each real command its own; a line that cannot tokenise yields nothing.
+    for line in _unwrap_shell(command).splitlines():
+        if not line.strip():
+            continue
+        for segment in _simple_commands(_shell_tokens(line)):
+            resolved = _executable(segment)
+            if resolved is not None:
+                out.append(resolved)
+    return out
+
+
+def _python_fragments(call: ToolCall) -> tuple[str, ...]:
+    """Every executable Python source fragment in a call's command.
+
+    Composition is DECOMPOSED rather than rejected. The anti-forgery property that motivated the
+    original all-or-nothing rule is unchanged and comes from AST-parsing each fragment: ``echo
+    'load_facts(...)'`` and ``true # derived_levers(...)`` are not Python invocations, so they yield
+    no fragment and no call names. What the old rule additionally rejected was HONEST work -- a
+    ``bash -lc`` wrapper, or two discovery steps joined by ``;`` -- which it read as no evidence at
+    all. Measured on the atlas arm-4 run of 2026-09-04: the agent ran load_facts, target_profile and
+    derived_levers in one composed command, and all five RTL conformance checks reported False.
+    """
+    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
+    lines = command.splitlines()
+    frags: list[str] = []
+    i = 0
+    while i < len(lines):
+        tokens = _shell_tokens(lines[i])
+        # A `-c` SOURCE IS ONE ARGUMENT, and a shell quotes a multi-line source as a single token that
+        # SPANS lines. Reading line by line cuts that token in half: the first line is `python3 -c "`,
+        # whose unbalanced quote tokenizes to NOTHING, so the fragment -- and every call name in it --
+        # disappears silently. Rejoining from here re-forms the argument.
+        #
+        # MEASURED 2026-09-05 on gemmini arm-4 `merlincirct_g4p1_20260905`: the agent selected
+        # `rtl_checks` out of `qa/verdict.json` and called `derived_levers` from multi-line
+        # `python3 -c` probes, and four RTL conformance checks (rtl_facts_used,
+        # rtl_derived_levers_used, scaffold_generators_used, rtl_checks_read) reported False for all
+        # six rounds of the run. The SINGLE-line spelling parsed correctly the whole time, which is
+        # why the earlier fix for this same check family tested green and left this open.
+        if not tokens and lines[i].strip():
+            # Rejoin only as far as it takes to BALANCE the quote, never to the end of the command. A
+            # newline is a command separator, and shlex drops it, so swallowing the whole tail merges
+            # the next command into this one's argv: measured, a second `python3 -c` holding the
+            # `load_facts` call was lost that way because the pipe that followed the first one made
+            # its segment resolve to `tail`.
+            span = next((j for j in range(i + 1, len(lines) + 1)
+                         if _shell_tokens("\n".join(lines[i:j]))), None)
+            if span is None:
+                i += 1
+                continue
+            tokens = _shell_tokens("\n".join(lines[i:span]))
+            for segment in _simple_commands(tokens):
+                resolved = _executable(segment)
+                if resolved is None or resolved[0] not in {"python", "python3"}:
+                    continue
+                argv = resolved[1]
+                if "-c" in argv and argv.index("-c") + 1 < len(argv):
+                    frags.append(argv[argv.index("-c") + 1])
+            i = span
+            continue
+        if "<<" in tokens:
+            hi = tokens.index("<<")
+            delimiter = tokens[hi + 1] if hi + 1 < len(tokens) else None
+            heir = _simple_commands(tokens[:hi])
+            resolved = _executable(heir[-1]) if heir else None
+            end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == delimiter),
+                       len(lines))
+            if delimiter and resolved is not None and resolved[0] in {"python", "python3"}:
+                frags.append("\n".join(lines[i + 1:end]))
+            i = end + 1
+            continue
+        for segment in _simple_commands(tokens):
+            resolved = _executable(segment)
+            if resolved is None or resolved[0] not in {"python", "python3"}:
+                continue
+            argv = resolved[1]
+            if "-c" in argv and argv.index("-c") + 1 < len(argv):
+                frags.append(argv[argv.index("-c") + 1])
+        i += 1
+    return tuple(frags)
+
+
+def _qualname(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _qualname(node.value)
+        return f"{base}.{node.attr}" if base else node.attr
+    return ""
+
+
+def _python_call_names(call: ToolCall) -> tuple[str, ...]:
+    """Qualified names of every Python call the command actually executes (all fragments)."""
+    names: list[str] = []
+    for source in _python_fragments(call):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        names += [_qualname(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    return tuple(names)
+
+
+def _call_index(calls: list[ToolCall], predicate) -> int | None:
+    return next((i for i, call in enumerate(calls) if call.succeeded and predicate(call)), None)
+
+
+def _literal_string_list(text: str) -> list[str] | None:
+    """Find a printed non-empty Python list/tuple/set of strings in a tool result."""
+    candidates = [text.strip(), *(line.strip() for line in reversed(text.splitlines()))]
+    # EVERY BALANCED BRACKETED REGION, not the span from the first "[" to the last "]". That span is a
+    # single candidate that silently swallows everything between two commands' outputs: measured
+    # 2026-09-05 on gemmini arm-4 g4p1, `derived_levers` printed a clean 7-string list and the agent
+    # went on, in the SAME composed command, to print a facts blob ending in another "]" -- so the
+    # span ran from the levers list through the facts JSON, parsed as nothing, and the corroboration
+    # returned None for work that had plainly happened. Scanning each balanced region instead means an
+    # extra bracket later in the output cannot hide an earlier valid list.
+    depth, opened = 0, -1
+    for pos, ch in enumerate(text):
+        if ch == "[":
+            if depth == 0:
+                opened = pos
+            depth += 1
+        elif ch == "]" and depth:
+            depth -= 1
+            if depth == 0 and opened >= 0:
+                candidates.append(text[opened:pos + 1])
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            value = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(value, (list, tuple, set)) and value and all(
+                isinstance(item, str) and item.strip() for item in value):
+            return list(value)
+    return None
+
+
+def _derived_levers_evidence(call: ToolCall) -> bool:
+    names = _python_call_names(call)
+    invoked = any(name.endswith(".derived_levers") or name == "derived_levers" for name in names)
+    return invoked and _literal_string_list(call.result_text) is not None
+
+
+def _rtl_facts_evidence(call: ToolCall) -> bool:
+    """An actual ``load_facts`` call whose result really is a fact bundle.
+
+    The corroboration is quoting-agnostic: a fact dict reaches the transcript as JSON from ``jq`` or
+    as a Python ``repr`` from ``print``, and demanding double quotes credited only the former. It also
+    asks for ONE fact family rather than two, because the recorded result is size-capped and which
+    families survive is a property of the harness, not of the agent."""
+    names = _python_call_names(call)
+    invoked = any(name.endswith(".load_facts") or name == "load_facts" for name in names)
+    if not invoked or not call.result_present:
+        return False
+    body = call.result_text.lower()
+
+    def quoted(key: str) -> bool:
+        return f'"{key}"' in body or f"'{key}'" in body
+
+    return quoted("target") and any(
+        quoted(key) for key in ("arrays", "memories", "datapaths", "interfaces"))
+
+
+def _scaffold_generator_evidence(call: ToolCall) -> bool:
+    names = _python_call_names(call)
+    generators = (
+        "mlir_scaffold.generate", "xdsl.generate", "llvm_plan.generate",
+        "target_repo.generate_skeleton", "target_repo.emit_contracts", "generate_skeleton",
+    )
+    invoked = any(any(name.endswith(suffix) for suffix in generators) for name in names)
+    result = call.result_text
+    # The required command prints the returned Artifact records or their relpaths.  A generic "ok" is not
+    # a generation witness; at least one concrete generated-file shape must be present.
+    artifact_shape = ("Artifact(" in result and "relpath=" in result) or any(
+        suffix in result for suffix in (".py", ".td", ".cpp", ".h", "CMakeLists.txt"))
+    return invoked and artifact_shape
+
+
+def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> bool:
+    names = _python_call_names(call)
+    if any(name.endswith(f".{api}") or name == api for name in names):
+        return True
+    # UNWRAP: codex issues `/bin/bash -lc "python cca_contract.py ..."`, so the outer argv is `bash`
+    # and the mandated CCA call goes uncredited -- which then makes arm4_discovery_before_submission
+    # _mutation unsatisfiable, because two of its five discovery indices are None. Third place the
+    # same wrapper blindness had to be fixed.
+    command = str(call.input.get("command") or call.input.get("cmd") or "")
+    for exe, argv in _resolved_commands(command):
+        if exe not in {"python", "python3"}:
+            continue
+        if len(argv) >= 2 and Path(argv[0]).name == script and argv[1] == subcommand:
+            return True
+    return False
+
+
+def _submission_mutation(call: ToolCall) -> bool:
+    """Conservative first-authoring boundary used by Arm4's discovery-before-edit requirement."""
+    name = call.name.lower().split(".")[-1]
+    target_text = " ".join(str(call.input.get(k) or "") for k in (
+        "file_path", "path", "patch", "content", "new_string", "_raw"))
+    targets_submission = "submission/" in target_text or "/submission/" in target_text
+    if targets_submission and name in {"write", "edit", "multiedit", "write_file", "apply_patch"}:
+        return True
+
+    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
+    tokens = _shell_tokens(command)
+    mentions_submission = (
+        "submission/" in command or "/submission/" in command
+        or any(token.rstrip("/") == "submission" for token in tokens)
+    )
+    if not mentions_submission:
+        return False
+    if any(t in {">", ">>"} for t in tokens):
+        return True
+    resolved = _executable(tokens)
+    if resolved is None:
+        # COMPOSED, NOT NECESSARILY WRITING. Treating every composition as the boundary made
+        # `pwd && rg --files -g 'submission/**' | sort` -- a pure listing, and typically an agent's
+        # FIRST call -- the first "mutation", which puts the boundary at index 0 and makes
+        # arm4_discovery_before_submission_mutation unsatisfiable no matter what the agent then does
+        # (measured, atlas arm-4 2026-09-07). Resolve each simple command instead: the boundary is a
+        # segment that actually runs a mutating tool. A segment that cannot be resolved at all is
+        # still treated as the boundary, so nothing unprovable is waved through.
+        segments = _resolved_commands(str(call.input.get("command") or call.input.get("cmd") or ""))
+        if not segments:
+            return True
+        return any(exe in _MUTATING_EXECUTABLES for exe, _ in segments)
+    exe, _ = resolved
+    if exe in _MUTATING_EXECUTABLES:
+        return True
+    if exe == "sed" and "-i" in tokens:
+        return True
+    names = _python_call_names(call)
+    if any(name.endswith((".write_text", ".write_bytes", ".mkdir", ".unlink", ".rename"))
+           or name == "open" for name in names):
+        return True
+    # Unknown commands touching the answer tree fail closed.  These are the simple readers/checkers the
+    # workflow legitimately runs before authoring; everything else establishes the edit boundary.
+    return exe not in {
+        "cat", "jq", "grep", "rg", "head", "tail", "sed", "awk", "ls", "find", "stat", "file",
+        "wc", "diff", "python", "python3", "isa_tools.py", "agent_selfcheck.py",
+    }
+
+
+def _rtl_checks_read(calls: list[ToolCall]) -> bool:
+    """Prove that the final authoring round read the RTL feedback produced by the harness.
+
+    ``qa/verdict.json`` is the only allowed arm-4 readback surface.  A successful ``jq``/Python command
+    that explicitly selects ``rtl_checks`` is sufficient.  A whole-file read (``cat``/Read) is credited
+    only when its persisted result contains the block, so reading a missing/stale verdict cannot pass.
+    """
+    for call in calls:
+        if not call.succeeded:
+            continue
+        name = call.name.lower().split(".")[-1]
+        command = str(call.input.get("command") or call.input.get("cmd") or "")
+        ex = command.lower()
+        file_path = str(call.input.get("file_path") or call.input.get("path") or "").lower()
+        addresses_verdict = "qa/verdict.json" in ex or "qa/verdict.json" in file_path
+        if not addresses_verdict:
+            continue
+        # Direct file-read tools are evidence.  Shell evidence must be one simple read operation; echo,
+        # comments and composed commands cannot turn a fabricated string into readback evidence.
+        direct_read = name in {"read", "read_file", "open_file"}
+        # UNWRAP FIRST. Codex issues every command as `/bin/bash -lc "<real command>"`, so reading the
+        # outer argv sees `bash` and never the `jq`/`cat` that did the readback -- the same blindness
+        # that hid this arm's discovery evidence, surviving in a second place.
+        readers = {"cat", "jq", "grep", "rg", "head", "tail", "sed", "awk", "python", "python3"}
+        resolved = next((r for r in _resolved_commands(command) if r[0] in readers), None) \
+            if command else None
+        shell_read = resolved is not None
+        if not direct_read and not shell_read:
+            continue
+        if shell_read and resolved[0] in {"python", "python3"}:
+            calls_in_source = _python_call_names(call)
+            if not any(name == "open" or name.endswith((".read_text", ".read_bytes"))
+                       for name in calls_in_source):
+                continue
+        result = call.result_text.strip()
+        # jq/awk may print just the selected list (without its key); require a non-empty structured
+        # readback.  Whole-file reads must visibly contain the exact key, not ``rtl_checks_error``.
+        if resolved is not None and resolved[0] in {"jq", "awk", "python", "python3"} and "rtl_checks" in ex \
+                and result.lower() not in {"", "null", "none", "[]", "{}"}:
+            return True
+        result_lower = result.lower()
+        if '"rtl_checks"' in result_lower or "'rtl_checks'" in result_lower:
+            return True
+    return False
+
+
+def _full_selfcheck(calls: list[ToolCall]) -> bool:
+    """Did the agent run the self-check over the WHOLE capsule set?
+
+    This is a workflow check, so it reads the INVOCATION and the fact that a real report came back --
+    deliberately NOT the exit status. ``agent_selfcheck.py`` exits non-zero whenever ``all_pass`` is
+    false, so gating on success made this a restatement of the score: a run could satisfy it only by
+    already passing every capsule, and every partial run was marked non-conformant for a workflow step
+    it had in fact performed 76 times (measured, atlas arm-4, 2026-09-04). Forgery is still excluded,
+    because a fabricated echo does not produce a capsule report.
+    """
+    for call in calls:
+        if not call.result_present:
+            continue
+        ex = _exec_str(call)
+        over_all_capsules = "--capsules all" in ex or '--capsules "all"' in ex
+        if "agent_selfcheck" in ex and over_all_capsules and _is_selfcheck_report(call.result_text):
+            return True
+        # the bedrock self_check tool: default (no capsules key) or an explicit "all"
+        if call.name == "self_check" and call.input.get("capsules") in (None, "", "all"):
+            return True
+    return False
+
+
+def _is_selfcheck_report(result: str) -> bool:
+    """A real capsule report came back -- the per-capsule totals the grader itself emits."""
+    body = result.lower()
+    return "n_capsules" in body and ("n_passed" in body or "all_pass" in body)
+
+
+def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str,
+            *, resolved_tools: Iterable[str] | None = None) -> dict:
+    """Compute the conformance verdict for one round. Returns a dict with per-check booleans (or None when
+    the check does not apply to this tool set), the regex-hit detail, and the overall ``conformant`` flag.
+
+    ``resolved_tools`` is authoritative when supplied by a real run.  This is deliberately not inferred
+    from ``arm``: the Arm4 launcher historically used the Arm3 spelling ``merlin_assisted`` and the old
+    bundle manifest repeated that stale label.  The bundle's resolved tools are the experimental
+    treatment.  ``None`` retains replay compatibility for old runs that predate the persisted tool set.
+    """
+    tools = None if resolved_tools is None else frozenset(str(t) for t in resolved_tools)
+    assisted = arm in _ASSISTED if tools is None else bool(
+        tools & {"merlin_infra", "xdsl_kit", "cca_spine", "isa_tools", "cca_tools"})
+    xdsl = assisted if tools is None else "xdsl_kit" in tools
+    isa = assisted if tools is None else "isa_tools" in tools
+    cca = assisted if tools is None else bool(tools & {"cca_spine", "cca_tools"})
+    rtl_surface = frozenset({"rtl_generators", "rtl_facts"})
+    arm4 = False if tools is None else bool(tools & rtl_surface)
+    external = endpoint_kind == "external_backend"
+    calls = _tool_calls(tpath)
+    regex_hits, vendored_regex = (
+        _submission_regex_evidence(sub_dir) if xdsl else ([], [])
+    )  # no-regex is an xDSL-authoring mandate, and a byte-identical vendored dependency is not
+    # authored: it is attributed separately rather than charged, so an otherwise perfect run can
+    # still be frozen. A MODIFIED file under a directory named `xdsl` stays charged.
+    has_py = bool(list(sub_dir.rglob("*.py"))) if sub_dir.exists() else False
+
+    checks: dict = {}
+    # no-regex applies only where the arm is mandated to author in xDSL AND actually wrote python
+    checks["no_regex_ok"] = (not regex_hits) if (xdsl and has_py) else None
+    checks["isa_tools_used"] = _any(
+        calls,
+        "isa_tools.py asm", "isa_tools.py disasm", "isa_tools.py lint", "isa_tools.py debug",
+        "isa_tools asm", "isa_tools disasm", "isa_tools lint", "isa_tools debug",
+    ) if isa else None
+    checks["asm_used"] = _any(calls, "isa_tools.py asm", "isa_tools asm") if (isa and external) else None
+    checks["cca_used"] = (
+        _any(calls, "cca_contract.py check-bijection", "check_bijection")
+        and _any(calls, "action_catalog.py escalation-ladder", "escalation_ladder")
+    ) if cca else None
+    checks["full_selfcheck"] = _full_selfcheck(calls)
+    # A partial RTL surface is a malformed treatment, not Arm3.  Fail closed so removing one of the two
+    # Arm4 grants cannot silently downgrade the conformance contract.
+    checks["arm4_toolset_complete"] = (rtl_surface <= tools) if arm4 else None
+    derived_idx = _call_index(calls, _derived_levers_evidence) if arm4 else None
+    facts_idx = _call_index(calls, _rtl_facts_evidence) if arm4 else None
+    scaffold_idx = _call_index(calls, _scaffold_generator_evidence) if arm4 else None
+    checks["rtl_derived_levers_used"] = derived_idx is not None if arm4 else None
+    checks["rtl_facts_used"] = facts_idx is not None if arm4 else None
+    checks["scaffold_generators_used"] = scaffold_idx is not None if arm4 else None
+    checks["rtl_checks_read"] = _rtl_checks_read(calls) if arm4 else None
+    if arm4:
+        bijection_idx = _call_index(calls, lambda call: _cca_evidence(
+            call, script="cca_contract.py", subcommand="check-bijection", api="check_bijection"))
+        ladder_idx = _call_index(calls, lambda call: _cca_evidence(
+            call, script="action_catalog.py", subcommand="escalation-ladder", api="escalation_ladder"))
+        mutation_idx = next((i for i, call in enumerate(calls) if _submission_mutation(call)), None)
+        discovery = (bijection_idx, ladder_idx, derived_idx, facts_idx, scaffold_idx)
+        checks["arm4_discovery_before_submission_mutation"] = (
+            all(i is not None for i in discovery)
+            and (mutation_idx is None or max(i for i in discovery if i is not None) < mutation_idx)
+        )
+    else:
+        checks["arm4_discovery_before_submission_mutation"] = None
+
+    applicable = [v for v in checks.values() if v is not None]
+    conformant = all(applicable) if applicable else True
+    tool_evidence = {
+        "n_calls": len(calls),
+        "n_successful": sum(call.succeeded for call in calls),
+        "n_failed": sum(call.result_present and not call.succeeded for call in calls),
+        "n_missing_results": sum(not call.result_present for call in calls),
+    }
+    return {"conformant": conformant, "checks": checks, "regex_hits": regex_hits,
+            "vendored_regex_files": vendored_regex,
+            "tool_evidence": tool_evidence, "arm": arm, "endpoint_kind": endpoint_kind,
+            "resolved_tools": sorted(tools) if tools is not None else None,
+            "arm4_tooling_required": arm4}
+
+
+def failing_checks(verdict: dict) -> list[str]:
+    """The applicable checks that came back False — what a WARNING should name."""
+    return [k for k, v in (verdict.get("checks") or {}).items() if v is False]
+
+
+def main(argv=None) -> int:
+    """CLI: conformance.py <run_dir> [--arm A] [--endpoint K] — replay the verdict on a recorded run."""
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser(description="Dev-conformance verdict for a recorded capsule-bench run.")
+    ap.add_argument("run_dir")
+    ap.add_argument("--arm", default=None, help="arm name (default: read run_manifest.yaml)")
+    ap.add_argument("--endpoint", default=None, help="endpoint_kind (default: read run_manifest.yaml)")
+    ap.add_argument("--tool", action="append", default=None,
+                    help="resolved bundle tool name (repeatable; default: read environment.yaml)")
+    ap.add_argument("--round", type=int, default=None, help="round index (default: latest transcript)")
+    a = ap.parse_args(argv)
+    run_dir = Path(a.run_dir)
+    arm, endpoint = a.arm, a.endpoint
+    if arm is None or endpoint is None:
+        try:
+            import yaml
+            man = yaml.safe_load((run_dir / "run_manifest.yaml").read_text())
+            arm = arm or man.get("arm") or man.get("track") or ""
+            endpoint = endpoint or man.get("endpoint_kind") or ""
+        except Exception:  # noqa: BLE001
+            arm = arm or ""
+            endpoint = endpoint or ""
+    rounds = sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
+    if a.round is not None:
+        tpath = run_dir / "rounds" / f"round_{a.round:02d}.transcript.jsonl"
+    else:
+        tpath = rounds[-1] if rounds else run_dir / "rounds" / "round_00.transcript.jsonl"
+    resolved_tools = a.tool
+    if resolved_tools is None:
+        try:
+            import yaml
+            environment = yaml.safe_load((run_dir / "environment.yaml").read_text()) or {}
+            saved = environment.get("resolved_tools")
+            resolved_tools = list(saved) if isinstance(saved, list) else None
+        except Exception:  # noqa: BLE001 — old runs have no persisted resolved tool set
+            resolved_tools = None
+    verdict = compute(tpath, run_dir / "submission", arm, endpoint,
+                      resolved_tools=resolved_tools)
+    print(json.dumps(verdict, indent=2))
+    bad = failing_checks(verdict)
+    if bad:
+        print(f"\n[conformance] NOT CONFORMANT — failing: {', '.join(bad)}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

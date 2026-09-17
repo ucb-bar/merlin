@@ -1,0 +1,1 @@
+../../../gemmini/contracts/hwbringup_gemmini_v0/isa_include/matmul_data_mx_lut_hw.h

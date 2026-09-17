@@ -1,0 +1,155 @@
+#!/bin/bash
+# Preserve the writable deploy cwd selected by firesim-queue's cross-user
+# overlay. FireSim derives its deploy root from argv[0]/__file__, so resolving
+# the command from the submitter's original checkout silently defeats that
+# overlay.
+set -eu
+launcher_dir=$(cd "$(dirname "$0")" && pwd -P)
+if [[ ! -x ./firesim ]]; then
+  echo "firesim-queue cwd does not contain an executable ./firesim" >&2
+  exit 126
+fi
+firesim_real=$(readlink -f ./firesim)
+firesim_root=$(dirname "$(dirname "$firesim_real")")
+chipyard_root=$(dirname "$(dirname "$firesim_root")")
+overlay_dir=$(pwd -P)
+job_root=$(cd .. && pwd -P)
+
+# FireSim does not merely use deploy/ as its cwd.  Its driver builder walks to
+# deploy/.. for sourceme-manager.sh and to deploy/../../../generators for the
+# target makefrag.  A queue overlay flattened directly below the job root
+# therefore cannot work, even when every deploy entry is present.  Recreate
+# the *shape* of chipyard/sims/firesim/deploy inside this job and point all
+# read-only state back at the pinned checkout.  Logs, staged workloads, and
+# results remain in the daemon-owned overlay through symlinks below.
+shadow_chipyard="$job_root/chipyard"
+shadow_firesim="$shadow_chipyard/sims/firesim"
+shadow_deploy="$shadow_firesim/deploy"
+mkdir -p "$shadow_deploy"
+
+link_exact() {
+  local source=$1
+  local destination=$2
+  if [[ -L "$destination" ]]; then
+    if [[ "$(readlink -f "$destination")" != "$(readlink -f "$source")" ]]; then
+      echo "firesim-queue shadow link drift: $destination" >&2
+      exit 126
+    fi
+  elif [[ -e "$destination" ]]; then
+    echo "firesim-queue shadow path is not a symlink: $destination" >&2
+    exit 126
+  else
+    ln -s "$source" "$destination"
+  fi
+}
+
+link_exact "$chipyard_root/generators" "$shadow_chipyard/generators"
+link_exact "$chipyard_root/env.sh" "$shadow_chipyard/env.sh"
+for name in env.sh platforms target-design utils; do
+  link_exact "$firesim_root/$name" "$shadow_firesim/$name"
+done
+# The driver bundle is assembled *after* the prebuilt driver check and is
+# written below sim/output. A symlink of the whole simulation tree therefore
+# passes the read-only check but fails when the cross-user daemon creates the
+# tarball. Mirror the tree and give this job only its exact output directory;
+# every source/generated prerequisite remains linked to the pinned checkout.
+shadow_sim="$shadow_firesim/sim"
+if [[ -L "$shadow_sim" ]]; then
+  unlink "$shadow_sim"
+elif [[ -e "$shadow_sim" && ! -d "$shadow_sim" ]]; then
+  echo "firesim-queue shadow sim path is not a directory: $shadow_sim" >&2
+  exit 126
+fi
+mkdir -p "$shadow_sim"
+while IFS= read -r -d '' entry; do
+  [[ "$(basename "$entry")" == output ]] && continue
+  link_exact "$entry" "$shadow_sim/$(basename "$entry")"
+done < <(find "$firesim_root/sim" -mindepth 1 -maxdepth 1 -print0)
+# Expose every already-built U250 driver to the private overlay.  The make
+# companion below still selects exactly the TARGET_CONFIG/PLATFORM_CONFIG from
+# FireSim's command and rejects missing or stale drivers; mirroring the set
+# here merely avoids hard-coding one accelerator/core combination.
+source_driver_root="$firesim_root/sim/output/xilinx_alveo_u250"
+shadow_driver_root="$shadow_sim/output/xilinx_alveo_u250"
+mkdir -p "$shadow_driver_root"
+while IFS= read -r -d '' source_driver_dir; do
+  source_driver="$source_driver_dir/FireSim-xilinx_alveo_u250"
+  [[ -x "$source_driver" ]] || continue
+  shadow_driver_dir="$shadow_driver_root/$(basename "$source_driver_dir")"
+  mkdir -p "$shadow_driver_dir"
+  link_exact "$source_driver" "$shadow_driver_dir/FireSim-xilinx_alveo_u250"
+done < <(find "$source_driver_root" -mindepth 1 -maxdepth 1 -type d -print0)
+link_exact "$chipyard_root/sims/firesim-staging" "$shadow_chipyard/sims/firesim-staging"
+# FireSim's Fabric driver-build command sources this file and THEN invokes
+# `make`. The real script activates Chipyard's conda environment, which
+# prepends its own bin directory and moves the queue make companion behind the
+# real make. Keep the source semantics byte-for-byte, then restore the one
+# queue-owned PATH prefix after activation. This wrapper is sourced, not
+# executed, so its export survives into Fabric's following `make` command.
+source_wrapper="$shadow_firesim/sourceme-manager.sh"
+if [[ -L "$source_wrapper" ]]; then
+  unlink "$source_wrapper"
+elif [[ -e "$source_wrapper" && ! -f "$source_wrapper" ]]; then
+  echo "firesim-queue shadow source path is not a regular file: $source_wrapper" >&2
+  exit 126
+fi
+printf '# firesim-queue PATH preservation wrapper; generated per job.\nsource %q "$@"\nexport PATH=%q:"$PATH"\n' \
+  "$firesim_root/sourceme-manager.sh" "$launcher_dir" > "$source_wrapper"
+# Runtime topology rendering is also cwd-relative. Older queue overlays leave
+# this one symlinked to the submitter-owned checkout, so replace only that
+# per-job symlink with a daemon-owned directory.
+if [[ -L "$overlay_dir/generated-topology-diagrams" ]]; then
+  unlink "$overlay_dir/generated-topology-diagrams"
+fi
+mkdir -p "$overlay_dir/generated-topology-diagrams"
+if [[ ! -w "$overlay_dir/generated-topology-diagrams" ]]; then
+  echo "firesim-queue topology directory is not writable" >&2
+  exit 126
+fi
+
+# Mirror the queue overlay at the correctly nested deploy path.  In
+# particular, logs/, workloads/, results-workload/, and the topology directory
+# resolve back to private daemon-writable directories; the remaining entries
+# resolve to the submitter's read-only FireSim checkout.
+while IFS= read -r -d '' entry; do
+  link_exact "$entry" "$shadow_deploy/$(basename "$entry")"
+done < <(find "$overlay_dir" -mindepth 1 -maxdepth 1 -print0)
+# The checked-in runtime template names the submitter's simulation directory.
+# A shared daemon cannot write there. The queue gives every job a private YAML;
+# redirect exactly its one simulation-directory field into this job, and fail
+# closed if the expected seam is absent or ambiguous.
+config_path=""
+expect_config=0
+for arg in "$@"; do
+  if [[ "$expect_config" -eq 1 ]]; then
+    config_path="$arg"
+    break
+  fi
+  if [[ "$arg" == "-c" ]]; then
+    expect_config=1
+  fi
+done
+if [[ -z "$config_path" || ! -f "$config_path" ]]; then
+  echo "firesim-queue invocation has no readable -c runtime YAML" >&2
+  exit 126
+fi
+simulation_fields=$(grep -c '^[[:space:]]*default_simulation_dir:' "$config_path" || true)
+if [[ "$simulation_fields" -ne 1 ]]; then
+  echo "firesim-queue runtime YAML has $simulation_fields simulation-directory fields" >&2
+  exit 126
+fi
+simulation_dir="$job_root/simulation"
+mkdir -p "$simulation_dir"
+sed -i -E "s#^([[:space:]]*default_simulation_dir:).*#\\1 $simulation_dir#" "$config_path"
+
+# firesim_target_symlink_hook is deliberately phony: a normal same-user run
+# refreshes links to generated FIRRTL before checking the already-built host
+# driver.  The cross-user daemon cannot update the submitter's generator
+# caches.  Mark only that phony hook old; every real driver prerequisite is
+# still checked by make, and a genuinely stale driver will attempt a rebuild
+# and fail closed against the read-only source tree.  The companion derives
+# the exact driver directory from Make's explicit target/platform
+# configuration and proves it current with
+# `make -q -o firesim_target_symlink_hook`.
+export PATH="$launcher_dir:$PATH"
+exec "$shadow_deploy/firesim" "$@"
