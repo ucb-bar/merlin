@@ -524,8 +524,17 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
                 continue
             kw, decl, typ, site = parsed
             key = (site, _store_name(site, decl), typ)
-            rec = groups.setdefault(key, {"banks": 0, "modules": set(), "kind": kw, "line": line})
-            rec["banks"] += instances
+            rec = groups.setdefault(key, {"banks": 0, "copies": 1, "modules": set(), "kind": kw, "line": line})
+            # BANKS ARE SIBLINGS, COPIES ARE NOT. Instances of the declaring module that sit side by side
+            # under one parent are the banks of one store (a register file built from N bank modules);
+            # instances under DIFFERENT parents are separate stores of separate devices (the same buffer
+            # module in each of two compute units). Summing every instance as a bank reported one
+            # accumulator twice the size of either, which a schedule would address past the end of.
+            group = max([n for (_parent, child), n in widest.items() if child == module] or [1])
+            if instances % group:
+                group = 1  # siblings do not tile the instances evenly: count none as banks
+            rec["banks"] += group
+            rec["copies"] = max(rec["copies"], instances // group)
             rec["modules"].add(module)
     undeterminable: list[dict[str, Any]] = []
     for (site, name, typ), rec in sorted(groups.items(), key=lambda kv: -kv[1]["banks"]):
@@ -560,6 +569,13 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
             "evidence": f"{banks}x `{rec['kind']} {name.split('.')[-1]} : {typ}` in {mods} "
             f"@ {site} (per {root} unit; {n_units} unit(s) in this elaboration)",
         }
+        if rec["copies"] > 1:
+            mem["copies"] = rec["copies"]
+            mem["copies_note"] = (
+                f"{rec['copies']} instances of {mods} under different parents: separate "
+                "stores of separate devices, each with the banks/depth/bytes above -- "
+                "not banks of one address space"
+            )
         if mem["bytes"] is None:
             mem["bytes_unknown"] = (
                 f"one bank holds {row_bits} bits x {depth} rows, which is not a "

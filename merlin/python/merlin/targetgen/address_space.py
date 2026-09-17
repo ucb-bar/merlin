@@ -145,6 +145,10 @@ class Store:
     #: genuinely unknown -- exactly the assumption-wearing-a-derivation's-clothes this module refuses
     #: everywhere else. Only the SIMT path sets it.
     lane_granular: bool = False
+    #: Elements per row as the store's own SRAM DECLARES them (``UInt<8>[32]`` -> 32), when a census read
+    #: the declaration. ``None`` for a port-derived store, whose ``row_elems`` is a byte-enable lane count,
+    #: not an element vector.
+    declared_row_elems: int | None = None
     sources: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -495,6 +499,26 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         if why:
             unknowns.append(Unknown("element_dtype", why, name))
         bits = element_bits(dtype)
+        # An SRAM DECLARATION states its element vector (``UInt<16>[32]``): the width of each element and
+        # how many a row holds. Where no datapath links to the store, that declared width is the element
+        # width -- but only when the vector is the array's edge (a row of array lanes), and never from a
+        # port-derived store, whose "elements" are byte-enable lanes (it says so in its own note).
+        declared_row_elems = (
+            int(mem["row_elems"])
+            if isinstance(mem.get("row_elems"), int)
+            and "row_element_note" not in mem
+            and mem.get("source") != "firrtl_port_geometry"
+            else None
+        )
+        if (
+            bits is None
+            and dtype is None
+            and declared_row_elems is not None
+            and declared_row_elems == space.array_cols
+            and isinstance(mem.get("elem_bits"), int)
+        ):
+            bits = int(mem["elem_bits"])
+            how = "the store's own SRAM declaration (element WIDTH only; a memory does not declare a format)"
         if dtype and bits is None:
             unknowns.append(
                 Unknown(
@@ -652,7 +676,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         if srcs_row_bytes:
             srcs["row_bytes"] = srcs_row_bytes
         elif row_bytes:
-            srcs["row_bytes"] = f"array cols {row_elems} x {dtype} ({bits} bits)"
+            srcs["row_bytes"] = f"array cols {row_elems} x {dtype or 'declared element'} ({bits} bits)"
         if declared_counts:
             srcs["declared_counts"] = ", ".join(f"{q}={v}" for q, v in declared_counts.items())
         stores.append(
@@ -670,6 +694,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                 bank_residue_rows=bank_residue,
                 lane_granular=lane_granular,
                 sources=srcs,
+                declared_row_elems=declared_row_elems,
             )
         )
 
@@ -749,6 +774,23 @@ def _row_bits(store: Store, dtype: str | None) -> int | None:
     return per_row * bits if (per_row and bits) else None
 
 
+def _array_fed(store: Store, space: AddressSpace) -> bool:
+    """Whether ``store`` can hold rows a compute array streams: one array-edge vector of whole elements.
+
+    Structural, never by name. A store whose SRAM declares a row of some other vector length (an
+    instruction memory's single 32-bit word, a register file's one 256-bit word) is not an array's operand
+    or accumulator store, and neither is one whose row is too narrow to hold one byte per array lane. A
+    lane-granular store (no fixed row) and a store without a known array edge are not excluded: there is
+    no edge to test them against.
+    """
+    edge = space.array_cols
+    if not edge or store.lane_granular:
+        return True
+    if store.declared_row_elems is not None and store.declared_row_elems != edge:
+        return False
+    return not (store.row_bytes and store.row_bytes < edge)
+
+
 def operand_store(space: AddressSpace, *, dtype: str | None = None) -> RoleResolution:
     """The store operands live in, chosen by ROW WIDTH, never by name.
 
@@ -760,9 +802,14 @@ def operand_store(space: AddressSpace, *, dtype: str | None = None) -> RoleResol
     role = "operand"
     if space.stores_status != DERIVED:
         return RoleResolution(role, None, None, f"the facts' store list is {space.stores_status}")
-    stores = [s for s in space.stores if s.row_bytes or s.row_elems]
+    stores = [s for s in space.stores if (s.row_bytes or s.row_elems) and _array_fed(s, space)]
     if not stores:
-        return RoleResolution(role, None, None, f"none of {[s.name for s in space.stores]} has a derivable row width")
+        return RoleResolution(
+            role,
+            None,
+            None,
+            f"none of {[s.name for s in space.stores]} has a derivable row width that holds one array-edge row",
+        )
     if len(stores) == 1:
         return RoleResolution(role, stores[0], SOLE_STORE)
     widths = {s.name: _row_bits(s, dtype) for s in stores}
@@ -809,8 +856,11 @@ def accumulator_store(space: AddressSpace) -> RoleResolution:
                 f"the facts' store list is {space.stores_status}",
             )
         return RoleResolution(role, None, None, why)
-    widest = max(s.row_bytes for s in space.stores)
-    tied = sorted(s.name for s in space.stores if s.row_bytes == widest)
+    fed = [s for s in space.stores if s.row_bytes and _array_fed(s, space)]
+    if len(fed) < 2:
+        return RoleResolution(role, None, None, f"fewer than two stores hold array-edge rows ({[s.name for s in fed]})")
+    widest = max(s.row_bytes for s in fed)
+    tied = sorted(s.name for s in fed if s.row_bytes == widest)
     if len(tied) > 1:
         return RoleResolution(
             role,
@@ -818,7 +868,7 @@ def accumulator_store(space: AddressSpace) -> RoleResolution:
             None,
             f"stores {tied} tie at the widest row ({widest} bytes); which one accumulates is not decidable from width",
         )
-    return RoleResolution(role, next(s for s in space.stores if s.name == tied[0]), BY_WIDTH)
+    return RoleResolution(role, next(s for s in fed if s.name == tied[0]), BY_WIDTH)
 
 
 #: ``AccumulatorKind.kind`` values. ``ADDRESSABLE``: accumulate results land in an on-chip STORE a
@@ -851,10 +901,22 @@ class AccumulatorKind:
     dtype: str | None = None
     datapath: str | None = None
     unknown: Unknown | None = None
+    #: How many identical accumulator buffers the store is one of (one per buffer index a compute
+    #: selects); ``rows`` is per buffer.
+    buffers: int = 1
 
     @property
     def reason(self) -> str | None:
         return self.unknown.reason if self.unknown is not None else None
+
+
+def _holds_accumulate_type(store: Store, declared: str) -> bool:
+    """Whether ``store``'s elements are the declared accumulate type. A store whose element came from an
+    SRAM declaration (no linked datapath) knows only a WIDTH, so there agreement is width agreement; a
+    linked datapath's type must match exactly."""
+    if store.element_dtype is not None:
+        return store.element_dtype == declared
+    return store.element_bits is not None and store.element_bits == element_bits(declared)
 
 
 def _declared_accumulate_types(datapaths: Sequence[dict]) -> list[tuple[str, str]]:
@@ -893,36 +955,52 @@ def accumulator_kind(space: AddressSpace) -> AccumulatorKind:
             ),
         )
     resolved = accumulator_store(space)
+    if resolved.store is None and types:
+        # A TIE AT THE WIDEST ROW between identical stores that all hold the declared accumulate type is not
+        # an ambiguity: it is several accumulator BUFFERS a compute selects between (a device with acc0 and
+        # acc1). Only exact geometric twins qualify -- anything else stays the refusal it was.
+        fed = [s for s in space.stores if s.row_bytes and _array_fed(s, space)]
+        if space.separate_accumulator_space is True and len(fed) >= 2:
+            widest = max(s.row_bytes for s in fed)
+            twins = sorted((s for s in fed if s.row_bytes == widest), key=lambda s: s.name)
+            shape = {(s.row_bytes, s.total_rows, s.depth, s.banks) for s in twins}
+            if len(twins) > 1 and len(shape) == 1 and all(_holds_accumulate_type(s, types[0]) for s in twins):
+                return AccumulatorKind(
+                    ADDRESSABLE,
+                    store=twins[0],
+                    rows=twins[0].total_rows,
+                    dtype=types[0],
+                    datapath=declared[0][0],
+                    buffers=len(twins),
+                )
     if resolved.store is not None:
         store = resolved.store
-        if store.element_dtype is None or not types:
+        if store.element_bits is None or not types:
             return AccumulatorKind(
                 UNKNOWN_KIND,
                 unknown=Unknown(
                     "accumulator_kind",
                     f"{store.name!r} is the widest of separate stores, but "
                     + (
-                        "no datapath is linked to it"
-                        if store.element_dtype is None
+                        "no element width is known for it"
+                        if store.element_bits is None
                         else "no datapath declares an accumulate type"
                     )
                     + ", so nothing says results accumulate there",
                     store.name,
                 ),
             )
-        if store.element_dtype != types[0]:
+        if not _holds_accumulate_type(store, types[0]):
             return AccumulatorKind(
                 UNKNOWN_KIND,
                 unknown=Unknown(
                     "accumulator_kind",
-                    f"{store.name!r} holds {store.element_dtype} but the facts declare an "
-                    f"accumulate type of {types[0]}",
+                    f"{store.name!r} holds {store.element_dtype or f'{store.element_bits}-bit elements'} "
+                    f"but the facts declare an accumulate type of {types[0]}",
                     store.name,
                 ),
             )
-        return AccumulatorKind(
-            ADDRESSABLE, store=store, rows=store.total_rows, dtype=store.element_dtype, datapath=declared[0][0]
-        )
+        return AccumulatorKind(ADDRESSABLE, store=store, rows=store.total_rows, dtype=types[0], datapath=declared[0][0])
     if not declared:
         return AccumulatorKind(
             UNKNOWN_KIND,

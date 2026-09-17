@@ -786,6 +786,50 @@ def memories_from_port_geometry(fir_paths: Iterable[Path | str]) -> list[dict[st
     return out
 
 
+def _memories_from_declared_elaboration(target: str, facts: dict) -> list[str]:
+    """Fill ``facts['memories']`` from the SRAM declarations in the elaboration the target DECLARES.
+
+    Where the chipyard census above did not run (no ``<T>ISA.scala`` by the generator convention) but the
+    target's descriptor names its elaboration (``rtl.elaboration``: checkout, config, generator), that
+    elaboration's FIRRTL declares every SRAM the target's own generator emitted -- scoped by the
+    ``@[generators/<gen>/...]`` annotation, so a host core's caches are not counted. This reads them
+    before the port-geometry filler, which exists for the case where no declaration is visible and which
+    sees only stores with banked write ports (a compute unit's local accumulation buffers have none).
+
+    A NO-OP when memories are already known, when nothing is declared, or when the declared elaboration
+    is not on disk. Mutates ``facts``; returns the provenance names sourced.
+    """
+    if facts.get("memories"):
+        return []
+    try:
+        source = V1.declared_rtl_source(target)
+        arts = source.artifacts()
+    except Exception:  # noqa: BLE001 -- undeclared or unresolvable: the next filler decides
+        return []
+    fir, hierarchy = Path(arts["fir"]), Path(arts["hierarchy"])
+    if not fir.is_file() or not hierarchy.is_file():
+        return []
+    census = V1.census_facts(fir, hierarchy, generator=source.generator)
+    if not census.get("memories"):
+        return []
+    facts["memories"] = census["memories"]
+    facts.setdefault("census", census.get("census"))
+    facts.setdefault(
+        "source",
+        {
+            "kind": "firrtl_census",
+            "config": source.config,
+            "generator": source.generator,
+            "fir": fir.name,
+            "hierarchy": hierarchy.name,
+            "fir_sha256": _sha256(fir),
+            "declared_by": str(source.origin),
+            "note": "memories from the SRAM declarations of the elaboration this target's descriptor names",
+        },
+    )
+    return [f"memories({len(census['memories'])} from the declared elaboration's census)"]
+
+
 def _memories_from_ports(target: str, facts: dict) -> list[str]:
     """Fill ``facts['memories']`` from banked write ports when the census produced none. Mutates
     ``facts``; returns the provenance names sourced.
@@ -1054,6 +1098,7 @@ def build_facts(
     # Only where nothing above produced a memory list: a store the census cannot see (instantiated
     # above the module a standalone elaboration builds) still declares its geometry on the ports below
     # it, and without this the target's whole memory-mapping axis is unanswerable.
+    sourced += _memories_from_declared_elaboration(target, v1)
     sourced += _memories_from_ports(target, v1)
     # Only where nothing above produced a datapath: the compute element declares what it consumes and
     # what it accumulates in on its own ports, and without this a target with no census datapath had its

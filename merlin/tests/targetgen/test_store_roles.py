@@ -296,6 +296,8 @@ def test_element_width_declarations_on_a_port_are_not_read_as_an_element_type():
                         "row_elems": 32,
                         "elem_bits": 8,
                         "banks": 6,
+                        "source": "firrtl_port_geometry",
+                        "row_element_note": "row_elems x elem_bits is the WRITE GRANULARITY",
                     }
                 ],
             },
@@ -313,3 +315,77 @@ def test_the_gemmini_family_geometry_does_not_move():
             continue
         rows = {s.name: (s.row_bytes, s.total_rows, s.depth, s.banks) for s in space.stores}
         assert rows == {"scratchpad": (16, 16384, 4096, 4), "accumulator": (64, 1024, 512, 2)}, target
+
+
+def test_an_sram_declaration_does_state_its_element_width():
+    """The census reads ``smem buffer : UInt<16>[32] [32]`` -- a declared vector of 32 16-bit elements --
+    so, where no datapath links to the store, 16 bits is the element width (the format is still unknown)."""
+    memory = {
+        "name": "buffer",
+        "bytes": 2048,
+        "depth": 32,
+        "row_elems": 32,
+        "elem_bits": 16,
+        "row_bits_rtl": 512,
+        "banks": 1,
+        "source": "firrtl_census",
+    }
+    body = {
+        "arrays": [{"name": "grid", "rows": 32, "cols": 32}],
+        "datapaths": [{"name": "accumulator", "dtype": "bf16", "module": "PE"}],
+        "memories": [memory],
+    }
+    space = AS.derive_address_space("t_sram", facts={"schema_version": "2.0", "inputs": {}, "facts": body})
+    store = space.stores[0]
+    assert (store.element_bits, store.element_dtype, store.row_bytes, store.total_rows) == (16, None, 64, 32)
+
+
+def test_atlas_as_its_declared_elaboration_derives_a_schedulable_address_space():
+    """From the SRAM declarations in AtlasRocketConfig (checked in as a fixture, so no RTL checkout is
+    needed): the 1.5 MiB VMEM is the operand store; the matrix register file (one 256-bit word per row) and
+    the instruction memory (one 32-bit word) cannot hold an array-edge row and take no array role; and the
+    accumulator is ADDRESSABLE -- two identical 32-row bf16 buffers, the acc0/acc1 a compute selects --
+    rather than state inside the PE. Every number here is a derivation from the RTL, none is a literal."""
+    import json
+
+    from merlin.common.paths import merlin_dir
+    from merlin.compile.scheduling import geometry_from_address_space
+
+    doc = json.loads((merlin_dir() / "tests/data/block_schedule/atlas_declared_elaboration_facts.json").read_text())
+    space = AS.derive_address_space("atlas_declared", facts=doc)
+    fed = {s.name: AS._array_fed(s, space) for s in space.stores}
+    assert fed == {
+        "mregfile.banks": False,
+        "vmem.banks": True,
+        "accumulationbuffers.buffer0": True,
+        "accumulationbuffers.buffer1": True,
+        "instrmem.mem": False,
+    }
+    operand = AS.operand_store(space)
+    assert (operand.store.name, operand.basis, operand.store.total_rows) == ("vmem.banks", AS.BY_WIDTH, 49152)
+    kind = AS.accumulator_kind(space)
+    assert (kind.kind, kind.buffers, kind.rows, kind.dtype) == (AS.ADDRESSABLE, 2, 32, "bf16")
+    geometry = geometry_from_address_space(space)
+    assert (geometry.block, geometry.operand_rows, geometry.operand_bank_rows, geometry.accumulator_rows) == (
+        32,
+        49152,
+        8192,
+        32,
+    )
+
+
+def test_identical_stores_of_a_different_width_than_the_accumulate_type_stay_a_tie():
+    """Twins are buffers only when they hold the declared accumulate type; otherwise the tie is a refusal."""
+    fed = {"row_elems": 32, "depth": 32, "banks": 1, "source": "firrtl_census"}
+    memories = [
+        {"name": "op", "bytes": 32 * 32 * 64, "depth": 64, "row_elems": 32, "elem_bits": 8, "source": "firrtl_census"},
+        {**fed, "name": "a", "bytes": 32 * 32 * 4, "elem_bits": 32},
+        {**fed, "name": "b", "bytes": 32 * 32 * 4, "elem_bits": 32},
+    ]
+    body = {
+        "arrays": [{"name": "grid", "rows": 32, "cols": 32}],
+        "datapaths": [{"name": "accumulator", "dtype": "bf16", "module": "PE"}],
+        "memories": memories,
+    }
+    space = AS.derive_address_space("t_twins", facts={"schema_version": "2.0", "inputs": {}, "facts": body})
+    assert AS.accumulator_kind(space).kind != AS.ADDRESSABLE

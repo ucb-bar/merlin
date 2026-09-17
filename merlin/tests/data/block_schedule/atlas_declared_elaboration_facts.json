@@ -1,0 +1,148 @@
+{
+ "facts": {
+  "arrays": [
+   {
+    "cols": 32,
+    "container": "PEMesh",
+    "corroborated": true,
+    "element": "PE",
+    "element_variants": [
+     [
+      "PE",
+      1024
+     ]
+    ],
+    "instances": 1024,
+    "mac_idiom": {
+     "adds": 7,
+     "muls": 1,
+     "regs": 2
+    },
+    "name": "mesh",
+    "rows": 32,
+    "source": "mlc_discovery"
+   }
+  ],
+  "census": {
+   "generator": "atlas",
+   "scoped_modules": 5690,
+   "unit_module_instances": 5802,
+   "unit_root": "AtlasTile",
+   "units": 1
+  },
+  "datapaths": [
+   {
+    "dtype": "fp8_e4m3",
+    "elem_bits": 8,
+    "evidence": "module PE (the replicated compute element) declares act, weight0, weight1 as 8-bit; its instance closure names fp8_e4m3 in `E4M3FMA`, which declares a 8-bit port",
+    "module": "PE",
+    "name": "input",
+    "ports": [
+     "act",
+     "weight0",
+     "weight1"
+    ],
+    "source": "firrtl_pe_geometry"
+   },
+   {
+    "dtype": "bf16",
+    "elem_bits": 16,
+    "evidence": "module PE (the replicated compute element) declares addend, mac as 16-bit; its instance closure names bf16 in `E4M3ProdAddBF16`, which declares a 16-bit port",
+    "module": "PE",
+    "name": "accumulator",
+    "ports": [
+     "addend",
+     "mac"
+    ],
+    "source": "firrtl_pe_geometry"
+   }
+  ],
+  "memories": [
+   {
+    "banks": 32,
+    "bytes": 65536,
+    "depth": 64,
+    "elem_bits": 256,
+    "evidence": "32x `smem banks : UInt<256> [64]` in ['MregFile'] @ generators/atlas/src/main/scala/atlas/mreg/MregFile.scala 71:16 (per AtlasTile unit; 1 unit(s) in this elaboration)",
+    "modules": [
+     "MregFile"
+    ],
+    "name": "mregfile.banks",
+    "row_bits_rtl": 256,
+    "row_elems": 1,
+    "source": "firrtl_census"
+   },
+   {
+    "banks": 6,
+    "bytes": 1572864,
+    "depth": 8192,
+    "elem_bits": 8,
+    "evidence": "6x `smem banks : UInt<8>[32] [8192]` in ['Vmem'] @ generators/atlas/src/main/scala/diplomatic/memory/VMEM.scala 62:16 (per AtlasTile unit; 1 unit(s) in this elaboration)",
+    "modules": [
+     "Vmem"
+    ],
+    "name": "vmem.banks",
+    "row_bits_rtl": 256,
+    "row_elems": 32,
+    "source": "firrtl_census"
+   },
+   {
+    "banks": 1,
+    "bytes": 2048,
+    "copies": 2,
+    "copies_note": "2 instances of ['AccumulationBuffers'] under different parents: separate stores of separate devices, each with the banks/depth/bytes above -- not banks of one address space",
+    "depth": 32,
+    "elem_bits": 16,
+    "evidence": "1x `smem buffer0 : UInt<16>[32] [32]` in ['AccumulationBuffers'] @ generators/atlas/src/main/scala/atlas/mxu/AccumulationBuffers.scala 79:28 (per AtlasTile unit; 1 unit(s) in this elaboration)",
+    "modules": [
+     "AccumulationBuffers"
+    ],
+    "name": "accumulationbuffers.buffer0",
+    "row_bits_rtl": 512,
+    "row_elems": 32,
+    "source": "firrtl_census"
+   },
+   {
+    "banks": 1,
+    "bytes": 2048,
+    "copies": 2,
+    "copies_note": "2 instances of ['AccumulationBuffers'] under different parents: separate stores of separate devices, each with the banks/depth/bytes above -- not banks of one address space",
+    "depth": 32,
+    "elem_bits": 16,
+    "evidence": "1x `smem buffer1 : UInt<16>[32] [32]` in ['AccumulationBuffers'] @ generators/atlas/src/main/scala/atlas/mxu/AccumulationBuffers.scala 80:28 (per AtlasTile unit; 1 unit(s) in this elaboration)",
+    "modules": [
+     "AccumulationBuffers"
+    ],
+    "name": "accumulationbuffers.buffer1",
+    "row_bits_rtl": 512,
+    "row_elems": 32,
+    "source": "firrtl_census"
+   },
+   {
+    "banks": 1,
+    "bytes": 131072,
+    "depth": 32768,
+    "elem_bits": 32,
+    "evidence": "1x `smem mem : UInt<32> [32768]` in ['InstrMem'] @ generators/atlas/src/main/scala/diplomatic/memory/InstrMem.scala 31:24 (per AtlasTile unit; 1 unit(s) in this elaboration)",
+    "modules": [
+     "InstrMem"
+    ],
+    "name": "instrmem.mem",
+    "row_bits_rtl": 32,
+    "row_elems": 1,
+    "source": "firrtl_census"
+   }
+  ],
+  "source": {
+   "config": "AtlasRocketConfig",
+   "fir": "chipyard.harness.TestHarness.AtlasRocketConfig.fir",
+   "fir_sha256": "fefa711dba44498317573ee5af2cfd82edb674cdfff1505318ea93e896fc123d",
+   "generator": "atlas",
+   "kind": "firrtl_census"
+  },
+  "target": "atlas"
+ },
+ "inputs": {},
+ "schema_version": "2.0",
+ "what": "Atlas facts as extracted from its declared elaboration (AtlasRocketConfig) by the generator-scoped FIRRTL census: arrays, SRAM memories, and the compute cell's datapaths. A fixture for derivation tests; not the shared facts cache."
+}

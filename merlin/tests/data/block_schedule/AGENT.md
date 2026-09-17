@@ -12,6 +12,12 @@ package variants it was lifted from, on a checkout where those packages are abse
   that make the refusal real), the geometry it was recorded against, each package's baked geometry
   constants, and the sha256 of the `lowering/isa.py` each stream came from.
 
+- `atlas_declared_elaboration_facts.json` — Atlas facts as the generator-scoped FIRRTL census reads them
+  from its declared elaboration (`AtlasRocketConfig`): arrays, SRAM memories (VMEM, the two accumulation
+  buffers, the matrix register file, the instruction memory) and the compute cell's datapaths. Lets the
+  address-space derivation be tested on real RTL structure without an RTL checkout. It is NOT the shared
+  facts cache; regenerate it from `circt_introspect.dump_facts(target="atlas")` and keep only `facts`.
+
 ## What does not belong here
 
 - The packages themselves (they live, untracked, under `out/artifacts/targets/gemmini/`).

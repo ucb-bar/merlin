@@ -295,3 +295,40 @@ def test_real_elaboration_corroborates_the_row_width_two_ways(target):
         checked += 1
     if checked:
         assert space.stores_status == AS.DERIVED
+
+
+def test_census_counts_sibling_instances_as_banks_and_cousins_as_copies(tmp_path):
+    """Instances of a declaring module side by side under ONE parent are banks of one store; instances under
+    DIFFERENT parents are separate stores of separate devices. Measured on a unit with two compute blocks
+    that each own an accumulation buffer: summing them as banks reported one accumulator twice its size."""
+    fir = tmp_path / "unit.fir"
+    fir.write_text(
+        "circuit T :\n"
+        "  module Unit : @[generators/w/src/main/scala/w/Unit.scala 1:1]\n"
+        "    skip\n"
+        "  module Buf : @[generators/w/src/main/scala/w/Buf.scala 2:1]\n"
+        "    smem buffer : UInt<16>[4] [8] @[generators/w/src/main/scala/w/Buf.scala 3:1]\n"
+        "  module Bank : @[generators/w/src/main/scala/w/Bank.scala 4:1]\n"
+        "    smem cells : UInt<8>[4] [16] @[generators/w/src/main/scala/w/Bank.scala 5:1]\n",
+        encoding="utf-8",
+    )
+
+    def node(name, module, kids=()):
+        return {"instance_name": name, "module_name": module, "instances": list(kids)}
+
+    unit = node(
+        "u",
+        "Unit",
+        [
+            node("mxu0", "MxuA", [node("acc", "Buf")]),
+            node("mxu1", "MxuB", [node("acc", "Buf")]),
+            node("pad", "Pad", [node(f"bank{i}", "Bank") for i in range(3)]),
+        ],
+    )
+    hier = tmp_path / "h.json"
+    hier.write_text(json.dumps(node("top", "Top", [unit])), encoding="utf-8")
+    out = introspect.census_facts(fir, hier, generator="w")
+    buffer = next(m for m in out["memories"] if m["name"] == "buf.buffer")
+    cells = next(m for m in out["memories"] if m["name"] == "bank.cells")
+    assert (buffer["banks"], buffer["copies"], buffer["bytes"]) == (1, 2, 16 * 4 * 8 // 8)
+    assert cells["banks"] == 3 and "copies" not in cells
