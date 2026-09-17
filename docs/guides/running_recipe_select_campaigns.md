@@ -3,7 +3,7 @@ title: "Running the Gemmini recipe-select agent campaigns"
 kind: guide
 status: current
 owner: core
-last_verified: 2026-09-03
+last_verified: 2026-09-16
 related: [agent_uses_the_compiler_gemmini]
 code_refs: [merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py, merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py, merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py, merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py]
 ---
@@ -22,6 +22,9 @@ why the two arms cannot be ranked by their own speedups.
   (default: an `autocomp` checkout beside this repo). It is named explicitly and never inherited:
   running the AutoComp arm under merlin's interpreter once made a known-good reference kernel read as
   numerically wrong.
+* The GSIM emulator this track certifies against, at `$TMPDIR/gsim_cert_serialclk_v1/` or wherever
+  `$MERLIN_GEMMINI_GSIM_EMU` points. The scripts check its sha256 (`GSIM_SHA`) on the way in — the
+  binary is identified by its digest, never by where it happens to sit.
 * A codex seat (`auth_mode: chatgpt`). Runs are billed as `subscription_notional`; `billed_usd` stays
   empty on seat rows and empty never means zero.
 
