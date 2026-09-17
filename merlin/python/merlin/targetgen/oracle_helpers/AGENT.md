@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Helper scripts for the generic program-oracle that run inside a TARGET MODEL's own venv (not merlin's)
+Helper scripts for the generic program-oracle that run inside a TARGET MODEL's own venv (not merlin's) — e.g. ``npu_emit.py`` (assembles a target's emitted kernel via the model's OWN ISA/assembler).…
 
 ## Modules
 

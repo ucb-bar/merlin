@@ -1,8 +1,8 @@
-# AGENT.md — merlin/python/merlin/rvvgen
+# AGENT.md — merlin/python/merlin/mining
 
 ## Purpose
 
-RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect
+RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets (spike correctness +…
 
 ## Modules
 

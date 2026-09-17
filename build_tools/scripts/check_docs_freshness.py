@@ -42,7 +42,8 @@ KINDS = {"reference", "guide", "design"}
 STATUSES = {"current", "draft", "superseded"}
 SKIP_NAMES = {"README.md", "AGENT.md"}
 # Generated references legitimately carry no hand-authored front-matter.
-GENERATED = {"reference/cli.md", "reference/module_index.md", "reference/schemas.md"}
+GENERATED = {"reference/cli.md", "reference/module_index.md", "reference/schemas.md",
+             "reference/repo_map.md"}
 RATCHET = ROOT / "build_tools" / "scripts" / "docs_freshness_ratchet.txt"
 
 

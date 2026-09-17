@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The single pytest suite for merlin (~754 tests): unit + integration across kernels, MLIR/xDSL
+The single pytest suite for merlin: unit + integration across kernels, MLIR/xDSL
 compilation, DSE, runtime/backends, model bringup, validation. This is the sole `testpaths` entry
 in `pyproject.toml`. Test fixtures/data live in `fixtures/` and `data/` here.
 

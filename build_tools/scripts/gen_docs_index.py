@@ -28,6 +28,7 @@ GENERATED = {
     "reference/cli.md": "CLI reference", "cli.md": "CLI reference",
     "reference/module_index.md": "Package module index", "module_index.md": "Package module index",
     "reference/schemas.md": "Schema reference", "schemas.md": "Schema reference",
+    "reference/repo_map.md": "Repository map", "repo_map.md": "Repository map",
 }
 SKIP_NAMES = {"README.md", "AGENT.md"}
 KIND_ORDER = ["reference", "guide", "design"]

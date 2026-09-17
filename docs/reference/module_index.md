@@ -15,14 +15,14 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
 | `merlin.compile.scheduling` | Scheduling passes over a target's derived on-chip geometry. |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
-| `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, |
-| `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts |
+| `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
+| `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
 | `merlin.design_pressure.ingest` | Ingest workload regions from external frontends (e.g. model2MLIR linalg-on-tensors). |
-| `merlin.design_pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, |
+| `merlin.design_pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, memory, layout, packing, reuse, lifetimes, dispatch and synchronization. |
 | `merlin.design_pressure.workloads` | Synthetic, parameterized workload-region builders for design-pressure experiments. |
 | `merlin.dse` | Design-space exploration: search the hardware and interface space a design-pressure report opens. |
 | `merlin.dse.pipelines` | xDSL pass registry + pipeline builder. A compilation strategy's lowering_pipeline string is assembled here from named passes (MLIR --pass-pipeline style). |
-| `merlin.dse.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic — NOT a dialect. |
+| `merlin.dse.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic —… |
 | `merlin.dse_guidance` | DSE guidance: turn a flat workload capture into grounded DSE-axis guidance. |
 | `merlin.dse_guidance.agent` | Agent slots for dse_guidance — LLM proposes, a deterministic gate disposes. |
 | `merlin.frontends` | Merlin frontends: ingest external IR into the core-dialect pipeline. |
@@ -32,20 +32,20 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.kernels.decode` | Robust, non-regex decoders for the kernel-mining pipeline. |
 | `merlin.kernels.emit` | Emit kernel_record / abstraction_candidate / policy_rule artifacts. |
 | `merlin.kernels.features` | Feature extraction: NormalizedKernel -> typed feature dict + fired markers. |
-| `merlin.kernels.framework_contracts` | Per-framework contract descriptors — the caller-side assumptions (prepack/transpose/layout/ |
+| `merlin.kernels.framework_contracts` | Per-framework contract descriptors — the caller-side assumptions (prepack/transpose/layout/ accumulator/dtype) that are NOT in a kernel's body or assembly, so they can't be mined from code alone.… |
 | `merlin.kernels.ingest` | Ingest kernels from external sources. |
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
-| `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect |
+| `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets (spike correctness +… |
 | `merlin.perf` | The performance layer: what a target's legal choices cost. |
 | `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
-| `merlin.runtime.backends.openblas_board` | BOARD (RVV) OpenBLAS kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
-| `merlin.runtime.backends.ours_board` | BOARD (RVV) OURS GEMM kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
+| `merlin.runtime.backends.openblas_board` | BOARD (RVV) OpenBLAS kernel backend: route the f32 ``linalg.matmul`` dispatches of a whole-model lowering to OpenBLAS's RVV 8x8 GEMM microkernel — the OpenBLAS analogue of the… |
+| `merlin.runtime.backends.ours_board` | BOARD (RVV) OURS GEMM kernel backend: route the f32 ``linalg.matmul`` dispatches of a whole-model lowering to OUR OWN compiler-emitted MR=4 accumulator-resident RVV micro-kernel (the "v3" kernel) —… |
 | `merlin.runtime.backends.outlined_int8_board` | Reusable K1 RVV kernel for Merlin's W8A8 rank-2 contractions. |
-| `merlin.runtime.backends.xnnpack_board` | BOARD (RVV) XNNPACK kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
+| `merlin.runtime.backends.xnnpack_board` | BOARD (RVV) XNNPACK kernel backend: route the f32 ``linalg.matmul`` dispatches of a whole-model lowering to XNNPACK's RVV GEMM microkernel, the K1/RVV analogue of the host ``xnnpack_host`` backend… |
 | `merlin.runtime.backends.xnnpack_host` | HOST XNNPACK kernel backend for the dispatch runtime (default-off, additive). |
 | `merlin.rvvgen` | Compatibility shim: ``merlin.rvvgen`` is now :mod:`merlin.mining`. |
 | `merlin.system` | Host+device system model: what we compile for, and how the pieces are reached. |
@@ -58,7 +58,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.generate` | Generate the merlin-target-<name>/ repository skeleton and its artifacts. |
 | `merlin.targetgen.ingest` | Ingest layer: record TargetGen inputs as a SourceManifest. |
 | `merlin.targetgen.oot_starterkit` | OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an MLIR OOT backend. |
-| `merlin.targetgen.oracle_helpers` | Helper scripts for the generic program-oracle that run inside a TARGET MODEL's own venv (not merlin's) |
+| `merlin.targetgen.oracle_helpers` | Helper scripts for the generic program-oracle that run inside a TARGET MODEL's own venv (not merlin's) — e.g. ``npu_emit.py`` (assembles a target's emitted kernel via the model's OWN ISA/assembler).… |
 | `merlin.targetgen.rocc` | The RoCC coprocessor interface: decoding a trace of it, and emitting one. |
 | `merlin.targetgen.rtl` | merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL). |
 | `merlin.targetgen.sandbox` | Shared, descriptor+manifest-driven agentic bwrap sandbox. |

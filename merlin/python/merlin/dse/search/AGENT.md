@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/search
+# AGENT.md — merlin/python/merlin/dse/search
 
 ## Purpose
 
