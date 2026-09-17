@@ -21,10 +21,11 @@
     "LICENSE",
     ".clang-format",
     ".clang-tidy",
-    "third_party"
+    "third_party",
+    ".git-blame-ignore-revs"
    ],
    "subject": "build(repo): pin toolchain, gate CI and document the conventions",
-   "body": "Repository-level configuration for the target-generalization work.\n\n- pyproject.toml: Python floor raised to 3.12 (the tree uses PEP 701 f-strings), ruff pinned to\n  the 0.16 line with generated benchmark inputs excluded, new console scripts, and the\n  pytest-timeout ceiling.\n- CI (pr-fast.yml): the derive-don't-overfit gates, ledgers that may only shrink, local-path\n  and holdout-name gates, and a docs freshness ratchet. Every build_tools check is either wired\n  or listed with the reason it is not.\n- .claude/ hooks refuse generated writes outside out/ and broad process kills on the shared\n  host.\n- CLAUDE.md states the conventions the gates enforce: derive target facts instead of hardcoding\n  them, pin hardware revisions, one out/ root, one test suite, durable docs versus reports."
+   "body": "Repository-level configuration for the target-generalization work.\n\n- pyproject.toml: Python floor raised to 3.12 (the tree uses PEP 701 f-strings), ruff pinned to\n  the 0.16 line with generated benchmark inputs excluded, new console scripts, and the\n  pytest-timeout ceiling.\n- CI (pr-fast.yml): the derive-don't-overfit gates, ledgers that may only shrink, local-path\n  and holdout-name gates, and a docs freshness ratchet. Every build_tools check is either wired\n  or listed with the reason it is not.\n- .claude/ hooks refuse generated writes outside out/ and broad process kills on the shared\n  host.\n- .git-blame-ignore-revs lists the restyle-only commits so blame skips them. On this branch the\n  restyle is folded into the subsystem commits, so the file matters only on the working branch.\n- CLAUDE.md states the conventions the gates enforce: derive target facts instead of hardcoding\n  them, pin hardware revisions, one out/ root, one test suite, durable docs versus reports."
   },
   {
    "id": "tooling",
