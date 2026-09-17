@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import pytest
@@ -20,7 +21,7 @@ def _buf(*counts):
 
 def test_it_counts_completion_points_in_a_real_emitted_buffer():
     """Read a buffer the harness actually produced, not a stand-in, when one is available."""
-    root = pathlib.Path("/scratch/agustin/tmp/gsim_recert_20260904/captures49")
+    root = pathlib.Path(os.environ.get("TMPDIR", "/tmp")) / "gsim_recert_20260904" / "captures49"
     found = sorted(root.glob("PQ*/command_buffer.json")) if root.is_dir() else []
     if not found:
         pytest.skip("no captured synchronization buffer on this machine")

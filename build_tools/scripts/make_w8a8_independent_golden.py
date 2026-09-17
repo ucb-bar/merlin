@@ -326,8 +326,9 @@ def generate(bundle: Path, *, out_name: str = DEFAULT_OUT_NAME, force: bool = Fa
     if not python.is_file():
         return False, f"capture interpreter is absent: {python}"
     env = capture_environment(root, model, env_overrides)
-    env.setdefault("TMPDIR", "/scratch/agustin/tmp" if Path("/scratch/agustin/tmp").is_dir()
-                   else env.get("TMPDIR", "/tmp"))
+    # Whole-model captures need a big scratch filesystem, so the AMBIENT TMPDIR is inherited
+    # rather than one developer's directory being named here (see docs/guides/storage.md).
+    env.setdefault("TMPDIR", os.environ.get("TMPDIR") or env.get("TMPDIR", "/tmp"))
     cmd = [str(python), str(Path(__file__).resolve()), "--_inner", str(bundle),
            "--model", model, "--m2m-root", str(root), "--out-name", out_name,
            "--scheme", scheme]

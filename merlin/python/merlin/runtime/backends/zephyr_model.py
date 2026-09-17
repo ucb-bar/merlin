@@ -126,7 +126,9 @@ def _zephyr_sw_root() -> Path:
 
 
 def _sdk_dir() -> Path:
-    return _pick("ZEPHYR_SDK_INSTALL_DIR", "/home/rose/zephyr-sdk-0.17.0")
+    # Zephyr's own documented install location. The fallback used to name one person's home,
+    # which meant every other machine silently fell back to a directory that was not there.
+    return _pick("ZEPHYR_SDK_INSTALL_DIR", os.path.expanduser("~/zephyr-sdk-0.17.0"))
 
 
 def _conda_bin() -> Path:

@@ -26,8 +26,10 @@ T.assert_right_merlin()
 HERE = Path(__file__).resolve().parent
 
 #: AutoComp's own interpreter. Named explicitly for the reason in the launch site below.
-AUTOCOMP_PY = Path(os.environ.get("MERLIN_EXT_AUTOCOMP",
-                                  "/scratch/agustin/projects/autocomp")) / ".venv" / "bin" / "python"
+#: Resolved as a SIBLING of this repo when $MERLIN_EXT_AUTOCOMP is unset -- the fallback used to
+#: be one developer's absolute path, which no other clone could follow.
+AUTOCOMP_PY = Path(os.environ.get("MERLIN_EXT_AUTOCOMP")
+                   or HERE.parents[3].parent / "autocomp") / ".venv" / "bin" / "python"
 
 
 def main(argv=None) -> int:

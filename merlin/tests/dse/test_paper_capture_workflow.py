@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import json
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from merlin.compare.host_experiment import HostExperimentSpec
 
 STUDY = bench_dir() / "rvv_paper" / "study_v2.yaml"
 HOST = repo_root() / "merlin" / "experiments" / "cpu_host_compiler_v0" / "experiment.yaml"
-MODEL2MLIR = Path("/scratch/agustin/projects/model2MLIR")
+MODEL2MLIR = Path(os.environ.get("MERLIN_M2M_DIR") or repo_root().parent / "model2MLIR")
 
 
 def _product(path: Path) -> ProductDir:

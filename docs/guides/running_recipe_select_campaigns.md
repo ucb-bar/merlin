@@ -19,7 +19,7 @@ why the two arms cannot be ranked by their own speedups.
 
 * `.venv/bin/python` in the repo (the project interpreter — see `venv-python`).
 * AutoComp's **own** interpreter for that arm, at `$MERLIN_EXT_AUTOCOMP/.venv/bin/python`
-  (default `/scratch/agustin/projects/autocomp`). It is named explicitly and never inherited:
+  (default: an `autocomp` checkout beside this repo). It is named explicitly and never inherited:
   running the AutoComp arm under merlin's interpreter once made a known-good reference kernel read as
   numerically wrong.
 * A codex seat (`auth_mode: chatgpt`). Runs are billed as `subscription_notional`; `billed_usd` stays

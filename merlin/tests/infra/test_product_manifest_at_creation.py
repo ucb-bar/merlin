@@ -9,16 +9,30 @@ gate 39 seconds into a run that would have written its manifest only after the f
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 
 
 @pytest.fixture()
-def out_root(monkeypatch):
-    d = tempfile.mkdtemp(dir="/scratch/agustin/tmp", prefix="test_prod_")
-    monkeypatch.setenv("MERLIN_OUT_ROOT", d)
-    return d
+def out_root(tmp_path, monkeypatch):
+    """An out/ root inside a throwaway GIT repo.
+
+    Two things were wrong with building it by hand under one developer's scratch directory. The
+    checker shells out to `git ls-files` / `git diff --cached` with cwd=root and `check=True` -- on
+    purpose, because "we could not look" is not "there is nothing to find" -- so a root that is not a
+    repository made `test_the_layout_gate_accepts_a_freshly_created_product` die with
+    CalledProcessError rather than assert anything. And the root was the out/ root itself while the
+    checker walks `<root>/out/artifacts/*/v*`, so even before that it was scanning an empty tree and
+    passing vacuously. The layout is now `<tmp>/out`, which is what the checker expects.
+    """
+    import subprocess
+
+    out = tmp_path / "out"
+    out.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
+    return str(out)
 
 
 def test_a_new_product_is_immediately_gate_valid(out_root):

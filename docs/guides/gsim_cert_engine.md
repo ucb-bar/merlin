@@ -304,7 +304,7 @@ pin, which is what "verify by content, not by branch name" means in practice.
 ### Certifying bytes moved out of purgeable scratch
 
 The elaboration the installed emulator is actually built from (`089d053b`, `GemminiGsimSerialClkConfig`)
-existed **only** under `/scratch/agustin/tmp/`, which the layout convention marks purgeable — and it
+existed **only** under `$TMPDIR`, which the layout convention marks purgeable — and it
 matched neither registered artifact (`gemmini_gsim_model` is rooted at ChipTop, `..._testharness` declares
 the hand-edited bytes). Both entries verified, so nothing reported a problem; the cert engine had simply
 moved to bytes no entry described. The FIRRTL, its model manifest and the 38-member equivalence

@@ -5,7 +5,7 @@ CONTROL twin (identical lowering, nothing routed) -- and audit that the image is
 WHY THIS FILE EXISTS AT ALL. Its predecessor, ``fs_legs.py``, is named in the provenance ``sources`` of
 the FireSim whole-model matrix-unit result and NO COPY SURVIVES: it was a session scratchpad that was
 later purged, so the cited number cannot be reproduced. Its successor then lived as a loose
-``zeph_leg.py`` under ``/scratch/agustin/tmp`` and was the ONLY driver for building these legs. Twice
+``zeph_leg.py`` under ``$TMPDIR`` and was the ONLY driver for building these legs. Twice
 now the script behind a cited number has been a temp file. Committing it is the fix.
 
 WHY ZEPHYR RATHER THAN BARE METAL, measured rather than preferred: it already carries the ALIVE

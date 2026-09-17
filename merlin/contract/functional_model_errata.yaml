@@ -23,7 +23,7 @@ errata:
           The model stores VMEM as a byte array, but DMA vmemAddr and VLS base
           addresses are architectural 32-bit word addresses. Scalar LB/LH/LW and
           SB/SH/SW offsets remain byte-addressed and therefore are not overlaid.
-        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
+        upstream: $MERLIN_MLC_DIR/third_party/atlas-npu/npu-model/npu_model
       e8m0_scale_interpretation:
         authoritative: rtl
         correction: e8m0_biased_exponent
@@ -39,7 +39,7 @@ errata:
           read_erf returns the encoded E8M0 byte. The shipped functional model
           treats that byte as an arithmetic multiplier/divisor. RTL interprets it
           as a biased exponent: scale exponent = clamp(code - 127).
-        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
+        upstream: $MERLIN_MLC_DIR/third_party/atlas-npu/npu-model/npu_model
       weight_buffer_lane_order:
         authoritative: rtl
         correction: weight_buffer_output_lane_major
@@ -56,4 +56,4 @@ errata:
           matmul instead consumes that lane-major [N,K] storage directly as
           [K,N]. Presenting its transpose to the existing matmul matches both
           RTL engines without changing VTRPOSE or VMATPUSH.
-        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
+        upstream: $MERLIN_MLC_DIR/third_party/atlas-npu/npu-model/npu_model

@@ -27,12 +27,16 @@ blackboxes, documented per-config below.
 ## 0. Environment (all commands assume this)
 
 ```bash
-export GSIM=/scratch/agustin/projects/gsim
-export LD_LIBRARY_PATH=/scratch2/agustin/miniforge3/envs/merlin-dev/lib
+# $EXT is wherever the external checkouts live (a directory beside this repo works);
+# $CONDA_PREFIX is the toolchain env that supplies clang 21; $WORK is any large scratch dir.
+export EXT=${EXT:-$(cd "$(git rev-parse --show-toplevel)/.." && pwd)}
+export WORK=${WORK:-$TMPDIR/gsim-work}
+export GSIM=$EXT/gsim
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib
 export CPLUS_INCLUDE_PATH=$GSIM/.flexinc
 export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
-export CXX=/scratch2/agustin/miniforge3/envs/merlin-dev/bin/clang++   # clang 21
-export CC=/scratch2/agustin/miniforge3/envs/merlin-dev/bin/clang
+export CXX=$CONDA_PREFIX/bin/clang++   # clang 21
+export CC=$CONDA_PREFIX/bin/clang
 ```
 
 - GSIM binary: `$GSIM/build/gsim/gsim` (rebuild with `make build-gsim` under the env above).
@@ -46,8 +50,8 @@ export CC=/scratch2/agustin/miniforge3/envs/merlin-dev/bin/clang
 
 ```bash
 cd $GSIM
-tar xjf /scratch/agustin/projects/gsim-ready-to-run/TestHarness-rocket.tar.bz2 -C ready-to-run 2>/dev/null || true
-ln -sf /scratch/agustin/projects/gsim-ready-to-run/bin/coremark-rocket.bin ready-to-run/bin/coremark-rocket.bin
+tar xjf $EXT/gsim-ready-to-run/TestHarness-rocket.tar.bz2 -C ready-to-run 2>/dev/null || true
+ln -sf $EXT/gsim-ready-to-run/bin/coremark-rocket.bin ready-to-run/bin/coremark-rocket.bin
 /usr/bin/time -v make run dutName=rocket mainargs=ready-to-run/bin/coremark-rocket.bin
 ```
 
@@ -69,7 +73,7 @@ committed CIRCT emissions:
 | gemmini M3 | `artifacts/gemmini/firrtl/chipyard.harness.TestHarness.GemminiRocketConfig.fir` (3.3.0, 660k lines) |
 
 firtool versions on this box (all CIRCT): chipyard `.conda-env` = **firtool-1.75.0**;
-`/scratch/agustin/cache/llvm-firtool/1.128.0`; `third_party/circt/build` (dev).
+`$XDG_CACHE_HOME/llvm-firtool/1.128.0`; `third_party/circt/build` (dev).
 Any of the 1.75+ CIRCT firtools emit the `invalidate` dialect GSIM accepts — **no
 downgrade to an older firtool is needed.** Re-emit with e.g.
 `firtool --format=fir --emit-chirrtl` or the existing chipyard/atlas make targets.
@@ -103,7 +107,7 @@ Boundary-only; the datapath/register model is untouched. No regex.
 ## 3. atlas M2 — `SystolicArray` (MXU) — **WORKING**
 
 ```bash
-SP=/scratch/agustin/projects/gsim-work/atlas   # any scratch dir
+SP=$WORK/atlas   # any scratch dir
 mkdir -p $SP && cd $SP
 $GSIM/build/gsim/gsim --dir=$SP artifacts/…/SystolicArray.fir      # ~16 s → SystolicArray.h + SystolicArray0.cpp
 python3 <char>/gsim_fix_vector_io.py SystolicArray $SP             # repairs 5 vector accessors
@@ -136,7 +140,7 @@ through the pipeline registers.
 ## 4. gemmini M2 — `Gemmini` accelerator (incl. controllers) — **WORKING**
 
 ```bash
-SP=/scratch/agustin/projects/gsim-work/gemmini; mkdir -p $SP; cd $SP
+SP=$WORK/gemmini; mkdir -p $SP; cd $SP
 $GSIM/build/gsim/gsim --dir=$SP runs/essent/gemmini/inputs/Gemmini.fir   # ~11 s
 python3 <char>/gsim_fix_vector_io.py Gemmini $SP           # 12 vector setters + 1 getter (PTW/CSR ports)
 python3 <char>/gsim_fix_gemmini_codegen.py Gemmini $SP     # see below
@@ -316,7 +320,7 @@ all `*_SerialRAM` serdes — so the `ram$tsi2tl` / `_success_T` nodes never exis
 
 ```bash
 F=artifacts/gemmini/firrtl/chipyard.harness.TestHarness.GemminiRocketConfig.fir
-SP=/scratch/agustin/projects/gsim-work/gemmini-soc; mkdir -p $SP
+SP=$WORK/gemmini-soc; mkdir -p $SP
 # 1. re-root TestHarness.fir at the ChipTop DUT (3099 modules -> 2646 reachable)
 python3 <char>/gsim_prune_to_dut.py $F ChipTop $SP/ChipTop.fir
 # 2. GSIM parse -> C++ : ~34 s, EXIT 0, emits ChipTop.h (34160 nodes) + ChipTop0.cpp (130 MB)
@@ -389,7 +393,7 @@ clobbered before the fetch — the kernel must be **baked into the generated
 `ChipTop0.cpp`** source, not written from the harness.
 
 The kernel (`gsim_gemmini_bootrom.S`, RV64, assembled with the extracted riscv-gcc14
-`as`/`ld`/`objcopy` under `/scratch/agustin/projects/riscv-gcc14`) issues the SAME
+`as`/`ld`/`objcopy` under `$EXT/riscv-gcc14`) issues the SAME
 DRAM-free RoCC stream as the M2 harness §4a — `config_ex` + `preload` +
 `compute_preloaded` (funct 4) + **12× `compute_and_stay`** (funct 5) — then spins at
 `0x1006e`. RoCC custom-3 encoding `opcode 0x7b, funct3=0b011 {xd=0,xs1=1,xs2=1}, funct7 =
@@ -397,7 +401,7 @@ gemmini funct`; operands are `li`-loaded into `a0`/`a1` (scratchpad/accumulator 
 no `mvin/mvout` ⇒ no DMA ⇒ no TLB).
 
 ```bash
-SP=/scratch/agustin/projects/gsim-work/gemmini-soc
+SP=$WORK/gemmini-soc
 char=experiments/characterization
 # 1. assemble kernel -> rom word image (gemmini_bootrom.h)
 python3 $char/gsim_gemmini_bootrom_bake.py $SP
@@ -466,7 +470,7 @@ Contrary to the earlier note in this section, the **full Atlas SoC FIRRTL alread
 exists**, produced by the chipyard-atlas verilator build (Jul 2026):
 
 ```
-CHIPYARD_ATLAS=/scratch/agustin/projects/chipyard-atlas        # mlc/paths.py CHIPYARD_ATLAS_ROOT
+CHIPYARD_ATLAS=$EXT/chipyard-atlas        # mlc/paths.py CHIPYARD_ATLAS_ROOT
 FIR=$CHIPYARD_ATLAS/sims/verilator/generated-src/\
 chipyard.harness.TestHarness.AtlasRocketConfig/\
 chipyard.harness.TestHarness.AtlasRocketConfig.fir             # 132 MB, 1,005,921 lines
@@ -492,7 +496,7 @@ instantiates only `system of DigitalTop` + pure `GenericDigitalIn/OutIOCell` +
 into a fresh circuit (**no regex**, structured line scan + instance-reachability BFS):
 
 ```bash
-SP=/scratch/agustin/projects/gsim-work/atlas-soc; mkdir -p $SP
+SP=$WORK/atlas-soc; mkdir -p $SP
 python3 experiments/characterization/gsim_extract_subtree.py "$FIR" ChipTop $SP/ChipTop.fir
 #  root=ChipTop  modules 7475 -> 7022 reachable  (232 extmodule: IOCells+plusarg+EICG)
 #  drops SerialRAM/tsi2tl/SimTSI/SimDRAM/SimJTAG/UARTAdapter/TestHarness (453 modules)
@@ -614,7 +618,7 @@ port is exposed on `SChipTop`).
 - `gsim_soc_blackboxes.cpp` — (shared with gemmini M3) the 4 SoC extmodule bodies.
 - GSIM engine patches in `$GSIM/src/{graphPartition.cpp,cppEmitter.cpp}` (uncommitted;
   each gated to the debug clock/reset cycle, with an `[atlas-M3 …]` stderr breadcrumb).
-- Scratch outputs (heavy, not in repo): `/scratch/agustin/projects/gsim-work/atlas-soc/`
+- Scratch outputs (heavy, not in repo): `$WORK/atlas-soc/`
   (`ChipTop.fir`, `ChipTop*.cpp/.h`, `atlas_soc_sim`, `atlas_soc_run.csv`,
   `atlas_soc_commitlog.txt`, `env.sh`).
 

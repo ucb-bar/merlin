@@ -152,8 +152,9 @@ def test_the_sandbox_really_cannot_read_the_repo_or_scratch(tmp_path):
     ws.mkdir(parents=True)
     probe = ("import os;"
              "print('repo', os.path.exists(%r));"
-             "print('scratch_proj', os.path.exists('/scratch/agustin/projects'))"
-             % str(repo_root() / "merlin" / "python" / "merlin" / "kernels" / "cca.py"))
+             "print('scratch_proj', os.path.exists(%r))"
+             % (str(repo_root() / "merlin" / "python" / "merlin" / "kernels" / "cca.py"),
+                str(repo_root().parent)))
     argv = pa.sandbox_argv(ws) + ["python3", "-c", probe]
     out = subprocess.run(argv, capture_output=True, text=True, timeout=180)
     body = out.stdout

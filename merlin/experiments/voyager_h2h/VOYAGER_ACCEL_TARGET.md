@@ -378,7 +378,7 @@ subcommands (`scripts/plane_b_regression.sh {systemc-layer,rtl-layer,rtl-trace}`
 
 ### Step list
 
-Run everything from the repo root with `TMPDIR=/scratch/agustin/tmp`. The pinned checkout
+Run everything from the repo root with `TMPDIR` pointing at a large scratch filesystem. The pinned checkout
 (`out/build/external/voyager-accelerator`) is never written; all work happens in a patched copy, the
 pattern `PLANE_B.md` already established for the FIFO A/B.
 

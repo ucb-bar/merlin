@@ -46,6 +46,7 @@ import base64
 import importlib.util
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -615,12 +616,17 @@ def cmd_measure(args) -> int:
 # ==================================================================================================
 # CLAIM 7.2 -- PREDICTS, where no reference exists
 # ==================================================================================================
+#: Working root for the oracle runs. Under $TMPDIR (the repo convention for scratch), never a
+#: developer's own directory -- these defaults named one, so the flag was mandatory elsewhere.
+_WORKDIR = Path(os.environ.get("TMPDIR", "/tmp")) / "perf_headline"
+
+
 def claim_predicts(target: str, suite: dict, tier: str) -> dict:
     lw = _layer_workload()
     sources = corpus_sources(suite)
     op, eta = derived_operator(sources)
     body = load_measurements(target)
-    wd = Path("/scratch/agustin/tmp/perf_headline")
+    wd = _WORKDIR
     wd.mkdir(parents=True, exist_ok=True)
 
     rows = []
@@ -974,7 +980,7 @@ def main(argv=None) -> int:
     m.add_argument("--target", required=True)
     m.add_argument("--tier", default="vsim")
     m.add_argument("--set", default="all", choices=[*SHAPE_SETS, "all"])
-    m.add_argument("--workdir", default="/scratch/agustin/tmp/perf_headline")
+    m.add_argument("--workdir", default=str(_WORKDIR))
     m.add_argument("--timeout", type=int, default=7200)
     m.add_argument("--force", action="store_true")
     m.set_defaults(func=cmd_measure)

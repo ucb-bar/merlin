@@ -1177,7 +1177,7 @@ end-to-end bound at generated shapes (every one carries an unresolved resource).
   There is no `perf` bucket and the list is an enum. Profile/contract/record → `targetgen`;
   envelope/attribution/selection → `dse`.
 - **A check that could not run is `not_run`**, never a pass and never a zero.
-- **mlc lives in a NESTED git repo.** `$MERLIN_MLC_DIR` = `/scratch2/agustin/mvp-lhwir/modeling` is its own
+- **mlc lives in a NESTED git repo.** `$MERLIN_MLC_DIR` (the mlc checkout) is its own
   repo (`copparihollmann/ModeLIR`, branch `feature/discover-datapaths`); the outer `mvp-lhwir` repo
   separately tracks copies of the same files and reports a different branch, a different HEAD, ~971 dirty
   paths, and this pin's commit as a *missing object*. Two sessions have now lost time to it. Resolve the

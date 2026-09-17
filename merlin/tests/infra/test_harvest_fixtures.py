@@ -21,7 +21,7 @@ def _header(path: str) -> str:
 
 
 def test_the_temp_path_is_replaced_by_the_fixture_name():
-    out = _h._machine_independent(_header("/scratch/agustin/tmp/merlin_harvest_ab12/x_rvv.o"), "x_rvv.objdump")
+    out = _h._machine_independent(_header("/scratch/builder/tmp/merlin_harvest_ab12/x_rvv.o"), "x_rvv.objdump")
     assert "x_rvv.objdump:\tfile format elf64-littleriscv" in out
     assert "merlin_harvest_ab12" not in out, "the temp dir must not reach a tracked fixture"
 
@@ -34,7 +34,7 @@ def test_normalisation_does_not_depend_on_the_object_extension():
     skipped-fixture message, just churn again. Any extension objdump can be pointed at must normalise.
     """
     for ext in (".o", ".so", ".elf", ""):
-        out = _h._machine_independent(_header(f"/scratch/agustin/tmp/t_9/x_rvv{ext}"), "x_rvv.objdump")
+        out = _h._machine_independent(_header(f"/scratch/builder/tmp/t_9/x_rvv{ext}"), "x_rvv.objdump")
         assert "/scratch" not in out, f"normalisation silently skipped for a {ext or '(none)'} object"
 
 

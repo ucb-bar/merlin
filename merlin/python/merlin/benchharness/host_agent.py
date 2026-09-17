@@ -22,7 +22,7 @@ from typing import Any, Iterable
 import yaml
 
 from merlin.common.artifacts import write_all
-from merlin.common.paths import repo_root
+from merlin.common.paths import env, repo_root
 from merlin.common import digest as _mdigest
 
 
@@ -801,7 +801,10 @@ def codex_bwrap_argv(
     argv += ["--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
 
     tool_roots = [repo_root() / ".venv", repo_root() / "third_party" / "llvm-install"]
-    cross = Path("/scratch2/agustin/merlin/build/host-merlin-release/install")
+    # Same location targetgen.sandbox.toolchain binds, read from the same variable rather than
+    # spelled a second time; see .env.example. Bound only when it is actually there.
+    cross = Path(env("MERLIN_CLANG_INSTALL")
+                 or repo_root() / "build" / "host-merlin-release" / "install")
     if cross.is_dir():
         tool_roots.append(cross)
     for root in tool_roots:

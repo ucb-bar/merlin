@@ -59,8 +59,20 @@ import _track as T                                  # noqa: E402
 from merlin.common import provenance as PROV        # noqa: E402
 
 FORK = REPO / "out/artifacts/targets/gemmini/gemmini_xdsl_recipe_v0"
-GSIM_EMU = ("/scratch/agustin/tmp/gsim_cert_serialclk_v1/"
-            "emu_gemmini_gsim_serialclk_v1_filtered_final")
+#: The emulator is identified by GSIM_SHA below, not by where it sits: the path used to be
+#: one developer's absolute scratch directory, which no other clone could follow. $TMPDIR is
+#: where the repo convention puts this build; $MERLIN_GEMMINI_GSIM_EMU overrides it outright
+#: (it is the same variable these scripts export to the runner).
+_GSIM_BUILD = "gsim_cert_serialclk_v1"
+_GSIM_EMU_NAME = "emu_gemmini_gsim_serialclk_v1_filtered_final"
+def _gsim_emu() -> Path:
+    env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
+    if env:
+        return Path(env)
+    return Path(os.environ.get("TMPDIR", "/tmp")) / _GSIM_BUILD / _GSIM_EMU_NAME
+
+
+GSIM_EMU = str(_gsim_emu())
 GSIM_SHA = "fb356ede610fb5f5ecbe2edb61dfd9a5a196293408a5ea02f34f919b5e39916b"
 DIM = 16
 

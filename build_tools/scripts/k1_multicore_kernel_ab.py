@@ -38,7 +38,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "merlin" / "python"))
 
 from merlin.common.artifacts import new_product                        # noqa: E402
 from merlin.common.paths import build_dir, repo_root                   # noqa: E402
@@ -186,8 +187,9 @@ def _objdump() -> Path:
 
 def emulator() -> Path | None:
     """User-mode QEMU for rv64, or None. NEVER the board."""
-    for p in (Path("/scratch2/agustin/merlin/build_tools/riscv-tools-iree/qemu/linux/RISCV/"
-                   "qemu-riscv64"),):
+    # In-tree first, then $PATH. This used to name another checkout of this repo by absolute
+    # path, so the in-tree build was never consulted and no other clone could match it.
+    for p in (ROOT / "build_tools" / "riscv-tools-iree" / "qemu" / "linux" / "RISCV" / "qemu-riscv64",):
         if p.is_file():
             return p
     from shutil import which

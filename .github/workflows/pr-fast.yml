@@ -34,6 +34,8 @@ jobs:
         run: uv run python build_tools/scripts/check_no_regex.py
       - name: no-assumed-constants gate (derive-don't-overfit)
         run: uv run python build_tools/scripts/check_no_assumed_constants.py
+      - name: no-local-paths gate (public repo; no personal directories)
+        run: uv run python build_tools/scripts/check_no_local_paths.py
       # Both ratchets below are written as may-only-shrink ledgers, so CI has to be the thing that
       # holds them: the register ran pre-commit only (a clone without hooks installed could grow it)
       # and the coverage gate was wired to no hook and no job at all.

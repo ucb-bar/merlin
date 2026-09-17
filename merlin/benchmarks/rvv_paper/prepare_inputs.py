@@ -27,7 +27,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from merlin.common.artifacts import cache_dir, new_product
-from merlin.common.paths import bench_dir
+from merlin.common.paths import bench_dir, repo_root
 from merlin.common.yaml import load_yaml
 
 
@@ -1095,7 +1095,9 @@ def parser() -> argparse.ArgumentParser:
                      default=Path(os.environ.get("HF_HUB_CACHE", "~/.cache/huggingface/hub")).expanduser())
     cli.add_argument("--torch-cache", type=_path,
                      default=Path("~/.cache/torch/hub/checkpoints").expanduser())
-    cli.add_argument("--vitfly-dir", type=_path, default=Path("/scratch/agustin/projects/vitfly"))
+    cli.add_argument("--vitfly-dir", type=_path,
+                     default=Path(os.environ.get("MERLIN_EXT_VITFLY")
+                                  or repo_root().parent / "vitfly"))
     cli.add_argument("--vitfly-checkpoint", type=_path)
     cli.add_argument("--vitfly-session-npz", type=_path)
     cli.add_argument("--vitfly-session-source")

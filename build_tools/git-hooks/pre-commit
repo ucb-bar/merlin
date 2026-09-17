@@ -45,6 +45,11 @@ echo "[pre-commit] kernel ABI argument order (tree)…"
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 
+# Staged only: this is a public repo, and an absolute path into someone's account is both a
+# disclosure and a default no other clone can follow.
+echo "[pre-commit] no personal paths (staged)…"
+"$PY" build_tools/scripts/check_no_local_paths.py --staged
+
 # Only when the commit stages a file under a bundled corpus (merlin/{schemas,prompts,benchmarks,
 # contract,targets,runtime}) — that is the moment the top-level tree and the wheel bundle part
 # company, and an installed merlin reads the bundle. The comparison itself is never narrowed; a

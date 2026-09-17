@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -320,15 +321,20 @@ def _emit(args, plan: WG.MatmulPlan, rec: dict) -> None:
     print(f"# product: {prod.path}", file=sys.stderr)
 
 
+#: Working root for the oracle runs. Under $TMPDIR (the repo convention for scratch), never a
+#: developer's own directory -- these defaults named one, so the flag was mandatory elsewhere.
+_WORKDIR = Path(os.environ.get("TMPDIR", "/tmp")) / "perf_workload"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--workdir", default="/scratch/agustin/tmp/perf_workload")
+    ap.add_argument("--workdir", default=str(_WORKDIR))
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("probe", "project", "run"):
         s = sub.add_parser(name)
         s.add_argument("--target", required=True)
         s.add_argument("--tier", default="vsim", choices=TIERS)
-        s.add_argument("--workdir", default="/scratch/agustin/tmp/perf_workload")
+        s.add_argument("--workdir", default=str(_WORKDIR))
         if name == "probe":
             s.add_argument("--force", action="store_true")
             s.add_argument("--show-candidates", action="store_true")

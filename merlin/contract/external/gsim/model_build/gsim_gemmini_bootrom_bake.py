@@ -22,7 +22,13 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASM = os.path.join(HERE, "gsim_gemmini_bootrom.S")
-DEFAULT_RV_BIN = "/scratch/agustin/projects/riscv-gcc14/riscv/bin"
+# A sibling riscv-gcc checkout by default; $GSIM_BOOTROM_RV_BIN names another toolchain. It was
+# spelled as one developer's absolute path, which made the default useless in any other clone.
+# HERE is merlin/contract/external/gsim/model_build, so the repo root is five levels up.
+_REPO_ROOT = os.path.abspath(os.path.join(HERE, *([os.pardir] * 5)))
+DEFAULT_RV_BIN = os.environ.get(
+    "GSIM_BOOTROM_RV_BIN",
+    os.path.join(os.path.dirname(_REPO_ROOT), "riscv-gcc14", "riscv", "bin"))
 # The link address this script CHOOSES and passes to `ld -Ttext=` below; it is a parameter of this
 # build, not a fact read off any target, so there is nothing to derive it from. Overridable so the
 # choice is explicit rather than buried.

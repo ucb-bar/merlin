@@ -56,13 +56,17 @@ CASES = [
     ("PK03_k128",             REPO / "merlin/contract/capsules/_perf/PK03_k128",           None),
 ]
 
-_GSIM_DIR = Path("/scratch/agustin/tmp/gsim_cert_serialclk_v1")
+#: Located by $TMPDIR (or $MERLIN_GEMMINI_GSIM_EMU's parent), never by one
+#: developer's absolute path; the binaries below are identified by digest.
+_GSIM_DIR = (Path(os.environ["MERLIN_GEMMINI_GSIM_EMU"]).parent
+             if os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
+             else Path(os.environ.get("TMPDIR", "/tmp")) / "gsim_cert_serialclk_v1")
 
 #: TWO gsim binaries. The OPERATIVE 4-member certificate
 #: (``out/artifacts/perf-bench/gemmini/tuning_certificate_v1/gsim_equivalence_certificate.json``)
 #: pins ``gsim_binary`` = ``..._v1_filtered_final`` (fb356ede), and that is also the binary in
 #: production -- so certified and in-use agree. Do not be misled by
-#: ``/scratch/agustin/tmp/gsim_cert_serialclk_v1/certificate.stdout``: that is an EARLIER 1-member
+#: ``$TMPDIR/gsim_cert_serialclk_v1/certificate.stdout``: that is an EARLIER 1-member
 #: intermediate (A2 only) which pins ``..._v1_final`` (ae599b04), and reading it as "the certificate"
 #: inverts the attribution. ``_final`` is byte-identical to the unsuffixed build. The uncertified
 #: ``_final`` is kept here as a third arm purely to see whether "filtered" moved the cycle count.

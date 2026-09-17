@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,11 +33,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
 
+# Both external checkouts are resolved as SIBLINGS of this repo, the same way pyproject.toml reaches
+# `aet`. They used to be spelled as one developer's absolute paths, which made the fallback useless
+# to everyone else and put that developer's directory layout in a public repo. $MERLIN_MLC_DIR /
+# $MERLIN_EXT_ATLAS_NPU / $MERLIN_EXT_CHIPYARD_ATLAS and the CLI flags still win over these.
+_SIBLINGS = ROOT.parent
 # The mlc sibling checkout pins atlas-npu as a submodule; that is the canonical dev location.
-_MLC_DEFAULT = Path("/scratch2/agustin/mvp-lhwir/modeling")
+_MLC_DEFAULT = Path(os.environ.get("MERLIN_MLC_DIR") or _SIBLINGS / "mvp-lhwir" / "modeling")
 _ATLAS_NPU_DEFAULT = _MLC_DEFAULT / "third_party" / "atlas-npu"
 # chipyard checkout with atlas wired in + a prebuilt whole-program Verilator sim (the L4 RTL tier).
-_CHIPYARD_ATLAS_DEFAULT = Path("/scratch/agustin/projects/chipyard-atlas")
+_CHIPYARD_ATLAS_DEFAULT = _SIBLINGS / "chipyard-atlas"
 _VERILATOR_SIM_REL = "sims/verilator/simulator-chipyard.harness-AtlasRocketConfig"
 # Pinned shas we onboarded against (informational — a newer master is fine, we just record drift).
 _PIN_ATLAS_NPU = "569b7c3"

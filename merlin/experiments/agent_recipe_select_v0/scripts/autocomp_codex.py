@@ -6,7 +6,7 @@ head-to-head against a codex-driven arm would differ in BOTH harness and model. 
 first-order variable here (the same model measured 0/20 on one harness and 15/20 on another), so an
 uncontrolled model difference on top of that would make the comparison unreadable.
 
-WHY A MONKEYPATCH AND NOT A PATCH TO THE CHECKOUT. `/scratch/agustin/projects/autocomp` is a clone
+WHY A MONKEYPATCH AND NOT A PATCH TO THE CHECKOUT. The AutoComp checkout ($MERLIN_EXT_AUTOCOMP, else a sibling of this repo) is a clone
 with the user's own fork remote and another study's results in it. Editing it would put this
 experiment's needs into shared state. `run_autocomp.py` already establishes the pattern by
 constructing AutoComp's agents and then DISCARDING its eval backend; this does the same one level

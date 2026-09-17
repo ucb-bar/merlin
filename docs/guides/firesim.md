@@ -224,7 +224,7 @@ $Q/bin/firesim-queue runworkload-full \
 ```
 
 The final promoted ResNet-50 measurement on the Agustin host pins the raw client path to
-`/scratch2/agustin/firesim_queue/bin/firesim-queue`. Submit exactly one `runworkload-full` job. The
+`$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue`. Submit exactly one `runworkload-full` job. The
 ELF performs its unmeasured warm invocation and its one measured invocation internally; submitting
 separate warm and measured queue jobs would discard the warmed process state. The final receipt must
 record the queue job ID and content hashes for the client log, daemon job log, and UART log. It is

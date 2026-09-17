@@ -2,7 +2,7 @@
 
 Twice the script behind a cited number has been a session scratchpad that was later purged:
 ``fs_legs.py`` is named in the provenance ``sources`` of the FireSim whole-model matrix-unit result and
-no copy survives, and its successor lived as a loose ``zeph_leg.py`` under ``/scratch/agustin/tmp`` as
+no copy survives, and its successor lived as a loose ``zeph_leg.py`` under ``$TMPDIR`` as
 the only driver for building these legs. These tests pin the two properties that make it safe to keep:
 it names no target, and its audit cannot pass an image that measures the wrong thing.
 

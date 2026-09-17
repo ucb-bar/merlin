@@ -34,7 +34,7 @@ KERNELS = EXP / "kernels"                                  # one capsule dir per
 RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
 REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
 # External model corpus — resolve via .env (MERLIN_M2M_DIR), NOT a "/path/to/..." placeholder.
-MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", "/scratch/agustin/projects/model2MLIR")) / "workloads"
+MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", str(REPO.parent / "model2MLIR"))) / "workloads"
 
 # The systolic array's edge, DERIVED from this target's own RTL discovery rather than written down.
 # The hardcoded 16 was correct for the config this bench happened to run and silently wrong for the

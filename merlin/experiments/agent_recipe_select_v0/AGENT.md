@@ -35,7 +35,7 @@ drifted champion fails loudly instead of silently invalidating the equivalence g
 | our fork | `out/artifacts/targets/gemmini/gemmini_xdsl_recipe_v0/` | owned (a copy) |
 | runs | `out/runs/gemmini/recipe-select/` | owned, via `benchharness.runs_root(target, suite)` |
 | products | `out/artifacts/recipe-select/gemmini/v<N>/` | owned, via `new_product` |
-| GSIM emulator | `/scratch/agustin/tmp/gsim_cert_serialclk_v1/…_filtered_final` | **read-only**, another session's campaign uses it concurrently |
+| GSIM emulator | `$TMPDIR/gsim_cert_serialclk_v1/…_filtered_final` (or `$MERLIN_GEMMINI_GSIM_EMU`) | **read-only**, another session's campaign uses it concurrently |
 
 Do **not** pass `runs_root=out/runs`: `certify` appends `runs/<suite>/`, which produced
 `out/runs/runs/gemmini-contract/` and put this track's runs in a SHARED suite dir. Use `T.RUNS`.

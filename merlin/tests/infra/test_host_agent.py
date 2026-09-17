@@ -101,7 +101,7 @@ def test_bwrap_exposes_workspace_but_not_checkout_or_sealed_corpus(tmp_path, mon
 
     assert is_exposed(argv, workspace)
     assert not is_exposed(argv, Path("/scratch/answer/heldout.jsonl"))
-    assert not is_exposed(argv, Path("/scratch/agustin/projects/oscar-merlin/.git/config"))
+    assert not is_exposed(argv, repo_root() / ".git" / "config")
 
 
 def test_runtime_probe_fails_closed_and_retains_bwrap_diagnostic(monkeypatch):

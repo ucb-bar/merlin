@@ -102,7 +102,7 @@ def _managed_tempdir(tmp_path_factory):
 # EDITABLE install pointing at the main checkout. So a bare `pytest merlin/tests` run inside a
 # worktree collects the worktree's test files and exercises the MAIN tree's library. Measured on
 # 2026-09-01 in the Arm4 launch worktree: `test_model_host_lane_pin.py` reported 12/12 passed while
-# importing `merlin` from `/scratch/agustin/projects/oscar-merlin`; the worktree's own code was never
+# importing `merlin` from the MAIN checkout; the worktree's own code was never
 # executed. The failure is silent in the direction that matters -- a green suite that proves nothing
 # about the tree you are about to freeze and launch -- and it also inverts: a defect fixed in the
 # worktree keeps "failing", and one fixed in main appears fixed everywhere.

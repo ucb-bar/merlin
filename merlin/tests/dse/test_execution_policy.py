@@ -3,7 +3,9 @@ import hashlib
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from pathlib import Path
+
+from merlin.common.paths import env, merlin_dir
 from merlin.perf.execution_policy import (
     FIRESIM_QUEUE_PHASES,
     FireSimQueuePreflight,
@@ -18,7 +20,9 @@ from merlin.perf.execution_policy import (
 )
 
 
-_LOCAL_QUEUE = "/scratch2/agustin/firesim_queue/bin/firesim-queue"
+#: Declared in .env as MERLIN_EXT_FIRESIM_QUEUE; read, not spelled.
+_LOCAL_QUEUE = str(Path(env("MERLIN_EXT_FIRESIM_QUEUE") or "/nonexistent/firesim_queue")
+                   / "bin" / "firesim-queue")
 
 
 def _warm() -> WarmComputeReceipt:

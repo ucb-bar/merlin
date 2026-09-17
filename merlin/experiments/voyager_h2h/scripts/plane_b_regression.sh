@@ -50,7 +50,8 @@ setup_env() {
   # Catapult's make and HLS still use Catapult's own g++ (the Makefile names it explicitly).
   unset VCS_ARCH_OVERRIDE   # the site default forces the 32-bit VCS, which cannot load libelf
   export PYTHONPATH="$ext/voyager-interstellar-shim"   # public interstellar, nothing else
-  export TMPDIR="${TMPDIR:-/scratch/agustin/tmp}" HF_HOME="${HF_HOME:-/scratch/agustin/tmp/hf-home}"
+  # Whole-model capture needs a LARGE scratch filesystem; set TMPDIR to one before running.
+  export TMPDIR="${TMPDIR:-/tmp}" HF_HOME="${HF_HOME:-$TMPDIR/hf-home}"
   export DATATYPE="${DATATYPE:-INT8}" IC_DIMENSION="${IC_DIMENSION:-16}"
   export OC_DIMENSION="${OC_DIMENSION:-16}" TECHNOLOGY="${TECHNOLOGY:-generic}"
   # 5 ns, not the paper's 1 ns: on the generic nangate-45nm library VectorAccumulator's bf16 add

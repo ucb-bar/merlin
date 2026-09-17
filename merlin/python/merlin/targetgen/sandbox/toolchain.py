@@ -35,7 +35,7 @@ RESOLVE_DIR = "/run/systemd/resolve"                         # /etc/resolv.conf 
 # clang-23 = the ABI's MERLIN_CLANG (rv64_compiler). LLVM-23 ABI-matched to llvm-install; bind ONLY the
 # compiler bin + resource dir (NOT src/python_packages, which carry backend lowerings).
 CLANG_INSTALL = env("MERLIN_CLANG_INSTALL",
-                    "/scratch2/agustin/merlin/build/host-merlin-release/install")
+                    str(_REPO / "build" / "host-merlin-release" / "install"))
 CLANG_BIN = CLANG_INSTALL + "/bin"
 CLANG_RESOURCE = CLANG_INSTALL + "/lib/clang"
 MERLIN_CLANG = CLANG_INSTALL + "/bin/clang-23"
