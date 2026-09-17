@@ -11,6 +11,7 @@ catalog entries whose backing motif cleared the threshold, so nothing is asserte
 corpus support. Validation against the benchmark workloads (positive fires / negative control
 silent) happens in :mod:`merlin.kernels` tests, not here.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -31,28 +32,28 @@ CATALOG: dict[str, dict] = {
             "name": "resident_packed_tensor",
             "kind": "memory_state",
             "motivation": "immutable RHS/weight is packed once and reused across a region; "
-                          "keep it resident to avoid repeated pack/load.",
+            "keep it resident to avoid repeated pack/load.",
             "interface_features": ["resident_pack", "resident_tensor_type", "evict"],
         },
         "interface": {
             "name": "resident_packed_tensor",
             "interface_ops": ["resident_pack", "matmul_resident", "evict"],
             "interface_types": ["resident_tensor"],
-            "compiler_must_prove": ["rhs_immutable", "reuse_count_above_threshold",
-                                    "capacity_fit_or_eviction_inserted",
-                                    "consumers_accept_packed_layout"],
-            "hardware_must_provide": ["resident_storage", "packed_tensor_handle",
-                                      "validity_until_eviction"],
-            "runtime_must_provide": ["persistent_handle_lifetime", "command_ordering",
-                                     "invalidation_protocol"],
+            "compiler_must_prove": [
+                "rhs_immutable",
+                "reuse_count_above_threshold",
+                "capacity_fit_or_eviction_inserted",
+                "consumers_accept_packed_layout",
+            ],
+            "hardware_must_provide": ["resident_storage", "packed_tensor_handle", "validity_until_eviction"],
+            "runtime_must_provide": ["persistent_handle_lifetime", "command_ordering", "invalidation_protocol"],
         },
         "policy": {
             "policy": "packed_rhs_policy",
             # The discriminator is reuse + immutability (validated against benchmarks);
             # capacity is a separate regime dimension checked by the capacity sweep.
             "when": {"rhs_reuse_count": ">= 2", "rhs_mutable": "false"},
-            "actions": ["preserve_packed_rhs_layout", "hoist_pack",
-                        "consider_resident_packed_tensor"],
+            "actions": ["preserve_packed_rhs_layout", "hoist_pack", "consider_resident_packed_tensor"],
         },
     },
     "accumulator_commit": {
@@ -60,26 +61,26 @@ CATALOG: dict[str, dict] = {
             "name": "accumulator_commit",
             "kind": "memory_state",
             "motivation": "on a contraction op the accumulator stays live across a "
-                          "bias/requant/activation epilogue; commit to memory only after the "
-                          "epilogue to avoid extra writes.",
+            "bias/requant/activation epilogue; commit to memory only after the "
+            "epilogue to avoid extra writes.",
             "interface_features": ["accumulator_type", "commit", "keep_accumulator_live"],
         },
         "interface": {
             "name": "accumulator_commit",
             "interface_ops": ["accumulator", "commit"],
             "interface_types": ["accumulator"],
-            "compiler_must_prove": ["epilogue_consumes_accumulator_immediately",
-                                    "no_intervening_user_visible_materialization",
-                                    "output_dtype_and_layout_known"],
+            "compiler_must_prove": [
+                "epilogue_consumes_accumulator_immediately",
+                "no_intervening_user_visible_materialization",
+                "output_dtype_and_layout_known",
+            ],
             "hardware_must_provide": ["accumulator_state", "commit_epilogue_path"],
             "runtime_must_provide": ["command_ordering"],
         },
         "policy": {
             "policy": "accumulator_commit_policy",
-            "when": {"op": "gemm|matmul|conv", "has_epilogue": "true",
-                     "accumulator_live_across_epilogue": "true"},
-            "actions": ["keep_accumulator_resident", "fuse_epilogue_before_commit",
-                        "single_commit_store"],
+            "when": {"op": "gemm|matmul|conv", "has_epilogue": "true", "accumulator_live_across_epilogue": "true"},
+            "actions": ["keep_accumulator_resident", "fuse_epilogue_before_commit", "single_commit_store"],
         },
     },
     "vector_length_polymorphic": {
@@ -87,8 +88,7 @@ CATALOG: dict[str, dict] = {
         "policy": {
             "policy": "vl_agnostic_loop_policy",
             "when": {"target_has_scalable_vectors": "true"},
-            "actions": ["emit_vl_agnostic_loop", "use_predicated_or_vl_tail",
-                        "avoid_fixed_width_assumptions"],
+            "actions": ["emit_vl_agnostic_loop", "use_predicated_or_vl_tail", "avoid_fixed_width_assumptions"],
         },
     },
     "double_buffering": {
@@ -96,15 +96,14 @@ CATALOG: dict[str, dict] = {
             "name": "async_pipeline",
             "kind": "async",
             "motivation": "data movement is double-buffered to overlap DMA with compute; "
-                          "expose async copy + completion so the compiler can pipeline.",
+            "expose async copy + completion so the compiler can pipeline.",
             "interface_features": ["async_copy", "event_token", "double_buffer"],
         },
         "interface": {
             "name": "async_pipeline",
             "interface_ops": ["async_copy", "wait"],
             "interface_types": ["event_token"],
-            "compiler_must_prove": ["operand_load_independent_of_current_compute",
-                                    "double_buffer_capacity_available"],
+            "compiler_must_prove": ["operand_load_independent_of_current_compute", "double_buffer_capacity_available"],
             "hardware_must_provide": ["async_dma_engine", "completion_signal"],
             "runtime_must_provide": ["event_completion", "command_ordering"],
         },
@@ -123,15 +122,14 @@ CATALOG: dict[str, dict] = {
         },
     },
     # --- RVV intrinsic decisions: schedule-level codegen knobs (abstraction None -> policy_rule
-    # only). Each maps to an RVV target-package knob/lever via kernels/rvv_knobs.MOTIF_TO_KNOB,
+    # only). Each maps to an RVV target-package knob/lever via kernels/knobs.MOTIF_TO_KNOB,
     # which the tuning agent uses to propose forks. `when` is symbolic (compiler-visible facts),
     # never a kernel's literal LMUL/tile constants.
     "lmul_grouping": {
         "abstraction": None,
         "policy": {
             "policy": "lmul_grouping_policy",
-            "when": {"target_has_scalable_vectors": "true", "op": "gemm|matmul|conv|dot",
-                     "dtype": "f32|i8|bf16"},
+            "when": {"target_has_scalable_vectors": "true", "op": "gemm|matmul|conv|dot", "dtype": "f32|i8|bf16"},
             "actions": ["prefer_high_lmul", "set_vector_group_m4_or_m8"],
         },
     },
@@ -166,8 +164,7 @@ CATALOG: dict[str, dict] = {
         "abstraction": None,
         "policy": {
             "policy": "vector_reduction_policy",
-            "when": {"op": "softmax|layernorm|rmsnorm|dot|reduce",
-                     "target_has_scalable_vectors": "true"},
+            "when": {"op": "softmax|layernorm|rmsnorm|dot|reduce", "target_has_scalable_vectors": "true"},
             "actions": ["emit_vector_reduction_tree", "use_vredsum_or_vfredusum"],
         },
     },
@@ -186,8 +183,7 @@ CATALOG: dict[str, dict] = {
 RUNTIME_CATALOG: dict[str, dict] = {
     "many_small_dispatches": {
         "name": "command_buffer_batching",
-        "compiler_action": ["group_dispatches", "emit_command_buffer",
-                            "amortize_repeated_config"],
+        "compiler_action": ["group_dispatches", "emit_command_buffer", "amortize_repeated_config"],
         "runtime_requirement": ["batch_submit", "event_completion", "persistent_handles"],
     },
 }
@@ -227,9 +223,8 @@ def evaluate_when(when: dict, facts: dict) -> bool:
         for op in (">=", "<=", ">", "<", "=="):
             if cond_s.startswith(op):
                 try:
-                    rhs = _coerce(cond_s[len(op):].strip())
-                    ok = {">=": fact >= rhs, "<=": fact <= rhs, ">": fact > rhs,
-                          "<": fact < rhs, "==": fact == rhs}[op]
+                    rhs = _coerce(cond_s[len(op) :].strip())
+                    ok = {">=": fact >= rhs, "<=": fact <= rhs, ">": fact > rhs, "<": fact < rhs, "==": fact == rhs}[op]
                 except TypeError:
                     ok = False
                 break
@@ -284,7 +279,7 @@ def aggregate(records: list[dict]) -> dict[str, MotifStat]:
         src = rec.get("source", "?")
         tgt = rec.get("target", "?")
         ev = rec.get("evidence", {}) or {}
-        eid = ev.get("id", f"{src}_{tgt}_{rec.get('op','?')}")
+        eid = ev.get("id", f"{src}_{tgt}_{rec.get('op', '?')}")
         for motif in ev.get("motifs", []):
             st = stats.setdefault(motif, MotifStat())
             st.kernel_count += 1
@@ -305,17 +300,20 @@ def _dispatch_observed(records: list[dict] | None) -> dict:
     """Corpus dispatch stats for the runtime candidate's ``observed`` block."""
     if not records:
         return {}
-    counts = [r.get("features", {}).get("dispatch_metrics", {}).get("n_dispatches", 0)
-              for r in records]
+    counts = [r.get("features", {}).get("dispatch_metrics", {}).get("n_dispatches", 0) for r in records]
     counts = [c for c in counts if c >= 20]
-    fracs = [r.get("features", {}).get("dispatch_metrics", {}).get("small_dispatch_fraction", 0)
-             for r in records
-             if r.get("features", {}).get("dispatch_metrics", {}).get("n_dispatches", 0) >= 20]
+    fracs = [
+        r.get("features", {}).get("dispatch_metrics", {}).get("small_dispatch_fraction", 0)
+        for r in records
+        if r.get("features", {}).get("dispatch_metrics", {}).get("n_dispatches", 0) >= 20
+    ]
     if not counts:
         return {}
-    return {"median_dispatches_per_kernel": int(statistics.median(counts)),
-            "small_dispatch_fraction": round(statistics.mean(fracs), 3) if fracs else 0.0,
-            "kernels_over_threshold": len(counts)}
+    return {
+        "median_dispatches_per_kernel": int(statistics.median(counts)),
+        "small_dispatch_fraction": round(statistics.mean(fracs), 3) if fracs else 0.0,
+        "kernels_over_threshold": len(counts),
+    }
 
 
 @dataclass
@@ -325,13 +323,12 @@ class PromotionResult:
     interfaces: list[dict] = field(default_factory=list)
     runtime_candidates: list[dict] = field(default_factory=list)
     dialect_requirements: list[dict] = field(default_factory=list)  # L6 (feeds TargetGen)
-    llvm_requirements: list[dict] = field(default_factory=list)     # L8 (always: no fork yet)
+    llvm_requirements: list[dict] = field(default_factory=list)  # L8 (always: no fork yet)
     promoted: set[str] = field(default_factory=set)
     considered: dict[str, MotifStat] = field(default_factory=dict)
 
 
-def promote(stats: dict[str, MotifStat], min_kernels: int = 10,
-            records: list[dict] | None = None) -> PromotionResult:
+def promote(stats: dict[str, MotifStat], min_kernels: int = 10, records: list[dict] | None = None) -> PromotionResult:
     """Emit abstraction/interface/policy/runtime artifacts for promoted, cataloged motifs.
 
     ``records`` (optional) lets the runtime candidate carry observed dispatch statistics.
@@ -346,39 +343,54 @@ def promote(stats: dict[str, MotifStat], min_kernels: int = 10,
         freq = {"kernels": stat.kernel_count, "sources": sorted(stat.sources)}
         spec = entry.get("abstraction")
         if spec:
-            result.candidates.append(emit_abstraction_candidate(
-                name=spec["name"], kind=spec["kind"], motivation=spec["motivation"],
-                evidence=evidence, interface_features=spec["interface_features"],
-                extra={"frequency": freq},
-            ))
+            result.candidates.append(
+                emit_abstraction_candidate(
+                    name=spec["name"],
+                    kind=spec["kind"],
+                    motivation=spec["motivation"],
+                    evidence=evidence,
+                    interface_features=spec["interface_features"],
+                    extra={"frequency": freq},
+                )
+            )
         iface = entry.get("interface")
         if iface:
-            result.interfaces.append(emit_interface_candidate(
-                name=iface["name"], interface_ops=iface["interface_ops"],
-                interface_types=iface["interface_types"],
-                justified_by={"motif": motif, "policies": [entry["policy"]["policy"]],
-                              "frequency": freq},
-                compiler_must_prove=iface.get("compiler_must_prove", ()),
-                hardware_must_provide=iface.get("hardware_must_provide", ()),
-                runtime_must_provide=iface.get("runtime_must_provide", ()),
-            ))
+            result.interfaces.append(
+                emit_interface_candidate(
+                    name=iface["name"],
+                    interface_ops=iface["interface_ops"],
+                    interface_types=iface["interface_types"],
+                    justified_by={"motif": motif, "policies": [entry["policy"]["policy"]], "frequency": freq},
+                    compiler_must_prove=iface.get("compiler_must_prove", ()),
+                    hardware_must_provide=iface.get("hardware_must_provide", ()),
+                    runtime_must_provide=iface.get("runtime_must_provide", ()),
+                )
+            )
         pol = entry["policy"]
-        result.rules.append(emit_policy_rule(
-            policy=pol["policy"], evidence=evidence, when=pol["when"], actions=pol["actions"],
-            extra={"support": freq},
-        ))
+        result.rules.append(
+            emit_policy_rule(
+                policy=pol["policy"],
+                evidence=evidence,
+                when=pol["when"],
+                actions=pol["actions"],
+                extra={"support": freq},
+            )
+        )
     # Runtime candidates (L7)
     for motif, spec in RUNTIME_CATALOG.items():
         stat = stats.get(motif)
         if stat is None or not is_promotable(stat, min_kernels):
             continue
         result.promoted.add(motif)
-        result.runtime_candidates.append(emit_runtime_candidate(
-            name=spec["name"], evidence=sorted(stat.evidence_ids),
-            compiler_action=spec["compiler_action"],
-            runtime_requirement=spec["runtime_requirement"],
-            observed=_dispatch_observed(records),
-        ))
+        result.runtime_candidates.append(
+            emit_runtime_candidate(
+                name=spec["name"],
+                evidence=sorted(stat.evidence_ids),
+                compiler_action=spec["compiler_action"],
+                runtime_requirement=spec["runtime_requirement"],
+                observed=_dispatch_observed(records),
+            )
+        )
     # de-dup candidates by name (two motifs may map to one abstraction/interface)
     for attr in ("candidates", "interfaces"):
         seen: dict[str, dict] = {}
@@ -388,12 +400,13 @@ def promote(stats: dict[str, MotifStat], min_kernels: int = 10,
     # L6/L8: each promoted interface yields one dialect requirement and one (always
     # fork-not-justified) LLVM requirement — completing the ladder without overclaiming.
     for iface in result.interfaces:
-        result.dialect_requirements.append(emit_dialect_requirement(
-            source_abstraction=iface["name"],
-            required_ops=iface["interface_ops"],
-            required_types=iface["interface_types"],
-            extra={"justified_by": iface.get("justified_by", {})},
-        ))
-        result.llvm_requirements.append(emit_llvm_requirement(
-            source_abstraction=iface["name"]))
+        result.dialect_requirements.append(
+            emit_dialect_requirement(
+                source_abstraction=iface["name"],
+                required_ops=iface["interface_ops"],
+                required_types=iface["interface_types"],
+                extra={"justified_by": iface.get("justified_by", {})},
+            )
+        )
+        result.llvm_requirements.append(emit_llvm_requirement(source_abstraction=iface["name"]))
     return result

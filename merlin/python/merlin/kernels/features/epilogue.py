@@ -4,6 +4,7 @@ Decision recorded: *is a bias/requant/activation epilogue fused before the resul
 committed to memory*, and a coarse list of which epilogue kinds appear. This seeds the
 ``accumulator_commit`` (commit-after-epilogue) abstraction.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.types import NormalizedKernel

@@ -47,11 +47,28 @@ is byte-identical to the baseline.
 """
 from __future__ import annotations
 
+from .bmm_tail_pad import RUNNER_PRELUDE as _BMM_TAIL_PAD_PRELUDE
+from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
+from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
+from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
+from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
+from .parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
+from .parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
+from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
+from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
+from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
+from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
+from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
+from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
+from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
+from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
+from .alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
+
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
 # It is NOT a real MLIR pass; the runner splits the pipeline here and never passes it to mlir-opt.
-from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
-
 SCALARIZE_MARKER = "__merlin_scalarize_a__"
 
 
@@ -65,6 +82,13 @@ def _merlin_walk(op, fn):
             for o in list(block.operations):
                 fn(o)
                 _merlin_walk(o, fn)
+
+
+# The widening ops a scalar extract may be sunk BELOW, and the scalar result spellings that mark a
+# lane extract (as opposed to a sub-vector slice). Float and integer are the same rewrite: lane i of
+# `widen(v)` == `widen(lane i of v)` for an exact widening, which fpext, sext and zext all are.
+_WIDEN_OPS = ("arith.extf", "arith.extsi", "arith.extui")
+_SCALAR_TYS = ("f16", "bf16", "f32", "f64", "i8", "i16", "i32", "i64")
 
 
 def scalarize_a_reads(module, ctx):
@@ -176,8 +200,17 @@ def scalarize_a_reads(module, ctx):
         # exactly as it forms `vfmacc.vf` for f32. The rewrite itself is element-type-agnostic
         # (it turns a vector read + scalar extract into a scalar load), so the ONLY thing that
         # had to change is which element types we admit and what type we build the load with.
+        #
+        # INTEGER (i8/i16/i32): the same argument, one datapath over. The int8 contract lowers
+        # through `outerproduct` to arith.muli/addi with a `vector.extract : i8` A operand, so
+        # without an integer admission here every int8 MR>1 tile rebuilt A with a vmv/vslideup
+        # lane ladder instead of letting the backend form `vwmacc.vx` from a scalar. That ladder
+        # is the mechanism `perop_blocks.DEFAULT_MR` cites for pinning MR=1 -- so excluding the
+        # integer types here is what made MR>1 look intrinsically bad on int8. Admitting them
+        # changes NO soundness gate below (static rank, identity/minor-identity permutation,
+        # poslen<=rank, unit leading dims all still apply); only the spelling set widens.
         elem = None
-        for cand in ("f32", "f16", "bf16"):
+        for cand in ("f32", "f16", "bf16", "i8", "i16", "i32"):
             if ts.endswith("x" + cand + ">"):
                 elem = cand
                 break
@@ -223,7 +256,10 @@ def scalarize_a_reads(module, ctx):
     _merlin_walk(module.operation, visit)
     idxty = ir.IndexType.get(ctx)
     _ELEM_TY = {"f32": ir.F32Type.get(ctx), "f16": ir.F16Type.get(ctx),
-                "bf16": ir.BF16Type.get(ctx)}
+                "bf16": ir.BF16Type.get(ctx),
+                "i8": ir.IntegerType.get_signless(8, ctx),
+                "i16": ir.IntegerType.get_signless(16, ctx),
+                "i32": ir.IntegerType.get_signless(32, ctx)}
     n = 0
     for read, exs, elem in targets:
         scalar_ty = _ELEM_TY[elem]
@@ -283,8 +319,18 @@ def sink_extf_through_extract(module, ctx):
     vector ``extf`` into MR scalar ``extf`` is beneficial here: each scalar ``extf`` is a free
     ``fpext`` of a value already in an FP register and folds into the ``.vf`` scalar operand of
     ``vfwmacc.vf``. Value-identical: ``fpext`` is exact and lane i of ``extf(v)`` == ``extf(lane i of
-    v)``. Returns the count of extracts rewritten. Only fires on the extf->scalar-extract shape, so
-    the f32 datapath (no operand extf) and every non-widening extract are untouched.
+    v)``. Returns the count of extracts rewritten. Only fires on the widen->scalar-extract shape, so
+    the f32 datapath (no operand widening) and every non-widening extract are untouched.
+
+    INTEGER: the identical argument holds for ``arith.extsi`` / ``arith.extui``, so both are accepted.
+    The int8 contract widens the A column on the VECTOR (``extsi vector<MRx1xi8> to vector<MRx1xi32>``)
+    and extracts an i32 lane, which is the shape that blocked ``scalarize_a_reads`` (its only accepted
+    use of the A read is a same-element-type ``vector.extract``, and the interposed vector ``extsi``
+    is not one). Measured before this change: int8 MR=4 emitted 8 ``extractelement`` with a
+    ``vrgather.vi`` lane ladder + ``vmacc.vv``, while int8 MR=1 emitted ``vwmacc.vx``. Sinking the
+    integer widening first exposes the i8 lane extract, after which the scalarization fires and the
+    backend can form ``vwmacc.vx`` at MR>1 too. ``sext``/``zext`` are exact, so lane i of ``widen(v)``
+    == ``widen(lane i of v)`` just as for ``fpext``.
     """
     from torch_mlir import ir
 
@@ -302,15 +348,15 @@ def sink_extf_through_extract(module, ctx):
         if op.name != "vector.extract":
             return
         res = op.results[0]
-        # scalar float result only (a lane extract, not a sub-vector slice).
-        if str(res.type) not in ("f16", "bf16", "f32", "f64"):
+        # scalar result only (a lane extract, not a sub-vector slice).
+        if str(res.type) not in _SCALAR_TYS:
             return
         # all-static position (register-tile indices are constants); a dynamic index would add
         # operands beyond the source -- leave those alone.
         if len(list(op.operands)) != 1:
             return
         defop = _defop(op.operands[0])
-        if defop is None or defop.name != "arith.extf":
+        if defop is None or defop.name not in _WIDEN_OPS:
             return
         targets.append(op)
 
@@ -318,8 +364,9 @@ def sink_extf_through_extract(module, ctx):
     n = 0
     seen_extf = []
     for ex in targets:
-        extf = ex.operands[0].owner              # arith.extf op
-        narrow_src = extf.operands[0]            # the f16/bf16 vector
+        extf = ex.operands[0].owner              # the widening op (extf / extsi / extui)
+        widen_name = extf.name                   # rebuild with the SAME widening, never a fixed one
+        narrow_src = extf.operands[0]            # the f16/bf16/i8/i16 vector
         try:
             narrow_elem = ir.VectorType(narrow_src.type).element_type
         except Exception:  # noqa: BLE001
@@ -330,7 +377,7 @@ def sink_extf_through_extract(module, ctx):
             "vector.extract", results=[narrow_elem], operands=[narrow_src],
             attributes={"static_position": pos_attr}, ip=ip).results[0]
         widened = ir.Operation.create(
-            "arith.extf", results=[ex.results[0].type], operands=[lane], ip=ip).results[0]
+            widen_name, results=[ex.results[0].type], operands=[lane], ip=ip).results[0]
         ex.results[0].replace_all_uses_with(widened)
         if extf not in seen_extf:
             seen_extf.append(extf)
@@ -349,7 +396,7 @@ def rewrite_source() -> str:
     return _REWRITER_SRC
 
 
-def run_source() -> str:
+def run_source(*, tag_bmm_tails: bool = False) -> str:
     """The lowering-runner body for this feature: split the pipeline at SCALARIZE_MARKER, run stage 1
     (forms the resident accumulator + lowers the contraction to vector.fma with f32 A-extracts), run
     the A-scalarization rewrite, then run stage 2 (bufferize -> LLVM). Mirrors the act_poly runner
@@ -360,7 +407,24 @@ def run_source() -> str:
         "from torch_mlir.passmanager import PassManager\n"
         "from torch_mlir.dialects import llvm\n"
         + _SELFCOPY_PRELUDE
-        + _REWRITER_SRC +
+        + _COPY_EXPAND_PRELUDE
+        + _CONCAT_DPS_PRELUDE
+        + _TRANSPOSE_MAPS_PRELUDE
+        + _BROADCAST_FOLD_PRELUDE
+        + _NAMED_BROADCAST_FOLD_PRELUDE
+        + _PARALLEL_GRAIN_PRELUDE
+        + _PARALLEL_TEAM_PRELUDE
+        + _PARALLEL_COARSEN_PRELUDE
+        + _PANEL_PARALLEL_PRELUDE
+        + _BMM_TAIL_PAD_PRELUDE
+        + _REWRITER_SRC
+        + _MID_STAGE_SRC
+        + _PANEL_PARALLEL_MID_SRC
+        + _PARALLEL_GRAIN_LATE_SRC
+        + _PARALLEL_TEAM_STAGE_SRC
+        + _PARALLEL_COARSEN_STAGE_SRC +
+        _ALLOCA_SCOPE_LOWER_PRELUDE +
+        _ROUND_INTRINSIC_PRELUDE +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"
@@ -373,13 +437,36 @@ def run_source() -> str:
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        + ("_tag_stage1 = [p for p in stage1.split(',') if p]\n"
+           "_tag_cut = next((i + 1 for i, p in enumerate(_tag_stage1) "
+           "if 'linalg-specialize-generic-ops' in p), 0)\n"
+           "if _tag_cut:\n"
+           "    PassManager.parse('builtin.module(' + ','.join(_tag_stage1[:_tag_cut]) + ')', "
+           "ctx).run(module.operation)\n"
+           "    stage1 = ','.join(_tag_stage1[_tag_cut:])\n"
+           "_tag_odd_batch_matmul_tails(module, ctx, 4, 8)\n"
+           if tag_bmm_tails else "")
+        # Every runner variant runs the SAME pre-pipeline rewrites. A variant that quietly skips one
+        # is how erase_self_copy came to read as an inert lever for seven beam rounds.
+        + "if _FOLD_WEIGHT_TRANSPOSE:\n"
+        "    print('OK fold_weight_transpose folded', _fold_weight_transposes(module, ctx)[0])\n"
+        "if _FOLD_BROADCAST:\n"
+        "    print('OK fold_broadcast_into_generic folded', _fold_broadcasts(module, ctx)[0])\n"
+        "if _CONCAT_DPS:\n"
+        "    print('OK concat_dps rewrote', _concat_dps(module, ctx)[0])\n"
         "if stage1:\n"
         "    PassManager.parse('builtin.module(' + stage1 + ')', ctx).run(module.operation)\n"
         "with ctx, ir.Location.unknown():\n"
-        "    _n = scalarize_a_reads(module, ctx)\n"
+        # Sink FIRST: a widening interposed between the A read and its lane extract (the int8
+        # `extsi vector<MRx1xi8>` shape, and the f16/bf16 `extf` shape) hides the scalar extract
+        # that scalarize_a_reads matches on, so sinking is a PRECONDITION of scalarization, not a
+        # cleanup after it. Sink again afterwards to catch widenings the scalarization exposes.
         "    _m = sink_extf_through_extract(module, ctx)\n"
+        "    _n = scalarize_a_reads(module, ctx)\n"
+        "    _m += sink_extf_through_extract(module, ctx)\n"
         "if stage2:\n"
-        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY)\n"
+        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES, "
+        "_POST_OPENMP_STAGES, _PRE_GENERALIZE_STAGES)\n"
         "with open(out_path, 'w') as f:\n"
         "    __MERLIN_EMIT__\n"
         "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"

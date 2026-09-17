@@ -7,6 +7,7 @@ MLIR + weights + golden) runs in the model2MLIR venv; this adapter locates an al
 and, when asked, drives that capture. It is the catch-all adapter — anything that is not a ``.gguf``
 file is handled here.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,7 +28,9 @@ def resolve(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
     return _bundle.resolve(model, variant)
 
 
-def ingest(source: Any, *, model: str, variant: str = "fp32", require: bool = True, **_kw: Any) -> _bundle.CaptureBundle:
+def ingest(
+    source: Any, *, model: str, variant: str = "fp32", require: bool = True, **_kw: Any
+) -> _bundle.CaptureBundle:
     """Return the capture bundle for ``model``/``variant``.
 
     ``source`` is the model name/id (kept for a uniform adapter signature). With ``require`` the

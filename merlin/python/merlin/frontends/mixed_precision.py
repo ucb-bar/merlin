@@ -8,6 +8,7 @@ representation + validation and translates it into the shape model2MLIR's torchA
 format (fp16/bf16/fp32) means "leave this module unquantized" (kept in that dtype), represented as a
 ``None`` scheme so torchAO skips it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

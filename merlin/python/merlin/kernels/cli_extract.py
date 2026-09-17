@@ -5,6 +5,7 @@ Reads one or more index files (from ``kernel-index``), writes a flat feature tab
 and ``policy_rules`` YAML, and the markdown report. Thin wrapper over
 ``merlin.kernels.{policy,report}``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,12 +59,14 @@ def _maybe_parquet(rows: list[dict], path: Path) -> None:
         import pyarrow as pa  # noqa
         import pyarrow.parquet as pq
     except Exception as e:
-        logging.warning("parquet requested but pyarrow unavailable (%s); wrote JSONL only. "
-                        "Install with `pip install -e .[kernels-parquet]`.", e)
+        logging.warning(
+            "parquet requested but pyarrow unavailable (%s); wrote JSONL only. "
+            "Install with `pip install -e .[kernels-parquet]`.",
+            e,
+        )
         return
     # normalize: stringify list/dict columns for a stable schema
-    norm = [{k: (json.dumps(v) if isinstance(v, (list, dict)) else v) for k, v in r.items()}
-            for r in rows]
+    norm = [{k: (json.dumps(v) if isinstance(v, (list, dict)) else v) for k, v in r.items()} for r in rows]
     table = pa.Table.from_pylist(norm)
     pq.write_table(table, str(path))
     logging.info("wrote parquet -> %s", path)
@@ -77,8 +80,8 @@ def _llm_summary(stats, promo) -> str | None:
     the deterministic artifacts remain the source of truth.
     """
     from merlin.common.llm import summarize
-    table = {m: {"kernels": s.kernel_count, "sources": sorted(s.sources)}
-             for m, s in stats.items()}
+
+    table = {m: {"kernels": s.kernel_count, "sources": sorted(s.sources)} for m, s in stats.items()}
     return summarize(table, [r["policy"] for r in promo.rules])
 
 
@@ -96,23 +99,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-kernels", type=int, default=10, help="single-source promotion gate")
     ap.add_argument("--parquet", action="store_true", help="also write a parquet feature table")
     ap.add_argument("--llm-summary", action="store_true", help="advisory LLM pass over the motif table")
-    ap.add_argument("--plots", action="store_true",
-                    help="write evaluation PNGs under <out_dir>/plots (needs matplotlib)")
-    ap.add_argument("--json", action="store_true",
-                    help="print a machine-readable summary JSON to stdout")
-    ap.add_argument("--strict", action="store_true",
-                    help="exit 2 when a consistency invariant is violated")
+    ap.add_argument(
+        "--plots", action="store_true", help="write evaluation PNGs under <out_dir>/plots (needs matplotlib)"
+    )
+    ap.add_argument("--json", action="store_true", help="print a machine-readable summary JSON to stdout")
+    ap.add_argument("--strict", action="store_true", help="exit 2 when a consistency invariant is violated")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
-                        format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(name)s: %(message)s"
+    )
 
     records, diagnostics = _load_indexes(args.inputs)
     records, dedup_diag = policy.dedupe_records(records)
     if dedup_diag["duplicates_skipped"]:
         diagnostics["dedup"] = dedup_diag
-        logging.info("deduplicated %d kernels vendored across sources: %s",
-                     dedup_diag["duplicates_skipped"], dedup_diag["by_source"])
+        logging.info(
+            "deduplicated %d kernels vendored across sources: %s",
+            dedup_diag["duplicates_skipped"],
+            dedup_diag["by_source"],
+        )
     stats = policy.aggregate(records)
     promo = policy.promote(stats, min_kernels=args.min_kernels, records=records)
     validation = validate.validate_policies(promo.rules)
@@ -143,16 +149,23 @@ def main(argv: list[str] | None = None) -> int:
     plot_paths: list = []
     if args.plots:
         from merlin.kernels import plots as plots_mod
+
         plot_dir = (Path(args.report).parent if args.report else out_dir) / "plots"
-        plot_paths = plots_mod.generate_all(records, stats, promo, validation, plot_dir,
-                                            min_kernels=args.min_kernels)
+        plot_paths = plots_mod.generate_all(records, stats, promo, validation, plot_dir, min_kernels=args.min_kernels)
 
     summary = _llm_summary(stats, promo) if args.llm_summary else None
     if args.report:
-        md = report.write_report(records, stats, promo, diagnostics=diagnostics,
-                                 min_kernels=args.min_kernels, llm_summary=summary,
-                                 validation=validation, invariants=inv,
-                                 plot_paths=plot_paths)
+        md = report.write_report(
+            records,
+            stats,
+            promo,
+            diagnostics=diagnostics,
+            min_kernels=args.min_kernels,
+            llm_summary=summary,
+            validation=validation,
+            invariants=inv,
+            plot_paths=plot_paths,
+        )
         Path(args.report).write_text(md, encoding="utf-8")
 
     human = (
@@ -167,29 +180,38 @@ def main(argv: list[str] | None = None) -> int:
         f"  policies: {args.policies}"
         + (f"\n  report: {args.report}" if args.report else "")
         + (f"\n  plots: {len(plot_paths)} PNGs in {plot_paths[0].parent}" if plot_paths else "")
-        + (f"\n  INVARIANT VIOLATIONS: {inv['total_violations']}"
-           if inv["total_violations"] else ""))
+        + (f"\n  INVARIANT VIOLATIONS: {inv['total_violations']}" if inv["total_violations"] else "")
+    )
     if args.json:
-        print(json.dumps({
-            "kernels": len(records),
-            "sources": sorted({r.get("source", "?") for r in records}),
-            "motifs": {m: {"kernels": s.kernel_count, "sources": sorted(s.sources)}
-                       for m, s in stats.items()},
-            "promoted": sorted(promo.promoted),
-            "policies": [r["policy"] for r in promo.rules],
-            "abstractions": [c["name"] for c in promo.candidates],
-            "interfaces": [i["name"] for i in promo.interfaces],
-            "runtime_candidates": [r["name"] for r in promo.runtime_candidates],
-            "validation": validation,
-            "invariants": {"total_violations": inv["total_violations"],
-                           "surprises": inv["surprises"]},
-            "artifacts": {"features": str(feat_path), "candidates": args.out,
-                          "policies": args.policies, "interfaces": str(iface_path),
-                          "runtime": str(rt_path), "dialect_requirements": str(dreq_path),
-                          "llvm_requirements": str(lreq_path),
-                          "report": args.report,
-                          "plots": [str(p) for p in plot_paths]},
-        }, indent=1, default=str))
+        print(
+            json.dumps(
+                {
+                    "kernels": len(records),
+                    "sources": sorted({r.get("source", "?") for r in records}),
+                    "motifs": {m: {"kernels": s.kernel_count, "sources": sorted(s.sources)} for m, s in stats.items()},
+                    "promoted": sorted(promo.promoted),
+                    "policies": [r["policy"] for r in promo.rules],
+                    "abstractions": [c["name"] for c in promo.candidates],
+                    "interfaces": [i["name"] for i in promo.interfaces],
+                    "runtime_candidates": [r["name"] for r in promo.runtime_candidates],
+                    "validation": validation,
+                    "invariants": {"total_violations": inv["total_violations"], "surprises": inv["surprises"]},
+                    "artifacts": {
+                        "features": str(feat_path),
+                        "candidates": args.out,
+                        "policies": args.policies,
+                        "interfaces": str(iface_path),
+                        "runtime": str(rt_path),
+                        "dialect_requirements": str(dreq_path),
+                        "llvm_requirements": str(lreq_path),
+                        "report": args.report,
+                        "plots": [str(p) for p in plot_paths],
+                    },
+                },
+                indent=1,
+                default=str,
+            )
+        )
         print(human, file=sys.stderr)
     else:
         print(human)

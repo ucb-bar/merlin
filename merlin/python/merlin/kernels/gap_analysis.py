@@ -14,6 +14,7 @@ and classifies:
 
 Deterministic; no LLM. ``ours_perf``/``expert_perf`` are lower-is-better (cycles or wall time).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,20 +22,22 @@ from dataclasses import dataclass, field
 
 @dataclass
 class GapReport:
-    attainment: float | None = None       # expert_perf / ours_perf (1 = parity, <1 = we're slower)
-    pct_slower: float | None = None        # (ours_perf/expert_perf - 1) * 100
-    open_divergences: list[str] = field(default_factory=list)   # CCA axes still differing (what to close)
-    explained: bool = False                # the gap is (partly) explained by open CCA divergences
-    unexplained_gap: bool = False          # divergences closed but still slower -> the CCA is INCOMPLETE
+    attainment: float | None = None  # expert_perf / ours_perf (1 = parity, <1 = we're slower)
+    pct_slower: float | None = None  # (ours_perf/expert_perf - 1) * 100
+    open_divergences: list[str] = field(default_factory=list)  # CCA axes still differing (what to close)
+    explained: bool = False  # the gap is (partly) explained by open CCA divergences
+    unexplained_gap: bool = False  # divergences closed but still slower -> the CCA is INCOMPLETE
     verdict: str = ""
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
+
         return asdict(self)
 
 
-def gap_analysis(expert_cca, ours_cca, *, ours_perf: float | None = None,
-                 expert_perf: float | None = None, parity_tol: float = 0.05) -> GapReport:
+def gap_analysis(
+    expert_cca, ours_cca, *, ours_perf: float | None = None, expert_perf: float | None = None, parity_tol: float = 0.05
+) -> GapReport:
     """Compare our (optimized) CCA vs the expert CCA AND the measured perf, and say whether the gap is
     explained by open CCA divergences or is UNEXPLAINED (the CCA failed to capture something)."""
     from .cca_compare import compare
@@ -50,17 +53,28 @@ def gap_analysis(expert_cca, ours_cca, *, ours_perf: float | None = None,
     unexplained = slower and not open_axes
 
     if unexplained:
-        verdict = (f"CCA INCOMPLETE: {pct:.0f}% slower with NO open CCA divergences — the CCA failed to "
-                   "capture a performance-determining decision the expert makes. EXPAND the CCA "
-                   "(add an analyzer/facet), do not keep tuning the captured levers.")
+        verdict = (
+            f"CCA INCOMPLETE: {pct:.0f}% slower with NO open CCA divergences — the CCA failed to "
+            "capture a performance-determining decision the expert makes. EXPAND the CCA "
+            "(add an analyzer/facet), do not keep tuning the captured levers."
+        )
     elif explained:
         verdict = f"{pct:.0f}% slower; {len(open_axes)} open CCA divergence(s) to close: {open_axes}"
     elif slower:  # attainment known, slower, but no perf split possible — shouldn't happen; be honest
         verdict = f"{pct:.0f}% slower (gap classification indeterminate)"
     elif attainment is None:
-        verdict = (f"no perf measured; {len(open_axes)} open CCA divergence(s): {open_axes}"
-                   if open_axes else "no perf measured; CCA fully closed")
+        verdict = (
+            f"no perf measured; {len(open_axes)} open CCA divergence(s): {open_axes}"
+            if open_axes
+            else "no perf measured; CCA fully closed"
+        )
     else:
         verdict = "at parity (within tolerance) — the CCA explained the expert"
-    return GapReport(attainment=attainment, pct_slower=pct, open_divergences=open_axes,
-                     explained=explained, unexplained_gap=unexplained, verdict=verdict)
+    return GapReport(
+        attainment=attainment,
+        pct_slower=pct,
+        open_divergences=open_axes,
+        explained=explained,
+        unexplained_gap=unexplained,
+        verdict=verdict,
+    )

@@ -18,6 +18,7 @@ outputs or by a model argument — which :func:`verify_program` checks. This is 
 target-agnostic command buffer that the Python simulator and the C runtime both consume,
 and the unit a multicore scheduler partitions.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -26,12 +27,14 @@ from typing import Any
 from .._common import HAS_XDSL
 from .outline import OutlineError, OutlineResult, outline_dispatches
 
-# Driver-side glue ops the runtime can evaluate directly (not compiled kernels).
-VIEW_OPS = (
-    "tensor.extract_slice", "tensor.insert_slice", "tensor.expand_shape",
-    "tensor.collapse_shape", "tensor.cast", "tensor.empty", "tensor.extract",
-    "tensor.from_elements", "tensor.pad", "arith.constant",
-)
+# NOTE: a `VIEW_OPS` tuple used to sit here, claiming to name "driver-side glue ops the runtime can
+# evaluate directly". Nothing imported it, and it was WRONG in both directions against the only
+# authority on the question -- `runtime.dispatch_runtime._eval_view`, which is the code that actually
+# evaluates them. It listed tensor.extract_slice / insert_slice / cast / extract / from_elements, none
+# of which _eval_view handles, and omitted linalg.fill / tensor.concat / tensor.splat, which it does.
+# An unused constant that misstates a fact is worse than no constant: the next reader treats it as the
+# spec. Deleted rather than corrected, because there is no second copy of this list to keep in sync --
+# ask `_eval_view`.
 
 
 @dataclass
@@ -39,23 +42,33 @@ class Buffer:
     id: str
     shape: list[int]
     dtype: str
-    kind: str                       # "arg" | "intermediate" | "const"
-    arg_index: int | None = None    # set when kind == "arg"
+    kind: str  # "arg" | "intermediate" | "const"
+    arg_index: int | None = None  # set when kind == "arg"
 
 
 @dataclass
 class Node:
-    kind: str                       # "dispatch" | "view"
-    op: str                         # symbol for dispatch, op name for view
+    kind: str  # "dispatch" | "view"
+    op: str  # symbol for dispatch, op name for view
     inputs: list[str]
     outputs: list[str]
     prov: dict[str, str] = field(default_factory=dict)
+    #: How many regions the source op carries (0 for every flat op). A region-carrying node reads
+    #: values its own operand list does NOT mention, so a consumer that reasons about liveness has to
+    #: know the difference between "flat op" and "op with a body".
+    regions: int = 0
+    #: Buffer ids this node reads from INSIDE its regions (already folded into :attr:`inputs`).
+    #: ``None`` means NOBODY COMPUTED THEM -- an older writer, or a hand-built program. That is a
+    #: different statement from ``[]`` ("computed, the body captures nothing"), and the distinction is
+    #: load-bearing: :func:`~.arena_plan.plan_arena` refuses to plan a region-carrying node whose
+    #: capture set is unknown rather than assume the operand list is complete.
+    captures: list[str] | None = None
 
 
 @dataclass
 class DispatchProgram:
     entry: str
-    args: list[int]                 # func-arg indices, in call order
+    args: list[int]  # func-arg indices, in call order
     buffers: dict[str, Buffer]
     nodes: list[Node]
     results: list[str]
@@ -82,21 +95,81 @@ def _shape_dtype(t) -> tuple[list[int], str]:
     return [], str(t)
 
 
-def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
-                           ) -> DispatchProgram:
+def _region_captures(op) -> list:
+    """Values ``op``'s REGIONS read from the enclosing scope -- the operands ``op.operands`` omits.
+
+    ``op.operands`` is the op's own signature and nothing more: for ``scf.for`` that is
+    ``lb``/``ub``/``step``/``iter_args``. A tensor the loop BODY reads out of the enclosing scope is
+    not an operand of the loop at all, so a node built from ``op.operands`` alone understates what the
+    node reads -- and a memory planner fed that node computes a live range that ends before the last
+    read. It then hands those bytes to another buffer while the loop is still reading them: wrong
+    numbers, no diagnostic, and only on the input sizes that happen to collide.
+
+    A value is captured when it is used anywhere inside the regions (at any nesting depth) and is NOT
+    defined inside them -- i.e. it is neither the result of an inner op nor a block argument of any
+    inner block (a loop induction variable and an ``iter_args`` body argument are both block args, so
+    both are correctly internal). Same rule the outliner already applies in ``_free_values``; stated
+    once more here because this is a different question about the same structure.
+    """
+    internal: set[int] = set()
+    inner_ops: list = []
+    for region in op.regions:
+        for block in region.blocks:
+            for arg in block.args:
+                internal.add(id(arg))
+            for top in block.ops:
+                for sub in top.walk():
+                    inner_ops.append(sub)
+                    for res in sub.results:
+                        internal.add(id(res))
+                    for sub_region in sub.regions:
+                        for sub_block in sub_region.blocks:
+                            for sub_arg in sub_block.args:
+                                internal.add(id(sub_arg))
+    captured: list = []
+    seen: set[int] = set()
+    for sub in inner_ops:
+        for value in sub.operands:
+            key = id(value)
+            if key in internal or key in seen:
+                continue
+            seen.add(key)
+            captured.append(value)
+    return captured
+
+
+def _nested_call_symbols(op) -> list[str]:
+    """Kernel calls hiding inside ``op``'s regions, in body order (empty for a flat op).
+
+    A ``func.call`` nested in a driver region is invisible to the top-level ``block.ops`` walk that
+    pairs calls with the outlined dispatch table, so every LATER top-level call silently takes the
+    WRONG entry: the third call in the IR gets the second kernel's symbol AND its ``prov.region_id``,
+    and ``verify_program`` still returns ``[]`` because the buffer DAG stays self-consistent. There is
+    no way to attribute such a program correctly, so it is refused rather than emitted.
+    """
+    found: list[str] = []
+    for region in op.regions:
+        for block in region.blocks:
+            for top in block.ops:
+                for sub in top.walk():
+                    if sub.name == "func.call":
+                        found.append(str(getattr(sub, "callee", sub.name)))
+    return found
+
+
+def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> DispatchProgram:
     """Flatten the outlined driver into a serializable dispatch program."""
     if not HAS_XDSL:
         raise OutlineError("xDSL is required to build a dispatch program")
     module = outlined.module
-    drivers = [op for op in module.walk()
-               if op.name == "func.func" and "$kernel_" not in op.sym_name.data]
+    drivers = [op for op in module.walk() if op.name == "func.func" and "$kernel_" not in op.sym_name.data]
     if not drivers:
         raise OutlineError("no driver func in outlined module")
     driver = next((d for d in drivers if d.sym_name.data == entry), drivers[0])
     block = driver.body.blocks[0]
 
     buffers: dict[str, Buffer] = {}
-    ids: dict[int, str] = {}          # id(SSAValue) -> buffer id
+    ids: dict[int, str] = {}  # id(SSAValue) -> buffer id
     args: list[int] = []
 
     def bind(value, kind: str, arg_index: int | None = None) -> str:
@@ -105,8 +178,7 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
             return ids[key]
         bid = f"b{len(buffers)}"
         shape, dtype = _shape_dtype(value.type)
-        buffers[bid] = Buffer(id=bid, shape=shape, dtype=dtype, kind=kind,
-                              arg_index=arg_index)
+        buffers[bid] = Buffer(id=bid, shape=shape, dtype=dtype, kind=kind, arg_index=arg_index)
         ids[key] = bid
         return bid
 
@@ -115,28 +187,91 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
         bind(a, "arg", arg_index=i)
         args.append(i)
 
+    def resolve(values, op) -> list[str]:
+        """Buffer ids for ``values``, order-preserving and de-duplicated, or raise.
+
+        An unbound value used to be DROPPED (``if id(o) in ids``). A dropped input is a read the
+        program does not record, which is the same silent liveness understatement region capture
+        causes -- so say so instead."""
+        out: list[str] = []
+        seen: set[int] = set()
+        for value in values:
+            key = id(value)
+            if key in seen:
+                continue
+            seen.add(key)
+            bid = ids.get(key)
+            if bid is None:
+                raise OutlineError(
+                    f"driver op {op.name!r} reads a value with no bound buffer ({value.type}). "
+                    "Dropping it (the retired behavior) records a read the program never performs, "
+                    "which understates the buffer's live range for every downstream consumer."
+                )
+            out.append(bid)
+        return out
+
     nodes: list[Node] = []
     disp_iter = iter(outlined.dispatches)
+    n_calls = 0
     for op in block.ops:
         if op.name == "func.return":
             continue
         if op.name == "func.call":
-            d = next(disp_iter)
-            in_ids = [ids[id(o)] for o in op.operands]
+            d = next(disp_iter, None)
+            if d is None:
+                raise OutlineError(
+                    f"dispatch table exhausted at driver call #{n_calls + 1}: the driver makes more "
+                    f"kernel calls than the outline result lists dispatches "
+                    f"({len(outlined.dispatches)}). Pairing them positionally past this point would "
+                    "attribute a call to the wrong kernel symbol and the wrong provenance."
+                )
+            n_calls += 1
+            in_ids = resolve(op.operands, op)
             out_ids = [bind(r, "intermediate") for r in op.results]
-            nodes.append(Node(kind="dispatch", op=d.symbol, inputs=in_ids,
-                              outputs=out_ids, prov=d.prov))
+            nodes.append(
+                Node(
+                    kind="dispatch",
+                    op=d.symbol,
+                    inputs=in_ids,
+                    outputs=out_ids,
+                    prov=d.prov,
+                    regions=len(op.regions),
+                    captures=[],
+                )
+            )
             continue
         # a driver-side glue / view op
+        nested = _nested_call_symbols(op)
+        if nested:
+            raise OutlineError(
+                f"driver op {op.name!r} carries a region containing kernel call(s) {nested}: the "
+                "top-level walk that pairs driver calls with the dispatch table cannot see them, so "
+                "every later call would silently take the wrong dispatch entry (wrong symbol AND "
+                "wrong prov.region_id) while verify_program still reports a valid DAG. Hoist the "
+                "call out of the region before building a dispatch program."
+            )
+        captured = _region_captures(op) if op.regions else []
         kind = "const" if op.name == "arith.constant" else "intermediate"
-        in_ids = [ids[id(o)] for o in op.operands if id(o) in ids]
+        in_ids = resolve(list(op.operands) + captured, op)
+        capture_ids = [bid for bid in resolve(captured, op)] if captured else []
         out_ids = [bind(r, kind) for r in op.results]
-        nodes.append(Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids))
+        nodes.append(
+            Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids, regions=len(op.regions), captures=capture_ids)
+        )
+
+    leftover = [d.symbol for d in disp_iter]
+    if leftover:
+        raise OutlineError(
+            f"dispatch table desynchronised: {len(leftover)} outlined dispatch(es) were never "
+            f"matched to a driver call ({leftover}); the driver made {n_calls} top-level call(s) for "
+            f"{len(outlined.dispatches)} dispatches. Every call after the first unmatched one already "
+            "carries another kernel's symbol and provenance, and the buffer DAG stays valid, so this "
+            "is the only place the mismatch is visible."
+        )
 
     ret = next(op for op in block.ops if op.name == "func.return")
     results = [ids[id(o)] for o in ret.operands]
-    return DispatchProgram(entry=driver.sym_name.data, args=args, buffers=buffers,
-                           nodes=nodes, results=results)
+    return DispatchProgram(entry=driver.sym_name.data, args=args, buffers=buffers, nodes=nodes, results=results)
 
 
 def verify_program(prog: DispatchProgram) -> list[str]:
@@ -148,8 +283,7 @@ def verify_program(prog: DispatchProgram) -> list[str]:
             if bid not in prog.buffers:
                 problems.append(f"node {n} ({node.op}) reads unknown buffer {bid}")
             elif bid not in defined:
-                problems.append(
-                    f"node {n} ({node.op}) reads buffer {bid} before it is produced")
+                problems.append(f"node {n} ({node.op}) reads buffer {bid} before it is produced")
         for bid in node.outputs:
             defined.add(bid)
     for bid in prog.results:
@@ -184,8 +318,9 @@ def prune_dead_nodes(prog: DispatchProgram) -> DispatchProgram:
         live.update(node.inputs)
         live.update(node.outputs)
     buffers = {bid: b for bid, b in prog.buffers.items() if bid in live}
-    return DispatchProgram(entry=prog.entry, args=list(prog.args), buffers=buffers,
-                           nodes=nodes, results=list(prog.results))
+    return DispatchProgram(
+        entry=prog.entry, args=list(prog.args), buffers=buffers, nodes=nodes, results=list(prog.results)
+    )
 
 
 def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") -> DispatchProgram:
@@ -202,8 +337,9 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
     reachability), keyed on region provenance instead of program results. Raises if nothing matches.
     """
     want = set(region_ids)
-    keep: set[int] = {i for i, n in enumerate(prog.nodes)
-                      if n.kind == "dispatch" and n.prov.get("prov.region_id") in want}
+    keep: set[int] = {
+        i for i, n in enumerate(prog.nodes) if n.kind == "dispatch" and n.prov.get("prov.region_id") in want
+    }
     if not keep:
         raise ValueError(f"slice_program: no dispatch nodes match region_ids {sorted(want)}")
 
@@ -247,35 +383,33 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
 
     def _clone(bid: str, *, kind: str | None = None, arg_index: int | None = None) -> None:
         s = prog.buffers[bid]
-        buffers[bid] = Buffer(id=s.id, shape=list(s.shape), dtype=s.dtype,
-                              kind=kind or s.kind, arg_index=arg_index)
+        buffers[bid] = Buffer(id=s.id, shape=list(s.shape), dtype=s.dtype, kind=kind or s.kind, arg_index=arg_index)
 
     args: list[int] = []
     for bid in dict.fromkeys(b for n in kept for b in n.inputs):
         if bid in produced:
             continue
         if prog.buffers[bid].kind == "const":
-            _clone(bid)                                  # consts are emitted with the slice
+            _clone(bid)  # consts are emitted with the slice
         else:
             _clone(bid, kind="arg", arg_index=len(args))  # boundary input -> a fresh slice arg
             args.append(buffers[bid].arg_index)
     for bid in produced:
         _clone(bid)
-    for bid in results:                                  # ensure every result buffer is present
+    for bid in results:  # ensure every result buffer is present
         if bid not in buffers:
             _clone(bid)
 
-    sliced = DispatchProgram(entry=prog.entry + entry_suffix, args=args,
-                             buffers=buffers, nodes=kept, results=results)
+    sliced = DispatchProgram(entry=prog.entry + entry_suffix, args=args, buffers=buffers, nodes=kept, results=results)
     problems = verify_program(sliced)
     if problems:
         raise ValueError(f"slice_program produced an invalid DAG: {problems}")
     return sliced
 
 
-def lower_model_to_dispatch_program(module, forward: str | None = None,
-                                    prune: bool = True
-                                    ) -> tuple[OutlineResult, DispatchProgram]:
+def lower_model_to_dispatch_program(
+    module, forward: str | None = None, prune: bool = True
+) -> tuple[OutlineResult, DispatchProgram]:
     """Convenience: outline then flatten, verifying the resulting program."""
     outlined = outline_dispatches(module, forward=forward)
     prog = build_dispatch_program(outlined, entry=forward or "forward")

@@ -1,4 +1,4 @@
-# frontends/adapters
+# AGENT.md — merlin/python/merlin/frontends/adapters
 
 One module per ingestible model source, each conforming to the `FrontendAdapter` protocol in
 `merlin.frontends.registry` (module-level `NAME`, `can_handle(source)`, `ingest(source, *, model,

@@ -9,12 +9,12 @@ divergences becomes a ranked "these categories are open" view.
 Distinct from ``regions`` (WHERE in the compiler an axis lives) and ``action_catalog`` (the concrete
 lever/seam for an axis): a category is WHAT KIND of optimization it is. Deterministic; no LLM.
 """
+
 from __future__ import annotations
 
 # The improvement categories the search chooses among. runtime-sync has no lever axis yet (runtime
 # hooks aren't captured as a CCA facet) — kept for completeness so the search can still ask about it.
-CATEGORIES = ("tiling-dataflow", "fusion-layout", "register-residency", "instruction-selection",
-              "runtime-sync")
+CATEGORIES = ("tiling-dataflow", "fusion-layout", "register-residency", "instruction-selection", "runtime-sync")
 
 # CCA facet axis -> improvement category (every RVV lever axis is categorized; see check_categories).
 _AXIS_CATEGORY = {
@@ -22,12 +22,33 @@ _AXIS_CATEGORY = {
     "compute.nr_is_vsetvlmax": "tiling-dataflow",
     "compute.reduction_form": "tiling-dataflow",
     "compute.epilogue": "fusion-layout",
-    "memory.access_pattern": "fusion-layout",   # packed unit-stride layout — the data-movement lever
+    "memory.access_pattern": "fusion-layout",  # packed unit-stride layout — the data-movement lever
     # The envelope axes are data-movement too: a redundant tile-epilogue copy IS layout traffic.
     "envelope.runtime_calls": "fusion-layout",
     "envelope.calls_in_loop": "fusion-layout",
+    # A small-M region on a wide register block is correct, busy, and using one row of it. The choice
+    # of block extent is a tiling question, so it categorizes with the rest of them.
+    "compute.mr_adapts_to_m": "tiling-dataflow",
+    # A materialized transpose is layout traffic, exactly like the envelope copies above.
+    "layout.transpose_materialized": "fusion-layout",
+    # The array-engine counterparts of the two axes above. Surfaced by making check_categories iterate
+    # every registered backend rather than only rvv.
+    "spatial.dataflow": "tiling-dataflow",
+    "spatial.accumulator_resident": "register-residency",
+    "memory.capacity_fit": "register-residency",
+    "dispatch.loop_offloaded": "tiling-dataflow",
+    "dispatch.descriptor_reuse": "tiling-dataflow",
+    "dispatch.dma_overlap": "fusion-layout",
+    "layout.operand_major": "fusion-layout",
+    "simt.barriers_in_loop": "tiling-dataflow",
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
+    # coverage (whole-model): "is this work even ON the vector path" is a tiling/dataflow question for
+    # the contraction classes (the block decides whether a class is claimed at all) and an
+    # instruction-selection question for the non-contraction tail (scalar loop vs vector instructions).
+    "coverage.claimed_mac_fraction": "tiling-dataflow",
+    "coverage.unclaimed_op_classes": "tiling-dataflow",
+    "coverage.non_contraction_op_fraction": "instruction-selection",
     "compute.contraction_form": "instruction-selection",
     "compute.widening": "instruction-selection",
     "compute.activation_vectorization": "instruction-selection",
@@ -55,15 +76,23 @@ def categorize(divergences) -> dict[str, list]:
     return out
 
 
-def check_categories() -> list[str]:
-    """Invariant (empty = OK): every RVV CCA LEVER axis has an improvement category, and every category
-    in the map is a declared CATEGORY."""
-    from . import cca_contract
+def check_categories(backends=None) -> list[str]:
+    """Invariant (empty = OK): every LEVER axis of every REGISTERED backend has an improvement
+    category, and every category in the map is a declared CATEGORY.
 
+    Was scoped to the literal ``"rvv"``, which made the invariant true by construction for every other
+    target: a second backend could register a lever axis with no category and the checker would not
+    look. Backends are discovered from the action catalog, so a newly registered one is checked without
+    editing this function.
+    """
+    from . import action_catalog, cca_contract
+
+    names = list(backends) if backends is not None else sorted(action_catalog.backends())
     problems: list[str] = []
-    for ax in sorted(cca_contract.leverable_axes("rvv")):
-        if ax not in _AXIS_CATEGORY:
-            problems.append(f"lever axis {ax}: no improvement category")
+    for backend in names:
+        for ax in sorted(cca_contract.leverable_axes(backend)):
+            if ax not in _AXIS_CATEGORY:
+                problems.append(f"[{backend}] lever axis {ax}: no improvement category")
     for ax, cat in _AXIS_CATEGORY.items():
         if cat not in CATEGORIES:
             problems.append(f"axis {ax}: unknown category {cat!r}")

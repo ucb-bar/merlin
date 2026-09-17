@@ -29,6 +29,7 @@ HONESTY CONTRACT (mirrors :func:`merlin.kernels.decode.objdump.undefined_symbols
 ``None`` when it could not be READ and a possibly-empty tuple/dict when it was read and found empty.
 An unreadable artifact must never be reported as "no escapes".
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -43,11 +44,11 @@ from .decode.objdump import nm_bin, objdump_bin, undefined_symbols
 class EscapeSite:
     """One emitted call to a runtime helper, inside a compiler-emitted function."""
 
-    helper: str               # the runtime helper called, e.g. "memrefCopy"
-    caller: str               # enclosing compiler-emitted function, e.g. "forward"
-    addr: int                 # call-site address in the linked ELF
-    loop_depth: int           # number of back-edge spans enclosing this address (0 = straight-line)
-    depth_reliable: bool = True   # False when the enclosing spans do not form a containment chain
+    helper: str  # the runtime helper called, e.g. "memrefCopy"
+    caller: str  # enclosing compiler-emitted function, e.g. "forward"
+    addr: int  # call-site address in the linked ELF
+    loop_depth: int  # number of back-edge spans enclosing this address (0 = straight-line)
+    depth_reliable: bool = True  # False when the enclosing spans do not form a containment chain
 
     @property
     def in_loop(self) -> bool:
@@ -63,10 +64,10 @@ class EscapeReport:
 
     obj: str
     elf: str | None
-    scope: tuple[str, ...] | None          # compiler-emitted functions the audit covered
-    undefined: tuple[str, ...] | None      # nm -u of the object
+    scope: tuple[str, ...] | None  # compiler-emitted functions the audit covered
+    undefined: tuple[str, ...] | None  # nm -u of the object
     sites: tuple[EscapeSite, ...] | None
-    loops_seen: int | None = None          # back-edge spans found across the scope functions
+    loops_seen: int | None = None  # back-edge spans found across the scope functions
 
     @property
     def readable(self) -> bool:
@@ -131,8 +132,7 @@ def emitted_functions(obj_path: str | Path) -> tuple[str, ...] | None:
     scope to nothing and make every binary look escape-free).
     """
     try:
-        p = subprocess.run([nm_bin(), "--defined-only", str(obj_path)],
-                           capture_output=True, text=True, timeout=120)
+        p = subprocess.run([nm_bin(), "--defined-only", str(obj_path)], capture_output=True, text=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
         return None
     if p.returncode != 0:
@@ -163,7 +163,7 @@ def _callee(operands: list[str]) -> str | None:
     last = operands[-1]
     if "<" not in last or ">" not in last:
         return None
-    name = last[last.index("<") + 1:last.rindex(">")]
+    name = last[last.index("<") + 1 : last.rindex(">")]
     # A within-function target is annotated "<forward+0x30>" -- not a call to a named symbol.
     return None if "+" in name else name
 
@@ -179,8 +179,7 @@ def audit(obj_path: str | Path, elf_path: str | Path) -> EscapeReport:
     undef = undefined_symbols(obj_path)
     text = _disasm(elf_path)
     if scope is None or text is None:
-        return EscapeReport(obj=str(obj_path), elf=str(elf_path), scope=scope,
-                            undefined=undef, sites=None)
+        return EscapeReport(obj=str(obj_path), elf=str(elf_path), scope=scope, undefined=undef, sites=None)
 
     in_scope = set(scope)
     # Group instructions by enclosing function: loops are INTRA-procedural, so a function's loop
@@ -208,12 +207,19 @@ def audit(obj_path: str | Path, elf_path: str | Path) -> EscapeReport:
             if callee is None or callee not in RUNTIME_ESCAPE_SYMBOLS:
                 continue
             enclosing = [(lo, hi) for lo, hi in spans if lo <= addr <= hi]
-            sites.append(EscapeSite(helper=callee, caller=fn, addr=addr,
-                                    loop_depth=len(enclosing),
-                                    depth_reliable=_is_containment_chain(enclosing)))
+            sites.append(
+                EscapeSite(
+                    helper=callee,
+                    caller=fn,
+                    addr=addr,
+                    loop_depth=len(enclosing),
+                    depth_reliable=_is_containment_chain(enclosing),
+                )
+            )
     sites.sort(key=lambda s: s.addr)
-    return EscapeReport(obj=str(obj_path), elf=str(elf_path), scope=scope,
-                        undefined=undef, sites=tuple(sites), loops_seen=loops_seen)
+    return EscapeReport(
+        obj=str(obj_path), elf=str(elf_path), scope=scope, undefined=undef, sites=tuple(sites), loops_seen=loops_seen
+    )
 
 
 def _is_containment_chain(spans: list[tuple[int, int]]) -> bool:
@@ -229,8 +235,9 @@ def _is_containment_chain(spans: list[tuple[int, int]]) -> bool:
     precision the instrument does not have.
     """
     ordered = sorted(spans, key=lambda s: s[1] - s[0])
-    return all(ordered[i + 1][0] <= ordered[i][0] and ordered[i][1] <= ordered[i + 1][1]
-               for i in range(len(ordered) - 1))
+    return all(
+        ordered[i + 1][0] <= ordered[i][0] and ordered[i][1] <= ordered[i + 1][1] for i in range(len(ordered) - 1)
+    )
 
 
 def _backedge_spans(insns: list[tuple[int, str, list[str]]]) -> list[tuple[int, int]]:
@@ -265,7 +272,7 @@ def _tokenize_with_symbols(text: str):
                 addr = int(head, 16)
             except ValueError:
                 continue
-            yield addr, s[s.index("<") + 1:s.rindex(">")], "", []
+            yield addr, s[s.index("<") + 1 : s.rindex(">")], "", []
             continue
         left, _, right = s.partition(":")
         try:
@@ -276,7 +283,7 @@ def _tokenize_with_symbols(text: str):
         if len(parts) < 2:
             continue
         try:
-            int(parts[0], 16)              # encoding word; otherwise not an instruction line
+            int(parts[0], 16)  # encoding word; otherwise not an instruction line
         except ValueError:
             continue
         operands = [o.strip() for o in parts[2].split(",")] if len(parts) == 3 else []

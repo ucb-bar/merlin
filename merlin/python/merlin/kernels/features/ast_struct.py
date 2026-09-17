@@ -7,6 +7,7 @@ AST-accurate vector op counts (more reliable than regex). Returns {"struct": {..
 no-op (returns {}) when tree-sitter is unavailable (optional dep: the `kernels-ast` extra) or the
 source doesn't parse, so the pipeline degrades to the regex/intrinsic layer rather than breaking.
 """
+
 from __future__ import annotations
 
 import re
@@ -18,6 +19,7 @@ from merlin.kernels.types import NormalizedKernel
 try:  # optional dependency
     import tree_sitter_c
     from tree_sitter import Language, Parser
+
     _PARSER = Parser(Language(tree_sitter_c.language()))
 except Exception:  # pragma: no cover - exercised when the extra isn't installed
     _PARSER = None
@@ -30,7 +32,7 @@ def available() -> bool:
 
 
 def _txt(src: bytes, n) -> str:
-    return src[n.start_byte:n.end_byte].decode("utf-8", "ignore")
+    return src[n.start_byte : n.end_byte].decode("utf-8", "ignore")
 
 
 def _canon_call(name: str) -> str | None:
@@ -44,7 +46,7 @@ def _loop_cond_var(src: bytes, node) -> str:
     """A short identity for a loop: the first identifier in its condition (e.g. 'k', 'nc')."""
     cond = node.child_by_field_name("condition")
     if cond is None:
-        for c in node.children:           # do-while: condition is a parenthesized_expression child
+        for c in node.children:  # do-while: condition is a parenthesized_expression child
             if c.type == "parenthesized_expression":
                 cond = c
                 break
@@ -88,8 +90,9 @@ def extract_ast_struct(nk: NormalizedKernel, fired: dict[str, list[str]]) -> dic
                 lt = _txt(src, lhs).strip()
                 rt = _txt(src, rhs).strip()
                 # streaming/prepack idiom: `w = w + <stride>` (pointer advanced as data is consumed)
-                if re.match(r"[A-Za-z_]\w*$", lt) and re.match(rf"\(?[^)]*\)?\s*{re.escape(lt)}\s*\+",
-                                                               rt.replace("(const void*) ", "")):
+                if re.match(r"[A-Za-z_]\w*$", lt) and re.match(
+                    rf"\(?[^)]*\)?\s*{re.escape(lt)}\s*\+", rt.replace("(const void*) ", "")
+                ):
                     state["ptr_advance"] = True
         for c in n.children:
             walk(c, d)
@@ -99,12 +102,14 @@ def extract_ast_struct(nk: NormalizedKernel, fired: dict[str, list[str]]) -> dic
     # exclude vsetvl* — it also starts with "vse"
     n_store = sum(v for k, v in calls.items() if k.startswith("vse") and not k.startswith("vset"))
     n_fma = sum(v for k, v in calls.items() if k in ("vfmacc", "vmacc", "vwmacc", "vwmaccu"))
-    return {"struct": {
-        "loop_nest_depth": state["maxdepth"],
-        "loop_order": loop_order,                 # outer->inner condition vars, e.g. ['nc','k']
-        "pointer_advance_prepack": state["ptr_advance"],
-        "n_vector_loads": n_load,
-        "n_vector_stores": n_store,
-        "n_fma_calls": n_fma,
-        "ast_parsed": True,
-    }}
+    return {
+        "struct": {
+            "loop_nest_depth": state["maxdepth"],
+            "loop_order": loop_order,  # outer->inner condition vars, e.g. ['nc','k']
+            "pointer_advance_prepack": state["ptr_advance"],
+            "n_vector_loads": n_load,
+            "n_vector_stores": n_store,
+            "n_fma_calls": n_fma,
+            "ast_parsed": True,
+        }
+    }

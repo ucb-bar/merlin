@@ -17,6 +17,7 @@ checkout is not resolvable, :func:`available` is ``False`` and callers fall back
 Metadata is reported against the canonical, target-agnostic :mod:`merlin.common.quant_formats`
 registry so the rest of the tooling speaks one vocabulary of formats.
 """
+
 from __future__ import annotations
 
 import os
@@ -95,11 +96,11 @@ def parse_quant_mlir(source: str | Path):
 class QuantizedTensor:
     """One quantized operand/result found in a quant-aware module."""
 
-    op_name: str                       # e.g. "quant_ext.dequantize_per_channel"
-    storage_dtype: str                 # element type of the stored tensor, e.g. "i8"
+    op_name: str  # e.g. "quant_ext.dequantize_per_channel"
+    storage_dtype: str  # element type of the stored tensor, e.g. "i8"
     shape: tuple[int, ...]
-    granularity: str | None            # per_tensor | per_channel | per_group | per_block | None
-    fmt: qf.QuantFormat | None         # canonical format, when resolvable
+    granularity: str | None  # per_tensor | per_channel | per_group | per_block | None
+    fmt: qf.QuantFormat | None  # canonical format, when resolvable
 
 
 def _prop_str(op: Any, key: str) -> str | None:
@@ -113,7 +114,7 @@ def _prop_str(op: Any, key: str) -> str | None:
 
 
 def _granularity_from_op_name(op_name: str) -> str | None:
-    tail = op_name.rsplit(".", 1)[-1]           # dequantize_per_channel -> per_channel
+    tail = op_name.rsplit(".", 1)[-1]  # dequantize_per_channel -> per_channel
     for g in ("per_tensor", "per_channel", "per_group", "per_token", "per_row"):
         if tail.endswith(g):
             return g

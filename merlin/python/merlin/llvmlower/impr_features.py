@@ -13,15 +13,19 @@ never invoked, so the emitted pipeline string and schedule are **byte-identical*
 (guarded by ``test_impr_features``). A feature only changes codegen when a fork explicitly enables
 it, so it can be measured against the immutable baseline.
 """
+
 from __future__ import annotations
 
-from .selfcopy import FEATURE as _SELF_COPY_FEATURE
-from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 import hashlib
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
+from .selfcopy import FEATURE as _SELF_COPY_FEATURE
+from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 
 
 @dataclass(frozen=True)
@@ -40,13 +44,31 @@ class ImprFeature:
     to apply more than one full-replacement schedule feature at once (the composed, whole-model-safe
     config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
     False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
+
+    ``edit_cflags`` rewrites the clang flag list for the model object (KNOB at the BACKEND level).
+    It exists because some codegen decisions are not expressible in the IR at all: the width of the
+    vector register group the auto-vectorizer asks for is a backend query, not a type, so no tile
+    size or schedule edit reaches it directly -- the only way this registry could move it before was
+    to widen the N tile and let the group width follow, which changes the vectorized shapes as a side
+    effect and can push a transfer into a masked form the backend rejects (see ``lmul_group``). A
+    ``None`` hook leaves the flags untouched, so a build that names no cflag-editing feature compiles
+    byte-identically.
+
+    ``implies`` names features this one CANNOT be measured without -- lowering hygiene that is a
+    property of the recipe's SHAPE rather than a tuning choice. It exists because a default-off
+    feature whose payoff is cancelled by a separate default-off fix is, in practice, an inert lever:
+    the beam has to discover the conjunction, and everyone who names the feature directly in
+    ``compiler_features`` gets the cancelled version. See ``_tile_epilogue_hygiene``.
     """
+
     name: str
     action_class: str  # "PASS" | "HEURISTIC" | "PATTERN"
     description: str
     edit_pipeline: Callable[[list[str]], list[str]] | None = None
     edit_schedule: Callable[[str], str] | None = None
+    edit_cflags: Callable[[list[str]], list[str]] | None = None
     schedule_replace: bool = False
+    implies: frozenset[str] = frozenset()
 
 
 _REGISTRY: dict[str, ImprFeature] = {}
@@ -57,6 +79,64 @@ def register(feature: ImprFeature) -> ImprFeature:
         raise ValueError(f"duplicate impr feature {feature.name!r}")
     _REGISTRY[feature.name] = feature
     return feature
+
+
+#: Cache for :func:`_single_name_lever_modules` (built once per process).
+_LEVER_MODULES: "dict[str, str] | None" = None
+
+
+def _single_name_lever_modules() -> "dict[str, str]":
+    """Lever name -> module basename, for every sibling module declaring lever names as constants.
+
+    Discovered by PARSING the sibling sources rather than importing them: at this point in the
+    package every lever module imports THIS one to call :func:`register`, so importing them all
+    eagerly is circular. Parsing is also structural, not a line-match -- the module-level
+    ``FEATURE = "..."`` assignment is read out of the AST, and a module only qualifies if it also
+    defines ``ensure_registered`` at module level, which is the thing that will be called.
+
+    A module that declares no ``FEATURE`` (a family module carrying a ``FEATURE_PREFIX``, or a plain
+    helper) simply does not appear, so families keep resolving through their own prefix/arity rules.
+
+    ``<X>_FEATURE`` counts too, not only the bare ``FEATURE``. A module may own more than one point --
+    ``requant_fuse`` registers the traversal removal and the variant that also reshapes the epilogue
+    loop, so the board can price the reshape separately -- and ``perop_blocks`` has always owned
+    ``CONV_ARM_FEATURE`` with no way to resolve it here. Reading every module-level string constant
+    whose name ends in ``FEATURE`` keeps the mapping DERIVED, which is the property this function
+    exists for; a name whose ``ensure_registered`` does not actually register it still falls through
+    to the family rules below, because the caller re-checks the registry.
+    """
+    global _LEVER_MODULES
+    if _LEVER_MODULES is None:
+        import ast as _ast
+
+        found: dict[str, str] = {}
+        for src in sorted(Path(__file__).parent.glob("*.py")):
+            if src.name == Path(__file__).name:
+                continue
+            try:
+                tree = _ast.parse(src.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):
+                continue  # unreadable/unparseable sibling is not a lever; never guess one
+            features: list[str] = []
+            has_ensure = False
+            for node in tree.body:  # MODULE level only -- a nested FEATURE is not the lever's name
+                if (
+                    isinstance(node, _ast.Assign)
+                    and isinstance(node.value, _ast.Constant)
+                    and isinstance(node.value.value, str)
+                    and any(
+                        isinstance(t, _ast.Name) and (t.id == "FEATURE" or t.id.endswith("_FEATURE"))
+                        for t in node.targets
+                    )
+                ):
+                    features.append(node.value.value)
+                elif isinstance(node, _ast.FunctionDef) and node.name == "ensure_registered":
+                    has_ensure = True
+            if has_ensure:
+                for feature in features:
+                    found.setdefault(feature, src.stem)
+        _LEVER_MODULES = found
+    return _LEVER_MODULES
 
 
 def _try_lazy_register(name: str) -> bool:
@@ -74,16 +154,82 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
+    # A SINGLE-NAME lever lives in its own module and resolves by importing that module, rather than
+    # through the arity table below. It has to resolve HERE and not only where it is ranked:
+    # `wholemodel_proposer` registers it for the PROPOSAL path, but a package that names it in
+    # `compiler_features` reaches `normalize` through `k1.build_k1_binary`, which imports no proposer
+    # -- and through the lowering SUBPROCESS, which re-imports this module and sees no registration
+    # the parent made at run time. Both raise "unknown impr feature" without this.
+    #
+    # This was a HAND-MAINTAINED list of per-module hooks, and it drifted exactly as such lists do:
+    # it named two modules while THIRTEEN declared a lever. The other eleven resolved only by
+    # ACCIDENT -- an unrelated module happening to import theirs (`pipeline` pulls in `prov_cse` and
+    # `im2col_pack`), or a call-time `ensure_registered()` buried in `k1.build_k1_binary` (that is
+    # what `prepack_weight_layout` relies on). Accidental resolution is not resolution: a fresh
+    # process that imports only THIS module could not resolve seven of the thirteen, and the lowering
+    # subprocess is exactly such a process. Removing an unrelated import, or reaching a lever by a
+    # path that skips `build_k1_binary`, silently turns a named lever into "unknown impr feature" --
+    # or, where a caller swallows that, into a lever reported as applied and never applied.
+    # The mapping is DERIVED from the modules themselves so that resolution does not depend on who
+    # else happened to be imported first.
+    _module = _single_name_lever_modules().get(name)
+    if _module is not None:
+        import importlib
+
+        importlib.import_module(f".{_module}", __package__).ensure_registered()
+        return name in _REGISTRY
+    # The parallel-GRAIN family carries its threshold in the name and lives in its own module, so
+    # it is resolved first and by import rather than through the arity table below.
+    from .parallel_grain import FEATURE_PREFIX as _PG_PREFIX
+
+    if name.startswith(_PG_PREFIX):
+        from .parallel_grain import ensure_registered as _pg_ensure
+
+        try:
+            _pg_ensure(int(name[len(_PG_PREFIX) :]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    # Per-region OpenMP team policy is another name-derived continuous family.  Resolve it here so
+    # a package and the lowering subprocess do not depend on the proposer having imported it first.
+    from .parallel_team import FEATURE_PREFIX as _PT_PREFIX
+
+    if name.startswith(_PT_PREFIX):
+        from .parallel_team import ensure_registered as _pt_ensure
+
+        try:
+            _pt_ensure(int(name[len(_PT_PREFIX) :]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    from .residual_parallel import FEATURE_PREFIX as _RP_PREFIX
+
+    if name.startswith(_RP_PREFIX):
+        from .residual_parallel import ensure_registered as _rp_ensure
+
+        try:
+            _rp_ensure(int(name[len(_RP_PREFIX) :]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    point = _vec_noncontraction_point(name)
+    if point is not None:
+        # The non-contraction family's points are DERIVABLE FROM THE NAME (lanes and max rank), so
+        # they resolve in any process -- which is the whole reason this hook exists: a point the
+        # parent registered at run time is invisible to the lowering subprocess that re-imports this
+        # module, and the build fails with "unknown impr feature" rather than with the lever off.
+        ensure_vec_noncontraction(*point)
+        return name in _REGISTRY
     parts = name.split("_")
     tails: dict[str, tuple[int, "Callable[..., str]"]] = {
-        "accum_resident_v3_": (3, ensure_v3_microkernel),          # MR, NR, KC
+        "accum_resident_v3_": (3, ensure_v3_microkernel),  # MR, NR, KC
         "accum_resident_v3vl_": (3, ensure_v3_scalable_microkernel),  # MR, NR, KC
-        "accum_resident_v3p_": (5, ensure_v3_perop_microkernel),   # MR_mm, NR_mm, MR_bmm, NR_bmm, KC
+        "accum_resident_v3p_": (5, ensure_v3_perop_microkernel),  # MR_mm, NR_mm, MR_bmm, NR_bmm, KC
     }
     for prefix, (arity, make) in tails.items():
         if not name.startswith(prefix):
             continue
-        args = parts[len(prefix.rstrip("_").split("_")):]
+        args = parts[len(prefix.rstrip("_").split("_")) :]
         if len(args) != arity:
             return False
         try:
@@ -105,13 +251,28 @@ def known() -> list[str]:
 
 
 def normalize(features) -> frozenset[str]:
-    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered)."""
+    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered),
+    closed under ``ImprFeature.implies``.
+
+    The closure is here, and not at each call site, because ``feats = normalize(...)`` is the single
+    point every consumer reads: the runner selection, the schedule edits, and the argv gates for the
+    self-copy erase / transpose fusion all key off this one set. Expanding anywhere later would let
+    them disagree about which features are on.
+
+    Empty in => empty out, so the frozen baseline stays byte-identical.
+    """
     if not features:
         return frozenset()
     fs = frozenset(features)
     for n in fs:
         get(n)  # raises on unknown
-    return fs
+    while True:
+        grown = fs | frozenset().union(*(get(n).implies for n in fs)) if fs else fs
+        if grown == fs:
+            return fs
+        for n in grown - fs:
+            get(n)  # an implied name must be registered too
+        fs = grown
 
 
 def apply_pipeline(passes: list[str], features: frozenset[str]) -> list[str]:
@@ -144,21 +305,52 @@ def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
     """
     if not features:
         return schedule_text
-    replacers = [get(n) for n in sorted(features)
-                 if get(n).edit_schedule is not None and get(n).schedule_replace]
+    replacers = [get(n) for n in sorted(features) if get(n).edit_schedule is not None and get(n).schedule_replace]
     if len(replacers) > 1:
         raise CompositionError(
             "cannot compose multiple full-schedule-replacement features "
             f"{[f.name for f in replacers]}: each emits a complete transform schedule and would "
             "clobber the others. Enable the single composed feature that carries all clamps "
-            "inherent (e.g. accumulator_resident_wholemodel) instead of stacking replacements.")
+            "inherent (e.g. accumulator_resident_wholemodel) instead of stacking replacements."
+        )
     out = schedule_text
-    if replacers:                              # the one replacement runs first (input ignored)
+    if replacers:  # the one replacement runs first (input ignored)
         out = replacers[0].edit_schedule(out)
-    for name in sorted(features):              # then additive edits layer on top
+    for name in sorted(features):  # then additive edits layer on top
         f = get(name)
         if f.edit_schedule is not None and not f.schedule_replace:
             out = f.edit_schedule(out)
+    return out
+
+
+def apply_cflags(cflags, features: frozenset[str]) -> list[str]:
+    """``cflags`` with every enabled feature's ``edit_cflags`` hook applied, in stable name order.
+
+    Empty ``features`` (the baseline, and every build that names only IR-level features) returns the
+    list unchanged, so the emitted object is byte-identical -- the same invariant
+    :func:`apply_pipeline` / :func:`apply_schedule` carry, extended to the backend flags.
+
+    Unlike a schedule replacement there is no composition hazard here: each hook appends its own
+    ``-mllvm`` option and the flags are independent, so two cflag features layer the way two additive
+    schedule edits do. A feature that wanted to CONTRADICT another on the same option would have to
+    be caught by whoever adds it; today the only such option is the register-group width, and the
+    registrar mints one feature per width so two of them cannot be named without saying so.
+
+    WHO CALLS THIS. Every builder that turns the lowered ``.ll`` into the model object must, or a
+    cflag feature is INERT on that path -- named, resolved, and emitting byte-identical code, which
+    is the failure mode hardest to notice from the outside. Wired today:
+    ``runtime.backends.zephyr_model.build_app`` and ``runtime.backends.spike_model.build``. NOT yet
+    wired: ``mining.k1.build_k1_binary`` (and its staged sibling), which assembles its model-object
+    flag list inline; a cflag feature therefore has no effect on that path until the same call is
+    added there.
+    """
+    out = list(cflags)
+    if not features:
+        return out
+    for name in sorted(features):
+        f = get(name)
+        if f.edit_cflags is not None:
+            out = list(f.edit_cflags(out))
     return out
 
 
@@ -264,43 +456,147 @@ module attributes {transform.with_named_sequence} {
 """
 
 
-register(ImprFeature(
-    name="lmul_widen_n",
-    action_class="KNOB",
-    description="mined lmul_grouping_policy: widen the matmul N tile/vector 8->16 so the emitted "
-                "vector group uses a higher LMUL (m2->m4). Composes with other features in autotune.",
-    edit_schedule=lambda t: t.replace("tile_sizes [4, 8, 1]", "tile_sizes [4, 16, 1]").replace(
-        "vector_sizes [4, 8, 1]", "vector_sizes [4, 16, 1]"),
-))
+register(
+    ImprFeature(
+        name="lmul_widen_n",
+        action_class="KNOB",
+        description="mined lmul_grouping_policy: widen the matmul N tile/vector 8->16 so the emitted "
+        "vector group uses a higher LMUL (m2->m4). Composes with other features in autotune.",
+        edit_schedule=lambda t: t.replace("tile_sizes [4, 8, 1]", "tile_sizes [4, 16, 1]").replace(
+            "vector_sizes [4, 8, 1]", "vector_sizes [4, 16, 1]"
+        ),
+    )
+)
 
 
-register(ImprFeature(
-    name="fused_vfmacc_tiled",
-    action_class="PASS",
-    description="CORRECT, SCALABLE, bounded-code tiled vfmacc: tile matmul [MR=4,NR=16,KC=4] and "
-                "batch_matmul [1,4,16,4] so M,N,K are all scf.for LOOPS, SCOPED-vectorize the tile "
-                "only (no whole-func vectorize_children => whole-model-safe, no vector.extract "
-                "explosion), rebuild the contract via reduction_to_contract, then "
-                "outerproduct->vector.fma->vfmacc. Inner body = constant MR*KC=16 fma at any "
-                "M/N/K => .text bounded (no JAL +-1MB wall) and applicable to whole models. "
-                "Benchmarked vs the full-unroll fused_vfmacc_contraction.",
-    edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
-    schedule_replace=True,
-))
+#: Prefix of the DIRECT register-group-width features. ``lmul_widen_n`` above reaches LMUL the only
+#: way this registry could before: widen the N tile and let the backend's worst-case group sizing
+#: follow. That is an INDIRECT route and it moves two things at once -- MEASURED on
+#: small_llama_int8, taking the M-pad block from mr1_nr32 to mr1_nr64 to chase the expert's LMUL
+#: went 5,180,908 ns -> 20,450,661 ns and put `_mlir_ciface_forward` on a scalar fallback (the wider
+#: tail transfer becomes a masked multi-op `vector.mask` LLVM 23 rejects, so the transform
+#: interpreter raises and the whole model lowers scalar: identical numerics, 4x the wall).
+#:
+#: These features set the group width itself and touch no tile size, so the vectorized shapes -- and
+#: therefore the tail masking -- are exactly what they were. See :mod:`merlin.llvmlower.lmul_group`
+#: for the derivation and for the measurement that the emitted `vsetvli` actually moves.
+LMUL_GROUP_PREFIX = "lmul_group_m"
+
+#: The REQUEST for a derived register-group width, as a feature name. Deliberately NOT registered:
+#: like ``PEROP_BLOCK_NAME``, it is a sentinel that ``zephyr_model.prepare_for_lowering`` resolves
+#: against the PREPARED IR -- the element widths the pipeline will actually see, plus the board's
+#: VLEN -- and swaps for the concrete ``lmul_group_m<N>`` before lowering. Reaching ``normalize``
+#: unresolved SHOULD raise, because a request nobody resolved must not read as a width.
+#:
+#: This is the name the ``vector.lmul`` action-catalog seam points at: the route knows the axis, the
+#: IR knows the arithmetic, and neither of them should be writing down a number.
+LMUL_GROUP_SENTINEL = "lmul_register_group"
+
+
+def lmul_group_feature(lmul: int) -> str:
+    """The name of the default-off feature that pins the auto-vectorizer's register group to ``lmul``.
+
+    Every whole-register width is registered eagerly (there are four), so a name resolves in the
+    lowering SUBPROCESS as well as in the parent -- the same reproducibility requirement
+    :func:`_try_lazy_register` exists for.
+    """
+    from .lmul_group import LMUL_LADDER
+
+    if int(lmul) not in LMUL_LADDER:
+        from .lmul_group import LmulDerivationError
+
+        raise LmulDerivationError(f"LMUL={lmul!r} is not one of {LMUL_LADDER}")
+    return f"{LMUL_GROUP_PREFIX}{int(lmul)}"
+
+
+def ensure_lmul_group(
+    *, operand_bits: int, acc_bits: int, vlen: int | None = None, max_group_elems: int | None = None
+) -> str:
+    """DERIVE the register-group width from the datapath and return the feature that pins it.
+
+    The width is ``lmul_group.group_lmul`` -- the smallest whole-register group at which the
+    narrowest operand's group stops being a fraction, capped by what the target's VLEN can usefully
+    hold. Nobody types a 4: an ``i8 x i8 -> i32`` contraction derives 4 (which is what the expert
+    XNNPACK qd8 kernel runs at), an ``f32`` one derives 1, a ``bf16 -> f32`` one derives 2.
+    """
+    from .lmul_group import group_lmul
+
+    return lmul_group_feature(
+        group_lmul(operand_bits=operand_bits, acc_bits=acc_bits, vlen=vlen, max_group_elems=max_group_elems)
+    )
+
+
+def ensure_lmul_group_for_elem_types(
+    a: str, b: str, c: str, *, vlen: int | None = None, max_group_elems: int | None = None
+) -> str:
+    """:func:`ensure_lmul_group` for a contraction named by its MLIR element types ``a x b -> c``."""
+    from .lmul_group import group_lmul_for_elem_types
+
+    return lmul_group_feature(group_lmul_for_elem_types(a, b, c, vlen=vlen, max_group_elems=max_group_elems))
+
+
+def _register_lmul_groups() -> list[str]:
+    from .lmul_group import LMUL_LADDER, lmul_cflags
+
+    names = []
+    for _lmul in LMUL_LADDER:
+        _name = f"{LMUL_GROUP_PREFIX}{_lmul}"
+        register(
+            ImprFeature(
+                name=_name,
+                action_class="KNOB",
+                description=(
+                    f"Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL={_lmul}, "
+                    f"directly (an -mllvm backend option), without changing any tile or vector size. "
+                    f"This is the seam the `vector.lmul` divergence actually wants: the N-tile route to "
+                    f"the same axis also widens the tail transfer, which is a whole-model scalar-fallback "
+                    f"cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number "
+                    f"-- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a "
+                    f"build that does not name it gets byte-identical flags."
+                ),
+                edit_cflags=(lambda c, _l=_lmul: [*c, *lmul_cflags(_l)]),
+            )
+        )
+        names.append(_name)
+    return names
+
+
+#: The whole ladder, registered eagerly. Naming a width directly is legal (a search may want to
+#: bracket the derived one); ``ensure_lmul_group`` is how a caller gets the derived answer.
+LMUL_GROUP_NAMES: tuple[str, ...] = tuple(_register_lmul_groups())
+
+
+register(
+    ImprFeature(
+        name="fused_vfmacc_tiled",
+        action_class="PASS",
+        description="CORRECT, SCALABLE, bounded-code tiled vfmacc: tile matmul [MR=4,NR=16,KC=4] and "
+        "batch_matmul [1,4,16,4] so M,N,K are all scf.for LOOPS, SCOPED-vectorize the tile "
+        "only (no whole-func vectorize_children => whole-model-safe, no vector.extract "
+        "explosion), rebuild the contract via reduction_to_contract, then "
+        "outerproduct->vector.fma->vfmacc. Inner body = constant MR*KC=16 fma at any "
+        "M/N/K => .text bounded (no JAL +-1MB wall) and applicable to whole models. "
+        "Benchmarked vs the full-unroll fused_vfmacc_contraction.",
+        edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
+        schedule_replace=True,
+    )
+)
 
 
 # Same recipe, surfaced under the name the kernel-policy mining task refers to. `fused_vfmacc_tiled`
 # is kept for the cross-framework matrix column that already names it; `fused_vfmacc_scalable` is the
 # preferred name going forward (it is the whole-model-safe, bounded-code vfmacc).
-register(ImprFeature(
-    name="fused_vfmacc_scalable",
-    action_class="PASS",
-    description="Alias of the fixed fused_vfmacc_tiled recipe: bounded-code (constant MR*KC inner "
-                "body), K-as-loop, scoped-vectorize (whole-model-safe) tiled vfmacc. Correct + "
-                "bit-exact at 32/64/128; the whole-model-safe vfmacc for e2e.",
-    edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
-    schedule_replace=True,
-))
+register(
+    ImprFeature(
+        name="fused_vfmacc_scalable",
+        action_class="PASS",
+        description="Alias of the fixed fused_vfmacc_tiled recipe: bounded-code (constant MR*KC inner "
+        "body), K-as-loop, scoped-vectorize (whole-model-safe) tiled vfmacc. Correct + "
+        "bit-exact at 32/64/128; the whole-model-safe vfmacc for e2e.",
+        edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
+        schedule_replace=True,
+    )
+)
 
 
 # ---- parameterized tiled-vfmacc tuning grid -----------------------------------------
@@ -360,16 +656,17 @@ def _register_tiled_grid() -> list[str]:
         for NR in (16, 32):
             for KC in (16, 32, 64):
                 nm = f"vfmacc_t_{MR}_{NR}_{KC}"
-                register(ImprFeature(
-                    name=nm,
-                    action_class="PASS",
-                    description=f"Tiled-vfmacc tuning point: register-tile (MR={MR}, NR={NR}, "
-                                f"KC={KC}). Bounded-code, whole-model-safe tiled vfmacc with this "
-                                f"tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
-                    edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                                   vfmacc_tiled_schedule(_MR, _NR, _KC)),
-                    schedule_replace=True,
-                ))
+                register(
+                    ImprFeature(
+                        name=nm,
+                        action_class="PASS",
+                        description=f"Tiled-vfmacc tuning point: register-tile (MR={MR}, NR={NR}, "
+                        f"KC={KC}). Bounded-code, whole-model-safe tiled vfmacc with this "
+                        f"tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+                        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: vfmacc_tiled_schedule(_MR, _NR, _KC)),
+                        schedule_replace=True,
+                    )
+                )
                 names.append(nm)
     return names
 
@@ -476,8 +773,9 @@ def _packed_eliminate_empties(passes: list[str]) -> list[str]:
     Only runs when a packed feature is enabled; baseline pipeline untouched."""
     out = list(passes)
     try:
-        i = out.index("one-shot-bufferize{bufferize-function-boundaries "
-                       "function-boundary-type-conversion=identity-layout-map}")
+        i = out.index(
+            "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}"
+        )
     except ValueError:
         return out
     if out[i - 1] == "eliminate-empty-tensors":
@@ -486,19 +784,21 @@ def _packed_eliminate_empties(passes: list[str]) -> list[str]:
     return out
 
 
-register(ImprFeature(
-    name="vfmacc_packed",
-    action_class="PASS",
-    edit_pipeline=_packed_eliminate_empties,
-    description="operand-PACKING tiled vfmacc (mined packed_rhs_policy = OpenBLAS ncopy/tcopy, "
-                "XNNPACK goi-prepack): transform.structured.pack A/B/C into contiguous [MR,NR,KC] "
-                "register-tile panels, lower pack/unpack to copy loops, fold unit dims, then the "
-                "scoped-vectorize -> outerproduct -> vfmacc recipe on the packed op so the inner "
-                "transfers are UNIT-STRIDE contiguous (no strided vector.transfer). Register-tile "
-                "[4,16,16]. Default-off; baseline byte-identical.",
-    edit_schedule=lambda _t: vfmacc_packed_schedule(4, 16, 16),
-    schedule_replace=True,
-))
+register(
+    ImprFeature(
+        name="vfmacc_packed",
+        action_class="PASS",
+        edit_pipeline=_packed_eliminate_empties,
+        description="operand-PACKING tiled vfmacc (mined packed_rhs_policy = OpenBLAS ncopy/tcopy, "
+        "XNNPACK goi-prepack): transform.structured.pack A/B/C into contiguous [MR,NR,KC] "
+        "register-tile panels, lower pack/unpack to copy loops, fold unit dims, then the "
+        "scoped-vectorize -> outerproduct -> vfmacc recipe on the packed op so the inner "
+        "transfers are UNIT-STRIDE contiguous (no strided vector.transfer). Register-tile "
+        "[4,16,16]. Default-off; baseline byte-identical.",
+        edit_schedule=lambda _t: vfmacc_packed_schedule(4, 16, 16),
+        schedule_replace=True,
+    )
+)
 
 
 def _register_packed_grid() -> list[str]:
@@ -509,17 +809,18 @@ def _register_packed_grid() -> list[str]:
         for NR in (16, 32):
             for KC in (16, 32, 64):
                 nm = f"vfmacc_packed_{MR}_{NR}_{KC}"
-                register(ImprFeature(
-                    name=nm,
-                    action_class="PASS",
-                    description=f"Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile "
-                                f"(MR={MR}, NR={NR}, KC={KC}). Contiguous packed inner transfers. "
-                                f"Default-off tuning-grid feature.",
-                    edit_pipeline=_packed_eliminate_empties,
-                    edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                                   vfmacc_packed_schedule(_MR, _NR, _KC)),
-                    schedule_replace=True,
-                ))
+                register(
+                    ImprFeature(
+                        name=nm,
+                        action_class="PASS",
+                        description=f"Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile "
+                        f"(MR={MR}, NR={NR}, KC={KC}). Contiguous packed inner transfers. "
+                        f"Default-off tuning-grid feature.",
+                        edit_pipeline=_packed_eliminate_empties,
+                        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: vfmacc_packed_schedule(_MR, _NR, _KC)),
+                        schedule_replace=True,
+                    )
+                )
                 names.append(nm)
     return names
 
@@ -561,9 +862,9 @@ PACKED_GRID_NAMES: list[str] = _register_packed_grid()
 #                  lower_contraction(outerproduct) -> lower_outerproduct -> vector.fma -> vfmacc.
 # Verified bit-exact + accumulator-resident (vector iter_arg, zero per-K memref roundtrip) on spike
 # at 32/64/128. Default-off; baseline byte-identical.
-def _accumulator_resident_pre_schedule(MR: int, NR: int, KC: int,
-                                       NR_bmm: int | None = None,
-                                       MR_mm: int | None = None) -> str:
+def _accumulator_resident_pre_schedule(
+    MR: int, NR: int, KC: int, NR_bmm: int | None = None, MR_mm: int | None = None
+) -> str:
     """PRE-bufferize transform schedule: tile M,N; promote C to a TYPED local alloc via
     bufferize_to_allocation; tile the reduction K by 1; scoped-vectorize [MR,NR,1]; rebuild
     vector.contract. Stops at the contract (the post-bufferize schedule does the hoist + lowering).
@@ -629,9 +930,64 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
-def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
-                                          NR_bmm: int | None = None,
-                                          MR_mm: int | None = None) -> str:
+#: The hand-frozen whole-model register block, named ONCE so the registration below and the
+#: shape-aware resolver read the same numbers. ``WHOLEMODEL_VF_CAPS`` is ``(MR, NR, KC)``; the two
+#: per-class clamps are the tails somebody picked to survive the VLA shapes (matmul M tile 1,
+#: batch_matmul N tile 8). They are a SHAPE decision, not a constant of the target, which is why
+#: ``mining.apply.shape_adapted_features`` can re-derive them from a workload's own extents --
+#: reading the triple as an upper BOUND. On tiny_llama that derivation returns exactly (4, 16) /
+#: (4, 8), i.e. this frozen point, so the model this block was tuned on is unaffected.
+WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
+WHOLEMODEL_VF_BMMPAD_NAME = "accumulator_resident_wholemodel_vf_bmmpad"
+WHOLEMODEL_VF_CAPS: tuple[int, int, int] = (4, 16, 16)
+WHOLEMODEL_VF_MR_MM = 1
+WHOLEMODEL_VF_NR_BMM = 8
+
+
+def _tile_epilogue_hygiene(mr_matmul: int | None) -> frozenset[str]:
+    """The lowering hygiene an MR>1 register-block recipe cannot be measured without.
+
+    A recipe that tiles the output and bufferizes per tile leaves, in each tile epilogue, a
+    ``memref.copy %x, %x`` -- the destination subview copied onto ITSELF -- which survives
+    ``finalize-memref-to-llvm`` as an opaque rank-generic ``@memrefCopy`` runtime call. Erasing it is
+    unconditionally value-preserving (identical SSA operand => identical base, offsets and region)
+    and is a no-op on a lowering that has none, so ``erase_self_copy`` can only help or do nothing.
+    ``mining/from_strategy._with_hygiene`` states exactly this policy for recipes reached through the
+    ``microkernel`` knob space; this function is the same policy for the features named DIRECTLY in a
+    package's ``compiler_features``, which bypass that space entirely.
+
+    MEASURED, spike, 64^3 matmul, this repo, bit-identical output on every arm:
+
+        int8   MR=1 240,369 cyc | MR=4 491,346 | MR=1+erase 240,369 | MR=4+erase 178,239
+        f32    MR=1 231,313 cyc | MR=4 495,241 | MR=1+erase 231,313 | MR=4+erase 181,503
+
+    Read those rows in order. Bare MR=4 is 2.0-2.1x SLOWER than MR=1 even though the register block
+    made the compute cheaper -- the PC histogram attributes the whole delta (+250,977 instructions,
+    exactly the cycle delta) to ``memrefCopy`` +187,520 / ``memcpy`` +98,304 / ``memset`` +24,896
+    against ``forward`` -59,743, i.e. a 1.45x cheaper kernel paying 310,720 instructions of buffer
+    copying to get there. With the erase, MR=4 is 1.35x (int8) / 1.27x (f32) FASTER than MR=1. So the
+    A-reuse register block was never the losing lever; the un-erased epilogue was.
+
+    MR<=1 returns empty deliberately. Not because the erase would be unsafe there, but because
+    MR=1+erase measured BYTE-IDENTICAL (both dtypes, same cycle count to the digit) -- there is no
+    self-copy to erase at MR=1, so implying it would move the validated ``MR_mm=1`` control's
+    declared feature set for no measured effect. This also explains the standing claim in
+    ``from_strategy._with_hygiene`` that the ``accumulator_resident_wholemodel*`` family "has no
+    self-copy to erase": that was measured on the MR=1 member, and is false for the MR>1 members.
+    """
+    return frozenset({_SELF_COPY_FEATURE}) if (mr_matmul or 1) > 1 else frozenset()
+
+
+def _accumulator_resident_v3_pre_schedule(
+    MR: int,
+    NR: int,
+    KC: int,
+    NR_bmm: int | None = None,
+    MR_mm: int | None = None,
+    skip_mm: bool = False,
+    skip_bmm: bool = False,
+    pad_bmm: bool = False,
+) -> str:
     """PRE-bufferize schedule for the v3 (vfmacc.vf) micro-kernel — SAME as the v1/v2 pre-schedule
     but WITHOUT ``bufferize_to_allocation``.
 
@@ -650,6 +1006,13 @@ def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
     (one B row + MR A scalars per K step -> the resident-accumulator micro-kernel shape); rebuild
     ``vector.contract``; STOP (the v3 pipeline does subset-hoist + contract-lower + A-scalarize). The
     M-tail (``MR_mm``) / N-tail (``NR_bmm``) clamps carry over unchanged for whole-model safety.
+
+    ``skip_mm`` / ``skip_bmm`` OMIT that op class's arms entirely, leaving those contractions for
+    ``convert-linalg-to-loops`` (scalar). Needed because a claim can be impossible: when every block
+    legal for a class's extents is 1-lane wide (an N=1 extent forces NR=1), tiling buys no vector
+    lanes AND produces a parallel-dim-free ``vector.contract`` that no lowering strategy matches. Not
+    claiming the class is then strictly better than claiming it badly — the model builds and runs, and
+    the caller reports the class as un-vectorized rather than failing the build.
     """
     NB = NR_bmm if NR_bmm is not None else NR
     MM = MR_mm if MR_mm is not None else MR
@@ -685,31 +1048,54 @@ module attributes {{transform.with_named_sequence}} {{
     # (tagged merlin.vec_rN by the pre-pass, N = loop rank) are vectorized with BOUNDED vector_sizes
     # [1,..,1,8] — innermost dim by 8 lanes (VLEN256/f32), NOT the plain no-sizes vectorize that
     # explodes (vector<17x576>=9792 lanes -> 8725ms). Per rank because openvla generics are rank 2/3/4.
-    _ew = ("""
+    _ew = (
+        """
     %g2 = transform.structured.match attributes{merlin.vec_r2} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g2 vector_sizes [1, 8] : !transform.any_op
     %g3 = transform.structured.match attributes{merlin.vec_r3} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g3 vector_sizes [1, 1, 8] : !transform.any_op
     %g4 = transform.structured.match attributes{merlin.vec_r4} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g4 vector_sizes [1, 1, 1, 8] : !transform.any_op"""
-           if __import__("os").environ.get("MERLIN_VEC_RANK") else (
-    """
+        if __import__("os").environ.get("MERLIN_VEC_RANK")
+        else (
+            """
     %g = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g : !transform.any_op"""
-           if __import__("os").environ.get("MERLIN_VEC_EW") else ""))
-    return f"""\
-module attributes {{transform.with_named_sequence}} {{
-  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+            if __import__("os").environ.get("MERLIN_VEC_EW")
+            else ""
+        )
+    )
+    _mm_arm = f"""
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op
+    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op"""
+    if skip_mm:
+        _mm_arm = ""
+    _bmm_arm = f"""
     %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op{_ew}
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op"""
+    if skip_bmm:
+        _bmm_arm = ""
+    _pad_sequence = (
+        ""
+        if not pad_bmm
+        else f"""
+  transform.named_sequence @__transform_bmm_pad(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %btail = transform.structured.match attributes{{merlin.bmm_pad_tail}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bpadded, %bpad, %bcp = transform.structured.pad %btail pad_to_multiple_of [{MR}, {NB}] {{padding_dimensions = [1, 2], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    transform.yield
+  }}
+"""
+    )
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+{_pad_sequence}
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{{_mm_arm}{_bmm_arm}{_ew}
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
@@ -723,8 +1109,26 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
-def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
-                                                NR_bmm: int | None = None) -> str:
+def _zero_attr(t: str) -> str:
+    """The MLIR zero literal for element type ``t``, derived from the type rather than tabulated.
+
+    Integer types take ``0 : iN``; floating types take the f-literal form. A tabulated map would go
+    stale the first time a new element type appears, and the failure is silent (scalar fallback).
+    """
+    t = str(t).strip()
+    if t.startswith("i") and t[1:].isdigit():
+        return f"0 : {t}"
+    if t.startswith(("f", "bf")):
+        return f"0.000000e+00 : {t}"
+    raise ValueError(
+        f"no zero literal derivable for element type {t!r}; add the rule rather than "
+        "letting the schedule pad with a wrongly-typed value"
+    )
+
+
+def _accumulator_resident_v3_mrpad_pre_schedule(
+    MR: int, NR: int, KC: int, NR_bmm: int | None = None, elem_types: tuple[str, str, str] | None = None
+) -> str:
     """PER-MATMUL MR register block with an M-PAD tail — the general fix for the M=1/M%MR!=0 case.
 
     ``accumulator_resident_wholemodel_vf`` clamps the matmul M tile to MR_mm=1 (no A-operand reuse:
@@ -750,7 +1154,16 @@ def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
     the MR=1 clamp to a padded-MR register block; the proven whole-model attention path is untouched.
     """
     NB = NR_bmm if NR_bmm is not None else NR
-    z = "0.000000e+00 : f32"
+    # The padding value must have the ELEMENT TYPE OF THE OPERAND IT PADS. This was a single f32
+    # literal reused for all three, which is correct only while every contraction is f32 -- and
+    # `transform.structured.pad` does not warn, it hard-errors:
+    #   'transform.structured.pad' op expects a padding value of type 'i8', got 0.000000e+00 : f32
+    # A transform-interpreter error is a PipelineError, which the lowering catches as a whole-model
+    # SILENT SCALAR FALLBACK -- the failure mode is "mysteriously slow", not "build failed".
+    # It has never fired because the int8 datapath rewrites every linalg.matmul into a
+    # linalg.generic, so no i8 matmul reaches this schedule at all (see the module docstring note on
+    # named-op erasure). It fires the moment that is fixed, which is why it is fixed first.
+    za, zb, zc = (_zero_attr(t) for t in (elem_types or ("f32", "f32", "f32")))
     # copy_back_op = "linalg.copy" (NOT the default bufferization.materialize_in_destination): the
     # pipeline's canonicalize/cse merges the many identical `linalg.fill 0 -> tensor<MxNxf32>` matmul
     # inits into ONE shared value, and materialize_in_destination copies each padded result back into
@@ -763,7 +1176,7 @@ def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
 module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [{MR}] {{padding_values = [{z}, {z}, {z}], padding_dimensions = [0], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [{MR}] {{padding_values = [{za}, {zb}, {zc}], padding_dimensions = [0], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %t1, %lmn:2 = transform.structured.tile_using_for %padded tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
@@ -797,6 +1210,21 @@ def _accumulator_resident_v3_mrpad_pipeline(passes: list[str]) -> list[str]:
     Reuses ``_packed_eliminate_empties`` (same insertion the packed feature uses). Only runs when this
     feature is enabled; baseline pipeline untouched."""
     return _packed_eliminate_empties(_accumulator_resident_v3_pipeline(passes))
+
+
+def _accumulator_resident_v3_bmmpad_pipeline(passes: list[str]) -> list[str]:
+    """Pad odd BMM extents before the parallel transform, then run v3 lowering.
+
+    Padding inside an ``scf.forall`` leaves its temporary allocation inside an
+    allocation scope that becomes multi-block during CFG lowering.  Running the
+    dedicated pad entry before ``__transform_parallel_main`` keeps the allocation
+    outside the worker region; the later main entry only tiles/vectorizes.
+    """
+    out = _accumulator_resident_v3_mrpad_pipeline(passes)
+    anchor = next(i for i, p in enumerate(out) if "transform-interpreter{entry-point=__transform_main}" in p)
+    parallel = next((i for i, p in enumerate(out) if "entry-point=__transform_parallel_main" in p), anchor)
+    out.insert(parallel, "transform-interpreter{entry-point=__transform_bmm_pad}")
+    return out
 
 
 # NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
@@ -863,9 +1291,10 @@ def _accumulator_resident_pipeline(passes: list[str]) -> list[str]:
     inject = [
         f"transform-preload-library{{transform-library-paths={sched}}}",
         "transform-interpreter{entry-point=__transform_accum_post}",
-        "canonicalize", "cse",
+        "canonicalize",
+        "cse",
     ]
-    if out[insert_at:insert_at + len(inject)] != inject:   # idempotent
+    if out[insert_at : insert_at + len(inject)] != inject:  # idempotent
         out = out[:insert_at] + inject + out[insert_at:]
     # Swap the default `convert-vector-to-scf` for the full-unroll variant. The hoisted accumulator
     # is a rank-2 `vector<MRxNR>` carried by the K loop; the DEFAULT convert-vector-to-scf lowers
@@ -889,35 +1318,40 @@ def _register_accumulator_resident() -> list[str]:
     for MR, NR, KC in grid:
         if (MR, NR, KC) == (4, 16, 16):
             nm = "accumulator_resident_microkernel"
-            desc = ("Transform-dialect accumulator-residency attempt: tile [MR=4,NR=16], "
-                    "bufferize_to_allocation the C tile to a TYPED static memref.alloc, tile K "
-                    "[KC=16], scoped-vectorize -> vector.contract, then POST-bufferize "
-                    "hoist_redundant_vector_transfers -> outerproduct -> vfmacc. Forms a real vfmacc "
-                    "chain and is BIT-EXACT at 32/64/128 AND a non-cube 96x48x160 on spike (general, "
-                    "not cube-overfit). HONEST MEASURED STATUS: the hoist does NOT fully lift the "
-                    "carried accumulator into a pure register iter_arg under RVV's fixed VLEN — the "
-                    "emitted K-loop still round-trips the accumulator through the stack "
-                    "(vl4re8.v/vs4r.v of the accumulator per K-tile, confirmed by objdump), so "
-                    "cca.lift_asm reads accumulator_resident=FALSE and it measures ~19x off the "
-                    "hand intrinsic_microkernel ceiling @64^3 (954,558 vs 50,695). It is the best "
-                    "transform-only accumulator attempt but does NOT close the gap; the genuine "
-                    "closer is a dedicated RVV micro-kernel codegen pass (see action_catalog: "
-                    "compute.accumulator_resident -> CODEGEN, forkable_now=False). Default-off, "
-                    "baseline byte-identical.")
+            desc = (
+                "Transform-dialect accumulator-residency attempt: tile [MR=4,NR=16], "
+                "bufferize_to_allocation the C tile to a TYPED static memref.alloc, tile K "
+                "[KC=16], scoped-vectorize -> vector.contract, then POST-bufferize "
+                "hoist_redundant_vector_transfers -> outerproduct -> vfmacc. Forms a real vfmacc "
+                "chain and is BIT-EXACT at 32/64/128 AND a non-cube 96x48x160 on spike (general, "
+                "not cube-overfit). HONEST MEASURED STATUS: the hoist does NOT fully lift the "
+                "carried accumulator into a pure register iter_arg under RVV's fixed VLEN — the "
+                "emitted K-loop still round-trips the accumulator through the stack "
+                "(vl4re8.v/vs4r.v of the accumulator per K-tile, confirmed by objdump), so "
+                "cca.lift_asm reads accumulator_resident=FALSE and it measures ~19x off the "
+                "hand intrinsic_microkernel ceiling @64^3 (954,558 vs 50,695). It is the best "
+                "transform-only accumulator attempt but does NOT close the gap; the genuine "
+                "closer is a dedicated RVV micro-kernel codegen pass (see action_catalog: "
+                "compute.accumulator_resident -> CODEGEN, forkable_now=False). Default-off, "
+                "baseline byte-identical."
+            )
         else:
             nm = f"accum_resident_{MR}_{NR}_{KC}"
-            desc = (f"Accumulator-resident micro-kernel tuning point (MR={MR}, NR={NR}, KC={KC}): "
-                    f"register-resident K-loop vector iter_arg accumulator, no per-K memref "
-                    f"roundtrip. Default-off tuning-grid feature.")
-        register(ImprFeature(
-            name=nm,
-            action_class="PASS",
-            description=desc,
-            edit_pipeline=_accumulator_resident_pipeline,
-            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                           _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
-            schedule_replace=True,
-        ))
+            desc = (
+                f"Accumulator-resident micro-kernel tuning point (MR={MR}, NR={NR}, KC={KC}): "
+                f"register-resident K-loop vector iter_arg accumulator, no per-K memref "
+                f"roundtrip. Default-off tuning-grid feature."
+            )
+        register(
+            ImprFeature(
+                name=nm,
+                action_class="PASS",
+                description=desc,
+                edit_pipeline=_accumulator_resident_pipeline,
+                edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
+                schedule_replace=True,
+            )
+        )
         names.append(nm)
     # N-TAIL-SAFE variant for whole-model attention: same recipe but the batch_matmul N tile is
     # clamped to NR_bmm=8 (<= the small llama-style attention N=8) so the inner vectorize is FULL (no
@@ -925,21 +1359,23 @@ def _register_accumulator_resident() -> list[str]:
     # matmul path keeps NR=16. This is the feature that makes attention batch_matmuls vectorize to
     # vfmacc instead of falling back to scalar (verified bit-exact on spike for a B=4,M=32,N=8,K=32
     # attention batch_matmul). Default-off; baseline byte-identical.
-    register(ImprFeature(
-        name="accumulator_resident_ntail",
-        action_class="PASS",
-        description="N-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
-                    "(tile [MR=4,NR=16,KC=16], bufferize_to_allocation C, stream K, scoped-vectorize "
-                    "-> contract -> outerproduct -> vfmacc) with the batch_matmul N tile CLAMPED to "
-                    "NR_bmm=8 (NR=min(NR,N)). Fixes the small-N (e.g. N=8) attention batch_matmul "
-                    "that otherwise hits the LLVM-23 masked-transfer_write PipelineError -> silent "
-                    "scalar fallback: with NR_bmm<=N the inner vectorize is full (no mask), so the "
-                    "attention batch_matmul vectorizes to vfmacc. Bit-exact on spike (B=4,M=32,N=8,"
-                    "K=32). Default-off, baseline byte-identical.",
-        edit_pipeline=_accumulator_resident_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name="accumulator_resident_ntail",
+            action_class="PASS",
+            description="N-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
+            "(tile [MR=4,NR=16,KC=16], bufferize_to_allocation C, stream K, scoped-vectorize "
+            "-> contract -> outerproduct -> vfmacc) with the batch_matmul N tile CLAMPED to "
+            "NR_bmm=8 (NR=min(NR,N)). Fixes the small-N (e.g. N=8) attention batch_matmul "
+            "that otherwise hits the LLVM-23 masked-transfer_write PipelineError -> silent "
+            "scalar fallback: with NR_bmm<=N the inner vectorize is full (no mask), so the "
+            "attention batch_matmul vectorizes to vfmacc. Bit-exact on spike (B=4,M=32,N=8,"
+            "K=32). Default-off, baseline byte-identical.",
+            edit_pipeline=_accumulator_resident_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8),
+            schedule_replace=True,
+        )
+    )
     names.append("accumulator_resident_ntail")
 
     # M-TAIL-SAFE variant: the M-side analog of accumulator_resident_ntail. The whole-model decode
@@ -949,20 +1385,22 @@ def _register_accumulator_resident() -> list[str]:
     # MR to MR_mm=1 (MR=min(MR,M)) makes the inner vectorize FULL on the M=1 matmul (no mask) so it
     # vectorizes to vfmacc; for any larger-M matmul MR_mm=1 just tiles M into single-row register
     # tiles (still a real vfmacc chain, bit-exact) — general, not M=1-overfit. Default-off.
-    register(ImprFeature(
-        name="accumulator_resident_mtail",
-        action_class="PASS",
-        description="M-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
-                    "with the matmul M tile CLAMPED to MR_mm=1 (MR=min(MR,M)). Fixes the M=1 "
-                    "token-decode matmul (smolVLA/rdt2 leading-M=1) that otherwise hits the LLVM-23 "
-                    "masked-transfer_write multi-op vector.mask PipelineError -> silent scalar "
-                    "fallback: with MR_mm<=M the inner vectorize is full (no mask), so the M=1 matmul "
-                    "vectorizes to vfmacc. The M-side analog of accumulator_resident_ntail; the "
-                    "batch_matmul keeps its own MR. Default-off, baseline byte-identical.",
-        edit_pipeline=_accumulator_resident_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, MR_mm=1),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name="accumulator_resident_mtail",
+            action_class="PASS",
+            description="M-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
+            "with the matmul M tile CLAMPED to MR_mm=1 (MR=min(MR,M)). Fixes the M=1 "
+            "token-decode matmul (smolVLA/rdt2 leading-M=1) that otherwise hits the LLVM-23 "
+            "masked-transfer_write multi-op vector.mask PipelineError -> silent scalar "
+            "fallback: with MR_mm<=M the inner vectorize is full (no mask), so the M=1 matmul "
+            "vectorizes to vfmacc. The M-side analog of accumulator_resident_ntail; the "
+            "batch_matmul keeps its own MR. Default-off, baseline byte-identical.",
+            edit_pipeline=_accumulator_resident_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, MR_mm=1),
+            schedule_replace=True,
+        )
+    )
     names.append("accumulator_resident_mtail")
 
     # WHOLE-MODEL-SAFE COMPOSED variant (WORK-ITEM 2 by the inherent-clamp design): a SINGLE feature
@@ -973,22 +1411,24 @@ def _register_accumulator_resident() -> list[str]:
     # M-tail + N-tail together whole-model. It vectorizes a normal matmul, an M=1 token-decode matmul,
     # AND a small-N (N=8) attention batch_matmul in ONE schedule with no scalar fallback / no
     # vector.mask PipelineError. This is the config a whole-model fork enables. Default-off.
-    register(ImprFeature(
-        name="accumulator_resident_wholemodel",
-        action_class="PASS",
-        description="Whole-model-safe composed accumulator-resident micro-kernel: the tiled-vfmacc "
-                    "accumulator-resident recipe with BOTH tail clamps inherent in one schedule — "
-                    "matmul MR_mm=1 (M-tail: M=1 token-decode) AND batch_matmul NR_bmm=8 (N-tail: "
-                    "small-N attention). Composes the tiled vfmacc + M-tail + N-tail so the best "
-                    "single config is whole-model-safe by construction (no full-schedule feature "
-                    "clobbers another's clamp). Vectorizes a normal matmul, an M=1 matmul, and an "
-                    "N=8 batch_matmul to vfmacc in ONE schedule (no scalar fallback, no vector.mask "
-                    "PipelineError). Bit-exact on spike across the shape spread. Default-off, "
-                    "baseline byte-identical.",
-        edit_pipeline=_accumulator_resident_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8, MR_mm=1),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name="accumulator_resident_wholemodel",
+            action_class="PASS",
+            description="Whole-model-safe composed accumulator-resident micro-kernel: the tiled-vfmacc "
+            "accumulator-resident recipe with BOTH tail clamps inherent in one schedule — "
+            "matmul MR_mm=1 (M-tail: M=1 token-decode) AND batch_matmul NR_bmm=8 (N-tail: "
+            "small-N attention). Composes the tiled vfmacc + M-tail + N-tail so the best "
+            "single config is whole-model-safe by construction (no full-schedule feature "
+            "clobbers another's clamp). Vectorizes a normal matmul, an M=1 matmul, and an "
+            "N=8 batch_matmul to vfmacc in ONE schedule (no scalar fallback, no vector.mask "
+            "PipelineError). Bit-exact on spike across the shape spread. Default-off, "
+            "baseline byte-identical.",
+            edit_pipeline=_accumulator_resident_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8, MR_mm=1),
+            schedule_replace=True,
+        )
+    )
     names.append("accumulator_resident_wholemodel")
     return names
 
@@ -1035,6 +1475,15 @@ ACCUM_RESIDENT_NAMES: list[str] = _register_accumulator_resident()
 # documented #1 gap) and a large fraction of the instret gap, but does not fully reach the hand
 # ceiling — the remaining delta is the `.vf` A-operand form, recorded honestly. Default-off;
 # baseline byte-identical.
+#
+# These patterns REQUIRE the contract to have at least one parallel dim (outerproduct needs a rank-1
+# result to accumulate into). A register block of NR=1 does not give it one: vectorizing a [.., 1, 1]
+# tile yields `vector.contract {iterator_types = ["reduction"]} vector<1xi8>, vector<1xi8> into i32`
+# — a one-element dot product with no parallel dim, which NO lowering_strategy matches (measured: 24
+# such ops survived on whisper_tiny, and an un-lowered vector.contract has no LLVM translation, so
+# the build dies late with "missing LLVMTranslationDialectInterface"). That is a selection bug, not a
+# lowering gap: a 1-lane vector is not a vectorization. `mining.apply` therefore never selects NR=1 —
+# it leaves that op class un-tiled for `convert-linalg-to-loops` instead.
 _ACCUM_RESIDENT_V2_LOWER_SCHEDULE = """\
 module attributes {transform.with_named_sequence} {
   transform.named_sequence @__transform_accum_v2_lower(%arg0: !transform.any_op {transform.readonly}) {
@@ -1098,9 +1547,10 @@ def _accumulator_resident_v2_pipeline(passes: list[str]) -> list[str]:
         "loop-invariant-subset-hoisting",
         f"transform-preload-library{{transform-library-paths={sched}}}",
         "transform-interpreter{entry-point=__transform_accum_v2_lower}",
-        "canonicalize", "cse",
+        "canonicalize",
+        "cse",
     ]
-    if out[insert_at:insert_at + len(inject)] != inject:   # idempotent
+    if out[insert_at : insert_at + len(inject)] != inject:  # idempotent
         out = out[:insert_at] + inject + out[insert_at:]
     # Same convert-vector-to-scf{full-unroll} swap as the v1 feature: the hoisted accumulator is a
     # rank-2 `vector<MRxNR>` carried by the K loop; the default convert-vector-to-scf would lower
@@ -1123,33 +1573,38 @@ def _register_accumulator_resident_v2() -> list[str]:
     for MR, NR, KC in grid:
         if (MR, NR, KC) == (4, 16, 16):
             nm = "accumulator_resident_v2"
-            desc = ("PRE-bufferize accumulator-resident micro-kernel (the genuine residency the v1 "
-                    "feature could not reach): tile [MR=4,NR=16], tile K by 1, scoped-vectorize -> "
-                    "vector.contract, then on the TENSOR form (before bufferize) run "
-                    "loop-invariant-subset-hoisting so the accumulator transfer pair becomes a "
-                    "vector<MRxNR> scf.for iter_arg (register-resident across K, NO per-K memref "
-                    "roundtrip), then lower contraction -> outerproduct -> vfmacc. Verified by "
-                    "objdump: the K-loop carries the accumulator as an llvm.array<MR x vector<NR>> "
-                    "loop value with NO accumulator load/store inside the loop (unlike v1's per-K "
-                    "vl4re8.v/vs4r.v). Bit-exact at 32/64/128 + a non-cube on spike. Residual: emits "
-                    "vfmacc.vv (A read as vector<MRx1> -> lane-broadcast) not the hand kernel's "
-                    "vfmacc.vf, so a small constant accumulator-spill from A-broadcast pressure "
-                    "remains; closes the residency structure + most of the instret gap but not the "
-                    "full hand ceiling. Default-off, baseline byte-identical.")
+            desc = (
+                "PRE-bufferize accumulator-resident micro-kernel (the genuine residency the v1 "
+                "feature could not reach): tile [MR=4,NR=16], tile K by 1, scoped-vectorize -> "
+                "vector.contract, then on the TENSOR form (before bufferize) run "
+                "loop-invariant-subset-hoisting so the accumulator transfer pair becomes a "
+                "vector<MRxNR> scf.for iter_arg (register-resident across K, NO per-K memref "
+                "roundtrip), then lower contraction -> outerproduct -> vfmacc. Verified by "
+                "objdump: the K-loop carries the accumulator as an llvm.array<MR x vector<NR>> "
+                "loop value with NO accumulator load/store inside the loop (unlike v1's per-K "
+                "vl4re8.v/vs4r.v). Bit-exact at 32/64/128 + a non-cube on spike. Residual: emits "
+                "vfmacc.vv (A read as vector<MRx1> -> lane-broadcast) not the hand kernel's "
+                "vfmacc.vf, so a small constant accumulator-spill from A-broadcast pressure "
+                "remains; closes the residency structure + most of the instret gap but not the "
+                "full hand ceiling. Default-off, baseline byte-identical."
+            )
         else:
             nm = f"accum_resident_v2_{MR}_{NR}_{KC}"
-            desc = (f"PRE-bufferize accumulator-resident tuning point (MR={MR}, NR={NR}, KC={KC}): "
-                    f"tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no "
-                    f"per-K memref roundtrip). Default-off tuning-grid feature.")
-        register(ImprFeature(
-            name=nm,
-            action_class="PASS",
-            description=desc,
-            edit_pipeline=_accumulator_resident_v2_pipeline,
-            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                           _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
-            schedule_replace=True,
-        ))
+            desc = (
+                f"PRE-bufferize accumulator-resident tuning point (MR={MR}, NR={NR}, KC={KC}): "
+                f"tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no "
+                f"per-K memref roundtrip). Default-off tuning-grid feature."
+            )
+        register(
+            ImprFeature(
+                name=nm,
+                action_class="PASS",
+                description=desc,
+                edit_pipeline=_accumulator_resident_v2_pipeline,
+                edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
+                schedule_replace=True,
+            )
+        )
         names.append(nm)
     return names
 
@@ -1180,6 +1635,7 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     one-shot-bufferize). The two-stage runner splits the pipeline at the marker and runs the
     A-scalarization rewrite there. Only runs when a v3 feature is enabled; baseline untouched."""
     from .accum_microkernel import SCALARIZE_MARKER
+
     out = _accumulator_resident_v2_pipeline(passes)
     # The v2 edit spliced: loop-invariant-subset-hoisting, transform-preload-library{...v2_lower},
     # transform-interpreter{entry-point=__transform_accum_v2_lower}, canonicalize, cse. Put the
@@ -1241,17 +1697,23 @@ def ensure_v3_kblocked_microkernel(MR: int, NR: int, KC: int) -> str:
     name = f"accum_resident_v3kb_{MR}_{NR}_{KC}"
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
-        action_class="PASS",
-        description=(f"Accumulator-resident micro-kernel with REAL K-blocking (MR={MR}, NR={NR}, "
-                     f"KC={KC}): K tiled by KC for cache reuse of the B panel, then by 1 for the "
-                     f"register-resident accumulation. Compiler-emitted (no ukernel). Default-off."),
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                       _accumulator_resident_v3_kblocked_pre_schedule(_MR, _NR, _KC)),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Accumulator-resident micro-kernel with REAL K-blocking (MR={MR}, NR={NR}, "
+                f"KC={KC}): K tiled by KC for cache reuse of the B panel, then by 1 for the "
+                f"register-resident accumulation. Compiler-emitted (no ukernel). Default-off."
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(
+                lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_v3_kblocked_pre_schedule(_MR, _NR, _KC)
+            ),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(MR),
+        )
+    )
     return name
 
 
@@ -1293,17 +1755,23 @@ def ensure_v3_unrolled_microkernel(MR: int, NR: int, KC: int) -> str:
     name = f"accum_resident_v3u_{MR}_{NR}_{KC}"
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
-        action_class="PASS",
-        description=(f"Accumulator-resident micro-kernel with M UNROLLED into {MR} independent "
-                     f"accumulators (NR={NR}, KC={KC}) — shape-agnostic in MR, unlike the 2-D "
-                     f"vector<MRxNR> formulation. Compiler-emitted (no ukernel). Default-off."),
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                       _accumulator_resident_v3_unrolled_pre_schedule(_MR, _NR, _KC)),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Accumulator-resident micro-kernel with M UNROLLED into {MR} independent "
+                f"accumulators (NR={NR}, KC={KC}) — shape-agnostic in MR, unlike the 2-D "
+                f"vector<MRxNR> formulation. Compiler-emitted (no ukernel). Default-off."
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(
+                lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_v3_unrolled_pre_schedule(_MR, _NR, _KC)
+            ),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(MR),
+        )
+    )
     return name
 
 
@@ -1323,7 +1791,8 @@ def scalable_lanes(NR: int) -> int:
     if NR % _VSCALE_LANES_PER_128B:
         raise ValueError(
             f"vl_strategy='dynamic' needs an even NR (NR counts lanes at the RVV minimum VLEN of "
-            f"128 bits, and a scalable vector<[k]xT> holds 2k of them); got NR={NR}.")
+            f"128 bits, and a scalable vector<[k]xT> holds 2k of them); got NR={NR}."
+        )
     return NR // _VSCALE_LANES_PER_128B
 
 
@@ -1407,21 +1876,27 @@ def ensure_v3_scalable_microkernel(MR: int, NR: int, KC: int) -> str:
     name = f"accum_resident_v3vl_{MR}_{NR}_{KC}"
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
-        action_class="PASS",
-        description=(f"VL-AGNOSTIC accumulator-resident micro-kernel (MR={MR}, NR={NR} lanes at the "
-                     f"RVV minimum VLEN -> vector<[{k}]xT>, KC={KC}): the N register block is a "
-                     f"SCALABLE vector, so the emitted loop sizes to the hardware's runtime vector "
-                     f"length (vsetvli against VLMAX) instead of a compile-time width that the "
-                     f"backend must widen for the worst-case VLEN. Needs no _zvl march pin. N loop "
-                     f"is peeled so the main body is unmasked; the remainder is a scalar tail. "
-                     f"Compiler-emitted (no ukernel). Default-off."),
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                       _accumulator_resident_v3_scalable_pre_schedule(_MR, _NR, _KC)),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"VL-AGNOSTIC accumulator-resident micro-kernel (MR={MR}, NR={NR} lanes at the "
+                f"RVV minimum VLEN -> vector<[{k}]xT>, KC={KC}): the N register block is a "
+                f"SCALABLE vector, so the emitted loop sizes to the hardware's runtime vector "
+                f"length (vsetvli against VLMAX) instead of a compile-time width that the "
+                f"backend must widen for the worst-case VLEN. Needs no _zvl march pin. N loop "
+                f"is peeled so the main body is unmasked; the remainder is a scalar tail. "
+                f"Compiler-emitted (no ukernel). Default-off."
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(
+                lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_v3_scalable_pre_schedule(_MR, _NR, _KC)
+            ),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(MR),
+        )
+    )
     return name
 
 
@@ -1434,26 +1909,30 @@ def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
     subset-hoisting makes the accumulator a register-resident scf.for iter_arg, contraction ->
     outerproduct -> vector.fma, then A-scalarization -> vfmacc.vf). NO hand ukernel is involved — the
     intrinsic driver remains a ceiling REFERENCE only. Registering a point is idempotent."""
-    name = ("accumulator_resident_microkernel_v3" if (MR, NR, KC) == (4, 16, 16)
-            else f"accum_resident_v3_{MR}_{NR}_{KC}")
+    name = "accumulator_resident_microkernel_v3" if (MR, NR, KC) == (4, 16, 16) else f"accum_resident_v3_{MR}_{NR}_{KC}"
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
-        action_class="PASS",
-        description=(f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
-                     f"KC={KC}), registered on demand so the beam can tune the register block "
-                     f"continuously. Compiler-emitted (no ukernel). Default-off."),
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                       _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
+                f"KC={KC}), registered on demand so the beam can tune the register block "
+                f"continuously. Compiler-emitted (no ukernel). Default-off."
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(MR),
+        )
+    )
     return name
 
 
-def ensure_v3_perop_microkernel(MR_mm: int, NR_mm: int, MR_bmm: int, NR_bmm: int,
-                                KC: int) -> str:
+def ensure_v3_perop_microkernel(
+    MR_mm: int | None, NR_mm: int | None, MR_bmm: int | None, NR_bmm: int | None, KC: int
+) -> str:
     """Register (on demand) a v3 tuning point with an INDEPENDENT register block per op class.
 
     ``_accumulator_resident_v3_pre_schedule`` already emits four separate tile factors — the matmul
@@ -1465,24 +1944,1152 @@ def ensure_v3_perop_microkernel(MR_mm: int, NR_mm: int, MR_bmm: int, NR_bmm: int
     shape-aware policy can DERIVE the four factors from the workload instead of pinning them.
 
     ``accumulator_resident_wholemodel_vf`` == ``ensure_v3_perop_microkernel(1, 16, 4, 8, 16)``; that
-    point keeps its own name (and its measured history) rather than being aliased here."""
-    name = f"accum_resident_v3p_{MR_mm}_{NR_mm}_{MR_bmm}_{NR_bmm}_{KC}"
+    point keeps its own name (and its measured history) rather than being aliased here.
+
+    A class's block may be ``None``, meaning DO NOT CLAIM this op class — its contractions are left
+    to ``convert-linalg-to-loops``. That is the honest answer when no block wider than one lane is
+    legal for the class's extents (see ``_accumulator_resident_v3_pre_schedule``); the alternative is
+    a build that fails outright. Both classes ``None`` would vectorize nothing, so it is rejected."""
+    skip_mm = MR_mm is None or NR_mm is None
+    skip_bmm = MR_bmm is None or NR_bmm is None
+    if skip_mm and skip_bmm:
+        raise ValueError(
+            "ensure_v3_perop_microkernel: at least one op class must be claimed "
+            "(both blocks None vectorizes nothing — use the scalar backend instead)"
+        )
+    tag_mm = "x_x" if skip_mm else f"{MR_mm}_{NR_mm}"
+    tag_bmm = "x_x" if skip_bmm else f"{MR_bmm}_{NR_bmm}"
+    name = f"accum_resident_v3p_{tag_mm}_{tag_bmm}_{KC}"
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
+    _mm_desc = "linalg.matmul UNCLAIMED (scalar)" if skip_mm else f"linalg.matmul [{MR_mm}, {NR_mm}]"
+    _bmm_desc = "linalg.batch_matmul UNCLAIMED (scalar)" if skip_bmm else f"linalg.batch_matmul [1, {MR_bmm}, {NR_bmm}]"
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Accumulator-resident vfmacc.vf micro-kernel with a per-op-class register "
+                f"block ({_mm_desc}, {_bmm_desc}, KC={KC}), registered on demand so a "
+                f"shape-aware policy can pick a blocking that masks no parallel dim. "
+                f"Compiler-emitted (no ukernel). Default-off."
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(
+                lambda _t, _mm=MR_mm, _nm=NR_mm, _mb=MR_bmm, _nb=NR_bmm, _KC=KC, _sm=skip_mm, _sb=skip_bmm: (
+                    _accumulator_resident_v3_pre_schedule(
+                        _mb or 1, _nm or 1, _KC, NR_bmm=_nb or 1, MR_mm=_mm or 1, skip_mm=_sm, skip_bmm=_sb
+                    )
+                )
+            ),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(None if skip_mm else MR_mm),
+        )
+    )
+    return name
+
+
+#: Op-class order encoded in a ``accum_resident_v3p_*`` name (two factors each, then KC).
+_V3P_PREFIX = "accum_resident_v3p_"
+_V3P_CLASS_ORDER = ("linalg.matmul", "linalg.batch_matmul")
+
+
+def unclaimed_op_classes(feature: str) -> list[str]:
+    """Contraction op classes a ``accum_resident_v3p_*`` point does NOT tile/vectorize.
+
+    Lives next to :func:`ensure_v3_perop_microkernel` so the ``x_x`` spelling has ONE definition:
+    a caller that wants to report "this class runs scalar" must not re-derive the name format.
+    Returns [] for any other feature (including the hand-frozen points, which claim both classes).
+    """
+    if not feature.startswith(_V3P_PREFIX):
+        return []
+    parts = feature[len(_V3P_PREFIX) :].split("_")
+    if len(parts) != 2 * len(_V3P_CLASS_ORDER) + 1:
+        return []
+    return [cls for i, cls in enumerate(_V3P_CLASS_ORDER) if parts[2 * i] == "x"]
+
+
+#: The non-contraction tail: every op the contraction-only schedule never matches (elementwise,
+#: layout, im2col gather, pad) falls through convert-linalg-to-loops to SCALAR code on one core. It is
+#: 86-89% of the linalg ops of every workload measured, which is why whole-model MAC/cycle sits at a
+#: few percent of the datapath's peak while the matmul kernel itself looks fine.
+NAMED_INT8_CONTRACTION_NAME = "named_int8_contraction"
+
+register(
+    ImprFeature(
+        name=NAMED_INT8_CONTRACTION_NAME,
         action_class="PASS",
-        description=(f"Accumulator-resident vfmacc.vf micro-kernel with a per-op-class register "
-                     f"block (linalg.matmul [{MR_mm}, {NR_mm}], linalg.batch_matmul "
-                     f"[1, {MR_bmm}, {NR_bmm}], KC={KC}), registered on demand so a shape-aware "
-                     f"policy can pick a blocking that masks no parallel dim. Compiler-emitted "
-                     f"(no ukernel). Default-off."),
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _mm=MR_mm, _nm=NR_mm, _mb=MR_bmm, _nb=NR_bmm, _KC=KC:
-                       _accumulator_resident_v3_pre_schedule(_mb, _nm, _KC,
-                                                             NR_bmm=_nb, MR_mm=_mm)),
+        description="Emit the canonical 2-D i8xi8->i32 contraction as a MIXED-TYPE linalg.matmul instead "
+        "of a linalg.generic, so the named-op transform schedules can see it. The int8 quant "
+        "pass otherwise leaves ZERO linalg.matmul in the module (measured: 15 -> 0 on "
+        "small_llama_int8), and transform.structured.match on a name nothing carries returns "
+        "an empty handle -- which makes every one of the 39 linalg.matmul/batch_matmul "
+        "matchers in this file a vacuous no-op on int8 while still reporting as applied. An "
+        "87-fork beam over those levers emitted only 21 distinct binaries. Batched, conv and "
+        "non-canonical indexing keep the generic form: a named op ASSERTS an indexing "
+        "convention, so claiming one the op does not have would be a correctness bug rather "
+        "than a missed optimization. Default-off; baseline byte-identical.",
+    )
+)
+
+#: Quantize an activation BEFORE the pure data-movement op that expands it, not after.
+#:
+#: Registered EAGERLY, at import of this module, and listed in `wholemodel_proposer.RANKED_LEVERS`.
+#: Both are load-bearing: `_composes` swallows the KeyError for an unregistered name and returns
+#: False, so a lazily-registered lever is not declined by the search, it is INVISIBLE to it.
+QUANTIZE_BEFORE_GATHER_NAME = "quantize_before_gather"
+
+register(
+    ImprFeature(
+        name=QUANTIZE_BEFORE_GATHER_NAME,
+        action_class="PASS",
+        description=(
+            "When a contraction's f32 activation operand is produced by a PURE data-movement op (an "
+            "all-parallel linalg.generic whose body only yields its input, i.e. an element copy), "
+            "quantize the op's SOURCE with a per-tensor scale instead of quantizing its expanded result "
+            "with a per-parallel-row one. Quantization is elementwise, so quantize(G(A)) == G(quantize(A)) "
+            "exactly for a single shared scale; what blocks the commutation today is only the per-row "
+            "scale, under which one element of A carries a different scale in every im2col column it "
+            "appears in. This is the case that matters on every convolutional model here: model2MLIR "
+            "expands every conv into im2col + matmul before merlin sees it (190 such ops in deepjscc "
+            "int8, 175 in lstmnetvit int8, zero fused conv2d), so the operand being quantized IS the "
+            "expanded matrix -- deepjscc enc.net.1 quantizes a 147x4096 f32 matrix, ~41x the "
+            "1x3x70x70 activation it was gathered from. With the scale moved, the abs-max and the "
+            "quantize both run on the activation and the gather itself moves i8, 4x less traffic for the "
+            "same trip count, and the f32 expansion is erased entirely. The abs-max is EXACT in both "
+            "modes: over the source when the indexing maps and bounds PROVE the gather reads every "
+            "element, otherwise reduced through the gather's own map (same reads, scalar result, no "
+            "materialization) -- so a strided or dilated gather that skips elements is handled, not "
+            "approximated with the coarser amax(A) >= amax(G(A)). Refuses and counts the reason for a "
+            "computed body, a shared intermediate, a dynamic extent or a non-gather producer. "
+            "NOT bit-identical: the per-tensor activation scale is a genuine numeric change against the "
+            "shipped per-row scheme and must pass the accuracy gate on its own. Default-off; with the "
+            "feature absent the int8 datapath is byte-identical."
+        ),
+    )
+)
+
+VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
+#: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
+#: constant: `ensure_vec_noncontraction(lanes)` registers a point per width so a search can
+#: pick it. The 1.28x regression this lever first measured was FLAT across 8/16/32 lanes, which
+#: is the tell that the width was never the variable -- see `_vec_noncontraction_hygiene`.
+VEC_NONCONTRACTION_LANES = 8
+
+
+def _vec_noncontraction_hygiene() -> frozenset[str]:
+    """The lowering hygiene the per-rank vectorize arms cannot be measured without.
+
+    Each arm TILES the all-parallel generic on TENSORS and then vectorizes the tile, so every tile
+    yields a ``tensor.insert_slice`` back into the loop-carried destination. Bufferization realizes
+    that destructive update as a subview of the destination, a ``vector.transfer_write`` into it, a
+    SECOND structurally identical subview, and a ``memref.copy`` between the two -- i.e. the tile is
+    copied ONTO ITSELF, once per tile, INSIDE the innermost loop::
+
+        %sv   = memref.subview %arg99[0, %i, %j, %k] [1, 1, 1, 8] [1, 1, 1, 1]
+        vector.transfer_write %v, %sv[...]        // the result is already in place here
+        %sv_0 = memref.subview %arg99[0, %i, %j, %k] [1, 1, 1, 8] [1, 1, 1, 1]
+        memref.copy %sv, %sv_0                    // ...and this copies it onto itself
+
+    That is the same defect ``selfcopy`` documents for the tiled CONTRACTION epilogue, and it is why
+    this lever measured 1.28x SLOWER at bit-identical output with the vector count up 4.9x: the
+    per-tile copy is emitted per 8 ELEMENTS, so the vector win is spent on a memcpy of the bytes the
+    vector store just wrote. The earlier attribution missed it because it counted ``@memrefCopy``
+    call sites -- these copies are contiguous in the innermost dim, so they lower to ``llvm.memcpy``
+    instead and the memrefCopy count does not move at all.
+
+    MEASURED at the post-bufferization split point (int8 recaptures, impr_tuned_wholemodel_vf_int8,
+    host lowering), copy CALL SITES emitted inside ``forward``:
+
+        deepjscc      lever off  72 memcpy | lever on  87 (+15, one per vectorized op)
+                      + erase    52 memcpy | + erase   52 (+0)
+        small_llama   lever off  52 memcpy | lever on  85 (+33, one per vectorized op)
+                      + erase    39 memcpy | + erase   39 (+0)
+
+    Erasing a ``memref.copy %x, %x`` is unconditionally value-preserving (identical SSA operand =>
+    identical base, offsets and region) and is a no-op on a lowering that has none, so implying it
+    can only help or do nothing -- and enabling it is what makes ``lower_to_llvm_ir`` splice the
+    post-bufferization ``canonicalize,cse`` that collapses the two subviews into the one SSA value
+    the erase keys on.
+
+    CORRECTION (supersedes the closing claim of commit ffd3c40f, "the output is bit-identical on
+    every arm"). That statement was WRONG for small_llama int8 and it was wrong because of the
+    sample, not the reasoning: the copy census above was taken on deepjscc and small_llama, and only
+    the OUTPUT DIGEST of deepjscc was compared. On small_llama the lever's output was cos 0.968247 /
+    rel 0.46352 against the baseline's 0.999966 / 0.00836 -- a MISCOMPILE, not a rounding difference,
+    and one that produced two different answers (``756d00f36c43``, ``d9d8a01aa32e``) from the SAME
+    shared object depending on the host process's memory layout. The cause is unrelated to the
+    self-copy erase (it is the sub-byte element hazard :func:`_vec_bytewise_matchers` documents and
+    now refuses); what the erase claim got wrong is only that it generalized a bit-identity measured
+    on one model to "every arm". With the refusal in place the output IS bit-identical to the
+    baseline on all three int8 recaptures, in both arm placements, under three initial memory
+    layouts -- which is the statement this note is willing to make.
+
+    It is an ``implies`` rather than a note in the description for the reason ``_tile_epilogue_hygiene``
+    gives: a default-off lever whose payoff is cancelled by a separate default-off fix is an inert
+    lever, because everyone naming it directly in ``compiler_features`` gets the cancelled version.
+    """
+    return frozenset({_SELF_COPY_FEATURE})
+
+
+#: Attribute the byte-addressable-element MATCHERS below annotate an op with. An arm matches
+#: ``merlin.vec_r{rank}`` AND this, so an op only vectorizes when its own IR says every tensor it
+#: reads and writes has a byte-or-wider element type. See :func:`_vec_bytewise_matchers`.
+VEC_BYTEWISE_ATTR = "merlin.vec_ok"
+
+#: Smallest element width, in bits, whose in-memory layout a ``vector.transfer`` and a scalar
+#: ``memref`` access agree on. NOT a tuning choice and not a target fact: a `memref<...xT>` is
+#: addressed at `sizeof(T)` rounded UP to a byte, while a `vector<NxT>` is PACKED, so at T=i1 a
+#: `vector<8xi1>` occupies ONE byte where the scalar form occupies eight. Everything at 8 bits or
+#: wider has the same layout in both.
+VEC_BYTEWISE_MIN_BITS = 8
+
+#: Largest ``ins`` arity the matchers below enumerate. The check has to hold for EVERY input, and
+#: ``match.structured.elemental_bitwidth`` takes ONE value (a ``%s[all]`` handle is rejected by its
+#: single-value trait), so the arity is enumerated and each input checked by index. An op with more
+#: inputs than this matches NO matcher, is never annotated, and is therefore NOT vectorized -- the
+#: refusal is what "fail closed" means here, and it is why the bound may be raised but never removed.
+VEC_BYTEWISE_MAX_INPUTS = 6
+
+
+def _vec_bytewise_matcher_prefix(text: str) -> str | None:
+    """Symbol prefix for the matchers spliced into ``text``, derived from ITS OWN entry point.
+
+    ``transform-preload-library`` merges every library it is given into one transform module, and the
+    non-contraction arms are spliced into TWO of them (the pre-specialization library and the package
+    schedule). A fixed symbol name would collide there. The entry-point symbol is what distinguishes
+    the two libraries, so deriving the prefix from it makes the names unique without anyone choosing
+    one. Returns None when the text has no named sequence to derive from (then nothing is spliced).
+    """
+    key = "transform.named_sequence @"
+    for line in text.splitlines():
+        head, sep, tail = line.partition(key)
+        if not sep:
+            continue
+        name = tail.split("(", 1)[0].strip()
+        if name:
+            return f"__merlin_vec_bytewise_{name.lstrip('_')}_"
+    return None
+
+
+def _vec_bytewise_matchers(
+    prefix: str, *, min_bits: int = VEC_BYTEWISE_MIN_BITS, max_inputs: int = VEC_BYTEWISE_MAX_INPUTS
+) -> str:
+    """Named matcher sequences that accept a ``linalg.generic`` iff EVERY tensor it reads or writes
+    has an element at least ``min_bits`` wide.
+
+    WHY THIS EXISTS -- a MISCOMPILE, measured, not inferred. The arms vectorize an op by tiling it and
+    writing each tile with a ``vector.transfer_write``. For an element type narrower than a byte the
+    two sides of that write disagree about the layout of the SAME buffer: LLVM stores a `vector<8xi1>`
+    PACKED (one byte for eight lanes) while the memref the tile belongs to is addressed one byte per
+    element, and every scalar consumer reads it that way. MEASURED on small_llama int8 (host lowering,
+    old arm placement), the causal mask is a `tensor<8x8xi1>`::
+
+        %3147 = call ptr @malloc(i64 128)          ; 64 elements, ONE BYTE EACH
+        ...
+        %3163 = getelementptr i1, ptr %3152, i64 %3157   ; %3157 = row * 8
+        store <8 x i1> %3162, ptr %3164, align 1   ; ...but this writes ONE byte
+        ...
+        %3204 = getelementptr inbounds nuw i1, ptr %3152, i64 %3203
+        %3205 = load i1, ptr %3204, align 1        ; scalar consumer, one byte per element
+        %3208 = select i1 %3205, float 0xFFF0000000000000, float %3207
+
+    8 of the 64 bytes are written and 56 are read back UNINITIALISED, straight into the attention
+    mask's `select`. The result is wrong (cos 0.9682 / rel 0.4635 against a baseline 0.99997 / 0.0084)
+    and depends on what happened to be in that allocation, so the same binary answers differently
+    under a different initial stack/heap layout. Both directions are unsound: a vectorized WRITE of a
+    sub-byte destination, and a vectorized READ of a sub-byte input some scalar loop wrote -- which is
+    why the inputs are checked as well as the destination.
+
+    Realized as matchers rather than as a tagging-time predicate because the tag is applied by the
+    prepare pass and the arms are the last thing that decides; a schedule that carries the arms
+    carries the refusal with them, and cannot be armed without it.
+
+    One sequence per ``ins`` arity: ``match.structured.elemental_bitwidth`` takes a SINGLE value, and
+    ``%s[all]`` is rejected by its single-value trait, so each input is checked by index and the arity
+    is pinned with ``num_inputs``. An op outside the enumerated arities matches nothing and is
+    refused. ``num_inits`` is pinned to 1 for the same reason -- a second destination would go
+    unchecked otherwise.
+
+    WHAT THIS IS NOT, checked and ruled out. The obvious suspect was PARTIAL COVERAGE -- the extra
+    destination buffer the arms allocate per vectorized op, written only where the tile lands and
+    read where it does not. It is not that. The tagging predicate admits an op only when its
+    innermost extent is a whole multiple of the lane count and the arms tile every other dim by 1, so
+    the tiles cover the destination exactly: MEASURED on small_llama int8 at the post-interpreter
+    module, every one of the 33 (old placement) / 84 (new placement) tile writes carries
+    ``in_bounds = [true...]``, there is not one ``affine.min`` trip-count clamp and not one
+    ``vector.mask`` in the whole module. The uninitialised bytes come from the ELEMENT WIDTH, not
+    from the tiling.
+    """
+    out: list[str] = []
+    for n in range(max_inputs + 1):
+        lines = [
+            f"  transform.named_sequence @{prefix}{n}(%op: !transform.any_op "
+            "{transform.readonly}) -> !transform.any_op {",
+            '    transform.match.operation_name %op ["linalg.generic"] : !transform.any_op',
+            "    transform.match.structured %op : !transform.any_op {",
+            "    ^bb0(%s: !transform.any_op):",
+            f"      %bits = transform.param.constant {min_bits} : i64 -> !transform.param<i64>",
+            "      %one = transform.param.constant 1 : i64 -> !transform.param<i64>",
+            f"      %arity = transform.param.constant {n} : i64 -> !transform.param<i64>",
+            "      %ni = transform.match.structured.num_inputs %s : (!transform.any_op) -> !transform.param<i64>",
+            "      transform.match.param.cmpi eq %ni, %arity : !transform.param<i64>",
+            "      %no = transform.match.structured.num_inits %s : (!transform.any_op) -> !transform.param<i64>",
+            "      transform.match.param.cmpi eq %no, %one : !transform.param<i64>",
+            "      %init = transform.match.structured.init %s[0] : (!transform.any_op) -> !transform.any_value",
+            "      %bwinit = transform.match.structured.elemental_bitwidth %init : "
+            "(!transform.any_value) -> !transform.param<i64>",
+            "      transform.match.param.cmpi ge %bwinit, %bits : !transform.param<i64>",
+        ]
+        for k in range(n):
+            lines += [
+                f"      %in{k} = transform.match.structured.input %s[{k}] : (!transform.any_op) -> "
+                "!transform.any_value",
+                f"      %bw{k} = transform.match.structured.elemental_bitwidth %in{k} : "
+                "(!transform.any_value) -> !transform.param<i64>",
+                f"      transform.match.param.cmpi ge %bw{k}, %bits : !transform.param<i64>",
+            ]
+        lines += ["    }", "    transform.yield %op : !transform.any_op", "  }"]
+        out.append("\n".join(lines))
+    return "\n".join(out) + "\n"
+
+
+def _vec_bytewise_annotate(prefix: str, *, max_inputs: int = VEC_BYTEWISE_MAX_INPUTS) -> str:
+    """The arm-body lines that run those matchers and mark what they accept."""
+    return "".join(
+        f"    %ok{n} = transform.collect_matching @{prefix}{n} in %arg0 : "
+        f"(!transform.any_op) -> !transform.any_op\n"
+        f'    transform.annotate %ok{n} "{VEC_BYTEWISE_ATTR}" : !transform.any_op\n'
+        for n in range(max_inputs + 1)
+    )
+
+
+#: Bounded per-rank vectorize of the tagged all-parallel generics. BOUNDED on purpose: a plain
+#: no-sizes `vectorize` on a whole model explodes (vector<17x576> = 9792 lanes, measured 8725 ms), and
+#: `vectorize_children` on the func scalarizes every generic into tens of thousands of vector.extracts
+#: that this LLVM build does not lower. Innermost 8 lanes, one arm per loop rank, matched by the
+#: `merlin.vec_r{rank}` attribute the prepare pass sets.
+#: Each arm TILES to the vector width before vectorizing, exactly as the contraction arms do.
+#: ``structured.vectorize`` does NOT tile: its sizes have to cover the iteration space, so vectorizing
+#: an untiled 1x64 relu with [1, 8] fails the whole pipeline with "Attempted to vectorize, but failed"
+#: (measured on deepjscc). Tiling first also means the vector shape is exactly the tile, so nothing is
+#: masked -- the tagging predicate only admits extents that are whole multiples of the lane count.
+#: Loop ranks the per-rank arms cover. The LOW bound is structural -- a rank-1 op has no outer dim
+#: to tile by 1, so the arm shape does not apply to it. The HIGH bound is a KNOB
+#: (``vectorize_non_contraction_generics_r<N>``) rather than a constant, because the value 4 was
+#: only ever "how many arms someone wrote out by hand" and nothing said what it cost.
+#:
+#: MEASURED, AND THE ANSWER IS "NOTHING, HERE" -- recorded so the next reader does not re-derive it.
+#: Per-op attribution of the emitted `forward` (build_tools/scripts/scalar_remainder.py, frozen
+#: baseline, three int8 captures) first read the ops refused for this bound as 19.2 % of one model's
+#: whole scalar remainder. They are not reachable: every one of them is a convolution's im2col
+#: WINDOW read, an all-parallel generic whose body only yields its input while its input map is
+#: `(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)`. A `vector.transfer_read` needs a projected permutation,
+#: so `structured.vectorize` cannot build one and FAILS THE PIPELINE. Raising the bound with those
+#: ops still tagged aborted the host lowering on two of the three captures, and on the board build
+#: took the whole-model SCALAR fallback instead -- static coverage of `forward` 0.4055 -> 0.2799,
+#: i.e. the lever read as a devectorization. With the tagger's compound-map refusal in place
+#: (runtime/backends/zephyr_model.py) the raised bound is exactly INERT on all three captures: the
+#: emitted `forward` is instruction-for-instruction identical to the rank-2..4 arms
+#: (14050/19096, 25652/41950, 9272/13594 vector/scalar), and every output digest matches the
+#: baseline across three environment paddings. The knob stays because the refusal, not the bound, is
+#: what holds these ops back, and a model whose high-rank generics have plain maps would use it --
+#: but nobody should expect it to pay on a convolutional capture.
+VEC_NONCONTRACTION_MIN_RANK = 2
+VEC_NONCONTRACTION_MAX_RANK = 4
+
+
+def _vec_rank_arms(lanes: int, prefix: str | None = None, max_rank: int = VEC_NONCONTRACTION_MAX_RANK) -> str:
+    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes, for ranks 2..``max_rank``.
+
+    ``prefix`` names the byte-addressable-element matchers (see :func:`_vec_bytewise_matchers`); the
+    arms then match ``merlin.vec_r{rank}`` AND the attribute those matchers annotate, so a sub-byte
+    op is refused rather than mis-vectorized. Default None keeps the arms self-contained for the
+    tests that read them without a module to splice matchers into.
+
+    One arm per rank, GENERATED rather than written out, because the tile-size list and the loop
+    arity are both functions of the rank: writing them by hand is what fixed the coverage at rank 4.
+    At the default ``max_rank`` the emitted text is byte-identical to the hand-written arms it
+    replaces (pinned by ``test_impr_features``).
+    """
+    gate = f", {VEC_BYTEWISE_ATTR}" if prefix else ""
+    mark = _vec_bytewise_annotate(prefix) if prefix else ""
+    arms = []
+    for rank in range(VEC_NONCONTRACTION_MIN_RANK, max_rank + 1):
+        sizes = ", ".join(["1"] * (rank - 1) + [str(lanes)])
+        # `tile_using_for` yields the tiled op plus one loop handle per tiled dim.
+        loops = ", ".join(["!transform.any_op"] * (rank + 1))
+        arms.append(
+            f"    %g{rank} = transform.structured.match attributes{{merlin.vec_r{rank}{gate}}} in "
+            f"%arg0 : (!transform.any_op) -> !transform.any_op\n"
+            f"    %gt{rank}, %gl{rank}:{rank} = transform.structured.tile_using_for %g{rank} "
+            f"tile_sizes [{sizes}] : (!transform.any_op) -> ({loops})\n"
+            f"    transform.structured.vectorize %gt{rank} vector_sizes [{sizes}] : "
+            f"!transform.any_op\n"
+        )
+    return (
+        mark
+        + "".join(arms)
+        + """\
+    %vecf = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %vecf {
+      transform.apply_patterns.vector.cast_away_vector_leading_one_dim
+      transform.apply_patterns.vector.drop_unit_dims_with_shape_cast
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+"""
+    )
+
+
+def _splice_vec_rank_arms(
+    text: str, lanes: int = VEC_NONCONTRACTION_LANES, max_rank: int = VEC_NONCONTRACTION_MAX_RANK
+) -> str:
+    """Insert the per-rank vectorize arms just before the schedule's func-level pattern block.
+
+    ADDITIVE (not schedule_replace), so it layers on whatever micro-kernel recipe is in play: the
+    contraction arms above it are untouched and only the previously-unmatched generics gain arms.
+    A schedule that already carries them, or has no func anchor, is returned unchanged.
+    """
+    anchor = '    %f = transform.structured.match ops{["func.func"]}'
+    if "merlin.vec_r" in text or anchor not in text:
+        return text
+    prefix = _vec_bytewise_matcher_prefix(text)
+    head = _vec_module_header(text)
+    if prefix is None or head is None:
+        # Nowhere to put the refusal matchers => splice NO arms. Arming without them is the
+        # miscompile `_vec_bytewise_matchers` documents, and a lever that is off is recoverable
+        # where a lever that is silently wrong is not.
+        return text
+    text = text.replace(head, head + _vec_bytewise_matchers(prefix), 1)
+    return text.replace(anchor, _vec_rank_arms(lanes, prefix, max_rank) + anchor, 1)
+
+
+def _vec_module_header(text: str) -> str | None:
+    """The ``module ... {`` line the matcher sequences are inserted after, or None.
+
+    Structural, not positional: the first line that OPENS a module. A schedule whose module this
+    cannot find gets no arms at all rather than arms without their refusal matchers.
+    """
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("module") and stripped.endswith("{"):
+            return line
+    return None
+
+
+register(
+    ImprFeature(
+        name=VEC_NONCONTRACTION_NAME,
+        action_class="PASS",
+        description=(
+            "Bounded per-rank vectorize of the NON-CONTRACTION all-parallel linalg.generics "
+            "(elementwise / layout / im2col gather / pad) that the contraction-only schedule leaves for "
+            "convert-linalg-to-loops to emit as scalar loops. Measured share of the loss: 86-89% of the "
+            "linalg ops of every captured workload, against whole-model MAC/cycle of 0.40 (spectformer), "
+            "0.22 (deepjscc), 0.067 (lstmnetvit) versus ~8 for a VLEN=128 int8 vwmacc datapath. Needs the "
+            "prepare pass's merlin.vec_r{rank} tags, which build_app enables when this feature is on. "
+            "MEASURED on deepjscc int8 (spike): emits 394 -> 1945 vector instructions (4.9x, so the "
+            "lever is NOT inert), output BIT-IDENTICAL, and 484,690,000 -> 621,555,001 cycles, i.e. "
+            "1.28x SLOWER, flat at 0.78x across 8/16/32 lanes. That flatness was the tell that the "
+            "width was never the variable: the tile-and-vectorize-on-tensors realization emits a "
+            "`memref.copy %x, %x` of each tile INSIDE the innermost loop -- a memcpy of the bytes the "
+            "vector store just wrote, per 8 elements. It went unattributed because those copies lower "
+            "to `llvm.memcpy`, not to the `@memrefCopy` the earlier check counted. This feature now "
+            "IMPLIES `erase_self_copy`, which removes them: measured on the host lowering, the copy "
+            "call sites the lever adds inside `forward` go from +15 (deepjscc) / +33 (small_llama) to "
+            "+0 on both, with the vector-instruction gain kept. The output was reported bit-identical "
+            "at that point and it was NOT: on small_llama int8 the lever answered cos 0.968247 / rel "
+            "0.46352 against a baseline 0.999966 / 0.00836, and answered DIFFERENTLY from the same "
+            "object under a different process memory layout, because a `vector<8xi1>` mask tile is "
+            "stored PACKED into a buffer every scalar reader addresses one byte per element (56 of 64 "
+            "bytes left uninitialised, read straight into the attention mask). The arms now refuse a "
+            "sub-byte element type on the destination or on any input, and with that refusal the "
+            "output IS bit-identical to the baseline on all three int8 recaptures, in both arm "
+            "placements, under three memory layouts. See `_vec_bytewise_matchers`. "
+            "NOT yet claimed as a speedup -- that is a board measurement, and the cycle number above "
+            "is the one it has to beat. Two known limits remain, both MEASURED and neither fixable "
+            "from this file: (a) COVERAGE -- `func.func(linalg-specialize-generic-ops)`, which runs "
+            "before the transform interpreter so the contraction arms can match named ops, rewrites "
+            "the tagged generics into `linalg.broadcast` and DROPS their `merlin.vec_r{rank}` "
+            "attribute, so only 15 of 93 tagged ops (deepjscc) ever reach an arm while the prepare "
+            "pass reports 93; (b) the arms still allocate one extra destination buffer per vectorized "
+            "op (+12 allocs / +1.05 MB of 50.19 MB cumulative on deepjscc), which is malloc calls "
+            "rather than per-element traffic."
+        ),
+        edit_schedule=_splice_vec_rank_arms,
+        implies=_vec_noncontraction_hygiene(),
+    )
+)
+
+
+def _vec_noncontraction_point(name: str) -> "tuple[int, int] | None":
+    """``(lanes, max_rank)`` a non-contraction-vectorize feature NAME asks for, or None.
+
+    The name is the single source of truth for both numbers, so the TAGGING predicate and the
+    SCHEDULE arms cannot drift apart -- and so a point resolves identically in the lowering
+    SUBPROCESS, which re-imports this module and never sees a registration the parent made at run
+    time. Grammar: the base name, then any of ``_l<lanes>`` and ``_r<max_rank>`` in any order. An
+    unparsable tail yields None (the feature is then simply not this family) rather than a default,
+    because silently reading a mistyped point as the default is how an experiment measures the
+    baseline and reports it as the lever.
+    """
+    if not name.startswith(VEC_NONCONTRACTION_NAME):
+        return None
+    tail = name[len(VEC_NONCONTRACTION_NAME) :]
+    lanes, rank = VEC_NONCONTRACTION_LANES, VEC_NONCONTRACTION_MAX_RANK
+    while tail:
+        if not tail.startswith("_") or len(tail) < 3:
+            return None
+        kind, tail = tail[1], tail[2:]
+        digits = ""
+        while tail and tail[0].isdigit():
+            digits, tail = digits + tail[0], tail[1:]
+        if not digits:
+            return None
+        if kind == "l":
+            lanes = int(digits)
+        elif kind == "r":
+            rank = int(digits)
+        else:
+            return None
+    if lanes <= 0 or rank < VEC_NONCONTRACTION_MIN_RANK:
+        return None
+    return lanes, rank
+
+
+def vec_noncontraction_lanes(features) -> int | None:
+    """Innermost lane count the enabled non-contraction-vectorize feature asks for, else None.
+
+    The TAGGING predicate (which admits an op only when its innermost extent is a whole multiple of the
+    lane count, so nothing is masked) and the SCHEDULE arms must agree on this number; deriving it from
+    the feature name is what keeps them from drifting apart.
+    """
+    for f in features or ():
+        point = _vec_noncontraction_point(f)
+        if point is not None:
+            return point[0]
+    return None
+
+
+def vec_noncontraction_max_rank(features) -> int | None:
+    """Highest loop rank the enabled non-contraction-vectorize feature asks for, else None.
+
+    Same contract as :func:`vec_noncontraction_lanes` and for the same reason: the tagger admits an
+    op only up to this rank and the schedule only carries arms up to it, so one number has to drive
+    both. None means no such feature is enabled, and the tagger then runs not at all.
+    """
+    for f in features or ():
+        point = _vec_noncontraction_point(f)
+        if point is not None:
+            return point[1]
+    return None
+
+
+# ---------------------------------------------------------------------------------------------------
+# `linalg.broadcast`, PRICED AND DECLINED. It surfaced as 8.95% of the profiled accelerator device leg
+# -- third behind linalg.generic (62.48%) and linalg.transpose (12.52%), and a lever nobody had named --
+# so it looked like a candidate for the vectorize lever right below. It is not, and the reason is the
+# same reason that lever measured inert.
+#
+# Priced from the completed profiled leg (5,032 PROF lines joined against its op_profile_table.json,
+# resolved coverage 1.00000, 300,868,459 of 3,359,861,701 ticks across 567 distinct ops), then read
+# back out of the instrumented module. Every one is a RANK-EXPANDING materialization of a small vector
+# into a large tensor -- `256xf32 -> 1x196x256xf32` (x70), `2048xf32 -> 2048x14xf32` (x64),
+# `196xf32 -> 196x256xf32` (x48) -- i.e. a scale/bias/mask vector written out at full tensor size so
+# the next elementwise op can read it index-for-index. Across all 567: 3.3 MiB read, 171.1 MiB
+# WRITTEN, a 51.9x amplification, and ZERO arithmetic.
+#
+# So it is pure memory traffic, and "vectorize the broadcast loop" cannot be the fix: wider stores do
+# not reduce the number of bytes stored. That is exactly what `vectorize_non_contraction_generics`
+# measured -- 4.9x more vector instructions, bit-identical output, 1.28x SLOWER, flat across 8/16/32
+# lanes -- because the cost was never vector width. The only real fix is to NOT materialize the tensor:
+# have the consumer read the small operand through a broadcasting indexing map and drop the broadcast
+# entirely. That is fusion / indexing-map rewriting, which is the lean-runtime fusion program and is
+# explicitly out of scope here. Recorded so the next reader does not re-derive it and reach for the
+# lever below.
+# ---------------------------------------------------------------------------------------------------
+
+
+def ensure_vec_noncontraction(lanes: int, max_rank: int = VEC_NONCONTRACTION_MAX_RANK) -> str:
+    """Register (on demand) the non-contraction vectorize point at ``lanes`` innermost lanes.
+
+    Exposing the width as a registered point per value is what lets a search find one that pays
+    instead of a human guessing. It is NOT the axis the first measurement moved: cycles were flat at
+    0.78x across 8/16/32, because every width paid the same per-tile self-copy (see
+    ``_vec_noncontraction_hygiene``). Each point implies the same hygiene as the bare name, so a
+    width the search picks is measured in the same realization as the default one.
+    """
+    if lanes == VEC_NONCONTRACTION_LANES and max_rank == VEC_NONCONTRACTION_MAX_RANK:
+        return VEC_NONCONTRACTION_NAME
+    name = VEC_NONCONTRACTION_NAME
+    if lanes != VEC_NONCONTRACTION_LANES:
+        name += f"_l{lanes}"
+    if max_rank != VEC_NONCONTRACTION_MAX_RANK:
+        name += f"_r{max_rank}"
+    if name in known():
+        return name
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Bounded per-rank vectorize of the non-contraction all-parallel generics at "
+                f"{lanes} innermost lanes, loop ranks "
+                f"{VEC_NONCONTRACTION_MIN_RANK}..{max_rank} (see {VEC_NONCONTRACTION_NAME}). "
+                f"Default-off; both numbers must be chosen by measurement, not assumed."
+            ),
+            edit_schedule=lambda t, _l=lanes, _r=max_rank: _splice_vec_rank_arms(t, _l, _r),
+            implies=_vec_noncontraction_hygiene(),
+        )
+    )
+    return name
+
+
+#: Per-op register blocking: each contraction is tiled at the block legal for ITS OWN extents, instead
+#: of one block per op CLASS. The class-wide decision is one too coarse -- whisper_tiny's single N=1
+#: decode step forces its whole batch_matmul class (34% of the model's MACs) off the vector path. See
+#: llvmlower/perop_blocks.py for why the tag has to be applied after specialization.
+#: Promote small heap buffers to the STACK, after bufferization has created them and hoisting has
+#: pulled them out of loops.
+#:
+#: WHY IT SHOULD MATTER HERE, and it is not the malloc cost. Bufferization gives every intermediate
+#: its own `memref.alloc`; measured on small_llama int8 there are 209 of them, but they only price at
+#: ~3% of wall, so removing the allocator calls is not the prize. The prize is LOCALITY: separate heap
+#: buffers are scattered, so every intermediate is written and re-read through cache misses, while a
+#: stack frame is one contiguous, hot region. That is structurally what ExecuTorch buys with its
+#: memory-planning pass, which places EVERY activation of this model into a single 32,512-byte arena
+#: (measured from its own AOT profile) -- small enough to stay in L1. We have no such planner wired:
+#: `arena_plan.plan_arena` has exactly one caller, `runtime/program.py:97` (`build_program`), and the
+#: replay engine that would consume its plan whole-model does not exist in the tree at all
+#: (`merlin_program.c` is named by three docstrings and absent; `merlin_bump_linux.c` is a
+#: measurement proxy). It was previously recorded here as "only reachable from the self-contained C
+#: harness" -- that is a NAME COLLISION, not a reachability claim: `selfcontained_c_harness` defines
+#: its own unrelated `build_program` and references no arena at all. What wiring it actually costs is
+#: written up in docs/design/static_arena_wiring.md. Sized on the model we measure (small_llama
+#: int8): 433 intermediate buffers, 3,114,112 B naive vs 265,536 B planned, 11.73x reuse.
+#: Meanwhile this upstream pass gets a large part of the same effect for free.
+#:
+#: The size cap is the safety property, not a tuning knob: a promoted buffer lives on the stack for
+#: the whole frame, so an uncapped promotion of a big intermediate overruns it. Zephyr's master stack
+#: here is 8 MB and these intermediates are small (the largest activation on this model is 8x344 f32
+#: = 11 KB), so the cap is what keeps a promotion from turning into a stack overflow on a model with
+#: larger tensors.
+#: Fuse elementwise producers into their consumers AFTER named ops have been generalized.
+#:
+#: The upstream pipeline runs `linalg-fuse-elementwise-ops` at position 2 and
+#: `linalg-generalize-named-ops` at position 3 -- fusion BEFORE generalization. Fusion works on
+#: `linalg.generic`; a NAMED op (linalg.broadcast, linalg.add, linalg.mul...) is not generalized until
+#: the pass after, so it can never be fused. The ordering makes the fusion pass structurally unable to
+#: see most of what it exists to fuse.
+#:
+#: MEASURED cost of that on small_llama int8: 39 `linalg.broadcast` ops, 23.9% of the model, each
+#: MATERIALISING a per-channel quantization scale into a full weight-sized tensor -- a 344-element
+#: scale vector splatted to tensor<344x128> (44,032 elements, a 128x amplification) and then read
+#: straight back by the dequantize. Folding a broadcast into its consumer's indexing map is exactly
+#: what elementwise fusion does, and it never got the chance.
+#:
+#: Added as a SECOND fusion after generalization rather than by reordering the existing one: the
+#: pre-generalization pass still fuses the generics that are already generic, and leaving it in place
+#: keeps this a strict addition to the baseline rather than a reshuffle whose effect is harder to
+#: attribute. General, not target-specific -- every per-channel-quantized model has this shape.
+FUSE_AFTER_GENERALIZE_NAME = "fuse_elementwise_after_generalize"
+
+
+def _fuse_after_generalize(passes: list[str]) -> list[str]:
+    """Insert a second ``linalg-fuse-elementwise-ops`` immediately after generalization."""
+    out = list(passes)
+    anchor = "func.func(linalg-generalize-named-ops)"
+    try:
+        i = out.index(anchor)
+    except ValueError:
+        raise ValueError(
+            f"{FUSE_AFTER_GENERALIZE_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess "
+            f"where the second fusion belongs"
+        ) from None
+    out.insert(i + 1, "func.func(linalg-fuse-elementwise-ops)")
+    return out
+
+
+register(
+    ImprFeature(
+        name=FUSE_AFTER_GENERALIZE_NAME,
+        action_class="PASS",
+        description="run elementwise fusion a second time, AFTER linalg-generalize-named-ops. The "
+        "upstream order fuses (pos 2) before generalizing (pos 3), and fusion only sees "
+        "linalg.generic -- so every NAMED op is invisible to it. MEASURED on small_llama "
+        "int8: 39 linalg.broadcast ops at 23.9% of the model, each materialising a "
+        "per-channel quantization scale into a full weight-sized tensor (a 344-element "
+        "vector splatted to 44,032 elements, then read straight back). "
+        "MEASURED AND REFUTED as a whole-model lever on that same model: 3,543,517 -> "
+        "4,313,041 ns, 1.22x SLOWER (sustained, n=3, cos identical). It does what it says -- "
+        "the scalar bucket falls 3.1 -> 2.8 ms -- but the contraction RISES 1.8 -> 2.8 ms, "
+        "because fusing the dequant chain into the producers perturbs the shape the "
+        "contraction was vectorized into and costs more than the broadcast it removes. Kept "
+        "registered so the finding is reproducible and the lever is not re-attempted blindly; "
+        "the broadcast waste is real but needs a TARGETED fold of the broadcast into its "
+        "consumer's indexing map, not blanket elementwise fusion. Default-off; baseline "
+        "byte-identical.",
+        edit_pipeline=_fuse_after_generalize,
+    )
+)
+
+
+PROMOTE_STACK_NAME = "promote_buffers_to_stack"
+PROMOTE_STACK_BYTES_ENV = "MERLIN_PROMOTE_STACK_BYTES"
+_PROMOTE_STACK_DEFAULT_BYTES = 16384
+
+
+def _promote_stack_bytes() -> int:
+    """Per-buffer promotion cap in bytes (env-overridable so the search can size it per model)."""
+    raw = os.environ.get(PROMOTE_STACK_BYTES_ENV)
+    if raw:
+        try:
+            v = int(raw)
+        except ValueError:
+            v = 0
+        if v > 0:
+            return v
+    return _PROMOTE_STACK_DEFAULT_BYTES
+
+
+def _promote_buffers_to_stack(passes: list[str], cap: int | None = None) -> list[str]:
+    """Insert ``promote-buffers-to-stack`` right after the buffer hoisting.
+
+    After hoisting (so a buffer already lifted out of a loop is promoted once, not per iteration) and
+    before the loop lowering. Deallocation runs earlier in this pipeline (``__DEALLOC__``), and a
+    stack buffer needs none -- promoting after it is what keeps the two consistent.
+
+    ``cap`` names the per-buffer byte cap explicitly (the sized variants minted by
+    :func:`ensure_promote_stack`); ``None`` keeps the env-or-default behaviour.
+    """
+    out = list(passes)
+    anchor = "func.func(buffer-hoisting,buffer-loop-hoisting)"
+    try:
+        i = out.index(anchor)
+    except ValueError:  # pipeline shape changed -> fail closed rather than insert somewhere wrong
+        raise ValueError(
+            f"{PROMOTE_STACK_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess where "
+            f"promote-buffers-to-stack belongs"
+        ) from None
+    nbytes = _promote_stack_bytes() if cap is None else int(cap)
+    out.insert(i + 1, f"func.func(promote-buffers-to-stack{{max-alloc-size-in-bytes={nbytes}}})")
+    return out
+
+
+register(
+    ImprFeature(
+        name=PROMOTE_STACK_NAME,
+        action_class="PASS",
+        description="promote small bufferization allocs to the stack after hoisting. Targets LOCALITY, "
+        "not allocator cost: bufferization gives each intermediate its own memref.alloc (209 "
+        "of them on small_llama int8, ~3% of wall), and scattered heap buffers mean every "
+        "intermediate is written and re-read through cache misses. ExecuTorch's memory "
+        "planner places EVERY activation of the same model into ONE 32,512-byte arena, small "
+        "enough to stay in L1; we have no whole-model planner wired, and this upstream pass "
+        "buys much of the same effect. Per-buffer cap (MERLIN_PROMOTE_STACK_BYTES, default "
+        "16384) is a stack-overflow guard, not a tuning knob. Default-off; baseline "
+        "byte-identical.",
+        edit_pipeline=_promote_buffers_to_stack,
+    )
+)
+
+
+def ensure_promote_stack(nbytes: int) -> str:
+    """Register (on demand) a stack-promotion variant whose per-buffer cap is ``nbytes``.
+
+    The cap is a LEVER, not just an overflow guard, and the difference is measured. On small_llama
+    int8 (K1, sustained, cos identical on every arm) the SAME feature pays back very differently
+    depending only on this number:
+
+        <=  4 KB  4,904,957 ns  1.00x      <= 256 KB  3,649,518 ns  1.34x
+        <= 16 KB  4,795,823 ns  1.03x      <=   1 MB  3,579,566 ns  saturated
+        <= 64 KB  4,678,494 ns  1.05x
+
+    Monotonic in the cap and flat past 256 KB, which locates the largest intermediate worth promoting
+    between 64 KB and 256 KB -- a per-MODEL fact about intermediate sizes, not a constant.
+
+    Why this function exists: the cap was reachable ONLY through ``MERLIN_PROMOTE_STACK_BYTES``, and
+    no fork can vary an environment variable. So the beam always built at the 16 KB default, measured
+    1.03x, and ranked the lever below levers it should beat -- in the run that prompted this, the
+    stack-promotion fork came out SLOWER than its own parent and the search concluded the lever was
+    not worth its width. The lever was never weak; the search could not reach the part of it that
+    works. Naming the cap in the FEATURE puts it on the channel feature names already travel
+    (proposer -> knobs.yaml ``compiler_features`` -> ``normalize`` -> build), so it needs no new
+    plumbing and cannot silently disagree with the build the way an ambient env var can.
+    """
+    n = int(nbytes)
+    if n <= 0:
+        raise ValueError(f"{PROMOTE_STACK_NAME}: per-buffer cap must be positive, got {nbytes!r}")
+    name = f"{PROMOTE_STACK_NAME}_{n}"
+    if name in known():
+        return name
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"promote small bufferization allocs to the stack, per-buffer cap {n} bytes. "
+                f"Same pass as {PROMOTE_STACK_NAME}, with the cap NAMED so the search can vary "
+                f"it: the cap is model-dependent (measured 1.03x at 16 KB vs 1.34x at 256 KB on "
+                f"the same model and the same feature), and as an env var it was unreachable by "
+                f"any fork. Default-off; baseline byte-identical."
+            ),
+            edit_pipeline=lambda passes, _n=n: _promote_buffers_to_stack(passes, cap=_n),
+        )
+    )
+    return name
+
+
+PEROP_BLOCK_NAME = "perop_register_block"
+
+
+def _perop_sentinel_unresolved(_passes):
+    """Reached only if the sentinel survived to lowering, which is a BUG -- so raise, loudly.
+
+    ``perop_register_block`` is a REQUEST, not a lowering edit: the block table can only be derived
+    from the PREPARED module, so ``zephyr_model.prepare_for_lowering`` derives it, tags the IR, and
+    swaps this name for the concrete ``ensure_perop_block(...)`` feature. If the sentinel is still
+    enabled at ``apply_pipeline`` time, the caller skipped that step -- and the consequence is
+    invisible: nothing tagged the IR, so no schedule arm matches and EVERY contraction falls to
+    ``convert-linalg-to-loops`` while the build reports success and the numbers stay correct. That is
+    the measured deepjscc "2.56x regression that looks like a bad block but is an untagged build".
+    Failing here is the only way that gets noticed.
+    """
+    raise RuntimeError(
+        f"{PEROP_BLOCK_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which derives the per-op block table "
+        "from the prepared IR, tags the contractions, and replaces this sentinel with the concrete "
+        "ensure_perop_block(...) feature. Lowering with it still set would leave every contraction "
+        "untagged and silently scalar."
+    )
+
+
+PEROP_NR_FILL_NAME = "perop_nr_fill_register"
+
+
+def _perop_nr_fill_unresolved(_passes):
+    """Same contract as the block sentinel: a REQUEST consumed at preparation time, never a pass."""
+    raise RuntimeError(
+        f"{PEROP_NR_FILL_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which is where the per-op block table is "
+        "derived and is therefore the only place the board's vector length can widen an N cap."
+    )
+
+
+# A SEARCH KNOB, deliberately not a default, because its SIGN depends on the model. NR is an element
+# count, so one number is a different fraction of the register file at each element width; this asks
+# block_table to widen each contraction's N cap until its narrowest element fills a whole vector
+# register (perop_blocks.nr_cap_for_dtypes). MEASURED on the live K1 (VLEN=256, whole model, per-op
+# blocking on both arms, interleaved same-session arms, n=3, min-of-n, cos identical per model):
+#
+#   spectformer_int8_full        2,066,414,196 -> 1,781,260,404 cyc   1.160x FASTER
+#   small_llama_int8_consistent      8,822,088 ->    10,547,988 cyc   1.196x SLOWER
+#
+# Both are far outside the board's 2.6% band, and they point OPPOSITE ways. The mechanism is visible in
+# the emitted object and explains why: the accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is
+# already LMUL m4 and NR=32 pushes it to m8 -- the whole register file in one group. Decoded at 128^3
+# int8 MR=4: NR=16 emits `e32,m4` with ZERO accumulator spill ops; NR=32 emits `e32,m8` with SIX
+# (vs8r.v x3 + vl8re8.v x3), i.e. the carried accumulator round-trips through the stack every K-tile.
+# Whether the wider tile wins is therefore a per-model question about how much of the model is wide
+# enough to pay for that -- exactly the kind of question the beam exists to answer and a hand-picked
+# default cannot. So it ships forkable and off.
+#
+# `implies` the block sentinel because it has no meaning without per-op blocking: there is no per-op N
+# cap to widen otherwise. schedule_replace stays False -- it changes the TABLE, not the schedule shape,
+# and the replacement schedule comes from the block feature it implies.
+register(
+    ImprFeature(
+        name=PEROP_NR_FILL_NAME,
+        action_class="KNOB",
+        description="widen each contraction's per-op N cap until its NARROWEST element fills a whole "
+        "vector register at the board's VLEN, instead of every op sharing one element count. "
+        "MEASURED model-dependent on the K1: 1.160x faster on spectformer int8, 1.196x slower "
+        "on small_llama int8 -- because the i32 accumulator is what sets LMUL, so a wider N "
+        "tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A "
+        "search knob, not a default. Default-off; baseline byte-identical.",
+        edit_pipeline=_perop_nr_fill_unresolved,
+        implies=frozenset({PEROP_BLOCK_NAME}),
+    )
+)
+
+
+PEROP_MR_FILL_NAME = "perop_mr_fill_register"
+
+
+def _perop_mr_fill_unresolved(_passes):
+    """Same contract as the two sentinels above: a REQUEST consumed at preparation time.
+
+    It has to be, for the same reason: the M cap it derives is a function of each contraction's OWN
+    block and element widths, and the prepared module is the first place those are readable. A
+    sentinel that reaches the pipeline means preparation was skipped, and the consequence would be
+    silent -- the table would be derived under the ambient cap and the build would report a lever it
+    never applied.
+    """
+    raise RuntimeError(
+        f"{PEROP_MR_FILL_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which is where the per-op block table is "
+        "derived and is therefore the only place the board's vector register file can size an M cap."
+    )
+
+
+# THE M AXIS OF THE SAME QUESTION `PEROP_NR_FILL_NAME` ASKS ABOUT N, and the reason it did not exist
+# is worth stating: N has been a DERIVED, per-op quantity for a while (scaled by the board's VLEN by
+# `zephyr_model.perop_nr_cap`, then by the op's own narrowest element width by
+# `perop_blocks.nr_cap_for_dtypes`), while M was ONE number for the whole model -- `_PEROP_MR_CAP = 4`,
+# an `MERLIN_PEROP_MR_CAP` env var, or a `perop_register_block_mr<N>` sentinel naming a rung of a
+# hand-written ladder. Two contractions in one model could therefore differ in MR only by `gcd(M)`
+# clipping a cap they shared, and the bound that actually governs MR -- how many accumulator rows fit
+# the vector register file, which depends on THAT op's N tile and accumulator width -- could not be
+# stated at all.
+#
+# This asks `block_table` to derive it per contraction instead: MR accumulator groups plus the shared
+# B row at every width the widening chain materializes it at must fit `lmul_group.VREG_COUNT` minus
+# the mask register the encoding reserves. See `perop_blocks.mr_cap_for_registers` for the inequality
+# and the worked numbers. Every term is a target fact (the VLEN built for, the op's own type triple,
+# the RVV register count); no measured constant appears in it.
+#
+# NOT DEFAULTED, and the standard here is the one `PEROP_NR_FILL_NAME` sets rather than a suspicion:
+# the derivation bounds the ARCHITECTURE, not the register allocator, so whether LLVM keeps that many
+# groups live without spilling is a cycle question for the board. It is offered to the search, which
+# is what the search is for. `implies` the block sentinel because there is no per-op M cap to derive
+# without per-op blocking; `schedule_replace` stays False because it changes the TABLE, not the
+# schedule's shape, and the replacement schedule comes from the block feature it implies.
+register(
+    ImprFeature(
+        name=PEROP_MR_FILL_NAME,
+        action_class="KNOB",
+        description="derive each contraction's per-op M cap from how many accumulator rows of ITS OWN "
+        "block fit the board's vector register file, instead of every op in the model "
+        "sharing one hand-set number. The N axis of this question has been derived per-op "
+        "for a while (VLEN- and element-width-scaled); M was a single scalar, so two ops "
+        "could differ only by gcd(M) clipping a shared cap. Derived from target facts only "
+        "-- the VLEN built for, the op's own element triple, and the RVV register count. A "
+        "bound on the architecture, not a promise about the allocator, so it is searched "
+        "rather than defaulted. Default-off; baseline byte-identical.",
+        edit_pipeline=_perop_mr_fill_unresolved,
+        implies=frozenset({PEROP_BLOCK_NAME}),
+    )
+)
+
+
+# Registered so the SEARCH can reach it. The beam composes candidate feature sets through
+# `impr_features.get`/`normalize`, so an unregistered name is not "rejected" -- it is silently never
+# proposed (`wholemodel_proposer._composes` catches the KeyError and returns False). An unregisterable
+# lever is an unsearchable one, which is the exact failure this whole line of work is about.
+# `schedule_replace=True` is honest: what it resolves TO emits a complete transform schedule, so the
+# composition rule must refuse stacking it with another replacement.
+register(
+    ImprFeature(
+        name=PEROP_BLOCK_NAME,
+        action_class="PASS",
+        description="request PER-CONTRACTION register blocking: derive the widest block legal for each "
+        "contraction's OWN extents (and its own narrowest element width) from the prepared "
+        "IR, tag each contraction, and emit one tile+vectorize arm per distinct block. "
+        "Resolved by prepare_for_lowering into a concrete, table-specific feature; a "
+        "sentinel, so it must never reach lowering itself. Replaces the class-wide clamps "
+        "(one degenerate extent in a class otherwise forces the whole class off the vector "
+        "path). Default-off; baseline byte-identical.",
+        edit_pipeline=_perop_sentinel_unresolved,
         schedule_replace=True,
-    ))
+    )
+)
+
+
+#: Sentinel family that names the per-op MR cap. ``perop_register_block_mr<N>`` behaves exactly like
+#: :data:`PEROP_BLOCK_NAME` except that it pins the cap ``block_table`` derives blocks under, instead
+#: of reading the ambient ``MERLIN_PEROP_MR_CAP``.
+PEROP_MR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_mr"
+
+#: Sentinel family that names the per-op NR cap. This is the N-axis counterpart of
+#: :data:`PEROP_MR_SENTINEL_PREFIX`: it makes the cap part of the candidate identity instead of an
+#: ambient source constant, so model-specific register-pressure/locality tradeoffs can be measured
+#: by the search and reproduced later.
+PEROP_NR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_nr"
+
+
+def parse_perop_nr_sentinel(name: str) -> int | None:
+    """The NR cap named by ``perop_register_block_nr<N>``, or ``None`` for another feature."""
+    if not name.startswith(PEROP_NR_SENTINEL_PREFIX):
+        return None
+    suffix = name[len(PEROP_NR_SENTINEL_PREFIX) :]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def perop_nr_sentinel(nr_cap: int) -> str:
+    """Register a preparation-time request that pins the per-op N-tile cap."""
+    n = int(nr_cap)
+    if n <= 0:
+        raise ValueError(f"{PEROP_BLOCK_NAME}: NR cap must be positive, got {nr_cap!r}")
+    name = f"{PEROP_NR_SENTINEL_PREFIX}{n}"
+    if name in known():
+        return name
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"request PER-CONTRACTION register blocking with the NR cap pinned to {n}. "
+                f"Identical to {PEROP_BLOCK_NAME} except the N cap is named and therefore "
+                "searchable and reproducible. This exposes the model-specific tradeoff "
+                "between wider panels and i32 accumulator register pressure. A sentinel "
+                "resolved by prepare_for_lowering; default-off and baseline byte-identical."
+            ),
+            edit_pipeline=_perop_sentinel_unresolved,
+            schedule_replace=True,
+        )
+    )
+    return name
+
+
+# The default cap is 16, represented by the plain PEROP_BLOCK_NAME request. These rungs bracket it.
+PEROP_NR_LADDER: tuple[str, ...] = tuple(perop_nr_sentinel(_n) for _n in (2, 4, 8, 32))
+
+
+def parse_perop_mr_sentinel(name: str) -> int | None:
+    """The MR cap a ``perop_register_block_mr<N>`` sentinel names, or None if ``name`` is not one.
+
+    Deliberately strict: the suffix must be ALL DIGITS. ``ensure_perop_block`` mints names in the same
+    ``perop_register_block_*`` namespace (``..._3b_128_<hash>``), so a prefix-only test would read a
+    RESOLVED feature as an unresolved sentinel and re-derive the table underneath it.
+    """
+    if not name.startswith(PEROP_MR_SENTINEL_PREFIX):
+        return None
+    suffix = name[len(PEROP_MR_SENTINEL_PREFIX) :]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def perop_mr_sentinel(mr_cap: int) -> str:
+    """Register (on demand) a per-op blocking request that PINS the MR cap to ``mr_cap``.
+
+    Same contract as :data:`PEROP_BLOCK_NAME` -- a request consumed by
+    ``zephyr_model.prepare_for_lowering``, never a lowering edit -- so it raises identically if it
+    reaches the pipeline unresolved.
+
+    The cap decides how much A-operand reuse each contraction can buy, and the right value is a
+    property of the MODEL's shapes: the default 4 was measured at 128^3, where M is large and MR is a
+    pure register-pressure question. On small_llama fp32 every contraction is M=8 with 2.0 MAC per
+    byte, so the binding cost is weight TRAFFIC and a cap of 4 makes an M=8 op take two row-blocks,
+    streaming the whole B matrix twice (measured K1, n=3, cos 0.9999999 on every arm: cap 4 ->
+    5,762,513 ns, cap 8 -> 5,121,007 ns = 1.125x, cap 16 -> 5,153,090 ns, i.e. no further gain).
+    Opposite regimes want opposite numbers, which is what makes it a search axis rather than a
+    constant -- and as an env var no fork could vary it.
+    """
+    n = int(mr_cap)
+    if n <= 0:
+        raise ValueError(f"{PEROP_BLOCK_NAME}: MR cap must be positive, got {mr_cap!r}")
+    name = f"{PEROP_MR_SENTINEL_PREFIX}{n}"
+    if name in known():
+        return name
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"request PER-CONTRACTION register blocking with the MR cap pinned to {n}. "
+                f"Identical to {PEROP_BLOCK_NAME} except the cap is NAMED rather than read from "
+                f"MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of "
+                f"the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound "
+                f"model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. "
+                f"Default-off; baseline byte-identical."
+            ),
+            edit_pipeline=_perop_sentinel_unresolved,
+            schedule_replace=True,
+        )
+    )
+    return name
+
+
+#: The MR caps the SEARCH may name, registered EAGERLY for the same reason ``MRPAD_INT8_TILES`` is:
+#: an on-demand-only registration is reachable from the proposer (which mints the name itself inside
+#: ``refinement_forks``) but NOT from a ``--features`` list, a package's ``compiler_features``, or any
+#: process that has not already called :func:`perop_mr_sentinel`. In those the name resolves to a
+#: KeyError, which ``wholemodel_proposer._composes`` swallows as "does not compose" -- so the cap
+#: reads as declined rather than as absent. Registration is default-off, so the frozen baseline is
+#: unaffected; the ladder brackets the two regimes this repo has measured without asserting either:
+#:
+#:   cap 1  the EXPERT's MR (XNNPACK ``..._gemm_minmax_ukernel_1x4v__rvv`` is MR=1) on the per-op path
+#:   cap 2  the rung between
+#:   cap 8  one M-block for an M=8 model, i.e. each weight read ONCE instead of once per row-block
+#:   cap 16 the saturation check -- on a model whose gcd(M) is 8 it derives the same table as cap 8
+#:
+#: 4 is not in the ladder because it is what the plain :data:`PEROP_BLOCK_NAME` sentinel already
+#: derives under (``zephyr_model.perop_mr_cap()``); naming it again would register a second spelling
+#: of the default and make two identical builds look like two arms.
+PEROP_MR_LADDER: tuple[str, ...] = tuple(perop_mr_sentinel(_n) for _n in (1, 2, 8, 16))
+
+
+def ensure_perop_block(table, kc: int, pairs: "list | tuple" = (), vec_epilogue: bool = False) -> str:
+    """Register (on demand) the per-op-blocked schedule for THIS model's block table.
+
+    The schedule text is a function of the table (one tile+vectorize arm per distinct block), so the
+    feature is registered per distinct table -- named by a hash of it, the same on-demand pattern
+    ``ensure_v3_perop_microkernel`` uses for the register-block knob space.
+    """
+    import hashlib
+
+    from . import perop_blocks as _pb
+
+    blocks = _pb.distinct_blocks(table)
+    # The PAIR TABLE is part of the key, not just of the text. Two builds of the same model that
+    # differ only in whether the requant epilogue was fused are two different schedules; keying on
+    # the table alone would hand the second one the first one's already-registered feature and it
+    # would build the arm it did not ask for -- silently, and with the lever reported as applied.
+    pairs = [list(x) for x in (pairs or ())]
+    # With NO pairs the key is the table alone, byte-for-byte as before this argument existed: an
+    # existing package names its concrete feature by that hash in `compiler_features`, and changing
+    # the unfused spelling would make every one of them unresolvable.
+    key = hashlib.sha1(
+        (repr(sorted(table.items())) if not pairs else repr((sorted(table.items()), pairs, vec_epilogue))).encode()
+    ).hexdigest()[:12]
+    name = f"{PEROP_BLOCK_NAME}_{len(blocks)}b_{kc}_{key}"
+    if name in known():
+        return name
+    text = _pb.schedule_text(table, kc, pairs, vec_epilogue)
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"Per-op register blocking: {len(blocks)} distinct blocks over "
+                f"{len(table)} contraction geometries, KC={kc}. Each contraction is tiled at the "
+                f"widest block legal for its own extents, matched by the merlin.blk_<MR>x<NR> tag "
+                f"the prepare step applies after specialization. Replaces the per-op-CLASS block, "
+                f"whose smallest member otherwise clamps the whole class (measured: whisper_tiny "
+                f"claims 65.9% of its MACs per class vs 100% per op)."
+                + (
+                    f" {len(pairs)} of them additionally carry a FUSED requantize epilogue "
+                    f"(fuse_requant_into_contraction): the epilogue is tiled and the contraction "
+                    f"and its accumulator fill are fused into that loop, so the i32 accumulator "
+                    f"is converted and scaled in the tile that produced it and the model-sized "
+                    f"i32 tensor is never built."
+                    + (
+                        " The epilogue tile is additionally pre-vectorized at that block."
+                        if vec_epilogue
+                        else " The epilogue tile keeps its loop form and is left to clang, so "
+                        "the lever removes a traversal without reshaping a loop."
+                    )
+                    if pairs
+                    else ""
+                )
+            ),
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=lambda _t, _text=text: _text,
+            schedule_replace=True,
+            # The tile-epilogue hygiene, keyed on the WIDEST matmul block in the table. This site was
+            # missed when `implies` was added to the eight other v3 registration points, and it is the one
+            # that mattered most: it is the whole-model per-op path, so every board build went out paying
+            # for a per-tile `memref.copy %x, %x` that does nothing. MEASURED on small_llama int8, spike
+            # PC histogram over the linked ELF: `memrefCopy` was 28.15% of all retired instructions --
+            # more than `forward` itself at 27.09% -- while the scalar-math routines everyone (including
+            # this session) had been ranking first were 1.88%, i.e. inside the board's noise band. A static
+            # instruction count had put those at 16.63%; the dynamic profile is what corrected it.
+            implies=_tile_epilogue_hygiene(max((mr for mr, _nr in table.values()), default=1)),
+        )
+    )
     return name
 
 
@@ -1496,33 +3103,39 @@ def _register_accumulator_resident_v3() -> list[str]:
     for MR, NR, KC in grid:
         if (MR, NR, KC) == (4, 16, 16):
             nm = "accumulator_resident_microkernel_v3"
-            desc = ("COMPILER-EMITTED accumulator-resident, register-blocked, vfmacc.vf RVV GEMM "
-                    "micro-kernel — the genuine answer to the #1 scalable-gap the transform-only "
-                    "v1/v2 features could not reach. Recipe: tile [MR=4,NR=16], tile K by 1, "
-                    "scoped-vectorize -> vector.contract; PRE-bufferize loop-invariant-subset-"
-                    "hoisting makes the accumulator a vector<MRxNR> scf.for iter_arg (register-"
-                    "resident across K); lower contraction -> outerproduct -> vector.fma; then the "
-                    "A-operand scalarization rewrite (accum_microkernel.py) replaces the A "
-                    "vector<MRx1> read + extract:f32 with per-row scalar loads so the backend emits "
-                    "vfmacc.vf (flw) not vfmacc.vv (vmv/vslideup). Emitted K-loop (objdump): ONE B "
-                    "vle32 + MR A flw + MR vfmacc.vf into the resident accumulator + C stored once, "
-                    "0 in-loop accumulator spills, 0 vfmacc.vv — the hand ceiling's structure, "
-                    "compiler-emitted. BIT-EXACT vs scalar ref at 32/64/128 + non-cube on spike "
-                    "(scalar load of A[i,0] == lane [i,0]). Default-off, baseline byte-identical.")
+            desc = (
+                "COMPILER-EMITTED accumulator-resident, register-blocked, vfmacc.vf RVV GEMM "
+                "micro-kernel — the genuine answer to the #1 scalable-gap the transform-only "
+                "v1/v2 features could not reach. Recipe: tile [MR=4,NR=16], tile K by 1, "
+                "scoped-vectorize -> vector.contract; PRE-bufferize loop-invariant-subset-"
+                "hoisting makes the accumulator a vector<MRxNR> scf.for iter_arg (register-"
+                "resident across K); lower contraction -> outerproduct -> vector.fma; then the "
+                "A-operand scalarization rewrite (accum_microkernel.py) replaces the A "
+                "vector<MRx1> read + extract:f32 with per-row scalar loads so the backend emits "
+                "vfmacc.vf (flw) not vfmacc.vv (vmv/vslideup). Emitted K-loop (objdump): ONE B "
+                "vle32 + MR A flw + MR vfmacc.vf into the resident accumulator + C stored once, "
+                "0 in-loop accumulator spills, 0 vfmacc.vv — the hand ceiling's structure, "
+                "compiler-emitted. BIT-EXACT vs scalar ref at 32/64/128 + non-cube on spike "
+                "(scalar load of A[i,0] == lane [i,0]). Default-off, baseline byte-identical."
+            )
         else:
             nm = f"accum_resident_v3_{MR}_{NR}_{KC}"
-            desc = (f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
-                    f"KC={KC}): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A "
-                    f"vfmacc.vf. Default-off tuning-grid feature.")
-        register(ImprFeature(
-            name=nm,
-            action_class="PASS",
-            description=desc,
-            edit_pipeline=_accumulator_resident_v3_pipeline,
-            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
-                           _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
-            schedule_replace=True,
-        ))
+            desc = (
+                f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
+                f"KC={KC}): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A "
+                f"vfmacc.vf. Default-off tuning-grid feature."
+            )
+        register(
+            ImprFeature(
+                name=nm,
+                action_class="PASS",
+                description=desc,
+                edit_pipeline=_accumulator_resident_v3_pipeline,
+                edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC: _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
+                schedule_replace=True,
+                implies=_tile_epilogue_hygiene(MR),
+            )
+        )
         names.append(nm)
 
     # WHOLE-MODEL-SAFE vfmacc.vf composed variant (this iteration's gap-closer). The
@@ -1547,28 +3160,58 @@ def _register_accumulator_resident_v3() -> list[str]:
     # residency it already had — closing the dominant share of the openvla/rdt2 gap. Both pieces are
     # proven separately (wholemodel = small-M survival at NR=32; v3 = vfmacc.vf at the hand ceiling);
     # this composes them in ONE schedule. Default-off; baseline byte-identical.
-    register(ImprFeature(
-        name="accumulator_resident_wholemodel_vf",
-        action_class="PASS",
-        description="Whole-model-safe vfmacc.vf accumulator-resident micro-kernel: the v3 "
-                    "PRE-bufferize subset-hoist + A-scalarization recipe (emits vfmacc.vf, ~3 "
-                    "inner-loop insns/FMA, at the hand ceiling) WITH the wholemodel tail clamps "
-                    "inherent (matmul MR_mm=1, batch_matmul NR_bmm=8). The clamps make the small-M "
-                    "openvla/rdt2 matmuls (M=17/20/28) vectorize FULL at NR=32 (no masked "
-                    "transfer_write -> no LLVM-23 PipelineError -> no scalar fallback, unlike bare "
-                    "v3 which degrades to NR=8/non-resident), and the A-scalarization turns the A "
-                    "lane-rebuild into per-row scalar loads so the K-loop emits vfmacc.vf not "
-                    "vfmacc.vv + the ~20-insn vslideup/vmv broadcast ladder. Net: takes the "
-                    "whole-model kernel's K-loop from ~20 to ~3 ops/FMA while keeping NR=32 + "
-                    "accumulator residency it already had — the openvla/rdt2 gap-closer "
-                    "(output/kernels/ceiling/kernel_breakdown.md). Bit-exact (scalar A[i,0] == lane "
-                    "[i,0]). Default-off; baseline byte-identical.",
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
-                                                                       NR_bmm=8, MR_mm=1),
-        schedule_replace=True,
-    ))
-    names.append("accumulator_resident_wholemodel_vf")
+    register(
+        ImprFeature(
+            name=WHOLEMODEL_VF_NAME,
+            action_class="PASS",
+            description="Whole-model-safe vfmacc.vf accumulator-resident micro-kernel: the v3 "
+            "PRE-bufferize subset-hoist + A-scalarization recipe (emits vfmacc.vf, ~3 "
+            "inner-loop insns/FMA, at the hand ceiling) WITH the wholemodel tail clamps "
+            "inherent (matmul MR_mm=1, batch_matmul NR_bmm=8). The clamps make the small-M "
+            "openvla/rdt2 matmuls (M=17/20/28) vectorize FULL at NR=32 (no masked "
+            "transfer_write -> no LLVM-23 PipelineError -> no scalar fallback, unlike bare "
+            "v3 which degrades to NR=8/non-resident), and the A-scalarization turns the A "
+            "lane-rebuild into per-row scalar loads so the K-loop emits vfmacc.vf not "
+            "vfmacc.vv + the ~20-insn vslideup/vmv broadcast ladder. Net: takes the "
+            "whole-model kernel's K-loop from ~20 to ~3 ops/FMA while keeping NR=32 + "
+            "accumulator residency it already had — the openvla/rdt2 gap-closer "
+            "(output/kernels/ceiling/kernel_breakdown.md). Bit-exact (scalar A[i,0] == lane "
+            "[i,0]). Default-off; baseline byte-identical.",
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(
+                *WHOLEMODEL_VF_CAPS, NR_bmm=WHOLEMODEL_VF_NR_BMM, MR_mm=WHOLEMODEL_VF_MR_MM
+            ),
+            schedule_replace=True,
+        )
+    )
+    names.append(WHOLEMODEL_VF_NAME)
+
+    # Odd attention extents need BOTH M and N tail handling.  smolVLA's language-side attention
+    # uses 113x113 score/value contractions, so the ordinary MR=4/NR=8 schedule produces a single
+    # multi-op vector.mask around each vector.contract.  LLVM 23 cannot lower that form.  Padding
+    # the two PARALLEL iteration dimensions to their tile multiples leaves the 4x8 main kernel
+    # unchanged, fills only zero rows/columns, and copies the original result slice back.  Omitting
+    # padding_values is intentional: transform.structured.pad infers the additive zero from each
+    # contraction's own element types, so one schedule safely handles i8*i8->i32 score BMMs and
+    # bf16*bf16->f32 softmax/value BMMs in the same graph.
+    register(
+        ImprFeature(
+            name=WHOLEMODEL_VF_BMMPAD_NAME,
+            action_class="PASS",
+            description="Whole-model vfmacc/vwmacc accumulator-resident kernel with batch-matmul M/N "
+            "padding. Pads attention's parallel M and N extents to MR=4/NR=8, preserving "
+            "the full 4x8 vector tile while eliminating unlowerable vector.mask-wrapped "
+            "contracts on odd extents such as smolVLA's 113x113 attention. Zero padding is "
+            "inferred per operand dtype and the original result slice is copied back. "
+            "Default-off; the published wholemodel_vf feature is unchanged.",
+            edit_pipeline=_accumulator_resident_v3_bmmpad_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(
+                *WHOLEMODEL_VF_CAPS, NR_bmm=WHOLEMODEL_VF_NR_BMM, MR_mm=WHOLEMODEL_VF_MR_MM, pad_bmm=True
+            ),
+            schedule_replace=True,
+        )
+    )
+    names.append(WHOLEMODEL_VF_BMMPAD_NAME)
 
     # ITERATION-3 (packing/memory residual): MR>1 register-block variant of the vf kernel for
     # A-OPERAND REUSE — the OpenBLAS lever. The memory-traffic decode (output/kernels/ceiling/
@@ -1598,28 +3241,30 @@ def _register_accumulator_resident_v3() -> list[str]:
     # residual A-reuse the VLAs leave on the table is a STRUCTURAL property of their small token dim,
     # not a matmul-kernel defect — closing it would need a dispatch-level layout/batching pass (group
     # multiple small-M matmuls into one large-M GEMM), out of scope for the matmul-kernel feature.
-    register(ImprFeature(
-        name="accumulator_resident_wholemodel_vf_mr4",
-        action_class="PASS",
-        description="MR=4 register-block variant of accumulator_resident_wholemodel_vf for A-operand "
-                    "REUSE (the OpenBLAS MR>1 lever): matmul MR_mm=4 so ONE unit-stride B-row load is "
-                    "shared across 4 vfmacc.vf into 4 resident accumulators, dropping K-loop "
-                    "loads/useful-FMA from 2.0 (MR=1) to 1.25 (1 B-load + 4 A-scalars / 4 FMAs) — "
-                    "MEASURED by the memory-traffic decode on large-M cube/M=20. batch_matmul NR_bmm=8 "
-                    "N-tail clamp retained. CORRECT + bit-exact + A-reuse ONLY on large-M GEMM "
-                    "(M>=MR and M%MR==0); on the small-M openvla/rdt2 matmuls (token dim 1-28) it has "
-                    "no clean M-tile (M=17,1) -> LLVM-23 masked-write PipelineError, or scalar-falls-"
-                    "back (M=16,28) -> would regress the whole model, so it is NOT whole-model-safe "
-                    "for VLAs (use wholemodel_vf, already at XNNPACK's per-FMA traffic floor, there). "
-                    "The openvla/rdt2 A-reuse residual is structural (small token dim), not a "
-                    "matmul-kernel defect; closing it needs a dispatch-level large-M batching/layout "
-                    "pass (output/kernels/ceiling/packing_residual.md). Default-off; baseline "
-                    "byte-identical.",
-        edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
-                                                                       NR_bmm=8, MR_mm=4),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name="accumulator_resident_wholemodel_vf_mr4",
+            action_class="PASS",
+            description="MR=4 register-block variant of accumulator_resident_wholemodel_vf for A-operand "
+            "REUSE (the OpenBLAS MR>1 lever): matmul MR_mm=4 so ONE unit-stride B-row load is "
+            "shared across 4 vfmacc.vf into 4 resident accumulators, dropping K-loop "
+            "loads/useful-FMA from 2.0 (MR=1) to 1.25 (1 B-load + 4 A-scalars / 4 FMAs) — "
+            "MEASURED by the memory-traffic decode on large-M cube/M=20. batch_matmul NR_bmm=8 "
+            "N-tail clamp retained. CORRECT + bit-exact + A-reuse ONLY on large-M GEMM "
+            "(M>=MR and M%MR==0); on the small-M openvla/rdt2 matmuls (token dim 1-28) it has "
+            "no clean M-tile (M=17,1) -> LLVM-23 masked-write PipelineError, or scalar-falls-"
+            "back (M=16,28) -> would regress the whole model, so it is NOT whole-model-safe "
+            "for VLAs (use wholemodel_vf, already at XNNPACK's per-FMA traffic floor, there). "
+            "The openvla/rdt2 A-reuse residual is structural (small token dim), not a "
+            "matmul-kernel defect; closing it needs a dispatch-level large-M batching/layout "
+            "pass (output/kernels/ceiling/packing_residual.md). Default-off; baseline "
+            "byte-identical.",
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16, NR_bmm=8, MR_mm=4),
+            schedule_replace=True,
+            implies=_tile_epilogue_hygiene(4),
+        )
+    )
     names.append("accumulator_resident_wholemodel_vf_mr4")
 
     # PER-MATMUL MR + M-PAD TAIL — the whole-model-safe MR>1 register block (this iteration).
@@ -1636,32 +3281,121 @@ def _register_accumulator_resident_v3() -> list[str]:
     # MIXES M%4==0 and M=1 matmuls (rdt2) gets the MR register block on ALL of them in ONE schedule.
     # The batch_matmul path is identical to `..._vf` (MR=4 + NR_bmm=8), so only the matmul path changes
     # from the MR=1 clamp to the padded MR register block. Default-off; baseline byte-identical.
-    register(ImprFeature(
-        name="accumulator_resident_wholemodel_vf_mrpad",
-        action_class="PASS",
-        description="Per-matmul MR>1 register block with an M-PAD tail — the whole-model-safe A-operand "
-                    "reuse lever. Same v3 vfmacc.vf subset-hoist + A-scalarization recipe as "
-                    "accumulator_resident_wholemodel_vf, but the matmul M tile is a padded MR=4 register "
-                    "block instead of the MR=1 clamp: transform.structured.pad rounds each matmul's M up "
-                    "to a multiple of MR (padding value 0) BEFORE tiling, so every matmul — INCLUDING "
-                    "the M=1/M=17/M=28 VLA-decode matmuls that make bare vf_mr4 trip the LLVM-23 "
-                    "masked-transfer_write PipelineError (M=1 scalar fallback, M=17 NR=8/119-spill) — "
-                    "register-blocks cleanly at MR: ONE unit-stride B-row load shared across MR "
-                    "vfmacc.vf into MR resident accumulators (loads/useful-FMA 2.0 -> 1.25). Bit-exact "
-                    "(padded rows are 0-row@B=0, sliced off by pad's copy_back extract_slice; only real "
-                    "[0:M] rows written). Per-matmul (each op pads to its own next MR multiple — general "
-                    "tail rule, not a per-model constant), so a MIXED-M model (rdt2 M in {1,28}) gets "
-                    "the MR block on every matmul in ONE schedule. batch_matmul path identical to _vf "
-                    "(MR=4 + NR_bmm=8). Default-off; baseline byte-identical.",
-        edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8),
-        schedule_replace=True,
-    ))
+    register(
+        ImprFeature(
+            name="accumulator_resident_wholemodel_vf_mrpad",
+            action_class="PASS",
+            description="Per-matmul MR>1 register block with an M-PAD tail — the whole-model-safe A-operand "
+            "reuse lever. Same v3 vfmacc.vf subset-hoist + A-scalarization recipe as "
+            "accumulator_resident_wholemodel_vf, but the matmul M tile is a padded MR=4 register "
+            "block instead of the MR=1 clamp: transform.structured.pad rounds each matmul's M up "
+            "to a multiple of MR (padding value 0) BEFORE tiling, so every matmul — INCLUDING "
+            "the M=1/M=17/M=28 VLA-decode matmuls that make bare vf_mr4 trip the LLVM-23 "
+            "masked-transfer_write PipelineError (M=1 scalar fallback, M=17 NR=8/119-spill) — "
+            "register-blocks cleanly at MR: ONE unit-stride B-row load shared across MR "
+            "vfmacc.vf into MR resident accumulators (loads/useful-FMA 2.0 -> 1.25). Bit-exact "
+            "(padded rows are 0-row@B=0, sliced off by pad's copy_back extract_slice; only real "
+            "[0:M] rows written). Per-matmul (each op pads to its own next MR multiple — general "
+            "tail rule, not a per-model constant), so a MIXED-M model (rdt2 M in {1,28}) gets "
+            "the MR block on every matmul in ONE schedule. batch_matmul path identical to _vf "
+            "(MR=4 + NR_bmm=8). Default-off; baseline byte-identical.",
+            edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
+            implies=_tile_epilogue_hygiene(4),
+            edit_schedule=lambda _t: _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8),
+            schedule_replace=True,
+        )
+    )
     names.append("accumulator_resident_wholemodel_vf_mrpad")
     return names
 
 
 ACCUM_RESIDENT_V3_NAMES: list[str] = _register_accumulator_resident_v3()
+
+MRPAD_NAME = "accumulator_resident_wholemodel_vf_mrpad"
+
+
+def ensure_mrpad_for_elem_types(a: str, b: str, c: str, MR: int = 4, NR: int = 16, NR_bmm: int = 8) -> str:
+    """Register (once) an M-pad register block whose padding values match the OPERAND TYPES.
+
+    The default ``accumulator_resident_wholemodel_vf_mrpad`` pads with an f32 zero for all three
+    operands, which is right only for an f32 contraction. On any other element type
+    ``transform.structured.pad`` hard-errors, the transform interpreter raises, and the lowering
+    catches that as a whole-model scalar fallback -- so the lever reads as "applied but slow" rather
+    than "rejected". Naming the types makes the variant selectable by the search instead of being a
+    property of whichever dtype the default happened to be written for.
+
+    Returns the feature name to put in a feature set.
+    """
+    types = (str(a), str(b), str(c))
+    MR, NR, NR_bmm = int(MR), int(NR), int(NR_bmm)
+    if min(MR, NR, NR_bmm) <= 0:
+        raise ValueError(f"MR/NR/NR_bmm must be positive, got {(MR, NR, NR_bmm)}")
+    # The TILE is part of the identity. MR=4/NR=16 were chosen against f32; at one VLEN an i8 lane
+    # holds four times the elements, so the f32 tile is not the int8 tile and a variant that hides
+    # its shape behind the dtype name would silently pin the wrong one.
+    name = f"{MRPAD_NAME}_" + "_".join(types) + f"_mr{MR}_nr{NR}_nb{NR_bmm}"
+    if name in known():
+        return name
+    for t in types:  # fail closed at REGISTRATION, not inside the interpreter
+        _zero_attr(t)
+    register(
+        ImprFeature(
+            name=name,
+            action_class="PASS",
+            description=(
+                f"{MRPAD_NAME} at MR={MR}/NR={NR}/NR_bmm={NR_bmm} with padding values typed "
+                f"for a {types[0]}x{types[1]}->{types[2]} "
+                "contraction. Same recipe and same tail rule; only the pad literals differ, "
+                "because a wrongly-typed pad value is a transform-interpreter error and "
+                "therefore a silent whole-model scalar fallback."
+            ),
+            edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
+            implies=_tile_epilogue_hygiene(4),
+            edit_schedule=(
+                lambda _t, _ty=types, _mr=MR, _nr=NR, _nb=NR_bmm: _accumulator_resident_v3_mrpad_pre_schedule(
+                    _mr, _nr, 16, NR_bmm=_nb, elem_types=_ty
+                )
+            ),
+            schedule_replace=True,
+        )
+    )
+    return name
+
+
+#: The canonical int8 contraction operand types. Registered eagerly so the typed M-pad variant is
+#: NAMEABLE as a feature string and visible to the proposer -- an on-demand-only registration is
+#: reachable from Python but not from a `--features` list or a search proposal, which is where it
+#: has to be selectable from. Registration is default-off, so the frozen baseline is unaffected.
+MRPAD_INT8_NAME = ensure_mrpad_for_elem_types("i8", "i8", "i32")
+
+#: Tiles the SEARCH may try for the int8 named-op register block. MR=4/NR=16 is the f32 tile and it
+#: is 5.1x behind the generic-level block on int8 -- an untuned shape, not a broken lever: against
+#: its own control (no register block at all) it is 8.6x faster. An i8 lane holds 4x the elements of
+#: an f32 lane at one VLEN, so the N strip in particular has no reason to match. Registered so the
+#: proposer can refine along both axes instead of inheriting a constant chosen for another dtype.
+#:
+#: MR=1 IS IN THE LADDER BECAUSE THE EXPERT USES IT. XNNPACK's kernel is
+#: `xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv` -- 1x4v, i.e. MR=1 with a VLEN-scaled 4-group N
+#: tile -- and the lifted CCA agrees: `compute.register_block expert=(1, ('vsetvlmax', 4.0))` against
+#: our (4, ('vsetvlmax', 8.0)). The ladder started at MR=2 and the routed action's own text says
+#: "RAISE the matmul register-block MR toward the expert MR", which is backwards here: the expert's
+#: MR is BELOW ours, and its number was not in the search space at all. Our MR=4 variant measured
+#: 1.61x SLOWER than the default, which is what that looks like from the outside.
+MRPAD_INT8_TILES: tuple[str, ...] = tuple(
+    ensure_mrpad_for_elem_types("i8", "i8", "i32", MR=_mr, NR=_nr, NR_bmm=_nb)
+    for _mr, _nr, _nb in (
+        (1, 16, 8),
+        (1, 32, 8),
+        (1, 64, 16),  # the EXPERT's MR
+        (2, 16, 8),
+        (4, 16, 8),
+        (8, 16, 8),
+        (4, 32, 8),
+        (4, 64, 16),
+        (8, 32, 16),
+        (8, 64, 16),
+    )
+)
 
 
 # ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
@@ -1687,32 +3421,34 @@ ACCUM_RESIDENT_V3_NAMES: list[str] = _register_accumulator_resident_v3()
 # This feature is a marker (no MLIR schedule/pipeline edit) recording that the gap-closing path is
 # a dedicated RVV inner-kernel emitter, not the outerproduct lowering; the measured driver IS the
 # emitter's output. Default-off; baseline byte-identical (it has no edit hooks).
-register(ImprFeature(
-    name="intrinsic_microkernel",
-    action_class="CODEGEN",
-    # HONEST LABEL: this is a CEILING REFERENCE, not a compiler-emitted feature. It is a marker with
-    # NO MLIR schedule/pipeline edit (baseline byte-identical); the measured number comes from a
-    # HAND-WRITTEN riscv_vector.h driver (ceiling_drivers/ours_intrinsic_gemm_driver.c), NOT from our
-    # transform pipeline. It records the TARGET a dedicated RVV micro-kernel codegen pass should hit,
-    # and quantifies how far the compiler-emitted accumulator_resident_microkernel still is from it.
-    # The transform-dialect feature does NOT yet reach this (see accumulator_resident_microkernel:
-    # the emitted asm still spills the carried accumulator through the stack inside the K loop —
-    # vl4re8.v/vs4r.v of the accumulator per K-tile, so the CCA reads accumulator_resident=False, and
-    # measured ~19x off this ceiling @64^3). Keeping the hand kernel ONLY as a labeled ceiling so the
-    # gap is honest and the codegen work-item (action_catalog: compute.accumulator_resident ->
-    # CODEGEN, forkable_now=False) is visible — never linked as if the compiler emitted it.
-    description="CEILING REFERENCE (hand-written riscv_vector.h driver, NOT compiler-emitted): a "
-                "register-blocked, accumulator-resident, K-streaming RVV GEMM micro-kernel (MR=4, "
-                "NR=vsetvlmax) that keeps the MR x NR accumulator in vector registers across the "
-                "whole K loop (vfmacc.vf chain, B row + A scalars streamed, C stored once). "
-                "Spill-free, bit-exact 32/64/128, 1.7x faster than OpenBLAS on the spike proxy "
-                "(pack-excluded). It is the TARGET for a dedicated RVV micro-kernel codegen pass; "
-                "the transform-dialect accumulator_resident_microkernel does NOT yet reach it "
-                "(~19x off @64^3 — still spills the accumulator per K-tile). Marker only (no "
-                "schedule/pipeline edit); baseline byte-identical.",
-    edit_pipeline=None,
-    edit_schedule=None,
-))
+register(
+    ImprFeature(
+        name="intrinsic_microkernel",
+        action_class="CODEGEN",
+        # HONEST LABEL: this is a CEILING REFERENCE, not a compiler-emitted feature. It is a marker with
+        # NO MLIR schedule/pipeline edit (baseline byte-identical); the measured number comes from a
+        # HAND-WRITTEN riscv_vector.h driver (ceiling_drivers/ours_intrinsic_gemm_driver.c), NOT from our
+        # transform pipeline. It records the TARGET a dedicated RVV micro-kernel codegen pass should hit,
+        # and quantifies how far the compiler-emitted accumulator_resident_microkernel still is from it.
+        # The transform-dialect feature does NOT yet reach this (see accumulator_resident_microkernel:
+        # the emitted asm still spills the carried accumulator through the stack inside the K loop —
+        # vl4re8.v/vs4r.v of the accumulator per K-tile, so the CCA reads accumulator_resident=False, and
+        # measured ~19x off this ceiling @64^3). Keeping the hand kernel ONLY as a labeled ceiling so the
+        # gap is honest and the codegen work-item (action_catalog: compute.accumulator_resident ->
+        # CODEGEN, forkable_now=False) is visible — never linked as if the compiler emitted it.
+        description="CEILING REFERENCE (hand-written riscv_vector.h driver, NOT compiler-emitted): a "
+        "register-blocked, accumulator-resident, K-streaming RVV GEMM micro-kernel (MR=4, "
+        "NR=vsetvlmax) that keeps the MR x NR accumulator in vector registers across the "
+        "whole K loop (vfmacc.vf chain, B row + A scalars streamed, C stored once). "
+        "Spill-free, bit-exact 32/64/128, 1.7x faster than OpenBLAS on the spike proxy "
+        "(pack-excluded). It is the TARGET for a dedicated RVV micro-kernel codegen pass; "
+        "the transform-dialect accumulator_resident_microkernel does NOT yet reach it "
+        "(~19x off @64^3 — still spills the accumulator per K-tile). Marker only (no "
+        "schedule/pipeline edit); baseline byte-identical.",
+        edit_pipeline=None,
+        edit_schedule=None,
+    )
+)
 
 
 # ---- vectorized transcendental activation (GELU/sigmoid/SiLU/tanh) ------------------
@@ -1792,37 +3528,41 @@ module attributes {transform.with_named_sequence} {
 # baseline `convert-math-to-libm` -> scalar `expf` path (exact, crash-free). No pipeline edit needed.
 
 
-register(ImprFeature(
-    name="vectorized_transcendental_activation",
-    action_class="PASS",
-    description="GENERAL vectorized-activation lowering, PRECISELY TARGETED by provenance: the "
-                "act_poly rewriter (spliced into the lowering runner before the pass manager) "
-                "replaces math.erf/exp/tanh with an inline minimax ARITH polynomial ONLY inside a "
-                "linalg.generic the provenance marks as an elementwise ACTIVATION (gelu/silu/sigmoid/"
-                "tanh) — NOT a softmax/normalization (whose exp stays on the exact libm path; "
-                "blanket-rewriting it drove openvla whole-model cos to 0.541). It TAGS each targeted "
-                "generic (merlin.act_vectorize) and the schedule vectorizes exactly those (no blanket "
-                "foreach over every generic, no failures(suppress) -> no masked miscompile, no "
-                "6+min/config compile blowup). So GELU (erf) and sigmoid/SiLU (exp) vectorize to a "
-                "vector fmul/fadd (vfmacc) chain while softmax stays correct. Closes the activation "
-                "gap vs XNNPACK's polynomial RVV kernels (coefficient/structure CEILING REFERENCE; we "
-                "emit the MLIR). APPROXIMATION: cos>0.999 / max-abs-err <~6e-7 vs libm on REALISTIC "
-                "ranges (gated on cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
-    edit_schedule=lambda _t: _ACT_POLY_SCHEDULE,
-    schedule_replace=True,
-))
+register(
+    ImprFeature(
+        name="vectorized_transcendental_activation",
+        action_class="PASS",
+        description="GENERAL vectorized-activation lowering, PRECISELY TARGETED by provenance: the "
+        "act_poly rewriter (spliced into the lowering runner before the pass manager) "
+        "replaces math.erf/exp/tanh with an inline minimax ARITH polynomial ONLY inside a "
+        "linalg.generic the provenance marks as an elementwise ACTIVATION (gelu/silu/sigmoid/"
+        "tanh) — NOT a softmax/normalization (whose exp stays on the exact libm path; "
+        "blanket-rewriting it drove openvla whole-model cos to 0.541). It TAGS each targeted "
+        "generic (merlin.act_vectorize) and the schedule vectorizes exactly those (no blanket "
+        "foreach over every generic, no failures(suppress) -> no masked miscompile, no "
+        "6+min/config compile blowup). So GELU (erf) and sigmoid/SiLU (exp) vectorize to a "
+        "vector fmul/fadd (vfmacc) chain while softmax stays correct. Closes the activation "
+        "gap vs XNNPACK's polynomial RVV kernels (coefficient/structure CEILING REFERENCE; we "
+        "emit the MLIR). APPROXIMATION: cos>0.999 / max-abs-err <~6e-7 vs libm on REALISTIC "
+        "ranges (gated on cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
+        edit_schedule=lambda _t: _ACT_POLY_SCHEDULE,
+        schedule_replace=True,
+    )
+)
 
 
-register(ImprFeature(
-    name="fused_vfmacc_contraction",
-    action_class="PASS",
-    description="mined fma_broadcast_policy: form a real vector.contract -> outerproduct(kind=add) "
-                "-> vector.fma -> llvm.fmuladd -> vfmacc (vectorize_children + lower_contraction "
-                "outerproduct + lower_outerproduct). Closes the separate-vfmul.vv+vfadd.vv gap. For "
-                "kernel-sized contraction workloads (vectorize_children explodes on whole models).",
-    edit_schedule=_vfmacc_schedule_edit,
-    schedule_replace=True,
-))
+register(
+    ImprFeature(
+        name="fused_vfmacc_contraction",
+        action_class="PASS",
+        description="mined fma_broadcast_policy: form a real vector.contract -> outerproduct(kind=add) "
+        "-> vector.fma -> llvm.fmuladd -> vfmacc (vectorize_children + lower_contraction "
+        "outerproduct + lower_outerproduct). Closes the separate-vfmul.vv+vfadd.vv gap. For "
+        "kernel-sized contraction workloads (vectorize_children explodes on whole models).",
+        edit_schedule=_vfmacc_schedule_edit,
+        schedule_replace=True,
+    )
+)
 
 
 # Erase the per-tile `memref.copy %x, %x` bufferization leaves behind. Pure lowering hygiene: it
@@ -1834,14 +3574,45 @@ register(ImprFeature(
 #   instructions 1,710,650 -> 475,899 (3.59x)   ticks 41,195 -> 21,882 (1.88x)
 #   vs XNNPACK   3.57x -> 1.90x
 # The mechanism and why nothing upstream folds it: see llvmlower/selfcopy.py.
-register(ImprFeature(
-    name=_SELF_COPY_FEATURE,
-    action_class="PASS",
-    description="erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse "
-                "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
-                "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
-                "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
-))
+register(
+    ImprFeature(
+        name=_SELF_COPY_FEATURE,
+        action_class="PASS",
+        description="erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse "
+        "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
+        "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
+        "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
+    )
+)
+
+
+# Expand every static `memref.copy` into an emitted loop nest instead of a runtime call. The
+# companion to `erase_self_copy`, and the reason that one alone cannot close the axis: the erase
+# only removes copies that are REDUNDANT (`memref.copy %x, %x`), while a copy whose destination is a
+# `memref.subview` of a larger buffer moves real data and survives as `@memrefCopy`, MLIR's
+# rank-generic strided walker (~79 retired instructions per copied ELEMENT).
+#
+# MEASURED at the post-bufferization split point, small_llama_int8_consistent, hand_v0_int8:
+#   self       19 copies (all in-loop),   608 elements  -> erase_self_copy removes these
+#   diff-type  24 copies (prologue),     6144 elements  -> @memrefCopy, ~485K instructions/inference
+#   same-type  40 copies (prologue),    21360 elements  -> memcpy
+# So `envelope.runtime_calls` keeps both `memrefCopy` and `memcpy` however many self-copies are
+# erased. Rewriting the copy to `linalg.copy` hands it to the `convert-linalg-to-loops` already in
+# every pipeline, and finalize-memref-to-llvm then has nothing left to turn into a call.
+# See llvmlower/copy_expand.py for the structural predicate and the fail-closed skip count.
+register(
+    ImprFeature(
+        name=_EXPAND_COPY_FEATURE,
+        action_class="PASS",
+        description="rewrite every ranked, statically shaped `memref.copy` to a `linalg.copy` after "
+        "bufferization and before finalize-memref-to-llvm, so the pipeline's own "
+        "convert-linalg-to-loops emits an scf load/store nest instead of leaving a call to "
+        "the rank-generic `@memrefCopy` runtime helper (or a copy-derived `memcpy`). "
+        "Structure-keyed (ranked + static shape), no shape or model assumption; a copy it "
+        "cannot prove static is left alone and counted. Default-off, baseline "
+        "byte-identical.",
+    )
+)
 
 
 # Fold a `linalg.transpose` of a matmul's B operand INTO the matmul's access pattern (transpose-b
@@ -1851,16 +3622,18 @@ register(ImprFeature(
 # the scalar transpose op AND its materialized buffer; the op stays `linalg.matmul` (transposed-B
 # indexing_map) so the frozen RVV schedule still vectorizes it. Default-off; baseline byte-identical.
 # The rewrite runs in the lowering runner (gated by argv[5]); see llvmlower/transpose_fuse.py.
-register(ImprFeature(
-    name=_FUSE_TRANSPOSE_FEATURE,
-    action_class="PASS",
-    description="fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint "
-                "the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), "
-                "then erase the dead transpose). Eliminates the standalone SCALAR weight transpose "
-                "(393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul "
-                "stays vectorized by the frozen schedule and reads B contiguously along k. "
-                "Whole-model cross-op fusion; default-off, baseline byte-identical.",
-))
+register(
+    ImprFeature(
+        name=_FUSE_TRANSPOSE_FEATURE,
+        action_class="PASS",
+        description="fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint "
+        "the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), "
+        "then erase the dead transpose). Eliminates the standalone SCALAR weight transpose "
+        "(393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul "
+        "stays vectorized by the frozen schedule and reads B contiguously along k. "
+        "Whole-model cross-op fusion; default-off, baseline byte-identical.",
+    )
+)
 
 
 # ---- vectorize a standalone reduction -> vfredusum/vredsum (the compute.reduction_form lever) ------
@@ -1937,8 +3710,7 @@ def vectorize_reduction_schedule(text: str) -> str:
     lowering-pattern block), keeping the contraction handling intact. Falls back to a reduction-only
     schedule if the anchor is absent (never a silent no-op)."""
     if _REDUCTION_ANCHOR in text:
-        return text.replace(_REDUCTION_ANCHOR,
-                            _VECTORIZE_REDUCTION_BLOCK + _REDUCTION_ANCHOR, 1)
+        return text.replace(_REDUCTION_ANCHOR, _VECTORIZE_REDUCTION_BLOCK + _REDUCTION_ANCHOR, 1)
     return _VECTORIZE_REDUCTION_STANDALONE
 
 
@@ -1958,20 +3730,243 @@ def vectorize_reduction_pipeline(passes: list[str]) -> list[str]:
     return out
 
 
-register(ImprFeature(
-    name="vectorize_reduction",
-    action_class="PASS",
-    description="Vectorize a standalone reduction (softmax/norm row-reduce, `linalg.reduce`) so it "
-                "lowers to a HARDWARE vector reduction (`vfredusum.vs` for fp / `vredsum.vs` for int) "
-                "instead of the scalar convert-linalg-to-loops accumulate the baseline emits. Matches "
-                "the reduction `linalg.generic` by its reduction iterator (ranks 1/2/3), vectorizes it "
-                "to `vector.multi_reduction`, lowers that via the inner-reduction strategy to "
-                "`vector.reduction`, and reassociates the fp reduce so the backend picks the unordered "
-                "vfredusum. The contraction schedule is left intact (matmul object byte-identical), so "
-                "it is whole-model-safe. The route for the compute.reduction_form CCA lever (previously "
-                "a bijection orphan). APPROXIMATION (fp reassociation, cos-gated). Default-off; baseline "
-                "byte-identical.",
-    edit_pipeline=vectorize_reduction_pipeline,
-    edit_schedule=vectorize_reduction_schedule,
-    schedule_replace=True,
-))
+register(
+    ImprFeature(
+        name="vectorize_reduction",
+        action_class="PASS",
+        description="Vectorize a standalone reduction (softmax/norm row-reduce, `linalg.reduce`) so it "
+        "lowers to a HARDWARE vector reduction (`vfredusum.vs` for fp / `vredsum.vs` for int) "
+        "instead of the scalar convert-linalg-to-loops accumulate the baseline emits. Matches "
+        "the reduction `linalg.generic` by its reduction iterator (ranks 1/2/3), vectorizes it "
+        "to `vector.multi_reduction`, lowers that via the inner-reduction strategy to "
+        "`vector.reduction`, and reassociates the fp reduce so the backend picks the unordered "
+        "vfredusum. The contraction schedule is left intact (matmul object byte-identical), so "
+        "it is whole-model-safe. The route for the compute.reduction_form CCA lever (previously "
+        "a bijection orphan). APPROXIMATION (fp reassociation, cos-gated). Default-off; baseline "
+        "byte-identical.",
+        edit_pipeline=vectorize_reduction_pipeline,
+        edit_schedule=vectorize_reduction_schedule,
+        schedule_replace=True,
+    )
+)
+
+
+# ---- matrix-unit routing ------------------------------------------------------------
+# Unlike every feature above, this one changes NEITHER the pipeline pass list NOR the transform
+# schedule. It is an IR-level rewrite: `passes_opu.rewrite_prepared_file` replaces selected int8
+# contractions with calls to the certified matrix microkernel, so those contractions leave the vector
+# path entirely and the schedule's `linalg.matmul` arms simply match fewer ops.
+#
+# It is registered here anyway, with both hooks None, because this registry is the one place a build
+# says which non-baseline compiler behaviour it wants -- `build_app` threads `compiler_features` through
+# to the prepare step, and a feature that lived outside the registry would need a second, parallel way
+# to be requested. Both hooks being None also means the byte-identity invariant is structural rather
+# than merely tested: there is no edit to apply.
+OPU_MATMUL_NAME = "opu_matmul"
+
+register(
+    ImprFeature(
+        name=OPU_MATMUL_NAME,
+        action_class="PASS",
+        description=(
+            "Route int8 rank-2 contractions with a zero accumulator init to the certified outer-product "
+            "matrix microkernel, as calls to a generated translation unit that transposes the left operand "
+            "K-major and reads its extents from the memref descriptors. NOT a schedule or pipeline edit: "
+            "the rewrite happens on the prepared IR (llvmlower/passes_opu), which is why both hooks are "
+            "None. Selection is a separate decision -- which contractions move is answered by the cost "
+            "model / e-graph and passed in, so enabling this feature without a selector routes nothing. "
+            "Coverage on spectformer int8: 90 of 106 contractions are legal (the 16 batch_matmuls are "
+            "gapped by a matmul-only contract), and a tile-filling selector at edge 32 moves 41 of them, "
+            # target-ok: names the hardware_pins.yaml entry this feature requires at build time — a pin
+            # reference in prose, not a target this code routes on (selection is passed in, see above).
+            "which is the shapes carrying ~88% of the arithmetic. Requires the pinned saturn revision "
+            "carrying the unit (hardware_pins.yaml: saturn_opu_int8) at build time, because the "
+            "instruction encodings are derived from its RTL rather than written down. Default-off."
+        ),
+    )
+)
+
+
+# ---- post-contraction elementwise fusion --------------------------------------------
+# The stage this feature turns on ALREADY EXISTS in `pipeline.build_rvv_pipeline`, sitting directly
+# above `linalg-generalize-named-ops` with a paragraph of measurement explaining why it is the
+# load-bearing one. It was reachable only through the `MERLIN_FUSE_POST` environment variable -- and
+# no fork can vary an environment variable. That is the same gap `vectorize_non_contraction_generics`
+# was built to close for `MERLIN_VEC_RANK`: a lever the tuning loop cannot name is a lever the tuning
+# loop cannot find, however well the pipeline supports it. Naming it here makes it selectable; the env
+# var still forces it on for a manual A/B, and the splice below declines to double it when it does.
+#
+# WHAT IT IS FOR, measured on `small_llama_int8_consistent` at the config that is currently best
+# (`prepack_weight_layout, perop_register_block, promote_buffers_to_stack, expand_memref_copy,
+# cse_through_provenance`). A per-op board profile of that model puts `linalg.generic` at 16.5% of
+# whole-model runtime across 191 ops in 26 structural classes -- a long tail with no dominant member,
+# so there is nothing to special-case even if one wanted to. Re-priced with `cse_through_provenance`
+# ON (which collapses the rotary cos/sin/powf duplicates 8:1 and takes the module 163 -> 112
+# generics), what is LEFT at the top of the tail is the dynamic per-row activation quantization --
+# an `absf`/`maximumf` amax scan, a scale divide, and a `divf`/`roundeven`/`min`/`max`/`fptosi`
+# quantize pass -- together with the `sitofp`/`mulf`/`mulf` requant that `cse` does not touch at all.
+#
+# Read the IR of one of those and the cost is not the arithmetic. `linalg-specialize-generic-ops`
+# (which runs just above, to recover the contraction NAMES the schedule matches on) un-fuses every
+# elementwise chain, so each per-row scale is materialized into a full-size temporary before the op
+# that divides by it:
+#
+#     %scale = ... -> tensor<8xf32>
+#     %b = linalg.broadcast ins(%scale : tensor<8xf32>) outs(... : tensor<8x128xf32>) dimensions = [1]
+#     %q = linalg.generic ins(%act, %b) { divf; roundeven; min; max; fptosi } -> tensor<8x128xi8>
+#
+# Counted over the whole prepared module: 50 `linalg.broadcast`, reading 17,476 bytes and WRITING
+# 242,944 -- a 13.9x amplification for zero arithmetic, on a model whose weights are 602 KB. Running
+# the stage takes that to 13 broadcasts, 3,012 bytes read and 60,160 written: 182,784 bytes per
+# inference that are no longer materialized, and the consumer reads the small operand through its own
+# indexing map instead.
+#
+# ON THE EMITTED CODE (K1 rv64gcv cross-compile, same package, same feature set, the ONLY difference
+# being this stage; `rvv_audit.audit_binary` -> `compute_symbol()` = `forward`):
+#
+#     forward instructions      35,253 -> 31,348   (-11.1%)
+#       vector                  14,053 -> 12,561
+#       scalar compute          15,319 -> 13,802
+#       vsetvl                   1,118 ->    954
+#     forward vector fraction   0.4784 -> 0.4765   (flat -- see below)
+#     model.o                  189,008 -> 170,664 bytes
+#     stack alloca sites           118 ->    103   (344,640 -> 318,848 bytes)
+#     model.ll digest       1cd391e1cae90ae3 -> d5868600a852e88f
+#
+# The vector fraction is FLAT on purpose, and reporting it as a win would be wrong: the broadcast
+# loops were themselves partly vectorized, so deleting them removes vector and scalar instructions in
+# roughly equal proportion. The claim is that ~11% of the instructions in `forward` were spent
+# materializing values their consumer could read directly -- not that what remains is better
+# vectorized.
+#
+# NUMERICS: bit-identical. On spike (bare-metal whole-model image, delivery configuration, VLEN=256),
+# the output prefix digest is `cc60e8a90270ec1e` with and without the stage, and every gate figure
+# agrees to the last digit against the independent references (fp32 cos 0.9999725818634033 / rel
+# 0.007327893200253357 / argmax True; w8a8 cos 0.9999655485153198 / rel 0.008363386664235835;
+# tiers ['fp32','w8a8'], tier_ok 'fp32_cos_only', ok True).
+#
+# THE WALL IS UNMEASURED. Everything above is static, and static evidence has been wrong here twice
+# in one day: `fold_weight_transpose` removed ops and shrank the object and cost 1.09x, and a
+# five-lever stack went 1.815x -> 1.943x. Fewer instructions is a reason to MEASURE this, not a
+# result. It is default-off like every other lever, and it is ranked in the whole-model proposer so
+# the beam prices it on the board instead of anyone assuming the sign.
+#
+# NOT `fuse_elementwise_after_generalize`, WHICH IS REFUTED -- read this before assuming the two are
+# the same lever with different names. That one inserts a bare `linalg-fuse-elementwise-ops` AFTER
+# `linalg-generalize-named-ops`, and it MEASURED 1.22x SLOWER on this same model (3,543,517 ->
+# 4,313,041 ns): its scalar bucket fell 3.1 -> 2.8 ms but the CONTRACTION rose 1.8 -> 2.8 ms, because
+# by then every named op is generic, the dequant chain fuses into the producers, and that perturbs the
+# shape the transform schedule had already vectorized the contraction into. Its own note concludes the
+# broadcast waste is real but needs something that does not disturb the contraction.
+#
+# This feature runs the stage on the OTHER SIDE of that anchor -- before generalization, while the
+# contraction's neighbours are still named ops the blanket fusion cannot swallow -- and adds the
+# `canonicalize`/`cse` the refuted one omits. That is not a cosmetic difference, and the emitted code
+# says so. Decoded from both objects with `rvv_audit._insn_mnemonic`:
+#
+#     vwmacc     152 -> 152        the int8 contractions, byte for byte as vectorized as before
+#     vmacc        4 ->   4
+#     vredmax    104 -> 104        the amax reductions, likewise untouched
+#     vle32.v  2,116 -> 1,729      \
+#     vse32.v    809 ->   581       |  the temporaries that stop being written and re-read
+#     vfmul.vv   540 ->   263      /
+#     add      4,390 -> 3,763      \
+#     li       2,142 -> 1,641       |  1,547 scalar instructions of loop bookkeeping for those loops
+#     addi     2,475 -> 2,056      /
+#
+# The failure mode of the refuted sibling is a number this one can be checked against, and it does not
+# move. WHAT DOES GET WORSE, recorded rather than buried: `fmul.s` 0 -> 82 and `fsw` 128 -> 201 -- a
+# fused op leaves a small scalar f32 tail where none existed. It is dwarfed by the 277 `vfmul.vv` it
+# replaces, but it is a scalarization, and if this lever ever measures badly that is the first place
+# to look.
+#
+# STRUCTURE-KEYED: the hooks name an upstream MLIR pass and one anchor pass, no model, shape, dtype or
+# target. Nothing here knows what a quantize is.
+FUSE_ELEMENTWISE_NAME = "fuse_elementwise_post_contraction"
+
+#: The stage, in the order `build_rvv_pipeline` documents for it. The `canonicalize`/`cse` are NOT
+#: decoration: measured on the tagged IR of another model, fusion alone gives broadcast 277 /
+#: tensor.empty 1415 and fuse+canonicalize+cse gives 245 / 68 -- most of the temporary collapse is
+#: the cleanup, not the fusion.
+FUSE_ELEMENTWISE_STAGE: tuple[str, ...] = ("func.func(linalg-fuse-elementwise-ops)", "canonicalize", "cse")
+
+#: The pass the stage must sit IMMEDIATELY IN FRONT OF. Anchoring on this one rather than on an index
+#: is what keeps the stage on the correct side of the two passes whose order is a correctness
+#: property: it must run AFTER `transform-interpreter` (fusing earlier folds matmuls into generics and
+#: `ops{["linalg.matmul"]}` then matches nothing -- a silent 0-vectorization) and BEFORE bufferization
+#: (afterwards there are no producer/consumer tensors left to fuse).
+FUSE_ELEMENTWISE_ANCHOR = "func.func(linalg-generalize-named-ops)"
+
+
+def _fuse_elementwise_pipeline(passes: list[str]) -> list[str]:
+    """Splice :data:`FUSE_ELEMENTWISE_STAGE` in just before :data:`FUSE_ELEMENTWISE_ANCHOR`.
+
+    Two refusals, both fail-closed, because "the feature was enabled and changed nothing" is the
+    failure mode this repo keeps re-learning:
+
+    * the stage already being present means ``MERLIN_FUSE_POST`` put it there, so this returns the
+      list unchanged rather than fusing twice (which is not merely wasteful -- a second
+      ``canonicalize``/``cse`` pair changes the emitted code, so a manual A/B and a feature-driven one
+      would not be comparing the same build);
+    * the anchor being absent means this is not a pipeline the stage belongs in, and inserting at a
+      guessed index would put the fusion on the wrong side of the transform interpreter. Raise, so the
+      build fails loudly instead of quietly emitting the baseline while reporting the feature applied.
+    """
+    if FUSE_ELEMENTWISE_STAGE[0] in passes:
+        return list(passes)
+    if FUSE_ELEMENTWISE_ANCHOR not in passes:
+        raise ValueError(
+            f"{FUSE_ELEMENTWISE_NAME} was requested but the pass list carries no "
+            f"{FUSE_ELEMENTWISE_ANCHOR!r} to anchor the fusion stage against, so there is no position "
+            f"that is provably after the transform interpreter and before bufferization. Refusing to "
+            f"insert at a guessed index and report the feature as applied."
+        )
+    at = passes.index(FUSE_ELEMENTWISE_ANCHOR)
+    return [*passes[:at], *FUSE_ELEMENTWISE_STAGE, *passes[at:]]
+
+
+register(
+    ImprFeature(
+        name=FUSE_ELEMENTWISE_NAME,
+        action_class="PASS",
+        description=(
+            "Run `linalg-fuse-elementwise-ops` (+ canonicalize/cse) after the transform schedule has "
+            "matched and vectorized the contractions, so the elementwise producer->consumer chains that "
+            "`linalg-specialize-generic-ops` un-fuses collapse again and each line is touched once. The "
+            "stage already existed in build_rvv_pipeline but was reachable only through the "
+            "MERLIN_FUSE_POST environment variable, which no fork can vary -- so the tuning loop could "
+            "not select it. Attacks the linalg.generic long tail (16.5% of int8 whole-model runtime "
+            "across 191 ops in 26 classes): the per-row activation-quantize and requant generics each "
+            "read a scale that `specialize` materialized into a full-size temporary first. MEASURED on "
+            "small_llama_int8_consistent at the current best config -- linalg.broadcast 50 -> 13, "
+            "242,944 -> 60,160 bytes written per inference for zero arithmetic (13.9x amplification "
+            "removed); emitted `forward` 35,253 -> 31,348 instructions (-11.1%, vector 14,053 -> 12,561 "
+            "and scalar 13,802 from 15,319, so the vector FRACTION is flat at 0.478 -> 0.477 by "
+            "construction), model.o 189,008 -> 170,664 bytes, stack alloca 118 -> 103 sites. Output "
+            "BIT-IDENTICAL on spike (prefix digest cc60e8a90270ec1e either way; tiers ['fp32','w8a8'], "
+            "tier_ok 'fp32_cos_only', ok True, every gate figure equal to the last digit). NOT the "
+            "refuted `fuse_elementwise_after_generalize`, which runs the stage on the far side of the "
+            "generalize anchor and measured 1.22x SLOWER by perturbing the already-vectorized "
+            "contraction: here vwmacc stays 152 and vredmax 104 while vle32.v 2,116 -> 1,729 and "
+            "vse32.v 809 -> 581. (fmul.s 0 -> 82 is a small scalar tail this introduces.) THE WALL IS "
+            "UNMEASURED -- fewer instructions is a reason to measure, not a result: on this same model a "
+            "transpose fold that removed ops and shrank the object measured 1.09x SLOWER. Structure-keyed "
+            "(names one upstream pass and one anchor pass; no model, shape, dtype or target). "
+            "Default-off; baseline byte-identical."
+        ),
+        edit_pipeline=_fuse_elementwise_pipeline,
+    )
+)
+
+
+# ---- vectorize the amax reduction dynamic quantization emits ------------------------------------
+# Registered EAGERLY, at import of this module, rather than through `_try_lazy_register`. That is
+# deliberate and it is the cheaper half of the trap that hook exists for: the lowering runs in a
+# SUBPROCESS that re-imports this module, and `mining.k1.build_k1_binary` imports no proposer, so a
+# name registered on demand in the parent resolves in neither. A registration performed at import is
+# present in every process by construction, so this feature needs no hook here, no eager import in
+# `wholemodel_proposer`, and no defensive `ensure_registered()` in `pipeline.lower_to_llvm_ir`.
+# The pass, the exactness argument and the refusal set live in llvmlower/reduce_vec.py.
+from .reduce_vec import ensure_registered as _ensure_amax_reduction  # noqa: E402
+
+VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()

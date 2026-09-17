@@ -11,6 +11,7 @@ regex luck.
 yielding a measured marker-precision estimate per motif. Cost is bounded by design
 (≤ motifs × N calls, never per-kernel) and the audit is fully usable without any API key.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,22 +25,19 @@ from pathlib import Path
 # What each motif *claims*; shown in the audit and used verbatim in the judge prompt.
 MOTIF_CLAIMS: dict[str, str] = {
     "packed_rhs": "the RHS/weight tensor is kept in a packed layout and consumed via a "
-                  "packed-pointer/index advance or staged into a scratchpad for reuse",
+    "packed-pointer/index advance or staged into a scratchpad for reuse",
     "reused_packed_rhs": "a packed RHS is measurably reused (>=2 consumers per pack)",
     "accumulator_lifetime": "an accumulator (often widened) stays live across the reduction "
-                            "instead of being rematerialized",
+    "instead of being rematerialized",
     "accumulator_commit": "on a contraction op, the accumulator stays live across a "
-                          "bias/requant/activation epilogue and commits to memory only after it",
-    "epilogue_before_commit": "an epilogue (clamp/requant/activation/bias) is applied before "
-                              "the result is stored",
+    "bias/requant/activation epilogue and commits to memory only after it",
+    "epilogue_before_commit": "an epilogue (clamp/requant/activation/bias) is applied before the result is stored",
     "vector_length_polymorphic": "the loop is vector-length-agnostic (vsetvl-style dynamic VL "
-                                 "rather than a fixed SIMD width)",
+    "rather than a fixed SIMD width)",
     "tiling_blocking": "the computation is tiled/blocked to expose reuse",
     "double_buffering": "data movement is double-buffered to overlap with compute",
-    "weight_stationary_dataflow": "weights stay stationary while activations stream "
-                                  "(systolic dataflow choice)",
-    "many_small_dispatches": "the kernel issues many small accelerator dispatches, paying "
-                             "per-dispatch overhead",
+    "weight_stationary_dataflow": "weights stay stationary while activations stream (systolic dataflow choice)",
+    "many_small_dispatches": "the kernel issues many small accelerator dispatches, paying per-dispatch overhead",
     "intrinsic_lowering": "the kernel is written directly against target intrinsics",
 }
 
@@ -60,8 +58,9 @@ def load_indexed(patterns: list[str]) -> list[tuple[dict, str | None]]:
     return out
 
 
-def sample_for_motif(pairs: list[tuple[dict, str | None]], motif: str, n: int,
-                     seed: int) -> list[tuple[dict, str | None]]:
+def sample_for_motif(
+    pairs: list[tuple[dict, str | None]], motif: str, n: int, seed: int
+) -> list[tuple[dict, str | None]]:
     """Sample up to ``n`` kernels firing ``motif``, round-robin across sources."""
     by_source: dict[str, list] = collections.defaultdict(list)
     for rec, repo in pairs:
@@ -99,6 +98,7 @@ def motif_markers(rec: dict, text: str | None, motif: str) -> list[str]:
     """
     if text is not None:
         from merlin.kernels.markers import fired_markers
+
         return fired_markers(text, rec.get("target", "")).get(motif, [])
     return (rec.get("evidence", {}) or {}).get("code_markers", [])
 
@@ -116,10 +116,10 @@ def context_snippet(text: str | None, markers: list[str], context: int = 3) -> s
     return None
 
 
-def judge_snippet(motif: str, claim: str, markers: list[str], snippet: str | None,
-                  rec: dict) -> dict | None:
+def judge_snippet(motif: str, claim: str, markers: list[str], snippet: str | None, rec: dict) -> dict | None:
     """One bounded LLM verdict for a sampled snippet; None when LLM is unavailable."""
     from merlin.common.llm import complete
+
     body = snippet or "\n".join(markers)
     prompt = (
         f"You are auditing a compiler-research marker. The motif `{motif}` claims: {claim}.\n"
@@ -127,7 +127,8 @@ def judge_snippet(motif: str, claim: str, markers: list[str], snippet: str | Non
         f"target={rec.get('target')}\nMatched marker(s): {markers}\n"
         f"Code context:\n```\n{body}\n```\n"
         "Does this code genuinely evidence that DECISION (not merely contain the string)? "
-        "Reply with exactly one line: `confirms|unclear|refutes: <one-sentence reason>`.")
+        "Reply with exactly one line: `confirms|unclear|refutes: <one-sentence reason>`."
+    )
     text = complete(prompt, max_tokens=120)
     if not text:
         return None
@@ -137,14 +138,18 @@ def judge_snippet(motif: str, claim: str, markers: list[str], snippet: str | Non
     return {"verdict": verdict, "why": text.split(":", 1)[-1].strip()}
 
 
-def audit(pairs: list[tuple[dict, str | None]], motifs: list[str], n: int, seed: int,
-          context: int, llm_judge: bool) -> tuple[str, dict]:
+def audit(
+    pairs: list[tuple[dict, str | None]], motifs: list[str], n: int, seed: int, context: int, llm_judge: bool
+) -> tuple[str, dict]:
     """Return (markdown, summary) for the requested motifs."""
-    md: list[str] = ["# Kernel-audit samples",
-                     "",
-                     "_Per motif: stratified random kernels (seed-deterministic), the marker "
-                     "that fired, and source context. Judge each snippet: does it really show "
-                     "the claimed decision?_", ""]
+    md: list[str] = [
+        "# Kernel-audit samples",
+        "",
+        "_Per motif: stratified random kernels (seed-deterministic), the marker "
+        "that fired, and source context. Judge each snippet: does it really show "
+        "the claimed decision?_",
+        "",
+    ]
     summary: dict = {"motifs": {}, "llm_judge": llm_judge}
     for motif in motifs:
         picked = sample_for_motif(pairs, motif, n, seed)
@@ -156,8 +161,10 @@ def audit(pairs: list[tuple[dict, str | None]], motifs: list[str], n: int, seed:
         for i, (rec, repo) in enumerate(picked, 1):
             text = read_source(rec, repo)
             markers = motif_markers(rec, text, motif)
-            md.append(f"### {i}. `{rec.get('source')}/{rec.get('target')}` — "
-                      f"`{rec.get('path')}` (op={rec.get('op')}, dtype={rec.get('dtype')})")
+            md.append(
+                f"### {i}. `{rec.get('source')}/{rec.get('target')}` — "
+                f"`{rec.get('path')}` (op={rec.get('op')}, dtype={rec.get('dtype')})"
+            )
             md.append("- markers: " + (", ".join(f"`{m}`" for m in markers[:4]) or "_(n/a)_"))
             snip = context_snippet(text, markers, context)
             if snip:
@@ -177,8 +184,9 @@ def audit(pairs: list[tuple[dict, str | None]], motifs: list[str], n: int, seed:
             judged = sum(verdicts.values())
             entry["llm_verdicts"] = dict(verdicts)
             entry["marker_precision_estimate"] = round(verdicts["confirms"] / judged, 2)
-            md.append(f"**Motif verdict tally:** {dict(verdicts)} → marker precision ≈ "
-                      f"{entry['marker_precision_estimate']}")
+            md.append(
+                f"**Motif verdict tally:** {dict(verdicts)} → marker precision ≈ {entry['marker_precision_estimate']}"
+            )
             md.append("")
         summary["motifs"][motif] = entry
     return "\n".join(md) + "\n", summary
@@ -187,21 +195,21 @@ def audit(pairs: list[tuple[dict, str | None]], motifs: list[str], n: int, seed:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kernel-audit", description=__doc__)
     ap.add_argument("--inputs", nargs="+", required=True, help="index json files or globs")
-    ap.add_argument("--motif", action="append", default=None,
-                    help="motif(s) to audit (repeatable; default: all observed)")
+    ap.add_argument(
+        "--motif", action="append", default=None, help="motif(s) to audit (repeatable; default: all observed)"
+    )
     ap.add_argument("--n", type=int, default=8, help="samples per motif")
     ap.add_argument("--seed", type=int, default=0, help="sampling seed (deterministic)")
     ap.add_argument("--context", type=int, default=3, help="context lines around the marker")
     ap.add_argument("--out", default=None, help="audit markdown output path")
-    ap.add_argument("--llm-judge", action="store_true",
-                    help="one bounded LLM verdict per sample (needs ANTHROPIC_API_KEY)")
-    ap.add_argument("--json", action="store_true",
-                    help="print a machine-readable summary JSON to stdout")
+    ap.add_argument(
+        "--llm-judge", action="store_true", help="one bounded LLM verdict per sample (needs ANTHROPIC_API_KEY)"
+    )
+    ap.add_argument("--json", action="store_true", help="print a machine-readable summary JSON to stdout")
     args = ap.parse_args(argv)
 
     pairs = load_indexed(args.inputs)
-    observed = collections.Counter(
-        m for rec, _ in pairs for m in (rec.get("evidence", {}) or {}).get("motifs", []))
+    observed = collections.Counter(m for rec, _ in pairs for m in (rec.get("evidence", {}) or {}).get("motifs", []))
     motifs = args.motif or [m for m, _ in observed.most_common()]
     md, summary = audit(pairs, motifs, args.n, args.seed, args.context, args.llm_judge)
 
@@ -214,8 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"audited {len(summary['motifs'])} motifs over {len(pairs)} kernels -> {out}")
         for m, e in summary["motifs"].items():
-            prec = (f"  precision≈{e['marker_precision_estimate']}"
-                    if "marker_precision_estimate" in e else "")
+            prec = f"  precision≈{e['marker_precision_estimate']}" if "marker_precision_estimate" in e else ""
             print(f"  {m}: {e['sampled']} samples{prec}")
     return 0
 

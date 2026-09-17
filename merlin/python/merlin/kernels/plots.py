@@ -13,6 +13,7 @@ All figures are static PNGs under ``plots/`` next to the report, generated only 
 ``--plots`` and skipped gracefully when matplotlib is missing (``pip install -e
 .[kernels-plots]``). They visualize evidence *frequency* — never measured speedup.
 """
+
 from __future__ import annotations
 
 import collections
@@ -27,12 +28,17 @@ log = logging.getLogger(__name__)
 def _matplotlib():
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         return plt
     except Exception as e:  # pragma: no cover - exercised via generate_all warning path
-        log.warning("plots requested but matplotlib unavailable (%s); skipping. "
-                    "Install with `pip install -e .[kernels-plots]`.", e)
+        log.warning(
+            "plots requested but matplotlib unavailable (%s); skipping. "
+            "Install with `pip install -e .[kernels-plots]`.",
+            e,
+        )
         return None
 
 
@@ -55,8 +61,15 @@ def _heatmap(plt, ax, matrix, xlabels, ylabels, title, fmt="{:.2f}"):
     for i, row in enumerate(matrix):
         for j, v in enumerate(row):
             if v > 0:
-                ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=6,
-                        color="white" if v > 0.6 * vmax else "black")
+                ax.text(
+                    j,
+                    i,
+                    fmt.format(v),
+                    ha="center",
+                    va="center",
+                    fontsize=6,
+                    color="white" if v > 0.6 * vmax else "black",
+                )
     ax.set_title(title, fontsize=10)
     return im
 
@@ -70,8 +83,7 @@ def plot_motif_source_heatmap(plt, records, stats, out_dir, paths):
     motifs, sources = _motif_order(stats), sorted(per_source)
     matrix = [[per_ms[(m, s)] / per_source[s] for s in sources] for m in motifs]
     fig, ax = plt.subplots(figsize=(1.2 + 1.1 * len(sources), 0.7 + 0.4 * len(motifs)))
-    _heatmap(plt, ax, matrix, sources, motifs,
-             "Motif × source — fraction of each source's kernels")
+    _heatmap(plt, ax, matrix, sources, motifs, "Motif × source — fraction of each source's kernels")
     _save(fig, out_dir, "motif_source_heatmap", paths)
 
 
@@ -85,26 +97,32 @@ def plot_motif_prevalence(plt, records, stats, min_kernels, out_dir, paths):
     fig, ax = plt.subplots(figsize=(7, 0.7 + 0.35 * len(motifs)))
     bars = ax.barh(motifs, fracs, color=colors)
     for b, m in zip(bars, motifs):
-        ax.text(b.get_width() + 0.01, b.get_y() + b.get_height() / 2,
-                f"{stats[m].kernel_count} ({len(stats[m].sources)} src)",
-                va="center", fontsize=7)
-    ax.axvline(min_kernels / total, color="red", ls="--", lw=0.8,
-               label=f"promotion gate (≥{min_kernels} kernels)")
+        ax.text(
+            b.get_width() + 0.01,
+            b.get_y() + b.get_height() / 2,
+            f"{stats[m].kernel_count} ({len(stats[m].sources)} src)",
+            va="center",
+            fontsize=7,
+        )
+    ax.axvline(min_kernels / total, color="red", ls="--", lw=0.8, label=f"promotion gate (≥{min_kernels} kernels)")
     ax.set_xlabel("fraction of corpus")
-    ax.set_title("Motif prevalence (color = #sources; gate also clears at ≥2 sources)",
-                 fontsize=10)
+    ax.set_title("Motif prevalence (color = #sources; gate also clears at ≥2 sources)", fontsize=10)
     ax.legend(fontsize=7)
     _save(fig, out_dir, "motif_prevalence", paths)
 
 
 def plot_promotion_funnel(plt, records, stats, promo, validation, out_dir, paths):
     n_validated = sum(
-        1 for name, info in (validation or {}).items()
-        if any(st == "holds" for st in info.get("workloads", {}).values()))
+        1
+        for name, info in (validation or {}).items()
+        if any(st == "holds" for st in info.get("workloads", {}).values())
+    )
     stages = [
         (f"kernels ({len(records)})", len(records)),
-        (f"kernels w/ ≥1 motif ({sum(1 for r in records if (r.get('evidence') or {}).get('motifs'))})",
-         sum(1 for r in records if (r.get("evidence") or {}).get("motifs"))),
+        (
+            f"kernels w/ ≥1 motif ({sum(1 for r in records if (r.get('evidence') or {}).get('motifs'))})",
+            sum(1 for r in records if (r.get("evidence") or {}).get("motifs")),
+        ),
         (f"motifs ({len(stats)})", len(stats)),
         (f"promoted motifs ({len(promo.promoted)})", len(promo.promoted)),
         (f"policy rules ({len(promo.rules)})", len(promo.rules)),
@@ -120,33 +138,47 @@ def plot_promotion_funnel(plt, records, stats, promo, validation, out_dir, paths
     _save(fig, out_dir, "promotion_funnel", paths)
 
 
+def _reuse_axis_label(families) -> str:
+    """X-axis label naming how each plotted family's reuse count is measured: the ``rhs_reuse.label`` of
+    each family's feature-extraction contract, for the families actually on the plot."""
+    from merlin.kernels.framework_contracts import load_feature_contract
+
+    how = [
+        f"{fam}: {label}"
+        for fam in sorted(families)
+        if (label := (load_feature_contract(fam).get("rhs_reuse") or {}).get("label"))
+    ]
+    return "measured rhs reuse count" + (f" ({'; '.join(how)})" if how else "")
+
+
 def plot_reuse_distribution(plt, records, out_dir, paths):
+    from merlin.kernels.markers import target_family
+
     by_source: dict[str, list[int]] = collections.defaultdict(list)
+    families: set[str] = set()
     for r in records:
-        rc = ((r.get("features", {}) or {}).get("memory_behavior", {})
-              .get("rhs", {}).get("reuse_count"))
+        rc = (r.get("features", {}) or {}).get("memory_behavior", {}).get("rhs", {}).get("reuse_count")
         if rc and rc > 0:
             by_source[r.get("source", "?")].append(rc)
+            families.add(target_family(r.get("target", "")))
     if not by_source:
         return
     fig, ax = plt.subplots(figsize=(7, 3.2))
     for src, vals in sorted(by_source.items()):
-        ax.hist(vals, bins=range(1, max(max(vals) + 2, 10)), alpha=0.55,
-                label=f"{src} (n={len(vals)})")
-    ax.set_xlabel("measured rhs reuse count (RVV: register-block MR; "
-                  "Gemmini: compute per weight load)")
+        ax.hist(vals, bins=range(1, max(max(vals) + 2, 10)), alpha=0.55, label=f"{src} (n={len(vals)})")
+    ax.set_xlabel(_reuse_axis_label(families))
     ax.set_ylabel("kernels")
-    ax.set_title("Measured RHS reuse — the L2 evidence behind resident_packed_tensor",
-                 fontsize=10)
+    ax.set_title("Measured RHS reuse — the L2 evidence behind resident_packed_tensor", fontsize=10)
     ax.legend(fontsize=7)
     _save(fig, out_dir, "reuse_distribution", paths)
 
 
 def plot_dispatch_scatter(plt, records, out_dir, paths):
-    pts = [(dm["n_dispatches"], dm["small_dispatch_fraction"], r.get("source", "?"))
-           for r in records
-           if (dm := (r.get("features", {}) or {}).get("dispatch_metrics"))
-           and dm.get("n_dispatches")]
+    pts = [
+        (dm["n_dispatches"], dm["small_dispatch_fraction"], r.get("source", "?"))
+        for r in records
+        if (dm := (r.get("features", {}) or {}).get("dispatch_metrics")) and dm.get("n_dispatches")
+    ]
     if not pts:
         return
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -159,8 +191,10 @@ def plot_dispatch_scatter(plt, records, out_dir, paths):
     ax.set_xscale("log")
     ax.set_xlabel("dispatches per kernel (log)")
     ax.set_ylabel("small-dispatch fraction")
-    ax.set_title("L7 dispatch metrics — upper-right quadrant is the\n"
-                 "many_small_dispatches motif behind command_buffer_batching", fontsize=10)
+    ax.set_title(
+        "L7 dispatch metrics — upper-right quadrant is the\nmany_small_dispatches motif behind command_buffer_batching",
+        fontsize=10,
+    )
     ax.legend(fontsize=7)
     _save(fig, out_dir, "dispatch_scatter", paths)
 
@@ -179,8 +213,7 @@ def plot_motif_cooccurrence(plt, records, stats, out_dir, paths):
             row.append(len(sets[a] & sets[b]) / union if union else 0.0)
         matrix.append(row)
     fig, ax = plt.subplots(figsize=(1.5 + 0.45 * len(motifs), 1.0 + 0.42 * len(motifs)))
-    _heatmap(plt, ax, matrix, motifs, motifs,
-             "Motif co-occurrence (Jaccard) — decisions that travel together")
+    _heatmap(plt, ax, matrix, motifs, motifs, "Motif co-occurrence (Jaccard) — decisions that travel together")
     _save(fig, out_dir, "motif_cooccurrence", paths)
 
 
@@ -194,14 +227,20 @@ def plot_motif_op_heatmap(plt, records, stats, out_dir, paths):
     motifs = _motif_order(stats)
     matrix = [[per_mo[(m, op)] / op_counts[op] for op in ops] for m in motifs]
     fig, ax = plt.subplots(figsize=(1.5 + 0.8 * len(ops), 0.8 + 0.4 * len(motifs)))
-    _heatmap(plt, ax, matrix, ops, motifs,
-             "Motif × op family — sanity: reuse motifs should not fire on elementwise ops")
+    _heatmap(
+        plt, ax, matrix, ops, motifs, "Motif × op family — sanity: reuse motifs should not fire on elementwise ops"
+    )
     _save(fig, out_dir, "motif_op_heatmap", paths)
 
 
-def generate_all(records: list[dict], stats: dict[str, MotifStat], promo: PromotionResult,
-                 validation: dict | None, out_dir: Path,
-                 min_kernels: int = 10) -> list[Path]:
+def generate_all(
+    records: list[dict],
+    stats: dict[str, MotifStat],
+    promo: PromotionResult,
+    validation: dict | None,
+    out_dir: Path,
+    min_kernels: int = 10,
+) -> list[Path]:
     """Write every plot into ``out_dir``; returns the paths written (possibly empty)."""
     plt = _matplotlib()
     if plt is None:

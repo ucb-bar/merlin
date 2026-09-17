@@ -7,13 +7,14 @@ Each stage is a plain module->module transform (wrappable as xDSL passes once th
 stabilizes); every intermediate module is verified and kept on the result so tests and
 tools can inspect the whole descent.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from pathlib import Path
 from merlin.common.paths import repo_root
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 from .._common import HAS_XDSL
 from .contract_facts import DEFAULT_TARGET_CONTRACT, lower_to_contract
@@ -26,14 +27,35 @@ from .target_lowering import lower_to_target
 
 
 def load_curated_contract(target: str) -> dict:
-    """The committed in-tree target contract for a reference target."""
+    """The target contract for ``target``: in-tree if it has one, else from the registry.
+
+    FAILS CLOSED on an unknown name. This used to fall back to the default contract whenever the
+    in-tree path was missing, which meant asking for *any* out-of-tree or misspelled target quietly
+    lowered the whole module for ``toy_npu`` instead — and produced a module that verified at every
+    stage, simulated correctly, and emitted a command buffer naming a target nobody asked for. A
+    wrong answer that passes every check is worse than an error, so the fallback is now reserved for
+    the one target the default contract actually describes.
+    """
     import yaml
 
     root = repo_root()
     path = root / f"merlin/targets/{target}/contracts/target_contract.yaml"
-    if not path.is_file():
+    if path.is_file():
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    if target == DEFAULT_TARGET_CONTRACT["name"]:
         return dict(DEFAULT_TARGET_CONTRACT)
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    from merlin.targetgen.target_registry import all_targets, resolve
+
+    try:
+        return resolve(target).load_contract()
+    except Exception as exc:  # noqa: BLE001 — any resolution failure is a hard stop
+        raise LoweringError(
+            f"no target contract for {target!r}: it has no in-tree contract at {path} and the "
+            f"registry could not resolve it ({type(exc).__name__}: {exc}). Known targets: "
+            f"{all_targets()}. An out-of-tree target is reached by pointing MERLIN_TARGET_PATH at "
+            f"its package, or by passing target_package=."
+        ) from exc
 
 
 @dataclass
@@ -49,26 +71,48 @@ class LoweringResult:
     command_buffer: dict[str, Any] = field(default_factory=dict)
 
     def modules(self):
-        return [self.input_module, self.contract_module, self.schedule_module,
-                self.interface_module, self.target_module, self.runtime_module]
+        return [
+            self.input_module,
+            self.contract_module,
+            self.schedule_module,
+            self.interface_module,
+            self.target_module,
+            self.runtime_module,
+        ]
 
 
-def lower_repeated_rhs_matmul(
-    reuse: int = 4,
-    m: int = 64,
-    k: int = 128,
-    n: int = 64,
-    target: str = "toy_npu",
+def lower_module(
+    input_module: Any,
+    *,
+    target: str = DEFAULT_EXAMPLE_TARGET,
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,
     target_package: Any | None = None,
 ) -> LoweringResult:
-    """Lower the MVP workload end to end; verify every intermediate module.
+    """Lower an ARBITRARY generic-MLIR module end to end; verify every intermediate module.
 
-    ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers through an ISOLATED,
-    dynamically-loaded target dialect instead of a built-in reference target — no core edits,
-    plug-and-play. Built-in reference targets (toy_npu, saturn) still work via ``target``.
+    This is the pipeline's real entry point: the payload is a parameter, so any frontend that can
+    produce clean linalg-on-tensors (model2MLIR, a Triton kernel bridge, a hand-authored module)
+    descends the same contract -> schedule -> interface -> target -> runtime path. It used to be
+    welded to one synthetic workload builder, which meant "compile this kernel" had no way in.
+
+    What the incoming module must look like — the pipeline fails closed rather than silently
+    reinterpreting a module it does not understand:
+
+    * one ``func.func`` with a single block (a second function or block would be dropped);
+    * matmul-family payload (``linalg.matmul`` / ``linalg.quantized_matmul``) whose operands are
+      the function's own block arguments, NOT values produced by memref/bufferization boundary ops
+      — residency inference traces to a block argument, and interface materialization maps operands
+      through the function arguments;
+    * every other op in the block either feeding that payload or being contract/schedule
+      decoration (see :func:`interface_lowering.lower_to_interface`'s completeness check).
+
+    This is the whole-model / section compiler entry: ``input_module`` may hold a single matmul,
+    the MVP repeated-RHS workload, a chained multi-layer model, or a sliced section — the staged
+    descent is the same. ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers
+    through an ISOLATED, dynamically-loaded target dialect (no core edits, plug-and-play); built-in
+    reference targets (toy_npu, saturn) still work via ``target``.
     """
     if not HAS_XDSL:
         raise LoweringError("xDSL is required for the lowering pipeline")
@@ -84,8 +128,8 @@ def lower_repeated_rhs_matmul(
         tc = target_contract or load_curated_contract(target)
         name = tc["name"]
     from merlin.targetgen.target_registry import backend_for
+
     backend = backend or backend_for(name)
-    input_module = build_input_module(reuse=reuse, m=m, k=k, n=n)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)
     contract_module.verify()
@@ -107,6 +151,32 @@ def lower_repeated_rhs_matmul(
         target_module=target_module,
         runtime_module=runtime_module,
         command_buffer=cb,
+    )
+
+
+def lower_repeated_rhs_matmul(
+    reuse: int = 4,
+    m: int = 64,
+    k: int = 128,
+    n: int = 64,
+    target: str = DEFAULT_EXAMPLE_TARGET,
+    target_contract: dict[str, Any] | None = None,
+    dialect_plan: dict[str, Any] | None = None,
+    backend: str | None = None,
+    target_package: Any | None = None,
+) -> LoweringResult:
+    """Lower the MVP workload (``for i: Y_i = A_i @ W``) end to end.
+
+    A thin wrapper over :func:`lower_module` — it only builds the payload. Kept because it is the
+    reference workload every staged-pipeline test is written against.
+    """
+    return lower_module(
+        build_input_module(reuse=reuse, m=m, k=k, n=n),
+        target=target,
+        target_contract=target_contract,
+        dialect_plan=dialect_plan,
+        backend=backend,
+        target_package=target_package,
     )
 
 

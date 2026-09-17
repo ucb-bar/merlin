@@ -1,0 +1,10 @@
+# Feature-extraction contract for the x86 AVX ISA family (AVX2 / AVX-512 intrinsics C).
+family: avx
+# markers.py: the kernel.target spellings that select this family (matched case-insensitively).
+targets: [avx2, avx512, x86]
+# markers.py: motif -> regex patterns. Single-quoted, so each string is the regex verbatim.
+markers:
+  accumulator_lifetime: ['_mm\d*_fmadd_ps', '_mm\d*_fmadd_pd']
+  epilogue_before_commit: ['_mm\d*_max_ps', '_mm\d*_min_ps']
+  packed_rhs: ['_mm\d*_broadcast_ss', 'B_reg']
+  intrinsic_lowering: ['_mm\d+_']

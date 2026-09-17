@@ -1,8 +1,10 @@
 """Toolchain resolution for the whole-model path (all env-overridable)."""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
 from merlin.common.paths import ext_path, repo_root
 
 
@@ -12,6 +14,7 @@ def _env(key: str, default: str | None = None) -> str | None:
     toolchain resolve automatically — parity with how the ``aet`` sibling checkout is picked up —
     without exporting vars per shell or committing a personal path."""
     from merlin.common.paths import _dotenv
+
     return os.environ.get(key) or _dotenv().get(key) or default
 
 
@@ -47,11 +50,21 @@ def _iree_bin() -> Path | None:
 
 
 def clang() -> Path:
-    """clang able to target both x86-64 and riscv64 (the IREE build's clang-23; else PATH)."""
+    """clang able to target both x86-64 and riscv64. The repo's OWN toolchain always wins — resolution,
+    first that exists: ``MERLIN_CLANG`` (explicit override) → the repo's OWN
+    ``third_party/llvm-install`` ``clang-23`` (built with clang + the RISCV target; self-contained and
+    authoritative) → the IREE build's ``clang-23`` (legacy fallback only, when that external build
+    happens to be present) → ``clang-23`` on PATH. Preferring the repo's own install keeps the toolchain
+    self-contained and independent of the retired IREE build."""
     env = _env("MERLIN_CLANG")
     if env:
         return Path(env)
+    local = DEFAULT_LLVM_INSTALL / "bin" / "clang-23"
+    if local.exists():
+        return local
     b = _iree_bin()
+    if b and (b / "clang-23").exists():
+        return b / "clang-23"
     return (b / "clang-23") if b else Path("clang-23")
 
 
@@ -64,3 +77,19 @@ def mlir_translate() -> Path:
 
 def available() -> bool:
     return m2m_python().is_file() and clang().is_file()
+
+
+def objdump() -> Path:
+    """LLVM ``objdump``, from the same install as :func:`clang`. Env-overridable.
+
+    Used by the post-codegen census to count what was actually EMITTED for a symbol. It has to be
+    the LLVM one, and the same one that produced the object: GNU objdump on a host build has no
+    reason to know the cross target the object was compiled for, and a disassembler that decodes
+    nothing would make an empty function indistinguishable from an unreadable one."""
+    env = _env("MERLIN_OBJDUMP")
+    if env:
+        return Path(env)
+    local = DEFAULT_LLVM_INSTALL / "bin" / "llvm-objdump"
+    if local.exists():
+        return local
+    return Path(clang()).parent / "llvm-objdump"

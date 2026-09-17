@@ -3,9 +3,10 @@
 Works on the real artifacts: ``workloads/smolvla/smolvla.mlir`` (25k lines) parses in
 a few seconds. Two model2MLIR/xDSL impedance notes, both handled here:
 
-- xDSL 0.65's linalg parser rejects the parenthesized multi-result form
+- xDSL's linalg parser rejects the parenthesized multi-result form
   ``} -> (tensor<...>, tensor<...>)`` that MLIR prints for multi-result
-  ``linalg.generic``; :data:`PAREN_RESULTS` normalizes it textually before parsing.
+  ``linalg.generic`` (re-verified on the pinned xDSL 0.68: ``Expected '->'``);
+  :func:`strip_paren_results` normalizes it textually before parsing.
 - model2MLIR's *section splitter* can emit use-before-def SSA references
   (e.g. ``sections/smolvla.model.mlir`` references ``%2034`` which is never defined
   in that file) — invalid SSACFG IR. Parse the **full** artifact, not the sections,
@@ -14,13 +15,59 @@ a few seconds. Two model2MLIR/xDSL impedance notes, both handled here:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# xDSL 0.65 linalg custom syntax does not accept `} -> (T1, T2)`.
-PAREN_RESULTS = re.compile(r"(\}\s*->\s*)\(([^()]+)\)")
+
+def strip_paren_results(text: str) -> str:
+    """Drop the parentheses from a multi-result ``linalg`` region terminator.
+
+    MLIR prints a multi-result ``linalg.generic`` as (real line from
+    ``out/runs/rvv/beam/matmul/.../generated/v/model.prepared.mlir``)::
+
+        } -> (tensor<1x32xf32>, tensor<1x32xi64>)
+
+    and xDSL's linalg custom syntax rejects the parenthesized form — still true on the
+    xDSL pinned here (0.68), verified by parsing that exact text: ``Expected '->'``. So the
+    parens are removed BEFORE the parse; this repair is what makes the module parseable at
+    all, which is why it is textual.
+
+    Scanned structurally: a ``}``, optional whitespace, ``->``, optional whitespace, then a
+    parenthesized group holding no further parentheses. Anything else is left verbatim —
+    in particular a nested-paren type list is NOT something this normalizer understands, so
+    it reaches the parser unchanged and fails there loudly instead of being mangled here.
+    """
+    out: list[str] = []
+    i = 0
+    while True:
+        brace = text.find("}", i)
+        if brace < 0:
+            out.append(text[i:])
+            return "".join(out)
+        k = brace + 1
+        while k < len(text) and text[k].isspace():
+            k += 1
+        if text[k:k + 2] == "->":
+            k += 2
+            while k < len(text) and text[k].isspace():
+                k += 1
+        else:
+            k = -1
+        if k < 0 or k >= len(text) or text[k] != "(":
+            out.append(text[i:brace + 1])   # not a `} -> (...)` terminator
+            i = brace + 1
+            continue
+        close = k + 1
+        while close < len(text) and text[close] not in "()":
+            close += 1
+        if close >= len(text) or text[close] != ")" or close == k + 1:
+            out.append(text[i:brace + 1])   # unbalanced / nested / empty — leave alone
+            i = brace + 1
+            continue
+        out.append(text[i:k])               # `} -> ` verbatim, whitespace included
+        out.append(text[k + 1:close])       # the result-type list, parens dropped
+        i = close + 1
 
 
 def make_context():
@@ -34,6 +81,15 @@ def make_context():
     from xdsl.dialects.math import Math
     from xdsl.dialects.scf import Scf
     from xdsl.dialects.tensor import Tensor
+
+    # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
+    # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
+    # context builders disagree: a capsule spelling `f8E4M3FN` -- or an ordinary `arith.truncf %x :
+    # f32 to f8E4M3FN` requantize -- loads through one reader and fails `type expected` in the other.
+    from ..xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_types
+
+    register_fp8_types()
+    register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
     for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf):
@@ -50,12 +106,64 @@ def parse_mlir_text(text: str, ctx=None):
     """
     from xdsl.parser import Parser
 
-    text = PAREN_RESULTS.sub(r"\1\2", text)
-    return Parser(ctx or make_context(), text).parse_module()
+    from ..common.ir_lock import IR_LOCK
+
+    text = strip_paren_results(text)
+    # THE serialization point for xDSL parsing, held here rather than at call sites because the call
+    # sites are not discoverable by inspection: locking the two obvious ones in `build_app` still left
+    # `c_runtime.generate` parsing twice for the @forward signature, and the resulting race surfaced as
+    # a *mutation* invariant ("Can't add to a block an operation already attached to a block") on
+    # perfectly valid IR, in whichever image happened to lose the race. Parsing a whole model is tens
+    # of seconds against builds and simulations that take minutes, so the cost of serializing here is
+    # small and the alternative is a build whose success depends on scheduling.
+    with IR_LOCK:
+        return Parser(ctx or make_context(), text).parse_module()
 
 
 def parse_mlir_file(path: str | Path, ctx=None):
-    return parse_mlir_text(Path(path).read_text(encoding="utf-8"), ctx=ctx)
+    """Parse an MLIR file, in whichever form it was printed.
+
+    xDSL's dialect coverage is deliberately partial: it implements the ops the derivations here
+    reason about and relies on everything else arriving in MLIR's GENERIC form, which needs no
+    per-op parser. A model2MLIR capture is printed that way, so a direct parse holds -- right up
+    until the module has been round-tripped through the MLIR printer, which prints CUSTOM form by
+    default. ``perop_blocks.tag_prepared_mlir`` and ``prov_cse.rewrite_prepared_file`` both do that,
+    so with ``perop_register_block`` or ``cse_through_provenance`` enabled every consumer downstream
+    of them meets a file it cannot read::
+
+        ParseError: Operation tensor.extract_slice does not have a custom format.
+
+    MEASURED, both failure modes from that one cause: it took EVERY ``tiny_llama`` int8 build down
+    outright (that model has a ``tensor.extract_slice``; ``lstmnetvit``, with the identical feature
+    set, does not -- which is why this looked model-specific rather than structural); and where a
+    consumer catches the error instead, it degrades SILENTLY -- the block-table derivation reports
+    "no contractions observed" and drops the register block, so the lever is reported as applied and
+    is not. ``tensor.extract_slice`` is not special and is not the last such op, so the fix cannot be
+    to teach xDSL one more spelling, and it does not belong in each consumer either: this is the one
+    door they all go through.
+
+    The re-print is attempted ONLY after a direct parse fails, so a module that already parses takes
+    exactly the path it took before -- same bytes, no extra subprocess. It fails CLOSED: if the
+    module cannot be re-printed either, the error names both attempts rather than yielding an empty
+    module, because a derivation that silently could not run is what this repo keeps re-learning.
+    """
+    from xdsl.utils.exceptions import ParseError
+
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        return parse_mlir_text(text, ctx=ctx)
+    except ParseError as first:
+        # Imported here, not at module scope: `generic_form` reaches back into this module, and the
+        # re-print runs in the m2m venv, which a caller that never hits this path need not have.
+        from ..llvmlower.generic_form import GenericFormError, to_generic_form
+        try:
+            generic = to_generic_form(path)
+        except GenericFormError as exc:
+            raise GenericFormError(
+                f"{path} is printed in MLIR custom form that xDSL cannot read "
+                f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
+                f"re-printed in generic form: {exc}") from first
+        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:

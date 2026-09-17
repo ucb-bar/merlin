@@ -6,20 +6,26 @@ measured exploitability) can. Kernel mining therefore always emits
 ``requires_llvm_fork: false`` with the explicit ``fork_triggers`` that would justify a
 change later, keeping the L8 rung of the ladder honest rather than empty.
 """
+
 from __future__ import annotations
 
 from typing import Iterable
 
 from merlin.common import schemas
 
-_JUSTIFICATION = ("Stage F (target lowering) and Stage G (compiler exploitability vs "
-                  "oracle) have not run; no machine-code support is justified by evidence "
-                  "frequency alone.")
+_JUSTIFICATION = (
+    "Stage F (target lowering) and Stage G (compiler exploitability vs "
+    "oracle) have not run; no machine-code support is justified by evidence "
+    "frequency alone."
+)
 
 # What WOULD justify a fork, per known interface (cf. llvm_extension_plan fork_triggers).
 FORK_TRIGGERS: dict[str, list[str]] = {
-    "resident_packed_tensor": ["custom_riscv_pack_instruction",
-                               "new_instruction_selection_patterns", "mc_encoding_decoding"],
+    "resident_packed_tensor": [
+        "custom_riscv_pack_instruction",
+        "new_instruction_selection_patterns",
+        "mc_encoding_decoding",
+    ],
     "accumulator_commit": ["custom_accumulator_register_class", "commit_instruction_encoding"],
     "async_pipeline": ["async_copy_intrinsics", "machine_scheduling_model_changes"],
 }
@@ -32,9 +38,11 @@ def emit_llvm_requirement(
     validate: bool = True,
 ) -> dict:
     """Build a schema-shaped L8 requirement (always: fork not yet justified)."""
-    triggers = (list(fork_triggers) if fork_triggers is not None
-                else FORK_TRIGGERS.get(source_abstraction,
-                                       ["new_instruction_selection_patterns"]))
+    triggers = (
+        list(fork_triggers)
+        if fork_triggers is not None
+        else FORK_TRIGGERS.get(source_abstraction, ["new_instruction_selection_patterns"])
+    )
     req = {
         "source_abstraction": source_abstraction,
         "requires_llvm_fork": False,

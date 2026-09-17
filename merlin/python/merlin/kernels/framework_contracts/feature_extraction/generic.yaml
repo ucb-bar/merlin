@@ -1,0 +1,7 @@
+# Feature-extraction contract for the GENERIC baseline: the family an unmapped kernel.target resolves to,
+# and whose markers are merged UNDER every family's own (markers.py). Declares no `targets`.
+family: generic
+# markers.py: motif -> regex patterns (single-quoted, so each string is the regex verbatim).
+# Structural loop nesting works across all C sources.
+markers:
+  tiling_blocking: ['\bfor\s*\(', '\bdo\s*\{']

@@ -13,6 +13,7 @@ described by the target-agnostic :mod:`merlin.common.quant_formats` registry. Th
 ingestion tooling format-agnostic — a new quantization format needs no new adapter, only a registry
 entry (and, for a genuinely new container, a new adapter).
 """
+
 from __future__ import annotations
 
 import importlib
@@ -25,7 +26,7 @@ from merlin.baselines.bundle import CaptureBundle
 @dataclass(frozen=True)
 class AdapterInfo:
     name: str
-    module: str                 # dotted import path, loaded lazily via get_adapter()
+    module: str  # dotted import path, loaded lazily via get_adapter()
     source_kinds: tuple[str, ...]  # human-readable tags: what this adapter ingests
     summary: str
 

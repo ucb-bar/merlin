@@ -10,6 +10,7 @@ import, or a proc may fail to compile. Every such case is **skipped and logged**
 fatal); the corpus is still satisfied by XNNPACK + Autocomp alone. Skip counts are surfaced
 via the returned diagnostics so the report can state them honestly.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -19,24 +20,20 @@ import sys
 from pathlib import Path
 from typing import Iterator
 
+from merlin.kernels.framework_contracts import load_contract, load_feature_contract
 from merlin.kernels.types import NormalizedKernel
 
 log = logging.getLogger("merlin.kernels.ingest.exo")
 
-# Map an Exo platform import to an ISA family used as the kernel target.
-_PLATFORM_TARGET = (
-    ("platforms.gemmini", "gemmini"),
-    ("platforms.x86", "avx"),
-    ("platforms.avx", "avx"),
-    ("platforms.aarch64", "neon"),
-    ("platforms.neon", "neon"),
-    ("platforms.rvm", "rvv"),
-    ("rvv", "rvv"),
-)
+
+def _platform_targets() -> list[tuple[str, str]]:
+    """Exo platform-import -> ISA-family pairs, read from ``framework_contracts/exo.yaml`` so no
+    target-name literal lives here. Insertion order (document order) is the match precedence."""
+    return list((load_contract("exo").get("platform_targets") or {}).items())
 
 
 def _detect_target(source_text: str, default: str | None) -> str:
-    for needle, fam in _PLATFORM_TARGET:
+    for needle, fam in _platform_targets():
         if needle in source_text:
             return fam
     return default or "unknown"
@@ -44,8 +41,7 @@ def _detect_target(source_text: str, default: str | None) -> str:
 
 def _guess_op(name: str) -> str:
     n = name.lower()
-    for kw, op in (("matmul", "matmul"), ("sgemm", "gemm"), ("gemm", "gemm"),
-                   ("conv", "conv"), ("filter", "conv")):
+    for kw, op in (("matmul", "matmul"), ("sgemm", "gemm"), ("gemm", "gemm"), ("conv", "conv"), ("filter", "conv")):
         if kw in n:
             return op
     return "unknown"
@@ -93,6 +89,17 @@ def _load_module(path: Path):
     return module
 
 
+def _schedule_directives() -> tuple[str, ...]:
+    """Scheduling directives whose presence marks a ``.py`` spec as a schedule file -- data in the
+    ``exo_schedule`` family's feature-extraction contract, so no platform's directive name lives here.
+    Empty raises: nothing would qualify, and the ingest would report zero schedules as if there were none."""
+    spec = load_feature_contract("exo_schedule").get("schedule_directives") or ()
+    directives = tuple(str(d) for d in spec)
+    if not directives:
+        raise ValueError("feature_extraction/exo_schedule.yaml declares no schedule_directives")
+    return directives
+
+
 def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[NormalizedKernel]:
     """Yield NormalizedKernels from Exo *schedule* ``.py`` files (no compilation).
 
@@ -106,8 +113,7 @@ def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[Normal
     for spec_path in _spec_files(root):
         text = spec_path.read_text(encoding="utf-8", errors="replace")
         # Only schedule files: must invoke at least one scheduling directive.
-        if not any(d in text for d in ("set_memory", "stage_mem", "divide_loop",
-                                       "replace_all", "replace_gemmini_calls", "tile_outer_loops")):
+        if not any(d in text for d in _schedule_directives()):
             continue
         try:
             rel = str(spec_path.relative_to(root))
@@ -115,8 +121,13 @@ def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[Normal
             rel = str(spec_path)
         op = _guess_op(spec_path.stem) if _guess_op(spec_path.stem) != "unknown" else _guess_op(text[:2000])
         yield NormalizedKernel(
-            source="exo", target="exo_schedule", path=rel, op=op, dtype="unknown",
-            raw_text=text, meta={"kind": "schedule"},
+            source="exo",
+            target="exo_schedule",
+            path=rel,
+            op=op,
+            dtype="unknown",
+            raw_text=text,
+            meta={"kind": "schedule"},
         )
         count += 1
         if limit is not None and count >= limit:
@@ -196,8 +207,12 @@ def ingest_exo(
                     (out / f"{spec_path.stem}__{name}.c").write_text(c_code, encoding="utf-8")
                 diag["compiled"] += 1
                 yield NormalizedKernel(
-                    source="exo", target=fam, path=f"{rel}::{name}",
-                    op=_guess_op(name), dtype=_sniff_dtype(c_code), raw_text=c_code,
+                    source="exo",
+                    target=fam,
+                    path=f"{rel}::{name}",
+                    op=_guess_op(name),
+                    dtype=_sniff_dtype(c_code),
+                    raw_text=c_code,
                     meta={"proc": name},
                 )
                 count += 1

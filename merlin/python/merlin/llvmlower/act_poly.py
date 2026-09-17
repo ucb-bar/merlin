@@ -29,6 +29,7 @@ This file runs inside the model2MLIR venv (it needs the upstream MLIR Python bin
 imported by the lowering runner ONLY when the ``vectorized_transcendental_activation`` feature is
 enabled; with the feature off it is never imported and the pipeline is byte-identical.
 """
+
 from __future__ import annotations
 
 

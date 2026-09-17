@@ -1,4 +1,5 @@
 """Emit an abstraction_candidate dict (conforming to ``abstraction_candidate.schema.yaml``)."""
+
 from __future__ import annotations
 
 from typing import Iterable

@@ -35,6 +35,7 @@ The rewrite is purely structural and value-preserving: inlining every kernel cal
 into the driver reproduces the original op set and dataflow (see
 ``test_outline.py::test_outline_is_value_preserving``).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -55,8 +56,7 @@ CLONE_INTO_KERNEL = ("arith.constant", "tensor.empty", "linalg.fill")
 
 def _is_root(op) -> bool:
     """A heavy compute op that becomes its own kernel."""
-    return op.name.startswith("linalg.") and op.name not in (
-        "linalg.fill", "linalg.yield", "linalg.index")
+    return op.name.startswith("linalg.") and op.name not in ("linalg.fill", "linalg.yield", "linalg.index")
 
 
 def _is_block_arg(value) -> bool:
@@ -71,7 +71,7 @@ class DispatchInfo:
 
     index: int
     symbol: str
-    root_op: str                       # e.g. "linalg.matmul"
+    root_op: str  # e.g. "linalg.matmul"
     n_operands: int
     result_types: list[str]
     prov: dict[str, str] = field(default_factory=dict)
@@ -110,14 +110,31 @@ def _sanitize_symbol(text: str) -> str:
     return "".join(c if (c.isalnum() or c == "_") else "_" for c in text)
 
 
+#: The infix every outlined dispatch symbol carries (``forward$kernel_3``). Required before the
+#: ``__r`` suffix is read as provenance — see :func:`region_id_of_symbol`.
+KERNEL_SYMBOL_INFIX = "$kernel_"
+
+
 def region_id_of_symbol(symbol: str) -> str | None:
     """Recover the ``prov.region_id`` a dispatch symbol was tagged with (``None`` if untagged).
 
     Inverse of the suffix the outliner appends. Used to attribute an emitted kernel / ELF symbol
     back to its model region — the asm-side of the provenance join.
+
+    ⚠️ REQUIRES the ``$kernel_`` infix, and this is not belt-and-braces. ``__r`` alone appears inside
+    symbols nobody here emitted: XNNPACK names its vector kernels
+    ``xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_16x4v__rvv``, which split on the separator alone yields a
+    confident region id of ``"vv"``. That is the same ``__rvv`` collision that already had to be
+    fixed once in corpus ingest, and here it is worse than a mislabel: ``section_mlir`` selects which
+    regions to splice into a section build by this function, so a false positive silently builds a
+    slice of the wrong model.
     """
-    _, sep, rid = symbol.partition(REGION_SYMBOL_SEP)
-    return rid or None if sep else None
+    core, sep, rid = symbol.partition(REGION_SYMBOL_SEP)
+    if not sep or not rid:
+        return None
+    if KERNEL_SYMBOL_INFIX not in core:
+        return None  # not a symbol this outliner emitted; claim nothing about it
+    return rid
 
 
 def _cloneable(owner) -> bool:
@@ -212,9 +229,14 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
     from xdsl.dialects.func import CallOp, FuncOp, ReturnOp
     from xdsl.ir import Block, Region
 
-    fns = [op for op in module.walk() if op.name == "func.func"]
+    # DECLARATIONS ARE NOT DEFINITIONS. A capture that leaves an operation to an external symbol
+    # (a `func.func private @…` with no body) prints that declaration FIRST, so picking `fns[0]`
+    # blind used to select it and die on `fn.body.blocks[0]` with a bare IndexError -- naming
+    # neither the module nor the symbol. Filtering by "has a body" is what makes the driver the
+    # function that HAS one; a symbol that stays undefined is named as such below.
+    fns = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
     if not fns:
-        raise OutlineError("no func.func in module")
+        raise OutlineError("no func.func with a body in module (only external declarations)")
     if forward is not None:
         fns = [f for f in fns if f.sym_name.data == forward]
         if not fns:
@@ -265,9 +287,7 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
             for old, new in zip(kop.results, c.results):
                 kmap[old] = new
         kblock.add_op(ReturnOp(*[kmap[r] for r in op.results]))
-        kfn = FuncOp(symbol, FunctionType.from_lists([p.type for p in params],
-                                                     result_types),
-                     Region([kblock]))
+        kfn = FuncOp(symbol, FunctionType.from_lists([p.type for p in params], result_types), Region([kblock]))
         kfn.sym_visibility = StringAttr("private")
         kernels.append(kfn)
 
@@ -277,16 +297,47 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
         for old, new in zip(op.results, call.results):
             dmap[old] = new
 
-        dispatches.append(DispatchInfo(
-            index=idx, symbol=symbol, root_op=op.name, n_operands=len(params),
-            result_types=[str(t) for t in result_types], prov=prov))
+        dispatches.append(
+            DispatchInfo(
+                index=idx,
+                symbol=symbol,
+                root_op=op.name,
+                n_operands=len(params),
+                result_types=[str(t) for t in result_types],
+                prov=prov,
+            )
+        )
 
-    new_fn = FuncOp(fname, FunctionType.from_lists(
-        arg_types, list(fn.function_type.outputs.data)), Region([driver]))
+    new_fn = FuncOp(fname, FunctionType.from_lists(arg_types, list(fn.function_type.outputs.data)), Region([driver]))
     # Keep any function-level attributes (e.g. llvm.emit_c_interface) on the driver.
     for key, val in fn.attributes.items():
         if key not in ("sym_name", "function_type", "sym_visibility"):
             new_fn.attributes[key] = val
+
+    # AN OP NOTHING DEFINES IS A CAPTURE GAP, NOT A SYMBOL-TABLE PROBLEM. Calls the source function
+    # made to external symbols are cloned into the driver verbatim, and the declarations that
+    # satisfied them do not survive into the rebuilt module -- so `out.verify()` would fail with
+    # "could not be found in symbol table", pointing at the table instead of at the operation the
+    # capture left undefined (measured: an activation-quant capture whose `torchao.quantize_affine`
+    # reached the runtime as an opaque call). Carrying the declarations across is not the fix
+    # either: every func in this module is compiled as a kernel, so a body-less one fails later and
+    # even further from its cause. Name them here.
+    defined = {k.sym_name.data for k in kernels} | {fname}
+    undefined: list[str] = []
+    for op in driver.walk():
+        if op.name != "func.call":
+            continue
+        callee = op.callee.string_value()
+        if callee not in defined and callee not in undefined:
+            undefined.append(callee)
+    if undefined:
+        raise OutlineError(
+            f"@{fname} calls {len(undefined)} symbol(s) this module never defines: "
+            + ", ".join(f"@{sym}" for sym in undefined)
+            + ". The capture left these operations to an external implementation, so there is "
+            "nothing to outline, compile or run for them -- they must be decomposed into linalg "
+            "at capture time (or defined here) before this model can execute."
+        )
 
     out = ModuleOp([new_fn, *kernels])
     out.verify()

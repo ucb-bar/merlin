@@ -26,4 +26,14 @@
 #define XNN_LOG2_SIZEOF_FLOAT 2
 #endif
 
+/* XNN_OOB_READS: upstream (src/xnnpack/common.h) expands to the sanitizer-disable attributes. The
+   harvest only needs the ukernel to COMPILE and disassemble, and the attributes affect neither the
+   emitted instruction mix nor the symbol -- so an empty expansion is faithful for that purpose.
+   Without it, `... params) XNN_OOB_READS {` parses as a declarator followed by garbage and clang
+   reports "expected function body after function declarator" (measured on f32-vrsqrt-rvv-rsqrt-u4v.c,
+   which is the RMSNorm normaliser teacher). */
+#ifndef XNN_OOB_READS
+#define XNN_OOB_READS
+#endif
+
 #endif  // MERLIN_CEILING_XNN_COMMON_H

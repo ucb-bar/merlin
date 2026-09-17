@@ -18,6 +18,7 @@ may realize it through ``llvmlower.custom_isa`` — a ``merlin.inline_asm`` mark
 ``llvm.inline_asm`` / ``llvm.call_intrinsic``. That keeps the capability in CODE GENERATION (we emit
 the instruction) with no llvm-project fork and no hand ukernel.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -25,8 +26,8 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 #: how the vector length is chosen for the inner loop.
-VL_FIXED = "fixed"        # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes
-VL_DYNAMIC = "dynamic"    # VL-agnostic loop sizing to the hardware VL with the tail folded in
+VL_FIXED = "fixed"  # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes
+VL_DYNAMIC = "dynamic"  # VL-agnostic loop sizing to the hardware VL with the tail folded in
 VL_STRATEGIES = (VL_FIXED, VL_DYNAMIC)
 
 
@@ -90,7 +91,7 @@ class MicrokernelSpec:
 #: so a package or a test may pin it), but a proposer must not spend beam budget PROPOSING a pruned
 #: axis as a candidate win — it burns a certify slot to (best case) reproduce the parent, (worst case)
 #: regress. Two levers were inert/wrong exactly this way (they looked wired at every layer while the
-#: emitted code was flat or slower — see rvvgen/beam._emitted_digest):
+#: emitted code was flat or slower — see mining/beam._emitted_digest):
 #:   * ``KC``       — INERT. The v3 recipe tiles the reduction K by 1 regardless of KC (KC only names
 #:                    the outer register-block trip conceptually), so proposing different KC values on
 #:                    the default recipe changes no emitted instruction (measured flat across KC). The
@@ -102,9 +103,9 @@ class MicrokernelSpec:
 #: text — that is what caught both of these. See also docs/design/expert_gap_attribution.md.
 PRUNED_AXES: dict[str, str] = {
     "KC": "inert: the v3 schedule tiles K by 1 regardless of KC (measured flat emitted code); use "
-          "the k_block axis for genuine reduction blocking",
+    "the k_block axis for genuine reduction blocking",
     "unroll_m": "structurally wrong: MR sequential K-loops, B-reuse=1, measured ~2.4x slower than "
-                "the 2-D vector<MRxNR> register block",
+    "the 2-D vector<MRxNR> register block",
 }
 
 #: The full set of tunable micro-kernel axes (every MicrokernelSpec field that names a codegen
@@ -145,7 +146,8 @@ def resolve(target: str, spec: MicrokernelSpec) -> Any:
     if fn is None:
         raise UnsupportedAxis(
             f"target {target!r} has no micro-kernel resolver registered (have: {registered_targets()}). "
-            "Register one so the micro-kernel granularity is expressible for this target.")
+            "Register one so the micro-kernel granularity is expressible for this target."
+        )
     return fn(spec)
 
 
@@ -185,17 +187,28 @@ class ContractionShape:
 
     ``parallel`` is outer-to-inner as the op writes them (matmul -> (M, N); batch_matmul ->
     (B, M, N)), which is the order a target's tile-size vector uses.
+
+    ``dtypes`` carries the element types as MLIR tokens, positionally ``(lhs, rhs, out)`` — the same
+    triple a target contract's accumulate rule is written in (``{in, weight, acc}``), so a legality
+    question can be asked of a contraction without re-reading the module. It is ``()`` when the
+    observer could not read them, which is the honest reading for a synthetic shape or a policy that
+    predates the field; a consumer that needs a dtype must therefore handle absence rather than
+    assume one. Extents alone cannot answer legality on a unit that computes int8 and not fp32, and
+    the accumulator token is what decides whether a reduction overflows.
     """
 
     op: str
     parallel: tuple[int, ...]
     reduction: tuple[int, ...] = ()
+    dtypes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for f in ("parallel", "reduction"):
             v = getattr(self, f)
             if not isinstance(v, tuple) or any(int(x) <= 0 for x in v):
                 raise ValueError(f"{f} must be a tuple of positive extents, got {v!r}")
+        if not isinstance(self.dtypes, tuple) or any(not str(d) for d in self.dtypes):
+            raise ValueError(f"dtypes must be a tuple of non-empty tokens, got {self.dtypes!r}")
 
 
 def masked_parallel_dims(block: "tuple[int, ...]", extents: "tuple[int, ...]") -> tuple[int, ...]:
@@ -203,8 +216,7 @@ def masked_parallel_dims(block: "tuple[int, ...]", extents: "tuple[int, ...]") -
 
     A tile size of 0 (or 1) never masks: 0 means "do not tile this dim" and 1 always divides. The
     result is the general hazard set every target's policy reasons about."""
-    return tuple(i for i, (b, e) in enumerate(zip(block, extents))
-                 if int(b) not in (0, 1) and int(e) % int(b) != 0)
+    return tuple(i for i, (b, e) in enumerate(zip(block, extents)) if int(b) not in (0, 1) and int(e) % int(b) != 0)
 
 
 def largest_divisor_at_most(n: int, cap: int) -> int:
@@ -229,9 +241,7 @@ def largest_divisor_at_most(n: int, cap: int) -> int:
 _SHAPE_POLICIES: dict[str, Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]] = {}
 
 
-def register_shape_policy(
-        target: str,
-        fn: Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]) -> None:
+def register_shape_policy(target: str, fn: Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]) -> None:
     """Register ``target``'s SHAPE-AWARE realization of the micro-kernel space (idempotent)."""
     _SHAPE_POLICIES[target] = fn
 
@@ -240,8 +250,7 @@ def has_shape_policy(target: str) -> bool:
     return target in _SHAPE_POLICIES
 
 
-def resolve_for_shapes(target: str, spec: MicrokernelSpec,
-                       shapes: "Sequence[ContractionShape]" = ()) -> Any:
+def resolve_for_shapes(target: str, spec: MicrokernelSpec, shapes: "Sequence[ContractionShape]" = ()) -> Any:
     """Realize ``spec`` for ``target`` given the contractions it must cover.
 
     Falls back to the shape-BLIND :func:`resolve` when the caller observed no shapes or the target

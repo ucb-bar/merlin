@@ -7,6 +7,7 @@ the policy **holds**, **fails** (incl. correctly silent on a negative control), 
 **n/a** (workload lacks the facts to decide). No kernel is executed; this is symbolic
 generalization testing, the structural precursor to measured speedups in a later session.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +23,7 @@ def _bench_dir() -> Path:
     # MERLIN_BENCH_DIR is the benchmarks ROOT (unified with the dse_guidance sites); the workload
     # specs live under semantic_memory/. bench_dir() resolves in-repo canonical or bundled _data.
     from merlin.common.paths import bench_dir
+
     return bench_dir() / "semantic_memory"
 
 
@@ -67,9 +69,8 @@ def apply_status(when: dict, facts: dict) -> str:
         for op in (">=", "<=", ">", "<", "=="):
             if cond_s.startswith(op):
                 try:
-                    rhs = _coerce(cond_s[len(op):].strip())
-                    ok = {">=": fact >= rhs, "<=": fact <= rhs, ">": fact > rhs,
-                          "<": fact < rhs, "==": fact == rhs}[op]
+                    rhs = _coerce(cond_s[len(op) :].strip())
+                    ok = {">=": fact >= rhs, "<=": fact <= rhs, ">": fact > rhs, "<": fact < rhs, "==": fact == rhs}[op]
                 except TypeError:
                     ok = False
                 break
@@ -92,8 +93,7 @@ def capacity_sweep(bench: dict, dtype: str = "i8") -> list[dict]:
     footprint = rhs_bytes * distinct
     out = []
     for budget in (bench.get("parameters", {}) or {}).get("resident_store_bytes", []):
-        out.append({"resident_store_bytes": budget, "footprint_bytes": footprint,
-                    "fits": footprint <= budget})
+        out.append({"resident_store_bytes": budget, "footprint_bytes": footprint, "fits": footprint <= budget})
     return out
 
 
@@ -111,8 +111,7 @@ _NEGATIVE_CONTROL = "no_reuse_matmul"
 _SHAPE_FACT_KEYS = {"rhs_reuse_count", "K", "k_tail_heavy", "rhs_size_bytes"}
 _SWEEP_BASE = {  # positive-template facts so non-shape conditions are satisfiable
     "packed_rhs_policy": {"rhs_mutable": False},
-    "accumulator_commit_policy": {"op": "matmul", "has_epilogue": True,
-                                  "accumulator_live_across_epilogue": True},
+    "accumulator_commit_policy": {"op": "matmul", "has_epilogue": True, "accumulator_live_across_epilogue": True},
 }
 _SWEEP_REUSE = (1, 2, 4, 8, 16)
 _SWEEP_K = (64, 1024)
@@ -130,20 +129,15 @@ def shape_sweep(rule: dict) -> dict | None:
             for tail in (False, True):
                 kk = k + 8 if tail else k  # tail-heavy K is genuinely non-divisible
                 facts = {**base, "rhs_reuse_count": r, "K": kk, "k_tail_heavy": tail}
-                cells.append({"reuse": r, "K": kk, "tail_heavy": tail,
-                              "status": apply_status(when, facts)})
+                cells.append({"reuse": r, "K": kk, "tail_heavy": tail, "status": apply_status(when, facts)})
     neg = {
         "mutable_rhs": apply_status(
-            when, {**base, "rhs_mutable": True, "rhs_reuse_count": 8,
-                   "K": 1024, "k_tail_heavy": False}),
-        "no_reuse": apply_status(
-            when, {**base, "rhs_reuse_count": 1, "K": 1024, "k_tail_heavy": False}),
+            when, {**base, "rhs_mutable": True, "rhs_reuse_count": 8, "K": 1024, "k_tail_heavy": False}
+        ),
+        "no_reuse": apply_status(when, {**base, "rhs_reuse_count": 1, "K": 1024, "k_tail_heavy": False}),
     }
-    neg = {name: ("correctly_silent" if st == "fails" else f"LEAK({st})")
-           for name, st in neg.items()}
-    return {"cells": cells,
-            "fires": sum(1 for c in cells if c["status"] == "holds"),
-            "negative_controls": neg}
+    neg = {name: ("correctly_silent" if st == "fails" else f"LEAK({st})") for name, st in neg.items()}
+    return {"cells": cells, "fires": sum(1 for c in cells if c["status"] == "holds"), "negative_controls": neg}
 
 
 def validate_policies(rules: list[dict]) -> dict[str, dict]:

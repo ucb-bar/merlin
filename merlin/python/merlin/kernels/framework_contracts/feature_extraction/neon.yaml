@@ -1,0 +1,9 @@
+# Feature-extraction contract for the Arm NEON ISA family (AArch64 NEON intrinsics C).
+family: neon
+# markers.py: the kernel.target spellings that select this family (matched case-insensitively).
+targets: [neon, aarch64, arm]
+# markers.py: motif -> regex patterns. Single-quoted, so each string is the regex verbatim.
+markers:
+  accumulator_lifetime: ['vfmaq?_f32', 'vmlaq?_f32']
+  epilogue_before_commit: ['vmaxq_f32', 'vminq_f32']
+  intrinsic_lowering: ['vld1q?_f32', 'vst1q?_f32', 'vfmaq?_f32']

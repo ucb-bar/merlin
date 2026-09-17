@@ -16,6 +16,7 @@ DECISIONS/enums + structural counts (LMUL bucket, vf/vv, mr/nr) — never free-f
 the concrete knob value (e.g. LMUL=4 -> vector width) is derived from the enum by the
 motif->knob mapping (S5), not stored as a tuned constant here.
 """
+
 from __future__ import annotations
 
 import re
@@ -29,7 +30,7 @@ _E_LMUL = re.compile(r"_e(\d+)m(f?\d+)\b")
 _FMA = re.compile(r"__riscv_vf?macc_(vf|vv)")
 _WIDENING = re.compile(r"__riscv_vw(?:macc|maccu|maccsu|maccus|add|sub|mul)\w*")
 _REDUCE = re.compile(r"__riscv_v(?:f)?red(usum|osum|sum|max|min|maxu|minu)\w*")
-_VSETVL_LOOP = re.compile(r"__riscv_vsetvl_e\d+mf?\d+")      # non-max: VL re-queried per iteration
+_VSETVL_LOOP = re.compile(r"__riscv_vsetvl_e\d+mf?\d+")  # non-max: VL re-queried per iteration
 _VSETVLMAX = re.compile(r"__riscv_vsetvlmax_e\d+mf?\d+")
 _REQUANT = re.compile(r"__riscv_v(?:f)?ncvt\w*|__riscv_vnclip\w*|__riscv_vse8\b")
 _VACC = re.compile(r"\bvacc(\d+)\w*\b")
@@ -69,19 +70,19 @@ def _reduction_form(text: str) -> str:
 
 def _vl_strategy(text: str) -> str:
     if _VSETVL_LOOP.search(text):
-        return "vsetvl_loop"          # VL-polymorphic tail (the portable RVV idiom)
+        return "vsetvl_loop"  # VL-polymorphic tail (the portable RVV idiom)
     if _VSETVLMAX.search(text):
-        return "vsetvlmax_fixed"      # single max-VL, fixed body
+        return "vsetvlmax_fixed"  # single max-VL, fixed body
     return "na"
 
 
 def _accumulator_dtype(text: str, nk_dtype: str) -> str:
     if _WIDENING.search(text):
-        return "i32"                  # i8xi8 -> i32 widening accumulate
+        return "i32"  # i8xi8 -> i32 widening accumulate
     # Prefer the kernel's canonical dtype to disambiguate sources that compile to multiple
     # widths (OpenBLAS #ifdef DOUBLE emits both e32 and e64 macros from one file).
     if nk_dtype in ("f32", "bf16", "f16"):
-        return "f32"                  # low-precision inputs accumulate in f32
+        return "f32"  # low-precision inputs accumulate in f32
     if nk_dtype == "f64":
         return "f64"
     if _FMA.search(text):
@@ -107,13 +108,15 @@ def extract_rvv_intrinsics(nk: NormalizedKernel, fired: dict[str, list[str]]) ->
     text = nk.raw_text or ""
     if "__riscv_v" not in text:
         return {}
-    return {"rvv": {
-        "lmul_class": _lmul_class(text),
-        "fma_form": _fma_form(text),
-        "int_widening": bool(_WIDENING.search(text)),
-        "accumulator_dtype": _accumulator_dtype(text, nk.dtype),
-        "reduction_form": _reduction_form(text),
-        "vl_strategy": _vl_strategy(text),
-        "requant_epilogue": bool(_REQUANT.search(text)),
-        "register_block": _register_block(text),
-    }}
+    return {
+        "rvv": {
+            "lmul_class": _lmul_class(text),
+            "fma_form": _fma_form(text),
+            "int_widening": bool(_WIDENING.search(text)),
+            "accumulator_dtype": _accumulator_dtype(text, nk.dtype),
+            "reduction_form": _reduction_form(text),
+            "vl_strategy": _vl_strategy(text),
+            "requant_epilogue": bool(_REQUANT.search(text)),
+            "register_block": _register_block(text),
+        }
+    }

@@ -7,6 +7,7 @@ capability (from the target contract), assume/fact on the reused weight, the
 resident_packed_tensor requirement, and proofs/checks for what is actually provable
 (immutability from block-arg-ness; capacity from the contract's resident storage).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -18,8 +19,7 @@ from .input_workload import find_matmuls, matmul_lhs_rhs
 # merlin/targets/toy_npu/contracts/target_contract.yaml.
 DEFAULT_TARGET_CONTRACT: dict[str, Any] = {
     "name": "toy_npu",
-    "features": ["resident_packed_tensor", "accumulator_commit", "command_buffer",
-                 "metrics"],
+    "features": ["resident_packed_tensor", "accumulator_commit", "command_buffer", "metrics"],
     "runtime": {"backends": ["simulator", "zephyr"]},
     "capabilities": {"resident_storage_bytes": 131072},
 }
@@ -32,8 +32,14 @@ def _trace_to_block_arg(val, block):
     block arg directly — so the immutable-weight detection must trace through it."""
     from xdsl.ir import BlockArgument
 
-    VIEW = ("linalg.transpose", "tensor.collapse_shape", "tensor.expand_shape",
-            "tensor.reshape", "tensor.cast", "linalg.copy")
+    VIEW = (
+        "linalg.transpose",
+        "tensor.collapse_shape",
+        "tensor.expand_shape",
+        "tensor.reshape",
+        "tensor.cast",
+        "linalg.copy",
+    )
     cur = val
     for _ in range(12):
         if isinstance(cur, BlockArgument):
@@ -58,6 +64,7 @@ def _resident_storage_bytes(tc: dict[str, Any]) -> int:
     if name:
         try:
             from merlin.targetgen.rtl.facts import load_facts
+
             f = load_facts(name)["facts"]
             sp = next((m for m in f.get("memories", []) if m.get("name") == "scratchpad"), None)
             if sp and sp.get("bytes"):
@@ -111,9 +118,9 @@ def lower_to_contract(module, target_contract: dict[str, Any] | None = None):
         properties={
             "sym_name": StringAttr(tc["name"]),
             "features": ArrayAttr([StringAttr(f) for f in tc.get("features", [])]),
-            "runtime": ArrayAttr([StringAttr(b) for b in
-                                  tc.get("runtime", {}).get("backends", [])]),
-        })
+            "runtime": ArrayAttr([StringAttr(b) for b in tc.get("runtime", {}).get("backends", [])]),
+        },
+    )
     block.insert_op_before(cap, first_op)
 
     storage = _resident_storage_bytes(tc)
@@ -127,26 +134,37 @@ def lower_to_contract(module, target_contract: dict[str, Any] | None = None):
         reuse = len(users)
         ops = [
             # Block arguments are not written inside the region: assumed immutable.
-            c.AssumeOp(operands=[rhs], properties={
-                "kind": StringAttr("immutable"),
-                "lifetime": c.LifetimeAttr(c.Lifetime.WITHIN_REGION)}),
-            c.FactOp(operands=[rhs], properties={
-                "role": c.MemoryRoleAttr(c.MemoryRole.REUSABLE_WEIGHT),
-                "reuse_count": IntegerAttr(reuse, 64),
-                "layout": c.LayoutRoleAttr(c.LayoutRole.CANONICAL)}),
-            c.RequireOp(properties={
-                "feature": StringAttr("resident_packed_tensor"),
-                "requires": ArrayAttr([StringAttr("rhs_immutable"),
-                                       StringAttr("capacity_fit")])}),
+            c.AssumeOp(
+                operands=[rhs],
+                properties={"kind": StringAttr("immutable"), "lifetime": c.LifetimeAttr(c.Lifetime.WITHIN_REGION)},
+            ),
+            c.FactOp(
+                operands=[rhs],
+                properties={
+                    "role": c.MemoryRoleAttr(c.MemoryRole.REUSABLE_WEIGHT),
+                    "reuse_count": IntegerAttr(reuse, 64),
+                    "layout": c.LayoutRoleAttr(c.LayoutRole.CANONICAL),
+                },
+            ),
+            c.RequireOp(
+                properties={
+                    "feature": StringAttr("resident_packed_tensor"),
+                    "requires": ArrayAttr([StringAttr("rhs_immutable"), StringAttr("capacity_fit")]),
+                }
+            ),
         ]
         prove_imm = c.ProveOp(
             operands=[rhs],
             result_types=[c.ProofType(StringAttr("rhs_immutable"))],
-            properties={"requirement": StringAttr("rhs_immutable"),
-                        "producer_pass": StringAttr("merlin-infer-contract-facts")})
+            properties={
+                "requirement": StringAttr("rhs_immutable"),
+                "producer_pass": StringAttr("merlin-infer-contract-facts"),
+            },
+        )
         ops.append(prove_imm)
-        check_imm = c.CheckOp(operands=[rhs, [prove_imm.proof]],
-                              properties={"requirement": StringAttr("rhs_immutable")})
+        check_imm = c.CheckOp(
+            operands=[rhs, [prove_imm.proof]], properties={"requirement": StringAttr("rhs_immutable")}
+        )
         ops.append(check_imm)
         # The capacity check is always asserted; the proof exists only when the weight
         # actually fits — an unproven check blocks interface lowering downstream.
@@ -155,12 +173,14 @@ def lower_to_contract(module, target_contract: dict[str, Any] | None = None):
             prove_cap = c.ProveOp(
                 operands=[rhs],
                 result_types=[c.ProofType(StringAttr("capacity_fit"))],
-                properties={"requirement": StringAttr("capacity_fit"),
-                            "producer_pass": StringAttr("merlin-infer-contract-facts")})
+                properties={
+                    "requirement": StringAttr("capacity_fit"),
+                    "producer_pass": StringAttr("merlin-infer-contract-facts"),
+                },
+            )
             ops.append(prove_cap)
             cap_proofs = [prove_cap.proof]
-        ops.append(c.CheckOp(operands=[rhs, cap_proofs],
-                             properties={"requirement": StringAttr("capacity_fit")}))
+        ops.append(c.CheckOp(operands=[rhs, cap_proofs], properties={"requirement": StringAttr("capacity_fit")}))
         for op in reversed(ops):
             block.insert_op_after(op, cap)
     return mod

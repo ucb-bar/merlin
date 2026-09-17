@@ -11,10 +11,12 @@ xDSL 0.65 idioms used throughout (proven in targetgen's generated dialects):
 - region-bearing ops: ``region_def()`` + ``traits_def(NoTerminator())``;
 - it's ``func.ReturnOp`` (not ``Return``).
 """
+
 from __future__ import annotations
 
 try:
     from xdsl.utils.str_enum import StrEnum
+
     HAS_XDSL = True
 except Exception:  # noqa: BLE001 - xDSL is an optional prototyping dependency
     HAS_XDSL = False
@@ -34,6 +36,11 @@ if HAS_XDSL:
         from xdsl.context import Context
         from xdsl.dialects.builtin import Builtin
         from xdsl.dialects.func import Func
+
+        # Teach the parser the fp8 element types the corpus uses before any parse.
+        from .fp8 import register_fp8_types
+
+        register_fp8_types()
 
         ctx = Context()
         ctx.load_dialect(Builtin)
@@ -59,7 +66,6 @@ if HAS_XDSL:
         return Parser(make_context(*dialects), text(module)).parse_module()
 
 else:  # pragma: no cover - exercised only when xDSL is absent
-
     Visibility = None
 
     def make_context(*dialects):

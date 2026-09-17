@@ -4,6 +4,7 @@ Decision recorded: the *dataflow mode* exposed by the target (weight- vs output-
 the ISA family, and whether the kernel commits to target-specific intrinsics/config. These
 are the "target-specific configuration" facts the acceptance criteria call for.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.markers import target_family

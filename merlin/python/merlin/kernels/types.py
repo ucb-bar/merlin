@@ -5,6 +5,7 @@
 feature extractors only ever see this type and a marker table, so no source-specific
 assumptions leak into the feature layer.
 """
+
 from __future__ import annotations
 
 import hashlib

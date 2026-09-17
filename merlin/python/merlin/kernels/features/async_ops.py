@@ -3,6 +3,7 @@
 Decision recorded: *does the kernel overlap data movement with compute* via manual double
 buffering (ping-pong scratchpad regions). Seeds an ``async_pipeline`` abstraction candidate.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.types import NormalizedKernel

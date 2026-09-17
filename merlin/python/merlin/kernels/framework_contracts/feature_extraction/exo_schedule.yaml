@@ -1,0 +1,36 @@
+# Feature-extraction contract for Exo *schedule* .py sources (the decision record, not compiled C).
+family: exo_schedule
+# markers.py: the kernel.target spellings that select this family (matched case-insensitively).
+targets: [exo_schedule]
+# ingest/exo.py: a .py spec is a schedule file (mined with this family) only if it invokes at least one
+# of these scheduling directives.
+schedule_directives: [set_memory, stage_mem, divide_loop, replace_all, replace_gemmini_calls,
+                      tile_outer_loops]
+# roles.py: an Exo schedule stages weights explicitly (set_memory/stage_mem), so reuse is asserted
+# as a small constant when the packed_rhs marker fired.
+rhs_reuse:
+  method: packed_constant
+  value: 2
+# loops.py: Exo names tiling directly as a scheduling directive (divide_loop / tile_outer_loops).
+loops:
+  tiling_is_directive: true
+# markers.py: the optimization is named directly as a scheduling directive, so the decision is
+# *explicit* (the strongest evidence form). These recover the schedule-level signal that compiling Exo
+# to C discards. Single-quoted, so each string is the regex verbatim ('' is one literal quote).
+markers:
+  packed_rhs:
+    - 'stage_mem\s*\([^)]*[\"''][AB]?_?[Ww]?[^\"'']*[\"'']'
+    - 'set_memory\s*\([^)]*(GEMM_SCRATCH|SCRATCH)'
+    - '\bpack\w*\b'
+    - '_reg\b'
+  accumulator_lifetime:
+    - 'set_memory\s*\([^)]*(GEMM_ACCUM|ACCUM)'
+    - 'lift_alloc\s*\([^)]*res'
+    - 'stage_mem\s*\([^)]*[\"'']C'
+  epilogue_before_commit: ['\bacc_scale\b', '\bclamp\b', '\brelu\b']
+  tiling_blocking: ['\bdivide_loop\b', '\btile_outer_loops\b', '\btile\b',
+                    '\breorder_loops\b', '\bsplit\b']
+  vector_length_polymorphic: ['\bvectorize\b.*sve', '\brvm\b']
+  weight_stationary_dataflow: ['replace_gemmini_calls', 'GEMM_ACCUM']
+  intrinsic_lowering: ['\breplace_all\b', 'replace_gemmini_calls',
+                       'mm256_\w+', 'mm512_\w+', '\bNeon\b']
