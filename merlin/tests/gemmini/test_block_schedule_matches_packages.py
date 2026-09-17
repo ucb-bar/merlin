@@ -35,9 +35,9 @@ import sys
 import pytest
 
 from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
-from merlin.compile.scheduling import (BANK_ALIGNED, CONTIGUOUS, Compute, Contraction, Geometry,
-                                       Knobs, LHS, Load, NEST, Preload, ROLE, Store, WEIGHT,
-                                       BlockScheduleError, schedule_contraction,
+from merlin.compile.scheduling import (BANK_ALIGNED, CONTIGUOUS, Compute, ConvContraction, Contraction,
+                                       Geometry, Knobs, LHS, Load, NEST, Preload, ROLE, Store, WEIGHT,
+                                       BlockScheduleError, schedule_contraction, schedule_convolution,
                                        schedule_interface_program)
 from merlin.targetgen.address_space import derive_address_space
 
@@ -68,6 +68,25 @@ SHAPES = {"A0/A2/A5/C5/C6/GS0": (16, 16, 16), "A3/B1": (16, 32, 16), "C0/C1": (1
 #: regions overlap: the package emits a stream that reads an overwritten block.
 REFUSED = {("gemmini_xdsl_rtl_v1_hoist", "GM1"), ("gemmini_xdsl_rtl_v1_grp", "GM1")}
 
+#: The package carrying the correct (zero-path) convolution lowering, and the knob values it embodies:
+#: every tap's pixel block is gathered again for every output-channel block, each load in its nest
+#: position. The hoisted schedule (``load_on_index_change``) is not in any package; it is checked by
+#: execution in the infra suite instead.
+CONV_PACKAGE = "gemmini_xdsl_rtl_v1_convzero"
+CONV_KNOBS = Knobs(load_on_index_change=False, lookahead_steps=0, load_grouping=NEST)
+#: Conv shapes: the public capsules' (8x8x4 input, 3x3 kernel, 8 output channels) under padding and
+#: stride, plus shapes whose channel slices and output-channel blocks are ragged and multi-block, a
+#: dilated one, a batch of two, and a 1x1 -- which is where an ordering or gather error would show.
+CONVS = {
+    "GC0_k3": ConvContraction(1, 8, 8, 4, 3, 3, 8),
+    "GC7_k3_pad1": ConvContraction(1, 8, 8, 4, 3, 3, 8, padding=(1, 1, 1, 1)),
+    "GC8_k3_stride2": ConvContraction(1, 8, 8, 4, 3, 3, 8, stride=(2, 2)),
+    "ragged_ci20_co40_pad1": ConvContraction(1, 8, 8, 20, 3, 3, 40, padding=(1, 1, 1, 1)),
+    "dilated_pad2": ConvContraction(1, 9, 9, 5, 3, 3, 17, padding=(2, 2, 2, 2), dilation=(2, 2)),
+    "batch2": ConvContraction(2, 5, 6, 3, 3, 3, 18, padding=(0, 1, 1, 0)),
+    "one_by_one": ConvContraction(1, 6, 6, 33, 1, 1, 20),
+}
+
 #: Package constant -> the Geometry field it must equal.
 _CONSTANTS = {"DIM": "block", "SPAD_ROWS": "operand_rows", "SPAD_BANK_ROWS": "operand_bank_rows",
               "ACC_ROWS": "accumulator_rows"}
@@ -93,6 +112,36 @@ for label, (m, k, n) in json.loads(sys.argv[1]).items():
                   for i in isa._matmul_trace(program, "A0", "W", "Y0", {"epilogue": []})]
 print(json.dumps(out))
 '''
+
+
+_DUMP_CONV = '''
+import json, sys
+from ir_ingest import InterfaceProgram, TensorSpec
+from lowering import isa
+out = {}
+for label, c in json.loads(sys.argv[1]).items():
+    oh = (c["in_h"] + c["padding"][0] + c["padding"][2] - (c["dilation"][0] * (c["kh"] - 1) + 1)) // c["stride"][0] + 1
+    ow = (c["in_w"] + c["padding"][1] + c["padding"][3] - (c["dilation"][1] * (c["kw"] - 1) + 1)) // c["stride"][1] + 1
+    program = InterfaceProgram(module=None)
+    program.tensors = {"IFM": TensorSpec("IFM", [c["batch"], c["in_h"], c["in_w"], c["ci"]], "i8", "input"),
+                       "W": TensorSpec("W", [c["kh"] * c["kw"] * c["ci"], c["co"]], "i8", "weight"),
+                       "Y0": TensorSpec("Y0", [c["batch"] * oh * ow, c["co"]], "i32", "output")}
+    command = {"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W_res", "dst": "Y0"},
+               "attributes": {"kernel": [c["kh"], c["kw"], c["ci"], c["co"]], "stride": c["stride"],
+                              "padding": c["padding"], "dilation": c["dilation"], "layout": "nhwc",
+                              "epilogue": []}}
+    encode = lambda v: ({"tensor": v.tensor, "offset": v.offset}
+                        if isinstance(v, isa.Address) else v)
+    out[label] = [{"name": i.name, "rs1": encode(i.rs1), "rs2": encode(i.rs2)}
+                  for i in isa._conv_loop_trace(program, command, "W")]
+print(json.dumps(out))
+'''
+
+
+def _conv_json() -> str:
+    return json.dumps({label: {"batch": c.batch, "in_h": c.in_h, "in_w": c.in_w, "ci": c.ci, "kh": c.kh,
+                               "kw": c.kw, "co": c.co, "stride": list(c.stride), "padding": list(c.padding),
+                               "dilation": list(c.dilation)} for label, c in CONVS.items()})
 
 
 def _geometry() -> Geometry:
@@ -141,25 +190,36 @@ def package_constants(isa_source: str) -> dict[str, int]:
     return env
 
 
-def _dump_packages() -> dict:
-    """``{package: {shape label: instruction stream}}`` from each present package's own lowering."""
+def _run_package(name: str, source: str, argument: str) -> dict | None:
+    """Run ``source`` against package ``name``'s own lowering in a subprocess; ``None`` if absent."""
     import tempfile
-    streams = {}
+    package = PACKAGES / name / "mlir_oot"
+    if not package.is_dir():
+        return None
     with tempfile.TemporaryDirectory() as tmp:
         program = f"{tmp}/dump_trace.py"
         with open(program, "w") as handle:
-            handle.write(_DUMP)
-        for name in VARIANTS:
-            package = PACKAGES / name / "mlir_oot"
-            if not package.is_dir():
-                continue
-            done = subprocess.run([sys.executable, program, json.dumps(SHAPES)],
-                                  env={"PYTHONPATH": str(package), "PATH": "/usr/bin:/bin"},
-                                  capture_output=True, text=True, timeout=600)
-            if done.returncode != 0:
-                raise RuntimeError(f"{name}: {done.stderr[-400:]}")
-            streams[name] = json.loads(done.stdout)
+            handle.write(source)
+        done = subprocess.run([sys.executable, program, argument],
+                              env={"PYTHONPATH": str(package), "PATH": "/usr/bin:/bin"},
+                              capture_output=True, text=True, timeout=600)
+    if done.returncode != 0:
+        raise RuntimeError(f"{name}: {done.stderr[-400:]}")
+    return json.loads(done.stdout)
+
+
+def _dump_packages() -> dict:
+    """``{package: {shape label: instruction stream}}`` from each present package's own lowering."""
+    streams = {}
+    for name in VARIANTS:
+        dumped = _run_package(name, _DUMP, json.dumps(SHAPES))
+        if dumped is not None:
+            streams[name] = dumped
     return streams
+
+
+def _dump_conv() -> dict | None:
+    return _run_package(CONV_PACKAGE, _DUMP_CONV, _conv_json())
 
 
 @pytest.fixture(scope="module")
@@ -214,6 +274,87 @@ def _pass_blocks(schedule):
             blocks.append(("compute", op.input_row, op.rows, op.cols, op.fresh_weights))
         elif isinstance(op, Store):
             blocks.append(("store", op.dram_row, op.dram_col, op.rows, op.cols, op.accumulator_row))
+    return blocks
+
+
+class DecodeError(AssertionError):
+    """A package stream that does not decode into block moves -- e.g. a load with no stride config."""
+
+
+def _conv_package_blocks(stream, conv: ConvContraction):
+    """Decode a package convolution stream into block moves, CHECKING the configs rather than dropping them.
+
+    Every load must be introduced by a ``CONFIG_LD`` carrying its own tensor's stride: the weight MVIN by
+    the weight stride, and each gathered run of one-row MVINs by the input stride. A load a config does not
+    introduce, a config with the wrong stride, or a gathered run broken by anything else fails the decode --
+    so a schedule change that moved the configs is caught here, not after the fact on RTL. An MVIN whose
+    source is the integer 0 is the target's zero path and decodes to a ``None`` gather entry.
+    """
+    ifm_stride = ((conv.ci + 15) // 16) * 16            # i8 input, padded to whole tiles
+    weight_stride = ((conv.co + 15) // 16) * 16         # i8 weight
+    out_stride = ((conv.co + 15) // 16) * 16 * 4        # i32 output
+    names = [i["name"] for i in stream[:2]]
+    if names != ["CONFIG_EX", "CONFIG_ST"]:
+        raise DecodeError(f"expected the CONFIG_EX, CONFIG_ST prologue, got {names}")
+    blocks, stride, run = [], None, None
+    for instruction in stream[2:]:
+        name, rs1, rs2 = instruction["name"], instruction["rs1"], instruction["rs2"]
+        if name != "MVIN" and run is not None:
+            blocks.append(("load", LHS, run["gather"], len(run["gather"]), run["cols"], run["row"]))
+            run = None
+        if name == "CONFIG_LD":
+            if stride is not None:
+                raise DecodeError("two CONFIG_LD with no load between them")
+            stride = rs2
+        elif name == "MVIN":
+            row, cols, rows = rs2 & _ADDR, (rs2 >> 32) & 0xFFFF, rs2 >> 48
+            if isinstance(rs1, dict) and rs1["tensor"] == "W":
+                if stride != weight_stride or run is not None:
+                    raise DecodeError(f"weight MVIN introduced by stride {stride}, not {weight_stride}")
+                blocks.append(("load", WEIGHT, [rs1["offset"] // weight_stride, rs1["offset"] % weight_stride],
+                               rows, cols, row))
+                stride = None
+                continue
+            if rows != 1:
+                raise DecodeError(f"a gathered input MVIN spans {rows} rows")
+            entry = (None if rs1 == 0 else
+                     [rs1["offset"] // ifm_stride, rs1["offset"] % ifm_stride])
+            if run is None:
+                if stride != ifm_stride:
+                    raise DecodeError(f"input gather introduced by stride {stride}, not {ifm_stride}")
+                run, stride = {"row": row, "cols": cols, "gather": []}, None
+            elif row != run["row"] + len(run["gather"]) or cols != run["cols"]:
+                raise DecodeError("a gathered run is not contiguous on chip")
+            run["gather"].append(entry)
+        elif stride is not None:
+            raise DecodeError(f"CONFIG_LD not followed by a load (followed by {name})")
+        elif name == "PRELOAD":
+            weight_row, destination = rs1 & _ADDR, rs2
+            blocks.append(("preload", None if weight_row == _GARBAGE else weight_row,
+                           (destination & _ADDR) & _ACC_ROW, bool(destination & _ACC_ACCUMULATE),
+                           destination >> 48, (destination >> 32) & 0xFFFF))
+        elif name in ("COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"):
+            blocks.append(("compute", rs1 & _ADDR, rs1 >> 48, (rs1 >> 32) & 0xFFFF,
+                           name == "COMPUTE_PRELOADED"))
+        elif name == "MVOUT":
+            blocks.append(("store", rs1["offset"] // out_stride, (rs1["offset"] % out_stride) // 4,
+                           rs2 >> 48, (rs2 >> 32) & 0xFFFF, (rs2 & _ADDR) & _ACC_ROW))
+        else:
+            raise DecodeError(f"unexpected {name} inside a convolution stream")
+    if run is not None:
+        blocks.append(("load", LHS, run["gather"], len(run["gather"]), run["cols"], run["row"]))
+    return blocks
+
+
+def _conv_pass_blocks(schedule):
+    blocks = []
+    for op in schedule.ops:
+        if isinstance(op, Load):
+            source = (list(op.gather) if op.gather is not None else [op.dram_row, op.dram_col])
+            blocks.append(("load", op.role, source, op.rows, op.cols, op.row))
+        else:
+            blocks.extend(_pass_blocks(type(schedule)((op,), schedule.contraction, schedule.geometry,
+                                                      schedule.knobs, schedule.regions)))
     return blocks
 
 
@@ -313,6 +454,41 @@ def test_what_the_pass_refuses_is_a_real_hazard_in_the_variant_it_refuses(packag
         "that row as weights")
 
 
+@pytest.mark.parametrize("label", sorted(CONVS))
+def test_the_pass_reproduces_the_packaged_convolution(label):
+    """The zero-path convolution lowering, reproduced op for op -- including where every stride config
+    sits -- from the recorded stream, on any checkout."""
+    cell = _golden()["conv_cells"][label]
+    got = _canonical(_conv_pass_blocks(schedule_convolution(CONVS[label], _geometry(), CONV_KNOBS)))
+    assert (len(got), _digest(got)) == (cell["ops"], cell["sha256"]), (
+        f"{label}: the pass no longer reproduces the recorded package convolution stream")
+
+
+def test_the_present_conv_package_still_matches_its_golden_and_the_pass():
+    dumped = _dump_conv()
+    if dumped is None:
+        pytest.skip(f"{CONV_PACKAGE} is not in this checkout")
+    for label, conv in CONVS.items():
+        want = _conv_package_blocks(dumped[label], conv)
+        cell = _golden()["conv_cells"][label]
+        canonical = _canonical(want)
+        assert (len(canonical), _digest(canonical)) == (cell["package_ops"], cell["package_sha256"]), label
+        got = _canonical(_conv_pass_blocks(schedule_convolution(conv, _geometry(), CONV_KNOBS)))
+        assert got == canonical, f"{label}: first difference at " + str(
+            next((i for i, (a, b) in enumerate(zip(got, canonical)) if a != b), min(len(got), len(canonical))))
+
+
+def test_the_conv_decoder_rejects_a_load_its_config_does_not_introduce():
+    """The CONFIG_LD placement is part of what is checked: move one and the decode fails."""
+    dumped = _dump_conv()
+    if dumped is None:
+        pytest.skip(f"{CONV_PACKAGE} is not in this checkout")
+    stream = list(dumped["GC7_k3_pad1"])
+    first_config = next(i for i, x in enumerate(stream) if x["name"] == "CONFIG_LD")
+    with pytest.raises(DecodeError):
+        _conv_package_blocks(stream[:first_config] + stream[first_config + 1:], CONVS["GC7_k3_pad1"])
+
+
 def test_the_adapter_consumes_a_real_capsule_command_buffer():
     """End to end on the artifact a backend actually lowers: a command buffer a graded run emitted.
 
@@ -378,8 +554,23 @@ def regenerate() -> None:
                     raise SystemExit(f"cannot regenerate: {package} {label} disagrees with its package")
                 cell.update({"ops": len(got), "sha256": _digest(got), "head": got[:6]})
             cells[package][label] = cell
+    conv_streams = _dump_conv()
+    if conv_streams is None:
+        raise SystemExit(f"cannot regenerate: {CONV_PACKAGE} missing from this checkout")
+    conv_isa = PACKAGES / CONV_PACKAGE / "mlir_oot" / "lowering" / "isa.py"
+    baked = package_constants(conv_isa.read_text())
+    constants[CONV_PACKAGE] = {c: baked[c] for c in _CONSTANTS if c in baked}
+    sources[CONV_PACKAGE] = hashlib.sha256(conv_isa.read_bytes()).hexdigest()
+    conv_cells = {}
+    for label, conv in CONVS.items():
+        want = _canonical(_conv_package_blocks(conv_streams[label], conv))
+        got = _canonical(_conv_pass_blocks(schedule_convolution(conv, geometry, CONV_KNOBS)))
+        if got != want:
+            raise SystemExit(f"cannot regenerate: conv {label} disagrees with {CONV_PACKAGE}")
+        conv_cells[label] = {"package_ops": len(want), "package_sha256": _digest(want),
+                             "ops": len(got), "sha256": _digest(got), "head": got[:6]}
     document = {
-        "schema": "block-schedule-golden/v1",
+        "schema": "block-schedule-golden/v2",
         "target": TARGET,
         "what": ("each measured package variant's matmul block-move stream, decoded by "
                  "_package_blocks, per corpus shape; the pass is held to these digests"),
@@ -388,6 +579,8 @@ def regenerate() -> None:
         "package_constants": constants,
         "package_isa_sha256": sources,
         "cells": cells,
+        "conv_package": CONV_PACKAGE,
+        "conv_cells": conv_cells,
     }
     GOLDEN.parent.mkdir(parents=True, exist_ok=True)
     GOLDEN.write_text(json.dumps(document, indent=1, sort_keys=True) + "\n")

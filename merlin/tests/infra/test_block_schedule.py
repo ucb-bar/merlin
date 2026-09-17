@@ -224,7 +224,9 @@ def test_the_interface_adapter_schedules_commits_and_refuses_everything_else():
     assert len(schedules) == 1 and schedules[0].count(Store) == 1
     assert schedules[0].contraction.lhs == "A0" and schedules[0].contraction.out == "Y0"
 
-    with pytest.raises(BlockScheduleError, match="not a resident matmul"):
+    with pytest.raises(BlockScheduleError, match="neither a resident matmul nor a convolution"):
+        schedule_interface_program(tensors, [{"opcode": "MOVEMENT", "operands": {}}], geometry)
+    with pytest.raises(BlockScheduleError, match="missing"):
         schedule_interface_program(tensors, [{"opcode": "CONV2D", "operands": {}}], geometry)
     pooled = commands[:2] + [{"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y0"},
                               "attributes": {"epilogue": ["maxpool"]}}]
@@ -327,3 +329,99 @@ def test_execution_catches_a_schedule_that_drains_the_wrong_accumulator_block():
                                    second.accumulator_row))
     with pytest.raises(BlockScheduleError, match="no compute ever wrote"):
         execute(early, lhs, weight)
+
+
+# ------------------------------------------------------------------------------------ convolution
+
+from merlin.compile.scheduling import ConvContraction, schedule_convolution
+
+
+def _conv_reference(ifm, weight, conv):
+    """Direct NHWC convolution into the ``[pixels, co]`` layout, weights ``[kh*kw*ci, co]``."""
+    x = ifm.reshape(conv.batch, conv.in_h, conv.in_w, conv.ci)
+    w = weight.reshape(conv.kh, conv.kw, conv.ci, conv.co)
+    pt, pl, _, _ = conv.padding
+    out = np.zeros((conv.batch, conv.out_h, conv.out_w, conv.co), dtype=np.int64)
+    for b in range(conv.batch):
+        for oh in range(conv.out_h):
+            for ow in range(conv.out_w):
+                for kr in range(conv.kh):
+                    for kc in range(conv.kw):
+                        ih = oh * conv.stride[0] - pt + kr * conv.dilation[0]
+                        iw = ow * conv.stride[1] - pl + kc * conv.dilation[1]
+                        if 0 <= ih < conv.in_h and 0 <= iw < conv.in_w:
+                            out[b, oh, ow] += x[b, ih, iw].astype(np.int64) @ w[kr, kc]
+    return out.reshape(conv.pixels, conv.co)
+
+
+CONVS = {
+    "k3_pad0": ConvContraction(1, 8, 8, 4, 3, 3, 8),
+    "k3_pad1": ConvContraction(1, 8, 8, 4, 3, 3, 8, padding=(1, 1, 1, 1)),
+    "k3_stride2": ConvContraction(1, 8, 8, 4, 3, 3, 8, stride=(2, 2)),
+    "ragged_channels_batch2": ConvContraction(2, 7, 9, 20, 3, 3, 40, padding=(1, 1, 1, 1)),
+    "dilated": ConvContraction(1, 9, 9, 5, 3, 3, 17, padding=(2, 2, 2, 2), dilation=(2, 2)),
+    "one_by_one": ConvContraction(1, 6, 6, 33, 1, 1, 20),
+}
+
+
+@pytest.mark.parametrize("name", sorted(GEOMETRIES))
+@pytest.mark.parametrize("conv", sorted(CONVS))
+@pytest.mark.parametrize("knobs", [
+    Knobs(load_on_index_change=False, lookahead_steps=0, load_grouping=NEST),
+    Knobs(load_on_index_change=True, lookahead_steps=0, load_grouping=NEST),
+    Knobs(lookahead_steps=1, load_grouping=ROLE),
+    Knobs(lookahead_steps=1, load_grouping=ROLE, loop_order=(M, K, N)),
+], ids=["v0", "l1", "la1", "la1_mkn"])
+def test_a_scheduled_convolution_computes_the_convolution_exactly(name, conv, knobs):
+    """Padding taps read the zero path, strides and dilations pick the gathered pixels, and ragged
+    channel slices and output-channel blocks are partial blocks -- all checked against a direct conv."""
+    geometry = _geometry(f"t_{name}", **GEOMETRIES[name])
+    spec = CONVS[conv]
+    rng = np.random.default_rng(1)
+    ifm = rng.integers(-128, 128, size=(spec.batch * spec.in_h * spec.in_w, spec.ci))
+    weight = rng.integers(-128, 128, size=(spec.kh * spec.kw * spec.ci, spec.co))
+    schedule = schedule_convolution(spec, geometry, knobs)
+    assert np.array_equal(execute(schedule, ifm, weight), _conv_reference(ifm, weight, spec))
+
+
+def test_load_on_index_change_gathers_each_tap_once_per_pixel_block_not_per_output_channel_block():
+    geometry = _geometry("t_narrow", **NARROW)
+    spec = CONVS["ragged_channels_batch2"]            # 18 tap slices, 8 pixel blocks, 3 output-channel blocks
+    every = schedule_convolution(spec, geometry, Knobs(load_on_index_change=False, lookahead_steps=0,
+                                                       load_grouping=NEST))
+    once = schedule_convolution(spec, geometry, Knobs(load_on_index_change=True, lookahead_steps=0,
+                                                      load_grouping=NEST))
+    assert len(_loads(every, LHS)) == 18 * 8 * 3 and len(_loads(once, LHS)) == 18 * 8
+    assert every.count(Compute) == once.count(Compute) == 18 * 8 * 3
+
+
+def test_a_load_carrying_a_different_gather_into_a_live_block_is_refused():
+    """The gather is part of a block's identity: same block position, different pixels, different bytes."""
+    geometry = _geometry("t_narrow", **NARROW)
+    spec = CONVS["k3_pad1"]
+    schedule = schedule_convolution(spec, geometry, Knobs(lookahead_steps=0, load_grouping=NEST))
+    loads = [i for i, op in enumerate(schedule.ops) if isinstance(op, Load) and op.role == LHS]
+    first, other = schedule.ops[loads[0]], schedule.ops[loads[1]]
+    assert first.gather != other.gather
+    ops = list(schedule.ops)
+    ops[loads[0]] = Load(first.role, first.block, first.dram_row, first.dram_col, first.rows, first.cols,
+                         first.row, first.step, other.gather)
+    corrupted = type(schedule)(tuple(ops), schedule.contraction, schedule.geometry, schedule.knobs,
+                               schedule.regions, schedule.notes)
+    with pytest.raises(BlockScheduleError, match="DIFFERENT gather"):
+        check_residency(corrupted)
+
+
+def test_the_adapter_schedules_a_conv_command_and_refuses_pooling():
+    geometry = _geometry("t_narrow", **NARROW)
+    tensors = {"IFM": {"shape": [1, 8, 8, 4]}, "W": {"shape": [36, 8]}, "Y0": {"shape": [64, 8]}}
+    conv = {"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W_res", "dst": "Y0"},
+            "attributes": {"kernel": [3, 3, 4, 8], "stride": [1, 1], "padding": [1, 1, 1, 1],
+                           "dilation": [1, 1], "layout": "nhwc", "epilogue": ["relu"]}}
+    pack = {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}}
+    [schedule] = schedule_interface_program(tensors, [pack, conv], geometry, Knobs())
+    direct = schedule_convolution(CONVS["k3_pad1"], geometry, Knobs())
+    assert schedule.ops == direct.ops
+    pooled = {**conv, "attributes": {**conv["attributes"], "epilogue": ["maxpool"]}}
+    with pytest.raises(BlockScheduleError, match="maxpool"):
+        schedule_interface_program(tensors, [pack, pooled], geometry, Knobs())

@@ -224,8 +224,55 @@ class Contraction:
 
 
 @dataclass(frozen=True)
+class ConvContraction:
+    """One NHWC convolution scheduled as a contraction: each kernel tap x input-channel slice is a
+    reduction block, each output-channel block a resident block, each block of output pixels a streamed
+    block gathered tap by tap from the input feature map.
+
+    Operands, in the element coordinates :func:`execute` and a renderer address: the input as a
+    ``[batch*in_h*in_w, ci]`` matrix, the weight as ``[kh*kw*ci, co]`` (pre-im2col layout), the output as
+    ``[batch*out_h*out_w, co]``.
+    """
+
+    batch: int
+    in_h: int
+    in_w: int
+    ci: int
+    kh: int
+    kw: int
+    co: int
+    stride: tuple[int, int] = (1, 1)
+    padding: tuple[int, int, int, int] = (0, 0, 0, 0)  # top, left, bottom, right
+    dilation: tuple[int, int] = (1, 1)
+    lhs: str = "ifm"
+    weight: str = WEIGHT
+    out: str = "out"
+
+    @property
+    def out_h(self) -> int:
+        pt, _, pb, _ = self.padding
+        return (self.in_h + pt + pb - (self.dilation[0] * (self.kh - 1) + 1)) // self.stride[0] + 1
+
+    @property
+    def out_w(self) -> int:
+        _, pl, _, pr = self.padding
+        return (self.in_w + pl + pr - (self.dilation[1] * (self.kw - 1) + 1)) // self.stride[1] + 1
+
+    @property
+    def pixels(self) -> int:
+        return self.batch * self.out_h * self.out_w
+
+
+@dataclass(frozen=True)
 class Load:
-    """Move one block of ``role`` from its DRAM position (in ELEMENTS) to on-chip row ``row``."""
+    """Move one block of ``role`` from its DRAM position (in ELEMENTS) to on-chip row ``row``.
+
+    A GATHERED block (``gather`` set) is not a contiguous DRAM rectangle: on-chip row ``row + i`` is filled
+    from ``gather[i]``, a ``(row, col)`` element position in the operand's DRAM matrix, or from the
+    target's zero path when the entry is ``None`` (a convolution tap that falls outside the image). Then
+    ``dram_row``/``dram_col`` are ``-1``, and the gather is part of the block's identity: two loads of one
+    block position with different gathers are different bytes.
+    """
 
     role: str
     block: tuple[int, int]
@@ -235,6 +282,7 @@ class Load:
     cols: int
     row: int
     step: int
+    gather: tuple[tuple[int, int] | None, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -262,6 +310,8 @@ class Compute:
     rows: int
     cols: int
     fresh_weights: bool
+    #: The gather the streamed block must have been loaded with (``None`` for a contiguous block).
+    input_gather: tuple[tuple[int, int] | None, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -283,7 +333,7 @@ class BlockSchedule:
     """An ordered block schedule plus what produced it."""
 
     ops: tuple[Op, ...]
-    contraction: Contraction
+    contraction: Contraction | ConvContraction
     geometry: Geometry
     knobs: Knobs
     regions: dict[str, tuple[int, int]]  # role -> (first row, row count)
@@ -358,9 +408,16 @@ def check_residency(schedule: BlockSchedule) -> None:
         for offset in range(rows):
             have = resident.get(row + offset)
             if have != identity:
+                if have is None:
+                    holds = "nothing loaded"
+                elif have[:2] != identity[:2]:
+                    holds = str(have[:2])
+                else:
+                    holds = "that block with a DIFFERENT gather"
+                gathered = " with its gather" if identity[2] is not None else ""
                 raise BlockScheduleError(
-                    f"{what} reads on-chip row {row + offset} expecting block {identity}, but it holds "
-                    f"{have if have is not None else 'nothing loaded'}: the schedule overwrites a block "
+                    f"{what} reads on-chip row {row + offset} expecting block {identity[:2]}{gathered}, "
+                    f"but it holds {holds}: the schedule overwrites a block "
                     "that is still live (or never loads it)"
                 )
 
@@ -372,7 +429,7 @@ def check_residency(schedule: BlockSchedule) -> None:
                     f"{geometry.operand_rows}-row store"
                 )
             for offset in range(op.rows):
-                resident[op.row + offset] = (op.role, op.block)
+                resident[op.row + offset] = (op.role, op.block, op.gather)
         elif isinstance(op, Preload):
             if op.accumulator_row < 0 or op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
@@ -380,9 +437,9 @@ def check_residency(schedule: BlockSchedule) -> None:
                     f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}"
                 )
             if op.weight_row is not None:
-                _expect(op.weight_row, op.weight_rows or op.rows, (WEIGHT, op.weight_block), "a preload")
+                _expect(op.weight_row, op.weight_rows or op.rows, (WEIGHT, op.weight_block, None), "a preload")
         elif isinstance(op, Compute):
-            _expect(op.input_row, op.rows, (LHS, op.input_block), "a compute")
+            _expect(op.input_row, op.rows, (LHS, op.input_block, op.input_gather), "a compute")
         elif isinstance(op, Store):
             if op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
@@ -402,38 +459,140 @@ def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Kn
     """
     knobs = knobs or Knobs()
     knobs.validate()
-    if min(contraction.m, contraction.k, contraction.n) <= 0:
-        raise BlockScheduleError(f"a {contraction.m}x{contraction.k}x{contraction.n} contraction is empty")
+    c = contraction
+    if min(c.m, c.k, c.n) <= 0:
+        raise BlockScheduleError(f"a {c.m}x{c.k}x{c.n} contraction is empty")
     d = geometry.block
-    i_blocks = _ceil_div(contraction.m, d)
-    j_blocks = _ceil_div(contraction.n, d)
-    k_blocks = _ceil_div(contraction.k, d)
-    regions, notes = _regions({LHS: i_blocks * k_blocks * d, WEIGHT: k_blocks * j_blocks * d}, geometry, knobs)
-    lhs_base, weight_base = regions[LHS][0], regions[WEIGHT][0]
+    i_blocks, j_blocks, k_blocks = _ceil_div(c.m, d), _ceil_div(c.n, d), _ceil_div(c.k, d)
 
-    def _lhs_load(mi: int, kk: int) -> Load:
+    def _lhs_load(mi: int, kk: int, base: int) -> Load:
         return Load(
             LHS,
             (mi, kk),
             mi * d,
             kk * d,
-            min(d, contraction.m - mi * d),
-            min(d, contraction.k - kk * d),
-            lhs_base + (mi * k_blocks + kk) * d,
+            min(d, c.m - mi * d),
+            min(d, c.k - kk * d),
+            base + (mi * k_blocks + kk) * d,
             kk,
         )
 
-    def _weight_load(kk: int, nj: int) -> Load:
+    def _weight_load(kk: int, nj: int, base: int) -> Load:
         return Load(
             WEIGHT,
             (kk, nj),
             kk * d,
             nj * d,
-            min(d, contraction.k - kk * d),
-            min(d, contraction.n - nj * d),
-            weight_base + (kk * j_blocks + nj) * d,
+            min(d, c.k - kk * d),
+            min(d, c.n - nj * d),
+            base + (kk * j_blocks + nj) * d,
             kk,
         )
+
+    return _schedule_nest(
+        c,
+        geometry,
+        knobs,
+        blocks=(k_blocks, j_blocks, i_blocks),
+        rows_needed={LHS: i_blocks * k_blocks * d, WEIGHT: k_blocks * j_blocks * d},
+        lhs_load=_lhs_load,
+        weight_load=_weight_load,
+        k_depth=lambda kk: min(d, c.k - kk * d),
+        m_rows=lambda mi: min(d, c.m - mi * d),
+        n_cols=lambda nj: min(d, c.n - nj * d),
+    )
+
+
+def schedule_convolution(conv: ConvContraction, geometry: Geometry, knobs: Knobs | None = None) -> BlockSchedule:
+    """Schedule an NHWC convolution as a gathered contraction, or refuse.
+
+    Reduction blocks are ``(tap row, tap col, channel slice)`` in kernel order, each ``min(block,
+    ci - c0)`` channels deep; a streamed block is a block of output pixels whose rows are GATHERED, one
+    per pixel, from the input position that tap reads -- or from the target's zero path where the tap
+    falls in the padding. The gather depends on the tap and the pixel block only, never on the output
+    channel block, which is why ``load_on_index_change`` can load it once per ``(tap, pixel block)``
+    instead of once per output-channel block: the same bytes into the same rows, which
+    :func:`check_residency` verifies rather than assumes.
+    """
+    knobs = knobs or Knobs()
+    knobs.validate()
+    cv = conv
+    if min(cv.batch, cv.in_h, cv.in_w, cv.ci, cv.kh, cv.kw, cv.co) <= 0 or cv.out_h <= 0 or cv.out_w <= 0:
+        raise BlockScheduleError(f"an empty convolution: {cv}")
+    d = geometry.block
+    taps = [(kr, kc, c0, min(d, cv.ci - c0)) for kr in range(cv.kh) for kc in range(cv.kw) for c0 in range(0, cv.ci, d)]
+    m = cv.pixels
+    i_blocks, j_blocks, k_blocks = _ceil_div(m, d), _ceil_div(cv.co, d), len(taps)
+    sh, sw = cv.stride
+    pt, pl, _, _ = cv.padding
+    dh, dw = cv.dilation
+    plane = cv.out_h * cv.out_w
+
+    def _gather(mi: int, gi: int) -> tuple[tuple[int, int] | None, ...]:
+        kr, kc, c0, _ = taps[gi]
+        entries: list[tuple[int, int] | None] = []
+        for pixel in range(mi * d, min(m, mi * d + d)):
+            batch_index, spatial = divmod(pixel, plane)
+            oh, ow = divmod(spatial, cv.out_w)
+            ih, iw = oh * sh - pt + kr * dh, ow * sw - pl + kc * dw
+            inside = 0 <= ih < cv.in_h and 0 <= iw < cv.in_w
+            entries.append(((batch_index * cv.in_h + ih) * cv.in_w + iw, c0) if inside else None)
+        return tuple(entries)
+
+    def _lhs_load(mi: int, gi: int, base: int) -> Load:
+        gather = _gather(mi, gi)
+        return Load(LHS, (mi, gi), -1, -1, len(gather), taps[gi][3], base + (gi * i_blocks + mi) * d, gi, gather)
+
+    def _weight_load(gi: int, nj: int, base: int) -> Load:
+        kr, kc, c0, depth = taps[gi]
+        return Load(
+            WEIGHT,
+            (gi, nj),
+            (kr * cv.kw + kc) * cv.ci + c0,
+            nj * d,
+            depth,
+            min(d, cv.co - nj * d),
+            base + (gi * j_blocks + nj) * d,
+            gi,
+        )
+
+    return _schedule_nest(
+        cv,
+        geometry,
+        knobs,
+        blocks=(k_blocks, j_blocks, i_blocks),
+        rows_needed={LHS: k_blocks * i_blocks * d, WEIGHT: k_blocks * j_blocks * d},
+        lhs_load=_lhs_load,
+        weight_load=_weight_load,
+        k_depth=lambda gi: taps[gi][3],
+        m_rows=lambda mi: min(d, m - mi * d),
+        n_cols=lambda nj: min(d, cv.co - nj * d),
+    )
+
+
+def _schedule_nest(
+    contraction: Contraction | ConvContraction,
+    geometry: Geometry,
+    knobs: Knobs,
+    *,
+    blocks: tuple[int, int, int],
+    rows_needed: dict[str, int],
+    lhs_load: Any,
+    weight_load: Any,
+    k_depth: Any,
+    m_rows: Any,
+    n_cols: Any,
+) -> BlockSchedule:
+    """The one block nest both contractions share: regions, the load-due rule, the computes, the drains.
+
+    ``lhs_load(mi, kk, base)`` / ``weight_load(kk, nj, base)`` build the block moves; the three extents
+    are ``(K, N, M)`` block counts; ``k_depth`` / ``m_rows`` / ``n_cols`` give a block's edge along each
+    axis, so partial edge blocks need no special case here.
+    """
+    d = geometry.block
+    k_blocks, j_blocks, i_blocks = blocks
+    regions, notes = _regions(rows_needed, geometry, knobs)
+    lhs_base, weight_base = regions[LHS][0], regions[WEIGHT][0]
 
     # One emission group per iteration of the two OUTER loops. Each compute carries the loads that
     # become due for it: a block is due the first time a compute needs it -- per group without
@@ -452,28 +611,29 @@ def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Kn
             for c in range(extent[inner]):
                 index = {outer: a, middle: b, inner: c}
                 kk, nj, mi = index[K], index[N], index[M]
+                weight, streamed = weight_load(kk, nj, weight_base), lhs_load(mi, kk, lhs_base)
                 due: list[Load] = []
-                for load in (_weight_load(kk, nj), _lhs_load(mi, kk)):
+                for load in (weight, streamed):
                     identity = (load.role, load.block)
                     seen = loaded_in_nest if knobs.load_on_index_change else loaded_in_group
                     if identity not in seen:
                         seen.add(identity)
                         due.append(load)
-                rows, cols = min(d, contraction.m - mi * d), min(d, contraction.n - nj * d)
+                rows, cols = m_rows(mi), n_cols(nj)
                 acc_row = (mi * j_blocks + nj) * d
                 fresh = resident_weight != (kk, nj)
                 resident_weight = (kk, nj)
                 ops_here: list[Op] = [
                     Preload(
-                        weight_base + (kk * j_blocks + nj) * d if fresh else None,
+                        weight.row if fresh else None,
                         (kk, nj) if fresh else None,
                         acc_row,
                         kk > 0,
                         rows,
                         cols,
-                        min(d, contraction.k - kk * d) if fresh else None,
+                        k_depth(kk) if fresh else None,
                     ),
-                    Compute(lhs_base + (mi * k_blocks + kk) * d, (mi, kk), rows, min(d, contraction.k - kk * d), fresh),
+                    Compute(streamed.row, (mi, kk), rows, k_depth(kk), fresh, streamed.gather),
                 ]
                 if kk == k_blocks - 1:
                     ops_here.append(Store(mi * d, nj * d, rows, cols, acc_row))
@@ -499,14 +659,22 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
 
     c = schedule.contraction
     lhs, weight = np.asarray(lhs), np.asarray(weight)
-    if lhs.shape != (c.m, c.k) or weight.shape != (c.k, c.n):
+    if isinstance(c, ConvContraction):
+        want_lhs, want_weight, out_shape = (
+            (c.batch * c.in_h * c.in_w, c.ci),
+            (c.kh * c.kw * c.ci, c.co),
+            (c.pixels, c.co),
+        )
+    else:
+        want_lhs, want_weight, out_shape = (c.m, c.k), (c.k, c.n), (c.m, c.n)
+    if lhs.shape != want_lhs or weight.shape != want_weight:
         raise BlockScheduleError(
-            f"operands {lhs.shape} x {weight.shape} are not the scheduled {c.m}x{c.k} x {c.k}x{c.n} contraction"
+            f"operands {lhs.shape} x {weight.shape} are not the scheduled {want_lhs} x {want_weight}"
         )
     dram = {LHS: lhs, WEIGHT: weight}
     rows_on_chip: dict[int, Any] = {}
     accumulator: dict[int, Any] = {}
-    out = np.zeros((c.m, c.n), dtype=np.result_type(lhs, weight, np.int64))
+    out = np.zeros(out_shape, dtype=np.result_type(lhs, weight, np.int64))
     resident = None
     target_row, accumulate = None, False
 
@@ -522,7 +690,16 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
 
     for op in schedule.ops:
         if isinstance(op, Load):
-            block = dram[op.role][op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols]
+            source = dram[op.role]
+            if op.gather is not None:
+                for offset, entry in enumerate(op.gather):
+                    rows_on_chip[op.row + offset] = (
+                        np.zeros(op.cols, dtype=source.dtype)
+                        if entry is None
+                        else source[entry[0], entry[1] : entry[1] + op.cols].copy()
+                    )
+                continue
+            block = source[op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols]
             for offset in range(op.rows):
                 rows_on_chip[op.row + offset] = block[offset].copy()
         elif isinstance(op, Preload):
@@ -608,7 +785,8 @@ def _emit(groups: list[tuple[int, list[tuple[list[Load], list[Op]]]]], knobs: Kn
 def schedule_interface_program(
     tensors: dict[str, Any], commands: list[dict[str, Any]], geometry: Geometry, knobs: Knobs | None = None
 ) -> list[BlockSchedule]:
-    """Schedule every resident matmul an interface program commits, in program order.
+    """Schedule every resident matmul an interface program commits, and every convolution, in program
+    order.
 
     ``tensors`` maps a name to that tensor's spec (anything with ``shape``, or a mapping carrying
     ``"shape"``); ``commands`` is the program's command list. Any other command -- a convolution, a
@@ -648,12 +826,79 @@ def schedule_interface_program(
             schedules.append(
                 schedule_contraction(Contraction(m, k, n, lhs_name, weight_name, operands["dst"]), geometry, knobs)
             )
+        elif opcode == "CONV2D":
+            schedules.append(_conv_command(tensors, command, resident_of, geometry, knobs))
         elif opcode != "EVICT":
             raise BlockScheduleError(
-                f"{opcode!r} is not a resident matmul; this pass schedules those "
-                "only, and refuses rather than dropping the command"
+                f"{opcode!r} is neither a resident matmul nor a convolution; this pass "
+                "schedules those only, and refuses rather than dropping the command"
             )
     return schedules
+
+
+def _conv_command(
+    tensors: dict[str, Any],
+    command: dict[str, Any],
+    resident_of: dict[str, str],
+    geometry: Geometry,
+    knobs: Knobs | None,
+) -> BlockSchedule:
+    """One ``CONV2D`` command as a :class:`ConvContraction`, refusing what the nest cannot express."""
+    operands, attributes = command.get("operands", {}) or {}, command.get("attributes", {}) or {}
+    missing = [key for key in ("ifm", "weight", "dst") if key not in operands]
+    missing += [key for key in ("kernel",) if key not in attributes]
+    if missing:
+        raise BlockScheduleError(f"a CONV2D command missing {missing}; refusing rather than guessing them")
+    epilogue = tuple(attributes.get("epilogue", ()) or ())
+    unsupported = [e for e in epilogue if e not in ("relu", "acc_scale")]
+    if unsupported:
+        # Pooling drains the accumulator N-major and defers every drain past the nest: a different
+        # accumulator LAYOUT, not an ordering choice, so it is refused rather than approximated.
+        raise BlockScheduleError(
+            f"epilogue {unsupported} changes which accumulator block a store drains; "
+            "this pass schedules block moves only and will not guess that mapping"
+        )
+    if attributes.get("layout", "nhwc") != "nhwc":
+        raise BlockScheduleError(f"conv layout {attributes.get('layout')!r}; this pass schedules NHWC")
+    weight = operands["weight"]
+    if weight not in resident_of:
+        raise BlockScheduleError(f"{weight!r} is used as a resident operand before it is packed")
+    ifm = _shape_nd(tensors, operands["ifm"], 4)
+    kh, kw, kci, co = (int(v) for v in attributes["kernel"])
+    batch, in_h, in_w, ci = ifm
+    if kci != ci:
+        raise BlockScheduleError(f"kernel expects {kci} input channels, the input has {ci}")
+    packed = _shape_nd(tensors, resident_of[weight], 2)
+    if packed != (kh * kw * ci, co):
+        raise BlockScheduleError(
+            f"conv weight {resident_of[weight]!r} is {packed}, not the pre-im2col {(kh * kw * ci, co)}"
+        )
+    conv = ConvContraction(
+        batch,
+        in_h,
+        in_w,
+        ci,
+        kh,
+        kw,
+        co,
+        tuple(int(v) for v in attributes.get("stride", (1, 1))),
+        tuple(int(v) for v in attributes.get("padding", (0, 0, 0, 0))),
+        tuple(int(v) for v in attributes.get("dilation", (1, 1))),
+        operands["ifm"],
+        resident_of[weight],
+        operands["dst"],
+    )
+    return schedule_convolution(conv, geometry, knobs)
+
+
+def _shape_nd(tensors: dict[str, Any], name: str, rank: int) -> tuple[int, ...]:
+    spec = tensors.get(name)
+    if spec is None:
+        raise BlockScheduleError(f"the program names no tensor {name!r}")
+    shape = spec["shape"] if isinstance(spec, dict) else getattr(spec, "shape", None)
+    if shape is None or len(shape) != rank:
+        raise BlockScheduleError(f"{name!r} has shape {shape!r}; expected rank {rank}")
+    return tuple(int(v) for v in shape)
 
 
 def _shape(tensors: dict[str, Any], name: str) -> tuple[int, int]:

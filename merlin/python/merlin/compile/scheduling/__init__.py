@@ -24,6 +24,7 @@ from .block_schedule import (
     BlockScheduleError,
     Compute,
     Contraction,
+    ConvContraction,
     Geometry,
     K,
     Knobs,
@@ -36,15 +37,18 @@ from .block_schedule import (
     check_residency,
     execute,
     schedule_contraction,
+    schedule_convolution,
     schedule_interface_program,
 )
 
 __all__ = [
     "AXES",
+    "ConvContraction",
     "K",
     "M",
     "N",
     "execute",
+    "schedule_convolution",
     "BANK_ALIGNED",
     "CONTIGUOUS",
     "GROUPINGS",
