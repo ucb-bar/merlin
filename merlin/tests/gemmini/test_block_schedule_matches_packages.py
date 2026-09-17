@@ -7,6 +7,18 @@ path), decodes its instruction stream back to block moves, and requires the pass
 knob values to produce exactly that stream. The packages are read, never imported into this session
 and never modified.
 
+Two properties make that claim hold off this working copy:
+
+* **The geometry is derived, not typed.** The pass is run on ``Geometry.from_address_space`` of the
+  target's own facts, and that geometry is checked against the constants each package baked in
+  (``DIM``, ``SPAD_ROWS``, ``SPAD_BANK_ROWS``, ``ACC_ROWS``). A literal geometry here would let the
+  derivation drift away from 18 frozen packages while every cell stayed green.
+* **The packages are not tracked**, so a fresh clone has none of them. Each package stream is recorded
+  as a digest in ``merlin/tests/data/block_schedule/golden_streams.json`` (regenerate with
+  ``.venv/bin/python merlin/tests/gemmini/test_block_schedule_matches_packages.py --regen``), and the
+  pass is held to the golden unconditionally; where the packages ARE present they are also held to it,
+  so a golden can never go stale silently.
+
 Two variants do NOT match on the deepest shape, and that is the point of the pass: there the two
 operand regions overlap, and hoisting every load (or grouping them by operand) overwrites an input
 block before the preload that reads it as weights. The pass refuses; the hand-written variant emits
@@ -14,19 +26,24 @@ it, and an in-order executor would compute on the wrong bytes without failing.
 """
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import subprocess
 import sys
 
 import pytest
 
-from merlin.common.paths import artifacts_dir, runs_dir
+from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
 from merlin.compile.scheduling import (BANK_ALIGNED, CONTIGUOUS, Compute, Contraction, Geometry,
                                        Knobs, LHS, Load, NEST, Preload, ROLE, Store, WEIGHT,
                                        BlockScheduleError, schedule_contraction,
                                        schedule_interface_program)
+from merlin.targetgen.address_space import derive_address_space
 
-PACKAGES = artifacts_dir() / "targets" / "gemmini"
+TARGET = "gemmini"
+PACKAGES = artifacts_dir() / "targets" / TARGET
+GOLDEN = merlin_dir() / "tests" / "data" / "block_schedule" / "golden_streams.json"
 
 #: Each measured variant and the knob values that should reproduce it.
 VARIANTS = {
@@ -46,9 +63,14 @@ VARIANTS = {
 #: regions overlap, which is where an unchecked knob value goes wrong.
 SHAPES = {"A0/A2/A5/C5/C6/GS0": (16, 16, 16), "A3/B1": (16, 32, 16), "C0/C1": (16, 64, 64),
           "C2/C3/C4": (16, 64, 16), "GM0": (16, 6144, 16), "GM1": (16, 8208, 16)}
-#: The geometry these packages were generated for, as this target's facts derive it.
-GEOMETRY = Geometry(block=16, operand_rows=16384, operand_bank_rows=4096, accumulator_rows=1024,
-                    separate_accumulator_space=True)
+
+#: (package, shape) the pass REFUSES, with the reason. Both are the deep reduction whose operand
+#: regions overlap: the package emits a stream that reads an overwritten block.
+REFUSED = {("gemmini_xdsl_rtl_v1_hoist", "GM1"), ("gemmini_xdsl_rtl_v1_grp", "GM1")}
+
+#: Package constant -> the Geometry field it must equal.
+_CONSTANTS = {"DIM": "block", "SPAD_ROWS": "operand_rows", "SPAD_BANK_ROWS": "operand_bank_rows",
+              "ACC_ROWS": "accumulator_rows"}
 
 _ADDR = (1 << 32) - 1
 _GARBAGE = (1 << 32) - 1
@@ -73,23 +95,78 @@ print(json.dumps(out))
 '''
 
 
+def _geometry() -> Geometry:
+    return Geometry.from_address_space(derive_address_space(TARGET))
+
+
+def _golden() -> dict:
+    if not GOLDEN.is_file():
+        pytest.fail(f"missing {GOLDEN}; regenerate it with this file's --regen")
+    return json.loads(GOLDEN.read_text())
+
+
+def _digest(blocks) -> str:
+    return hashlib.sha256(json.dumps(blocks, separators=(",", ":")).encode()).hexdigest()
+
+
+def _canonical(blocks) -> list:
+    return json.loads(json.dumps(blocks))            # tuples -> lists, exactly as the golden stores them
+
+
+def package_constants(isa_source: str) -> dict[str, int]:
+    """The integer module constants a package's ``lowering/isa.py`` bakes, evaluated structurally.
+
+    Only module-level ``NAME = <int expression>`` over ints and earlier names; anything else is skipped
+    rather than guessed."""
+    env: dict[str, int] = {}
+    ops = {ast.FloorDiv: lambda a, b: a // b, ast.Mult: lambda a, b: a * b, ast.Add: lambda a, b: a + b,
+           ast.Sub: lambda a, b: a - b, ast.LShift: lambda a, b: a << b}
+
+    def _eval(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return node.value
+        if isinstance(node, ast.Name) and node.id in env:
+            return env[node.id]
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](_eval(node.left), _eval(node.right))
+        raise ValueError("not a plain integer expression")
+
+    for stmt in ast.parse(isa_source).body:
+        if (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)):
+            try:
+                env[stmt.targets[0].id] = _eval(stmt.value)
+            except (ValueError, ZeroDivisionError):
+                continue
+    return env
+
+
+def _dump_packages() -> dict:
+    """``{package: {shape label: instruction stream}}`` from each present package's own lowering."""
+    import tempfile
+    streams = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        program = f"{tmp}/dump_trace.py"
+        with open(program, "w") as handle:
+            handle.write(_DUMP)
+        for name in VARIANTS:
+            package = PACKAGES / name / "mlir_oot"
+            if not package.is_dir():
+                continue
+            done = subprocess.run([sys.executable, program, json.dumps(SHAPES)],
+                                  env={"PYTHONPATH": str(package), "PATH": "/usr/bin:/bin"},
+                                  capture_output=True, text=True, timeout=600)
+            if done.returncode != 0:
+                raise RuntimeError(f"{name}: {done.stderr[-400:]}")
+            streams[name] = json.loads(done.stdout)
+    return streams
+
+
 @pytest.fixture(scope="module")
-def dumped(tmp_path_factory):
-    """``{package: {shape label: instruction stream}}`` from each package's own lowering."""
+def dumped():
     if not PACKAGES.is_dir():
         pytest.skip(f"no generated packages under {PACKAGES}")
-    program = tmp_path_factory.mktemp("dump") / "dump_trace.py"
-    program.write_text(_DUMP)
-    streams = {}
-    for name in VARIANTS:
-        package = PACKAGES / name / "mlir_oot"
-        if not package.is_dir():
-            continue
-        done = subprocess.run([sys.executable, str(program), json.dumps(SHAPES)],
-                              env={"PYTHONPATH": str(package), "PATH": "/usr/bin:/bin"},
-                              capture_output=True, text=True, timeout=600)
-        assert done.returncode == 0, f"{name}: {done.stderr[-400:]}"
-        streams[name] = json.loads(done.stdout)
+    streams = _dump_packages()
     if not streams:
         pytest.skip("none of the measured package variants is present in this checkout")
     return streams
@@ -140,36 +217,108 @@ def _pass_blocks(schedule):
     return blocks
 
 
-#: (package, shape) the pass REFUSES, with the reason. Both are the deep reduction whose operand
-#: regions overlap: the package emits a stream that reads an overwritten block.
-REFUSED = {("gemmini_xdsl_rtl_v1_hoist", "GM1"), ("gemmini_xdsl_rtl_v1_grp", "GM1")}
+def _hazard(blocks, k, geometry):
+    """(index of the input load into the overlap row, index of the preload reading it as weights)."""
+    overlap_row = geometry.operand_rows - ((k + 15) // 16) * geometry.block
+    overwrite = next(i for i, b in enumerate(blocks)
+                     if b[0] == "load" and b[1] == LHS and b[6] == overlap_row)
+    read_as_weights = next(i for i, b in enumerate(blocks)
+                           if b[0] == "preload" and b[1] == overlap_row)
+    return overwrite, read_as_weights
+
+
+# ------------------------------------------------------------------------------------ geometry
+
+
+def test_the_geometry_is_derived_and_agrees_with_what_the_packages_baked():
+    """Three copies of the same numbers -- the derivation, the golden record, the packages' constants
+    -- held together, so none of them can drift while the stream cells stay green."""
+    geometry = _geometry()
+    golden = _golden()
+    assert golden["geometry"] == {field: getattr(geometry, field) for field in golden["geometry"]}, (
+        "the derived geometry moved away from the one the golden streams were recorded against")
+    for package, constants in golden["package_constants"].items():
+        for name, value in constants.items():
+            assert getattr(geometry, _CONSTANTS[name]) == value, (
+                f"{package} baked {name} = {value}, but {TARGET}'s facts derive "
+                f"{_CONSTANTS[name]} = {getattr(geometry, _CONSTANTS[name])}")
+
+
+def test_the_recorded_constants_are_still_the_packages_constants():
+    present = {name: PACKAGES / name / "mlir_oot" / "lowering" / "isa.py" for name in VARIANTS}
+    present = {name: path for name, path in present.items() if path.is_file()}
+    if not present:
+        pytest.skip("no measured package variant in this checkout")
+    recorded = _golden()["package_constants"]
+    for name, path in present.items():
+        baked = package_constants(path.read_text())
+        assert recorded[name] == {c: baked[c] for c in _CONSTANTS if c in baked}, name
+
+
+# ------------------------------------------------------------------------------ stream cells
 
 
 @pytest.mark.parametrize("package", sorted(VARIANTS))
 @pytest.mark.parametrize("label", sorted(SHAPES))
-def test_the_pass_reproduces_each_measured_variant(dumped, package, label):
+def test_the_pass_reproduces_each_measured_variant(package, label):
+    """Held to the recorded package stream, so it runs on any checkout."""
+    m, k, n = SHAPES[label]
+    cell = _golden()["cells"][package][label]
+    contraction = Contraction(m, k, n, "A0", "W", "Y0")
+    if (package, label) in REFUSED:
+        assert cell["pass"] == "refused"
+        with pytest.raises(BlockScheduleError, match="still live"):
+            schedule_contraction(contraction, _geometry(), VARIANTS[package])
+        return
+    got = _canonical(_pass_blocks(schedule_contraction(contraction, _geometry(), VARIANTS[package])))
+    assert (len(got), _digest(got)) == (cell["ops"], cell["sha256"]), (
+        f"{package} {label}: the pass no longer reproduces the recorded package stream "
+        f"(first ops {got[:3]} vs {cell['head'][:3]})")
+
+
+@pytest.mark.parametrize("package", sorted(VARIANTS))
+def test_each_present_package_still_matches_its_golden(dumped, package):
+    """A golden taken from bytes that have since changed is detected, not trusted."""
     if package not in dumped:
         pytest.skip(f"{package} is not in this checkout")
-    m, k, n = SHAPES[label]
-    want = _package_blocks(dumped[package][label], m, k, n)
-    if (package, label) in REFUSED:
-        with pytest.raises(BlockScheduleError, match="still live"):
-            schedule_contraction(Contraction(m, k, n, "A0", "W", "Y0"), GEOMETRY, VARIANTS[package])
-        return
-    got = _pass_blocks(schedule_contraction(Contraction(m, k, n, "A0", "W", "Y0"), GEOMETRY,
-                                            VARIANTS[package]))
-    assert got == want, f"{package} {label}: first difference at " + str(
-        next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), min(len(got), len(want))))
+    for label, (m, k, n) in SHAPES.items():
+        blocks = _canonical(_package_blocks(dumped[package][label], m, k, n))
+        cell = _golden()["cells"][package][label]
+        assert (len(blocks), _digest(blocks)) == (cell["package_ops"], cell["package_sha256"]), (
+            f"{package} {label}: the package stream moved since the golden was recorded")
 
 
-def test_the_adapter_consumes_a_real_capsule_command_buffer(dumped):
+@pytest.mark.parametrize("package", sorted(VARIANTS))
+def test_where_the_package_is_present_the_first_difference_is_named(dumped, package):
+    """Diagnostic companion: on a mismatch, say WHERE, which a digest cannot."""
+    if package not in dumped:
+        pytest.skip(f"{package} is not in this checkout")
+    for label, (m, k, n) in SHAPES.items():
+        if (package, label) in REFUSED:
+            continue
+        want = _package_blocks(dumped[package][label], m, k, n)
+        got = _pass_blocks(schedule_contraction(Contraction(m, k, n, "A0", "W", "Y0"), _geometry(),
+                                                VARIANTS[package]))
+        assert got == want, f"{package} {label}: first difference at " + str(
+            next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), min(len(got), len(want))))
+
+
+@pytest.mark.parametrize("package", sorted(p for p, _ in REFUSED))
+def test_what_the_pass_refuses_is_a_real_hazard_in_the_variant_it_refuses(package):
+    """The refusals are not conservatism: the package's own stream loads an input block into the rows
+    a later preload reads as weights, so the arithmetic would run on the wrong bytes."""
+    hazard = _golden()["cells"][package]["GM1"]["hazard"]
+    assert hazard["overwrite_index"] < hazard["read_as_weights_index"], (
+        f"{package}: expected the input load at the overlap row to precede the preload that reads "
+        "that row as weights")
+
+
+def test_the_adapter_consumes_a_real_capsule_command_buffer():
     """End to end on the artifact a backend actually lowers: a command buffer a graded run emitted.
 
     The adapter's input is the interface program's own tensors and commands, so a real buffer must
     schedule to exactly what the contraction-level call produces for the same shape.
     """
-    if "gemmini_xdsl_rtl_v1_l1" not in dumped:
-        pytest.skip("the reference variant is not in this checkout")
     buffers = []
     for index, path in enumerate(runs_dir().glob("*/voyager-h2h/runs/*/*/generated/command_buffer.json")):
         if index >= 200:                      # bounded: the runs tree is large
@@ -185,27 +334,66 @@ def test_the_adapter_consumes_a_real_capsule_command_buffer(dumped):
     if document is None:
         pytest.skip("no graded run with a single plain COMMIT in this checkout")
     knobs = VARIANTS["gemmini_xdsl_rtl_v1_l1"]
-    schedules = schedule_interface_program(document["tensors"], document["commands"], GEOMETRY, knobs)
+    geometry = _geometry()
+    schedules = schedule_interface_program(document["tensors"], document["commands"], geometry, knobs)
     assert len(schedules) == 1
     lhs = document["tensors"][schedules[0].contraction.lhs]["shape"]
     weight = document["tensors"][schedules[0].contraction.weight]["shape"]
-    direct = schedule_contraction(Contraction(lhs[0], lhs[1], weight[1]), GEOMETRY, knobs)
+    direct = schedule_contraction(Contraction(lhs[0], lhs[1], weight[1]), geometry, knobs)
     assert _pass_blocks(schedules[0]) == _pass_blocks(direct)
 
 
-@pytest.mark.parametrize("package", sorted(p for p, _ in REFUSED))
-def test_what_the_pass_refuses_is_a_real_hazard_in_the_variant_it_refuses(dumped, package):
-    """The refusals are not conservatism: the package's own stream loads an input block into the rows
-    a later preload reads as weights, so the arithmetic would run on the wrong bytes."""
-    if package not in dumped:
-        pytest.skip(f"{package} is not in this checkout")
-    m, k, n = SHAPES["GM1"]
-    blocks = _package_blocks(dumped[package]["GM1"], m, k, n)
-    overlap_row = GEOMETRY.operand_rows - ((k + 15) // 16) * GEOMETRY.block
-    overwrite = next(i for i, b in enumerate(blocks)
-                     if b[0] == "load" and b[1] == LHS and b[6] == overlap_row)
-    read_as_weights = next(i for i, b in enumerate(blocks)
-                           if b[0] == "preload" and b[1] == overlap_row)
-    assert overwrite < read_as_weights, (
-        f"{package}: expected the input load at row {overlap_row} to precede the preload that reads "
-        "that row as weights")
+# --------------------------------------------------------------------------------- regenerate
+
+
+def regenerate() -> None:
+    """Re-record the golden from the packages present in this checkout. Refuses when any variant is
+    missing, and when any non-refused cell's pass stream disagrees with its package: a golden is a
+    record of agreement, never of whatever the pass happens to produce today."""
+    streams = _dump_packages()
+    missing = sorted(set(VARIANTS) - set(streams))
+    if missing:
+        raise SystemExit(f"cannot regenerate: packages missing from this checkout: {missing}")
+    geometry = _geometry()
+    cells: dict = {}
+    constants: dict = {}
+    sources: dict = {}
+    for package in VARIANTS:
+        isa = PACKAGES / package / "mlir_oot" / "lowering" / "isa.py"
+        baked = package_constants(isa.read_text())
+        constants[package] = {c: baked[c] for c in _CONSTANTS if c in baked}
+        sources[package] = hashlib.sha256(isa.read_bytes()).hexdigest()
+        cells[package] = {}
+        for label, (m, k, n) in SHAPES.items():
+            blocks = _canonical(_package_blocks(streams[package][label], m, k, n))
+            cell = {"package_ops": len(blocks), "package_sha256": _digest(blocks)}
+            if (package, label) in REFUSED:
+                overwrite, read = _hazard(blocks, k, geometry)
+                cell.update({"pass": "refused",
+                             "hazard": {"overwrite_index": overwrite, "read_as_weights_index": read}})
+            else:
+                got = _canonical(_pass_blocks(schedule_contraction(
+                    Contraction(m, k, n, "A0", "W", "Y0"), geometry, VARIANTS[package])))
+                if got != blocks:
+                    raise SystemExit(f"cannot regenerate: {package} {label} disagrees with its package")
+                cell.update({"ops": len(got), "sha256": _digest(got), "head": got[:6]})
+            cells[package][label] = cell
+    document = {
+        "schema": "block-schedule-golden/v1",
+        "target": TARGET,
+        "what": ("each measured package variant's matmul block-move stream, decoded by "
+                 "_package_blocks, per corpus shape; the pass is held to these digests"),
+        "geometry": {f: getattr(geometry, f) for f in ("block", "operand_rows", "operand_bank_rows",
+                                                       "accumulator_rows", "separate_accumulator_space")},
+        "package_constants": constants,
+        "package_isa_sha256": sources,
+        "cells": cells,
+    }
+    GOLDEN.parent.mkdir(parents=True, exist_ok=True)
+    GOLDEN.write_text(json.dumps(document, indent=1, sort_keys=True) + "\n")
+    print(f"wrote {GOLDEN}")
+
+
+if __name__ == "__main__":
+    if "--regen" in sys.argv:
+        regenerate()
