@@ -1,4 +1,5 @@
 """Pareto frontier + the hardware-only vs interface-aware capstone."""
+
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
 from merlin.dse.pareto import compute_pareto, dominates, frontier_dominates
@@ -39,7 +40,6 @@ def test_resident_requires_capacity_on_frontier():
 def test_build_report_writes_artifacts(tmp_path):
     rpv = compute_rpv(build_region(H=16, reuse_count=16, epilogue=True, K=256))
     rep = build_report(rpv, out_dir=tmp_path)
-    for name in ("scoreboard.csv", "pareto_hardware_only.csv", "pareto_interface_aware.csv",
-                 "decision_report.md"):
+    for name in ("scoreboard.csv", "pareto_hardware_only.csv", "pareto_interface_aware.csv", "decision_report.md"):
         assert (tmp_path / name).is_file()
     assert "resident_packed_tensor" in rep["recommended_hw_features"]["required_contracts"]

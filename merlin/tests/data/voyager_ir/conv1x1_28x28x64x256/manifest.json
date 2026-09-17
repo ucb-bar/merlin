@@ -1,0 +1,46 @@
+{
+ "calibration_steps": 3,
+ "compiler": "voyager",
+ "config": {
+  "accum_buffer_size": 1024,
+  "bank_width": 16,
+  "input_buffer_size": 16384,
+  "num_banks": 4,
+  "pe_array_size": [
+   16,
+   16
+  ],
+  "scratchpad_size": 262144,
+  "weight_buffer_size": 16384
+ },
+ "conv2d_im2col": false,
+ "layout_policy": "systolic",
+ "lowered_output_saved": true,
+ "model_dtype": "torch.bfloat16",
+ "quant_flags": {
+  "bias": "int32",
+  "input_activation": "int8,qs=per_tensor_symmetric",
+  "weight": "int8,qs=per_tensor_symmetric"
+ },
+ "quant_scheme": "int8_int32bias",
+ "seed": 0,
+ "versions": {
+  "torch": "2.12.1+cu130",
+  "torchao": "0.17.0",
+  "transformers": "5.13.0"
+ },
+ "voyager_commit": "f9d4c498d8fb97fd67e2dac781abf42112517998",
+ "voyager_dirty_paths": [],
+ "workload": {
+  "Cin": 64,
+  "Cout": 256,
+  "H": 28,
+  "W": 28,
+  "bias": true,
+  "k": 1,
+  "kind": "conv",
+  "name": "c1s1",
+  "relu": true,
+  "stride": 1
+ }
+}

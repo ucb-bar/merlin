@@ -5,13 +5,14 @@ artifacts/targets/rvv/hand_v0/ is a VERBATIM capture of pipeline.RVV_TRANSFORM_S
 RVV_CFLAGS; this test asserts the capture is exact (so it cannot silently rot) and that the
 loader + cflags-allowlist integrity behave.
 """
+
 import os
 
 import pytest
 
 from merlin.llvmlower import pipeline
+from merlin.mining import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
-from merlin.rvvgen import load_rvv_package
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
@@ -48,15 +49,22 @@ def test_hand_v0_lowering_is_byte_identical_to_shipping_rvv(tmp_path):
     BYTE-IDENTICAL LLVM IR. This corroborates that apply_rvv_package(hand_v0) IS the RVV codegen
     we ship/run — not merely a string match. Skips if the m2m lowering toolchain is unavailable."""
     import numpy as np
-    from merlin.rvvgen import workloads
+
+    from merlin.mining import workloads
+
     try:
         from merlin.llvmlower.lower import lower_model_file
-        from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
         from merlin.llvmlower.toolchain import m2m_python
+        from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
+
         if not os.path.exists(str(m2m_python())):
-            import pytest; pytest.skip("m2m lowering toolchain unavailable")
+            import pytest
+
+            pytest.skip("m2m lowering toolchain unavailable")
     except Exception:
-        import pytest; pytest.skip("m2m lowering toolchain unavailable")
+        import pytest
+
+        pytest.skip("m2m lowering toolchain unavailable")
     bundle = workloads.gen_matmul_f32(tmp_path, M=8, N=8, K=8, seed=0)
     pkg = load_rvv_package(HAND_V0)
     outs = []
@@ -64,8 +72,7 @@ def test_hand_v0_lowering_is_byte_identical_to_shipping_rvv(tmp_path):
         w = tmp_path / tag
         w.mkdir(parents=True, exist_ok=True)
         prep = _prepare_model_mlir(bundle / "model.mlir", w, int8_compute=False)
-        lower_model_file(prep, w / "lower", targets=(), textual=True, vectorize=True,
-                         transform_schedule=sched)
+        lower_model_file(prep, w / "lower", targets=(), textual=True, vectorize=True, transform_schedule=sched)
         outs.append((w / "lower" / "model.ll").read_text())
     assert outs[0] == outs[1], "package lowering diverged from shipping RVV path"
 
@@ -75,10 +82,11 @@ def test_cflags_allowlist_rejects_arbitrary_flags(tmp_path):
     (tmp_path / "manifest.yaml").write_text(
         "target: rvv\nrun_id: evil\nfamily: vector_schedule\n"
         "authoring: {mode: hand_curated, author: human}\n"
-        "outputs: {schedule: schedule.mlir, knobs: knobs.yaml}\n")
+        "outputs: {schedule: schedule.mlir, knobs: knobs.yaml}\n"
+    )
     (tmp_path / "schedule.mlir").write_text("module {}\n")
     (tmp_path / "knobs.yaml").write_text(
-        "schedule_file: schedule.mlir\ndtype_strategy: fp32\n"
-        "cflags: ['-march=rv64gcv', '; rm -rf /']\n")
+        "schedule_file: schedule.mlir\ndtype_strategy: fp32\ncflags: ['-march=rv64gcv', '; rm -rf /']\n"
+    )
     with pytest.raises(ValueError, match="allowlist"):
         load_rvv_package(str(tmp_path))

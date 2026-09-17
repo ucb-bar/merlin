@@ -18,12 +18,18 @@ Diagnostic routing when a level fails:
                                    stationary transpose, accumulator addressing) — NOT the
                                    spec/dialect.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
+
+from merlin.common.paths import merlin_dir, repo_root
+
+# HW certification (builds + runs spike/verilator RTL) — heavy; deselect with `-m "not slow"` for the
+# fast gate. Runs in the full suite (no filter) / nightly. See pyproject `markers` + docs.
+pytestmark = pytest.mark.slow
 
 from merlin.runtime import outputs_match, reference_outputs, simulate
 from merlin.runtime.commandbuffer import materialize_inputs
@@ -53,12 +59,13 @@ def c0_command_buffer(m: int = DIM, k: int = DIM, n: int = DIM) -> dict:
             "A0": {"shape": [m, k], "dtype": "i8", "role": "input"},
         },
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-             "attributes": {"layout": "packed_rhs"}},
-            {"opcode": "MATMUL_RESIDENT",
-             "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
             {"opcode": "EVICT", "operands": {"handle": "W_res"}},
         ],
     }
@@ -81,6 +88,7 @@ def test_c0_command_buffer_reference_matches_simulator():
 # --- xDSL-gated: the lowering pipeline descends to the gemmini dialect ---
 try:
     from merlin.xdsl_dialects import _common
+
     _HAS_XDSL = _common.HAS_XDSL
 except Exception:  # pragma: no cover
     _HAS_XDSL = False
@@ -95,16 +103,15 @@ _GEMMINI_PKG = _REPO / "out/artifacts/targets/gemmini/hand_v0"
 def test_gemmini_pipeline_descends_and_simulates():
     """A3: interface -> gemmini -> command buffer via the ISOLATED, dynamically-loaded target
     package (gemmini is NOT in the core tree) — verified at every stage, simulates correctly."""
-    from merlin.xdsl_dialects.lowering import execute, lower_repeated_rhs_matmul
     from merlin.targetgen.registry import load_target
+    from merlin.xdsl_dialects.lowering import execute, lower_repeated_rhs_matmul
 
     pkg = load_target(_GEMMINI_PKG)
     lowered = lower_repeated_rhs_matmul(reuse=2, m=DIM, k=DIM, n=DIM, target_package=pkg)
     for mod in lowered.modules():
         mod.verify()
 
-    target_ops = {op.name for op in lowered.target_module.walk()} - {
-        "builtin.module", "func.func", "func.return"}
+    target_ops = {op.name for op in lowered.target_module.walk()} - {"builtin.module", "func.func", "func.return"}
     assert target_ops == {"gemmini.pack", "gemmini.matmul", "gemmini.commit", "gemmini.release"}
 
     cb = lowered.command_buffer
@@ -118,18 +125,29 @@ def test_gemmini_pipeline_descends_and_simulates():
 # --- codegen smoke (no toolchain) ---
 def test_gemmini_codegen_emits_real_driver():
     """A4: the C0 driver uses the explicit low-level Gemmini intrinsic sequence."""
-    from merlin.runtime.backends.gemmini_codegen import generate_driver
+    from merlin.runtime.backends import base as _bk
+
+    generate_driver = _bk.get_backend("gemmini").gemmini_codegen.generate_driver
 
     src = generate_driver(c0_command_buffer())
-    for needle in ("gemmini_config_ex", "gemmini_mvin", "gemmini_preload",
-                   "gemmini_compute_preloaded", "gemmini_mvout", "read_cycles",
-                   "OUT Y0", "DONE"):
+    for needle in (
+        "gemmini_config_ex",
+        "gemmini_mvin",
+        "gemmini_preload",
+        "gemmini_compute_preloaded",
+        "gemmini_mvout",
+        "read_cycles",
+        "OUT Y0",
+        "DONE",
+    ):
         assert needle in src, f"generated driver missing {needle!r}"
     assert "tiled_matmul_auto" not in src  # must be the explicit sequence
 
 
 # --- oracle-gated: compile + run on real Gemmini, three-way bit-exact, per conformance rung ---
-from merlin.runtime.backends import gemmini  # noqa: E402  (import-safe without toolchain)
+from merlin.runtime.backends import base as _bk  # noqa: E402
+
+gemmini = _bk.get_backend("gemmini")  # import-safe without toolchain (registration is lazy)
 from merlin.targetgen.eval.gemmini_conformance import RUNGS, build  # noqa: E402
 
 RUNG_IDS = sorted(RUNGS)

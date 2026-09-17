@@ -1,11 +1,18 @@
 """Pipeline registry + builder: named passes compose into a runnable plan transform."""
+
 from merlin.dse.pipelines import registry
 from merlin.dse.pipelines.builder import build_pipeline, parse_spec
 
 
 def _plan():
-    return {"pack_count": 8, "weight_loads": 8, "per_step_intermediate": True,
-            "dispatch_count": 8, "resident_setup": False, "accumulator_setup": False}
+    return {
+        "pack_count": 8,
+        "weight_loads": 8,
+        "per_step_intermediate": True,
+        "dispatch_count": 8,
+        "resident_setup": False,
+        "accumulator_setup": False,
+    }
 
 
 def test_registered_passes_present():
@@ -31,6 +38,7 @@ def test_unknown_pass_tolerated_then_strict_raises():
     assert pipe.unknown == ("not-a-real-pass",)
     assert pipe.run(_plan())["weight_loads"] == 1  # unknown is identity
     import pytest
+
     with pytest.raises(KeyError):
         build_pipeline("make-resident,not-a-real-pass", strict=True)
 

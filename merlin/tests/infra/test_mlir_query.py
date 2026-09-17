@@ -1,4 +1,5 @@
 """Structured MLIR reads via xDSL (merlin.common.mlir_query) — replaces regex on IR text."""
+
 from __future__ import annotations
 
 import pytest
@@ -49,11 +50,11 @@ def test_attrs_and_provenance():
 
 def test_parse_accepts_module_str_and_path(tmp_path):
     mod = q.parse(_MOD)
-    assert q.parse(mod) is mod                      # already-parsed passthrough (not a Path/str)
+    assert q.parse(mod) is mod  # already-parsed passthrough (not a Path/str)
     p = tmp_path / "m.mlir"
     p.write_text(_MOD)
-    assert q.op_count(q.parse(p), "linalg.matmul") == 1        # Path (3.13 Path.walk() must not fool it)
-    assert q.op_count(q.parse(str(p)), "linalg.matmul") == 1   # str path
+    assert q.op_count(q.parse(p), "linalg.matmul") == 1  # Path (3.13 Path.walk() must not fool it)
+    assert q.op_count(q.parse(str(p)), "linalg.matmul") == 1  # str path
 
 
 def test_forward_signature_missing_func():

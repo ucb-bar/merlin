@@ -1,9 +1,10 @@
 """The automated op x datatype optimization sweep (the framework, not hand-fixing) — scalar-fail gate
 + parallel matrix orchestration, mock beam (no board)."""
+
 from __future__ import annotations
 
 from merlin.common.paths import merlin_dir
-from merlin.rvvgen.op_sweep import OpCell, is_scalar_kernel, run_op_sweep
+from merlin.mining.op_sweep import OpCell, is_scalar_kernel, run_op_sweep
 
 
 def test_is_scalar_kernel_flags_scalar_and_passes_rvv():
@@ -26,20 +27,34 @@ def test_is_scalar_kernel_flags_scalar_and_passes_rvv():
 def test_run_op_sweep_fans_out_and_ranks_on_attainment(tmp_path):
     # a mock beam: attainment scales with the cell's shape (bigger regime -> "closer to XNNPACK"),
     # so the sweep collects a CellResult per cell without touching the board.
-    def mock_beam(*, seed_pkg, model_dir, expert_objdump, op, dtype, shape_regime, targets,
-                  width, depth, top_k, expert_wall_ns):
+    def mock_beam(
+        *, seed_pkg, model_dir, expert_objdump, op, dtype, shape_regime, targets, width, depth, top_k, expert_wall_ns
+    ):
         att = 0.4 if "128" in shape_regime else 0.9
-        return {"best": {"run_id": f"{op}_{dtype}_win", "attainment_vs_expert": att,
-                         "speedup": 1.5, "gate_ok": True},
-                "parent_run_dir": None, "nodes": [], "deferred": []}
+        return {
+            "best": {"run_id": f"{op}_{dtype}_win", "attainment_vs_expert": att, "speedup": 1.5, "gate_ok": True},
+            "parent_run_dir": None,
+            "nodes": [],
+            "deferred": [],
+        }
 
     cells = [
-        OpCell(op="matmul", dtype="f32", shape_regime="square_128", workload_dir=tmp_path / "f32",
-               expert_objdump=merlin_dir() / "tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump",
-               expert_wall_ns=9424),
-        OpCell(op="matmul", dtype="int8", shape_regime="square_64", workload_dir=tmp_path / "i8",
-               expert_objdump=merlin_dir() / "tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump",
-               expert_wall_ns=1544),
+        OpCell(
+            op="matmul",
+            dtype="f32",
+            shape_regime="square_128",
+            workload_dir=tmp_path / "f32",
+            expert_objdump=merlin_dir() / "tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump",
+            expert_wall_ns=9424,
+        ),
+        OpCell(
+            op="matmul",
+            dtype="int8",
+            shape_regime="square_64",
+            workload_dir=tmp_path / "i8",
+            expert_objdump=merlin_dir() / "tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump",
+            expert_wall_ns=1544,
+        ),
     ]
     results = run_op_sweep(cells, beam_fn=mock_beam, max_workers=2)
     assert len(results) == 2
@@ -52,7 +67,9 @@ def test_run_op_sweep_fans_out_and_ranks_on_attainment(tmp_path):
 def test_sweep_never_aborts_on_one_cell_error(tmp_path):
     def boom(**kw):
         raise RuntimeError("cell blew up")
-    cells = [OpCell(op="matmul", dtype="f32", shape_regime="s", workload_dir=tmp_path,
-                    expert_objdump=tmp_path / "x.objdump")]
+
+    cells = [
+        OpCell(op="matmul", dtype="f32", shape_regime="s", workload_dir=tmp_path, expert_objdump=tmp_path / "x.objdump")
+    ]
     results = run_op_sweep(cells, beam_fn=boom)
     assert len(results) == 1 and results[0].gate_ok is False and "error" in results[0].note

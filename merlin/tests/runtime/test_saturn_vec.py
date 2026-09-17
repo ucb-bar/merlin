@@ -3,6 +3,7 @@
 Tests that Merlin's command-buffer + reference/simulator express a NON-matmul (vector/SIMD)
 workload, and that the semantics are correct against an independent hand-computation.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,15 +45,25 @@ def test_vector_cb_is_not_matmul_shaped():
 
 
 # --- RVV codegen + oracle ---
-from merlin.runtime.backends import saturn_vec  # noqa: E402
-from merlin.runtime.backends.saturn_vec_codegen import generate_driver  # noqa: E402
+# saturn_vec was evicted to its own reference package (merlin/targets/saturn/backend/); reach it (and its
+# codegen/MLIR submodules) via the class registry, which self-registers it through plugin discovery.
+from merlin.runtime.backends import base as _base  # noqa: E402
+
+saturn_vec = _base.get_backend("saturn_vec")
+generate_driver = saturn_vec.saturn_vec_codegen.generate_driver
 
 
 def test_vector_codegen_emits_rvv():
     """The vector codegen emits real RVV intrinsics (not matmul, not tiled_matmul_auto)."""
     src = generate_driver(build("VEC2"))
-    for needle in ("__riscv_vsetvl_e32m1", "__riscv_vle32_v_i32m1", "__riscv_vmul_vv_i32m1",
-                   "__riscv_vredsum", "VOUT", "DONE"):
+    for needle in (
+        "__riscv_vsetvl_e32m1",
+        "__riscv_vle32_v_i32m1",
+        "__riscv_vmul_vv_i32m1",
+        "__riscv_vredsum",
+        "VOUT",
+        "DONE",
+    ):
         assert needle in src, f"vector driver missing {needle!r}"
 
 
@@ -70,7 +81,7 @@ def test_vector_spike_rv64gcv_cert(rung, tmp_path):
 # --- MLIR-FAITHFUL path: compute expressed in MLIR, lowered by merlin's compiler (no C kernel) ---
 def test_vector_mlir_emitter_is_linalg_not_c():
     """The merlin-faithful emitter produces MLIR (linalg), not C."""
-    from merlin.runtime.backends.saturn_vec_mlir import emit_mlir
+    emit_mlir = saturn_vec.saturn_vec_mlir.emit_mlir
     text, inputs, out = emit_mlir(build("VEC2"))
     assert "linalg.generic" in text and "func.func @forward" in text
     assert 'iterator_types = ["reduction"]' in text  # the reduce expressed in MLIR
@@ -79,6 +90,7 @@ def test_vector_mlir_emitter_is_linalg_not_c():
 
 try:
     from merlin.llvmlower import toolchain as _tc
+
     _HAVE_LLVM = _tc.available()
 except Exception:  # pragma: no cover
     _HAVE_LLVM = False
@@ -88,6 +100,7 @@ except Exception:  # pragma: no cover
 # skip: they exec the /path/to/chipyard placeholder and raise FileNotFoundError.
 try:
     from merlin.runtime.backends import spike as _spike
+
     _HAVE_RISCV_OBJDUMP = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump").is_file()
 except Exception:  # pragma: no cover
     _HAVE_RISCV_OBJDUMP = False
@@ -97,31 +110,35 @@ except Exception:  # pragma: no cover
 @pytest.mark.parametrize("rung", sorted(RUNGS))
 def test_vector_mlir_host_cert(rung, tmp_path):
     """Vector compute lowered through merlin's real MLIR→LLVM compiler is bit-exact on host."""
-    from merlin.runtime.backends import saturn_vec_mlir as vm
+    vm = saturn_vec.saturn_vec_mlir
     res = vm.run_host(build(rung), workdir=tmp_path)
     assert res["correct"] is True
     assert res["oracle"]["kind"] == "merlin_mlir_host"
 
 
-@pytest.mark.skipif(not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP),
-                    reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable")
+@pytest.mark.skipif(
+    not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP), reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable"
+)
 @pytest.mark.parametrize("rung,expect", [("VEC0", "vadd.vv"), ("VEC2", "vredsum")])
 def test_vector_native_rvv_emitted(rung, expect, tmp_path):
     """The elementwise/reduction transform schedule emits REAL RVV (incl. vectorized reduction)."""
-    from merlin.runtime.backends import saturn_vec_mlir as vm
+    vm = saturn_vec.saturn_vec_mlir
     r = vm.lower_rvv(build(rung), workdir=tmp_path)
     assert r["has_rvv"], f"no RVV vector ops in {rung}"
     assert "vsetivli" in r["rvv_ops"] or "vsetvli" in r["rvv_ops"]
     assert expect in r["rvv_ops"], f"{rung}: expected {expect} in {r['rvv_ops']}"
 
 
-@pytest.mark.skipif(not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP),
-                    reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable")
+@pytest.mark.skipif(
+    not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP), reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable"
+)
 def test_custom_instruction_via_mlir_inline_asm(tmp_path):
     """A custom accelerator instruction (Gemmini RoCC custom-3) declared in MLIR via
     merlin.inline_asm lowers to a raw .insn in the object — no LLVM fork, no C."""
     from merlin.llvmlower import custom_isa
-    obj = custom_isa.build_rvv_object("rocc_c3", ".insn r 0x7b, 3, 0, x0, $0, $1", "r,r",
-                                      ["i64", "i64"], None, str(tmp_path))
+
+    obj = custom_isa.build_rvv_object(
+        "rocc_c3", ".insn r 0x7b, 3, 0, x0, $0, $1", "r,r", ["i64", "i64"], None, str(tmp_path)
+    )
     dis = custom_isa.disassemble(obj)
     assert ".insn" in dis and "7b" in dis  # custom-3 opcode emitted, not a known mnemonic

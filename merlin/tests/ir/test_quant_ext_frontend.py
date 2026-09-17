@@ -3,6 +3,7 @@
 Skipped when the model2MLIR checkout is not resolvable (MERLIN_M2M_DIR / MERLIN_MODEL2MLIR) — the
 untyped default path still works without it.
 """
+
 from __future__ import annotations
 
 import pytest

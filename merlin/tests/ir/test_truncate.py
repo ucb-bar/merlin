@@ -43,3 +43,71 @@ def test_multi_return_returns_tuple():
     out = multi_return(MOD, [defs["%y"], defs["%z"]])
     assert "func.return %y, %z :" in out
     assert "-> (tensor<4x4xf32>, tensor<4x4xf32>)" in out
+
+
+# A tensor type whose element type is itself parameterized (`!quant.uniform<…>`) or that carries
+# an affine-map encoding. The old `tensor<[^<>]*(<[^<>]*>[^<>]*)*>` pattern mis-read both: it cut
+# the type at an inner `>` and left a stray `>` behind in the rewritten signature, i.e. a WRONG
+# bisection result that still looked plausible. The balanced-bracket scan reads them whole.
+NESTED = """
+builtin.module {
+  func.func @forward(%a: tensor<4xf32>) -> tensor<4x!quant.uniform<i8:f32, 0.1>> {
+    %y = tensor.empty() : tensor<4x!quant.uniform<i8:f32, 0.1>>
+    func.return %y : tensor<4x!quant.uniform<i8:f32, 0.1>>
+  }
+}
+"""
+
+ENCODED = """
+builtin.module {
+  func.func @forward(%a: tensor<4xf32>) -> tensor<4xf32, affine_map<(d0) -> (d0)>> {
+    %y = tensor.empty() : tensor<4xf32, affine_map<(d0) -> (d0)>>
+    func.return %y : tensor<4xf32, affine_map<(d0) -> (d0)>>
+  }
+}
+"""
+
+
+def test_parameterized_element_type_is_read_whole():
+    (d,) = tensor_defs(NESTED)
+    assert d.type == "tensor<4x!quant.uniform<i8:f32, 0.1>>"
+    out = truncate_to(NESTED, d)
+    assert "-> tensor<4x!quant.uniform<i8:f32, 0.1>> {" in out
+    assert ">>>" not in out                       # no stray bracket left behind
+
+
+def test_affine_map_encoding_is_not_cut_at_the_arrows_bracket():
+    """`affine_map<(d0) -> (d0)>` contains a `>` that closes an ARROW, not a bracket."""
+    (d,) = tensor_defs(ENCODED)
+    assert d.type == "tensor<4xf32, affine_map<(d0) -> (d0)>>"
+    assert "-> tensor<4xf32, affine_map<(d0) -> (d0)>> {" in truncate_to(ENCODED, d)
+    assert "-> (tensor<4xf32, affine_map<(d0) -> (d0)>>) {" in multi_return(ENCODED, [d])
+
+
+def test_signature_without_a_result_arrow_is_left_alone():
+    mod = """
+builtin.module {
+  func.func @forward(%a: tensor<4xf32>) {
+    %y = tensor.empty() : tensor<4xf32>
+    func.return
+  }
+}
+"""
+    (d,) = tensor_defs(mod)
+    assert "func.func @forward(%a: tensor<4xf32>) {" in truncate_to(mod, d)
+
+
+def test_already_tupled_signature_is_retupled_not_nested():
+    mod = """
+builtin.module {
+  func.func @forward(%a: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) attributes {x} {
+    %y = tensor.empty() : tensor<4xf32>
+    %z = tensor.empty() : tensor<4xf32>
+    func.return %y, %z : tensor<4xf32>, tensor<4xf32>
+  }
+}
+"""
+    defs = tensor_defs(mod)
+    out = multi_return(mod, defs)
+    assert "-> (tensor<4xf32>, tensor<4xf32>) attributes {x} {" in out
+    assert "-> ((" not in out

@@ -10,6 +10,7 @@ ucb-bar/rvv-mlir. These tests pin the two properties that make the fix trustwort
 
 Everything runs against a LOCAL bare remote (``file://``) — the harness never pushes to GitHub.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -20,8 +21,7 @@ from merlin.targetgen import publish as P
 
 
 def _git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
-                          timeout=120, check=True)
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=120, check=True)
 
 
 @pytest.fixture()
@@ -39,8 +39,7 @@ def bare_remote(tmp_path):
     _git("push", "origin", "main", cwd=seed)
     # one package branch, as a real publish would leave it
     _git("checkout", "--orphan", "stable/impr_tuned_wholemodel_vf_int8", cwd=seed)
-    _git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty",
-         "-m", "pkg", cwd=seed)
+    _git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "pkg", cwd=seed)
     _git("push", "origin", "stable/impr_tuned_wholemodel_vf_int8", cwd=seed)
     return f"file://{bare}"
 

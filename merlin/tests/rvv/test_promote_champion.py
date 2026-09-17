@@ -5,6 +5,7 @@ tmp tree and against a LOCAL bare ``file://`` remote -- never GitHub. A fixture 
 (``beam_tree.yaml`` + minted fork packages) stands in for a real K1 beam run; the clone+cmake build
 proof skips cleanly when no C++ toolchain is available.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -15,10 +16,9 @@ from pathlib import Path
 import pytest
 
 from merlin.common.yaml import dump_yaml, load_yaml, write_yaml
-from merlin.rvvgen import promote_champion as pc
-from merlin.rvvgen.registry import load_rvv_package
+from merlin.mining import promote_champion as pc
+from merlin.mining.registry import load_rvv_package
 from merlin.targetgen import publish as pub
-
 
 # --------------------------------------------------------------------------- fixtures
 
@@ -28,6 +28,7 @@ def _cxx_toolchain_available() -> bool:
     # a cmake 3.3.2 on PATH that is linked against a libidn.so.11 no current distro ships, so
     # shutil.which succeeds and every configure step then dies with a loader error.
     from merlin.targetgen.oot_runner import usable_cmake
+
     if usable_cmake() == "cmake" and not shutil.which("cmake"):
         return False
     if subprocess.run([usable_cmake(), "--version"], capture_output=True).returncode != 0:
@@ -40,9 +41,8 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int,
-              parent: str | None) -> Path:
-    """Write a minimal beam fork package (mirrors merlin.rvvgen.fork.write_fork)."""
+def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int, parent: str | None) -> Path:
+    """Write a minimal beam fork package (mirrors merlin.mining.fork.write_fork)."""
     d = targets_rvv / run_id
     manifest = {
         "target": "rvv",
@@ -50,10 +50,18 @@ def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int,
         "family": "vector_schedule",
         "schedule_format": "transform_dialect_mlir",
         "status": "proposed",
-        "authoring": {"mode": "deterministic_generated_from_spec",
-                      "generated_by_agent": False, "author": "rvvgen.from_strategy"},
-        "lineage": {"parent_run_id": parent, "version": version, "depth": depth,
-                    "lever": "feature", "source_evidence": ["census:byte-traffic"]},
+        "authoring": {
+            "mode": "deterministic_generated_from_spec",
+            "generated_by_agent": False,
+            "author": "mining.from_strategy",
+        },
+        "lineage": {
+            "parent_run_id": parent,
+            "version": version,
+            "depth": depth,
+            "lever": "feature",
+            "source_evidence": ["census:byte-traffic"],
+        },
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},
     }
     knobs = {
@@ -72,16 +80,22 @@ def _fork_pkg(targets_rvv: Path, run_id: str, *, version: int, depth: int,
     return d
 
 
-def _beam_run(out_root: Path, *, best_gate_ok: bool = True, best_inert: bool = False,
-              best_speedup: float | None = 18.713, best_k1_wall_ns: int | None = 133141607,
-              noise_margin: float | None = 0.02, run_name: str = "20260720T214407Z_cca_beam_seed000_test") -> Path:
+def _beam_run(
+    out_root: Path,
+    *,
+    best_gate_ok: bool = True,
+    best_inert: bool = False,
+    best_speedup: float | None = 18.713,
+    best_k1_wall_ns: int | None = 133141607,
+    noise_margin: float | None = 0.02,
+    run_name: str = "20260720T214407Z_cca_beam_seed000_test",
+) -> Path:
     """Build a fixture beam run dir: beam_tree.yaml + two minted fork packages under targets/rvv/."""
     run_dir = out_root / "runs" / "rvv" / "beam" / "matmul" / run_name
     targets_rvv = run_dir / "targets" / "rvv"
 
     loser = _fork_pkg(targets_rvv, "rvv_tuned_v1_d1_beam_1", version=1, depth=1, parent="hand_v0__beam")
-    winner = _fork_pkg(targets_rvv, "rvv_tuned_v2_d2_beam_11", version=2, depth=2,
-                       parent="rvv_tuned_v1_d1_beam_1")
+    winner = _fork_pkg(targets_rvv, "rvv_tuned_v2_d2_beam_11", version=2, depth=2, parent="rvv_tuned_v1_d1_beam_1")
 
     tree = {
         "target": "rvv",
@@ -89,15 +103,35 @@ def _beam_run(out_root: Path, *, best_gate_ok: bool = True, best_inert: bool = F
         "noise_margin": noise_margin,
         "expert_wall_ns": 168988634.0,
         "op_key": {"dtype": "int8", "op": "matmul", "shape_regime": "square"},
-        "best": {"run_id": "rvv_tuned_v2_d2_beam_11", "speedup": best_speedup,
-                 "attainment_vs_expert": 1.269, "lever": "feature"},
+        "best": {
+            "run_id": "rvv_tuned_v2_d2_beam_11",
+            "speedup": best_speedup,
+            "attainment_vs_expert": 1.269,
+            "lever": "feature",
+        },
         "nodes": [
-            {"run_id": "rvv_tuned_v1_d1_beam_1", "depth": 1, "gate_ok": True, "inert": False,
-             "speedup": 1.005, "k1_wall_ns": 2479067251, "attainment_vs_expert": 0.068,
-             "lever": "feature", "package_dir": str(loser)},
-            {"run_id": "rvv_tuned_v2_d2_beam_11", "depth": 2, "gate_ok": best_gate_ok,
-             "inert": best_inert, "speedup": best_speedup, "k1_wall_ns": best_k1_wall_ns,
-             "attainment_vs_expert": 1.269, "lever": "feature", "package_dir": str(winner)},
+            {
+                "run_id": "rvv_tuned_v1_d1_beam_1",
+                "depth": 1,
+                "gate_ok": True,
+                "inert": False,
+                "speedup": 1.005,
+                "k1_wall_ns": 2479067251,
+                "attainment_vs_expert": 0.068,
+                "lever": "feature",
+                "package_dir": str(loser),
+            },
+            {
+                "run_id": "rvv_tuned_v2_d2_beam_11",
+                "depth": 2,
+                "gate_ok": best_gate_ok,
+                "inert": best_inert,
+                "speedup": best_speedup,
+                "k1_wall_ns": best_k1_wall_ns,
+                "attainment_vs_expert": 1.269,
+                "lever": "feature",
+                "package_dir": str(winner),
+            },
         ],
     }
     _write(run_dir / "beam_tree.yaml", dump_yaml(tree))
@@ -216,10 +250,9 @@ def test_rvv_gate_accepts_k1_verified(out_root):
     run_dir = _beam_run(out_root)
     champ = pc.read_beam_champion(run_dir)
     pc.stamp_champion(champ)
-    sel = pub.select_champion("rvv", artifacts_root=str(run_dir),
-                              package_id="rvv_tuned_v2_d2_beam_11")
+    sel = pub.select_champion("rvv", artifacts_root=str(run_dir), package_id="rvv_tuned_v2_d2_beam_11")
     gate_ok, detail = pub._check_gate(sel)
-    assert gate_ok is True            # k1_verified is accepted alongside spike_verified/rtl_certified
+    assert gate_ok is True  # k1_verified is accepted alongside spike_verified/rtl_certified
     assert "k1_verified" in detail
     # ...but an unverified/proposed status is still refused (the gate is not a rubber stamp)
     sel_unverified = dataclasses.replace(sel, status="proposed")
@@ -237,7 +270,7 @@ def test_promote_and_publish_dry_run(out_root, monkeypatch):
     assert res.dry_run and not res.committed
     assert res.remote == remote
     assert res.branch == "stable/rvv_tuned_v2_d2_beam_11"
-    assert res.gate_ok is True        # real gate now accepts the stamped k1_verified champion
+    assert res.gate_ok is True  # real gate now accepts the stamped k1_verified champion
     # the assembled tree exists locally; the bare remote got nothing
     assert (res.repo_dir / "manifest.yaml").is_file()
 
@@ -245,22 +278,22 @@ def test_promote_and_publish_dry_run(out_root, monkeypatch):
 def test_promote_and_publish_execute_yields_stable_branch(out_root, monkeypatch):
     run_dir = _beam_run(out_root)
     remote = _bare_remote(out_root, "rvv", monkeypatch)
-    bare = remote[len("file://"):]
+    bare = remote[len("file://") :]
 
     stamp, res = pc.promote_and_publish(run_dir, execute=True)
     assert res.committed and res.commit_sha
     assert res.branch == "stable/rvv_tuned_v2_d2_beam_11"
 
     # commit + tag present on the stable branch of the bare remote
-    log = subprocess.run(["git", "-C", bare, "log", res.branch, "--oneline"],
-                         capture_output=True, text=True)
+    log = subprocess.run(["git", "-C", bare, "log", res.branch, "--oneline"], capture_output=True, text=True)
     assert res.commit_sha[:7] in log.stdout
     tags = subprocess.run(["git", "-C", bare, "tag"], capture_output=True, text=True).stdout.split()
     assert res.tag in tags and res.tag == "v2-rvv_tuned_v2_d2_beam_11"
 
     # the truthful K1 certification rides along in the committed manifest
-    show = subprocess.run(["git", "-C", bare, "show", f"{res.branch}:.merlin/certification.yaml"],
-                          capture_output=True, text=True).stdout
+    show = subprocess.run(
+        ["git", "-C", bare, "show", f"{res.branch}:.merlin/certification.yaml"], capture_output=True, text=True
+    ).stdout
     assert "rvv_tuned_v2_d2_beam_11" in show
 
 
@@ -274,7 +307,7 @@ def test_published_payload_round_trip_nuance(out_root, monkeypatch):
     payload = res.repo_dir / "payload"
     assert (payload / "schedule.mlir").is_file()
     assert (payload / "knobs.yaml").is_file()
-    assert not (payload / "manifest.yaml").exists()             # <-- the nuance
+    assert not (payload / "manifest.yaml").exists()  # <-- the nuance
     with pytest.raises(Exception):
         load_rvv_package(payload)
 
@@ -287,9 +320,10 @@ def test_published_payload_round_trip_nuance(out_root, monkeypatch):
 @pytest.mark.skipif(not _cxx_toolchain_available(), reason="cmake / C++ toolchain unavailable")
 def test_fresh_clone_builds_champion(out_root, monkeypatch):
     from merlin.targetgen import oot_runner
+
     run_dir = _beam_run(out_root)
     remote = _bare_remote(out_root, "rvv", monkeypatch)
-    bare = remote[len("file://"):]
+    bare = remote[len("file://") :]
     stamp, res = pc.promote_and_publish(run_dir, execute=True)
     assert res.committed
 

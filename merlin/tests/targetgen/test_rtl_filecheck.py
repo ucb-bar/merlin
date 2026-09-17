@@ -10,6 +10,7 @@ The flagship is `test_phantom_funct_25_rejected_without_verilator`: a trace usin
 by spike functionally, but the RTL decoder (module ReservationStation) never matches funct 25, so on
 real hardware/verilator it is a no-op. Our decoder-derived legal set catches it statically.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,12 +19,17 @@ import math
 import pytest
 import yaml
 
-from merlin.targetgen import rtl_check_compiler as CC, rtl_check_runner as RR, rtl_checks as RC
+from merlin.targetgen import rtl_check_compiler as CC
+from merlin.targetgen import rtl_check_runner as RR
+from merlin.targetgen import rtl_checks as RC
 from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
 
 _FC = RR.find_filecheck()
-pytestmark = pytest.mark.skipif(_FC is None, reason="FileCheck binary not available")
+pytestmark = [
+    pytest.mark.skipif(_FC is None, reason="FileCheck binary not available"),
+    pytest.mark.target("gemmini", "radiance"),
+]
 _FACTS = load_facts("gemmini")
 # The behavioural role probe needs a live arc model (+ the mlc venv). Where it is present, the derived
 # roles are an ALWAYS-ON cross-check of the hand ABI semantic_class; where it is absent (CI without the
@@ -44,8 +50,10 @@ def _matmul_capsule(min_tiles: int = 1):
 
 
 def _trace(seq, abi=None):
-    return {"abi": abi or {"custom_opcode": "0x7b", "funct3": "0x3"},
-            "instructions": [{"index": i, "class": c, "funct": f} for i, (c, f) in enumerate(seq)]}
+    return {
+        "abi": abi or {"custom_opcode": "0x7b", "funct3": "0x3"},
+        "instructions": [{"index": i, "class": c, "funct": f} for i, (c, f) in enumerate(seq)],
+    }
 
 
 def _good_matmul_trace(cap):
@@ -77,9 +85,9 @@ def test_phantom_funct_25_rejected_without_verilator():
     tr = _good_matmul_trace(cap)
     tr["instructions"].append({"index": 999, "class": "UNKNOWN", "funct": 25})
     rendered = RR.render_trace(tr, _FACTS)
-    assert "ILLEGAL_FUNCT_COUNT 1" in rendered      # the decoder-derived set flags 25
+    assert "ILLEGAL_FUNCT_COUNT 1" in rendered  # the decoder-derived set flags 25
     ok, _ = _fc(cap, tr)
-    assert not ok                                    # rejected statically
+    assert not ok  # rejected statically
 
 
 def test_real_funct_126_is_legal():
@@ -99,51 +107,18 @@ def test_wrong_tile_count_rejected_without_verilator():
     it statically."""
     cap = _matmul_capsule()
     tr = _good_matmul_trace(cap)
-    tr["instructions"].append({"index": 997, "class": "MVOUT", "funct": 3})   # one extra tile store
+    tr["instructions"].append({"index": 997, "class": "MVOUT", "funct": 3})  # one extra tile store
     ok, _ = _fc(cap, tr)
     assert not ok
-
-
-def _op_form_mlir(cap):
-    """A minimal op-form gemmini-dialect MLIR carrying the tokens the compiled DIALECT checks look for
-    (res_pack -> matmul -> commit + the declared output_dtype)."""
-    dt = ((cap.get("operation") or {}).get("attributes") or {}).get("output_dtype")
-    tail = f' {{output_dtype = "{dt}"}}' if dt else ""
-    return ("%0 = gemmini.res_pack %w : tensor\n"
-            "%1 = gemmini.matmul %a, %0 : tensor\n"
-            f"%2 = gemmini.commit %1 : tensor{tail}\n")
-
-
-@pytest.mark.parametrize("good", [True, False])
-def test_combined_single_pass_matches_separate_runs(good):
-    """The fast path (one FileCheck pass over concatenated dialect+trace input with both prefixes) must
-    yield the SAME pass/fail as running the two checks separately — the disjoint check vocabularies mean
-    a combined --check-prefixes run cannot cross-match. Covered for a passing and a failing trace."""
-    cap = _matmul_capsule()
-    assert cap is not None and RR._is_op_form(_op_form_mlir(cap))
-    trace = _good_matmul_trace(cap)
-    if not good:
-        trace["instructions"].append({"index": 997, "class": "MVOUT", "funct": 3})  # wrong tile count
-    mlir = _op_form_mlir(cap)
-    ttxt = RR.render_trace(trace, _FACTS)
-    dchecks, tchecks = CC.compile_dialect_checks(cap), CC.compile_trace_checks(_FACTS, cap)
-
-    combined, _ = RR.run_filecheck(
-        _FC, dchecks + "\n" + tchecks, f"{mlir}\n; ---rtlcheck-trace-region---\n{ttxt}",
-        ["DIALECT", "TRACE"])
-    okt, _ = RR.run_filecheck(_FC, tchecks, ttxt, "TRACE")
-    okd, _ = RR.run_filecheck(_FC, dchecks, mlir, "DIALECT")
-    assert combined == (okt and okd)
-    assert okt is good                                   # trace bears the verdict; wrong tiles => fail
 
 
 def test_compiled_checks_are_memoized():
     """compiled_checks is a pure function of (capsule name, facts sha) — repeated calls hit the cache."""
     cap = _matmul_capsule()
     RR._COMPILED_CACHE.clear()
-    a = RR.compiled_checks(_FACTS, cap)
-    b = RR.compiled_checks(_FACTS, cap)
-    assert a is b                                        # same object -> served from cache
+    a = RR.compiled_checks(_FACTS, cap, "gemmini")
+    b = RR.compiled_checks(_FACTS, cap, "gemmini")
+    assert a is b  # same object -> served from cache
     assert (cap.get("name"), RR._facts_sha(_FACTS), "gemmini") in RR._COMPILED_CACHE
 
 
@@ -159,9 +134,9 @@ def test_provenance_flags_derived_vs_handpicked():
     assert prov["isa_legality"]["derived"] is True
     assert prov["abi_encoding"]["derived"] is True
     assert prov["tile_coverage"]["derived"] is True
-    assert prov["semantic_roles"]["derived"] is True         # regenerated behavioural probe -> derived
+    assert prov["semantic_roles"]["derived"] is True  # regenerated behavioural probe -> derived
     assert prov["semantic_roles"]["n_roles"] >= 9
-    assert MB.crosscheck_semantic_class("gemmini") == []     # derived roles verify the hand ABI labels
+    assert MB.crosscheck_semantic_class("gemmini") == []  # derived roles verify the hand ABI labels
 
 
 @pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")
@@ -176,22 +151,11 @@ def test_derived_roles_crosscheck_hand_semantic_class():
 
 
 def test_non_rocc_target_drops_rocc_shaped_checks():
-    """A target with no derived RoCC decode interface (SIMT / program-MMIO) drops the RoCC-shaped dialect
-    and trace checks rather than emitting meaningless ones — emit only what is groundable, never guess."""
+    """A non-RoCC target drops the RoCC-shaped TRACE check rather than emitting meaningless ones — emit
+    only what is groundable for the endpoint, never guess. The RoCC ``trace`` family is absent; there is
+    no dialect-MLIR check family at all (op mnemonics are un-derivable per generated OOT dialect)."""
     simt = {"facts": {"interfaces": [{"name": "warp_dispatch"}], "arrays": [], "memories": []}}
     cc = CC.compile_checks(simt, _matmul_capsule(), target="radiance")
-    assert cc["dialect"] is None and cc["trace"] is None
+    assert "dialect" not in cc and cc["trace"] is None
     assert cc["provenance"]["isa_legality"]["derived"] is False
     assert "no discovered_roles cache" in cc["provenance"]["semantic_roles"]["reason"]
-
-
-def test_dialect_dataflow_order_mlir_lit_fixture():
-    """A literal `// RUN: FileCheck` .mlir test: the RTL-enforced res_pack->matmul->commit dataflow
-    structural check over gemmini-dialect MLIR (spike is lenient about this ordering)."""
-    from pathlib import Path
-    import subprocess
-    from merlin.common.paths import repo_root
-    mlir = repo_root() / "merlin/tests/targetgen/data/rtl_filecheck/matmul_dialect_good.mlir"
-    p = subprocess.run([_FC, "--check-prefix=DIALECT", str(mlir)],
-                       stdin=open(mlir), capture_output=True, text=True)
-    assert p.returncode == 0, (p.stderr or p.stdout)

@@ -19,8 +19,8 @@ These tests:
 The bit-exact spike verification + instret-vs-ceiling numbers are recorded in
 output/kernels/ceiling/scalable_gap_result.md (this test is build+decode only, no slow spike boot).
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import tempfile
 from dataclasses import replace
@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.llvmlower import impr_features as F
 from merlin.llvmlower import pipeline as P
 
@@ -39,8 +40,20 @@ _WMVF = "accumulator_resident_wholemodel_vf"
 
 # spill ops that would indicate the accumulator is NOT register-resident (whole-vreg-group
 # load/store the backend emits to round-trip a spilled accumulator through the stack).
-_SPILL_OPS = ("vl1re32", "vl2re32", "vl4re32", "vl8re32", "vl1re8", "vl2re8", "vl4re8", "vl8re8",
-              "vs1r", "vs2r", "vs4r", "vs8r")
+_SPILL_OPS = (
+    "vl1re32",
+    "vl2re32",
+    "vl4re32",
+    "vl8re32",
+    "vl1re8",
+    "vl2re8",
+    "vl4re8",
+    "vl8re8",
+    "vs1r",
+    "vs2r",
+    "vs4r",
+    "vs8r",
+)
 
 
 # ---- baseline-frozen guards (no toolchain needed) -----------------------------------
@@ -54,6 +67,7 @@ def test_v3_default_off_schedule_byte_identical():
 
 def test_v3_splices_subset_hoist_and_scalarize_marker_only_when_enabled():
     from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+
     base = P.build_rvv_pipeline("/tmp/s.mlir").split(",")
     on = F.apply_pipeline(base, frozenset([_V3]))
     # the PRE-bufferize tensor-level subset hoist (the v1/v2 blocker fix) is present...
@@ -89,12 +103,13 @@ def test_scalarize_rewrite_is_numerically_neutral_by_construction():
     # 16-bit-float datapaths) rather than f32-literal, but the neutrality argument is unchanged:
     # the extract's result type must equal the vector read's element type.
     from merlin.llvmlower.accum_microkernel import rewrite_source
+
     src = rewrite_source()
     assert "vector.transfer_read" in src
-    assert 'dims[-1] != "1"' in src                 # only register-tile lhs reads (trailing unit dim)
-    assert 'str(owner.results[0].type) != elem' in src   # bail unless every use is a scalar extract
+    assert 'dims[-1] != "1"' in src  # only register-tile lhs reads (trailing unit dim)
+    assert "str(owner.results[0].type) != elem" in src  # bail unless every use is a scalar extract
     # ...and `elem` is exactly the element type parsed off the read's own vector type.
-    assert 'for cand in ("f32", "f16", "bf16")' in src
+    assert 'for cand in ("f32", "f16", "bf16", "i8", "i16", "i32")' in src
     assert 'ts.endswith("x" + cand + ">")' in src
 
 
@@ -106,23 +121,24 @@ def _toolchain() -> bool:
     try:
         from merlin.kernels import build_asm
         from merlin.runtime.backends import zephyr_model
+
         return build_asm.asm_toolchain_available() and zephyr_model.available()
     except Exception:
         return False
 
 
-def _decode(features, M, N, K):
+def _decode(features, M, N, K, int8=False):
     """apply_rvv_package(hand_v0 + features) on a matmul bundle -> decoded InsnStream of model.o."""
     from merlin.kernels.decode import rvv
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.apply import apply_rvv_package
-    from merlin.rvvgen.registry import load_rvv_package
+    from merlin.mining import workloads
+    from merlin.mining.apply import apply_rvv_package
+    from merlin.mining.registry import load_rvv_package
 
     bundle = workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_v3", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_v3_"))
-    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
+    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64, int8_compute=int8)
     return rvv.decode(str(work / "model.o"))
 
 
@@ -158,15 +174,19 @@ def test_v3_forms_vfmacc_not_separate_mul():
 # NR=32, accumulator-resident, 0 spills. These shapes are the actual small-M openvla/rdt2 matmul dims
 # the breakdown decoded (17×192×576, 20×128×512) plus a cube and an M=1 token-decode shape.
 @pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
-@pytest.mark.parametrize("M,N,K", [
-    (64, 64, 64),       # cube
-    (17, 192, 576),     # openvla attn/MLP proj, small-M=17 (bare v3 degrades here; wholemodel_vf must not)
-    (20, 128, 512),     # openvla action-head MLP up, M=20
-    (28, 1024, 1024),   # rdt2 workhorse attn proj, M=28
-    (1, 256, 256),      # M=1 token-decode (the MR_mm=1 clamp's design point)
-])
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
+        (64, 64, 64),  # cube
+        (17, 192, 576),  # openvla attn/MLP proj, small-M=17 (bare v3 degrades here; wholemodel_vf must not)
+        (20, 128, 512),  # openvla action-head MLP up, M=20
+        (28, 1024, 1024),  # rdt2 workhorse attn proj, M=28
+        (1, 256, 256),  # M=1 token-decode (the MR_mm=1 clamp's design point)
+    ],
+)
 def test_wholemodel_vf_vfmacc_vf_survives_small_M(M, N, K):
     from merlin.kernels import cca
+
     s = _decode([_WMVF], M, N, K)
     il = s.innermost_loop()
     assert il is not None, "no innermost loop decoded"
@@ -175,8 +195,9 @@ def test_wholemodel_vf_vfmacc_vf_survives_small_M(M, N, K):
     assert s.count_in(il, "vfmacc.vv") == 0, "no vfmacc.vv (the ~20-insn broadcast-ladder form)"
     # ... it SURVIVED small-M at the wide lane group: NR=32 lanes @ VLEN=256 (e32, m4) ...
     c = cca.lift_asm(s, op="matmul", source="ours_wholemodel_vf")
-    assert c.vector is not None and c.vector.sew == 32 and c.vector.lmul == 4.0, \
+    assert c.vector is not None and c.vector.sew == 32 and c.vector.lmul == 4.0, (
         f"expected e32,m4 (NR=32@VLEN256); got sew={c.vector and c.vector.sew} lmul={c.vector and c.vector.lmul}"
+    )
     # ... accumulator register-resident with ZERO in-loop spills (unlike bare v3's 118-spill M-tail
     # degradation on M=17) ...
     assert c.compute is not None and c.compute.accumulator_resident is True
@@ -195,12 +216,13 @@ def test_wholemodel_vf_default_off_guards():
     assert _WMVF in P._accum_microkernel_v3_features()
     # ... carries the wholemodel tail clamps inherent (matmul M-tile=1, batch_matmul N-tile=8) ...
     sch = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset([_WMVF]))
-    assert "tile_sizes [1, 16, 0]" in sch        # matmul MR_mm=1
-    assert "tile_sizes [1, 4, 8, 0]" in sch      # batch_matmul NR_bmm=8
+    assert "tile_sizes [1, 16, 0]" in sch  # matmul MR_mm=1
+    assert "tile_sizes [1, 4, 8, 0]" in sch  # batch_matmul NR_bmm=8
     # ... and uses the v3 TENSOR-level hoist (no bufferize_to_allocation C promotion).
     assert "bufferize_to_allocation" not in sch
     # splices the subset-hoist + scalarize marker (the .vf path) when enabled.
     from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+
     on = F.apply_pipeline(P.build_rvv_pipeline("/tmp/s.mlir").split(","), frozenset([_WMVF]))
     assert any("loop-invariant-subset-hoisting" in p for p in on)
     assert SCALARIZE_MARKER in on
@@ -218,6 +240,7 @@ def test_wholemodel_vf_default_off_guards():
 # `vector<...x1>` read is left on the correct baseline lowering (so the model lowers vectorized, not
 # scalar). The matcher-guard test needs no toolchain; the real-model test is toolchain-gated.
 
+
 # A non-matmul `vector<4x1xf32>` transfer_read from a HIGHER-RANK source (tensor<1x4x1xf32>) consumed
 # only by scalar `vector.extract`:f32 — the exact shape that broke whole-model v3 (extract position
 # length 2 != source rank 3). The matcher must REFUSE this (it cannot soundly reconstruct indices),
@@ -234,13 +257,14 @@ def test_scalarize_matcher_refuses_rank_mismatched_reads():
     # malformed / mis-mapped `tensor.extract` -> the silent-scalar fallback root cause). Assert the
     # gates are present (the structural contract of the fix).
     from merlin.llvmlower.accum_microkernel import rewrite_source
+
     src = rewrite_source()
-    assert "_src_rank" in src                       # source must be statically ranked
-    assert "_src_dims" in src                       # ...and its dim EXTENTS known (unit-leading check)
-    assert "poslen > rank" in src                   # extract position length above source rank -> refuse
+    assert "_src_rank" in src  # source must be statically ranked
+    assert "_src_dims" in src  # ...and its dim EXTENTS known (unit-leading check)
+    assert "poslen > rank" in src  # extract position length above source rank -> refuse
     # dropped LEADING dims (poslen < rank) must each have extent 1, else the lane != element mapping
     assert "poslen < rank" in src and "src_dims[:rank - poslen]" in src
-    assert "_is_identity_perm" in src               # identity OR sound minor-identity projection only
+    assert "_is_identity_perm" in src  # identity OR sound minor-identity projection only
     # and it must explicitly NOT key the gate on len(operands)-1 (transfer_read carries padding/mask
     # trailing operands, so that count is NOT the index count — the bug a naive count would re-introduce).
     assert "transfer_read carries trailing" in src.lower() or "padding scalar" in src.lower()
@@ -252,6 +276,7 @@ def _decode_model(model_name, features):
     (vectorize=True, features=, hoist_static_allocs=False) so a PipelineError here is exactly the
     silent scalar fallback the board hit."""
     import subprocess
+
     from merlin.kernels.decode import rvv
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.lower import lower_model_file
@@ -262,19 +287,35 @@ def _decode_model(model_name, features):
     prepared = zm._prepare_model_mlir(mdir / "model.mlir", work, int8_compute=False)
     feats = frozenset(features) or None
     # vectorize=True must SUCCEED (no PipelineError) — that is the whole-model-safety assertion.
-    res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=True, hoist_static_allocs=False, features=feats)
+    res = lower_model_file(
+        prepared, work / "lower", targets=(), textual=True, vectorize=True, hoist_static_allocs=False, features=feats
+    )
     clang = toolchain.clang()
     obj = work / "model.o"
-    subprocess.run([str(clang), "--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d",
-                    "-O2", "-Wno-override-module", "-c", str(res.ll_path), "-o", str(obj)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [
+            str(clang),
+            "--target=riscv64-unknown-elf",
+            "-march=rv64gcv",
+            "-mabi=lp64d",
+            "-O2",
+            "-Wno-override-module",
+            "-c",
+            str(res.ll_path),
+            "-o",
+            str(obj),
+        ],
+        check=True,
+        capture_output=True,
+    )
     return rvv.decode(str(obj))
 
 
 @pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
-@pytest.mark.skipif(not (REPO / "out/artifacts" / "recaptures" / "bitvla_fp32_consistent" / "model.mlir").is_file(),
-                    reason="bitvla model bundle not present")
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts" / "recaptures" / "bitvla_fp32_consistent" / "model.mlir").is_file(),
+    reason="bitvla model bundle not present",
+)
 @pytest.mark.parametrize("model", ["bitvla_fp32_consistent", "openvla_fp32_consistent"])
 def test_v3_whole_model_lowers_vectorized_not_scalar_fallback(model):
     # The whole-model assertion the isolated tests missed: lowering a REAL model with v3 must
@@ -313,12 +354,13 @@ def test_mrpad_default_off_and_wiring():
     # ... with a linalg.copy copy-back (NOT the default materialize_in_destination, which aliases the
     #     CSE-shared zero-fill across matmuls -> the whole-model RaW-conflict PipelineError) ...
     assert 'copy_back_op = "linalg.copy"' in sch
-    assert "tile_sizes [4, 16, 0]" in sch          # matmul register tile MR=4
-    assert "tile_sizes [1, 4, 8, 0]" in sch        # batch_matmul NR_bmm=8 (attention N-tail), as in _vf
-    assert "bufferize_to_allocation" not in sch     # v3 TENSOR-level hoist (no C promotion)
+    assert "tile_sizes [4, 16, 0]" in sch  # matmul register tile MR=4
+    assert "tile_sizes [1, 4, 8, 0]" in sch  # batch_matmul NR_bmm=8 (attention N-tail), as in _vf
+    assert "bufferize_to_allocation" not in sch  # v3 TENSOR-level hoist (no C promotion)
     # pipeline: subset-hoist + scalarize marker (the .vf path) AND eliminate-empty-tensors before
     # one-shot-bufferize (paired with the linalg.copy copy-back to give each padded matmul its own buffer).
     from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+
     on = F.apply_pipeline(P.build_rvv_pipeline("/tmp/s.mlir").split(","), frozenset([_MRPAD]))
     assert any("loop-invariant-subset-hoisting" in p for p in on)
     assert SCALARIZE_MARKER in on
@@ -353,8 +395,10 @@ def test_mrpad_emits_mr4_register_block_on_every_M(M):
 
 
 @pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
-@pytest.mark.skipif(not (REPO / "out/artifacts" / "recaptures" / "rdt2_fp32_consistent" / "model.mlir").is_file(),
-                    reason="rdt2 model bundle not present")
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts" / "recaptures" / "rdt2_fp32_consistent" / "model.mlir").is_file(),
+    reason="rdt2 model bundle not present",
+)
 @pytest.mark.parametrize("model", ["rdt2_fp32_consistent", "bitvla_fp32_consistent"])
 def test_mrpad_whole_model_lowers_vectorized_with_per_op_mr(model):
     # The deliverable's whole-model safety + per-op MR assertion, on the MIXED-M model (rdt2 M in {1,28})
@@ -367,3 +411,148 @@ def test_mrpad_whole_model_lowers_vectorized_with_per_op_mr(model):
     assert on.count("vfmacc.vf") > 0, "mrpad whole-model must emit vfmacc.vf (no scalar fallback)"
     assert on.count("vfmacc.vv") == 0, "no vfmacc.vv (the .vv broadcast-ladder form)"
     assert _kloop_vf_per_bload(on) == 4.0, "whole-model must contain MR=4 register-block K-loops"
+
+
+def test_scalarize_admits_the_integer_element_types_so_int8_can_reach_vwmacc_vx():
+    """The int8 contract lowers through `outerproduct` to arith.muli/addi with a `vector.extract : i8`
+    A operand. If the A-scalarization gate admits only float spellings, every int8 MR>1 register tile
+    rebuilds A with a vmv/vslideup lane ladder instead of letting the backend form `vwmacc.vx` from a
+    scalar -- which is the mechanism `perop_blocks.DEFAULT_MR` cites for pinning MR=1. So excluding
+    the integer types is what makes MR>1 look intrinsically bad on int8, and the fix belongs here and
+    not in the block policy.
+
+    This pins the ADMISSION only. Every soundness gate must remain element-type-independent: the
+    rewrite is value-identical because it replaces `vector.extract[i,0]` of a transfer_read with a
+    scalar load of that same element, and that argument never mentioned the element type.
+    """
+    from merlin.llvmlower.accum_microkernel import rewrite_source
+
+    src = rewrite_source()
+    for spelling in ("i8", "i16", "i32"):
+        assert f'"{spelling}"' in src, f"integer element type {spelling} not admitted"
+    # the scalar type actually built for the load must exist for every admitted spelling
+    assert "ir.IntegerType.get_signless(8, ctx)" in src
+    assert "ir.IntegerType.get_signless(16, ctx)" in src
+    assert "ir.IntegerType.get_signless(32, ctx)" in src
+    # ...and the soundness gates are untouched by the widening (they are what stop the rewrite from
+    # firing on a transpose/broadcast read or on a dropped leading dim with extent > 1).
+    assert "if poslen > rank:" in src
+    assert "if poslen < rank and any(e != 1 for e in src_dims[:rank - poslen]):" in src
+    assert "not _is_identity_perm(o.operation, rank)" in src
+
+
+def test_scalarize_element_spellings_cannot_collide():
+    """`bf16` must not be read as `f16`, and `i8` must not be read inside `i16`/`i32`. The gate matches
+    on the full `x<elem>>` suffix precisely so these stay distinct; a collision would build the wrong
+    scalar type for the load and silently change the emitted arithmetic width.
+    """
+    for elem, ts in (
+        ("bf16", "vector<4x1xbf16>"),
+        ("f16", "vector<4x1xf16>"),
+        ("i8", "vector<4x1xi8>"),
+        ("i16", "vector<4x1xi16>"),
+        ("i32", "vector<4x1xi32>"),
+        ("f32", "vector<4x1xf32>"),
+    ):
+        matched = [c for c in ("f32", "f16", "bf16", "i8", "i16", "i32") if ts.endswith("x" + c + ">")]
+        assert matched == [elem], (ts, matched)
+
+
+def test_sink_accepts_the_integer_widenings_and_runs_before_scalarization():
+    """The int8 A column is widened on the VECTOR (`extsi vector<MRx1xi8> to vector<MRx1xi32>`) and
+    then lane-extracted at i32. That interposed vector widening is not a same-element-type
+    `vector.extract`, so it BLOCKS `scalarize_a_reads` outright -- which is why admitting the integer
+    element types was, on its own, measurably inert on int8.
+
+    Two things therefore have to hold, and both are pinned here:
+      * the sink accepts `arith.extsi`/`arith.extui`, not only `arith.extf`, and rebuilds with the
+        SAME widening it matched (rebuilding a fixed `arith.extf` over an integer lane is malformed);
+      * the sink runs BEFORE the scalarization in the runner, because it is a PRECONDITION of it and
+        not a cleanup after it.
+    `sext`/`zext` are exact, so lane i of widen(v) == widen(lane i of v) exactly as for `fpext`.
+    """
+    from merlin.llvmlower.accum_microkernel import rewrite_source, run_source
+
+    src = rewrite_source()
+    assert '_WIDEN_OPS = ("arith.extf", "arith.extsi", "arith.extui")' in src
+    assert "defop.name not in _WIDEN_OPS" in src
+    # the rebuild must reuse the matched op name, never a hardcoded float widening
+    assert "widen_name = extf.name" in src
+    assert "widen_name, results=[ex.results[0].type]" in src
+    assert 'ir.Operation.create(\n            "arith.extf"' not in src
+    # integer scalar lane spellings admitted by the extract gate
+    assert '_SCALAR_TYS = ("f16", "bf16", "f32", "f64", "i8", "i16", "i32", "i64")' in src
+    assert "str(res.type) not in _SCALAR_TYS" in src
+    # ORDER: sink, then scalarize (and sink again for whatever scalarization exposes).
+    run = run_source()
+    first_sink = run.index("_m = sink_extf_through_extract")
+    scalarize = run.index("_n = scalarize_a_reads")
+    assert first_sink < scalarize, "sink must run BEFORE scalarize_a_reads (it unblocks it)"
+    assert run.index("_m += sink_extf_through_extract") > scalarize
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+def test_int8_mr4_register_block_emits_vwmacc_vx_not_a_gather_ladder():
+    """The measured deliverable of the int8 A-scalarization, asserted on the EMITTED object.
+
+    Before: int8 MR=4 rebuilt the A operand per row with a `vrgather.vi` lane ladder and issued
+    `vmacc.vv` (4 of each), plus a strided `vlse8.v` -- i.e. MR>1 bought no A reuse and cost a
+    ladder, which is exactly what made MR>1 look intrinsically bad on int8.
+    After: 4x `vwmacc.vx` against 4 accumulators, ZERO `vrgather`, and the shared narrow operand
+    loaded ONCE (`vle8.v` x1) instead of once per row as MR=1 does (x4). That load-once/MAC-four
+    ratio IS the A-operand reuse the register block exists to buy.
+    """
+    mr4 = _decode([_WMVF + "_mr4"], 64, 64, 64, int8=True)
+    mr1 = _decode([_WMVF], 64, 64, 64, int8=True)
+    assert mr4.count("vwmacc.vx") > 0, "int8 MR=4 must reach the scalar-operand widening MAC"
+    assert mr4.count("vrgather.vi") == 0, "no A lane-rebuild ladder"
+    assert mr4.count("vmacc.vv") == 0, "no vector-vector MAC (the ladder form)"
+    assert mr4.count("vlse8.v") == 0, "no strided narrow A load"
+    # the reuse: MR=4 loads the shared narrow operand fewer times than MR=1 for the same MAC count
+    assert mr4.count("vwmacc.vx") == mr1.count("vwmacc.vx"), "same MAC count, different reuse"
+    assert mr4.count("vle8.v") < mr1.count("vle8.v"), (mr4.count("vle8.v"), mr1.count("vle8.v"))
+
+
+def _lower_ll(features, *, int8, M=64, N=64, K=64) -> str:
+    """Lower a matmul bundle through the real RVV pipeline and return the emitted LLVM IR text."""
+    from merlin.llvmlower.lower import lower_model_file
+    from merlin.mining import workloads
+    from merlin.runtime.backends import zephyr_model as zm
+
+    bundle = Path(workloads.gen_matmul_f32(tempfile.mkdtemp(prefix="ll_v3_"), M=M, N=N, K=K))
+    work = Path(tempfile.mkdtemp(prefix="ll_v3_"))
+    prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=int8)
+    res = lower_model_file(
+        prepared,
+        work / "lower",
+        targets=(),
+        textual=True,
+        vectorize=True,
+        transform_schedule=None,
+        hoist_static_allocs=False,
+        features=frozenset(features),
+    )
+    return Path(res.ll_path).read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.parametrize("int8", [True, False])
+def test_mr_gt_1_register_block_emits_no_per_tile_memref_copy(int8):
+    """The measured reason MR>1 never paid off, and the gate that it now does.
+
+    Bufferizing the tiled reduction leaves `memref.copy %x, %x` -- the destination subview copied
+    onto ITSELF -- in every tile epilogue, and it survives finalize-memref-to-llvm as an opaque
+    rank-generic `@memrefCopy` call. Measured on spike at 64^3, PC-histogram attributed and exact to
+    the instruction: bare MR=4 paid memrefCopy +187,520 / memcpy +98,304 / memset +24,896 against a
+    compute saving of -59,743, summing to the observed +250,977 cycle delta -- so a 1.45x cheaper
+    kernel came out 2.04x slower overall. With the erase implied, MR=4 is 1.35x (int8) / 1.27x (f32)
+    FASTER than MR=1, bit-identical.
+
+    Naming ONLY the register-block feature must be enough: this asserts the implication actuates
+    through the real lowering, not just in the feature set.
+    """
+    ll = _lower_ll([_WMVF + "_mr4"], int8=int8)
+    assert "call void @memrefCopy" not in ll, "per-tile self-copy survived into the emitted IR"
+    # ...and the MR=1 control has none to begin with, so the assertion above is not vacuous for MR>1:
+    # it must be the MR>1 lowering that would otherwise carry one.
+    assert ll.count("@memrefCopy") == 0

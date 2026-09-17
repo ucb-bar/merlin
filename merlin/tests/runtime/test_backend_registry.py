@@ -1,33 +1,73 @@
 """The runtime backend registry classifies backends by target CLASS (CPU/GPU/NPU), not instance."""
+
 from __future__ import annotations
+
+import pytest
 
 from merlin.runtime.backends import base
 from merlin.runtime.backends.base import BackendKind, TargetClass
 
+pytestmark = pytest.mark.target("gemmini", "muon")
+
+#: The backends this repo ships. An OUT-OF-TREE package may register more via `plugin.backend`, which
+#: is the seam working as designed — so these assertions pin the in-tree set and require anything extra
+#: to actually be out-of-tree, rather than pinning a global total that any discovery breaks. Asserting
+#: equality made this test fail for a target package that had merely been loaded earlier in the run,
+#: which reports as "the taxonomy is wrong" when nothing about the taxonomy changed.
+#: gemmini, muon and saturn_vec are NOT here: each was evicted to its own target package and now
+#: registers from merlin._oot_backends.*, which is the eviction working as intended. They are still
+#: registered and still classified — the class assertions below check them by name — they are simply
+#: no longer implemented in this repo's core tree.
+IN_TREE = {"spike", "spike_model", "zephyr_model", "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+
+#: The evicted reference backends, by the class each must still report.
+EVICTED = {"gemmini": "NPU", "muon": "GPU", "saturn_vec": "CPU"}
+
+
+def _in_tree(names):
+    """Registered names implemented inside this repo (OOT packages load under merlin._oot_backends)."""
+    return {n for n in names if base.info(n).module.startswith("merlin.runtime.backends.")}
+
 
 def test_registry_taxonomy():
-    assert set(base.list_backends()) == {
-        "spike", "saturn_vec", "gemmini", "muon", "spike_model", "zephyr_model",
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    registered = set(base.list_backends())
+    assert IN_TREE <= registered, "an in-tree backend stopped registering"
+    assert _in_tree(registered) == IN_TREE, "an unexpected in-tree backend appeared"
     # class taxonomy: address backends by CPU/GPU/NPU, not by silicon instance
     assert base.class_of("gemmini") is TargetClass.NPU
     assert base.class_of("muon") is TargetClass.GPU
     assert base.class_of("spike") is TargetClass.CPU
     # NPU=gemmini, GPU=muon; everything else (RVV/host CPU kernels, whole-model, matmul-route) is CPU
-    assert base.backends_of_class(TargetClass.NPU) == ["gemmini"]
-    assert base.backends_of_class(TargetClass.GPU) == ["muon"]
-    assert set(base.backends_of_class(TargetClass.CPU)) == {
-        "spike", "saturn_vec", "spike_model", "zephyr_model",
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    # Class membership is asserted over the FULL registry, not the in-tree slice: an evicted backend
+    # still has a class, and asking only about in-tree names would silently assert nothing about it.
+    assert set(base.backends_of_class(TargetClass.NPU)) >= {"gemmini"}
+    assert set(base.backends_of_class(TargetClass.GPU)) >= {"muon"}
+    assert _in_tree(base.backends_of_class(TargetClass.CPU)) == {
+        "spike",
+        "spike_model",
+        "zephyr_model",
+        "xnnpack_board",
+        "openblas_board",
+        "ours_board",
+        "xnnpack_host",
+    }
+    for name, cls in EVICTED.items():
+        assert base.info(name).module.startswith("merlin._oot_backends."), (
+            f"{name} is registering from core again — the eviction regressed"
+        )
+        assert base.class_of(name).name == cls
 
 
 def test_backend_kinds():
     assert base.info("gemmini").kind is BackendKind.KERNEL
     assert base.info("zephyr_model").kind is BackendKind.WHOLE_MODEL
     assert base.info("xnnpack_board").kind is BackendKind.MATMUL_ROUTE
-    assert {b for b in base.list_backends()
-            if base.info(b).kind is BackendKind.MATMUL_ROUTE} == {
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    assert _in_tree(b for b in base.list_backends() if base.info(b).kind is BackendKind.MATMUL_ROUTE) == {
+        "xnnpack_board",
+        "openblas_board",
+        "ours_board",
+        "xnnpack_host",
+    }
 
 
 def test_get_backend_lazy_import():
@@ -36,16 +76,38 @@ def test_get_backend_lazy_import():
     assert hasattr(spike, "run_command_buffer") and hasattr(spike, "available")
 
 
+def test_execution_capabilities_are_declared_by_the_backend_with_evidence():
+    """A software execution capability is not a hardware trait and is never inferred from a target name."""
+    facts = base.execution_capability_facts("gemmini")
+    for name in ("whole_program_kernel_abi", "warm_single_counter_region_cycles"):
+        assert facts[name]["satisfied"] is True
+        assert facts[name]["tier"] == "backend_declared"
+        assert "gemmini" in facts[name]["evidence"]
+
+    # A loaded backend that does not declare the capability refutes it explicitly.  This is distinct
+    # from an unavailable backend, whose support cannot be established at all.
+    spike = base.execution_capability_facts("spike")
+    assert spike["whole_program_kernel_abi"]["satisfied"] is False
+    assert spike["whole_program_kernel_abi"]["tier"] == "backend_declared"
+    missing = base.execution_capability_facts("definitely_not_a_registered_backend")
+    assert missing["whole_program_kernel_abi"]["satisfied"] is None
+    assert missing["whole_program_kernel_abi"]["missing"]
+
+
 def test_parse_console_shared_protocol():
     # the OUT/METRIC/DONE parser shared by the backends (spike/gemmini delegate to it)
     outs, raw = base.parse_console("OUT Y0 2 2 1 2 3 4\nMETRIC cycles 100\nDONE\n")
     assert outs == {"Y0": [[1, 2], [3, 4]]} and raw == {"cycles": 100}
     # strip_warnings drops Verilator fragments; tolerant_metric skips malformed METRIC (gemmini flags)
-    outs, raw = base.parse_console("OUT Y0 1 1 7\n%Warning: junk\nMETRIC broken\nMETRIC cycles 5\nDONE\n",
-                                   strip_warnings=True, tolerant_metric=True)
+    outs, raw = base.parse_console(
+        "OUT Y0 1 1 7\n%Warning: junk\nMETRIC broken\nMETRIC cycles 5\nDONE\n",
+        strip_warnings=True,
+        tolerant_metric=True,
+    )
     assert outs == {"Y0": [[7]]} and raw == {"cycles": 5}
     # error_cls + DONE requirement + length check
     import pytest
+
     with pytest.raises(ValueError):
         base.parse_console("OUT Y0 1 1 5\n", error_cls=ValueError)  # no DONE
     with pytest.raises(ValueError):
@@ -56,7 +118,10 @@ def test_parse_console_shared_protocol():
 
 
 def test_spike_gemmini_delegate_to_parse_console():
-    from merlin.runtime.backends import gemmini, spike
+    from merlin.runtime.backends import base as _bk
+    from merlin.runtime.backends import spike
+
+    gemmini = _bk.get_backend("gemmini")
     t = "OUT Y0 1 2 3 4\nMETRIC cycles 9\nDONE\n"
     assert spike.parse_output(t) == ({"Y0": [[3, 4]]}, {"cycles": 9})
     assert gemmini.parse_output(t) == ({"Y0": [[3, 4]]}, {"cycles": 9})

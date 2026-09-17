@@ -61,3 +61,16 @@ def test_rewrite_skips_nonroutable_matmul():
     out, n = ob.rewrite_matmuls_to_openblas(t)
     assert n == 0
     assert "linalg.matmul" in out  # untouched
+
+
+def test_routing_coverage_retains_candidate_denominator():
+    t = (
+        'module {\n  func.func @forward(%a: tensor<4x4xf32>, %b: tensor<4x4xf32>, '
+        '%c: tensor<4x4xf32>, %d: tensor<4x4xbf16>, %e: tensor<4x4xbf16>, '
+        '%f: tensor<4x4xbf16>) {\n'
+        '    %0 = linalg.matmul ins(%a, %b : tensor<4x4xf32>, tensor<4x4xf32>) '
+        'outs(%c : tensor<4x4xf32>) -> tensor<4x4xf32>\n'
+        '    %1 = linalg.matmul ins(%d, %e : tensor<4x4xbf16>, tensor<4x4xbf16>) '
+        'outs(%f : tensor<4x4xbf16>) -> tensor<4x4xbf16>\n  }\n}\n')
+    assert ob.matmul_routing_coverage(t) == (2, 1)
+    assert ob.rewrite_matmuls_to_openblas(t)[1] == 1

@@ -6,21 +6,23 @@ this generate_driver. CERTIFIED bit-exact on HELD-OUT shapes it never saw (C4 mu
 C4e zero-padded, C5 reuse) against the three-way gate. Round 0, first attempt. Do not edit
 (regenerate via the agentic loop)."""
 
+
 def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
     from merlin.runtime.commandbuffer import materialize_inputs
 
-    leaves = materialize_inputs(cb)            # {name: Tensor}; list(t.data) is row-major
+    leaves = materialize_inputs(cb)  # {name: Tensor}; list(t.data) is row-major
     tensors = cb["tensors"]
     commands = cb["commands"]
 
     DIM = 16
+
     def ru(x):
         return ((x + DIM - 1) // DIM) * DIM
 
     # ---- parse command buffer -------------------------------------------------
     weight_name = None
-    acc_to_act = {}                  # MATMUL dst (acc handle) -> activation (lhs)
-    outputs = []                     # (act_name, out_name, relu_bool) in program order
+    acc_to_act = {}  # MATMUL dst (acc handle) -> activation (lhs)
+    outputs = []  # (act_name, out_name, relu_bool) in program order
     for cmd in commands:
         op = cmd["opcode"]
         operands = cmd.get("operands", {}) or {}
@@ -56,14 +58,11 @@ def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
     # weight (k x n) padded to (Kp x Np)
     wdata = list(leaves[weight_name].data)
     wpad = pad(wdata, K, N, Kp, Np)
-    decls.append(
-        "static const elem_t T_%s[%d] row_align(1) = {%s};"
-        % (weight_name, Kp * Np, fmt(wpad))
-    )
+    decls.append("static const elem_t T_%s[%d] row_align(1) = {%s};" % (weight_name, Kp * Np, fmt(wpad)))
 
     # activations (each m x k) padded to (Mp x Kp); emit each unique tensor once
     act_emitted = set()
-    act_info = {}    # name -> (m, Mp)
+    act_info = {}  # name -> (m, Mp)
     for act, out, relu in outputs:
         m, k = tensors[act]["shape"]
         Mp = ru(m)
@@ -71,22 +70,17 @@ def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
         if act not in act_emitted:
             adata = list(leaves[act].data)
             apad = pad(adata, m, k, Mp, Kp)
-            decls.append(
-                "static const elem_t T_%s[%d] row_align(1) = {%s};"
-                % (act, Mp * Kp, fmt(apad))
-            )
+            decls.append("static const elem_t T_%s[%d] row_align(1) = {%s};" % (act, Mp * Kp, fmt(apad)))
             act_emitted.add(act)
 
     # output accumulators (m x n) padded to (Mp x Np)
-    out_info = {}    # out_name -> (m, n)
+    out_info = {}  # out_name -> (m, n)
     out_emitted = set()
     for act, out, relu in outputs:
         m, Mp = act_info[act]
         out_info[out] = (m, N)
         if out not in out_emitted:
-            decls.append(
-                "static acc_t T_%s[%d] row_align_acc(1);" % (out, Mp * Np)
-            )
+            decls.append("static acc_t T_%s[%d] row_align_acc(1);" % (out, Mp * Np))
             out_emitted.add(out)
 
     # ---- main body: matmul calls + prints ------------------------------------
@@ -94,8 +88,7 @@ def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
     for act, out, relu in outputs:
         m, Mp = act_info[act]
         calls.append(
-            "  do_matmul(T_%s, T_%s, T_%s, %d, %d, %d, %d);"
-            % (act, weight_name, out, Mp, Kp, Np, 1 if relu else 0)
+            "  do_matmul(T_%s, T_%s, T_%s, %d, %d, %d, %d);" % (act, weight_name, out, Mp, Kp, Np, 1 if relu else 0)
         )
 
     prints = []
@@ -103,8 +96,7 @@ def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
         m, n = out_info[out]
         prints.append('  printf("OUT %s %d %d");' % (out, m, n))
         prints.append(
-            "  for (int i=0;i<%d;i++) for (int j=0;j<%d;j++) "
-            'printf(" %%d",(int)T_%s[i*%d+j]);' % (m, n, out, Np)
+            '  for (int i=0;i<%d;i++) for (int j=0;j<%d;j++) printf(" %%d",(int)T_%s[i*%d+j]);' % (m, n, out, Np)
         )
         prints.append('  printf("\\n");')
 

@@ -4,13 +4,17 @@ multicore RVV CPU, and the parsed outputs equal the independent reference.
 Codegen-only tests run everywhere; compile/run tests auto-skip without the chipyard
 toolchain (set MERLIN_CHIPYARD, default /path/to/chipyard).
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.xdsl_dialects import _common
 
-pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+pytestmark = [
+    pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed"),
+    pytest.mark.target("saturn"),
+]
 
 HARTS = 4
 
@@ -34,8 +38,7 @@ def test_saturn_pipeline_descends_and_simulates(saturn_lowered):
 
     for mod in saturn_lowered.modules():
         mod.verify()
-    names = {op.name for op in saturn_lowered.target_module.walk()} - {
-        "builtin.module", "func.func", "func.return"}
+    names = {op.name for op in saturn_lowered.target_module.walk()} - {"builtin.module", "func.func", "func.return"}
     assert names == {"saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release"}
     cb = saturn_lowered.command_buffer
     assert cb["target"] == "saturn"
@@ -49,9 +52,9 @@ def test_rvv_codegen_emits_real_driver(saturn_lowered):
 
     src = generate_driver(saturn_lowered.command_buffer, nharts=HARTS)
     assert "merlin_rvv_matmul_i8" in src
-    assert "row_lo(hart" in src                # multicore partitioning
-    assert src.count("barrier();") >= 8        # per-command sync
-    assert "static const int8_t T_W[" in src   # embedded real tensor data
+    assert "row_lo(hart" in src  # multicore partitioning
+    assert src.count("barrier();") >= 8  # per-command sync
+    assert "static const int8_t T_W[" in src  # embedded real tensor data
     assert "csrr %0, mcycle" in src
 
 
@@ -69,7 +72,7 @@ def test_full_pipeline_executes_on_spike_multicore(saturn_lowered, tmp_path):
     # And identical to the Python simulator (three-way agreement).
     assert res["outputs"] == simulate(cb)["outputs"]
     m = res["metrics"]
-    assert m["cycles"] > 0                      # real mcycle delta
+    assert m["cycles"] > 0  # real mcycle delta
     assert m["pack_count"] == 1
     assert m["resident_hits"] == 4
     assert m["accumulator_commits"] == 4
@@ -82,22 +85,28 @@ def test_spike_runs_full_epilogue_buffer(tmp_path):
     """bias_add + requant + relu + saturating i8 on spike == engine reference."""
     from merlin.runtime.backends import spike
 
-    tensors = {"W": {"shape": [8, 6], "dtype": "i8", "role": "weight"},
-               "bias": {"shape": [6], "dtype": "i32", "role": "bias"},
-               "A0": {"shape": [5, 8], "dtype": "i8", "role": "input"}}
-    cb = {"abi_version": "0.1", "target": "saturn", "backend": "baremetal",
-          "tensors": tensors, "params": {"requant_shift": 4},
-          "commands": [
-              {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-               "attributes": {"layout": "packed_rhs"}},
-              {"opcode": "MATMUL_RESIDENT",
-               "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
-              {"opcode": "COMMIT",
-               "operands": {"src": "acc0", "dst": "Y0", "bias": "bias"},
-               "attributes": {"epilogue": ["bias_add", "requant", "relu"],
-                              "requant_shift": 4, "output_dtype": "i8"}},
-              {"opcode": "EVICT", "operands": {"handle": "W_res"}},
-          ]}
+    tensors = {
+        "W": {"shape": [8, 6], "dtype": "i8", "role": "weight"},
+        "bias": {"shape": [6], "dtype": "i32", "role": "bias"},
+        "A0": {"shape": [5, 8], "dtype": "i8", "role": "input"},
+    }
+    cb = {
+        "abi_version": "0.1",
+        "target": "saturn",
+        "backend": "baremetal",
+        "tensors": tensors,
+        "params": {"requant_shift": 4},
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0", "bias": "bias"},
+                "attributes": {"epilogue": ["bias_add", "requant", "relu"], "requant_shift": 4, "output_dtype": "i8"},
+            },
+            {"opcode": "EVICT", "operands": {"handle": "W_res"}},
+        ],
+    }
     res = spike.run_command_buffer(cb, harts=2, workdir=tmp_path)
     assert res["correct"] is True
 
@@ -105,11 +114,10 @@ def test_spike_runs_full_epilogue_buffer(tmp_path):
 @pytest.mark.skipif(not _toolchain(), reason="chipyard toolchain/spike not available")
 def test_single_vs_multi_hart_outputs_identical(tmp_path):
     """Parallelization must never change results."""
-    from merlin.xdsl_dialects.lowering import lower_repeated_rhs_matmul
     from merlin.runtime.backends import spike
+    from merlin.xdsl_dialects.lowering import lower_repeated_rhs_matmul
 
-    cb = lower_repeated_rhs_matmul(reuse=2, m=8, k=12, n=10,
-                                   target="saturn").command_buffer
+    cb = lower_repeated_rhs_matmul(reuse=2, m=8, k=12, n=10, target="saturn").command_buffer
     one = spike.run_command_buffer(cb, harts=1, workdir=tmp_path / "p1")
     four = spike.run_command_buffer(cb, harts=4, workdir=tmp_path / "p4")
     assert one["correct"] and four["correct"]
@@ -127,9 +135,21 @@ def test_saturn_targetgen_plans_validate(tmp_path):
     assert "rvv" in tc["features"]
     assert tc["runtime"]["backends"] == ["simulator", "baremetal", "vcs", "zephyr"]
     dp = result.plans["dialect_plan"]
-    assert {r["from"]: r["to"] for r in dp["lowering"]} == {
-        "interface.resident_pack": "saturn.pack",
-        "interface.matmul": "saturn.matmul",
-        "interface.commit": "saturn.commit",
-        "interface.resident_evict": "saturn.release",
-    }
+    lowering = {r["from"]: r["to"] for r in dp["lowering"]}
+    # The RESIDENT-MATMUL spine must be present and must lower to this target's own ops. Asserted as a
+    # subset, not an equality: the plan is SYNTHESIZED from the target's declared capabilities, so it
+    # grows when the target gains one (vector_map / vector_reduce arrived this way) and an equality
+    # here turns every such gain into a failure that names nothing about the spine.
+    assert (
+        lowering.items()
+        >= {
+            "interface.resident_pack": "saturn.pack",
+            "interface.matmul": "saturn.matmul",
+            "interface.commit": "saturn.commit",
+            "interface.resident_evict": "saturn.release",
+        }.items()
+    )
+    # Every rule still has to stay inside this target's namespace -- a plan lowering to another
+    # target's dialect is the failure worth catching, and a subset check alone would not see it.
+    assert all(v.startswith("saturn.") for v in lowering.values()), lowering
+    assert all(k.startswith("interface.") for k in lowering), lowering

@@ -3,35 +3,38 @@ replacing. This is the gate that lets the triplicated ABI constants (rocc_decode
 / GemminiToLLVM.cpp) be retired in favor of the single manifest-sourced generated ISA module — no
 guessed encoding: the manifest is proven to reproduce today's numbers exactly.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.target_experiment import load_capability_manifest, derived_readout_bits
-from merlin.targetgen import rocc_decode as RD
+from merlin.targetgen.rocc import decode as RD
 from merlin.targetgen.rtl import circt_introspect as CI
 from merlin.targetgen.rtl import mlc_bridge as MB
+from merlin.targetgen.target_experiment import derived_readout_bits, load_capability_manifest
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def test_readout_bits_match_the_decoder_constants():
     enc = load_capability_manifest("gemmini").encoding
     rb = enc["readout_bits"]
-    assert rb["f1"] == RD.F1
-    assert rb["c_acc"] == RD.C_ACC
-    assert rb["acc_i8"] == RD.ACC_I8
-    assert rb["acc_accum"] == RD.ACC_ACCUM
-    assert rb["full_c_bit"] == RD.FULL_C_BIT
+    assert rb["f1"] == RD.isa_constants("gemmini")["F1"]
+    assert rb["c_acc"] == RD.isa_constants("gemmini")["C_ACC"]
+    assert rb["acc_i8"] == RD.isa_constants("gemmini")["ACC_I8"]
+    assert rb["acc_accum"] == RD.isa_constants("gemmini")["ACC_ACCUM"]
+    assert rb["full_c_bit"] == RD.isa_constants("gemmini")["FULL_C_BIT"]
 
 
 def test_semantic_class_map_matches_funct_class():
     enc = load_capability_manifest("gemmini").encoding
     # the manifest's RTL-code -> compiler-class map IS the decoder's _FUNCT_CLASS (the shared vocabulary)
-    assert enc["semantic_class"] == RD._FUNCT_CLASS
+    assert enc["semantic_class"] == RD.isa_constants("gemmini")["FUNCT_CLASS"]
 
 
 def test_config_subtype_matches():
     enc = load_capability_manifest("gemmini").encoding
-    assert enc["config_subtype"] == RD._CONFIG_SUBTYPE
+    assert enc["config_subtype"] == RD.isa_constants("gemmini")["CONFIG_SUBTYPE"]
 
 
 def test_dim_and_opcode_stay_in_the_fact_bundle_not_the_encoding_block():
@@ -42,8 +45,13 @@ def test_dim_and_opcode_stay_in_the_fact_bundle_not_the_encoding_block():
 
 
 # --- Step D: readout_bits are DERIVED (addr_len + flag-bit convention + 1.0f), not hand-declared hex ----
-_FROZEN_HEX = {"f1": 0x3F800000, "c_acc": 0xA0000000, "acc_i8": 0x80000000,
-               "acc_accum": 0x40000000, "full_c_bit": 0x20000000}
+_FROZEN_HEX = {
+    "f1": 0x3F800000,
+    "c_acc": 0xA0000000,
+    "acc_i8": 0x80000000,
+    "acc_accum": 0x40000000,
+    "full_c_bit": 0x20000000,
+}
 
 
 def test_readout_bits_are_not_declared_in_the_contract_yaml():
@@ -65,6 +73,7 @@ def test_readout_bit_roles_follow_the_addr_len_convention():
     assert rb["acc_i8"] == 1 << 31 and rb["acc_accum"] == 1 << 30 and rb["full_c_bit"] == 1 << 29
     assert rb["c_acc"] == rb["acc_i8"] | rb["full_c_bit"]
     import struct
+
     assert rb["f1"] == struct.unpack("<I", struct.pack("<f", 1.0))[0]
 
 

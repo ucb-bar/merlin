@@ -1,4 +1,5 @@
 """Tests for the merlin-compare unified comparison driver (HOST only, ingest cached data)."""
+
 from __future__ import annotations
 
 import json
@@ -15,14 +16,20 @@ from merlin.compare.structural import cca_for, decode_o
 
 # ---------------------------------------------------------------- spec parsing
 def test_spec_parses_config_kinds():
-    spec = Spec.parse({
-        "configs": ["baseline", "ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"],
-        "workloads": ["openvla", "gemm:64", "gemm:17x192x576"],
-    })
+    spec = Spec.parse(
+        {
+            "configs": ["baseline", "ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"],
+            "workloads": ["openvla", "gemm:64", "gemm:17x192x576"],
+        }
+    )
     kinds = {c.name: c.kind for c in spec.configs}
     assert kinds == {
-        "baseline": "baseline", "ours_wholemodel": "ours", "ours_wholemodel_vf": "ours",
-        "xnnpack": "kernel_backend", "openblas": "kernel_backend"}
+        "baseline": "baseline",
+        "ours_wholemodel": "ours",
+        "ours_wholemodel_vf": "ours",
+        "xnnpack": "kernel_backend",
+        "openblas": "kernel_backend",
+    }
     wl = {w.name: (w.kind, w.mnk) for w in spec.workloads}
     assert wl["openvla"] == ("model", None)
     assert wl["gemm:64"] == ("gemm", (64, 64, 64))
@@ -33,16 +40,14 @@ def test_spec_rejects_unknown_config_and_target():
     with pytest.raises(ValueError):
         Spec.parse({"configs": ["mystery_thing"], "workloads": ["openvla"]})
     with pytest.raises(ValueError):
-        Spec.parse({"configs": ["baseline"], "workloads": ["openvla"], "target": "k1",
-                    "metric": "nonsense"})
+        Spec.parse({"configs": ["baseline"], "workloads": ["openvla"], "target": "k1", "metric": "nonsense"})
     # spike is a declared seam, not implemented in v1 -> loud failure.
     with pytest.raises(ValueError):
         Spec.parse({"configs": ["baseline"], "workloads": ["openvla"], "target": "spike"})
 
 
 def test_spec_ours_features():
-    c = Config.parse({"name": "ours_wholemodel_vf",
-                      "compiler_features": ["accumulator_resident_wholemodel_vf"]})
+    c = Config.parse({"name": "ours_wholemodel_vf", "compiler_features": ["accumulator_resident_wholemodel_vf"]})
     assert c.kind == "ours"
     assert c.compiler_features == ("accumulator_resident_wholemodel_vf",)
 
@@ -50,9 +55,7 @@ def test_spec_ours_features():
 # ---------------------------------------------------------------- ingest (real cached data)
 def test_ingest_openvla_four_way_matches_known_numbers():
     # ours within ~55-63% of experts on openvla (the known result).
-    spec = Spec.parse({
-        "configs": ["baseline", "ours_wholemodel", "xnnpack", "openblas"],
-        "workloads": ["openvla"]})
+    spec = Spec.parse({"configs": ["baseline", "ours_wholemodel", "xnnpack", "openblas"], "workloads": ["openvla"]})
     ms = measure_all(spec)
     base = ms[("baseline", "openvla")]
     ours = ms[("ours_wholemodel", "openvla")]
@@ -61,7 +64,7 @@ def test_ingest_openvla_four_way_matches_known_numbers():
     # baseline ~5.86s, ours ~1.19s, xnnpack ~0.65s
     assert 5.0e9 < base.value < 6.5e9
     pct_of_xnn = 100 * xnn.value / ours.value
-    assert 50 < pct_of_xnn < 70   # ours ~55% of xnnpack speed
+    assert 50 < pct_of_xnn < 70  # ours ~55% of xnnpack speed
 
 
 def test_ingest_gemm_shape_from_jsonl():
@@ -89,7 +92,7 @@ def test_cca_decode_for_configs():
     xnn = cca_for(Config.parse("xnnpack"), Workload.parse("openvla"))
     ours = cca_for(Config.parse("ours_wholemodel"), Workload.parse("openvla"))
     base = cca_for(Config.parse("baseline"), Workload.parse("openvla"))
-    assert base is None   # baseline has no vector matmul decode (honest None)
+    assert base is None  # baseline has no vector matmul decode (honest None)
     assert xnn is not None and ours is not None
     assert xnn.compute.contraction_form == "fused_fma"
     # the .vf-vs-.vv structural distinction is carried in provenance.
@@ -105,8 +108,7 @@ def test_decode_o_seam_callable():
 
 # ---------------------------------------------------------------- attribution
 def test_attribution_flags_vf_vs_vv_and_routes_action():
-    spec = Spec.parse({
-        "configs": ["ours_wholemodel_vf", "xnnpack"], "workloads": ["openvla"]})
+    spec = Spec.parse({"configs": ["ours_wholemodel_vf", "xnnpack"], "workloads": ["openvla"]})
     ms = measure_all(spec)
     ccas = {c.name: cca_for(c, Workload.parse("openvla")) for c in spec.configs}
     wcc = {(c.name, "openvla"): ccas[c.name] for c in spec.configs}
@@ -126,9 +128,9 @@ def test_attribution_flags_vf_vs_vv_and_routes_action():
 
 
 def test_gap_driver_axes_nonempty_when_trailing():
-    spec = Spec.parse({
-        "configs": ["ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"],
-        "workloads": ["openvla"]})
+    spec = Spec.parse(
+        {"configs": ["ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"], "workloads": ["openvla"]}
+    )
     ms = measure_all(spec)
     ccas = {c.name: cca_for(c, Workload.parse("openvla")) for c in spec.configs}
     wcc = {(c.name, "openvla"): ccas[c.name] for c in spec.configs}
@@ -139,10 +141,13 @@ def test_gap_driver_axes_nonempty_when_trailing():
 
 # ---------------------------------------------------------------- full driver + manifest
 def test_full_run_artifact_and_deterministic_manifest(tmp_path: Path):
-    spec = Spec.parse({
-        "label": "test_4way",
-        "configs": ["baseline", "ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"],
-        "workloads": ["openvla", "gemm:64"]})
+    spec = Spec.parse(
+        {
+            "label": "test_4way",
+            "configs": ["baseline", "ours_wholemodel", "ours_wholemodel_vf", "xnnpack", "openblas"],
+            "workloads": ["openvla", "gemm:64"],
+        }
+    )
     a = driver.run(spec, out_root=tmp_path / "a", ts="FIXED")
     b = driver.run(spec, out_root=tmp_path / "b", ts="FIXED")
     assert (a / "compare.md").is_file()
@@ -152,6 +157,7 @@ def test_full_run_artifact_and_deterministic_manifest(tmp_path: Path):
     assert (a / "compare.md").read_text() == (b / "compare.md").read_text()
     # manifest records spec + provenance.
     import yaml
+
     man = yaml.safe_load((a / "manifest.yaml").read_text())
     assert man["tool"] == "merlin-compare"
     assert man["spec"]["label"] == "test_4way"
@@ -168,7 +174,8 @@ def test_run_board_is_live_and_board_gated(monkeypatch):
     # silent/fabricated run. (k1.K1_HOST is import-frozen, so force unavailability at k1.available.)
     from merlin.compare.empirical import measure_all
     from merlin.compare.spec import Spec
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
+
     monkeypatch.setattr(k1, "available", lambda: False)
     # per-cell measure() just ingests now (no NotImplementedError stub)
     m = measure(Config.parse("xnnpack"), Workload.parse("openvla"), "k1", run=True)
@@ -184,26 +191,37 @@ def test_align_regions_joins_on_provenance_and_flags_asymmetry():
     from merlin.compare.attribution import align_regions
 
     ours = [
-        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
-                      role="repeated_head", wall_ns=100, cos=1.0),
+        RegionProfile(
+            name="attention",
+            region_id="matmul_3",
+            fqn="model.layers.0.self_attn",
+            role="repeated_head",
+            wall_ns=100,
+            cos=1.0,
+        ),
         # ET leaves norm scalar / does not surface it as a region -> present only on our side.
-        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm",
-                      wall_ns=10),
+        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm", wall_ns=10),
     ]
     expert = [
-        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
-                      role="repeated_head", wall_ns=80, cos=0.9999),
+        RegionProfile(
+            name="attention",
+            region_id="matmul_3",
+            fqn="model.layers.0.self_attn",
+            role="repeated_head",
+            wall_ns=80,
+            cos=0.9999,
+        ),
     ]
     rows = {r.key: r for r in align_regions(ours, expert)}
 
     attn = rows["matmul_3"]
     assert attn.presence == "both"
-    assert attn.wall_ratio == 100 / 80              # apples-to-apples: Merlin slower on THIS layer
+    assert attn.wall_ratio == 100 / 80  # apples-to-apples: Merlin slower on THIS layer
     assert attn.ours_cos == 1.0 and attn.expert_cos == 0.9999
     assert attn.role == "repeated_head"
 
     norm = rows["layer_norm_0"]
-    assert norm.presence == "merlin_only"           # the heterogeneity a whole-model number hides
+    assert norm.presence == "merlin_only"  # the heterogeneity a whole-model number hides
     assert "only" in norm.note
 
 
@@ -213,16 +231,29 @@ def test_region_alignment_md_renders_matrix_and_flags_asymmetry():
     from merlin.compare.report import region_alignment_md
 
     ours = [
-        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
-                      role="repeated_head", wall_ns=100_000, cos=1.0),
-        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm",
-                      wall_ns=10_000),
+        RegionProfile(
+            name="attention",
+            region_id="matmul_3",
+            fqn="model.layers.0.self_attn",
+            role="repeated_head",
+            wall_ns=100_000,
+            cos=1.0,
+        ),
+        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm", wall_ns=10_000),
     ]
-    expert = [RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
-                            role="repeated_head", wall_ns=80_000, cos=0.9999)]
+    expert = [
+        RegionProfile(
+            name="attention",
+            region_id="matmul_3",
+            fqn="model.layers.0.self_attn",
+            role="repeated_head",
+            wall_ns=80_000,
+            cos=0.9999,
+        )
+    ]
     md = region_alignment_md(align_regions(ours, expert))
-    assert "region | role |" in md                                  # the matrix header
-    assert "model.layers.0.self_attn" in md and "1.25×" in md       # aligned attention row + ratio
-    assert "model.layers.0.input_layernorm" in md                   # the norm layer
-    assert "merlin_only" in md and "⚠️" in md                        # the one-sided-region flag
+    assert "region | role |" in md  # the matrix header
+    assert "model.layers.0.self_attn" in md and "1.25×" in md  # aligned attention row + ratio
+    assert "model.layers.0.input_layernorm" in md  # the norm layer
+    assert "merlin_only" in md and "⚠️" in md  # the one-sided-region flag
     assert region_alignment_md([]).startswith("_No aligned regions")

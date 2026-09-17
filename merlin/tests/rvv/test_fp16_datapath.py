@@ -4,6 +4,7 @@ These tests are host-only (no board, no cross-toolchain): they pin the IR rewrit
 NUMERICAL CONTRACT. The emitted-instruction evidence (effective vtype e16, vfwmul.vf) is
 recorded in the commit message / report, since it needs the RISC-V toolchain to reproduce.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,7 +14,8 @@ from merlin.common.paths import repo_root  # noqa: F401  (layout convention: no 
 
 
 def _bundle(tmp_path, M=64, N=64, K=64):
-    from merlin.rvvgen.workloads import gen_matmul_f16
+    from merlin.mining.workloads import gen_matmul_f16
+
     return gen_matmul_f16(tmp_path, M=M, N=N, K=K)
 
 
@@ -21,7 +23,7 @@ def test_gen_matmul_f16_emits_an_f16_matmul_bundle(tmp_path):
     b = _bundle(tmp_path)
     mlir = (b / "model.mlir").read_text()
     assert "linalg.matmul" in mlir
-    assert "xf16>" in mlir and "xf32>" not in mlir      # authored in f16 end-to-end
+    assert "xf16>" in mlir and "xf32>" not in mlir  # authored in f16 end-to-end
     d = np.load(b / "inputs.npz")
     assert d["in0"].dtype == np.float16 and d["in1"].dtype == np.float16
 
@@ -64,9 +66,10 @@ def test_scalarize_gate_is_element_type_parameterized_not_f32_only():
     """The v3 micro-kernel A-scalarization (which produces the `.vf` MAC form) must admit the
     16-bit-float element types, or fp16 silently falls off the shared micro-kernel path."""
     from merlin.llvmlower.accum_microkernel import rewrite_source
+
     src = rewrite_source()
-    assert 'for cand in ("f32", "f16", "bf16")' in src
-    assert 'str(owner.results[0].type) != elem' in src
+    assert 'for cand in ("f32", "f16", "bf16", "i8", "i16", "i32")' in src
+    assert "str(owner.results[0].type) != elem" in src
 
 
 def test_fused_schedules_fold_arith_extension_into_the_contract():
@@ -79,6 +82,7 @@ def test_fused_schedules_fold_arith_extension_into_the_contract():
     import inspect
 
     import merlin.llvmlower.impr_features as I
+
     src = inspect.getsource(I)
     # fold_arith_extension appears once per reduction_to_contract-rebuild block (there are several).
     n_contract = src.count("transform.apply_patterns.vector.transfer_permutation_patterns")
@@ -92,6 +96,7 @@ def test_sink_extf_rewrite_is_wired_and_reaches_the_widening_vf_form():
     duplicate that extf across the MR lane-extracts. The marker rewrite must therefore sink the extf
     below the scalar extract itself, and the runner must call it after scalarize_a."""
     from merlin.llvmlower.accum_microkernel import rewrite_source, run_source
+
     assert "def sink_extf_through_extract(" in rewrite_source()
     assert "sink_extf_through_extract(module, ctx)" in run_source()
 
@@ -103,13 +108,14 @@ def test_c_runtime_embeds_f16_inputs_as_raw_bitpatterns_not_float_literals():
     import numpy as np
 
     from merlin.llvmlower.c_runtime import _embed_array
+
     a = np.array([0.125732, -0.132080, 0.640625, 1.3037], dtype=np.float16)
     emitted = [int(t) for t in _embed_array(a, "f16").split(",")]
     round_trip = np.array(emitted, dtype=np.uint16).view(np.float16)
     assert np.array_equal(round_trip, a), (round_trip, a)
     # the retired behavior emitted decimal floats; every sub-1.0 value would have truncated to 0.
-    assert all(t == int(t) for t in emitted)               # integer literals only
-    assert emitted[0] != 0                                   # 0.1257 -> 0x2c07, not 0
+    assert all(t == int(t) for t in emitted)  # integer literals only
+    assert emitted[0] != 0  # 0.1257 -> 0x2c07, not 0
 
 
 # ---------------------------------------------------------------------------------------
@@ -117,15 +123,16 @@ def test_c_runtime_embeds_f16_inputs_as_raw_bitpatterns_not_float_literals():
 # OBVIOUS statistical gate is not sufficient, which is the point of these two tests.
 # ---------------------------------------------------------------------------------------
 
+
 def _variants(M=128, N=128, K=128, seed=0):
     r = np.random.default_rng(seed)
     a = r.standard_normal((M, K)).astype(np.float16)
     b = r.standard_normal((K, N)).astype(np.float16)
     exact = a.astype(np.float64) @ b.astype(np.float64)
     good = (a.astype(np.float32) @ b.astype(np.float32)).astype(np.float16).astype(np.float64)
-    bad = np.zeros((M, N), np.float16)          # a REAL f16-accumulating kernel
+    bad = np.zeros((M, N), np.float16)  # a REAL f16-accumulating kernel
     for k in range(K):
-        bad += (a[:, k:k + 1] * b[k:k + 1, :]).astype(np.float16)
+        bad += (a[:, k : k + 1] * b[k : k + 1, :]).astype(np.float16)
     return exact, good, bad.astype(np.float64)
 
 
@@ -147,8 +154,8 @@ def test_aggregate_only_gate_would_ACCEPT_an_f16_accumulating_kernel():
     """
     exact, _good, bad = _variants()
     cos, rel_l2, max_rel = _metrics(bad, exact)
-    assert cos > 0.99 and rel_l2 < 5e-2          # the int8-tier gate is satisfied ...
-    assert max_rel > 1.0                          # ... yet an element is off by >100%
+    assert cos > 0.99 and rel_l2 < 5e-2  # the int8-tier gate is satisfied ...
+    assert max_rel > 1.0  # ... yet an element is off by >100%
 
 
 def test_fp16_gate_cos_relL2_and_MAXREL_separates_good_from_bad():

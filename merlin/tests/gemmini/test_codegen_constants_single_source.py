@@ -6,10 +6,13 @@ import-sourcing + spike bit-exact re-verification is a deliberate follow-on). Th
 that the emitter's constants EQUAL the manifest source, so the two can never silently drift: any change to
 the ISA encoding must go through the manifest, and this fails if the emitter is edited out of step.
 """
+
 from __future__ import annotations
 
-from merlin.runtime.backends import gemmini_codegen_mlir as gm
+from merlin.runtime.backends import base as _bk
 from merlin.targetgen.target_experiment import load_capability_manifest
+
+gm = _bk.get_backend("gemmini").gemmini_codegen_mlir
 
 
 def _enc():
@@ -39,5 +42,16 @@ def test_dim_matches_the_extracted_mesh_fact():
     # DIM is a CIRCT-extracted FACT (arrays[mesh]), not a manifest field — the emitter and the decoder
     # both read it from the fact bundle, so it can never drift from the extracted mesh geometry.
     from merlin.targetgen.rtl.facts import load_facts
+
     mesh = next(a for a in load_facts("gemmini")["facts"]["arrays"] if a["name"] == "mesh")
     assert gm.DIM == mesh["rows"]
+
+
+def test_scratchpad_rows_match_the_extracted_memory_fact():
+    # LocalAddr indexes the complete banked scratchpad row range. Pin the emitter to the generic
+    # address-space derivation's total rows, not a single bank's CIRCT-extracted depth.
+    from merlin.targetgen.address_space import derive_address_space
+
+    sp = derive_address_space("gemmini").store("scratchpad")
+    assert sp is not None and sp.total_rows is not None
+    assert gm.SCRATCHPAD_ROWS == sp.total_rows

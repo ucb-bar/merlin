@@ -45,6 +45,76 @@ def test_scalar_fallback_detection():
     assert rep.scalar_fallback_symbols() == ["gemm_scalar"]
 
 
+# Both objdump flavors, captured verbatim from a live spike ELF (the saturn vec-igemm benchmark
+# built and disassembled from this tree). They differ in the prefix spacing, which is precisely why
+# the line reader must not be a pattern tuned to one of them: GNU pads the address with spaces and
+# separates it from the bytes column with a TAB; LLVM starts at column 0 and uses a space.
+_GNU_DISASM = (
+    "\n0000000080002000 <imatmul_vec_4x4>:\n"
+    "    80002000:\t5e003057          \tvmv.v.i\tv0,0\n"
+    "    80002004:\t00b50533          \tadd\ta0,a0,a1\n"
+    "    80002008:\t0005b787          \tfld\tfa5,0(a1)\n"
+    "    8000200c:\t00008067          \tret\n"
+)
+_LLVM_DISASM = (
+    "\n0000000080002000 <imatmul_vec_4x4>:\n"
+    "80002000: 5e003057     \tvmv.v.i\tv0, 0x0\n"
+    "80002004: 00b50533     \tadd\ta0, a0, a1\n"
+    "80002008: 0005b787     \tfld\tfa5, 0x0(a1)\n"
+    "8000200c: 00008067     \tret\n"
+)
+
+
+def test_classify_disasm_reads_both_objdump_flavors_identically():
+    """GNU and LLVM objdump lay the prefix out differently; the counts must not depend on that."""
+    gnu = rvv_audit.classify_disasm(_GNU_DISASM)
+    llvm = rvv_audit.classify_disasm(_LLVM_DISASM)
+    for rep in (gnu, llvm):
+        sym = rep.by_symbol["imatmul_vec_4x4"]
+        assert (sym.vector, sym.scalar_compute, sym.total) == (1, 2, 4)   # vmv | add,fld | +ret
+    assert gnu.coverage_overall == llvm.coverage_overall == pytest.approx(1 / 3)
+
+
+def test_insn_line_reader_matches_the_real_line_shapes():
+    m = rvv_audit._insn_mnemonic
+    assert m("    80002000:\t5e003057          \tvmv.v.i\tv0,0") == "vmv.v.i"
+    assert m("80002000: 5e003057     \tvmv.v.i\tv0, 0x0") == "vmv.v.i"
+    assert m("   1013c:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma") == "vsetvli"
+    # not instruction lines
+    assert m("Disassembly of section .text.init:") is None
+    assert m("0000000080000000 <_start>:") is None
+    assert m("") is None
+    # --no-show-raw-insn has no bytes column: refused (fail closed), exactly as before. The caller
+    # then sees zero instructions and coverage_overall None -- never a fabricated 0.0.
+    assert m("    80000000:\tli\tra,0") is None
+    assert rvv_audit.classify_disasm("0000000080000000 <s>:\n    80000000:\tli\tra,0\n"
+                                     ).coverage_overall is None
+
+
+def test_symbol_header_reader():
+    s = rvv_audit._symbol_name
+    assert s("0000000080000000 <_start>:") == "_start"
+    assert s("0000000000010120 <xnn_f32_gemm_ukernel_1x4v__rvv_u1v>:") \
+        == "xnn_f32_gemm_ukernel_1x4v__rvv_u1v"
+    assert s("  0000000080000000 <_start>:") is None      # the old pattern anchored at column 0
+    assert s("0000000080000000 <>:") is None              # `[^>]+` needed a non-empty name
+    assert s("0000000080000000 <_start>") is None         # the ':' was required
+
+
+def test_mnemonic_classes():
+    """'v' + a letter is RVV; the scalar-compute prefixes are the coverage denominator."""
+    for v in ("vsetvli", "vle32.v", "vfmacc.vv", "vmv.v.i", "vredsum.vs"):
+        assert rvv_audit._is_rvv(v) and not rvv_audit._is_scalar_compute(v)
+    for sc in ("add", "addiw", "mulw", "flw", "fsd", "sd", "lbu", "mv", "sext.w", "not"):
+        assert rvv_audit._is_scalar_compute(sc) and not rvv_audit._is_rvv(sc)
+    for neither in ("ret", "j", "beq", "jalr", "nop", "auipc", "csrr", "ecall"):
+        assert not rvv_audit._is_rvv(neither) and not rvv_audit._is_scalar_compute(neither)
+    # Quirk carried over deliberately: the `f[a-z]` alternative always swept `fence`/`fence.i` into
+    # scalar-compute, despite the comment saying fences are excluded. Preserved so coverage numbers
+    # stay comparable with every previously recorded audit; changing it is a separate decision.
+    assert rvv_audit._is_scalar_compute("fence") and rvv_audit._is_scalar_compute("fence.i")
+
+
 def test_enforce_rvv_march():
     assert rvv_audit.enforce_rvv_march("rv64gcv") == "rv64gcv"
     assert rvv_audit.enforce_rvv_march("-mattr=+v") == "-mattr=+v"   # +v style accepted
@@ -340,3 +410,113 @@ def test_dedupe_latest_executed_beats_absence():
         cos=0.5, rel=1.0, cos_threshold=0.9999, rel_threshold=1e-3, timestamp="20260707T020000Z")
     kept2 = aggregate.dedupe_latest([early_pass, later_fail])
     assert len(kept2) == 1 and kept2[0].ran and not kept2[0].passed
+
+
+# ---------------------------------------------------------------------------------------
+# The FOUR-WAY instruction mix. The "scalar-int / scalar-float / vector / vsetvli" split has
+# been cited from this repo with NO committed producer -- the method survived only as a
+# project note (spike -g, then map PCs with llvm-objdump) -- so any such figure was
+# unreproducible. `classify_disasm` already folded all scalar FP into scalar_compute, which is
+# correct for the coverage denominator and useless for attribution: "13.3% of retired instrs
+# are RVV and 17.8% are scalar f32" cannot be derived from "31% scalar".
+# ---------------------------------------------------------------------------------------
+
+_MIX_DUMP = """0000000000000000 <forward>:
+   0:\t5e003057     \tvsetvli\ta0, zero, e32, m2, ta, ma
+   4:\t5e003057     \tvle32.v\tv0, (a1)
+   8:\t5e003057     \tvfmacc.vf\tv0, fa0, v8
+   c:\t00000000     \tfadd.s\tfa0, fa1, fa2
+  10:\t00000000     \tfld\tfa1, 0(a2)
+  14:\t00000000     \taddi\ta0, a0, 4
+  18:\t00000000     \tld\ta1, 0(a2)
+  1c:\t00000000     \tbne\ta0, a3, 0
+
+0000000000000100 <__libc_thing>:
+ 100:\t00000000     \tfadd.s\tfa0, fa1, fa2
+"""
+
+
+def test_the_four_way_mix_is_a_partition_of_the_existing_buckets():
+    """The new fields must be SUBSETS of the old ones, never a reinterpretation: any drift makes the
+    two readings of the same binary disagree."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    assert r.scalar_int + r.scalar_float == r.scalar_compute
+    assert r.vsetvl <= r.vector
+    for sc in r.by_symbol.values():
+        assert sc.scalar_int + sc.scalar_float == sc.scalar_compute, sc.symbol
+        assert sc.vsetvl <= sc.vector, sc.symbol
+
+
+def test_scalar_float_is_separated_from_scalar_int():
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    fwd = classify_disasm(_MIX_DUMP).by_symbol["forward"]
+    assert fwd.scalar_float == 2, "fadd.s and fld are both scalar FP"
+    assert fwd.scalar_int == 2, "addi and ld"
+    assert fwd.vector == 3 and fwd.vsetvl == 1
+
+
+def test_the_mix_denominator_is_every_instruction_not_only_compute():
+    """`coverage_overall` answers "of the compute, how much is vector" and uses a compute-only
+    denominator. A "% of retired instructions" figure against that denominator would inflate every
+    share, which is precisely the confusion an uncommitted producer invites."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    m = r.instruction_mix()
+    assert m["total"] == r.total
+    assert m["total"] > r.vector + r.scalar_compute, "the dump has control flow, so they must differ"
+    assert abs(sum(m[k] for k in ("vector_frac", "scalar_int_frac", "scalar_float_frac",
+                                  "other_frac")) - 1.0) < 1e-9
+    # vsetvl is a SUBSET of vector, so it must not be in the partition above
+    assert m["vsetvl"] <= m["vector"]
+    assert m["vector_frac"] != r.coverage_overall, "the two denominators must not be conflated"
+
+
+def test_the_mix_can_scope_out_libc_which_otherwise_drowns_the_signal():
+    """On a LINKED ELF libc's internals are real instructions but not the model's -- the same reason
+    escape_audit scopes to the functions the model object defines."""
+    from merlin.baselines.rvv_audit import classify_disasm
+
+    r = classify_disasm(_MIX_DUMP)
+    assert r.instruction_mix()["scalar_float"] == 3            # includes __libc_thing's fadd.s
+    assert r.instruction_mix(ignore=("__libc",))["scalar_float"] == 2
+
+
+def test_every_framework_runner_records_which_bundle_it_measured():
+    """The comparand guard can only refuse a mismatch if BOTH sides record an identity. A runner that
+    does not is not "unguarded" -- it makes every comparison against it permanently UNKNOWN, which is
+    how the rdt2 ratio got published in the first place. This is a completeness gate over the declared
+    framework list, so a newly added framework fails here rather than silently producing
+    un-comparable rows."""
+    import importlib
+
+    from merlin.baselines.contract import FRAMEWORKS
+
+    missing = []
+    for fw in FRAMEWORKS:
+        mod = importlib.import_module(f"merlin.baselines.{fw}")
+        src = (mod.__file__ and __import__("pathlib").Path(mod.__file__).read_text()) or ""
+        if "res.bundle_id" not in src:
+            missing.append(fw)
+    assert not missing, (
+        f"framework runner(s) that never record bundle_id: {missing} — every comparison against them "
+        f"is permanently UNKNOWN to compare.executorch_column.bundle_mismatch_reason")
+
+
+def test_the_executorch_wall_is_per_execution_not_a_multi_run_total():
+    """executor_runner logs "Model executed successfully N time(s) in X ms" with X the TOTAL across N.
+    Recording that raw against a per-inference ours-side number is a factor-of-N error, and it was
+    made: an ours per-iteration wall over an ET 3-execution total read as ours being 2.11x FASTER when
+    ours is 1.42x slower. The field must mean one thing everywhere."""
+    import inspect
+
+    from merlin.baselines import executorch as et
+
+    src = inspect.getsource(et._do_board)
+    assert "res.e2e_wall_ns = int(br.wall_ns / max(1, num_executions))" in src
+    assert "PER-EXECUTION" in src
+    # and a >1 run must SAY so in the record, so a reader can reconstruct the raw value
+    assert "e2e_wall_ns is PER-EXECUTION" in src

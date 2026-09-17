@@ -4,6 +4,7 @@ Toolchain-independent tests always run (bogus-path -> None, parse a captured obj
 string, the dossier hook). The real saturn-build tests are skipped when the riscv
 compiler/objdump are absent (CI without the chipyard toolchain).
 """
+
 import pytest
 
 from merlin.kernels import build_asm as B
@@ -11,8 +12,21 @@ from merlin.kernels.compare import RvvFingerprint
 from merlin.kernels.types import NormalizedKernel
 
 _HAVE_TOOLCHAIN = B.asm_toolchain_available()
-_needs_tc = pytest.mark.skipif(not _HAVE_TOOLCHAIN,
-                               reason="riscv gcc/objdump unavailable (set MERLIN_CHIPYARD)")
+# The CORPUS is a second, independent precondition. Guarding only on the toolchain made an ABSENT
+# corpus report as "vec-dotprod should compile standalone with the riscv toolchain" -- a failure
+# blaming the compiler for a checkout that is not on disk. `benchmark_asm` returns None for
+# both "missing bench" and "did not compile", so the test cannot tell them apart; the guard has to.
+_CORPUS = "saturn"  # the standalone-benchmark corpus the vec-* benches below belong to
+_SATURN_BENCHMARKS = B.benchmarks_dir(_CORPUS)
+_HAVE_SATURN = _SATURN_BENCHMARKS is not None and _SATURN_BENCHMARKS.is_dir()
+_needs_tc = pytest.mark.skipif(
+    not (_HAVE_TOOLCHAIN and _HAVE_SATURN),
+    reason=(
+        "riscv gcc/objdump unavailable (set MERLIN_CHIPYARD)"
+        if not _HAVE_TOOLCHAIN
+        else f"saturn-vectors corpus absent at {B.corpus_root(_CORPUS)} (set MERLIN_SATURN_REPO)"
+    ),
+)
 
 # A small, real objdump -d excerpt (column layout: addr<TAB>hex<TAB>mnemonic ...). This is
 # the contract build_kernel_asm emits and RvvFingerprint.from_objdump consumes — no toolchain.
@@ -40,7 +54,7 @@ def test_bogus_path_returns_none():
 
 def test_vopacc_excluded():
     # the mining contract excludes VOPACC benches by name (never even attempts a build)
-    assert B.saturn_benchmark_asm("vec-VOPACC-whatever") is None
+    assert B.benchmark_asm("vec-VOPACC-whatever", _CORPUS) is None
 
 
 def test_parse_captured_objdump_histogram():
@@ -49,15 +63,15 @@ def test_parse_captured_objdump_histogram():
     # canonical-op counts (compare.py canonicalizes vle32.v -> vle32, vsetvli -> vsetvl)
     assert fp.histogram.get("vle32") == 2
     assert fp.histogram.get("vmacc") == 1
-    assert fp.decisions["vl_strategy"] == "vsetvl_loop"   # vsetvli => register-VL loop
-    assert fp.decisions["fma_form"] == "vv"               # vmacc.vv
+    assert fp.decisions["vl_strategy"] == "vsetvl_loop"  # vsetvli => register-VL loop
+    assert fp.decisions["fma_form"] == "vv"  # vmacc.vv
 
 
 def test_top_mnemonics_on_captured():
     top = dict(B.top_mnemonics(_CAPTURED_OBJDUMP))
     assert top.get("vle32.v") == 2
     assert "vredsum.vs" in top
-    assert all(m.startswith("v") for m in top)            # only vector mnemonics counted
+    assert all(m.startswith("v") for m in top)  # only vector mnemonics counted
 
 
 def test_bench_name_extracted_from_path():
@@ -73,7 +87,7 @@ def test_dossier_asm_routes_unknown_source_to_none():
 # --------------------------------------------------------------------------- toolchain-gated
 @_needs_tc
 def test_saturn_dotprod_builds_rvv():
-    asm = B.saturn_benchmark_asm("vec-dotprod")
+    asm = B.benchmark_asm("vec-dotprod", _CORPUS)
     assert asm is not None, "vec-dotprod should compile standalone with the riscv toolchain"
     mnem = {m for m, _ in B.top_mnemonics(asm, 30)}
     # the disassembly must actually contain RVV instructions, not scalar-only code
@@ -87,7 +101,7 @@ def test_saturn_dotprod_builds_rvv():
 
 @_needs_tc
 def test_saturn_igemm_builds_rvv():
-    asm = B.saturn_benchmark_asm("vec-igemm")
+    asm = B.benchmark_asm("vec-igemm", _CORPUS)
     assert asm is not None
     assert any(m.startswith("vsetvl") for m, _ in B.top_mnemonics(asm, 30))
 
@@ -95,12 +109,16 @@ def test_saturn_igemm_builds_rvv():
 @_needs_tc
 def test_dossier_with_asm_sets_has_asm():
     from pathlib import Path
-    tu = B.saturn_root() / "benchmarks/vec-dotprod/dotproduct.c"
+
+    tu = _SATURN_BENCHMARKS / "vec-dotprod/dotproduct.c"
     nk = NormalizedKernel(
-        source="saturn", target="rvv",
+        source="saturn",
+        target="rvv",
         path="saturn-vectors/benchmarks/vec-dotprod/dotproduct.c",
-        op="dotprod", dtype="i32",
-        raw_text=tu.read_text() if tu.is_file() else "")
+        op="dotprod",
+        dtype="i32",
+        raw_text=tu.read_text() if tu.is_file() else "",
+    )
     d = B.build_dossier_with_asm(nk)
     assert d.to_dict()["has_asm"] is True
 
@@ -108,8 +126,8 @@ def test_dossier_with_asm_sets_has_asm():
 @_needs_tc
 def test_xnnpack_best_effort_returns_none_gracefully():
     import glob
-    files = glob.glob(str(B.repo_root() / "tmp/kernels/XNNPACK/src/**/*-rvv.c"),
-                      recursive=True)
+
+    files = glob.glob(str(B.repo_root() / "tmp/kernels/XNNPACK/src/**/*-rvv.c"), recursive=True)
     if not files:
         pytest.skip("XNNPACK corpus not present")
     # a single-TU compile needs framework headers/params structs -> expected None, no exception

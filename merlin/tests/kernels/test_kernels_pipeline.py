@@ -1,7 +1,8 @@
 """End-to-end on fixtures: ingest -> record -> aggregate -> promote -> report."""
-import os
-from merlin.common.paths import merlin_dir
 
+import os
+
+from merlin.common.paths import merlin_dir
 from merlin.kernels import policy, report
 from merlin.kernels.classify import classify_motifs
 from merlin.kernels.emit.kernel_record import emit_kernel_record
@@ -11,8 +12,7 @@ DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 
 
 def _rec(name, source, target, op, dtype):
-    nk = list(ingest_generic(os.path.join(DATA, name), source=source, target=target,
-                             op=op, dtype=dtype))[0]
+    nk = list(ingest_generic(os.path.join(DATA, name), source=source, target=target, op=op, dtype=dtype))[0]
     return emit_kernel_record(nk)
 
 

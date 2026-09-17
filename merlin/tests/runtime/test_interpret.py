@@ -3,6 +3,7 @@
 Uses numpy as the injected kernel — the mechanism (DAG walk, boundary-input binding, result
 collection) is what is under test, independent of the real compiled-kernel backend.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -19,35 +20,47 @@ def _matmul_kernel(symbol, ins):
 def _chain_program() -> DispatchProgram:
     """x[2,3] @ w0[3,4] -> h[2,4] @ w1[4,5] -> y[2,5]; two provenanced dispatch nodes."""
     buffers = {
-        "b0": Buffer(id="b0", shape=[2, 3], dtype="f32", kind="arg", arg_index=0),   # x
-        "b1": Buffer(id="b1", shape=[3, 4], dtype="f32", kind="arg", arg_index=1),   # w0
-        "b2": Buffer(id="b2", shape=[4, 5], dtype="f32", kind="arg", arg_index=2),   # w1
-        "b3": Buffer(id="b3", shape=[2, 4], dtype="f32", kind="intermediate"),       # h
-        "b4": Buffer(id="b4", shape=[2, 5], dtype="f32", kind="intermediate"),       # y
+        "b0": Buffer(id="b0", shape=[2, 3], dtype="f32", kind="arg", arg_index=0),  # x
+        "b1": Buffer(id="b1", shape=[3, 4], dtype="f32", kind="arg", arg_index=1),  # w0
+        "b2": Buffer(id="b2", shape=[4, 5], dtype="f32", kind="arg", arg_index=2),  # w1
+        "b3": Buffer(id="b3", shape=[2, 4], dtype="f32", kind="intermediate"),  # h
+        "b4": Buffer(id="b4", shape=[2, 5], dtype="f32", kind="intermediate"),  # y
     }
     nodes = [
-        Node(kind="dispatch", op="forward$kernel_0__rmatmul_0", inputs=["b0", "b1"],
-             outputs=["b3"], prov={"prov.region_id": "matmul_0", "prov.fqn": "layers.0.attn.q"}),
-        Node(kind="dispatch", op="forward$kernel_1__rmatmul_1", inputs=["b3", "b2"],
-             outputs=["b4"], prov={"prov.region_id": "matmul_1", "prov.fqn": "layers.0.mlp.g"}),
+        Node(
+            kind="dispatch",
+            op="forward$kernel_0__rmatmul_0",
+            inputs=["b0", "b1"],
+            outputs=["b3"],
+            prov={"prov.region_id": "matmul_0", "prov.fqn": "layers.0.attn.q"},
+        ),
+        Node(
+            kind="dispatch",
+            op="forward$kernel_1__rmatmul_1",
+            inputs=["b3", "b2"],
+            outputs=["b4"],
+            prov={"prov.region_id": "matmul_1", "prov.fqn": "layers.0.mlp.g"},
+        ),
     ]
-    return DispatchProgram(entry="forward", args=[0, 1, 2], buffers=buffers, nodes=nodes,
-                           results=["b4"])
+    return DispatchProgram(entry="forward", args=[0, 1, 2], buffers=buffers, nodes=nodes, results=["b4"])
 
 
 def test_interpret_whole_program():
     rng = np.random.default_rng(0)
     x, w0, w1 = rng.standard_normal((2, 3)), rng.standard_normal((3, 4)), rng.standard_normal((4, 5))
-    out = run_dispatch_program(_chain_program(), {"b0": x, "b1": w0, "b2": w1},
-                               invoke_kernel=_matmul_kernel)
+    out = run_dispatch_program(_chain_program(), {"b0": x, "b1": w0, "b2": w1}, invoke_kernel=_matmul_kernel)
     np.testing.assert_allclose(out["b4"], x @ w0 @ w1)
 
 
 def test_interpret_missing_input_fails_closed():
     import pytest
+
     with pytest.raises(KeyError):
-        run_dispatch_program(_chain_program(), {"b0": np.zeros((2, 3))},  # w0/w1 missing
-                             invoke_kernel=_matmul_kernel)
+        run_dispatch_program(
+            _chain_program(),
+            {"b0": np.zeros((2, 3))},  # w0/w1 missing
+            invoke_kernel=_matmul_kernel,
+        )
 
 
 def test_run_a_sliced_section_standalone_with_boundary_input():
@@ -59,7 +72,7 @@ def test_run_a_sliced_section_standalone_with_boundary_input():
     prog = _chain_program()
 
     whole = run_dispatch_program(prog, {"b0": x, "b1": w0, "b2": w1}, invoke_kernel=_matmul_kernel)
-    h_boundary = x @ w0                                   # the region-boundary tensor (region_goldens)
+    h_boundary = x @ w0  # the region-boundary tensor (region_goldens)
 
     section = slice_program(prog, {"matmul_1"})
     # the slice's boundary inputs are its arg buffers; bind them from the boundary tensors.

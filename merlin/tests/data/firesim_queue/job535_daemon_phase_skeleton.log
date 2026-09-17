@@ -1,0 +1,16 @@
+# Verbatim phase banners and lifecycle command markers from FireSim queue job 535,
+# extracted in order from /scratch/firesim_queue/jobs/535/stdout.log (all other lines
+# dropped; none of the retained lines is edited).  Job 610 emits a byte-identical
+# sequence.  This file exists so FIRESIM_QUEUE_PHASES and _EXPECTED_COMMANDS are pinned
+# to what the daemon prints rather than to a hand-written guess.
+=== [firesim-queue] phase=STAGING job_id=535 ===
+=== [firesim-queue] phase=INFRASETUP job_id=535 ===
+=== [firesim-queue] phase=LEADING_KILL job_id=535 ===
+Running: kill
+=== [firesim-queue] phase=INFRASETUP job_id=535 ===
+Running: infrasetup
+=== [firesim-queue] phase=RUNNING job_id=535 ===
+Running: runworkload
+=== [firesim-queue] phase=TEARDOWN job_id=535 ===
+=== [firesim-queue] phase=TEARDOWN job_id=535 ===
+Running: kill

@@ -1,12 +1,13 @@
 """TargetGen toy_npu vertical slice: build, inspect, simulate. No external repos."""
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import importlib.util
 import json
 from pathlib import Path
 
 from merlin.common import schemas
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen import pipeline
 from merlin.validation.generated_target import check_generated_target
 
@@ -15,8 +16,13 @@ TOY_DOCS = REPO / "merlin/targets/toy_npu/docs"
 TOY_EXAMPLES = REPO / "merlin/targets/toy_npu/examples"
 
 REQUIRED_METRICS = {
-    "cycles", "bytes_moved", "command_count", "pack_count",
-    "resident_hits", "evictions", "accumulator_commits",
+    "cycles",
+    "bytes_moved",
+    "command_count",
+    "pack_count",
+    "resident_hits",
+    "evictions",
+    "accumulator_commits",
 }
 
 
@@ -42,8 +48,7 @@ def test_build_produces_valid_plans(tmp_path):
     assert tc["capabilities"]["resident_storage_bytes"] == 131072
     assert tc["requires_human_review"] is False
     # Spec-mandated abstraction surface on the toy_npu contract.
-    assert tc["features"] == ["resident_packed_tensor", "accumulator_commit",
-                              "command_buffer", "metrics"]
+    assert tc["features"] == ["resident_packed_tensor", "accumulator_commit", "command_buffer", "metrics"]
     assert tc["ops"] == ["res_pack", "matmul", "commit", "evict"]
     assert tc["types"] == ["resident_tensor", "accumulator"]
     assert tc["runtime"]["backends"] == ["simulator", "zephyr"]
@@ -63,6 +68,7 @@ def test_generated_repo_passes_inspect(tmp_path):
 
 def _load_module(path, name):
     import sys
+
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     # Register before exec so annotation/type-hint resolution can find the module globals.
@@ -105,6 +111,16 @@ def test_generated_xdsl_dialect_verifies_and_roundtrips(tmp_path):
     m = mod.build_example()
     m.verify()
     mod.roundtrip(m).verify()
+
+
+def test_generated_dialect_verifiers_share_maxpool_epilogue_vocabulary(tmp_path):
+    """The authoring kits must recognize the fused-pooling capsules' public spelling."""
+    result = _build(tmp_path / "repo")
+    xdsl_text = (result.out / "xdsl/toynpu_dialect.py").read_text()
+    assert '"maxpool"' in xdsl_text
+
+    ops_cpp = next((result.out / "lib").rglob("*Ops.cpp"))
+    assert '"maxpool"' in ops_cpp.read_text()
 
 
 def test_contract_only_still_structurally_valid(tmp_path):

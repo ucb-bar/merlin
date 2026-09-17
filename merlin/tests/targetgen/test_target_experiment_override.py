@@ -8,6 +8,7 @@ input_bundles/) must fail loudly via require_scaffolding(), not deep inside a ru
 _common self-bootstraps (git root + sys.path) at import, so these run it in a fresh subprocess with the
 env set, which is exactly how the drivers import it.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,8 +17,8 @@ import sys
 
 from merlin.common.paths import repo_root
 
-_SCRIPTS = repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/scripts"
-_ATLAS = repo_root() / "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml"
+_SCRIPTS = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/scripts"
+_ATLAS = repo_root() / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
 
 _PROBE = f"""
 import sys
@@ -36,23 +37,22 @@ except SystemExit:
 def _run(target_experiment: str) -> dict:
     env = dict(os.environ)
     env["MERLIN_TARGET_EXPERIMENT"] = target_experiment
-    r = subprocess.run([sys.executable, "-c", _PROBE], capture_output=True, text=True,
-                       env=env, cwd=str(repo_root()))
+    r = subprocess.run([sys.executable, "-c", _PROBE], capture_output=True, text=True, env=env, cwd=str(repo_root()))
     assert r.returncode == 0, r.stderr
     return dict(line.split(" ", 1) for line in r.stdout.strip().splitlines())
 
 
 def test_default_targets_gemmini_and_has_scaffolding():
-    out = _run("")                                        # empty ⇒ treated as unset
+    out = _run("")  # empty ⇒ treated as unset
     assert out["TARGET"] == "gemmini"
-    assert out["EXP"] == "gemmini_capsule_bench_v0"
-    assert out["SCAFFOLD"] == "ok"                        # gemmini ships task/ + input_bundles/
+    assert out["EXP"] == "gemmini"
+    assert out["SCAFFOLD"] == "ok"  # gemmini ships task/ + input_bundles/
 
 
 def test_override_switches_target_to_another_descriptor():
     out = _run(str(_ATLAS))
-    assert out["TARGET"] == "atlas"                       # drivers now target atlas's descriptor
-    assert out["EXP"] == "atlas_capsule_bench_v0"
+    assert out["TARGET"] == "atlas"  # drivers now target atlas's descriptor
+    assert out["EXP"] == "atlas"
 
 
 def test_guard_trips_on_a_descriptor_without_scaffolding(tmp_path):
@@ -69,4 +69,4 @@ def test_guard_trips_on_a_descriptor_without_scaffolding(tmp_path):
     (desc / "target_experiment.yaml").write_text("target: probe\n", encoding="utf-8")
     out = _run(str(desc / "target_experiment.yaml"))
     assert out["TARGET"] == "probe"
-    assert out["SCAFFOLD"] == "missing"                   # no task/ + input_bundles/ ⇒ loud guard
+    assert out["SCAFFOLD"] == "missing"  # no task/ + input_bundles/ ⇒ loud guard

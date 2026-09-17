@@ -1,7 +1,8 @@
 """Ingest adapters parse op/dtype/target from real-shaped fixtures."""
-import os
-from merlin.common.paths import merlin_dir
 
+import os
+
+from merlin.common.paths import merlin_dir
 from merlin.kernels.ingest.generic import ingest_generic
 
 DATA = str(merlin_dir() / "tests" / "data" / "kernels")
@@ -18,8 +19,10 @@ def test_generic_reads_file():
 
 
 def test_xnnpack_signature_parse():
-    from merlin.kernels.ingest.xnnpack import _record_from_file
     from pathlib import Path
+
+    from merlin.kernels.ingest.xnnpack import _record_from_file
+
     p = Path(DATA) / "xnnpack_qs8_gemm_rvv.c"
     nk = _record_from_file(p, Path(DATA), "rvv")
     assert nk.op == "gemm"
@@ -29,7 +32,8 @@ def test_xnnpack_signature_parse():
 
 def test_autocomp_signature_parse():
     from merlin.kernels.ingest.autocomp import _parse_signature
-    text = (Path_open(os.path.join(DATA, "autocomp_gemmini_matmul.c")))
+
+    text = Path_open(os.path.join(DATA, "autocomp_gemmini_matmul.c"))
     op, dtype, shape = _parse_signature(text)
     assert op == "matmul"
     assert dtype == "i8"

@@ -1,5 +1,6 @@
 """End-to-end: linalg -> contract -> schedule -> interface -> toynpu -> runtime ->
 command buffer -> real execution, with simulator == independent reference."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,8 +9,15 @@ from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
-REQUIRED_METRICS = {"cycles", "bytes_moved", "command_count", "pack_count",
-                    "resident_hits", "evictions", "accumulator_commits"}
+REQUIRED_METRICS = {
+    "cycles",
+    "bytes_moved",
+    "command_count",
+    "pack_count",
+    "resident_hits",
+    "evictions",
+    "accumulator_commits",
+}
 
 
 @pytest.fixture(scope="module")
@@ -26,8 +34,8 @@ def test_every_stage_verifies(lowered):
 
 def test_stage_dialect_descent(lowered):
     def dialects_of(mod):
-        return {op.dialect_name() for op in mod.walk()} - {"builtin", "func", "arith",
-                                                           "tensor"}
+        return {op.dialect_name() for op in mod.walk()} - {"builtin", "func", "arith", "tensor"}
+
     assert dialects_of(lowered.input_module) == {"linalg"}
     assert dialects_of(lowered.contract_module) == {"linalg", "contract"}
     assert dialects_of(lowered.schedule_module) == {"linalg", "contract", "schedule"}
@@ -37,8 +45,7 @@ def test_stage_dialect_descent(lowered):
 
 
 def test_command_buffer_is_valid_and_executes_correctly(lowered):
-    from merlin.runtime import (outputs_match, reference_outputs, simulate,
-                                validate_command_buffer)
+    from merlin.runtime import outputs_match, reference_outputs, simulate, validate_command_buffer
 
     cb = lowered.command_buffer
     assert validate_command_buffer(cb) == []
@@ -115,10 +122,11 @@ def test_capacity_violation_blocks_interface_lowering():
     """A weight bigger than resident storage must fail the discharged-checks gate."""
     from merlin.xdsl_dialects.lowering import LoweringError, lower_repeated_rhs_matmul
 
-    tiny = {"name": "toy_npu",
-            "features": ["resident_packed_tensor", "accumulator_commit",
-                         "command_buffer", "metrics"],
-            "runtime": {"backends": ["simulator"]},
-            "capabilities": {"resident_storage_bytes": 16}}
+    tiny = {
+        "name": "toy_npu",
+        "features": ["resident_packed_tensor", "accumulator_commit", "command_buffer", "metrics"],
+        "runtime": {"backends": ["simulator"]},
+        "capabilities": {"resident_storage_bytes": 16},
+    }
     with pytest.raises(LoweringError, match="capacity_fit"):
         lower_repeated_rhs_matmul(reuse=4, target_contract=tiny)

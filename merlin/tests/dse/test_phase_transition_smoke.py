@@ -1,11 +1,11 @@
 """Headless smoke test for the phase-transition experiment."""
+
 import csv
 import io
 
 from merlin.dse.experiment import CSV_COLUMNS, phase_transition
 
-MINI_AXES = {"H": [1, 2, 8, 32], "reuse_count": [1, 2, 4, 8],
-             "dtype": ["i8"], "epilogue": [True]}
+MINI_AXES = {"H": [1, 2, 8, 32], "reuse_count": [1, 2, 4, 8], "dtype": ["i8"], "epilogue": [True]}
 
 
 def test_phase_transition_writes_csv_with_crossover(tmp_path):

@@ -1,8 +1,9 @@
 """Feature extraction fires the right motifs on positive fixtures and stays silent on
 negative controls."""
-import os
-from merlin.common.paths import merlin_dir
 
+import os
+
+from merlin.common.paths import merlin_dir
 from merlin.kernels.classify import classify_motifs
 from merlin.kernels.features import extract_all
 from merlin.kernels.ingest.generic import ingest_generic
@@ -18,8 +19,14 @@ def test_qs8_gemm_positive_motifs():
     nk = _kernel("xnnpack_qs8_gemm_rvv.c", source="xnnpack", target="rvv", op="gemm", dtype="i8")
     feats, fired = extract_all(nk)
     motifs = classify_motifs(feats, nk.op)
-    assert {"packed_rhs", "accumulator_lifetime", "epilogue_before_commit",
-            "accumulator_commit", "vector_length_polymorphic", "tiling_blocking"} <= motifs
+    assert {
+        "packed_rhs",
+        "accumulator_lifetime",
+        "epilogue_before_commit",
+        "accumulator_commit",
+        "vector_length_polymorphic",
+        "tiling_blocking",
+    } <= motifs
     assert feats["vector_length_strategy"] == "scalable"
     assert feats["packed_rhs"] is True
 
@@ -36,11 +43,9 @@ def test_vadd_negative_control():
 
 
 def test_gemmini_matmul_motifs():
-    nk = _kernel("autocomp_gemmini_matmul.c", source="autocomp", target="gemmini",
-                 op="matmul", dtype="i8")
+    nk = _kernel("autocomp_gemmini_matmul.c", source="autocomp", target="gemmini", op="matmul", dtype="i8")
     feats, fired = extract_all(nk)
     motifs = classify_motifs(feats, nk.op)
-    assert {"packed_rhs", "accumulator_lifetime", "weight_stationary_dataflow",
-            "tiling_blocking"} <= motifs
+    assert {"packed_rhs", "accumulator_lifetime", "weight_stationary_dataflow", "tiling_blocking"} <= motifs
     assert feats["dataflow"] == "weight_stationary"
     assert feats["vector_length_strategy"] == "na"  # systolic, not VL-agnostic

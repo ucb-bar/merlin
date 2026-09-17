@@ -3,6 +3,7 @@
 Runs against the committed real-architecture captures. Assertions are self-referential (derived from
 the recognized menu itself, not hard-coded model shapes) so the test does not overfit to any workload.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -12,8 +13,7 @@ from merlin.dse_guidance import section_select as S
 from merlin.dse_guidance.attribution import REGION_ATTENTION
 
 _RECAP = merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures"
-_MODELS = [m for m in ("tiny_llama", "small_llama", "openvla")
-           if (_RECAP / m / "model.mlir").is_file()]
+_MODELS = [m for m in ("tiny_llama", "small_llama", "openvla") if (_RECAP / m / "model.mlir").is_file()]
 pytestmark = pytest.mark.skipif(not _MODELS, reason="section-select corpus not present")
 
 
@@ -25,8 +25,8 @@ def test_list_sections_is_the_menu():
     cap = _cap(_MODELS[0])
     secs = S.list_sections(cap)
     assert secs, "expected a non-empty section menu"
-    assert any(s.label == REGION_ATTENTION for s in secs)     # attention is a selectable section
-    assert all(s.region_ids for s in secs)                    # every listed section owns ≥1 region_id
+    assert any(s.label == REGION_ATTENTION for s in secs)  # attention is a selectable section
+    assert all(s.region_ids for s in secs)  # every listed section owns ≥1 region_id
 
 
 def test_whole_selects_every_region():
@@ -42,7 +42,7 @@ def test_exact_region_id_and_fqn_substring():
     secs = S.list_sections(cap)
     one = secs[0]
     rid = one.region_ids[0]
-    assert S.resolve(cap, rid) == {rid}                       # exact region_id
+    assert S.resolve(cap, rid) == {rid}  # exact region_id
     # an fqn substring selects (at least) that section's regions.
     assert set(one.region_ids) <= S.resolve(cap, one.fqn)
 
@@ -53,8 +53,8 @@ def test_attention_only_selection_is_a_strict_subset():
     attn = {rid for s in secs if s.label == REGION_ATTENTION for rid in s.region_ids}
     allids = {rid for s in secs for rid in s.region_ids}
     got = S.resolve(cap, "fqn:*attn*")
-    assert attn <= got                                        # captures the attention regions
-    assert got < allids                                       # but not the whole model
+    assert attn <= got  # captures the attention regions
+    assert got < allids  # but not the whole model
 
 
 def test_layer_range_selection():

@@ -1,0 +1,81 @@
+{
+  "schema_version": "2.0",
+  "generator": {
+    "name": "merlin.targetgen.rtl.circt_introspect",
+    "version": "rtl-introspect-v3-slot-derived-opcode",
+    "method": "HAND-AUTHORED FIXTURE facts for the phantom5 synthetic target (no mlc/RTL) — the shape mlc discovery would emit for an fp16 8x8 systolic engine"
+  },
+  "inputs": {
+    "target": "phantom5",
+    "hw_mlir": "phantom5_soc.hw.mlir",
+    "hw_sha": "fixture",
+    "fir_sha": "fixture",
+    "isa_sha": "fixture",
+    "extractor_sha": "fixture"
+  },
+  "facts": {
+    "target": "phantom5",
+    "source": {
+      "kind": "fixture",
+      "config": "Phantom5Config"
+    },
+    "arrays": [
+      {
+        "name": "mesh",
+        "rows": 8,
+        "cols": 8,
+        "source": "fixture"
+      }
+    ],
+    "memories": [
+      {
+        "name": "scratchpad",
+        "bytes": 131072,
+        "depth": 2048,
+        "source": "fixture"
+      },
+      {
+        "name": "accumulator",
+        "bytes": 32768,
+        "depth": 256,
+        "source": "fixture"
+      }
+    ],
+    "datapaths": [
+      {
+        "name": "input",
+        "dtype": "f16",
+        "evidence": "fixture: scratchpad smem UInt<16> (fp16)"
+      },
+      {
+        "name": "accumulator",
+        "dtype": "f32",
+        "evidence": "fixture: AccumulatorMem Float<32>"
+      }
+    ],
+    "interfaces": [
+      {
+        "name": "rocc_cmd",
+        "evidence": "fixture: module ReservationStation (RoCC decode/dispatch)"
+      },
+      {
+        "name": "funct_decode_table",
+        "funct3": 3,
+        "legal_funct": [
+          0,
+          2,
+          4,
+          6
+        ],
+        "names": {
+          "0": "CONFIG_CMD",
+          "2": "LOAD_CMD",
+          "4": "COMPUTE_CMD",
+          "6": "PRELOAD_CMD"
+        },
+        "method": "fixture",
+        "evidence": "fixture: 4 legal 7-bit RoCC functs (all <= 0x7f -> inline_asm_insn endpoint). custom_opcode is NOT recorded here: it is DERIVED from the contract's rocc_custom_slot."
+      }
+    ]
+  }
+}

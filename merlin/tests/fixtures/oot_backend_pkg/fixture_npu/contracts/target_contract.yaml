@@ -1,0 +1,14 @@
+# Hand-authored MINIMAL out-of-tree target package for the OOT backend-discovery
+# regression test (merlin/tests/runtime/test_oot_backend_discovery.py). fixture_npu is a
+# SYNTHETIC target name (not a shipped target); the only fields present are the ones
+# target_registry.resolve()/TargetInfo.plugin() need to hand base._oot_backend_modules a
+# (name, backend-file) pair: the contract `name`, and a `plugin.backend` module path
+# relative to the package root.
+name: fixture_npu
+version: '0.1'
+plugin:
+  # Backend module (relative to this package root) that base._load_oot_backend imports by
+  # file path under merlin._oot_backends.fixture_npu so its module-level base.register runs.
+  backend: backend.py
+runtime:
+  default_backend: simulator

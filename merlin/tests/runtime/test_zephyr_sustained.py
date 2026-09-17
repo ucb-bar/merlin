@@ -64,6 +64,36 @@ def test_parse_console_collects_the_series():
     np.testing.assert_allclose(res["outputs"], [1.0, 2.0])
 
 
+def test_parse_console_collects_k1_wall_series_and_peak_rss():
+    console = "\n".join([
+        "METRIC iter_wall_ns 0 2000",
+        "METRIC iter_wall_ns 1 1900",
+        "METRIC iter_wall_ns 2 2100",
+        "METRIC wall_ns 2000",
+        "METRIC peak_rss_kb 4096",
+        "OUT 1 1065353216",
+        "DONE",
+    ])
+    result = zm._parse_console(console, 0)
+    assert result["iter_wall_ns"] == [2000, 1900, 2100]
+    assert result["sustained_wall_ns"]["median"] == 2000
+    assert result["metrics"]["peak_rss_kb"] == 4096
+    assert result["metrics"]["wall_ns"] == 2000
+
+
+def test_parse_console_collects_contiguous_multi_program_stage_series():
+    console = "\n".join([
+        "STAGE 0 prefill 100", "STAGE 0 decode 300",
+        "STAGE 1 prefill 90", "STAGE 1 decode 310",
+        "OUT 1 1065353216", "DONE",
+    ])
+    result = zm._parse_console(console, 0)
+    assert result["stage_wall_ns"] == {"prefill": [100, 90], "decode": [300, 310]}
+
+    with pytest.raises(zm.ZephyrModelError, match="non-contiguous STAGE"):
+        zm._parse_console("STAGE 1 decode 310\nOUT 1 0\nDONE\n", 0)
+
+
 def test_sustained_stats_reports_drift():
     """Drift is the point: a creeping per-iteration cost is invisible to min/median alone."""
     flat = zm._sustained_stats([1000] * 12)

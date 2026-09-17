@@ -1,0 +1,38 @@
+{
+ "calibration_steps": 3,
+ "compiler": "voyager",
+ "config": {
+  "bank_width": 16,
+  "num_banks": 4,
+  "pe_array_size": [
+   16,
+   16
+  ],
+  "scratchpad_size": 262144
+ },
+ "layout_policy": "systolic",
+ "lowered_output_saved": true,
+ "model_dtype": "torch.bfloat16",
+ "quant_flags": {
+  "bias": "int32",
+  "input_activation": "int8,qs=per_tensor_symmetric",
+  "weight": "int8,qs=per_tensor_symmetric"
+ },
+ "quant_scheme": "int8_int32bias",
+ "seed": 0,
+ "versions": {
+  "torch": "2.12.1+cu130",
+  "torchao": "0.17.0",
+  "transformers": "5.13.0"
+ },
+ "voyager_commit": "f9d4c498d8fb97fd67e2dac781abf42112517998",
+ "workload": {
+  "K": 512,
+  "M": 256,
+  "N": 256,
+  "bias": false,
+  "kind": "linear",
+  "name": "lin_256x512x256",
+  "relu": false
+ }
+}

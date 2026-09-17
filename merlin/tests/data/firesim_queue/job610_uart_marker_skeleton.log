@@ -1,0 +1,15 @@
+# Protocol marker lines from FireSim queue job 610's UART (the measured SmolVLA
+# flow_denoise whole-model run), in order, from its uartlog; every other line dropped.
+# The only edit is stripping each line's trailing CR: the FPGA console emits CRLF and
+# git would rewrite it anyway, so it is normalised here rather than left to differ
+# between checkouts.  The line content itself is untouched.
+#
+# Kept so the receipt's UART constants are pinned to what the harness prints: a bare
+# 'METRIC cycles N' and a byte-exact 'MERLIN_INVOCATIONS warmup=1 measured=1' with no
+# trailing batch= field.
+MERLIN_INVOCATIONS warmup=1 measured=1
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+METRIC cycles 33085199302
+MERLIN_PROFILE measured end rc=0

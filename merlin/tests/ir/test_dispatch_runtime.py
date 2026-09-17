@@ -5,8 +5,8 @@ walks the driver evaluating view ops in numpy + invoking the compiled kernels, a
 the whole-model output against the torch golden. Auto-skips without the host toolchain or
 the captured model. (~40 s: it compiles ~160 kernels.)
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import os
 from pathlib import Path
@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -36,8 +37,8 @@ def test_resolve_forward_args_binds_inputs_and_weights():
     from merlin.runtime.dispatch_runtime import resolve_forward_args
 
     args = resolve_forward_args(MODEL)
-    assert len(args) == 22                       # 1 input + 21 weights
-    assert args[0].shape == (256, 128)           # emb.weight, read from the blob
+    assert len(args) == 22  # 1 input + 21 weights
+    assert args[0].shape == (256, 128)  # emb.weight, read from the blob
     assert all(isinstance(a, np.ndarray) for a in args)
 
 
@@ -74,7 +75,7 @@ def test_scalar_arg_kernel_is_passed_by_value(tmp_path):
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
     outlined = outline_dispatches(parse_mlir_text(CUMSUM))
-    mask = np.ones((1, 4), np.int8)          # i1 all-ones
+    mask = np.ones((1, 4), np.int8)  # i1 all-ones
     acc = np.zeros((1, 4), np.int64)
     init = np.int64(0)
     (out,) = execute(outlined, [mask, acc, init], tmp_path)
@@ -82,8 +83,7 @@ def test_scalar_arg_kernel_is_passed_by_value(tmp_path):
     assert out.ravel().tolist() == [1, 2, 3, 4]
 
 
-@pytest.mark.skipif(not (MODEL / "model.mlir").is_file(),
-                    reason="small_llama capture not present")
+@pytest.mark.skipif(not (MODEL / "model.mlir").is_file(), reason="small_llama capture not present")
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 def test_whole_small_llama_via_dispatch_table_matches_torch(tmp_path):
     from merlin.runtime.dispatch_runtime import run_model
@@ -97,10 +97,8 @@ def test_whole_small_llama_via_dispatch_table_matches_torch(tmp_path):
     assert res["rel"] < 1e-3
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="set MERLIN_RUN_SLOW=1 (compiles ~1000 kernels)")
-@pytest.mark.skipif(not (TINY / "model.mlir").is_file(),
-                    reason="tiny_llama capture not present")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (compiles ~1000 kernels)")
+@pytest.mark.skipif(not (TINY / "model.mlir").is_file(), reason="tiny_llama capture not present")
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 def test_whole_tiny_llama_via_dispatch_table_matches_torch(tmp_path):
     """TinyLlama-1.1B end to end via the dispatch table; argmax == torch on all tokens."""
@@ -111,5 +109,5 @@ def test_whole_tiny_llama_via_dispatch_table_matches_torch(tmp_path):
     assert res["n_kernels"] == 1402
     out = np.asarray(res["output"], np.float32).reshape(8, -1)
     gold = np.load(TINY / "golden.npy").astype(np.float32).reshape(8, -1)
-    assert (out.argmax(1) == gold.argmax(1)).all()       # next-token prediction matches
+    assert (out.argmax(1) == gold.argmax(1)).all()  # next-token prediction matches
     assert res["cos"] > 0.999

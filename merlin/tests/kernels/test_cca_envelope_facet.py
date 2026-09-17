@@ -6,6 +6,7 @@ in a runtime call. Measured on K1 that blind spot WAS the whole f32 GEMM gap: ou
 per-FMA than XNNPACK's, but a per-tile ``memrefCopy`` cost ~79 instructions per output element.
 These tests pin the discovery path end to end so it is found by the beam, not by hand.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,8 +38,7 @@ OURS_ASM = """\
 
 
 def _lift(asm_text: str, source: str, undefined):
-    return cca.lift_asm(rvv.decode_text(asm_text), op="matmul", source=source,
-                        undefined_symbols=undefined)
+    return cca.lift_asm(rvv.decode_text(asm_text), op="matmul", source=source, undefined_symbols=undefined)
 
 
 def test_envelope_facet_discriminates_expert_from_ours():
@@ -60,21 +60,29 @@ def test_a_new_facet_is_compared_without_being_hardcoded():
     """`compare` reflects CCA's facets. It used to hold a literal list, so a newly added facet was
     lifted and demanded a route yet never produced a divergence -- invisible to the beam."""
     assert "envelope" in cca_compare._facet_names()
-    axes = {d.axis for d in cca_compare.compare(_lift(EXPERT_ASM.read_text(), "xnnpack", []),
-                                                _lift(OURS_ASM, "ours", ["memrefCopy"]))}
+    axes = {
+        d.axis
+        for d in cca_compare.compare(
+            _lift(EXPERT_ASM.read_text(), "xnnpack", []), _lift(OURS_ASM, "ours", ["memrefCopy"])
+        )
+    }
     assert {"envelope.calls_in_loop", "envelope.runtime_calls"} <= axes
 
 
 def test_envelope_divergences_route_to_compiler_actions():
     """A divergence the beam cannot act on is just a complaint. Both envelope axes must route, and the
     ladder must offer a forkable-now rung as well as the PASS that removes the call outright."""
-    divs = [d for d in cca_compare.compare(_lift(EXPERT_ASM.read_text(), "xnnpack", []),
-                                           _lift(OURS_ASM, "ours", ["memrefCopy"]))
-            if d.axis.startswith("envelope.")]
+    divs = [
+        d
+        for d in cca_compare.compare(
+            _lift(EXPERT_ASM.read_text(), "xnnpack", []), _lift(OURS_ASM, "ours", ["memrefCopy"])
+        )
+        if d.axis.startswith("envelope.")
+    ]
     assert divs, "envelope divergences must survive to the router"
     by_axis = {d.axis: action_catalog.route(d) for d in divs}
     assert by_axis["envelope.runtime_calls"].action_class == "PASS"
-    assert by_axis["envelope.runtime_calls"].forkable_now is True    # the rung that closes the gap
+    assert by_axis["envelope.runtime_calls"].forkable_now is True  # the rung that closes the gap
     # calls_in_loop is the symbol-free record of the same divergence, but no builder implements its
     # seam -- so it must NOT claim to be forkable-now; the proposer demotes it to a work-item.
     assert by_axis["envelope.calls_in_loop"].forkable_now is False
@@ -89,8 +97,8 @@ def test_envelope_axes_are_routed_in_the_bijection():
 
 def test_no_symbol_table_is_unknown_not_clean():
     """Fail-closed: an unreadable symbol table must not be read as 'this kernel calls nothing'."""
-    unknown = _lift(OURS_ASM, "ours", None)            # OURS_ASM contains a call
-    assert unknown.envelope.runtime_calls is None      # unknown, NOT ()
+    unknown = _lift(OURS_ASM, "ours", None)  # OURS_ASM contains a call
+    assert unknown.envelope.runtime_calls is None  # unknown, NOT ()
     known_clean = _lift(OURS_ASM, "ours", ["some_unrelated_symbol"])
     assert known_clean.envelope.runtime_calls == ()
 
@@ -108,8 +116,9 @@ def test_beam_reaches_the_fix_from_the_objdump_alone():
     """The whole point: discovery -> route -> FORK, with no human in the loop. Regression-guards the
     wiring that was missing (the beam lifted without a symbol table, so runtime_calls stayed None on
     both sides and the PASS that closes the gap was never proposed)."""
-    from merlin.rvvgen.fork_from_action import action_to_fork
-    expert = _lift(EXPERT_ASM.read_text(), "xnnpack", None)          # no symbols needed
+    from merlin.mining.fork_from_action import action_to_fork
+
+    expert = _lift(EXPERT_ASM.read_text(), "xnnpack", None)  # no symbols needed
     ours = _lift(OURS_ASM, "ours", ["memrefCopy", "memcpy", "malloc"])
     div = next(d for d in cca_compare.compare(expert, ours) if d.axis == "envelope.runtime_calls")
     action = action_catalog.route(div)
