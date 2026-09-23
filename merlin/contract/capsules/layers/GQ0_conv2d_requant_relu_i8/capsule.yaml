@@ -1,0 +1,97 @@
+name: GQ0_conv2d_requant_relu_i8
+kind: layer
+source_role: handauthored_compiler_test
+source_reference: int8 3x3 conv with the quantized CNN epilogue fused onto the store
+  path (per-channel bias -> f32 acc_scale -> relu -> saturating i8 commit), asserted
+  on_mesh
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 36
+  - 16
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 4
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 16
+  dtype: i32
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 4
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue:
+    - bias_add
+    - acc_scale
+    - relu
+    output_dtype: i8
+    semantic: conv2d_im2col
+    bias: B
+    acc_scale: 0.0625
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.0625
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+    i8: true
+    acc_scale: true
+    relu: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map
+lanes:
+  require:
+  - on_mesh

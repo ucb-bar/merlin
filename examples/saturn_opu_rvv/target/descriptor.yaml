@@ -1,0 +1,97 @@
+# Declarative per-target experiment SETUP for SATURN_OPU_RVV — the Saturn OuterProductUnit reached through
+# its VECTOR-OPCODE INSTRUCTION EXTENSION, rather than through the command buffer.
+#
+# WHY IT EXISTS. The bench already carries this unit as a command_buffer target. That surface has no
+# instruction decode, so its capsules' `expected.instruction_classes` derive to an EMPTY list and coverage
+# is satisfied by a submission that emits nothing. The instructions exist — four reserved even funct6 slots
+# of the vector opcode, which is how the shipped microkernel drives the unit — they were simply not
+# represented in the bench. This target is that surface: the submitted artifact is a kernel, the coverage
+# expectation names derived instructions, and the geometry is the logical VLMAX tile the kernel addresses
+# (32 at VLEN 256) rather than the spatial array edge (16).
+#
+# STATUS: corpus + contract land here; the RTL grading tier is opu_cert.certify (see `toolchain` below).
+# Nothing in this file states an encoding, an opcode, or a tile size: the contract is generated from RTL
+# facts + manifest_residual.yaml, the encodings are derived per run by targetgen.rtl.opu_isa and
+# cross-checked against the unit's own header, and the tile edge is read from the declared config's Scala.
+target: saturn_opu_mxv256d128_rvv
+resources_root: merlin/experiments/capsule_bench/targets/saturn_opu_rvv
+numeric_profile: examples/saturn_opu_rvv/phase0/recipe.yaml
+
+rtl:
+  via: mlc            # spatial facts (OuterProductUnit state manifest); the encodings come from opu_isa
+
+hardware_spec:
+  # GENERATED, regenerable from manifest_residual.yaml beside this file (build_tools/scripts/
+  # gen_saturn_opu_rvv_contract.py). Not hand-authored: a hand-written contract is how a target starts
+  # claiming capability its RTL does not have.
+  target_contract: out/artifacts/targets/saturn_opu_mxv256d128_rvv/contracts/target_contract.yaml
+
+# This target's OWN corpus, generated from profiles/saturn_opu_rvv.yaml. Its shapes are declared as
+# tile-relative sweeps, so they track the geometry of whichever config the contract names instead of
+# baking a number.
+capsule_corpus: merlin/contract/capsules/saturn_opu_rvv/isa
+
+toolchain:
+  # No bespoke sim ENGINE name here (declaring one that nothing implements is how a target ends up with a
+  # grading tier that never runs — see the note in saturn_opu's descriptor). The instruction surface's RTL
+  # tier is opu_cert.certify, which assembles the emitted kernel, runs it, and audits the decoded object to
+  # prove the datapath actually fired; it is registered as an oracle adapter, not as a sim engine.
+  sim_via: ""
+
+answer_surfaces:
+  prior_backends: []
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+host_lane:
+  # Extra force here: this target reaches the accelerator through the RISC-V VECTOR opcode, so its
+  # instructions sit in the same encoding space the host vector lane uses. That makes the boundary
+  # between "the accelerator extension" and "the host RVV compiler" the exact thing under measurement,
+  # and makes an unpinned host compiler the exact thing that would make the measurement meaningless.
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

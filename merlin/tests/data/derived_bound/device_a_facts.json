@@ -1,0 +1,58 @@
+{
+ "schema_version": "2.0",
+ "family": "circt_static",
+ "fixture_note": "The structural subset of ONE device's own committed RTL-facts cache, pinned here because that cache is host-regenerated and gitignored. Host absolute paths in the provenance strings are reduced to basenames and the extractor family is stamped for schema validation; no fact values are edited.",
+ "elaboration": "GemminiRocketConfig",
+ "facts": {
+  "target": "device_a",
+  "arrays": [
+   {
+    "name": "mesh",
+    "rows": 16,
+    "cols": 16,
+    "source": "mlc_discovery",
+    "container": "Mesh",
+    "element": "Tile",
+    "instances": 256,
+    "element_variants": [
+     [
+      "Tile",
+      256
+     ]
+    ],
+    "mac_idiom": {
+     "muls": 1,
+     "adds": 7,
+     "regs": 3
+    },
+    "corroborated": true
+   }
+  ],
+  "memories": [
+   {
+    "name": "scratchpad",
+    "bytes": 262144,
+    "depth": 4096,
+    "source": "mlc_discovery"
+   },
+   {
+    "name": "accumulator",
+    "bytes": 65536,
+    "depth": 512,
+    "source": "mlc_discovery"
+   }
+  ],
+  "datapaths": [
+   {
+    "name": "input",
+    "dtype": "i8",
+    "evidence": "scratchpad smem UInt<8>"
+   },
+   {
+    "name": "accumulator",
+    "dtype": "i32",
+    "evidence": "AccumulatorMem SInt<32>"
+   }
+  ]
+ }
+}

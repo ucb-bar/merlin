@@ -5,6 +5,7 @@ Regression focus (S0 provenance spine): the dispatch node's provenance keys are 
 that model-layer identity onto each :class:`KernelEntry` so an emitted kernel can be resolved back to
 its original layer (the join key the cross-compiler compare and the section slicer both use).
 """
+
 from __future__ import annotations
 
 from merlin.runtime.program import build_program
@@ -18,10 +19,8 @@ def _one_dispatch_program(prov: dict[str, str]) -> DispatchProgram:
         "b1": Buffer(id="b1", shape=[8, 6], dtype="f32", kind="arg", arg_index=1),
         "b2": Buffer(id="b2", shape=[4, 6], dtype="f32", kind="intermediate"),
     }
-    node = Node(kind="dispatch", op="forward$kernel_0", inputs=["b0", "b1"],
-                outputs=["b2"], prov=prov)
-    return DispatchProgram(entry="forward", args=[0, 1], buffers=buffers,
-                           nodes=[node], results=["b2"])
+    node = Node(kind="dispatch", op="forward$kernel_0", inputs=["b0", "b1"], outputs=["b2"], prov=prov)
+    return DispatchProgram(entry="forward", args=[0, 1], buffers=buffers, nodes=[node], results=["b2"])
 
 
 def test_kernel_entry_carries_model_layer_provenance():

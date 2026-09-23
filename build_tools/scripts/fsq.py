@@ -8,7 +8,11 @@ queue DB and prints each job with the model bundle recovered from its `stage_fro
 
 Usage:  .venv/bin/python build_tools/scripts/fsq.py [--all] [--mine]
 """
-import argparse, json, sqlite3, time
+
+import argparse
+import json
+import sqlite3
+import time
 from pathlib import PurePosixPath
 
 DB = "/path/to/firesim_queue/queue.db"
@@ -41,7 +45,7 @@ def model_of(kind_args: str) -> str:
     if not p:
         return "-"
     parts = PurePosixPath(p).parts
-    for i, seg in enumerate(parts[:-1]):                  # our sweep workroots: /fs|/fsx/<model>/
+    for i, seg in enumerate(parts[:-1]):  # our sweep workroots: /fs|/fsx/<model>/
         if seg in ("fs", "fsx"):
             return parts[i + 1].replace("_consistent", "")
     return parts[-1] if parts else "-"
@@ -55,14 +59,19 @@ def main() -> int:
     c = sqlite3.connect(DB)
     hb = c.execute("SELECT value FROM kv WHERE key='daemon_heartbeat'").fetchone()
     age = (time.time() - float(hb[0])) if hb else None
-    print(f"daemon: {'ALIVE' if age is not None and age < 120 else 'STALE/DOWN'}"
-          + (f" (heartbeat {age:.0f}s ago)" if age is not None else ""))
-    q = ("SELECT id,user,state,phase,started_at,ended_at,exit_code,kind_args FROM jobs "
-         + ("WHERE state IN ('RUNNING','QUEUED') " if not args.all else "")
-         + "ORDER BY id DESC " + ("LIMIT 20" if args.all else ""))
+    print(
+        f"daemon: {'ALIVE' if age is not None and age < 120 else 'STALE/DOWN'}"
+        + (f" (heartbeat {age:.0f}s ago)" if age is not None else "")
+    )
+    q = (
+        "SELECT id,user,state,phase,started_at,ended_at,exit_code,kind_args FROM jobs "
+        + ("WHERE state IN ('RUNNING','QUEUED') " if not args.all else "")
+        + "ORDER BY id DESC "
+        + ("LIMIT 20" if args.all else "")
+    )
     rows = list(c.execute(q))
     if not args.all:
-        rows = rows[::-1]                                # chronological for the live view
+        rows = rows[::-1]  # chronological for the live view
     print(f"{'id':>4} {'state':<9} {'phase':<9} {'wall':>7}  model")
     for r in rows:
         model = model_of(r[7])

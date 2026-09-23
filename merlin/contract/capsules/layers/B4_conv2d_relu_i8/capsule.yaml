@@ -1,4 +1,5 @@
 name: B4_conv2d_relu_i8
+stimulus_range: [-4, 3]
 kind: layer
 source_role: uplifted_from_bareMetalC
 source_reference: bareMetalC/conv_with_pool.c
@@ -42,11 +43,11 @@ operation:
     layout: nhwc
     epilogue:
     - relu
-    output_dtype: i32
+    output_dtype: i8
     semantic: conv2d_im2col
 numeric_policy:
   compare: exact_int
-  dtype: i32
+  dtype: i8
 expected:
   instruction_classes:
   - FLUSH
@@ -70,3 +71,8 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

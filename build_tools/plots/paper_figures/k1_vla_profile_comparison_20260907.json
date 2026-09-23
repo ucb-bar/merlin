@@ -1,0 +1,78 @@
+{
+  "generated": "2026-09-08",
+  "scope": "SpaceMiT K1, one core, FP32 reduced-depth deterministic architecture captures, Merlin current best compiler stack",
+  "protocol": "3 independent launches; 2 untimed warmups + 5 timed in-process iterations; full-output golden gate",
+  "compiler_features": "Per-model search-selected Merlin stack; see each row's source artifact",
+  "models": [
+    {
+      "model": "BitVLA",
+      "warm_ms": 102.9551,
+      "cosine": 0.9999945759773254,
+      "range_pct": 2.03,
+      "hybrid_ms": 84.324122,
+      "hybrid_cosine": 0.9999926686286926,
+      "hybrid_range_pct": 2.87,
+      "hybrid_status": "measured",
+      "profile_wall_ms": 106.571998,
+      "profile_coverage": 0.969,
+      "perturbation_pct": 0.503,
+      "profile_trusted": true,
+      "categories_ms": {
+        "layout_copy": 34.06739285714285,
+        "contraction": 38.433744047619044,
+        "elementwise": 5.7240416666666665,
+        "reduction_softmax": 2.511458333333333,
+        "other": 25.83536109523811
+      },
+      "source": "out/artifacts/measurements/k1_spacemit/bitvla_fp32_consistent/{k1_perop_mr8_vs_xnnpack_bracket_20260908.json,op_profile_perop_mr8_warm_20260908.json}",
+      "note": "Merlin uses the general per-op register-blocking stack with the search-selected MR=8 rung. Profile perturbation is 0.503%, inside the 1.9% gate."
+    },
+    {
+      "model": "OpenVLA",
+      "warm_ms": 264.763352,
+      "cosine": 0.9999999403953552,
+      "range_pct": 0.56,
+      "hybrid_ms": 36.911901,
+      "hybrid_cosine": 0.9999999403953552,
+      "hybrid_range_pct": 10.5,
+      "hybrid_status": "measured",
+      "profile_wall_ms": 264.047849,
+      "profile_coverage": 1.005,
+      "perturbation_pct": 0.821,
+      "profile_trusted": true,
+      "categories_ms": {
+        "layout_copy": 3.9525897442669766,
+        "contraction": 253.68825144051286,
+        "elementwise": 5.3918307455265575,
+        "reduction_softmax": 0.4798141241334208,
+        "other": 0.5353629455601973
+      },
+      "source": "out/artifacts/measurements/k1_spacemit/openvla_fp32_consistent/{k1_prepack_mrpad_vs_xnnpack_bracket_20260908.json,op_profile_prepack_mrpad_warm_20260908.json}",
+      "note": "Both arms AOT-prepack the same 26 immutable weights. Profile categories are normalized by measured profiler coverage (1.005) so they sum to the profiled wall."
+    },
+    {
+      "model": "RDT2",
+      "warm_ms": 6663.606375,
+      "cosine": 1.0,
+      "range_pct": 0.17,
+      "hybrid_ms": 312.236353,
+      "hybrid_cosine": 1.0000001192092896,
+      "hybrid_range_pct": 8.45,
+      "hybrid_status": "measured",
+      "profile_wall_ms": 6730.577309,
+      "profile_coverage": 1.0019,
+      "perturbation_pct": 0.756,
+      "profile_trusted": true,
+      "categories_ms": {
+        "layout_copy": 11.386092995673295,
+        "contraction": 6690.20416112078,
+        "elementwise": 24.01914028968506,
+        "reduction_softmax": 2.7253609760747683,
+        "other": 2.242553617787811
+      },
+      "source": "out/artifacts/measurements/k1_spacemit/rdt2_fp32_consistent/{k1_prepack_mrpad_vs_xnnpack_bracket_20260908.json,op_profile_prepack_mrpad_warm_20260908.json}",
+      "note": "Both arms AOT-prepack the same 23 immutable weights while retaining four runtime-input transposes. Profile categories are normalized by measured profiler coverage (1.0019) so they sum to the profiled wall."
+    }
+  ],
+  "comparability": "Compiler/codegen profile only. These captures use deterministic reduced-depth model configurations and generated parameters; they are not pretrained task-quality benchmarks."
+}

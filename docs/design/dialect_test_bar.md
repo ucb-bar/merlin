@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-25
 related: [compiler_plane, target_publishing]
-code_refs: [merlin/contract/capsules, merlin/python/merlin/targetgen/capsule_golden.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/contract/schemas/capsule.schema.json]
+code_refs: [merlin/contract/capsules, packages/merlin-experiments/src/merlin/targetgen/capsule_golden.py, packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py, merlin/contract/schemas/capsule.schema.json]
 ---
 
 # The cross-target dialect test bar

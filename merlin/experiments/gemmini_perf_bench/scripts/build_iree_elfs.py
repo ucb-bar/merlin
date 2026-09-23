@@ -8,6 +8,7 @@ runs/<run>/_iree_elfs/<kernel>.elf. IREE only covers matmul/attention.
 
 Usage: build_iree_elfs.py [--kernels infeasible|id,..]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,10 +17,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import yaml
-
 import _pbcommon as PB
-from run_iree_arm import BUILD_ENV, BUILD, ELF, ensure_fixture, build_shape  # reuse the build path
+import yaml
+from run_iree_arm import BUILD, BUILD_ENV, ELF, build_shape, ensure_fixture  # reuse the build path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,9 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
     corpus = {k["id"]: k for sec in doc if isinstance(doc[sec], list) for k in doc[sec]}
     pr = json.loads((run / "perf_results.json").read_text())
-    has_veri = {r["kernel"] for r in pr
-                if any((v.get("per_sim") or {}).get("verilator", {}).get("cycles")
-                       for v in r["approaches"].values())}
+    has_veri = {
+        r["kernel"]
+        for r in pr
+        if any((v.get("per_sim") or {}).get("verilator", {}).get("cycles") for v in r["approaches"].values())
+    }
     if a.kernels == "infeasible":
         want = [r["kernel"] for r in pr if r["kernel"] not in has_veri]
     else:
@@ -51,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             M, K, N = (int(x) for x in str(k["shape"]).split("x"))
         if k["macs"] > 3_000_000:
-            print(f"[{kid}] SKIP giant ({k['macs']:,} macs)", flush=True); continue
+            print(f"[{kid}] SKIP giant ({k['macs']:,} macs)", flush=True)
+            continue
         try:
             shape, _ = ensure_fixture(M, N, K)
             build_shape(shape, outdir / f"{kid}.build.log")

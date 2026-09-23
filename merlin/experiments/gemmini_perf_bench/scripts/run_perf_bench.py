@@ -1,304 +1,507 @@
 #!/usr/bin/env python3
-"""Cross-approach Gemmini performance runner.
+"""Run the Gemmini performance corpus on one frozen, functionally complete Arm-4 compiler.
 
-Drives every kernel in the corpus through each Gemmini code-gen APPROACH on the SAME
-ELF->spike(L2)/verilator(L3)->cycles harness, and records cycles + utilization + wall + correctness.
-Approaches (extensible; Phase C adds the IREE C++ dialect arm):
-  golden          - canonical Gemmini C library `tiled_matmul_auto` (hardware-loop WS), the perf ref;
-  baseline        - generated MLIR OOT backend agent_spec_v0_mlir_oot;
-  merlin_targetgen- generated MLIR OOT backend agent_spec_v1_mlir_oot;
-  merlin_native   - the integrity-exempt Merlin reference lowering (merlin_native_v0).
-
-Correctness = exact-int output == the kernel's shared capsule golden. Utilization is post-hoc
-(macs/(cycles*256)); never gates. Per-cell timeout + honest failure recording so the giant LLM
-kernels (which generated backends may unroll past feasibility) don't hang the sweep.
-
-Usage:
-  run_perf_bench.py [--kernels id1,id2|all] [--approaches golden,baseline,merlin_targetgen,merlin_native]
-                    [--sims auto|spike|spike,verilator] [--timeout 900] [--run-id perf_0001]
+The runner deliberately has no "latest submission" discovery and no alternate learned/compiler arm.
+The caller supplies the exact functional run ID and submission SHA-256.  The submission is copied into
+this campaign, mounted read-only in a credential-free/networkless bwrap, and checked against its
+functional fork before and after the corpus.  A campaign is GO only when every expected Arm-4
+kernel/simulator cell is correct and reports a positive cycle count.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import sys
-import time
+import traceback
+from collections.abc import Mapping
 from pathlib import Path
 
-import yaml
-
 import _pbcommon as PB
-from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (golden C build/run reuse)
-from merlin.targetgen import capsule_golden as CG  # noqa: E402
-from merlin.targetgen import capsule_runner as CR  # noqa: E402
+import yaml
+from merlin_experiments.phase2 import campaign as PC
+from merlin_experiments.phase2 import measurement_support as MS
 
-from merlin.benchharness import runs_root as _runs_root  # noqa: E402
-_CB_RUNS = _runs_root("gemmini", "capsule-bench")  # out/runs/gemmini/capsule-bench
+from merlin.benchharness import hash_tree
+from merlin.benchharness import runs_root as _runs_root
+from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen.target_experiment import load_target_experiment
+
+_FUNCTIONAL_RUNS = _runs_root(PB.TARGET, "capsule-bench")
+_CONTRACT = str(PB.REPO / "merlin/contract")
+_DESCRIPTOR = PB.REPO / "merlin/experiments/capsule_bench/targets" / PB.TARGET / "target_experiment.yaml"
+_FIXED_PROFILE_FAMILY = "fixed_profile"
+_FIXED_PROFILE_REPLICATE = "r000"
+_PHYSICAL_BYTE_UNIT = "BYTES"
 
 
-def _latest_submission(subdir: str, rtlchecks=None):
-    """The latest capsule-bench <arm> submission/ under out/runs (or None if the arm hasn't run yet).
-    Replaces the retired hard-coded in-experiment runs/<arm>/<abc11|abc9>/submission paths — the perf
-    profile now consumes whatever the CURRENT sweep produced. merlin_assisted holds BOTH the python and
-    the CIRCT arm, distinguished by run_dir/TRACK_RTLCHECKS (same marker agg_agentic_results reads)."""
-    base = _CB_RUNS / subdir
-    if not base.is_dir():
-        return None
-    best = None
-    for d in base.iterdir():
-        sub = d / "submission"
-        if not sub.is_dir():
+def _selected_corpus(selection: str, kernels_root: Path = PB.KERNELS) -> list[dict]:
+    doc = yaml.safe_load((kernels_root / "kernel_corpus.yaml").read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        raise PC.CampaignGateError("performance kernel corpus is not a mapping")
+    corpus = [
+        row
+        for section in ("golden_kernels", "model_kernels", "attention_kernels", "conv_kernels", "movement_kernels")
+        for row in (doc.get(section) or [])
+    ]
+    if selection != "all":
+        wanted = {value.strip() for value in selection.split(",") if value.strip()}
+        known = {str(row.get("id")) for row in corpus}
+        missing = sorted(wanted - known)
+        if missing:
+            raise PC.CampaignGateError(f"unknown performance kernel id(s): {missing}")
+        corpus = [row for row in corpus if str(row.get("id")) in wanted]
+    if not corpus:
+        raise PC.CampaignGateError("performance selection contains zero kernels")
+    names = [str(row.get("id") or "") for row in corpus]
+    if any(not name for name in names) or len(names) != len(set(names)):
+        raise PC.CampaignGateError("performance corpus has missing or duplicate kernel ids")
+    return corpus
+
+
+def _sims_for(kernel: dict, requested: str) -> tuple[str, ...]:
+    if requested == "auto":
+        return ("spike", "verilator") if kernel.get("sim_hint") == "L2+L3" else ("spike",)
+    sims = tuple(value.strip() for value in requested.split(",") if value.strip())
+    if not sims or len(sims) != len(set(sims)) or any(s not in ("spike", "verilator") for s in sims):
+        raise PC.CampaignGateError("--sims must be auto, spike, or a unique spike,verilator list")
+    return sims
+
+
+def _expected_cells(corpus: list[dict], requested: str) -> tuple[PC.PerfCell, ...]:
+    """Expand the fixed profiling corpus into the exact identities its completion gate expects."""
+    return tuple(
+        PC.PerfCell(_FIXED_PROFILE_FAMILY, str(kernel["id"]), simulator, _FIXED_PROFILE_REPLICATE)
+        for kernel in corpus
+        for simulator in _sims_for(kernel, requested)
+    )
+
+
+def _completion_rows(capsule: str, arm: dict, sims: tuple[str, ...]) -> list[dict]:
+    """Project one legacy profiler record into exact, simulator-specific completion evidence."""
+    rows: list[dict] = []
+    per_sim = arm.get("per_sim") or {}
+    for simulator in sims:
+        result = per_sim.get(simulator)
+        if not isinstance(result, dict):
             continue
-        has = (d / "TRACK_RTLCHECKS").exists()
-        if rtlchecks is True and not has:
-            continue
-        if rtlchecks is False and has:
-            continue
-        mt = d.stat().st_mtime
-        if best is None or mt > best[0]:
-            best = (mt, sub)
-    return best[1] if best else None
+        rows.append(
+            {
+                "family": _FIXED_PROFILE_FAMILY,
+                "capsule": capsule,
+                "simulator": simulator,
+                "replicate": _FIXED_PROFILE_REPLICATE,
+                "correct": result.get("correct"),
+                "cycles": None if simulator == "spike" else result.get("cycles"),
+                "provenance": result.get("provenance"),
+            }
+        )
+    return rows
 
 
-APPROACH_PKG = {
-    "baseline": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
-    "merlin_targetgen": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
-    "merlin_native": PB.REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0",
-    # --- the 4 agentic capsule-bench backends, resolved LIVE from out/runs (latest per arm) ---
-    "agentic_raw_cpp":      _latest_submission("raw_baseline"),
-    "agentic_scaffold_cpp": _latest_submission("cpp_merlininfra"),
-    "agentic_python":       _latest_submission("merlin_assisted", rtlchecks=False),
-    "agentic_circt":        _latest_submission("merlin_assisted", rtlchecks=True),
-}
-CONTRACT = str(PB.REPO / "merlin/contract")
-
-# ---- golden approach (a): cycle-instrumented tiled_matmul_auto (hardware-loop WS) ----------------
-_GOLDEN_C = r"""
-#include <stdint.h>
-#include <stddef.h>
-#include <stdio.h>
-#include "include/gemmini_testutils.h"
-#define MI {M}
-#define MK {K}
-#define MJ {N}
-#define SEED_A {seed_a}
-#define SEED_B {seed_b}
-static elem_t A[MI][MK] row_align(1);
-static elem_t B[MK][MJ] row_align(1);
-{cdecl}
-int main() {{
-  for (int i=0;i<MI;i++) for (int k=0;k<MK;k++) {{ long t=(long)SEED_A*(i*MK+k+1)+(long)(i*MK+k)*(i*MK+k); A[i][k]=(elem_t)(t%4); }}
-  for (int k=0;k<MK;k++) for (int j=0;j<MJ;j++) {{ long t=(long)SEED_B*(k*MJ+j+1)+(long)(k*MJ+j)*(k*MJ+j); B[k][j]=(elem_t)(t%4); }}
-  uint64_t c0 = read_cycles();
-  tiled_matmul_auto(MI, MJ, MK, (elem_t*)A, (elem_t*)B, NULL, (void*)C,
-      MK, MJ, MJ, MJ,
-      MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
-      {act}, {scale}, 0, false, false, false, {full_C}, false, 0, WS);
-  gemmini_fence();
-  uint64_t c1 = read_cycles();
-  printf("OUT Y0 %d %d", MI, MJ);
-  for (int i=0;i<MI;i++) for (int j=0;j<MJ;j++) printf(" %d", (int){celem});
-  printf("\n");
-  printf("METRIC cycles %llu\n", (unsigned long long)(c1-c0));
-  printf("DONE\n");
-  exit(0);
-}}
-"""
-
-
-# Movement golden: mvin each DIM tile to scratchpad then mvout (identity round-trip), matching the
-# capsule `movement` op (Y0 == X). Seeds match the capsule's source leaf name.
-_GOLDEN_MOVE_C = r"""
-#include <stdint.h>
-#include <stddef.h>
-#include <stdio.h>
-#include "include/gemmini_testutils.h"
-#define MI {M}
-#define MJ {N}
-#define SEED_X {seed_x}
-static elem_t In[MI][MJ] row_align(1);
-static elem_t Out[MI][MJ] row_align(1);
-int main() {{
-  for (long k=0;k<(long)MI*MJ;k++) {{ long t=(long)SEED_X*(k+1)+k*k; ((elem_t*)In)[k]=(elem_t)(t%4); }}
-  gemmini_flush(0);
-  gemmini_config_ld(MJ * sizeof(elem_t));
-  gemmini_config_st(MJ * sizeof(elem_t));
-  uint64_t c0 = read_cycles();
-  for (int i=0;i<MI;i+=DIM) for (int j=0;j<MJ;j+=DIM) {{
-    gemmini_mvin(&In[i][j], i*0 + (i/DIM)*0);  /* spad row reused per tile */
-    gemmini_mvout(&Out[i][j], 0);
-  }}
-  gemmini_fence();
-  uint64_t c1 = read_cycles();
-  printf("OUT Y0 %d %d", MI, MJ);
-  for (long k=0;k<(long)MI*MJ;k++) printf(" %d", (int)((elem_t*)Out)[k]);
-  printf("\n");
-  printf("METRIC cycles %llu\n", (unsigned long long)(c1-c0));
-  printf("DONE\n");
-  exit(0);
-}}
-"""
-
-
-def _golden_src(M, K, N, epilogue, acc_scale, lhs_name, weight_name) -> str:
-    """tiled_matmul_auto golden, seeds matching the capsule's actual lhs/weight leaf names (so
-    attention QK/PV [Q,Kt / P,V] fill correctly, not just X/W)."""
-    i8out = "acc_scale" in epilogue
-    act = "RELU" if "relu" in epilogue else "NO_ACTIVATION"
-    scale = f"{acc_scale}f" if (acc_scale and i8out) else "ACC_SCALE_IDENTITY"
-    cdecl = "static elem_t C[MI][MJ] row_align(1);" if i8out else "static acc_t C[MI][MJ];"
-    full_C = "false" if i8out else "true"
-    return _GOLDEN_C.format(M=M, K=K, N=N, seed_a=BMC.det_seed(lhs_name), seed_b=BMC.det_seed(weight_name),
-                            act=act, scale=scale, full_C=full_C, cdecl=cdecl, celem="C[i][j]")
-
-
-def run_golden(k: dict, kdir: Path, sims: list[str], workdir: Path, timeout: int) -> dict:
-    """Capsule-driven golden (bareMetalC C lib): dispatch by op. matmul/attention -> tiled_matmul_auto;
-    movement -> mvin/mvout identity; conv2d -> deferred (tiled_conv_auto wiring; spike skips conv)."""
-    cap = yaml.safe_load((kdir / "capsule.yaml").read_text())
-    op = cap["operation"]["op"]
-    attrs = cap["operation"].get("attributes", {})
-    gold = CG.golden(cap).get("Y0")
-    res = {"approach": "golden", "ok_build": False, "per_sim": {}}
-    if op in ("matmul", "linear", "attention_qk", "attention_pv"):
-        ins = {i["name"]: i["shape"] for i in cap["inputs"]}
-        lhs, w = attrs.get("lhs"), attrs.get("weight")
-        M, K = ins[lhs]
-        N = ins[w][1]
-        src = _golden_src(M, K, N, attrs.get("epilogue", []), attrs.get("acc_scale"), lhs, w)
-    elif op == "movement":
-        src_name = attrs.get("src", "X")
-        M, N = next(i["shape"] for i in cap["inputs"] if i["name"] == src_name)
-        src = _GOLDEN_MOVE_C.format(M=M, N=N, seed_x=BMC.det_seed(src_name))
-    else:  # conv2d (+ any other): golden C-lib wiring pending; honest skip (MLIR arms still run it)
-        res["error"] = f"golden({op}) C-lib template not wired (deferred; baseline/merlin/native run it)"
-        return res
-    try:
-        elf = BMC.build(src, f"golden_{k['id']}", workdir)
-        res["ok_build"] = True
-    except Exception as e:
-        res["error"] = str(e)[-300:]
-        return res
-    for sim in sims:
-        t0 = time.time()
-        try:
-            r = BMC.run(elf, sim, timeout=timeout)
-            got = r["outputs"].get("Y0")
-            res["per_sim"][sim] = {"cycles": r["cycles"], "wall_s": round(time.time() - t0, 1),
-                                   "correct": got == gold,
-                                   "util_pct": PB.utilization_pct(k["macs"], r["cycles"])}
-        except Exception as e:
-            res["per_sim"][sim] = {"error": str(e)[-200:], "wall_s": round(time.time() - t0, 1)}
-    return res
-
-
-def run_mlir(approach: str, k: dict, kdir: Path, sims: list[str], runs_root: Path,
-             timeout: int) -> dict:
-    """Run a generated MLIR backend package through capsule_runner on this kernel's capsule."""
-    pkg = APPROACH_PKG[approach]
-    if pkg is None:
-        # an agentic backend whose capsule-bench arm hasn't produced a submission yet -> honest skip,
-        # never a crash (the perf profile just omits it until the sweep has run).
-        return {"approach": approach, "ok_build": False, "per_sim": {},
-                "skipped": "no submission yet (run the capsule-bench arm first)"}
-    res = {"approach": approach, "ok_build": True, "per_sim": {}}
-    cap = CR.load_capsule(kdir, contract=CONTRACT)
-    # required tiers per feasibility: always L0/L1/trace; L2 spike always; L3 verilator only if feasible
-    tiers = ["L0", "L1", "L2"] + (["L3"] if "verilator" in sims else [])
-    cap = dict(cap); cap["required_oracle_tiers"] = tiers
-    # run_capsule iterates every tier that HAS an adapter (required_oracle_tiers only marks the
-    # integrity gate), so to skip verilator we must drop the L3 adapter — else it runs L3 regardless.
-    adapters = CR.default_adapters()
+def run_arm4(
+    package: Path,
+    kernel: dict,
+    kernel_dir: Path,
+    sims: tuple[str, ...],
+    capsule_runs: Path,
+    timeout: int,
+    target: str,
+    *,
+    measurement_pass: str | None = None,
+    expected_package_sha256: str | None = None,
+    rtl_identity: Mapping | None = None,
+) -> dict:
+    """Run one kernel through the frozen Arm-4 package; entrypoints are boxed by the caller."""
+    result = {"approach": "arm4", "ok_build": True, "per_sim": {}}
+    package_before = hash_tree(package)["sha256"]
+    inputs_before = hash_tree(kernel_dir)["sha256"]
+    capsule = CR.load_capsule(kernel_dir, contract=_CONTRACT)
+    capsule = dict(capsule)
+    capsule["required_oracle_tiers"] = ["L0", "L1", "L2"] + (["L3"] if "verilator" in sims else [])
+    # This fixed experiment measures Verilator, not the adaptive RTL-engine policy.
+    adapters = {"L2": CR.simulator_adapter("spike", target), "L3": CR.simulator_adapter("verilator", target)}
     if "verilator" not in sims:
-        adapters = {k: v for k, v in adapters.items() if k != "L3"}
-    t0 = time.time()
+        adapters = {tier: adapter for tier, adapter in adapters.items() if tier != "L3"}
     try:
-        r = CR.run_capsule(cap, str(pkg), runs_root=str(runs_root), run_id=f"{approach}_{k['id']}",
-                           contract=CONTRACT, oracle_adapters=adapters, timeout=timeout)
-    except Exception as e:
-        res["error"] = str(e)[-300:]
-        res["wall_s"] = round(time.time() - t0, 1)
-        return res
-    res["status"] = r.get("status")
-    res["numeric"] = (r.get("numeric") or {}).get("status") if isinstance(r.get("numeric"), dict) else r.get("numeric")
-    res["wall_s_total"] = round(time.time() - t0, 1)
-    rtiers = r.get("tiers", {})
+        grade = CR.run_capsule(
+            capsule,
+            str(package),
+            runs_root=str(capsule_runs),
+            run_id=(f"arm4_{kernel['id']}_{measurement_pass}" if measurement_pass else f"arm4_{kernel['id']}"),
+            contract=_CONTRACT,
+            oracle_adapters=adapters,
+            timeout=timeout,
+            target=target,
+            workers=1,
+        )
+    except Exception as exc:  # one failed cell is recorded; the global completion gate still refuses
+        result.update(
+            {
+                "ok_build": False,
+                "status": "error",
+                "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+                "traceback": traceback.format_exc()[-1600:],
+            }
+        )
+        return result
+    result["status"] = grade.get("status")
+    numeric = grade.get("numeric")
+    result["numeric"] = numeric.get("status") if isinstance(numeric, dict) else numeric
+    work_volume = grade.get("work_volume") if isinstance(grade.get("work_volume"), dict) else {}
+    result["work_volume"] = work_volume
+    command_artifact = grade.get("command_buffer_artifact")
+    if isinstance(command_artifact, Mapping):
+        result["command_buffer_artifact"] = dict(command_artifact)
+    rtl_facts = rtl_identity.get("rtl_facts") if isinstance(rtl_identity, Mapping) else None
+    rtl_facts_sha256 = rtl_facts.get("sha256") if isinstance(rtl_facts, Mapping) else None
+    circt_core = rtl_identity.get("circt_core_hw") if isinstance(rtl_identity, Mapping) else None
+    if MS.is_sha256(rtl_facts_sha256):
+        result["rtl_facts_sha256"] = rtl_facts_sha256
+    if isinstance(circt_core, Mapping) and MS.is_sha256(circt_core.get("sha256")):
+        result["circt_core_hw"] = dict(circt_core)
+    identity, identity_refusals = MS.measurement_identity(
+        package_before=package_before,
+        package_after=hash_tree(package)["sha256"],
+        inputs_before=inputs_before,
+        inputs_after=hash_tree(kernel_dir)["sha256"],
+        work_volume=work_volume,
+        toolchain_shas=grade.get("toolchain_shas"),
+        target=target,
+        expected_package_sha256=expected_package_sha256,
+        rtl_facts_sha256=rtl_facts_sha256,
+    )
+    result["measurement_identity"] = identity
+    result["measurement_identity_refusals"] = identity_refusals
+    tiers = grade.get("tiers") or {}
     for sim, tier in (("spike", "L2"), ("verilator", "L3")):
         if sim not in sims:
             continue
-        tr = rtiers.get(tier) or {}
-        st = tr.get("status") if isinstance(tr, dict) else tr
-        cyc = tr.get("cycles") if isinstance(tr, dict) else None
-        res["per_sim"][sim] = {"cycles": cyc, "tier_status": st,
-                               "correct": st == "pass",
-                               "util_pct": PB.utilization_pct(k["macs"], cyc)}
-    if r.get("failure"):
-        res["failure"] = {kk: r["failure"].get(kk) for kk in ("plane", "category", "detail")}
-    return res
+        tier_result = tiers.get(tier) or {}
+        status = tier_result.get("status") if isinstance(tier_result, dict) else tier_result
+        cycles = tier_result.get("cycles") if isinstance(tier_result, dict) else None
+        is_rtl_measurement = (
+            sim != "spike"
+            and isinstance(tier_result, dict)
+            and tier_result.get("derived_from_rtl") is True
+            and tier_result.get("cycle_accurate") is True
+        )
+        admitted_cycles = cycles if is_rtl_measurement else None
+        exact_macs = work_volume.get("exact_macs")
+        achieved = (
+            exact_macs / admitted_cycles
+            if isinstance(exact_macs, int) and isinstance(admitted_cycles, int) and admitted_cycles > 0
+            else None
+        )
+        result["per_sim"][sim] = {
+            "cycles": admitted_cycles,
+            "correctness_cycles": cycles if sim == "spike" else None,
+            "tier_status": status,
+            "correct": status == "pass",
+            "achieved_macs_per_cycle": achieved,
+            "work_volume": work_volume,
+            "provenance": {
+                "tier": tier,
+                "simulator": sim,
+                "derived_from_rtl": tier_result.get("derived_from_rtl") is True,
+                "cycle_accurate": tier_result.get("cycle_accurate") is True,
+                "evidence": tier_result.get("evidence"),
+            }
+            if isinstance(tier_result, dict)
+            else None,
+            "counters": tier_result.get("counters") if isinstance(tier_result, dict) else None,
+            "timing_observations": (tier_result.get("timing_observations") if isinstance(tier_result, dict) else None),
+            "timing_capability": (tier_result.get("timing_capability") if isinstance(tier_result, dict) else None),
+            "measurement_conditions": (
+                tier_result.get("measurement_conditions") if isinstance(tier_result, dict) else None
+            ),
+            "utilization": tier_result.get("utilization") if isinstance(tier_result, dict) else None,
+        }
+        if sim != "spike" and MS.is_sha256(rtl_facts_sha256):
+            result["per_sim"][sim]["rtl_facts_sha256"] = rtl_facts_sha256
+    if grade.get("failure"):
+        result["failure"] = {key: grade["failure"].get(key) for key in ("plane", "category", "detail")}
+    return result
+
+
+def _write_json(path: Path, doc: object) -> None:
+    path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--kernels", default="all")
-    ap.add_argument("--approaches", default="golden,baseline,merlin_targetgen,merlin_native")
-    ap.add_argument("--sims", default="auto", help="auto (per kernel sim_hint) | spike | spike,verilator")
-    ap.add_argument("--timeout", type=int, default=900)
-    ap.add_argument("--run-id", default="perf_0001")
-    a = ap.parse_args(argv)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--functional-run-id", required=True, help="exact completed Arm-4 functional run directory name"
+    )
+    parser.add_argument(
+        "--functional-submission-sha256", required=True, help="exact frozen functional submission SHA-256"
+    )
+    parser.add_argument(
+        "--waive-functional-gate",
+        action="append",
+        default=[],
+        metavar="PREDICATE",
+        help="accept a NAMED completeness gap in the functional baseline instead of "
+        "refusing (repeatable). Integrity predicates -- sandbox, answer mask, "
+        "answer-access audit, cohort-admission accounting, public/hidden "
+        "identity separation -- cannot be waived and asking is an error. Every "
+        "accepted waiver is recorded in the campaign record and every result it "
+        "produces is marked functional_gate_clean=false.",
+    )
+    parser.add_argument("--rtl-facts", help="exact CIRCT-extracted RTL facts JSON for performance provenance")
+    parser.add_argument("--kernels", default="all")
+    parser.add_argument(
+        "--approach",
+        choices=("arm4",),
+        default="arm4",
+        help="only the Arm-4 compiler lane is admitted in this campaign",
+    )
+    parser.add_argument("--sims", default="auto", help="auto (per-kernel hint), spike, verilator, or spike,verilator")
+    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--run-id", default="perf_0001")
+    parser.add_argument(
+        "--hardware-counters",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="instrument cycle windows with a counter set sized from elaborated RTL",
+    )
+    parser.add_argument(
+        "--counter-unit", help="byte-counter unit family for pass two (default: BYTES from target header)"
+    )
+    args = parser.parse_args(argv)
+    if Path(args.run_id).name != args.run_id or args.run_id in (".", ".."):
+        raise PC.CampaignGateError("performance run id must be a simple directory name")
+    if args.timeout <= 0:
+        raise PC.CampaignGateError("performance cell timeout must be positive")
+    if args.counter_unit is not None:
+        unit = str(args.counter_unit).strip()
+        if not args.hardware_counters or not unit or any(not (char.isalnum() or char == "_") for char in unit):
+            raise PC.CampaignGateError("--counter-unit requires hardware counters and must be one identifier token")
+        if unit.upper() != _PHYSICAL_BYTE_UNIT:
+            raise PC.CampaignGateError(
+                "the linked physical-byte pass requires the BYTES unit declared by the target header"
+            )
+    physical_unit = str(args.counter_unit).upper() if args.counter_unit else _PHYSICAL_BYTE_UNIT
+    if not args.rtl_facts:
+        raise PC.CampaignGateError("--rtl-facts is required for content-linked RTL performance")
+    rtl_identity = MS.load_rtl_identity(Path(args.rtl_facts), PB.TARGET)
+    counter_binding = MS.probe_counter_byte_bindings(rtl_identity, target=PB.TARGET)
 
-    corpus_doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
-    corpus = [k for sec in ("golden_kernels", "model_kernels", "attention_kernels",
-                            "conv_kernels", "movement_kernels")
-              for k in (corpus_doc.get(sec) or [])]
-    if a.kernels != "all":
-        want = set(a.kernels.split(","))
-        corpus = [k for k in corpus if k["id"] in want]
-    approaches = [s.strip() for s in a.approaches.split(",") if s.strip()]
+    functional = PC.inspect_functional_run(
+        _FUNCTIONAL_RUNS,
+        args.functional_run_id,
+        args.functional_submission_sha256,
+        waive=frozenset(args.waive_functional_gate or ()),
+    )
+    _selected_corpus(args.kernels)  # validate the requested IDs before allocating the fresh run dir
+    out_dir = PB.RUNS / args.run_id
+    if out_dir.exists() or out_dir.is_symlink():
+        raise PC.CampaignGateError(f"performance run directory already exists; choose a fresh --run-id: {out_dir}")
 
-    # Runs live under the canonical runs/ root (PB.RUNS is re-rooted in _pbcommon.py); the
-    # whole perf-bench pipeline (firesim/iree arms, assemble, report) shares PB.RUNS / run_id.
-    out_dir = PB.RUNS / a.run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    work = out_dir / "_work"
-    work.mkdir(exist_ok=True)
-    results = []
-    for k in corpus:
-        if a.sims == "auto":
-            sims = ["spike", "verilator"] if k.get("sim_hint") == "L2+L3" else ["spike"]
-        else:
-            sims = [s.strip() for s in a.sims.split(",")]
-        disp = k.get("shape") or (f"{k.get('M')}x{k.get('K')}x{k.get('N')}"
-                                   if k.get("M") is not None else "?")
-        print(f"\n=== kernel {k['id']}  ({disp} {k.get('output_dtype','')}, "
-              f"sims={sims}, macs={k['macs']:,}) ===", flush=True)
-        kdir = PB.KERNELS / k["id"]
-        cell = {"kernel": k["id"], "shape": disp, "macs": k["macs"],
-                "output_dtype": k.get("output_dtype", ""), "source": k["source"],
-                "sim_hint": k.get("sim_hint"), "approaches": {}}
-        for ap_name in approaches:
-            t0 = time.time()
-            # FAULT-TOLERANT: a crash in one approach/kernel records an error cell and continues
-            # (the user's "if something crashes the run shouldn't stop"). Never aborts the batch.
-            try:
-                if ap_name == "golden":
-                    r = run_golden(k, kdir, sims, work / k["id"], a.timeout)
-                else:
-                    r = run_mlir(ap_name, k, kdir, sims, out_dir / "_capsule_runs", a.timeout)
-            except Exception as e:
-                import traceback
-                r = {"approach": ap_name, "ok_build": False, "status": "error",
-                     "error": f"{type(e).__name__}: {str(e)[:300]}",
-                     "traceback": traceback.format_exc()[-1200:], "per_sim": {}}
-                print(f"  [{ap_name:16s}] CRASHED (recorded, continuing): {type(e).__name__}: {str(e)[:160]}", flush=True)
-            cell["approaches"][ap_name] = r
-            summ = {s: (v.get("cycles"), v.get("util_pct"), v.get("correct"))
-                    for s, v in r.get("per_sim", {}).items()}
-            print(f"  [{ap_name:16s}] {summ}  ({round(time.time()-t0,0)}s)", flush=True)
-        results.append(cell)
-        (out_dir / f"{k['id']}.json").write_text(json.dumps(cell, indent=2))
-    (out_dir / "perf_results.json").write_text(json.dumps(results, indent=2))
-    print(f"\nwrote {out_dir}/perf_results.json  ({len(results)} kernels x {len(approaches)} approaches)")
+    snapshot = PC.materialize_perf_workspace(functional, out_dir / "_frozen_functional")
+    workload_root = out_dir / "_frozen_workload" / "kernels"
+    workload_digest = PC.materialize_readonly_tree(PB.KERNELS, workload_root)
+    corpus = _selected_corpus(args.kernels, workload_root)
+    sims_by_capsule = {str(kernel["id"]): _sims_for(kernel, args.sims) for kernel in corpus}
+    expected = _expected_cells(corpus, args.sims)
+    fork = PC.functional_fork(functional)
+    before = PC.check_fork(fork, snapshot)
+    if before.ok is not True:
+        raise PC.CampaignGateError(f"functional fork does not hold before performance: {before.reason}")
+    fork_record = fork.to_dict()
+    fork_record.update(
+        {
+            "functional_run_id": functional.run_id,
+            "functional_submission_sha256": functional.digest,
+            "copied_submission": str(snapshot),
+        }
+    )
+    _write_json(out_dir / "functional_fork.json", fork_record)
+
+    target_experiment = load_target_experiment(_DESCRIPTOR)
+    probe_workspace = out_dir / "_probe_workspace"
+    probe_workspace.mkdir()
+    probe_policy = PC.package_sandbox_policy(target_experiment, probe_workspace, snapshot)
+    campaign = {
+        "status": "NO_GO",
+        "approach": args.approach,
+        "functional_run_id": functional.run_id,
+        "functional_submission_sha256": functional.digest,
+        "functional_public_capsules": functional.public_capsules,
+        "functional_hidden_capsules": functional.hidden_capsules,
+        # A campaign launched over a waived gate is still a real measurement, but it is NOT the same
+        # claim as one whose baseline was fully established. Both facts ride in the record so a reader
+        # never has to reconstruct which it was: `false` here means the numbers below are conditional
+        # on the named gaps, and any write-up must say so.
+        "functional_gate_clean": functional.gate_clean,
+        "functional_gate_deviations": [d.to_dict() for d in functional.deviations],
+        "snapshot": str(snapshot),
+        "snapshot_sha256": functional.digest,
+        "workload_snapshot": str(workload_root),
+        "workload_sha256": workload_digest,
+        "instrumentation": {
+            "hardware_counters": args.hardware_counters,
+            "mode": "linked_multi_pass" if args.hardware_counters else "disabled",
+            "applies_to": "verilator_cells" if args.hardware_counters else None,
+            "passes": (
+                [
+                    {"id": "occupancy", "selection": "joint_occupancy"},
+                    {
+                        "id": "physical_bytes",
+                        "unit_family": physical_unit,
+                        "semantic_resolution": "raw_named_readings_only",
+                    },
+                ]
+                if args.hardware_counters
+                else []
+            ),
+            "capacity_source": "elaborated CIRCT HW",
+            "rtl_identity": rtl_identity,
+            "counter_byte_binding": counter_binding,
+        },
+        "expected_cells": [
+            {"family": cell.family, "capsule": cell.capsule, "simulator": cell.simulator, "replicate": cell.replicate}
+            for cell in expected
+        ],
+        "fork_before": before.to_dict(),
+        "fork_after": None,
+        "sandbox": {
+            "engine": "bwrap",
+            "network": "unshared",
+            "package_read_only": True,
+            "answer_surface_coverage_gap": list(probe_policy.coverage_gap),
+            "required_tool_probes": [probe.label for probe in probe_policy.required_tools],
+            "tool_probe_results": [],
+        },
+        "completion": PC.completion_report([], expected),
+        "refusal": "campaign has not completed",
+    }
+    _write_json(out_dir / "campaign_manifest.json", campaign)
+
+    results: list[dict] = []
+    completion_rows: list[dict] = []
+    refusal: str | None = None
+    try:
+        campaign["sandbox"]["tool_probe_results"] = PC.run_tool_probes(probe_policy)
+        _write_json(out_dir / "campaign_manifest.json", campaign)
+        cells_root = out_dir / "_cell_workspaces"
+        cells_root.mkdir()
+        for kernel in corpus:
+            name = str(kernel["id"])
+            sims = sims_by_capsule[name]
+            shape = kernel.get("shape") or (
+                f"{kernel.get('M')}x{kernel.get('K')}x{kernel.get('N')}" if kernel.get("M") is not None else "?"
+            )
+            print(f"\n=== Arm-4 kernel {name} ({shape}, sims={list(sims)}) ===", flush=True)
+            # Each pass gets a fresh writable mount. The package cannot inspect oracle/result files
+            # from an earlier pass or cell; capsule_runner copies this cell's interface MLIR into
+            # generated/ before the first boxed entrypoint and keeps the source corpus outside the mount.
+            cell_workspace = cells_root / name
+            cell_workspace.mkdir()
+
+            def run_one(pass_name: str) -> dict:
+                pass_workspace = cell_workspace / pass_name
+                pass_workspace.mkdir()
+                capsule_runs = pass_workspace / "capsule_runs"
+                capsule_runs.mkdir()
+                cell_policy = PC.package_sandbox_policy(target_experiment, pass_workspace, snapshot)
+                with PC.boxed_entrypoints(cell_policy):
+                    return run_arm4(
+                        snapshot,
+                        kernel,
+                        workload_root / name,
+                        sims,
+                        capsule_runs,
+                        args.timeout,
+                        target_experiment.target,
+                        measurement_pass=pass_name,
+                        expected_package_sha256=functional.digest,
+                        rtl_identity=rtl_identity,
+                    )
+
+            if args.hardware_counters and "verilator" in sims:
+                arm = MS.collect_linked_counter_passes(
+                    run_one,
+                    physical_unit=physical_unit,
+                    counter_binding=counter_binding,
+                    rtl_facts_sha256=rtl_identity["rtl_facts"]["sha256"],
+                )
+            else:
+                with MS.counter_environment(enabled=False):
+                    arm = run_one("unprofiled")
+            cell = {
+                "kernel": name,
+                "shape": shape,
+                "work_volume": arm.get("work_volume"),
+                "command_buffer_artifact": arm.get("command_buffer_artifact"),
+                "resource_bindings": MS.resource_bindings(arm),
+                "output_dtype": kernel.get("output_dtype", ""),
+                "source": kernel.get("source"),
+                "sim_hint": kernel.get("sim_hint"),
+                "approaches": {"arm4": arm},
+            }
+            results.append(cell)
+            completion_rows.extend(_completion_rows(name, arm, sims))
+            _write_json(out_dir / f"{name}.json", cell)
+            _write_json(out_dir / "completion_cells.json", completion_rows)
+            campaign["completion"] = PC.completion_report(completion_rows, expected)
+            _write_json(out_dir / "campaign_manifest.json", campaign)
+            linked = arm.get("linked_counter_evidence")
+            if (
+                args.hardware_counters
+                and "verilator" in sims
+                and (not isinstance(linked, dict) or linked.get("status") != "linked")
+            ):
+                reasons = linked.get("refusals") if isinstance(linked, dict) else ["missing linkage"]
+                raise PC.CampaignGateError(f"{name} counter passes could not be linked: {reasons}")
+            summary = {sim: (row.get("cycles"), row.get("correct")) for sim, row in arm.get("per_sim", {}).items()}
+            print(f"  [arm4] {summary}", flush=True)
+    except Exception as exc:
+        refusal = f"{type(exc).__name__}: {exc}"
+    finally:
+        _write_json(out_dir / "perf_results.json", results)
+        auxiliary = MS.roofline_auxiliary_requirements(results, rtl_identity)
+        _write_json(out_dir / "roofline_auxiliary_evidence.json", auxiliary)
+        campaign["roofline_evidence"] = auxiliary
+        coverage = MS.compute_axis_coverage(results)
+        _write_json(out_dir / "compute_axis_coverage.json", coverage)
+        campaign["compute_axis_coverage"] = coverage
+        _write_json(out_dir / "completion_cells.json", completion_rows)
+        after = PC.check_fork(fork, snapshot)
+        campaign["fork_after"] = after.to_dict()
+        if after.ok is not True:
+            refusal = f"functional fork changed during performance: {after.reason}"
+        try:
+            campaign["completion"] = PC.completion_report(completion_rows, expected)
+            if refusal is None and not campaign["completion"]["complete"]:
+                counts = campaign["completion"]
+                refusal = (
+                    f"Arm-4 performance reported {counts['reported']} of "
+                    f"{counts['expected']} expected cells; {counts['failed']} reported "
+                    "cell(s) failed simulator-specific completion evidence"
+                )
+        except PC.CampaignGateError as exc:
+            if refusal is None:
+                refusal = str(exc)
+        campaign["refusal"] = refusal
+        campaign["status"] = "GO" if refusal is None else "NO_GO"
+        _write_json(out_dir / "campaign_manifest.json", campaign)
+
+    # NEXT TO THE HEADLINE, not only per row: a reader who skips the cells still sees how many
+    # members' cycles have no counted work behind them, because that is the denominator any
+    # utilization number quoted off this campaign is missing.
+    _coverage = campaign.get("compute_axis_coverage")
+    if isinstance(_coverage, Mapping):
+        print(f"\ncompute axis: {_coverage['headline']}", flush=True)
+        for _row in _coverage.get("unattributed", []):
+            print(f"  [no compute axis] {_row['kernel']}: {'; '.join(_row['reasons'])}", flush=True)
+    if refusal is not None:
+        print(f"\nNO-GO: {refusal}\nmanifest: {out_dir / 'campaign_manifest.json'}", flush=True)
+        return 2
+    print(
+        f"\nGO: completed {campaign['completion']['expected']} Arm-4 cells; "
+        f"manifest: {out_dir / 'campaign_manifest.json'}",
+        flush=True,
+    )
     return 0
 
 

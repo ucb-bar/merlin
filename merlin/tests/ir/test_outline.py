@@ -4,13 +4,15 @@ Structural invariants run everywhere xDSL is present; the value-preserving check
 both the monolithic and the outlined module through the real host toolchain and asserts
 bit-identical outputs (auto-skips without the m2m venv / clang-23).
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import ctypes
+
 import numpy as np
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -78,13 +80,12 @@ def test_outline_kernels_are_self_contained():
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
     res = outline_dispatches(parse_mlir_text(CHAIN))
-    kernels = [op for op in res.module.walk()
-               if op.name == "func.func" and "$kernel_" in op.sym_name.data]
+    kernels = [op for op in res.module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data]
     assert len(kernels) == 2
     for k in kernels:
         body = list(k.body.blocks[0].ops)
         names = [o.name for o in body]
-        assert "linalg.fill" in names          # accumulator zero-init lives in the kernel
+        assert "linalg.fill" in names  # accumulator zero-init lives in the kernel
         assert "tensor.empty" in names
         assert "arith.constant" in names
         assert names.count("linalg.matmul") == 1
@@ -98,15 +99,11 @@ def test_outline_conserves_every_compute_op():
     src = parse_mlir_text(CHAIN)
     n_matmul = _count(src, "linalg.matmul")
     res = outline_dispatches(src)
-    kernel_funcs = [op for op in res.module.walk()
-                    if op.name == "func.func" and "$kernel_" in op.sym_name.data]
-    in_kernels = sum(
-        sum(1 for o in k.body.blocks[0].ops if o.name == "linalg.matmul")
-        for k in kernel_funcs)
+    kernel_funcs = [op for op in res.module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data]
+    in_kernels = sum(sum(1 for o in k.body.blocks[0].ops if o.name == "linalg.matmul") for k in kernel_funcs)
     assert in_kernels == n_matmul == res.n_kernels
     # The driver body holds calls, not the compute ops.
-    driver = next(op for op in res.module.walk()
-                  if op.name == "func.func" and "$kernel_" not in op.sym_name.data)
+    driver = next(op for op in res.module.walk() if op.name == "func.func" and "$kernel_" not in op.sym_name.data)
     driver_names = [o.name for o in driver.body.blocks[0].ops]
     assert driver_names.count("func.call") == res.n_kernels
     assert "linalg.matmul" not in driver_names
@@ -122,8 +119,42 @@ def test_outline_separates_dequant_from_matmul():
     assert lower_quant_ext(m) == 1
     res = outline_dispatches(m)
     assert res.n_kernels == 2
-    assert res.dispatches[0].root_op == "linalg.generic"   # dequant
+    assert res.dispatches[0].root_op == "linalg.generic"  # dequant
     assert res.dispatches[1].root_op == "linalg.matmul"
+
+
+EXTERNAL_CALL = """
+builtin.module {
+  func.func private @quantize_activations(tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.func @forward(%w: tensor<8x6xf32>, %x: tensor<4x8xf32>) -> tensor<4x6xf32> {
+    %q = func.call @quantize_activations(%x) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+    %e0 = tensor.empty() : tensor<4x6xf32>
+    %c0 = arith.constant 0.0 : f32
+    %f0 = linalg.fill ins(%c0 : f32) outs(%e0 : tensor<4x6xf32>) -> tensor<4x6xf32>
+    %y0 = linalg.matmul ins(%q, %w : tensor<4x8xf32>, tensor<8x6xf32>)
+          outs(%f0 : tensor<4x6xf32>) -> tensor<4x6xf32>
+    func.return %y0 : tensor<4x6xf32>
+  }
+}
+"""
+
+
+def test_an_external_declaration_is_not_mistaken_for_the_driver():
+    """A body-less ``func.func private`` printed first must not be picked as the function to outline.
+
+    A capture that leaves an operation to an outside implementation prints its declaration ahead of
+    ``@forward``; selecting it used to die on ``fn.body.blocks[0]`` with a bare ``IndexError`` that
+    named neither the module nor the symbol. The undefined symbol is what should be reported, and
+    it should be reported BY NAME.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches
+
+    with pytest.raises(OutlineError) as excinfo:
+        outline_dispatches(parse_mlir_text(EXTERNAL_CALL))
+    message = str(excinfo.value)
+    assert "@quantize_activations" in message
+    assert "forward" in message
 
 
 def test_missing_forward_raises():
@@ -136,27 +167,31 @@ def test_missing_forward_raises():
 
 # --- scales to a real whole model ------------------------------------------------------
 
-@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
-                    reason="small_llama capture not present")
+
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
+    reason="small_llama capture not present",
+)
 def test_outline_scales_to_small_llama():
     """The outliner forms a verified dispatch table from the real small LLaMA model."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
     m = parse_mlir_file(REPO / "out/artifacts/recaptures/small_consistent/model.mlir")
-    res = outline_dispatches(m)            # verifies internally (IsolatedFromAbove etc.)
+    res = outline_dispatches(m)  # verifies internally (IsolatedFromAbove etc.)
     roots = [d.root_op for d in res.dispatches]
     assert res.n_kernels == len(roots) > 100
-    assert roots.count("linalg.matmul") == 15      # one kernel per dense layer
+    assert roots.count("linalg.matmul") == 15  # one kernel per dense layer
     # Every kernel is a real private func with a body terminated by a return.
-    kfuncs = [op for op in res.module.walk()
-              if op.name == "func.func" and "$kernel_" in op.sym_name.data]
+    kfuncs = [op for op in res.module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data]
     assert len(kfuncs) == res.n_kernels
     assert all(list(op.body.blocks[0].ops)[-1].name == "func.return" for op in kfuncs)
 
 
-@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/tiny_consistent/model.mlir").is_file(),
-                    reason="tiny_llama capture not present")
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts/recaptures/tiny_consistent/model.mlir").is_file(),
+    reason="tiny_llama capture not present",
+)
 def test_outline_scales_to_tiny_llama():
     """Real TinyLlama-1.1B: 155 matmul dispatches, all region-captures parameterized."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
@@ -170,6 +205,7 @@ def test_outline_scales_to_tiny_llama():
 
 
 # --- value-preserving end-to-end (real toolchain) --------------------------------------
+
 
 def _toolchain():
     from merlin.llvmlower import toolchain
@@ -207,9 +243,12 @@ def test_outline_runs_correctly_on_host(tmp_path):
 
     outlined = to_text(outline_dispatches(parse_mlir_text(CHAIN)).module)
     y = np.zeros((4, 5), np.float32)
-    _run_host(outlined, "outlined", tmp_path,
-              [(W.ctypes.data, (8, 6)), (X.ctypes.data, (4, 8)),
-               (Z.ctypes.data, (6, 5)), (y.ctypes.data, (4, 5))])
+    _run_host(
+        outlined,
+        "outlined",
+        tmp_path,
+        [(W.ctypes.data, (8, 6)), (X.ctypes.data, (4, 8)), (Z.ctypes.data, (6, 5)), (y.ctypes.data, (4, 5))],
+    )
     assert np.allclose(y, ref, rtol=1e-4, atol=1e-4), np.abs(y - ref).max()
 
 
@@ -231,7 +270,16 @@ def test_outline_quantized_runs_correctly_on_host(tmp_path):
     lower_quant_ext(m)
     outlined = to_text(outline_dispatches(m).module)
     y = np.zeros((4, 6), np.float32)
-    _run_host(outlined, "outlined_q", tmp_path,
-              [(w.ctypes.data, (8, 6)), (s.ctypes.data, (6,)), (zp.ctypes.data, (6,)),
-               (x.ctypes.data, (4, 8)), (y.ctypes.data, (4, 6))])
+    _run_host(
+        outlined,
+        "outlined_q",
+        tmp_path,
+        [
+            (w.ctypes.data, (8, 6)),
+            (s.ctypes.data, (6,)),
+            (zp.ctypes.data, (6,)),
+            (x.ctypes.data, (4, 8)),
+            (y.ctypes.data, (4, 6)),
+        ],
+    )
     assert np.allclose(y, ref, rtol=1e-4, atol=1e-4), np.abs(y - ref).max()

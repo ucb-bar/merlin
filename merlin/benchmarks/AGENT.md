@@ -17,7 +17,7 @@ regenerated cheaply and are the source-of-record for DSE/kernel analysis. **Not 
   `REQUIRED_BENCHMARKS`).
 
 - `cost_calib/` — cost-model calibration ablation kernels (`*_ablation.c`) compiled by
-  `merlin.cost_model.calibrate`.
+  `merlin/targets/gemmini/cost_model/calibrate.py`.
 - Input-provenance / verification tooling that regenerates or independently re-derives the corpora
   (e.g. `dse_guidance/{variant_capture,verify_implementation,dump_exported_fx}.py`) is allowed here —
   it documents/checks the inputs, unlike experiment harnesses.
@@ -33,7 +33,7 @@ that only consume the library.** If a library module reads it, it belongs here (
 
 ## Used by
 `merlin.dse_guidance` (case_study, loader, quant_metadata, cost_calibration, accuracy_gate),
-`merlin.kernels.validate`, `merlin.cost_model.calibrate`.
+`merlin.kernels.validate`, `merlin/targets/gemmini/cost_model/calibrate.py`.
 
 ## Invariants
 Curated INPUTS (+ their provenance tooling) only; tool products belong under `artifacts/`. Every

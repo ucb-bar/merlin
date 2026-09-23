@@ -1,17 +1,22 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=70.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "merlin"
 version = "0.0.1"
 description = "Compiler-centered framework for HW/SW abstraction exploration"
-requires-python = ">=3.10"
+# >=3.12 because the CODE needs it, not as a preference: five modules use PEP 701 f-strings --
+# reused outer quotes, escapes, and line breaks inside replacement fields -- which are a SyntaxError
+# before 3.12, so an install on 3.11 would have failed at import. The floor said >=3.11 (raised from
+# >=3.10 because the `telemetry` extra's sibling `aet` enters the universal resolution) and nothing
+# checked it against the syntax actually written. Dev venvs are 3.12/3.13; CI is 3.13.
+requires-python = ">=3.12"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [{ name = "UCB-BAR" }]
 # PyYAML is used at runtime by the contracts/schemas/targetgen layers.
-dependencies = ["pyyaml"]
+dependencies = ["pyyaml", "numpy"]
 
 [project.urls]
 Homepage = "https://github.com/ucb-bar/merlin"
@@ -19,8 +24,13 @@ Repository = "https://github.com/ucb-bar/merlin"
 Issues = "https://github.com/ucb-bar/merlin/issues"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-timeout", "pyyaml", "pydantic", "rich"]
+dev = ["pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich", "build", "setuptools", "ruff>=0.16,<0.17"]
 xdsl = ["xdsl>=0.68"]
+# Compiler-pass verification (docs/design/compiler_verification.md): the static lit/FileCheck
+# layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
+# arrived only as a TRANSITIVE dep of exo-lang -- an undeclared dependency whose absence turns a
+# verification into a silent skip, which is the one thing this layer must never do.
+verify = ["xdsl>=0.68", "z3-solver"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]
 # Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, …) have
@@ -34,45 +44,132 @@ kernels-ast = ["tree-sitter", "tree-sitter-c"]
 kernels-exo = ["exo-lang"]
 kernels-parquet = ["pyarrow"]
 kernels-plots = ["matplotlib"]
+# AET owns accounting and run storage. Pin a published revision, never require a sibling
+# checkout or resolve an unrelated PyPI name. Developers can explicitly install their AET
+# worktree with --no-deps for coordinated unpublished changes.
+telemetry = ["aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554"]
+# Triton kernel frontend (merlin.triton): a STOCK, UNMODIFIED triton wheel used read-only to turn a
+# @triton.jit function into TTIR. No GPU is needed — only the AST->TTIR frontend runs, never
+# triton.compile()'s backend stage chain. EXACT-pinned because triton's compiler-internal API
+# (ASTSource/make_ir) is not a stable public surface and moves between minor releases; the same
+# version is asserted by merlin.triton.toolchain.PINNED_TRITON (test_triton_toolchain keeps the two
+# in agreement, so there is one place to bump and no second lock file to drift).
+triton = ["triton==3.7.1"]
 
 [project.scripts]
+merlin = "merlin.cli:main"
+merlin-opt = "merlin.xdsl_dialects.opt:main"
+merlin-verify = "merlin.verify.cli:main"
+# What the generated-output root costs and why, plus the reclaim classes whose safety is a property
+# (an unreferenced store object, an abandoned input closure, a declared-regenerable cache) rather
+# than a judgement about whether a run is finished.
+merlin-storage = "merlin.common.storage_cli:main"
+merlin-lit-suite = "merlin.targetgen.lit_suite:main"
 kernel-index = "merlin.kernels.cli_index:main"
 kernel-extract = "merlin.kernels.cli_extract:main"
 kernel-audit = "merlin.kernels.audit:main"
 kernel-bench = "merlin.kernels.bench_ceiling:main"
 merlin-targetgen = "merlin.targetgen.cli:main"
+merlin-target-tools = "merlin.targetgen.tool_cli:main"
+merlin-target-fetch = "merlin.targetgen.oot_fetch:main"
 merlin-onboard = "merlin.targetgen.onboard:main"
 merlin-target-publish = "merlin.targetgen.publish:main"
-merlin-design-pressure = "merlin.design_pressure.cli:main"
-merlin-dse = "merlin.dse.cli:main"
-merlin-dse-guidance = "merlin.dse_guidance.cli:main"
-merlin-rvv-report = "merlin.rvvgen.report:main"
-merlin-rvv-mine = "merlin.rvvgen.mine:main"
-merlin-rvv-autotune = "merlin.rvvgen.autotune:main"
-merlin-rvv-beam = "merlin.rvvgen.beam_cli:main"
-merlin-rvv-opt = "merlin.rvvgen.op_sweep:main"
-merlin-cca-route = "merlin.rvvgen.route_report:main"
+# Search/mining campaign commands are owned by packages/merlin-mining.
+# What we understand of a target's assembly, which CCA facets it can populate, and what its
+# emitted code implies is worth trying. Repeatable because every number in it goes stale.
+merlin-asm-audit = "merlin.kernels.cli_asm:main"
+# The editable surface: every place this target can be changed, derived from the live
+# registries rather than written down once and left to drift.
+merlin-surface = "merlin.kernels.cli_surface:main"
+# Offline, bit-exact bundle rewrite: store weights in the layout their consumer wants, so the
+# model stops re-laying-out weights on every inference. The analysis + rewrite already existed
+# and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
+# hand-driven from a REPL. See packages/merlin-analysis/src/merlin/baselines/pretranspose_cli.py for the
+# decided precedence against the conflicting `fuse_transpose_b` schedule lever.
 merlin-compile = "merlin.compile_cli:main"
-merlin-compare = "merlin.compare.cli:main"
+merlin-liveness = "merlin.liveness.cli:main"
+# Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
+# never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
+merlin-firesim-checkpoint = "merlin.perf.firesim_checkpoint:main"
+merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
+merlin-deployment-check = "merlin.perf.deployment_admissibility:main"
+merlin-compile-kernel = "merlin.triton.cli:main"
 
 [tool.setuptools]
-package-dir = { "" = "merlin/python" }
+package-dir = { "" = "src" }
+include-package-data = false
 
 [tool.setuptools.packages.find]
-where = ["merlin/python"]
+where = ["src"]
+exclude = ["merlin._data", "merlin._data.*"]
 
 # Bundled read-only data (schemas + agent prompts) copied into merlin/_data at build time by the
 # build_py hook in setup.py, so `pip install merlin` resolves them via importlib.resources with no
 # checkout. The _data dir is gitignored (regenerated per build); in-repo, data_path() reads the
 # canonical merlin/{schemas,prompts} instead.
 [tool.setuptools.package-data]
-merlin = ["_data/**/*"]
+merlin = [
+    "kernels/ceiling_drivers/baremetal_support.c",
+    "kernels/ceiling_drivers/common.h",
+    "kernels/ceiling_drivers/k1_harness/util.h",
+    "kernels/ceiling_drivers/openblas_sgemm_driver.c",
+    "kernels/ceiling_drivers/ours_activation_driver.c",
+    "kernels/ceiling_drivers/ours_bmm_driver.c",
+    "kernels/ceiling_drivers/ours_gemm_driver.c",
+    "kernels/ceiling_drivers/ours_gemm_f16_driver.c",
+    "kernels/ceiling_drivers/ours_int8_gemm_driver.c",
+    "kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c",
+    "kernels/ceiling_drivers/ours_kernel_driver.c",
+    "kernels/ceiling_drivers/src/xnnpack/common.h",
+    "kernels/ceiling_drivers/src/xnnpack/dwconv.h",
+    "kernels/ceiling_drivers/src/xnnpack/gemm.h",
+    "kernels/ceiling_drivers/src/xnnpack/intrinsics-polyfill.h",
+    "kernels/ceiling_drivers/src/xnnpack/math.h",
+    "kernels/ceiling_drivers/src/xnnpack/microparams.h",
+    "kernels/ceiling_drivers/src/xnnpack/reduce.h",
+    "kernels/ceiling_drivers/src/xnnpack/transpose.h",
+    "kernels/ceiling_drivers/src/xnnpack/vbinary.h",
+    "kernels/ceiling_drivers/src/xnnpack/vunary.h",
+    "kernels/ceiling_drivers/xnnpack_dwconv_driver.c",
+    "kernels/ceiling_drivers/xnnpack_gemm_driver.c",
+    "kernels/ceiling_drivers/xnnpack_gemm_driver_7x4v.c",
+    "kernels/ceiling_drivers/xnnpack_gemm_f16_driver_7x4v.c",
+    "kernels/ceiling_drivers/xnnpack_qd8_gemm_driver.c",
+    "kernels/ceiling_drivers/xnnpack_reduce_driver.c",
+    "kernels/ceiling_drivers/xnnpack_transposec_driver.c",
+    "kernels/ceiling_drivers/xnnpack_vbinary_driver.c",
+    "kernels/ceiling_drivers/xnnpack_vclamp_driver.c",
+    "kernels/ceiling_drivers/xnnpack_vunary_driver.c",
+    "kernels/framework_contracts/autocomp.yaml",
+    "kernels/framework_contracts/exo.yaml",
+    "kernels/framework_contracts/feature_extraction/avx.yaml",
+    "kernels/framework_contracts/feature_extraction/exo_schedule.yaml",
+    "kernels/framework_contracts/feature_extraction/gemmini.yaml",
+    "kernels/framework_contracts/feature_extraction/generic.yaml",
+    "kernels/framework_contracts/feature_extraction/neon.yaml",
+    "kernels/framework_contracts/feature_extraction/rvv.yaml",
+    "kernels/framework_contracts/feature_extraction/triton.yaml",
+    "kernels/framework_contracts/openblas.yaml",
+    "kernels/framework_contracts/saturn.yaml",
+    "kernels/framework_contracts/xnnpack.yaml",
+    "kernels/runtime_particularities.yaml",
+    "runtime/backends/openblas_board/openblas_gemm_rvv_shim.c",
+    "runtime/backends/ours_board/ours_gemm_rvv_shim.c",
+    "runtime/backends/outlined_int8_board/outlined_gemm_i8_rvv.c",
+    "runtime/backends/xnnpack_board/xnn_gemm_rvv_shim.c",
+    "runtime/backends/xnnpack_host/shim/src/xnnpack/common.h",
+    "runtime/backends/xnnpack_host/shim/src/xnnpack/gemm.h",
+    "runtime/backends/xnnpack_host/shim/src/xnnpack/math.h",
+    "runtime/backends/xnnpack_host/shim/src/xnnpack/microparams.h",
+    "runtime/backends/xnnpack_host/xnn_gemm_shim.c",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
 markers = [
     "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
     "integration: end-to-end tests spanning multiple subsystems or external tools",
+    "target(name): the test's SUBJECT is one named target; select or deselect them with -m 'target' / -m 'not target'",
 ]
 # Per-test wall-clock ceiling (pytest-timeout, in [dev]). A test that blocks in a subprocess
 # (compile/sim/board that never returns when its external toolchain is mis/unconfigured) FAILS at
@@ -82,26 +179,66 @@ markers = [
 timeout = 900
 timeout_method = "signal"
 
+# Temp-dir retention. pytest keeps the last THREE runs' `tmp_path` trees by default, for every test
+# whether it passed or not. This suite's temp trees are not small -- an rvv lowering test writes a
+# workload bundle, MLIR at each stage, an object file and a disassembly -- so three full retained
+# runs is gigabytes that nothing ever reclaims, and the conftest fixture below deliberately routes
+# every bare `tempfile.mkdtemp()` into the same managed root. Keep only what a failure needs to be
+# diagnosed: the failing test's tree, from the last run.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+
 [tool.mypy]
 cache_dir = "out/build/cache/mypy"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+# Must track requires-python above; a test holds the two together. Pinned at py310 while the code
+# was 3.12, ruff reported seven working PEP 701 f-strings as INVALID SYNTAX -- a linter calling live
+# code broken is how a linter stops being read -- and the floor itself was wrong in the same way.
+target-version = "py312"
+# Formatter output is only comparable within one release line: the same tree measured 2,703 files
+# "would reformat" under an unpinned ruff and 1,176 under 0.16.8. CI pins the exact version.
+required-version = ">=0.16,<0.17"
 exclude = ["third_party", "out", ".venv"]
+# Benchmark INPUTS, not source. A capsule's PyTorch loader is what an agent under test compiles, and
+# generate_corpus.py promises a re-run is byte-stable against the committed file -- so restyling one
+# changes the benchmark between arms and breaks the generator's own stability guarantee at once.
+extend-exclude = [
+    "merlin/contract/capsules/**/capsule.pytorch.py",
+    "merlin/contract/capsules/**/capsule.loader_deps/**",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["F821", "UP038"]
+# F821: the xDSL/MLIR dialect classes resolve names at registration time.
+# (UP038 was listed here until 2026-09-16; ruff removed the rule, so ignoring it did nothing.)
+ignore = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["merlin"]
 
 [tool.ruff.format]
 docstring-code-format = true
+# The repo gates excuse a flagged literal with an inline marker on the SAME LINE (`# target-ok:`,
+# `# derived-ok:`, `# regex-ok:`, `# fact-source-ok:`). Formatting these files splits a marked line
+# inside a multi-line construct -- or, in check_no_target_name.py, inside the string literals that
+# define the markers -- so the marker lands beside a closing paren and the gate fails. A
+# single-line statement is pinned with `# fmt: skip` instead; these three have no such line to pin.
+exclude = [
+    "build_tools/scripts/check_no_target_name.py",
+    "build_tools/scripts/gen_saturn_opu_rvv_contract.py",
+    "src/merlin/llvmlower/requant_fuse.py",
+    # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
+    "merlin/tests/infra/test_overfit_gate_regression.py",
+    # GSIM engine build scripts a sealed certificate was built with; kept byte-identical to that build.
+    "merlin/contract/external/gsim/model_build/**",
+    # Markdown carries its own gates (docs freshness, doc paths), and task text an agent reads is a
+    # benchmark input, so a formatter does not get to restyle the code blocks inside it.
+    "**/*.md",
+]
 
 [tool.uv]
 # Default dev environment includes the dev tools and the xdsl prototyping plane.
 # Sync with:  uv sync --all-extras
 default-groups = []
-

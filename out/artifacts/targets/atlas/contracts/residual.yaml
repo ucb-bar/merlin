@@ -1,0 +1,137 @@
+# GENERATED-EDITABLE residual side-input for the target-agnostic capability deriver (merlin.targetgen.capability_manifests.manifest_for). Provenance-tagged; requires_human_review. This is the human intent/prose the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes / encoding codes are layered on from facts.json when 'facts_source: rtl'. Regenerable but hand-owned.
+capabilities:
+  ops:
+  - matmul
+compiler_obligations:
+- must_tile_to_mesh_shape
+- must_supply_e8m0_block_scales
+compute_units:
+- accumulate:
+  - acc: bf16
+    in: fp8_e4m3
+    weight: fp8_e4m3
+  - acc: f32
+    in: fp8_e4m3
+    weight: fp8_e4m3
+  dtypes:
+  - fp8_e4m3
+  - bf16
+  kind: systolic
+  name: mxu
+  ops:
+  - matmul
+  requant:
+    ref: atlas.e4m3_block_requant
+  scaling: block_e8m0
+  # The ARR denominator: what the SILICON can execute, independent of what the compiler lowers today.
+  # PROPOSED here and RE-AUDITED on every run by merlin.targetgen.capability_derive against this
+  # target's own evidence -- the structural ISA role census (a role comes from each instruction's typed
+  # operands, never its mnemonic) plus the RTL facts. `capability_evidence.drift` in the derived
+  # contract is that audit; a disagreement is an error, not a note.
+  #   contraction     <- ISA role 'matmul'   (MXUMatMul)
+  #   elementwise_map <- ISA roles 'tensor_compute_unary' / 'tensor_compute_binary' (standalone vector
+  #                      ops) and 'acc_readout_scaled' (the fused requant epilogue)
+  #   movement        <- ISA role 'memory'   (TensorBaseOffset)
+  # reduction and synchronization are deliberately ABSENT rather than denied: the role census cannot
+  # separate a reduction from an elementwise map (both are TensorComputeUnary), so the deriver reports
+  # them UNKNOWN and they are excluded from BOTH sides of the ratio instead of being scored either way.
+  semantic_capabilities:
+  - family: contraction
+    dtypes: [fp8_e4m3, bf16]
+    # rank 3 is the BATCHED contraction, evidenced by `capability_derive._from_lowering`: `device_shim`
+    # emits a 3-D entry for a (B,M,N,K) signature, which is the same (M,N,K) kernel called B times with
+    # the leading offset advanced, so it asks nothing of the MXU that the rank-2 entry does not.
+    # Declaring [2] alone made `is_eligible` answer "rank 3 not in contraction legal ranks [2]" for
+    # every batch matmul, removing those regions from the ARR denominator -- the direction that
+    # flatters recall.
+    ranks: [2, 3]
+  - family: elementwise_map
+    dtypes: [fp8_e4m3, bf16]
+  - family: movement
+    dtypes: [fp8_e4m3, bf16]
+facts_source: rtl
+family: tensor_resident
+features:
+- systolic_array
+- fp8_mxu
+- microscaling
+- bf16_accumulate
+hardware_promises:
+- fp8_multiply
+- bf16_accumulate
+legality:
+- matmul tiles to the 32x32 mesh
+memory_model:
+  accumulators: true
+  block_scale_memory: true
+  resident: true
+name: atlas
+provenance: endpoint_kind + capabilities.mesh + encoding codes are DERIVED from the pinned mlc CIRCT facts (a 42-entry ScalarDecoder decode of 14-bit opcodes — too wide for RoCC funct7 -> self-hosted ISA -> external_backend; a 32x32 discovered array -> mesh). The compute-unit datapath (inputFmt=E4M3 fp8 activation+weight; accumFmt=outputFmt=BF16, with an FP32Addition PE variant; E8M0 block scale via ScalingFactorRegFile) is DECLARED intent from the atlas-npu chipyard generator (MxuParams.scala) — NOT yet RTL-grounded (dtypes are absent from this facts.json schema; pending mlc datapath discovery). NOT RTL-certified.
+requires_human_review: true
+runner:
+  fourth_output_name: kernel.S
+  model_ext: npu_model
+  # Run-identity dtype token (the fp8 E4M3 activation/weight format; accumulate/output is BF16). Without
+  # this the shared runner's manifest-derived RunnerConfig defaults to the gemmini i8xi8_i32 token, which
+  # would MISLABEL an atlas run's identity (the float grading itself rides each capsule's numeric_policy).
+  dtype: fp8_e4m3
+# Oracle ladder (informational parity with the other targets): the merlin reference + the npu_model
+# functional bootstrap are NOT RTL-derived; the mlc arc cosim is the RTL-derived functional gold; the
+# program-driven Verilator sim is the RTL-certified tier (additive, present only when a vsim is wired).
+oracle_ladder:
+  level_0: {name: merlin_reference, derived_from_rtl: false}
+  level_1: {name: npu_model_functional, derived_from_rtl: false}
+  level_2: {name: mlc_arc_cosim, derived_from_rtl: true}
+  level_3: {name: program_verilator_rtl, derived_from_rtl: true}
+runtime:
+  default_backend: simulator
+runtime_promises:
+- metrics
+status: prototype
+version: '0.1'
+
+# Families this target DECLARES (the hardware has them) but whose probes cannot yet be turned
+# into a runnable capsule. Recorded with a reason rather than left silent: a family that is
+# declared, probed and never graded is an untested claim, and the coverage gate refuses to let
+# one hide as an empty `skipped` list.
+unmaterializable_families:
+  elementwise_map: >-
+    no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
+    Needs a merlin_iface elementwise mnemonic + a recompute entry.
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER -- see the radiance/gemmini residuals for the rationale.
+# CORRECTION (measured): the sentence that stood here said this target "has no FIRRTL leg the GSIM path
+# can lower". That is FALSE. The core's FIRRTL was already on disk, a fast FIRRTL simulator was built on
+# it in 62 s with no regeneration, and across 17 real capsule kernels it agrees EXACTLY with the
+# independently-built Verilator tier on cycles, output bytes and DMA read/write counts -- at ~50x
+# Verilator's rate. The earlier attempt concluded otherwise because it targeted two designs that are not
+# the one the oracle runs. Recording the refutation rather than deleting the claim, because the claim is
+# what stopped anyone retrying.
+#
+# The authority below is UNCHANGED and still names the arc program oracle
+# (`targetgen.program_oracle.run_program`, `derived_from_rtl: false` / `fidelity: rtl_derived_model`) --
+# a cycle MODEL, not an RTL simulation, and the tier says so. Switching it is a VERDICT-AFFECTING edit
+# and is deliberately not made here: `citable` is a floor (`TIER_ORDER.index(reached) >=
+# TIER_ORDER.index(citable_tier)`), so raising `citable_tier` to `rtl` would retroactively make every
+# result already reached at `cycle_model` non-citable, and changing `cycles_from` would stop `pick()`
+# matching records labelled `arc_program`. Both are correct changes to want and neither should land
+# quietly while other sessions are grading against this contract.
+#
+# What the evidence supports when that switch IS coordinated: the Verilator tier is BOTH cheaper and
+# higher fidelity than arc -- 11.9x the per-cycle rate, `derived_from_rtl: true` /
+# `fidelity: elaborated_rtl`, and identical cycle counts on 14 of 14 capsules where both tiers ran. The
+# FIRRTL simulator is faster still but is NOT declared here, because it is not yet wired as a merlin
+# tier and declaring an authority no adapter can run is the failure this field exists to prevent.
+measurement:
+  cycles_from: arc_program
+  wall_from: null             # no board and no silicon: wall time is UNKNOWN, not zero
+  cycles_tier: cycle_model
+  wall_tier: silicon
+  speed_of_light: null
+  citable_tier: cycle_model
+  notes:
+    - "A speed-of-light model for this target EXISTS on disk but merlin has never referenced it
+       (npu-model/npu_speed_of_light/simple_throughput_model.py). Until it is wired in, attainment is
+       UNKNOWN; wiring it is what would let this be a number instead of a name."
+    - "The corpus is a conformance/perf/stress set, not a measurement set, and earlier rounds used
+       degenerate stimulus. Attainment must come from the oracle plus that model, never from the
+       corpus's own declared @PERF_MACS headers alone."

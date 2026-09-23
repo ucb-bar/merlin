@@ -1,0 +1,91 @@
+# WHAT ONE UNIT OF EACH RESOURCE COSTS, stated as measured hardware facts.
+#
+# WHY THIS FILE EXISTS. `merlin.perf.cost_terms` prices a composite only from rates whose provenance
+# is recorded, and makes the composite UNPRICED when a moved term has no rate — deliberately, because
+# "a guessed rate silently decides which optimizations the loop pursues". That is the right refusal.
+# But the project then went and kept its ONE measured rate in a TEST FILE
+# (`merlin/tests/infra/test_cost_terms.py`), where it is a fixture for the comparator rather than a
+# fact anything can cite. A number that only a test knows is not a ledger entry: nothing can read it,
+# nothing can check it is still true, and nothing records which machine it came from.
+#
+# So an optimization loop could NAME a trade — 146.2M host operations removed against dispatches
+# rising 23,875 -> 276,189 — and could not SCORE one. That is not a modelling gap. It is a
+# measurement that was never taken and never written down.
+#
+# ⚠️ RATES ARE NOT COMPARABLE ACROSS DEVICES, and `design` here is the DEVICE, not a configuration
+# name. Two bitstreams in `hardware_pins.yaml` both elaborate `FireSimGemminiRocketConfig` onto the
+# same U250 platform and are different silicon — different sizes, digests and Gemmini revisions. So
+# entries below key on the pin registry's ARTIFACT NAME, which is unique per device, and never on the
+# config string. `merlin.perf.design_identity.design_string()` resolves a run's design keys to that
+# name by two independent facts (the declared queue hw-config AND the artifact digest), returning
+# UNKNOWN with a reason when either is missing or disagrees.
+#
+# A RATE THAT DOES NOT CLOSE IS NOT A RATE. Every entry declares `closure_residual_fraction`: the
+# error when the priced terms are summed and compared against the measured total for a program where
+# all of them are known. A sweep can always fit a slope through two points; only closure says the
+# slope means anything. `merlin.perf.exchange_rates` REFUSES an entry above the bound declared below,
+# so an unclosed rate reports as unpriced rather than quietly weighting a composite.
+#
+# EVERY `measured` FIELD IS A VALUE A NAMED RUN PRODUCED. Nothing here is a goal, and nothing is
+# derived from another entry.
+version: 1
+
+policy:
+  # DECLARED, not derived — this is a review decision about how much unexplained residue is tolerable
+  # in a composite, and it is written here rather than in code so that changing it is a reviewable
+  # diff with an argument attached. It is deliberately strict: the composite exists to decide between
+  # candidates that differ by single-digit percentages, so a rate set that cannot reproduce a known
+  # program to within this bound cannot adjudicate them either.
+  max_closure_residual_fraction: 0.05
+  # A rate whose closure was never measured is NOT assumed to close. It is unpriced, with that as the
+  # reason — the same asymmetry `cost_terms` already enforces for a missing rate.
+  unmeasured_closure_is_unpriced: true
+
+rates:
+
+  firesim_gemmini_rocket_u250:
+
+    host_dynamic_operations_total:
+      cycles_per_unit: 0.556
+      status: measured
+      unit: host dynamic operation
+      provenance: >-
+        ResNet-50 w8a8, FireSim queue job 535: the measured window's host cycle residue divided by its
+        host dynamic operation count. MOVED HERE from merlin/tests/infra/test_cost_terms.py, where it
+        had been the project's only measured exchange rate since it was taken, readable by one test
+        and citable by nothing.
+      n_points: 1
+      closure_residual_fraction: null
+      caveats:
+        - >-
+          ONE POINT, SO IT IS A RATIO AND NOT A FITTED SLOPE. A single program's residue over its own
+          operation count cannot separate a per-operation cost from a fixed overhead, and it prices
+          every host operation family identically — the same caveat `perf_reference_targets.yaml`
+          records for `cycles_per_host_operation_anchor`. A revision trading integer operations for
+          floating-point ones can reduce the count and raise the cycles.
+        - >-
+          CLOSURE UNMEASURED: no program has been measured here with every term priced, so this rate
+          is refused for composites under the policy above. It is kept because it is real evidence
+          about this device and because deleting it would lose the only rate the project has.
+        - >-
+          This device is NOT the one this repo's 2026-09-17..19 whole-model measurements ran on;
+          those are `firesim_gemmini_rocket_u250_30mhz`. Applying this rate to them is a cross-device
+          comparison and is refused.
+
+  # firesim_gemmini_rocket_u250_30mhz: no rates measured yet.
+  #
+  # The three this device needs, and what each requires to be real rather than fitted. The sweep is
+  # designed to vary ONE term at a time with the compared output bit-identical:
+  #
+  #   host_dynamic_operations_total — a re-measurement of the entry above on THIS device, with more
+  #       than one point so the slope is separable from a fixed overhead.
+  #   dispatches — split one GEMM along M/N ONLY (never K: splitting the reduction reassociates the
+  #       accumulation and is not bit-identical), with tile extents that are exact multiples of the
+  #       array so `mesh_occupancy.tile_issue_cycles` stays invariant while the dispatch count goes
+  #       1x/2x/4x/8x.
+  #   mesh_issue_cycles — hold dispatches and MACs fixed and vary the tile ASPECT, letting
+  #       `cols < array_cols` create the partial-block waste `envelope.array_issue_time` already
+  #       charges, zero-padding so the compared slice stays bit-identical.
+  #
+  # Plus a CLOSURE window — a program in which all three terms are known — because without it the
+  # three slopes are three unrelated fits, and the policy above will refuse them.

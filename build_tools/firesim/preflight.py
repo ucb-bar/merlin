@@ -13,6 +13,7 @@ the FPGA, never starts the daemon.
 Exit code is 0 when every check is OK or WARN, 1 when any check FAILs.  See
 docs/guides/firesim.md for what to do about each finding.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,12 +52,19 @@ def check_modelblaster() -> list[dict]:
     neither the setting nor the path — so check it up front."""
     mb = env("MERLIN_MODELBLASTER")
     if not mb:
-        return [_r("modelblaster", FAIL, "MERLIN_MODELBLASTER unset -> run_on_firesim() will die "
-                                         "with a bare ModuleNotFoundError")]
+        return [
+            _r(
+                "modelblaster",
+                FAIL,
+                "MERLIN_MODELBLASTER unset -> run_on_firesim() will die with a bare ModuleNotFoundError",
+            )
+        ]
     # run_on_firesim() puts both `<mb>/src` and `<mb>` on sys.path and tries the packaged import
     # (`modelblaster.validation.firesim_runner`) before the flat one, so accept either layout.
-    for runner in (Path(mb) / "src" / "modelblaster" / "validation" / "firesim_runner.py",
-                   Path(mb) / "validation" / "firesim_runner.py"):
+    for runner in (
+        Path(mb) / "src" / "modelblaster" / "validation" / "firesim_runner.py",
+        Path(mb) / "validation" / "firesim_runner.py",
+    ):
         if runner.is_file():
             return [_r("modelblaster", OK, str(runner))]
     return [_r("modelblaster", FAIL, f"no validation/firesim_runner.py under {mb}")]
@@ -83,17 +91,22 @@ def check_queue() -> list[dict]:
         return [_r("queue", FAIL, f"no bin/firesim-queue under {root}")]
     pidf = root / "daemon.pid"
     if not pidf.is_file():
-        return [_r("queue", FAIL, f"daemon not running (no {pidf}); start it with "
-                                  f"`{root}/bin/firesim-queue daemon`")]
+        return [_r("queue", FAIL, f"daemon not running (no {pidf}); start it with `{root}/bin/firesim-queue daemon`")]
     try:
         pid = int(pidf.read_text().strip())
     except ValueError:
         return [_r("queue", WARN, f"unparseable {pidf}")]
     age_h = (time.time() - pidf.stat().st_mtime) / 3600.0
     if not _pid_alive(pid):
-        return [_r("queue", FAIL, f"daemon.pid={pid} is DEAD (pid file {age_h:.1f}h old). Check "
-                                  f"`firesim-queue status` for PENDING jobs, then restart the "
-                                  f"daemon — the pid file outlives the process.")]
+        return [
+            _r(
+                "queue",
+                FAIL,
+                f"daemon.pid={pid} is DEAD (pid file {age_h:.1f}h old). Check "
+                f"`firesim-queue status` for PENDING jobs, then restart the "
+                f"daemon — the pid file outlives the process.",
+            )
+        ]
     status = WARN if age_h > STALE_DAEMON_S / 3600.0 else OK
     return [_r("queue", status, f"daemon pid {pid} alive, started {age_h:.1f}h ago ({root})")]
 
@@ -112,8 +125,13 @@ def check_xdma() -> list[dict]:
         return [_r("xdma", WARN, "/proc/modules unreadable and no /dev/xdma0_* nodes — cannot tell")]
     if listed:
         return [_r("xdma", WARN, "xdma module loaded but no /dev/xdma0_* nodes")]
-    return [_r("xdma", FAIL, "xdma module NOT loaded -> INFRASETUP fails with "
-                             "`insmod: ERROR: could not load module poll_mode=1`")]
+    return [
+        _r(
+            "xdma",
+            FAIL,
+            "xdma module NOT loaded -> INFRASETUP fails with `insmod: ERROR: could not load module poll_mode=1`",
+        )
+    ]
 
 
 def _yaml_scalar(path: Path, key: str) -> str | None:
@@ -124,7 +142,7 @@ def _yaml_scalar(path: Path, key: str) -> str | None:
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
         if stripped.startswith(f"{key}:"):
-            return stripped[len(key) + 1:].strip()
+            return stripped[len(key) + 1 :].strip()
     return None
 
 
@@ -153,12 +171,17 @@ def check_bitstream() -> list[dict]:
             break
     detail = f"default_hw_config={hw}"
     if tar and tar.startswith("file://"):
-        p = Path(tar[len("file://"):])
+        p = Path(tar[len("file://") :])
         if not p.is_file():
             return [_r("bitstream", FAIL, f"{detail}; bitstream_tar missing: {p}")]
         detail += f"; tar present ({p.stat().st_size / 1e6:.0f} MB)"
-    return [_r("bitstream", OK, detail + "  [NOTE: config_runtime.yaml is SHARED — back it up "
-                                         "before repointing default_hw_config]")]
+    return [
+        _r(
+            "bitstream",
+            OK,
+            detail + "  [NOTE: config_runtime.yaml is SHARED — back it up before repointing default_hw_config]",
+        )
+    ]
 
 
 def check_heartbeat() -> list[dict]:
@@ -167,8 +190,7 @@ def check_heartbeat() -> list[dict]:
     cy = env("MERLIN_CHIPYARD") or env("MERLIN_EXT_CHIPYARD")
     if not cy:
         return []
-    simdir = _yaml_scalar(Path(cy) / "sims/firesim/deploy/config_runtime.yaml",
-                          "default_simulation_dir")
+    simdir = _yaml_scalar(Path(cy) / "sims/firesim/deploy/config_runtime.yaml", "default_simulation_dir")
     if not simdir:
         return [_r("heartbeat", WARN, "no default_simulation_dir in config_runtime.yaml")]
     hb = Path(simdir) / "sim_slot_0" / "heartbeat.csv"
@@ -190,20 +212,24 @@ def check_heartbeat() -> list[dict]:
     if ds <= 0:
         return [_r("heartbeat", WARN, f"{hb}: degenerate time span")]
     mhz = dc / ds / 1e6
-    return [_r("heartbeat", OK, f"last run advanced {mhz:.2f} MHz effective "
-                                f"({rows[-1][0]:,} cycles in {rows[-1][1]}s, "
-                                f"file {age_min:.0f} min old)")]
+    return [
+        _r(
+            "heartbeat",
+            OK,
+            f"last run advanced {mhz:.2f} MHz effective "
+            f"({rows[-1][0]:,} cycles in {rows[-1][1]}s, "
+            f"file {age_min:.0f} min old)",
+        )
+    ]
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     a = ap.parse_args(argv)
 
     results: list[dict] = []
-    for fn in (check_chipyard, check_modelblaster, check_queue, check_xdma,
-               check_bitstream, check_heartbeat):
+    for fn in (check_chipyard, check_modelblaster, check_queue, check_xdma, check_bitstream, check_heartbeat):
         results.extend(fn())
 
     if a.json:

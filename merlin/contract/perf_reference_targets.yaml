@@ -1,0 +1,718 @@
+# WHERE WE ARE TRYING TO GET TO, stated as measured hardware facts.
+#
+# Not documentation: this is the reference an optimization loop is scored against. Without it the
+# only in-loop signal is "make this number smaller", which has no destination -- measured, an
+# authoring campaign optimizing one collapsed scalar landed on -2 host operations (+0.000% of the
+# estimated window) while the program it was optimizing sat two thirds away from a number the same
+# compiler family had already reached by hand.
+#
+# Every `measured` field is a value a named run PRODUCED. Nothing here is a goal someone hoped for,
+# and nothing is derived from another entry. `emitted_structure` is what the program that achieved
+# the number LOOKED like -- so a candidate can be compared to it statically, without a simulator.
+#
+# ⚠️ CYCLES ARE NOT COMPARABLE ACROSS DESIGNS. The same capsule reads 510 cycles on one design and
+# 317 on another. A candidate may only be compared against a reference whose `design` it was built
+# for; comparing across `design` values is a category error, not a conservative approximation.
+#
+# ⚠️ `design` NO LONGER NAMES A DEVICE ON ITS OWN, and `device` is the key that does. Measured
+# 2026-09-19: TWO registered bitstreams elaborate `FireSimGemminiRocketConfig` onto the same U250
+# and are different devices (43,881,284 bytes vs 44,668,362, different digests, different Gemmini
+# revisions). Every entry below happens to be from the same one, so nothing has collided YET -- and
+# the first entry added from the other one would be matched across devices silently by a lookup that
+# keys on `design`. So each measured entry states `device`, the artifact name in
+# merlin/contract/hardware_pins.yaml, which IS unique per device; `design` stays for readers and is
+# no longer sufficient to select on. See merlin/python/merlin/perf/design_identity.py.
+#
+# ⚠️ CYCLES ARE NOT COMPARABLE ACROSS PROGRAM IDENTITIES EITHER, and this is the refusal that was
+# missing. FOUR different programs in this project carry whole-model numbers for the same network,
+# three of them on the same device, and a ratio between two of them was quoted for weeks as a
+# compiler result. BATCH SIZE is part of the identity for the same reason the rest of it is: one of
+# the four runs a batch of four and publishes that divided by four, which no batch-1 program can be
+# ranked against and no compiler edit changes.
+# `program_identities` below declares them; every measured entry names the one it belongs to; and
+# merlin/python/merlin/perf/program_identity.py refuses a cross-identity comparison the way
+# `find_reference` refuses a cross-design one. The reason it must REFUSE rather than warn: no
+# compiler edit moves a candidate from one identity to another, because the identity is a property
+# of the lowering and of the capture it came from, not of the compiler's quality. A gap the loop
+# being scored cannot close is not a gap.
+version: 1
+
+# ------------------------------------------------------------------------------------------
+# PROGRAM IDENTITIES. Which PROGRAM a cycle count is about. Two entries may be compared only when
+# they name the same identity here. `facts` is the machine-checkable form: a candidate that states
+# enough of them resolves to exactly one identity, or to UNKNOWN -- never to a guess.
+#
+# These are not qualities of one program. They are different functions over different argument
+# lists at different batch sizes, and the first two do not even agree on what arithmetic ResNet-50
+# is: VERIFIED 2026-09-19 by reading the IR, not by reading a label.
+# ------------------------------------------------------------------------------------------
+program_identities:
+
+  static_quantized_recapture_entry:
+    description: >-
+      The entry point the PT2E static-calibrated recapture produces. Its parameters arrive as
+      pointer arguments, its weights arrive ALREADY QUANTIZED (54 i8 tensors), and each quantized
+      contraction's activation scale and zero point arrive as their own calibrated constant
+      arguments (54 f32 `_scale_N` + 54 i64 `_zero_point_N`). That hoist is what "static input
+      quantizer externalized" names: the quantizer's constants are arguments instead of literals,
+      which is possible only because a calibration pass produced them.
+    verified_from: >-
+      out/artifacts/recaptures/resnet50_pt2e_w8a8_universal_dog_direct_20260906/linalg.mlir --
+      217 entry arguments (109 f32 + 54 i64 + 54 i8); and the lowered buffer plan in the q535
+      bundle's payload/abi_layout.json -- 393 kernel arguments, being 217 const/read plus 176
+      mutable/write intermediates.
+    facts:
+      entry: kernel_abi_pointer_arguments
+      parameters: abi_arguments
+      quantization_scheme: int8_static_act_int8_weight
+      activation_scales: calibrated_constants_as_arguments
+      batch: 1
+      cycle_scope: measured_window_between_markers
+
+  capsule_interface_lowering:
+    description: >-
+      What a compiler produces from the shipped capsule interface. NOT a repackaging of the entry
+      above: the capsule interface is an f32 program. All 53 of its convolutions are
+      `f32 x f32 -> f32` im2col `linalg.matmul`, its weights are f32 with batch-norm statistics
+      still separate arguments, and the ONLY int8 site in its 3,463 lines is the final classifier.
+      There is therefore no static activation quantizer anywhere in it to externalize, and the
+      compiler must synthesize the quantization itself from the `int8_dyn_act_int8_weight` recipe
+      the capsule declares -- computing activation scales rather than reading calibrated ones.
+    verified_from: >-
+      merlin/contract/capsules/model/SY_model_resnet50/capsule.interface.mlir (sha256
+      64925632353b438348d200c82f57d7db922d26325f0e1e627b1982fc60669f7c) -- 321 entry arguments
+      (268 f32 + 53 i64 `num_batches_tracked`), 53 f32 `linalg.matmul`, one `arith.fptosi` in the
+      whole module (line 3417), and `prov.quantization = "int8_dyn_act_int8_weight"`.
+    facts:
+      entry: kernel_abi_pointer_arguments
+      parameters: abi_arguments
+      quantization_scheme: int8_dyn_act_int8_weight
+      activation_scales: synthesized_by_the_compiler
+      batch: 1
+      cycle_scope: measured_window_between_markers
+
+  compute_group_standalone_image:
+    description: >-
+      A self-contained bare-metal image with NO ABI at all: `int main(void)`, every parameter
+      `.incbin`'d into `.rodata`, the input image linked in ALREADY QUANTIZED, and one call per
+      compute group. Three properties make it a different program rather than a faster one:
+      (1) THE INPUT QUANTIZER IS NOT IN IT -- it is the single host group the builder permits, and
+      it is executed in numpy at GENERATION time and baked into the image blob, so its cost is in
+      no measured number; (2) the published figure is not a window over the run but the SUM of a
+      `read_cycles()` bracket around each of the 71 device calls, so anything between them is
+      excluded by construction; (3) the final dequantize happens in `main` outside the timed
+      window. Its in-program check is argmax plus a cosine against an embedded golden -- which a
+      numerically WRONG run passed identically (see the discarded job 730), so its real oracle is
+      the out-of-program per-group checksum comparison, not anything the program prints.
+      Its purpose is a fair A/B between two sets of kernel bodies, which is exactly why it has no
+      argument surface: any argument would be a difference between the arms that is not the
+      schedule. It is not, and was never built as, a destination for a compiler that must produce
+      a callable program.
+    verified_from: >-
+      merlin/experiments/gemmini_perf_bench/scripts/group_model_program.py on branch
+      feat/rcp-residual-add (the generator; `int main(void)` template, the BLOB/.incbin macro, the
+      numpy input quantization at build time, `total += dt` over per-call read_cycles deltas, and
+      the `NotClosed` refusal for any host region other than the input quantizer), and its emitted
+      out/artifacts/perf-bench/gemmini/group_model_program_20260917/group_model_program.{c,json}.
+    facts:
+      entry: c_main_no_arguments
+      parameters: linked_constant_blobs
+      quantization_scheme: int8_static_act_int8_weight
+      input_quantizer: executed_at_build_time_not_in_the_program
+      batch: 1
+      cycle_scope: summed_per_call_cycle_brackets
+
+  vendor_reference_c_program:
+    description: >-
+      The accelerator vendor's own shipped ResNet-50 C benchmark, rebuilt unmodified against this
+      design's params header. Hand-written C against the vendor library, a closed program with its
+      parameters as generated headers -- and, decisively, it runs a BATCH OF FOUR and its per-image
+      figure is that batch divided by four. Weight traffic is amortized across the four images, so
+      the per-image number is structurally lower than a batch-1 program's and its own artifact says
+      so: "a batch-1 library number will be higher per image". Every other entry in this file is
+      batch 1. That makes `batch` a fact of the identity, not a footnote: no compiler edit changes
+      it, and dividing a batch by its size does not produce a number a batch-1 program can be
+      ranked against.
+    verified_from: >-
+      out/artifacts/perf-bench/gemmini/library_resnet50_stock_20260914/README.md -- stock
+      `gemmini-rocc-tests/imagenet/resnet50.c` (sha 2142608f, unmodified), batch 4, conv mode, WS,
+      two bit-exactness patches; queue job 656, 96,142,906 cycles for the batch, 24,035,727 per
+      image, predictions 75/900/641/897 matching Spike.
+    facts:
+      entry: c_main_no_arguments
+      parameters: generated_headers
+      quantization_scheme: vendor_reference_int8
+      batch: 4
+      cycle_scope: whole_program_divided_by_batch
+
+  UNKNOWN:
+    description: >-
+      Not an identity: the explicit statement that the program behind a number is UNRECORDED. An
+      entry naming this can be READ and can never be scored against, which is the point -- three
+      states, never two, so "we do not know which program" is not silently the same as "it is ours".
+      Carries no `facts`, so nothing can resolve to it by accident.
+
+references:
+
+  resnet50_w8a8_firesim_q535:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: static_quantized_recapture_entry
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: >-
+      Reached by HAND optimization, not by an authoring loop. That is precisely why it is the
+      reference: the compiler family can demonstrably emit a program that runs this fast, so the
+      gap to it is an optimization gap and not a hardware ceiling.
+    capsules:
+      - SY_model_resnet50
+    # THE CAPSULE NAMES THE MODEL AND IS NOT THE MEASURED PROGRAM. This entry is
+    # `static_quantized_recapture_entry`; a compile of `SY_model_resnet50` is
+    # `capsule_interface_lowering`, and `program_identity` above is what stops the two being scored
+    # against each other. `capsules:` stays because the entry is ABOUT this network -- a reader
+    # needs to find it -- but it is not a claim that the capsule can produce this program.
+    #
+    # CORRECTED 2026-09-19. The flag is real -- `--externalize-static-input-quantizer` on the
+    # gemmini-opt OOT driver -- and the quoted message is its own
+    # (`ap.error("no unique proven static input quantizer")`). What the earlier wording got wrong
+    # is the shape of the blocker: "no unique proven" reads as an ambiguous set of candidates
+    # awaiting a proof, and the set is EMPTY. `static_input_prologue` accepts a
+    # `quant_ext.quantize_per_tensor` rooted at an ENTRY BLOCK ARGUMENT whose scale and zero point
+    # are splat constants, and returns a candidate only when exactly one exists. The capsule
+    # interface contains ZERO `quant_ext` ops of any kind: it is an f32 program -- 53 f32 im2col
+    # matmuls, batch-norm computed live from `running_mean`/`running_var` arguments, and exactly
+    # one `arith.fptosi` in 3,463 lines (the classifier, whose activation scale is computed at RUN
+    # TIME as max(|x|)/127). "Proven" here means statically provable from the IR, so there is no
+    # witness anyone can supply; only a different capture changes the answer.
+    #
+    # AND THIS ENTRY NEVER USED THAT FLAG. The lever moves the quantize prologue OUTSIDE the timed
+    # window; the bundle's validation/abi_compatibility_proof.json records
+    # `compiler_owned_prologue: true` and `harness_has_no_external_quantized_prologue: true`, and
+    # the bundle contains no `externalize` string and no `input_prologue` in its command buffer.
+    # The old one-word `input_quantizer: externalized` was carrying two different facts.
+    #
+    # The argument counts were also being read as one difference and are two opposing ones. 393 is
+    # not 325 plus a hoisted quantizer: the read side SHRINKS by 104 (batch-norm folded away, f32
+    # weights replaced by prepacked i8 plus separate scale/zero-point) while the write side GROWS
+    # by 172 (this lowering exposes every live intermediate as a whole-program pointer). The net
+    # +68 is an accident of two unrelated changes.
+    measured_program:
+      # The lowered whole-program buffer plan, `kernel_abi.kind = whole_program` -- 217 const/read
+      # plus 176 mutable/write. NOT an interface arity: the recapture's own `func.func @forward`
+      # takes 217. Verified against the bundle's payload/abi_layout.json.
+      entry_argument_count: 393
+      const_read_args: 217
+      mutable_write_args: 176
+      # "externalized" means the PER-CHANNEL WEIGHT scale/zero-point are their own arguments and
+      # the activation scales are calibration constants fixed at capture time. It does NOT mean the
+      # harness owns a quantize prologue: the bundle's validation/abi_compatibility_proof.json
+      # records `compiler_owned_prologue: true` and
+      # `harness_has_no_external_quantized_prologue: true`, and arg216 `image` is the raw f32
+      # image. Stated because the old one-word spelling was read the other way.
+      input_quantizer: static_calibrated_constants_with_externalized_weight_scales
+      differs_from_capsule_lowering: true
+      capsule_interface_sha256: 64925632353b438348d200c82f57d7db922d26325f0e1e627b1982fc60669f7c
+      capsule_lowering_kernel_abi_args: 325
+      # The gap a candidate compiled FROM the capsule shows against `emitted_structure` below, and
+      # why it is not an optimization gap: that lowering emits ONE mesh region (RES_PACK 1,
+      # MATMUL_RESIDENT 1, COMMIT 1 -- the classifier) against this entry's 54, because the other
+      # 53 contractions are f32 in the capsule and the mesh is int8. Closing it needs a capture
+      # with calibrated quantization, not a better schedule.
+      capsule_lowering_mesh_regions: 1
+    provenance:
+      firesim_queue_job: 535
+      bundle: >-
+        out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_affine_im2col_spans_w8a8_warm_measured_firesim_candidate_20260908
+      # UNSOURCED, flagged 2026-09-19: this prefix matches no MLIR in the bundle
+      # (model2mlir_direct.mlir is d92b9ecc, compiler/target.mlir is c18b8671,
+      # provenance/q534_target.mlir is 82c53f21) and nothing under out/artifacts/ carries it. Kept
+      # verbatim rather than deleted so whoever recorded it can say what it digests; do not cite it.
+      input_mlir_sha256_prefix: "76c2617109666165"
+      input_mlir_sha256_prefix_status: UNSOURCED
+    measured:
+      whole_model_cycles: 1316619699
+      host_share_lower_bound: 0.93
+      cycles_per_host_operation_anchor: 2.601
+    emitted_structure:
+      commands: 109
+      opcodes:
+        RES_PACK: 54
+        CONV2D: 53
+        MATMUL_RESIDENT: 1
+        COMMIT: 1
+      mesh_regions: 54
+      host_lane_regions: 119
+      weight_prepack_recipes: 54
+      kernel_abi_args: 393
+    caveats:
+      - >-
+        `cycles_per_host_operation_anchor` is a whole-window average, so it prices every host
+        operation family identically. It does not, and a revision that trades integer operations
+        for floating-point ones can reduce the operation count while increasing cycles.
+
+  resnet50_w8a8_firesim_q545:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: static_quantized_recapture_entry
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: >-
+      A sibling hand-optimized point, kept because it is the ONLY resnet50 run carrying an
+      accelerator-occupancy breakdown -- which is what establishes that the host lane, not the
+      mesh, owns the window.
+    provenance:
+      firesim_queue_job: 545
+    measured:
+      whole_model_cycles: 1383906735
+      accelerator_busy_cycles: 58659625
+      accelerator_busy_fraction: 0.0424
+      achieved_macs_per_cycle: 2.955
+      peak_macs_per_cycle: 256
+      cycles_per_host_operation_anchor: 2.789
+    caveats:
+      - >-
+        1.15% of arithmetic peak. The mesh is not the bottleneck and making it faster cannot reach
+        the reference above; >=93% of the window is host-lane work.
+
+  resnet50_w8a8_firesim_job530:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: static_quantized_recapture_entry
+    device: firesim_gemmini_rocket_u250
+    status: superseded
+    how: >-
+      Kept as the REGRESSION floor. It shares one command buffer with q535 -- byte-identical
+      commands -- and still ran 29% slower, which localises the entire spread to host-lane codegen
+      rather than to command selection.
+    provenance:
+      firesim_queue_job: 530
+    measured:
+      whole_model_cycles: 1704064223
+
+  smolvla_flow_denoise_w8a8:
+    model: smolvla_flow_denoise
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    # UNKNOWN on purpose, 2026-09-19. The resnet50 entries' identity was established by reading
+    # their recapture and their bundle's ABI layout; no such reading was done for this run, and
+    # assuming it shares the resnet50 route because it came from the same campaign is exactly the
+    # inference `program_identity` exists to stop. Resolve it from the run's own artifacts.
+    program_identity: UNKNOWN
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: The only other whole model with a gated whole-model cycle count on this design.
+    # No `capsules:` mapping yet, deliberately. `M4_smolvla_denoise_gemmini` exists but is a
+    # REDUCED denoise slice ("not the 1.2 GB capture", its README), while this number is the FULL
+    # model (235 tasks, 24,275,118,627 host operations). Mapping a slice to a whole-model cycle
+    # count would score its op counts against the wrong denominator. Map it when a whole-model
+    # smolVLA capsule exists, generated from the recapture the way SY_model_resnet50 was.
+    measured:
+      whole_model_cycles: 33085199302
+
+  # ------------------------------------------------------------------------------------------
+  # EXTERNAL CLAIMS. Numbers we did not measure. Never a `status: achieved` reference -- the
+  # lookups only select achieved entries -- but recorded so the distance to them is visible
+  # to a reader and can be shown beside our own measurements. Cite the source; do not round
+  # up a report into a fact.
+  # ------------------------------------------------------------------------------------------
+  autocomp_resnet50_external_claim:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Reported by the project lead on 2026-09-09 as "about 30,000,000 cycles" for AutoComp on
+      this Gemmini configuration. Not measured by this project; the exact design, input, and
+      warm/cold protocol are unverified. Kept as the bar to beat, labelled as a claim.
+    provenance:
+      source: verbal report, 2026-09-09
+    measured:
+      whole_model_cycles: 30000000
+    context:
+      arithmetic_roofline_cycles: 15976562
+      note: >-
+        4.09e9 MACs / 256 MACs per cycle. The claim is 1.9x the roofline, i.e. ~53% of peak --
+        an ordinary well-scheduled result, not an exotic one. Our best achieved is 1.2% of peak.
+
+
+  tiny_llama_exo_external_claim:
+    model: tiny_llama
+    precision: w8a8
+    design: UNRECORDED
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Reported to this project verbally as an Exo result of about 3,000,000,000 cycles for
+      tiny_llama. It is recorded here so the target is written down and attributable, NOT because
+      it has been verified: no tiny_llama measurement exists in the kernel corpus on this host
+      (that corpus covers ResNet-50 only -- resnet50_autocomp.c, gemmini_exo_shims.h -- where Exo
+      measured 30,121,447), and no artifact on this host carries a tiny_llama cycle count.
+    caveats:
+      - >-
+        UNVERIFIED and the DESIGN IS UNRECORDED. Cycles are not comparable across designs, so
+        until the design and the program are known this number cannot be scored against. Ask for
+        the source before citing it anywhere that matters.
+      - >-
+        It is not a hardware-limited figure. This network's arithmetic roofline on a 256 MAC/cycle
+        array is 32,325,632 cycles and its DMA floor -- streaming 1,034,420,224 int8 weight bytes
+        once at 16 B/cycle -- is 64,651,264. So 3e9 is about 46x the binding hardware floor, which
+        means it is dominated by host or serial work rather than by the accelerator, for whoever
+        measured it as well as for us.
+    ours:
+      host_dynamic_operations: 15710533301
+      host_regions: 5558
+      measured_cycles: null
+      gate: margin_qualified on the RANKING + asserted values, PASSING
+      note: >-
+        The gate is no longer the blocker. The one that produced `measured_cycles: null` on FireSim
+        job 611 asserted an elementwise tolerance this reference cannot support; it now adjudicates
+        the RANKING against the reference's resolving power and asserts the VALUES separately, and
+        it PASSES (verified on Spike: 7 rows agree, 0 disagree, 1 row the reference cannot
+        discriminate; 47,854 of 256,000 elements outside tolerance against a declared bound of
+        51,215; digest reproduced; rc=0, METRIC published). What is still missing is the FPGA run.
+        At resnet50's measured 0.556 cycles per host operation, 15,710,533,301 host operations
+        would be about 8.7e9 cycles, so reaching 3e9 needs a 2.91x host reduction -- less than the
+        3.86x already demonstrated on resnet50 by the same lever family, IF those levers transfer
+        to this shape.
+      what_the_tie_explains_and_what_it_does_not: >-
+        ⚠️ The single round-half-even tie explains the RANKING failure and NOT the value spread.
+        Do not describe it as explaining both. Forcing that one activation code -- in BOTH
+        quantizers that consume the tensor, since mlp.gate_proj and mlp.up_proj share it and its
+        scale -- recovers all 8 token rows' top-1 exactly and makes layer 2 exact again
+        (relL2 3.1261e-03 -> 7.2985e-07). It does NOT clear the values: 44,493 of 256,000 logits
+        still exceed atol=0.03125/rtol=0.02 and the whole-output relative L2 is still 3.52e-2,
+        spread over every row including the six that element cannot causally reach. The value
+        spread is a population of the same phenomenon -- 485 of 2,809,856 quantized activations lie
+        within 1e-4 of a tie, 6 exactly on one -- and no single element accounts for it. This
+        distinction is load-bearing: a gate built as though the tie explained both PASSED a wrong
+        program (a 1% miscompile of every RMSNorm kept all eight argmaxes while moving 128,041 of
+        256,000 elements outside tolerance), which is why the values are now asserted separately
+        against a declared bound and the output digest.
+      measurement_outstanding: >-
+        FireSim jobs 639-645 (2026-09-10) could not RUN the gated ELF, and the cause is now NAMED
+        rather than guessed. 639/640 died on entries the queue's chipyard view does not mirror
+        (`logs/`, `generated-topology-diagrams/`) and 641 on a staging collision -- all repaired.
+        642 and 643 then hung at FireSim's FIRST localhost SSH command of infrasetup
+        (`[localhost] run: uname -a`, which never returns) until the queue's hard 900 s cap killed
+        them, on a busy host (load 85) and again on a quiet one (load 48), so it is not contention.
+        ROOT CAUSE: the queue's cross-user path runs FireSim AS THE DAEMON USER but with the
+        SUBMITTER'S $HOME, and FireSim's manager did not set `env.use_ssh_config`, so fabric never
+        read ~/.ssh/config and fell through to a password prompt that cannot be answered in
+        parallel mode. With `env.use_ssh_config = True` added to this view's manager, 644 said so
+        outright -- `Unable to load SSH config file '/home/agustin/.ssh/config'` -- and that file
+        does carry the `Host localhost / IdentityFile ~/.ssh/firesim` block but sits under a 0700
+        `~/.ssh` the daemon user cannot read. With $HOME also unset, 645 reached a clean 2-second
+        `Authentication failed / Needed to prompt for a connection or sudo password (host:
+        localhost)` instead of a 900 s hang. The remaining fix is the queue's: run the job as the
+        submitter, or pass the daemon's own HOME/agent. Loosening permissions on private SSH
+        material would also "fix" it and was deliberately not done. Matches the shape recorded
+        under `firesim-localhost-ssh-fix`. The ELF, its sha256, the declared gate and the passing
+        Spike console are in
+        out/artifacts/perf-bench/gemmini/tiny_llama_l22_margin_qualified_20260910T065535Z_0c339e1/.
+        NO Spike number is substituted here: Spike's `METRIC cycles` is instret + 4, a
+        retired-instruction count, and is not a cycle count.
+      compile_blocker: >-
+        THE CAMPAIGN'S CANDIDATE LINEAGE declines tiny_llama outright: the vocab projection at
+        [1, 8, 32000] needs about 3,216,234,988 straight-line element evaluations against a 400,000
+        budget. That is the lm_head -- an 8x2048x32000 matmul, 524,288,000 MACs -- being emitted as
+        host straight-line code instead of placed on the array.
+      compile_blocker_is_lineage_specific: >-
+        MEASURED 2026-09-10, and it changes the conclusion: the decline is a property of the
+        STRAIGHT-LINE host emitter (`HostLinalg`, HOST_LINALG_ELEMENT_BUDGET = 400,000), not of
+        tiny_llama. The sibling LOOP host emitter (`LoopHostLinalg`) compiles the whole model and
+        places ALL 155 linears on the array -- the emitted command buffer holds 155
+        MATMUL_RESIDENT/RES_PACK/COMMIT triples and the last MATMUL_RESIDENT is
+        [8,2048] x [2048,32000] -> [8,32000], i.e. the lm_head IS on the array. So tiny_llama can
+        be a phase-2 objective; what must change first is which host emitter the campaign's
+        candidate uses.
+
+  # Voyager (arXiv 2509.15205v1, DAC 2026) -- paper numbers on VOYAGER-GENERATED hardware. Every
+  # design string below differs from FireSimGemminiRocketConfig, so none of these can ever score a
+  # Gemmini candidate; they are the written targets for the home-turf comparison, where merlin and
+  # the Voyager compiler are measured on the same generated RTL. Pins: voyager_compiler,
+  # voyager_accelerator (merlin/contract/hardware_pins.yaml).
+  voyager_paper_resnet50_ic16_oc16_external_claim:
+    model: resnet50
+    precision: int8
+    design: voyager_accelerator_ic16_oc16_sram96KB_tsmc16_1GHz
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Paper Table 4 (16x16 PE array, 96 KB SRAM): 17.00M cycles at 96.2% MAC utilization. Table 6
+      repeats the same design point as 17.00 ms at 1 GHz, INT8, 256 MACs, against Gemmini's 43.58 ms
+      taken from prior work. Catapult HLS -> VCS RTL simulation; not measured by this project.
+    provenance:
+      source: arXiv 2509.15205v1, Tables 4 and 6
+    measured:
+      whole_model_cycles: 17000000
+      mac_utilization: 0.962
+      peak_macs_per_cycle: 256
+    caveats:
+      - >-
+        HOW THE NUMBER IS PRODUCED MATTERS MORE THAN THE NUMBER. The public regression flow at the
+        pinned accelerator commit (run_regression.py) simulates each layer separately, and only
+        min(L2 tiles, MAX_TILES) tiles of it -- MAX_TILES defaults to 1 -- then scales runtime and
+        ideal cycles by full_tiles * layer_count / simulated_tiles. The paper does not say which
+        MAX_TILES produced Table 4. A whole-model figure from that flow is a per-layer,
+        tile-extrapolated sum, never one timed invocation; do not rank it against a FireSim rdcycle
+        delta, and reproduce it with MAX_TILES = all tiles before citing a head-to-head.
+      - >-
+        Table 4 states neither datatype nor DRAM bandwidth. INT8 is inferred from Table 6 carrying
+        the same 17.00 figure; the accelerator's codegen.mk defines INT8 as per-tensor symmetric int8
+        activations and weights with int24 bias. 17.00M is rounded to four significant figures.
+
+  voyager_paper_resnet50_ic32_oc32_external_claim:
+    model: resnet50
+    precision: int8
+    design: voyager_accelerator_ic32_oc32_sram192KB_tsmc16_1GHz
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Paper Table 4 (32x32, 192 KB): 4.40M cycles at 94.9% utilization; Table 7 repeats it as the
+      1024-MAC INT8 point against Simba (8.3M cycles, 48%). Not measured by this project.
+    provenance:
+      source: arXiv 2509.15205v1, Tables 4 and 7
+    measured:
+      whole_model_cycles: 4400000
+      mac_utilization: 0.949
+      peak_macs_per_cycle: 1024
+    caveats:
+      - Same production caveat as voyager_paper_resnet50_ic16_oc16_external_claim.
+
+  voyager_paper_bert_base_seq128_ic16_oc16_external_claim:
+    model: bert_base_seq128
+    precision: UNSTATED
+    design: voyager_accelerator_ic16_oc16_sram96KB_tsmc16_1GHz
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Paper Table 4: BERT-base, sequence length 128, 46.07M cycles at 99.4% utilization on the
+      16x16 / 96 KB point. Not measured by this project.
+    provenance:
+      source: arXiv 2509.15205v1, Table 4
+    measured:
+      whole_model_cycles: 46070000
+      mac_utilization: 0.994
+      peak_macs_per_cycle: 256
+    caveats:
+      - Datatype not stated for this row; same production caveat as the ResNet-50 entries.
+
+  voyager_paper_llama32_1b_prefill_seq512_ic32_oc32_external_claim:
+    model: llama32_1b_prefill_seq512
+    precision: UNSTATED
+    design: voyager_accelerator_ic32_oc32_sram192KB_tsmc16_1GHz
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      Paper Table 4: LLaMA-3.2-1B prefill at sequence length 512, 688.0M cycles at 99.8%
+      utilization, reported only for the 32x32 / 192 KB point. Not measured by this project.
+    provenance:
+      source: arXiv 2509.15205v1, Table 4
+    measured:
+      whole_model_cycles: 688000000
+      mac_utilization: 0.998
+      peak_macs_per_cycle: 1024
+    caveats:
+      - Datatype not stated; same production caveat as the ResNet-50 entries.
+
+  voyager_on_gemmini_resnet50_unattributed_ratio:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: UNKNOWN
+    device: UNKNOWN
+    status: external_claim
+    how: >-
+      "Voyager 5.81x faster than Merlin" on U250 FireSim ResNet-50, quoted in the 2026-09-06
+      handoff (out/artifacts/perf-bench/gemmini/CLOSING_THE_GAP_CURRENT_20260908.md section 1.1)
+      next to TVM 59.60x and AutoComp 102.66x. That report states that no artifact contains these
+      numbers. Recorded so it stops being re-cited: it is RETIRED, to be replaced by a clean-room
+      same-hardware measurement under the frozen five-way ResNet-50 contract.
+    provenance:
+      source: unattributed ratio in a handoff report; no artifact on this host
+    measured:
+      whole_model_cycles: null
+      ratio_vs_merlin_83of96_compiler: 5.81
+    caveats:
+      - >-
+        It is a RATIO against a merlin revision (the 83/96 compiler's 11,183,959,730-cycle model
+        interval), not a cycle count. Do not convert it: nothing in this ledger is derived from
+        another entry, and the Voyager program, its quantization and its counter scope are unknown.
+
+  # ------------------------------------------------------------------------------------------
+  # THE COMPUTE-GROUP STANDALONE IMAGE. Recorded here so the number stops travelling without its
+  # identity. It is NOT a destination the authoring loop can be scored against and the lookups
+  # cannot select it for one: it is on a different DEVICE and of a different PROGRAM IDENTITY than
+  # every entry above, and both refusals fire.
+  # ------------------------------------------------------------------------------------------
+  resnet50_int8_compute_group_image_job728:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: compute_group_standalone_image
+    device: firesim_gemmini_rocket_u250_30mhz
+    status: achieved
+    how: >-
+      The best SOURCED number from the compute-group route: our own emitted schedules for all 71
+      device groups, strided load. Reached by directed hand work on the schedules, in a harness
+      built to hold everything except the kernel bodies fixed.
+    provenance:
+      firesim_queue_job: 728
+      row: >-
+        out/artifacts/measurements/firesim_alveo_u250_firesim_gemmini_rocket_30mhz/resnet50/group-model-program_v1_20260919T033641Z_5194e6c/checkpoint_row.json
+      elf: out/artifacts/perf-bench/gemmini/rcp_ours_strided_20260919T024325Z/group_model_program.elf
+      gate: >-
+        71 of 71 per-group checksums equal to the numpy emulation of the same integer program;
+        argmax 21=21; cosine 997,981 ppm. The out-of-program checksum comparison is the real
+        oracle -- the in-program argmax printed IDENTICALLY on the numerically wrong job 730.
+      sealed: false
+      sealed_reason: >-
+        `status: observed`, never sealed: this queue revision records no `stage_from_sha256` and
+        keeps no per-job copy of the staged executable, so the bytes cannot be bound to the result
+        by content. True of every job in the 699-731 range.
+    measured:
+      whole_model_cycles: 24359749
+    caveats:
+      - >-
+        NOT COMPARABLE WITH THE ENTRIES ABOVE, on two independent grounds, which is the entire
+        reason this entry exists. (1) DEVICE: it ran on the 30 MHz U250 bitstream (digest
+        0af6f26e), the entries above on 44,668,362-byte a9a190b9. (2) PROGRAM IDENTITY: its number
+        is the sum of 71 per-call `rdcycle` brackets over a closed `int main(void)` whose weights
+        and PRE-QUANTIZED image are linked-in blobs, while theirs is a window over a callable
+        program that quantizes its own f32 input. The deployable route's measured window contains a
+        7,387,159-instruction input-quantization prologue that this program does not have at all.
+      - >-
+        The sibling numbers on this route, for a reader who meets them elsewhere: job 706 =
+        28,084,005 (same harness, vendor kernel bodies -- the one true A/B control), 726 =
+        25,476,739, 727 = 25,419,657, 729 = 24,483,567 (refuted), 730 = 23,787,829 (DISCARDED, see
+        out/artifacts/probes/DISCARDED_firesim_job_730/DO_NOT_CITE.json), 731 = 24,319,110
+        (scratchpad-resident input restricted to the 5 of 20 convolutions where the pinned half is
+        staged once). 731 is NOT recorded here: it has an audit entry
+        (out/artifacts/audits/gemmini/v1/.../exit_criteria_status.json) but no checkpoint row, so
+        job 728 remains the best number with a measurement receipt.
+
+  resnet50_int8_vendor_reference_job656:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: vendor_reference_c_program
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: >-
+      The accelerator vendor's own shipped ResNet-50 benchmark, rebuilt unmodified against the
+      pinned design's params header with two bit-exactness patches. Not our compiler and not our
+      program: it is what the hardware's own library achieves on the hardware, which is why it is
+      worth recording, and it is a different program identity from everything else here.
+    provenance:
+      firesim_queue_job: 656
+      bundle: out/artifacts/perf-bench/gemmini/library_resnet50_stock_20260914
+      uartlog_sha256_prefix: "00bdefce352e7b06"
+      source_sha256_prefix: "2142608f26457e4f"
+      gate: predictions 75 / 900 / 641 / 897, equal to Spike; driver PASS
+    measured:
+      # ⚠️ DERIVED, not measured: the run measured 96,142,906 cycles for a BATCH OF FOUR. This is
+      # that number divided by 4, which is the form every citation of it uses. It is recorded with
+      # both halves visible because the division is the thing readers lose.
+      whole_model_cycles: 24035727
+      measured_batch_cycles: 96142906
+      batch: 4
+    caveats:
+      - >-
+        BATCH 4, AMORTIZED. Its own artifact states the consequence: "It is batch 4, so weight
+        traffic is amortized over 4 images; a batch-1 library number will be higher per image."
+        Every other entry in this file is batch 1. Dividing a batch by its size does not produce a
+        number a batch-1 program can be ranked against, which is why `batch` is a fact of the
+        program identity and not a footnote.
+      - >-
+        THIS IS THE DENOMINATOR OF THE "70x" -- 1,704,064,223 / 24,035,727 = 70.9, and its own
+        artifact states the ratio directly ("Against ours (job 655 ... 1,709,045,472 cycles at
+        batch 1): 71.1x this per-image figure"). Same device, so that axis is fine. Two axes are
+        not: the numerator is batch 1 against a batch-4-amortized denominator, and the two are
+        different program identities. The ratio measures the distance between a compiler's output
+        and a hand-written vendor benchmark at a different batch size. It is a real and interesting
+        distance; it is not a compiler speedup factor and must not be cited as one.
+      - >-
+        A SEPARATE MISATTRIBUTION TO STOP REPEATING: this number is also used as exit criterion S4
+        for the compute-group route, whose every job (706, 726-731) ran on
+        firesim_gemmini_rocket_u250_30mhz (0af6f26e) while this ran on firesim_gemmini_rocket_u250
+        (a9a190b9). `hardware_pins.yaml` states the rule for exactly this pair -- "a cycle number
+        from one is never a divisor for a cycle number from the other" -- and the S4 comparison
+        crosses it. So that use is wrong on device AND on batch AND on program identity.
+
+  resnet50_w8a8_firesim_job650_afel:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: static_quantized_recapture_entry
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: >-
+      Reached by directed agent iteration, not by the authoring loop. Host-arithmetic levers
+      (native fcmp/select for an emulated float min/max, native roundeven/fptosi on the quantize
+      path, strength-reduced affine addressing) plus loop-order weight residency. Bit-exact.
+    measured:
+      whole_model_cycles: 1162389741
+      instret: 443720755
+      reservation_station_active_cycles: 31293652
+      rdma_bytes_rec: 227610624
+    provenance:
+      firesim_queue_job: 650
+      hw_config: resnet50_merlin_warm_measured_full_gemmini_u250_pinned
+      gate: bit-exact vs the PT2E integer golden (checksum c6e777c3fe0aae90, bad=0, top1=258)
+    caveats:
+      - >-
+        Superseded by job 654 on the same design. Retained because it is the best BIT-EXACT
+        result: job 654 is chain-D exact, a declared bounded contract, not bit-exactness against
+        the integer golden.
+
+  resnet50_w8a8_firesim_job654_afehg_all_resident:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    program_identity: static_quantized_recapture_entry
+    device: firesim_gemmini_rocket_u250
+    status: achieved
+    how: >-
+      The above host levers plus a device-side requantization epilogue (per-channel scale and
+      activation applied on the accumulator store path), with every descriptor emitting a null C
+      DRAM address so the accumulator base never rotates, and the compiler issuing its own MVOUTs.
+      Reached by directed agent iteration, not by the authoring loop.
+    measured:
+      whole_model_cycles: 923047330
+      instret: 346257604
+      reservation_station_active_cycles: 54093216
+      rdma_bytes_rec: 984371200
+    provenance:
+      firesim_queue_job: 654
+      hw_config: resnet50_merlin_warm_measured_full_gemmini_u250_pinned
+      elf_sha256: 517353aec32b0aa5c0fabf9d5ae9a698517f868f6705a5c42b4dec379ded0b8c
+      gate: >-
+        chain-D exact (vs_chain_d bad=0, n_bitdiff 0, cos 1.0, top1=258); the FPGA checksum
+        509d616461f69473 EQUALS Spike's, so the simulator/silicon divergence is closed on this
+        program, not merely bounded.
+    caveats:
+      - >-
+        NOT bit-exact against the PT2E integer golden. That is impossible in principle once the
+        epilogue is on the device -- 32 to 2004 channels per fused site have a flipping
+        accumulator -- so the declared reference is chain D from the epilogue simulator at exactly
+        the fused sites.
+      - >-
+        Its predecessor at 916,608,833 cycles PASSED Spike and FAILED on the FPGA (bad=1000,
+        top1=107) because the RTL rotates the LOOP_WS accumulator base by max_acc_addr /
+        concurrent_loops after every loop with c_dram_addr != 0, while Spike pins it at row 0. A
+        Spike gate is NOT sufficient for anything touching the store path.
+      - >-
+        The rotation is proven SUFFICIENT for that failure, not unique. A separate single-element
+        divergence at conv_71 channel 222 is not explained by it. Correctness now leans on the
+        ROB's accumulator WAR handling with both loop slots at base 0, unproven for geometries
+        this model does not exercise.

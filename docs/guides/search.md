@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-07
 related: [dse]
-code_refs: [merlin/python/merlin/dse/search]
+code_refs: [packages/merlin-dse/src/merlin/dse/search]
 ---
 
 # Search policy
@@ -58,16 +58,19 @@ This returns a portfolio, so Merlin does not prematurely converge on one abstrac
    keeping candidate lineage.
 3. **MAP-Elites** archive once evolutionary search works.
 
-## Per-session use
+## What each subsystem searches over
 
-- **Session 1 (TargetGen):** grid over op/type variants; evolutionary over `dialect_plan` + verifier
+(The three subsystems and the artifacts named here are defined in
+`docs/design/parallel_workstreams.md`.)
+
+- **TargetGen:** grid over op/type variants; evolutionary over `dialect_plan` + verifier
   conditions; MAP-Elites over dialect families (micro-op / command / resident-object / hw-managed).
-- **Session 2 (Kernel mining):** grid over policy thresholds; evolutionary over `policy_rule`;
+- **Kernel mining:** grid over policy thresholds; evolutionary over `policy_rule`;
   MAP-Elites over optimization families (packing / vectorization / accumulator / dispatch-grouping).
-- **Session 3 (DSE):** grid over HW/interface parameter sweeps; evolutionary over
+- **Design-pressure / DSE:** grid over HW/interface parameter sweeps; evolutionary over
   `interface_candidate`; MAP-Elites over HW/SW contract families.
 
 ## Modules
 
-`merlin/python/merlin/search/{candidate,evaluator,archive,grid,evolutionary,map_elites,mutations,reports}.py`.
-Scoring delegates to `merlin/python/merlin/dse/harness.py`. See `docs/compilation_strategies.md`.
+`src/merlin/search/{candidate,evaluator,archive,grid,evolutionary,map_elites,mutations,reports}.py`.
+Scoring delegates to `packages/merlin-dse/src/merlin/dse/harness.py`. See `docs/compilation_strategies.md`.

@@ -1,0 +1,178 @@
+# THE EDITABLE SURFACE OF ONE CERTIFIED COMPILER PACKAGE, declared so phase 2 is a controlled test.
+#
+# WHY THIS FILE EXISTS. `merlin.perf.compiler_edit_scope` has implemented a host-frozen AST edit
+# authority since before this file was written, and NOTHING EVER DECLARED ONE. A search for
+# `compiler_edit_contract_v1` across the repo returns the module, its own test, `agent_guidance`, and
+# four work-order tests that each build a throwaway contract inline. So every phase-2 fork ran with
+# either no authority object at all (the agent may edit anything) or a fixture invented by the caller
+# that asked the question. Neither is a controlled experiment, and the difference between them is
+# invisible in the artifact afterwards.
+#
+# A CONTRACT THAT NAMES EVERYTHING IS NOT A CONTRACT. The point of the boundary is that the agent's
+# win has to come from the decisions under study rather than from anywhere in the package. But the
+# opposite failure is worse and quieter: omit the symbol that actually decides, and the experiment is
+# unwinnable while still producing rounds, edits and a verdict. `required_decisions` below exists so
+# that failure is a REFUSAL BY NAME rather than a flat result nobody can attribute.
+#
+# SCOPE. This contract is about EDIT OWNERSHIP only. It makes no claim that an edit inside it is
+# correct, and none that an edit outside it would have been wrong.
+
+schema: compiler_edit_contract_v1
+
+target: gemmini
+package_id: gemmini_xdsl_rtl_v0
+
+# Which package these symbols were resolved against, so a contract cannot drift onto a different
+# fork silently. `certified` is the package's own manifest claim, quoted, not re-derived here.
+package:
+  root: out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0
+  entrypoint_command: emit_command_buffer
+  entrypoint_chain: >-
+    manifest.commands.emit_command_buffer -> mlir_oot/gemmini-opt -> gemmini_opt.main ->
+    ir_ingest.command_buffer -> lowering/isa.build_trace
+  certified: "manifest.publication.certification: pass (cycle_accurate, oracle rtl_verilator)"
+
+# ---------------------------------------------------------------------------------------------
+# THE DECISIONS UNDER STUDY. Each names the ONE symbol that makes it. The validator refuses a
+# contract in which any of these has no owner among `existing_symbols`, and names the decision.
+# ---------------------------------------------------------------------------------------------
+required_decisions:
+
+  - decision: contraction_grouping
+    owner: "mlir_oot/lowering/isa.py:_matmul_trace"
+    why: >-
+      The live contraction path holds its own loop nest. `i_blocks/j_blocks/k_blocks`, the
+      scratchpad bases `a_base`/`b_base`/`c_base`, and the K -> N -> M iteration order that keeps a
+      B tile resident across M blocks are all written here as straight code. Nothing else in the
+      package chooses them. Omit this symbol and grouping is not reachable at all.
+
+  - decision: epilogue_placement
+    owner: "mlir_oot/lowering/isa.py:_matmul_trace"
+    why: >-
+      The same function decides WHERE the result leaves the accumulator, and it already implements
+      both placements. `if kk == k_blocks - 1 and not pool` fuses the MVOUT into the innermost loop
+      at the last reduction block; the `if pool:` block after the nest is the same store as a
+      SEPARATE PASS. The accumulator index `c_index` flips between M-major and N-major purely to
+      suit whichever placement is in force. This is the deciding symbol for the experiment, and it
+      is the one a contract is most likely to leave out, because its name says "trace" and not
+      "epilogue".
+
+  - decision: command_grouping
+    owner: "mlir_oot/lowering/isa.py:build_trace"
+    why: >-
+      Cross-command fusion lives here, not in the per-command emitters. `pending_matmuls` defers a
+      MATMUL_RESIDENT until its COMMIT arrives, which is what makes a matmul and its commit one
+      group rather than two; `resident_sources` decides which pack a weight operand resolves to. A
+      grouping change that spans commands has nowhere else to go.
+
+  - decision: epilogue_content
+    owner: "mlir_oot/lowering/isa.py:_config_st"
+    why: >-
+      Moving an epilogue onto the store path is meaningless if the store path cannot be told to
+      perform it. Activation, accumulator scale and pooling geometry are encoded here. Included
+      because the measured example this whole cost apparatus was built around -- a quantization
+      epilogue moved onto the accelerator's store path -- is an edit to exactly this function.
+
+# ---------------------------------------------------------------------------------------------
+# THE EDITABLE SURFACE. Every entry is an owner of one of the decisions above, or a sibling
+# emitter that makes the same two decisions for a different command class.
+# ---------------------------------------------------------------------------------------------
+existing_symbols:
+
+  - surface_id: contraction_schedule
+    path: mlir_oot/lowering/isa.py
+    symbol: _matmul_trace
+
+  - surface_id: command_schedule
+    path: mlir_oot/lowering/isa.py
+    symbol: build_trace
+
+  - surface_id: store_epilogue
+    path: mlir_oot/lowering/isa.py
+    symbol: _config_st
+
+  # The same grouping/placement decisions, for convolution. Included so the experiment is not
+  # silently restricted to one command class -- a contract that admits only the contraction path
+  # would make a whole-model win reachable only through the fraction of the model that is GEMM.
+  - surface_id: convolution_schedule
+    path: mlir_oot/lowering/isa.py
+    symbol: _conv_loop_trace
+
+  - surface_id: movement_schedule
+    path: mlir_oot/lowering/isa.py
+    symbol: _movement_trace
+
+# New helper modules for a scheduling change, owned by the surfaces above. A helper directory does
+# NOT turn pre-existing code in it into an editable surface; `compiler_edit_scope` enforces that.
+helper_extensions:
+  - directory: mlir_oot/lowering
+    surface_ids: [contraction_schedule, command_schedule, store_epilogue, convolution_schedule, movement_schedule]
+    reason: >-
+      The lowering package is where a schedule helper belongs. Note that `mlir_oot/targetgen` is
+      deliberately NOT a helper directory; see `excluded` below.
+
+ancillary_paths:
+  - docs/iteration_notes.md
+  - docs/PLAN.md
+
+# ---------------------------------------------------------------------------------------------
+# WHAT IS OUTSIDE THE BOUNDARY, AND THE ARGUMENT FOR EACH. Recorded because an unexplained
+# exclusion is indistinguishable from an oversight, and because the next person to widen this
+# contract should have to argue against a stated reason rather than a silence.
+# ---------------------------------------------------------------------------------------------
+excluded:
+
+  - what: "mlir_oot/lowering/isa.py module-level constants and encoding tables"
+    detail: "FUNCT, DIM, ADDR_LEN, SPAD_ROWS, ACC_ROWS, GARBAGE_ADDR, ACC_BASE, ACC_ACCUMULATE, ACC_FULL"
+    why: >-
+      These are the target's ISA encoding and its address layout. They are facts about the hardware,
+      not scheduling choices, and an agent that "wins" by changing an opcode has produced a different
+      machine rather than a better schedule. No entry is needed to protect them: they are
+      module-level assignments rather than definitions, so `compiler_edit_scope._remainder` already
+      places them in the frozen remainder and refuses any change. Recorded here so that protection is
+      a stated property rather than a side effect nobody knew they were relying on.
+
+  - what: "mlir_oot/lowering/isa.py:_tile_word, Address, Instruction"
+    why: >-
+      The tile-descriptor word and the instruction/address carriers are ABI. An edit here changes
+      what every emitted instruction MEANS, so a cycle delta measured across it is not attributable
+      to a scheduling decision.
+
+  - what: "mlir_oot/lowering/isa.py:_config_ld, _config_ex"
+    why: >-
+      DMA row stride, transpose and weight-stationary mode. These are correctness-critical operand
+      interpretation, not placement -- flipping weight-stationary changes the numerics rather than
+      the schedule. EXCLUDED WITH A CAVEAT: the redundant re-emission of `_config_ld` inside the
+      contraction loops is a real host-operation cost, and removing it is an edit to `_matmul_trace`
+      (which controls whether the call is made) rather than to `_config_ld` (which controls what it
+      encodes). The boundary is drawn so that hoisting is IN and re-encoding is OUT.
+
+  - what: "mlir_oot/ir_ingest.py (all symbols)"
+    why: >-
+      Parsing and program extraction. It decides WHAT PROGRAM is compiled. Every window in the
+      exchange-rate sweep, and every phase-2 A/B, compares two compilations of the same program; an
+      edit here breaks that premise without breaking anything visible.
+
+  - what: "mlir_oot/transforms.py, mlir_oot/gemmini_opt.py"
+    why: "Dialect conversion and CLI argument handling. Neither makes a grouping or placement decision."
+
+  - what: "mlir_oot/targetgen/generate/llvm_artifact.py"
+    why: >-
+      Serves a DIFFERENT manifest command (`lower_target_to_llvm`). It is not on the
+      `emit_command_buffer` path this contract is drawn around.
+
+  - what: "mlir_oot/targetgen/synthesize/tiling.py:tile_matmul"
+    why: >-
+      DEAD CODE IN THIS PACKAGE, and excluded for that reason rather than on principle. It is the
+      one symbol in the package whose NAME says it owns tiling, and it is the obvious thing to put
+      in a contract. It is called at isa.py:258, which is unreachable -- `_matmul_trace` returns at
+      line 245, and lines 247-315 are a retained fallback the live path never enters. Granting
+      authority over it would produce a contract that LOOKS like it names the grouping authority
+      while granting nothing, which is precisely the unwinnable-but-plausible shape
+      `required_decisions` exists to prevent. Verified by reading the function, not by import.
+
+  - what: manifest.yaml
+    why: >-
+      Already protected: `compiler_edit_scope.inspect_compiler_edits` refuses a manifest change other
+      than to `optimization_surfaces`, and records `candidate_manifest_grants_authority: false`. A
+      candidate cannot widen its own authority by declaring it.

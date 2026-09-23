@@ -1,17 +1,20 @@
 """Beam-search orchestration (mock certify, fast/deterministic): propose -> mint -> certify ->
 rank -> top-k -> beam_tree, plus deferred lever-2/3 work-item capture and the gap-router."""
+
 import os
 
-from merlin.rvvgen.beam import run_beam
-from merlin.rvvgen import load_rvv_package
-from merlin.kernels.rvv_knobs import propose_forks
+from merlin.kernels.knobs import propose_forks
+from merlin.mining import load_rvv_package
+from merlin.mining.beam import run_beam
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
 
-_DIVS = ["lmul_class: expert='m4' vs ours='m2'",
-         "fma_form: expert='vf' vs ours=None",
-         "vl_strategy: expert='vsetvl_loop' vs ours='vsetivli_fixed'"]
+_DIVS = [
+    "lmul_class: expert='m4' vs ours='m2'",
+    "fma_form: expert='vf' vs ours=None",
+    "vl_strategy: expert='vsetvl_loop' vs ours='vsetivli_fixed'",
+]
 
 
 def test_cca_divergences_lifts_ours_from_objdump_and_diffs_vs_expert(tmp_path):
@@ -21,15 +24,15 @@ def test_cca_divergences_lifts_ours_from_objdump_and_diffs_vs_expert(tmp_path):
 
     from merlin.common.paths import merlin_dir
     from merlin.kernels import cca
-    from merlin.rvvgen.beam import _cca_divergences
+    from merlin.mining.beam import _cca_divergences
 
     gen = tmp_path / "run1" / "generated"
     gen.mkdir(parents=True)
     # ours = the baseline (mul_add); expert = fused_fma -> a contraction_form divergence must surface
     (gen / "objdump.txt").write_text(
-        (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text())
-    expert = cca.CCA(op="matmul", backend=["rvv"],
-                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"))
+        (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text()
+    )
+    expert = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"))
     divs = _cca_divergences(tmp_path / "run1", expert, {"op": "matmul"})
     axes = {d.axis for d in divs}
     assert "compute.contraction_form" in axes
@@ -41,10 +44,12 @@ def _mock_certify(*, package_dir, model_dir, runs_root, run_id, targets, baselin
     """Wider N tile/vector -> higher structural_match (so the beam should climb toward it)."""
     pkg = load_rvv_package(package_dir)
     n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
-    return {"correctness": {"gate_ok": True},
-            "measurement": [{"target": "spike", "cycle_accurate": False, "cycles": 4_000_000 // n}],
-            "structural_match": min(0.95, 0.45 + 0.02 * n),
-            "divergences": _DIVS}
+    return {
+        "correctness": {"gate_ok": True},
+        "measurement": [{"target": "spike", "cycle_accurate": False, "cycles": 4_000_000 // n}],
+        "structural_match": min(0.95, 0.45 + 0.02 * n),
+        "divergences": _DIVS,
+    }
 
 
 def test_gap_router_splits_forkable_and_deferred():
@@ -60,9 +65,19 @@ def test_gap_router_splits_forkable_and_deferred():
 
 
 def test_beam_climbs_and_writes_tree(tmp_path):
-    out = run_beam(HAND_V0, model_dir=tmp_path / "wl", curated_text="", op_key={"op": "gemm"},
-                   runs_root=tmp_path / "runs", out_root=tmp_path / "gen",
-                   width=2, depth=2, top_k=1, timestamp="t", certify_fn=_mock_certify)
+    out = run_beam(
+        HAND_V0,
+        model_dir=tmp_path / "wl",
+        curated_text="",
+        op_key={"op": "gemm"},
+        runs_root=tmp_path / "runs",
+        out_root=tmp_path / "gen",
+        width=2,
+        depth=2,
+        top_k=1,
+        timestamp="t",
+        certify_fn=_mock_certify,
+    )
     # seed (N=8) -> wider-N forks should win
     seed = next(n for n in out["nodes"] if n["lever"] == "seed")
     assert out["best"]["structural_match"] >= seed["structural_match"]
@@ -77,21 +92,57 @@ def test_beam_climbs_and_writes_tree(tmp_path):
     assert os.path.isfile(out["tree_path"])
 
 
-def test_beam_stops_when_no_correct_parent(tmp_path):
+def test_an_incorrect_seed_is_explored_but_never_credited(tmp_path):
+    """This test used to assert that an incorrect seed minted NO forks, which made the defect the
+    contract: a model whose BASELINE is numerically wrong could never have any lever tried, even
+    though the fix is often a lever already in the space (deepjscc went from cos 0.9176 to BIT-EXACT
+    purely by switching to per-op register blocking). Measured on lstmnetvit int8, the frozen seed
+    reports w8a8_rel 0.250 at cos 0.985, and the beam answered "0 forks, best=seed, gate_ok=False".
+
+    The property it was really protecting is kept and asserted below: nothing is credited a win from
+    an incorrect baseline. No speedup is computed at all -- a ratio against a seed that computes the
+    wrong answer is a speedup over a program that does not work -- and `best` never comes back
+    passing. What changes is that the search now runs, with correctness as the objective.
+
+    This certify reports NO relative error, so there is no residual to climb. That must stop the
+    search after one generation rather than spend the remaining depth: an UNKNOWN residual is not
+    progress, and unknown must never be read as 0.
+    """
+
     def all_fail(**kw):
         return {"correctness": {"gate_ok": False}, "measurement": [], "divergences": _DIVS}
-    out = run_beam(HAND_V0, model_dir=tmp_path / "wl", curated_text="", op_key={"op": "gemm"},
-                   runs_root=tmp_path / "runs", out_root=tmp_path / "gen",
-                   width=2, depth=3, top_k=1, timestamp="t", certify_fn=all_fail)
-    # seed fails the gate -> no parents -> no forks minted
+
+    out = run_beam(
+        HAND_V0,
+        model_dir=tmp_path / "wl",
+        curated_text="",
+        op_key={"op": "gemm"},
+        runs_root=tmp_path / "runs",
+        out_root=tmp_path / "gen",
+        width=2,
+        depth=3,
+        top_k=1,
+        timestamp="t",
+        certify_fn=all_fail,
+    )
+    assert out["repair_mode"] is True
     assert out["best"] is None or not out["best"]["gate_ok"]
-    assert not list((tmp_path / "gen" / "rvv").glob("rvv_tuned_*"))
+    # no win from a broken baseline, on either axis
+    assert all(n.get("speedup") is None for n in out["nodes"])
+    # explored, so the levers were at least tried
+    assert len(out["nodes"]) > 1, "an incorrect seed must still get one generation of levers"
+    assert list((tmp_path / "gen" / "rvv").glob("rvv_tuned_*"))
+    # but stopped, because no candidate reported a residual to improve on
+    assert max(n.get("depth") or 0 for n in out["nodes"]) == 1, (
+        "with no residual signal the search must stop, not spend the remaining depth"
+    )
 
 
 def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness():
     """Ranking driver: real K1 speedup (measured silicon) beats the structural_match proxy; a fork
     that broke numerics never outranks a correct one no matter how 'fast'."""
-    from merlin.rvvgen.sweep import rank_results
+    from merlin.mining.sweep import rank_results
+
     nodes = [
         {"run_id": "seed", "gate_ok": True, "speedup": 1.0, "structural_match": 0.9},
         {"run_id": "fast_correct", "gate_ok": True, "speedup": 1.4, "structural_match": 0.5},
@@ -99,13 +150,14 @@ def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness(
         {"run_id": "fast_but_broken", "gate_ok": False, "speedup": 3.0, "structural_match": 0.99},
     ]
     ranked = [n["run_id"] for n in rank_results(nodes)]
-    assert ranked[0] == "fast_correct"          # real speedup drives (beats the higher structural_match)
-    assert ranked[-1] == "fast_but_broken"      # broke numerics -> last, no speed credit (real-vs-fake)
+    assert ranked[0] == "fast_correct"  # real speedup drives (beats the higher structural_match)
+    assert ranked[-1] == "fast_but_broken"  # broke numerics -> last, no speed credit (real-vs-fake)
 
 
 def test_rank_results_falls_back_to_structural_match_without_k1():
     """No k1 run (speedup=None everywhere) -> ranking falls back to the structural_match proxy."""
-    from merlin.rvvgen.sweep import rank_results
+    from merlin.mining.sweep import rank_results
+
     nodes = [
         {"run_id": "a", "gate_ok": True, "speedup": None, "structural_match": 0.6},
         {"run_id": "b", "gate_ok": True, "speedup": None, "structural_match": 0.9},
@@ -122,7 +174,7 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
     from pathlib import Path
 
     from merlin.common.paths import merlin_dir
-    from merlin.rvvgen.beam_cli import run_instrumented_beam
+    from merlin.mining.beam_cli import run_instrumented_beam
 
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     ours_objd = (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text()
@@ -131,23 +183,39 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
     def mock_certify(*, package_dir, model_dir, runs_root, run_id, targets, baseline_run_dir):
         gen = Path(runs_root) / run_id / "generated"
         gen.mkdir(parents=True, exist_ok=True)
-        (gen / "objdump.txt").write_text(ours_objd)          # -> ours CCA lifts -> divergences
+        (gen / "objdump.txt").write_text(ours_objd)  # -> ours CCA lifts -> divergences
         pkg = load_rvv_package(package_dir)
         n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
-        return {"correctness": {"gate_ok": True},
-                "measurement": [{"target": "k1", "cycle_accurate": False,
-                                 "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}]}
+        # A fork earns its speedup by DIFFERING from the frozen seed, on either surface. Keyed on the
+        # feature set as well as the N tile because the `vector.lmul` axis no longer reaches LMUL by
+        # widening N -- it requests the register-group width directly (llvmlower.lmul_group), which
+        # leaves op_match untouched -- so an N-only reward makes every fork on that axis look inert.
+        n *= 2 ** len(pkg.compiler_features or ())
+        return {
+            "correctness": {"gate_ok": True},
+            "measurement": [
+                {"target": "k1", "cycle_accurate": False, "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}
+            ],
+        }
 
     res = run_instrumented_beam(
-        seed_pkg=HAND_V0, model_dir=tmp_path / "wl", expert_objdump=expert_objd,
-        op="matmul", targets=("k1",), width=2, depth=1, top_k=1, certify_fn=mock_certify,
-        expert_wall_ns=500_000)   # the XNNPACK target wall (P5): forks report attainment vs it
+        seed_pkg=HAND_V0,
+        model_dir=tmp_path / "wl",
+        expert_objdump=expert_objd,
+        op="matmul",
+        targets=("k1",),
+        width=2,
+        depth=1,
+        top_k=1,
+        certify_fn=mock_certify,
+        expert_wall_ns=500_000,
+    )  # the XNNPACK target wall (P5): forks report attainment vs it
 
     # P5: the best fork reports attainment_vs_expert = xnn_wall / fork_wall (the real XNNPACK scoreboard)
     best = res.get("best") or {}
     assert isinstance(best.get("attainment_vs_expert"), float)
     parent_dir = Path(res["parent_run_dir"])
-    assert (parent_dir / "beam_tree.yaml").is_file()          # full per-step record in the parent run
+    assert (parent_dir / "beam_tree.yaml").is_file()  # full per-step record in the parent run
     assert (parent_dir / "run_record.json").is_file()
     # a wider-N fork was minted and earned a REAL K1 speedup over the frozen seed
     assert len(res["nodes"]) > 1, "no forks minted (CCA divergences did not surface)"
@@ -165,19 +233,42 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
 def test_escalation_routes_unmet_promise_to_next_stronger_class():
     """BB2: when a fork leaves a residual (didn't achieve its promised facet), _escalations routes the
     next-stronger class for the unmet axis — turning the beam into a knob→…→CODEGEN escalation engine."""
-    from merlin.rvvgen.beam import _escalations
+    from merlin.kernels import cca
     from merlin.kernels.action_catalog import route
     from merlin.kernels.cca_compare import Divergence
-    from merlin.kernels import cca
+    from merlin.mining.beam import _escalations
 
     action = route(Divergence("compute.accumulator_resident", True, False, "rvv"))
     assert action.action_class == "PASS"
     # the fork's emitted asm still shows resident=False -> the PASS promise was unmet.
-    achieved = cca.CCA(op="matmul", backend=["rvv"],
-                       compute=cca.ComputeFacet(accumulator_resident=False))
+    achieved = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=False))
     esc = _escalations(action, achieved, {"op_match": [{"op": "matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}]})
     classes = [getattr(e.action, "action_class", None) for e in esc]
-    assert "CODEGEN" in classes                       # escalated PASS -> CODEGEN (the microkernel emitter)
+    assert "CODEGEN" in classes  # escalated PASS -> CODEGEN (the microkernel emitter)
     # no residual -> no escalation.
     ok = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=True))
     assert _escalations(action, ok, {}) == []
+
+
+def test_the_beam_certifies_on_a_SUSTAINED_board_measurement():
+    """The beam ranks forks on this number and every ours-vs-framework ratio is read against it, so
+    it must be the protocol the other side is measured under.
+
+    ExecuTorch's runner has no warmup and averages its cold first execution into --num_executions;
+    measured on small_llama int8 its cold inference is 1.62x its warm one. Ours was fully cold, so the
+    mismatch misread AGAINST us: the same model measured 6,446,228 ns cold and 4,878,645 ns sustained,
+    1.32x purely from the protocol.
+    """
+    import inspect
+
+    from merlin.mining import runner
+
+    ps = inspect.signature(runner.certify_rvv).parameters
+    assert ps["warmup"].default >= 1, "a cold first inference must not be inside the timed window"
+    assert ps["iters"].default >= 2, "one timed iteration cannot survive a single outlier"
+
+    src = inspect.getsource(runner.certify_rvv)
+    assert "iters=iters" in src and "warmup=warmup" in src, (
+        "certify_rvv takes the protocol but does not pass it to run_on_k1 -- which is exactly how the "
+        "beam ended up ranking on cold single inferences while claiming to be comparable"
+    )

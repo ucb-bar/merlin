@@ -1,0 +1,9 @@
+# Concept vocabulary for TargetGen's evidence pass (per-target, was a core literal in
+# targetgen/evidence/report.py::CONCEPT_KEYWORDS). Keys are concept names; values are lowercase
+# substrings that, if seen in a discovered filename or a doc's first lines, count as supporting
+# evidence. toy_npu is the concrete reference target.
+concepts:
+  resident_packed_tensor: [resident, packed, res_pack, weight]
+  accumulator_commit: [accumulator, commit, epilogue, requant]
+  command_buffer: [command, command_buffer, dispatch]
+  metrics: [metric, cycles, profil]

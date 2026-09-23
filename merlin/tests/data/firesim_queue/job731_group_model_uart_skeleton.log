@@ -1,0 +1,95 @@
+# Protocol marker lines from FireSim queue job 731's UART (the measured resnet50
+# group-model run, hw_config alveo_u250_firesim_gemmini_rocket_30mhz, submitted as
+# workload 'merlin-checkpoint' from
+# out/artifacts/perf-bench/gemmini/rcp_ours_pinned_one_window_20260919T042219Z/group_model_program.elf), in order, from its
+# uartlog; every other line dropped.  The only edit is stripping each line's trailing
+# CR: the FPGA console emits CRLF and git would rewrite it anyway.  The line content
+# itself is untouched.
+#
+# A CORRECT RUN of the same program on the same hardware.  All 71 of its group checksums
+# equal the generated oracle in
+# merlin/contract/firesim_uart_policies/resnet50_group_model_cycle_claim_v2.json, which is
+# what makes that file a measured fact about this device and not an assertion about a
+# numpy program.  Six further runs (q723, q724, q726, q727, q728, q729), spanning
+# 24.3M-38.5M cycles, agree on all 71 as well.
+#
+# It carries 'GROUP_MODEL_TOTAL cycles: N' and no 'METRIC'/'MERLIN_INVOCATIONS' line, so
+# this run could not have been sealed either.
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+GM_GROUP 1 conv2d 1956281 sum=5663048
+GM_GROUP 2 matmul 55622 sum=1902727
+GM_GROUP 3 conv2d 473552 sum=3305741
+GM_GROUP 4 matmul 222078 sum=-1923966
+GM_GROUP 5 matmul 229447 sum=-3855119
+GM_GROUP 6 sum 483755 sum=4037050
+GM_GROUP 7 matmul 206563 sum=1461282
+GM_GROUP 8 conv2d 473365 sum=3227305
+GM_GROUP 9 matmul 219482 sum=-2428442
+GM_GROUP 10 sum 437837 sum=4953110
+GM_GROUP 11 matmul 206694 sum=3045690
+GM_GROUP 12 conv2d 473219 sum=3332260
+GM_GROUP 13 matmul 218993 sum=-3681748
+GM_GROUP 14 sum 492973 sum=5851743
+GM_GROUP 15 matmul 407449 sum=1748882
+GM_GROUP 16 conv2d 577172 sum=1133852
+GM_GROUP 17 matmul 207995 sum=66187
+GM_GROUP 18 conv2d 533951 sum=-293640
+GM_GROUP 19 sum 269850 sum=2817782
+GM_GROUP 20 matmul 208017 sum=1179122
+GM_GROUP 21 conv2d 534752 sum=1349931
+GM_GROUP 22 matmul 208153 sum=-3695797
+GM_GROUP 23 sum 269575 sum=2719035
+GM_GROUP 24 matmul 208272 sum=920672
+GM_GROUP 25 conv2d 534580 sum=1092582
+GM_GROUP 26 matmul 208470 sum=-4580607
+GM_GROUP 27 sum 275242 sum=2431829
+GM_GROUP 28 matmul 208148 sum=1142961
+GM_GROUP 29 conv2d 534891 sum=1187582
+GM_GROUP 30 matmul 208633 sum=-4759471
+GM_GROUP 31 sum 268928 sum=2449321
+GM_GROUP 32 matmul 411688 sum=460792
+GM_GROUP 33 conv2d 468427 sum=1428826
+GM_GROUP 34 matmul 217593 sum=-1896972
+GM_GROUP 35 conv2d 421359 sum=-504805
+GM_GROUP 36 sum 147276 sum=1516369
+GM_GROUP 37 matmul 235418 sum=323392
+GM_GROUP 38 conv2d 487911 sum=446858
+GM_GROUP 39 matmul 217611 sum=-1735432
+GM_GROUP 40 sum 152440 sum=1521253
+GM_GROUP 41 matmul 235577 sum=239157
+GM_GROUP 42 conv2d 487911 sum=203884
+GM_GROUP 43 matmul 217623 sum=-1035532
+GM_GROUP 44 sum 152241 sum=917975
+GM_GROUP 45 matmul 235449 sum=41398
+GM_GROUP 46 conv2d 487917 sum=66683
+GM_GROUP 47 matmul 217597 sum=-485004
+GM_GROUP 48 sum 152713 sum=328987
+GM_GROUP 49 matmul 235220 sum=21408
+GM_GROUP 50 conv2d 488154 sum=109348
+GM_GROUP 51 matmul 217643 sum=-539679
+GM_GROUP 52 sum 152015 sum=367230
+GM_GROUP 53 matmul 235068 sum=55520
+GM_GROUP 54 conv2d 487990 sum=140898
+GM_GROUP 55 matmul 217458 sum=-990872
+GM_GROUP 56 sum 151694 sum=469739
+GM_GROUP 57 matmul 469265 sum=96512
+GM_GROUP 58 conv2d 694735 sum=184603
+GM_GROUP 59 matmul 270027 sum=-1930374
+GM_GROUP 60 conv2d 613317 sum=-760102
+GM_GROUP 61 sum 127497 sum=59566
+GM_GROUP 62 matmul 302514 sum=20633
+GM_GROUP 63 conv2d 696814 sum=33876
+GM_GROUP 64 matmul 269780 sum=-886153
+GM_GROUP 65 sum 127958 sum=25625
+GM_GROUP 66 matmul 302616 sum=9465
+GM_GROUP 67 conv2d 696964 sum=38427
+GM_GROUP 68 matmul 269930 sum=-842367
+GM_GROUP 69 sum 122655 sum=32648
+GM_GROUP 70 mean 11313 sum=1248
+GM_GROUP 71 matmul 397793 sum=467
+GM_ARGMAX got=21 want=21 agrees=1
+GM_COSINE_PPM 997981
+GROUP_MODEL_TOTAL cycles: 24319110
+MERLIN_PROFILE measured end rc=0

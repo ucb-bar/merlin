@@ -1,9 +1,0 @@
-instruction_classes:
-- FLUSH
-- CONFIG_LD
-- MVIN
-- CONFIG_ST
-- MVOUT
-modes:
-  movement: true
-  i8: true

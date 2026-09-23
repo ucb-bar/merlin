@@ -13,6 +13,12 @@
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 MERLIN_WEIGHTS_BASE = DEFINED(MERLIN_WEIGHTS_BASE) ? MERLIN_WEIGHTS_BASE : 0x200000000;
+/* Stack reserve, overridable at link time for the same reason the weights base is: it is a SIZING
+ * decision that depends on the model, not a property of the layout. The lowering promotes static
+ * intermediates to stack `alloca`s for this target, so the demand scales with the model rather than
+ * with the harness -- and the region immediately below this reserve is .bss/.data/.rodata/.htif, so
+ * running out of it corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. */
+MERLIN_STACK_BYTES = DEFINED(MERLIN_STACK_BYTES) ? MERLIN_STACK_BYTES : 0x40000;
 SECTIONS {
   . = 0x80000000;
   .text : { *(.text.init) *(.text*) }
@@ -28,7 +34,7 @@ SECTIONS {
   .bss : { *(.bss*) *(.sbss*) *(COMMON) }
   _bss_end = .;
   . = ALIGN(16);
-  . += 0x40000;            /* stack (per-hart), kept near the code */
+  . += MERLIN_STACK_BYTES; /* stack (per-hart), kept near the code */
   _stack_top = .;
 
   /* weight blob at its absolute high address (loaded by spike from the ELF) */

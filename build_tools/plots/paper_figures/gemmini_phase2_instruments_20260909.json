@@ -1,0 +1,147 @@
+{
+ "balance": {
+  "schema": "merlin_movement_balance_measurement_v1",
+  "what": "the two data-movement terms merlin.perf.contract declares UNKNOWN, measured from a controlled transfer-size series on a cycle-accurate engine",
+  "why_this_construction": "perf/contract.py:449 names it -- 'Needs a measurement at >=2 transfer sizes to separate the rate from the fixed per-transfer cost'. A fit over the existing corpus is REFUTED: the same declared byte volume measured cycle counts disagreeing by 13.3x, because those are different emitted programs at one volume.",
+  "engine": "gsim",
+  "compiler_package": "gemmini_xdsl_rtl_v0",
+  "compute_peak_macs_per_cycle": 256.0,
+  "runs_root": "out/runs/gemmini/movement_balance_probe_20260908",
+  "balance": {
+   "schema": "merlin_movement_balance_v1",
+   "status": "derived",
+   "reason": "",
+   "peak_bytes_per_cycle": 16.119345076433614,
+   "base_latency_cycles": 128.50226736629278,
+   "r_squared": 0.9929408549772246,
+   "domain_bytes": [
+    40,
+    1280
+   ],
+   "n_samples": 6,
+   "n_distinct_sizes": 6,
+   "residual_cycles": [
+    0.735,
+    2.706,
+    -1.6,
+    -3.91,
+    3.053,
+    -0.984
+   ],
+   "samples": [
+    {
+     "program": "A1_mvin_mvout",
+     "bytes_moved": 512,
+     "cycles": 161,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    },
+    {
+     "program": "FT00_movement_tail_15x15",
+     "bytes_moved": 1125,
+     "cycles": 201,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    },
+    {
+     "program": "FT01_movement_tail_17x15",
+     "bytes_moved": 1275,
+     "cycles": 206,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    },
+    {
+     "program": "SY_movement_i8_aligned",
+     "bytes_moved": 1280,
+     "cycles": 204,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    },
+    {
+     "program": "SY_movement_i8_partial",
+     "bytes_moved": 1200,
+     "cycles": 206,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    },
+    {
+     "program": "SY_movement_i8_sub_tile",
+     "bytes_moved": 40,
+     "cycles": 130,
+     "engine": "gsim",
+     "package": "gemmini_xdsl_rtl_v0"
+    }
+   ],
+   "notes": [
+    "exact rational least squares; the coefficients do not round on the way out",
+    "the fixed per-transfer cost is 128.5 cycles against a smallest measured transfer of 40 B, so the intercept dominates this domain and the slope is the MARGINAL rate over it -- not the bandwidth a large transfer achieves"
+   ],
+   "ridge_licence": "the slope is a MARGINAL rate over the measured domain and, where the intercept dominates, a LOWER bound on what a large transfer can achieve -- so peak_compute divided by it is an UPPER bound on the ridge. An intensity above that bound is provably compute-bound; an intensity below it proves NOTHING and is not evidence of being memory-bound."
+  },
+  "ridge_point": {
+   "macs_per_byte_upper_bound": 15.881538535599097,
+   "licence": "the slope is a MARGINAL rate over the measured domain and, where the intercept dominates, a LOWER bound on what a large transfer can achieve -- so peak_compute divided by it is an UPPER bound on the ridge. An intensity above that bound is provably compute-bound; an intensity below it proves NOTHING and is not evidence of being memory-bound."
+  },
+  "structural_corroboration": "the measured marginal rate is 16.119 bytes/cycle and one row of the 16x16 int8 mesh is 16 bytes. The proximity is CORROBORATION, not a derivation: the fit measures 16.119 and 16 is a plausible structural explanation for it, not its source.",
+  "sim_provenance": {
+   "available": true,
+   "binary_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+   "receipt_status": "bound"
+  },
+  "harvest_refusals": [],
+  "provenance": {
+   "merlin": {
+    "commit": "939a075b0e3fe70d2b1f3ccca809f6ab35399777",
+    "dirty_files": 380
+   },
+   "hardware_pins": {},
+   "all_pins_ok": null,
+   "pin_citations": {},
+   "artifact_digests": {
+    "gsim_emulator": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
+   }
+  }
+ },
+ "workloads": [
+  {
+   "model": "resnet50",
+   "routed_macs": 4089184256,
+   "on_unit": 54,
+   "off_unit": 0,
+   "traffic_bytes": 177750800,
+   "host_regions": 119,
+   "macs_per_byte": 23.00515247188761,
+   "bound_by": "compute"
+  },
+  {
+   "model": "smolvla",
+   "routed_macs": 5094387200,
+   "on_unit": 116,
+   "off_unit": 32,
+   "traffic_bytes": 817568685,
+   "host_regions": 4934,
+   "macs_per_byte": 6.231142769368668,
+   "bound_by": "UNKNOWN"
+  },
+  {
+   "model": "lstmnetvit",
+   "routed_macs": 35741344,
+   "on_unit": 31,
+   "off_unit": 12,
+   "traffic_bytes": 34861288,
+   "host_regions": 304,
+   "macs_per_byte": 1.0252445061697089,
+   "bound_by": "UNKNOWN"
+  },
+  {
+   "model": "tinyllama",
+   "routed_macs": 0,
+   "on_unit": 0,
+   "off_unit": 19,
+   "traffic_bytes": 604864,
+   "host_regions": 247,
+   "macs_per_byte": 0.0,
+   "bound_by": "UNKNOWN"
+  }
+ ]
+}

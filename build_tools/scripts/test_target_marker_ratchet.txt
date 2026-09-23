@@ -1,0 +1,12 @@
+# Tests in SUBSYSTEM buckets that name one target five or more times and carried no
+# `pytest.mark.target(...)` when the rule was added (2026-09-14). Debt, not an allowlist: this list may
+# only SHRINK (check_ratchets_shrink.py holds it). A file leaves when it gains the marker or stops
+# hardcoding a target. Consumed by: check_structure.py "test target marker".
+merlin/tests/infra/test_conformance.py
+merlin/tests/infra/test_functional_formal_grade.py
+merlin/tests/kernels/test_bench_ceiling.py
+merlin/tests/targetgen/test_corpus_sweeps.py
+merlin/tests/targetgen/test_derive_manifest.py
+merlin/tests/targetgen/test_harness_counters_optin.py
+merlin/tests/targetgen/test_model_capsule_budget.py
+merlin/tests/targetgen/test_warm_profile_production.py

@@ -1,0 +1,93 @@
+#!/bin/bash
+# FireSim cross-user queue companion.  See the adjacent `firesim` launcher.
+# Intercept an exact prebuilt FireSim host-driver check.  The phony
+# target-symlink hook cannot run in a submitter-owned checkout, but every real
+# dependency must remain current; a stale driver is sent to ordinary make and
+# therefore fails closed instead of being accepted.  Derive the driver path
+# from Make's explicit configuration arguments so this works for every
+# prebuilt target, rather than one benchmark-specific configuration.
+set -eu
+
+launcher_dir=$(cd "$(dirname "$0")" && pwd -P)
+real_make=""
+old_ifs=$IFS
+IFS=:
+for directory in $PATH; do
+  [[ -n "$directory" ]] || directory=.
+  if [[ "$(cd "$directory" 2>/dev/null && pwd -P || true)" == "$launcher_dir" ]]; then
+    continue
+  fi
+  if [[ -x "$directory/make" ]]; then
+    real_make="$directory/make"
+    break
+  fi
+done
+IFS=$old_ifs
+if [[ -z "$real_make" ]]; then
+  echo "firesim-queue could not resolve the real make executable" >&2
+  exit 126
+fi
+
+has_arg() {
+  local wanted=$1
+  shift
+  local argument
+  for argument in "$@"; do
+    [[ "$argument" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+physical_cwd=$(pwd -P)
+makefrag=""
+target_config=""
+platform_config=""
+for argument in "$@"; do
+  case "$argument" in
+    TARGET_PROJECT_MAKEFRAG=*) makefrag=${argument#TARGET_PROJECT_MAKEFRAG=} ;;
+    TARGET_CONFIG=*) target_config=${argument#TARGET_CONFIG=} ;;
+    PLATFORM_CONFIG=*) platform_config=${argument#PLATFORM_CONFIG=} ;;
+  esac
+done
+makefrag_normalized=""
+if [[ -n "$makefrag" ]]; then
+  # Normalize `deploy/../../../` lexically while retaining the per-job path;
+  # resolving the generators symlink would erase the queue-job identity.
+  makefrag_normalized=$(realpath -m -s "$makefrag")
+fi
+
+exact_driver_check=false
+if [[ "$physical_cwd" == */chipyard/sims/firesim/sim ]] \
+    && has_arg "PLATFORM=xilinx_alveo_u250" "$@" \
+    && has_arg "TARGET_PROJECT=firesim" "$@" \
+    && has_arg "DESIGN=FireSim" "$@" \
+    && [[ -n "$target_config" ]] \
+    && [[ -n "$platform_config" ]] \
+    && has_arg "xilinx_alveo_u250" "$@" \
+    && [[ "$makefrag_normalized" == /scratch/firesim_queue/jobs/*/chipyard/generators/firechip/chip/src/main/makefrag/firesim ]]; then
+  exact_driver_check=true
+fi
+
+if [[ "$exact_driver_check" != true ]]; then
+  exec "$real_make" "$@"
+fi
+
+driver_rel="xilinx_alveo_u250/xilinx_alveo_u250-firesim-FireSim-${target_config}-${platform_config}"
+driver="$physical_cwd/output/$driver_rel/FireSim-xilinx_alveo_u250"
+if [[ ! -x "$driver" ]]; then
+  echo "firesim-queue exact-config prebuilt driver is absent: $driver" >&2
+  exit 126
+fi
+
+set +e
+"$real_make" -q --old-file=firesim_target_symlink_hook "$@"
+query_rc=$?
+set -e
+if [[ "$query_rc" -eq 0 ]]; then
+  exec "$real_make" --old-file=firesim_target_symlink_hook "$@"
+fi
+if [[ "$query_rc" -eq 1 ]]; then
+  echo "firesim-queue exact-config driver is stale; refusing the phony-hook exception" >&2
+  exec "$real_make" "$@"
+fi
+exit "$query_rc"

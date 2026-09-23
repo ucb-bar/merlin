@@ -1,0 +1,59 @@
+name: SY_kdepth_spills
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction
+  the ''spills'' residency regime admits (256 accumulation passes, 2.0 of the operand
+  store). The reduction moves the operands and not the result, so this certifies at
+  one output tile'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 4096
+  - 16
+  dtype: fp16
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 4096
+  dtype: fp16
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: accumulation_depth
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 30.586119651794434
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

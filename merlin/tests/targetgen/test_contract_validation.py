@@ -1,15 +1,17 @@
 """Contract loading + validation: the five plans validate, malformed input diagnoses."""
+
 from __future__ import annotations
 
-from merlin.validation.load import PLAN_FILES, REQUIRED_PLANS, load_all_plans
-from merlin.validation.validate import validate_plan, validate_target_repo
 from merlin.targetgen import pipeline
 from merlin.targetgen.validate import validate_plans
+from merlin.validation.load import PLAN_FILES, REQUIRED_PLANS, load_all_plans
+from merlin.validation.validate import validate_plan, validate_target_repo
 
 
 def _build(out):
     return pipeline.build(
-        target_name="toy_npu", out=out,
+        target_name="toy_npu",
+        out=out,
         emit=["xdsl", "mlir", "zephyr", "llvm-plan", "runtime"],
     )
 

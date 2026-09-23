@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-07-22
 related: [getting_started, adding_a_target, experiment_abi, generated_target_repos]
-code_refs: [merlin/python/merlin/targetgen]
+code_refs: [src/merlin/targetgen]
 ---
 
 # TargetGen (Workstream 1)
@@ -35,7 +35,7 @@ gates**, not "RTL to correct dialect." TargetGen is deterministic and contains n
 
 ## Modules
 
-`merlin/python/merlin/targetgen/`:
+`src/merlin/targetgen/`:
 
 - `cli.py`, `pipeline.py` — entry points (`build`, `inspect`).
 - `ingest/` — `SourceManifest`; `docs.py`/`examples.py`/`scala_chisel.py` discover files.
@@ -47,7 +47,7 @@ gates**, not "RTL to correct dialect." TargetGen is deterministic and contains n
 
 ## Reference target
 
-`merlin/targets/toy_npu/` — concrete `toynpu.{res_pack,matmul,commit,evict}` and
+`examples/toy_npu/target/` — concrete `toynpu.{res_pack,matmul,commit,evict}` and
 `!toynpu.{resident_tensor,accumulator}`. Real targets (gemmini/saturn/radiance) synthesize
 conservative skeletons flagged `requires_human_review: true`. See `docs/adding_a_target.md`
 and `docs/generated_target_repos.md`.
@@ -56,8 +56,8 @@ and `docs/generated_target_repos.md`.
 
 ```bash
 python -m merlin.targetgen.cli build --target-name toy_npu \
-  --source-dir merlin/targets/toy_npu/docs \
-  --examples-dir merlin/targets/toy_npu/examples \
+  --source-dir examples/toy_npu/target/docs \
+  --examples-dir examples/toy_npu/target/examples \
   --out out/build/generated/merlin-target-toy-npu \
   --emit xdsl,mlir,zephyr,llvm-plan,runtime
 python -m merlin.targetgen.cli inspect --target out/build/generated/merlin-target-toy-npu

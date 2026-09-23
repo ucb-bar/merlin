@@ -1,0 +1,162 @@
+name: PC01_k128
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared inter-layer declaration: one resident weight, two matmuls,
+  and the A/B is the command list of THIS capsule permuted by command_stream_gen at
+  measurement time (tile=16; K=128, N=64; matmuls=[{''lhs'': ''A0'', ''out'': ''Y0'',
+  ''M_tiles'': 1}, {''lhs'': ''A1'', ''out'': ''Y1'', ''M_tiles'': 1}])'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 128
+  - 64
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 128
+  dtype: i8
+- name: A1
+  role: input
+  shape:
+  - 16
+  - 128
+  dtype: i8
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: i32
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: i32
+    semantic: resident_reuse
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L3_inter_layer
+  family: PC
+  lever: dma_issue_before_wait
+  member_class: OBJECTIVE
+  claim: DIFFERENTIAL
+  comparand:
+    kind: paired_run
+    against: identical_dependence_chain_without_hoist
+    cancels:
+    - operation
+    - shape
+    - operands
+    - instruction_multiset
+    demand_equal:
+    - operation
+    - M
+    - N
+    - K
+  falsifier:
+    observation: paired_cycle_delta
+    fires_when: hoisting_does_not_improve_any_declared_separation_regime
+    negative_control: single_K_step_hoist
+  gate:
+    traits:
+    - independent_engine_ports
+    - explicit_completion
+    instrument: per_engine_completion_and_cycle_count
+    capacity: at_least_two_separation_regimes
+    on_missing: skip_with_evidence
+  regime:
+    separation: fixed_within_each_pair_and_repeated_at_two_levels
+    layout: real_producer_consumer_dependence
+  emitter:
+    status: existing
+    entry: merlin.perf.command_stream_gen.pair_from_interface
+    knobs:
+      transformation: hoist_a_command_above_ones_it_does_not_depend_on
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: derived_from_two_pairs_plus_negative_control
+    projected_cycles: derived_at_preflight
+    basis: paired_differential_at_two_separation_regimes
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - not_hoisted
+    - hoisted
+    expected_faster: hoisted
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2
+  shape_geometry:
+    M: 16
+    K: 128
+    N: 64
+    out_elements: 1024
+    geometry_class: wide_skinny
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.821905
+    census_out_elements: 32768000
+    census_regions: 2306
+    census_unreachable: the heaviest shape in this class carries a 589824000-element
+      tensor, more than the 262144 this target's operand store holds, and no common
+      divisor of its extents fits while every extent stays at or above its floor (min(original,
+      tile edge 16)) and the shape stays in its class -- so no capsule of this aspect
+      ratio is both representative and buildable here
+    census_note: this class is in the census but the census itself records it as unbuildable
+      on this target, so membership is by aspect ratio only

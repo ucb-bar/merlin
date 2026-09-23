@@ -115,7 +115,7 @@ strong evidence the markers measure something real.
 
 ### The instruction cost model (the keystone)
 
-`merlin/python/merlin/cost_model/` predicts cycles from event counts without per-candidate RTL:
+`merlin/python/merlin/perf/linear_cost.py` (with the calibrated data in `merlin/targets/gemmini/cost_model/`) predicts cycles from event counts without per-candidate RTL:
 
 - coefficients (cycles/command), calibrated against Verilator by relative-weighted least
   squares: `config≈5, mvin≈29, mvin2≈30, compute≈64, mvout≈31, fence≈33`
@@ -166,7 +166,7 @@ Concrete next moves, in dependency order:
 |---|---|
 | Pipeline | `merlin/python/merlin/kernels/` (ingest, markers, features, classify, policy, validate, report, plots, invariants, audit) |
 | Tools | `kernel-index`, `kernel-extract`, `kernel-audit` (`[project.scripts]`) |
-| Cost model | `merlin/python/merlin/cost_model/` + `gemmini_cost_coeffs.json` |
+| Cost model | `merlin/python/merlin/perf/linear_cost.py` + `merlin/targets/gemmini/cost_model/` |
 | Stage-F harnesses | `merlin/experiments/kernel_policy/stageF/` |
 | Profiling plan | `merlin/experiments/kernel_policy/profiling_slate.yaml` |
 | Generated artifacts | `output/kernels/` (report, plots, audit, features, *_candidates.yaml, stageF/, cost_model/) — gitignored, reproducible |

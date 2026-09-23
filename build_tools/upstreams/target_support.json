@@ -1,0 +1,175 @@
+{
+  "schema": "merlin.upstream_support_migration.v1",
+  "status": "local_companion_branches_no_push",
+  "merlin_source_baseline": "6b83c05a7ea7e7eb50fc688670cfa547f16f315c",
+  "branch": "refactor/merlin-phase-architecture",
+  "runtime_defaults_changed": true,
+  "canonical_sources_removed": true,
+  "selection": "Explicit MERLIN_TARGET_PATH provider roots only; local_worktree paths are operator records, never runtime defaults.",
+  "qualification_scope": "Read-only provider identity, exact source SHA256 parity, plugin reference existence, schema diagnostic parity. No hardware execution or compiler qualification.",
+  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Existing recursive integrity policy remains unchanged. Export/select candidate artifacts without merlin-support before grading or publishing; no automatic exporter is introduced here.",
+  "companions": [
+    {
+      "target": "muon",
+      "url": null,
+      "local_worktree": "out/build/upstreams/muon-support",
+      "base_ref": null,
+      "base_commit": null,
+      "catalog_commit": null,
+      "root_role": "support",
+      "companion_commit": "5d52f2bb5660a909ba947420ed6f44ba92a43986",
+      "provider_root": ".",
+      "provider_role": "support",
+      "copied_files": 19,
+      "file_provenance": "provenance.json",
+      "contract_sha256": "c39878928d8d674ded768a293b8bd8f662bf1b7f6f09d2e36f8208c310cb14d1",
+      "schema_valid": null,
+      "removed_canonical_directories": ["merlin/targets/muon/backend"],
+      "removed_canonical_owners": ["merlin/targets/muon/sim_oracle.py"],
+      "qualification_scope": "Original 19-file migration provenance retained; subsequent companion changes include an OOT-owned codegen smoke and shared OracleUnavailable inheritance. Isolated explicit provider/oracle metadata imports, private support classification, synthetic runtime ABI/cache tests, and nine process-blocked codegen smoke cases. No native execution.",
+      "blockers": [
+        "Standalone local support repository only; no publication remote configured and no changes pushed.",
+        "Provider identity muon and experiment identity radiance remain distinct. No implicit alias or native fallback was added.",
+        "Retained Radiance backend_package_dir still declares historical metadata/pin locations; qualified facts/IRDL provisioning and declaration migration remain unfinished.",
+        "No RTL facts are bundled. Missing selected-provider facts remain unavailable; native compiler, Cyclotron and RTL execution have not been qualified.",
+        "Cache source ownership now follows the installed lowering package; complete transitive toolchain and resource identity remains broader work.",
+        "Support code is host-private, not a candidate compiler payload. Historical frozen runs and certificates are not relabeled."
+      ]
+    },
+    {
+      "target": "saturn",
+      "url": "https://github.com/ucb-bar/rvv-mlir.git",
+      "local_worktree": "out/build/upstreams/rvv-mlir",
+      "base_ref": "stable/sol_k1_int8",
+      "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
+      "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
+      "root_role": "host_schedule",
+      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "provider_root": "saturn-support",
+      "provider_role": "support",
+      "copied_files": 7,
+      "file_provenance": "saturn-support/provenance.json",
+      "contract_sha256": "a123384e2132b3491b9d2747194a3efae27344077506060a5e45fc60f3c3b76a",
+      "opu_shim_provenance": "saturn-support/opu_shim_migration.json",
+      "matrix_adapter_provenance": "saturn-support/matrix_adapter_migration.json",
+      "schema_valid": null,
+      "removed_canonical_directories": [
+        "merlin/targets/saturn/backend",
+        "merlin/targets/saturn/dialect"
+      ],
+      "qualification_scope": "Exact seven-file source commitments, explicit Saturn provider and backend discovery, generic emitter identity reuse, pure xDSL dialect construction/lowering. No native execution.",
+      "blockers": [
+        "Separate Saturn support identity; sibling merlin-support describes RVV and is not an alias. Neither is the Saturn OPU experiment identity.",
+        "Contract and dialect plan are preserved reference inputs, not newly extracted or qualified RTL facts. Schema qualification was not performed for this move.",
+        "Shared Spike harness/toolchain dependencies remain in Merlin. Broader OPU implementations and reference metadata still require migration.",
+        "No native compiler, simulator, hardware or candidate certification. Existing RVV publication certification does not extend to this support package.",
+        "Companion branch is local and unpushed; frozen historical inputs remain unchanged."
+      ]
+    },
+    {
+      "target": "gemmini",
+      "url": "https://github.com/ucb-bar/gemmini-mlir.git",
+      "local_worktree": "out/build/upstreams/gemmini-mlir",
+      "base_ref": "stable/gemmini_xdsl_rtl_v0",
+      "base_commit": "390623a67db81bcf595ec3805f0921f1fb69e378",
+      "catalog_commit": "3b8dbc57fd405058597481bcf28198702b6befde",
+      "root_role": "candidate_compiler",
+      "companion_commit": "07d506f1b21a19218f1675a5433c39f51ee806e1",
+      "provider_root": "merlin-support",
+      "provider_role": "support",
+      "copied_files": 34,
+      "file_provenance": "merlin-support/provenance.json",
+      "conformance_provenance": "merlin-support/conformance_migration.json",
+      "build_support_provenance": "merlin-support/build_support_migration.json",
+      "resource_provenance": "merlin-support/resource_migration.json",
+      "build_source_identity_provenance": "merlin-support/build_source_identity_migration.json",
+      "rocc_semantics_provenance": "merlin-support/rocc_semantics_migration.json",
+      "rtl_checks_provenance": "merlin-support/rtl_checks_migration.json",
+      "readout_encoding_provenance": "merlin-support/readout_encoding_migration.json",
+      "model_slices_provenance": "merlin-support/model_slices_migration.json",
+      "pinned_runtime_provenance": "merlin-support/pinned_runtime_migration.json",
+      "runtime_environment_provenance": "merlin-support/runtime_environment_migration.json",
+      "portfolio_capabilities_provenance": "merlin-support/portfolio_capabilities_migration.json",
+      "completion_capability_provenance": "merlin-support/completion_capability_migration.json",
+      "removed_canonical_directories": [
+        "merlin/targets/gemmini/backend",
+        "merlin/targets/gemmini/build_support",
+        "merlin/targets/gemmini/tools",
+        "merlin/targets/gemmini/cost_model"
+      ],
+      "required_capabilities": {
+        "portfolio": "Shared portfolio assembly selects host_witness_abi and primitive_probe modules explicitly. Missing optional capabilities remain unavailable; explicitly requested probes require a complete declared capability. Pure module identity tests do not qualify runtime execution.",
+        "rocc_semantics": "Core RoCC tooling now requires this selected-provider capability; legacy native support is not a fallback. Supply RTL facts explicitly when the provider has no fact bundle.",
+        "rocc_semantics.rtl_checks": "Structural screening, fact projection, TRACE assertions and rendering are support-owned. Shared dispatch requires the complete capability; unavailable evidence is not a pass. Synthetic protocol/geometry regressions preserve diagnostics, not hardware certification.",
+        "pinned_runtime": "Host GSIM qualification requires provider-owned binary/cycle configuration; shared qualification independently checks both engine hashes. Pure configuration/restoration tests do not certify simulator execution.",
+        "runtime_environment": "Child stages require the selected provider's pure copied-environment policy for both engines and the cycle cap. Shared orchestration independently checks both binary hashes; no ambient target fallback or simulator qualification is implied."
+      },
+      "removed_canonical_owners": [
+        "merlin.targetgen.eval.gemmini_conformance",
+        "merlin.targetgen.eval.gemmini_suite",
+        "merlin.targetgen.eval.gemmini_dispatcher",
+        "merlin.targetgen.agent.gemmini_kernel_slot",
+        "merlin.targetgen.model_slice_export"
+      ],
+      "contract_sha256": "81795bea25f5fd2d8905614e729e9e34f625b035491b922cc747c11115c2046e",
+      "schema_valid": false,
+      "blockers": [
+        "Preserved canonical contract lacks required legality field; schema-unqualified. Migration tests assert the original diagnostic, not validity.",
+        "Backend, pure build support, reference tools and calibrated cost model now live only in this explicitly selected companion; reference target metadata remains migration work in Merlin.",
+        "Conformance and kernel authoring now live OOT; selected support lacks RTL facts and historical integration fixtures still require an explicit Merlin fixture root.",
+        "Installed-source collection and worker admission pass focused tests, including declared resource and pure-Python membership mutation refusal; compilation and complete frozen sandbox execution remain unqualified.",
+        "Broader installed conformance-recording tests require explicit Chipyard provenance; five tests fail when MERLIN_EXT_CHIPYARD is unset. No full-suite pass is claimed.",
+        "Historical curated header comment contains conflict-marker text and whitespace, preserved byte-for-byte rather than silently repaired during relocation.",
+        "No standalone candidate export qualification or backend execution performed; historical certificate applies only to the original base revision."
+      ]
+    },
+    {
+      "target": "rvv",
+      "url": "https://github.com/ucb-bar/rvv-mlir.git",
+      "local_worktree": "out/build/upstreams/rvv-mlir",
+      "base_ref": "stable/sol_k1_int8",
+      "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
+      "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
+      "root_role": "host_schedule",
+      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "provider_root": "merlin-support",
+      "provider_role": "support",
+      "copied_files": 1,
+      "file_provenance": "merlin-support/provenance.json",
+      "contract_sha256": "b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4",
+      "schema_valid": true,
+      "blockers": [
+        "Published root rvv-opt is a no-op publication skeleton; actual payload is a host schedule, not a standalone compiler.",
+        "No dialect plan exists in the source snapshot.",
+        "No hardware or schedule execution performed; historical certificate applies only to the original base revision."
+      ]
+    },
+    {
+      "target": "atlas",
+      "url": "https://github.com/ucb-bar/atlas-mlir.git",
+      "local_worktree": "out/build/upstreams/atlas-mlir",
+      "base_ref": null,
+      "base_commit": null,
+      "catalog_commit": null,
+      "root_role": null,
+      "companion_commit": "392eb077c8a48bd3a21b253d9e488ba3d7ad74cf",
+      "provider_root": "merlin-support",
+      "provider_role": "support",
+      "copied_files": 2,
+      "file_provenance": "merlin-support/provenance.json",
+      "contract_sha256": "1eefe1d5941869b3063a09e82944fbb765934f50a93f27b78ebde86bddd98af0",
+      "program_emitter_provenance": "merlin-support/program_emitter_migration.json",
+      "removed_canonical_owners": ["merlin.targetgen.oracle_helpers.npu_emit"],
+      "required_capabilities": {
+        "runner.program_emitter": "Named-program assembly and explicit tensor layout require the selected support helper. Encoding options are target-owned; no in-tree fallback remains."
+      },
+      "schema_valid": true,
+      "blockers": [
+        "Remote had no commits; companion remains a local unpushed support package.",
+        "Program-emitter migration preserves the old model-specific ISA shim byte-for-byte; neither the shim nor full frozen model-venv execution is newly qualified.",
+        "Source contract retains prototype, requires-human-review, incomplete datapath grounding and no RTL-certification claims.",
+        "No compiler candidate, hardware execution or measured performance qualification."
+      ]
+    }
+  ]
+}

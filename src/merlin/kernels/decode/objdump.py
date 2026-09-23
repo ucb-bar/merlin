@@ -1,0 +1,173 @@
+"""Generic, ISA-agnostic disassembly tokenizer.
+
+Turns an object file into a list of ``RawInsn`` by **structured field-splitting** of
+``llvm-objdump`` output — no semantic regex (we do not guess meaning from mnemonic substrings;
+that happens in the per-target semantic decoders, from explicit operands). Reusable by every
+riscv-based target (RVV, Gemmini RoCC, scalar); a per-ISA decoder (``decode/rvv.py``,
+``targetgen/rocc/decode.py``, …) consumes these ``RawInsn`` and lifts its own facet.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+from merlin.common.paths import repo_root
+
+_REPO = repo_root()
+_LLVM_OBJDUMP = _REPO / "third_party" / "llvm-install" / "bin" / "llvm-objdump"
+
+# Tool-output vocabulary, independent of any target instruction semantics.
+UNKNOWN_MNEMONIC = "<unknown>"
+
+
+def word_of(hexcode: str, *, width_bits: int) -> int | None:
+    """Read a normalized hex column at the caller's instruction width.
+
+    Short columns are declined, never zero-extended into a different instruction.
+    Callers supply their ISA format width or a width from the target's derivation;
+    this tokenizer does not infer one. This preserves the existing decoder's
+    hexadecimal-column conversion, not raw byte-order normalization.
+    """
+    token = (hexcode or "").strip().replace(" ", "")
+    want = max(1, width_bits // 4)
+    if len(token) != want:
+        return None
+    try:
+        return int(token, 16)
+    except ValueError:
+        return None
+
+
+def objdump_bin() -> str:
+    if _LLVM_OBJDUMP.is_file():
+        return str(_LLVM_OBJDUMP)
+    return shutil.which("llvm-objdump") or shutil.which("riscv64-unknown-elf-objdump") or "objdump"
+
+
+def nm_bin() -> str:
+    _nm = _LLVM_OBJDUMP.parent / "llvm-nm" if _LLVM_OBJDUMP.is_file() else None
+    if _nm is not None and _nm.is_file():
+        return str(_nm)
+    return shutil.which("llvm-nm") or shutil.which("riscv64-unknown-elf-nm") or "nm"
+
+
+def undefined_symbols(obj_path: str | Path) -> tuple[str, ...] | None:
+    """Undefined symbols of an object file (``nm -u``), or None if they cannot be read.
+
+    This is what lets the CCA envelope facet NAME a runtime escape instead of only counting calls:
+    `memrefCopy` is invisible in an unlinked disassembly (the call site is an unresolved `jalr`), so
+    without the symbol table the beam can see THAT the region calls something but not WHAT, and the
+    routed PASS never fires. Returns None (unknown), never () , on any failure -- an unreadable
+    symbol table must not be mistaken for "this kernel calls nothing"."""
+    try:
+        p = subprocess.run([nm_bin(), "-u", str(obj_path)], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    out: list[str] = []
+    for line in p.stdout.splitlines():
+        parts = line.split()
+        if parts:  # "  U memrefCopy"  ->  last field is the name
+            out.append(parts[-1])
+    return tuple(sorted(set(out)))
+
+
+@dataclass
+class RawInsn:
+    addr: int  # byte address within the section
+    mnemonic: str  # e.g. "vsetivli", "vfmacc.vv", "addi"
+    operands: list[str]  # comma-split, stripped: ["zero", "0x4", "e32", "m2", "ta", "ma"]
+    hexcode: str = ""  # raw encoding word(s)
+    section: str = ""  # enclosing section/symbol if known
+
+
+def disassemble_text(obj_path: str | Path, triple: str = "riscv64", mattr: str | None = None) -> str:
+    """Raw ``llvm-objdump -d`` text (no-aliases so the canonical mnemonics/vtype show).
+
+    ⚠️ ``mattr`` is not cosmetic. Left to the tool's default, the disassembler silently falls back to a
+    base decoder and reports everything it cannot parse as unnamed: measured on a real kernel, 76% of
+    words came back ``<unknown>`` with the default and 15% with the extensions given explicitly — and
+    that residual 15% is the actual custom surface. A probe that does not pin its ISA settings reports
+    the TOOL's ignorance as the corpus's nature, and the two are indistinguishable in the output.
+
+    So callers that know the target should pass its declared attributes; the value belongs in the
+    endpoint declaration, not in a default here.
+    """
+    cmd = [objdump_bin(), "-d", f"--triple={triple}", "-M", "no-aliases"]
+    if mattr:
+        cmd.append(f"--mattr={mattr}")
+    cmd.append(str(obj_path))
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"objdump failed: {' '.join(cmd)}\n{p.stderr[-1500:]}")
+    return p.stdout
+
+
+def _parse_line(line: str, section: str) -> RawInsn | None:
+    """One disassembly line -> RawInsn, or None for non-instruction lines (headers, labels, '...').
+
+    Format: ``   <addr>: <hex>\\t<mnemonic>\\t<operands>``. We split structurally on ':' then
+    whitespace; the operand string is comma-split. Anything that doesn't fit (a ``<sym>:`` label,
+    a blank line, ``...``) returns None.
+    """
+    if ":" not in line:
+        return None
+    left, _, right = line.partition(":")
+    left = left.strip()
+    # an instruction's left side is a bare hex address; a label line is "<name>" (not hex).
+    try:
+        addr = int(left, 16)
+    except ValueError:
+        return None
+    right = right.strip()
+    if not right:
+        return None
+    parts = right.split(None, 2)  # [hexword, mnemonic, operands?]
+    if len(parts) < 2:
+        return None
+    hexword, mnemonic = parts[0], parts[1]
+    # the encoding word is hex; if parts[0] isn't hex this isn't an instruction line.
+    try:
+        int(hexword, 16)
+    except ValueError:
+        return None
+    operands: list[str] = []
+    if len(parts) == 3:
+        operands = [o.strip() for o in parts[2].split(",") if o.strip()]
+    return RawInsn(addr=addr, mnemonic=mnemonic, operands=operands, hexcode=hexword, section=section)
+
+
+def _tokenize_lines(text: str) -> list[RawInsn]:
+    """Disassembly text -> ordered list of RawInsn (instructions only). The shared core of
+    ``tokenize`` (from an object file) and ``tokenize_text`` (from already-disassembled text)."""
+    out: list[RawInsn] = []
+    section = ""
+    for line in text.splitlines():
+        s = line.strip()
+        # section/symbol headers look like "<name>:" with no hex address, or
+        # "Disassembly of section .text:".
+        if s.startswith("Disassembly of section"):
+            section = s.split("section", 1)[1].strip().rstrip(":")
+            continue
+        if s.endswith(">:") or (s.endswith(":") and "<" in s):
+            section = s.rstrip(":")
+            continue
+        insn = _parse_line(line, section)
+        if insn is not None:
+            out.append(insn)
+    return out
+
+
+def tokenize(obj_path: str | Path, triple: str = "riscv64", mattr: str | None = None) -> list[RawInsn]:
+    """Object file -> ordered list of RawInsn (instructions only)."""
+    return _tokenize_lines(disassemble_text(obj_path, triple=triple, mattr=mattr))
+
+
+def tokenize_text(text: str) -> list[RawInsn]:
+    """Already-disassembled objdump text -> ordered list of RawInsn (no toolchain needed). Parity with
+    the text-based fingerprint path; lets a CCA be lifted from a saved objdump.txt (e.g. a beam fork)."""
+    return _tokenize_lines(text)

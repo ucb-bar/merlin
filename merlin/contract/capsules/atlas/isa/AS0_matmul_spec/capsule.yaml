@@ -1,0 +1,61 @@
+name: AS0_matmul_spec
+kind: isa
+source_role: spec_derived
+source_reference: specir spec-sourced fp8->bf16 MXU matmul (program + refmodel golden
+  + coverage)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+spec_ref: atlas-npu:op.matmul_mxu0
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 47.01
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

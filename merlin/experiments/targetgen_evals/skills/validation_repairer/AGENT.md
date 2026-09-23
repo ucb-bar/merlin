@@ -13,7 +13,7 @@ increments the `human_interventions` counter.
 
 ## Allowed outputs (write)
 - `<run_dir>/contracts/` (fix planning artifacts)
-- `<run_dir>/generated/gemmini-mlir/` (fix generated code)
+- `<run_dir>/generated/{target}-mlir/` (fix generated code)
 - `<run_dir>/patches/<fix_id>.patch` (record of what changed)
 
 ## Forbidden modifications

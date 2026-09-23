@@ -1,0 +1,9 @@
+# Files exempt from check_no_public_port_bindings.py. THIS LIST ONLY SHRINKS.
+# Format: one repo-relative path per line, with the rationale as a trailing comment.
+#
+# An entry is for a file that is ENTIRELY a table of the thing being detected (the same
+# carve-out regex_allowlist.txt makes for markers.py). A port that must genuinely be
+# reachable off-box uses the inline `# public-port-ok: <rationale>` marker instead, so the
+# claim sits on the line it excuses.
+
+merlin/tests/infra/test_no_public_port_bindings.py  # the gate's own fixtures ARE violations

@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [whole_model_op_profile, expert_gap_attribution, compiler_plane]
-code_refs: [merlin/python/merlin/llvmlower/transpose_fuse.py, merlin/python/merlin/llvmlower/pipeline.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/python/merlin/kernels/action_catalog.py, merlin/python/merlin/kernels/cca_contract.py, build_tools/scripts/k1_op_profile.py]
+code_refs: [src/merlin/llvmlower/transpose_fuse.py, src/merlin/llvmlower/pipeline.py, src/merlin/llvmlower/impr_features.py, src/merlin/kernels/action_catalog.py, src/merlin/kernels/cca_contract.py, build_tools/scripts/k1_op_profile.py]
 ---
 
 # Whole-model transpose-b fusion

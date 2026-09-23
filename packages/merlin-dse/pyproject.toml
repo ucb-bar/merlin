@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin-dse"
+version = "0.1.0"
+description = "Optional design-space exploration and design-pressure research tools for Merlin"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = ["merlin", "pyyaml"]
+
+[project.optional-dependencies]
+xdsl = ["xdsl>=0.68"]
+plots = ["matplotlib"]
+dev = ["pytest"]
+
+[project.scripts]
+merlin-dse = "merlin_dse.cli:search_main"
+merlin-design-pressure = "merlin_dse.cli:pressure_main"
+merlin-dse-guidance = "merlin_dse.cli:guidance_main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["merlin.dse*", "merlin.design_pressure*", "merlin_dse*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

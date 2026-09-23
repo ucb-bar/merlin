@@ -1,5 +1,7 @@
 # AGENT.md — experiments/muon_perf_bench_v0
 
+Status: active
+
 ## Purpose
 
 The Muon SIMT perf-bench harness — the Muon analog of `experiments/gemmini_perf_bench/`. Runs the FP32

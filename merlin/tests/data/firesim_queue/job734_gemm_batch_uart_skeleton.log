@@ -1,0 +1,148 @@
+# Protocol marker lines from FireSim queue job 734's UART (the six-GEMM-shape head-to-head,
+# hw_config alveo_u250_firesim_gemmini_rocket_30mhz, bitstream artifact
+# 2026-09-17--05-57-16-alveo_u250_firesim_gemmini_rocket_30mhz, submitted as workload
+# 'merlin-checkpoint'), in order, from its uartlog; every other line dropped.  The only edit is
+# stripping each line's trailing CR: the FPGA console emits CRLF and git would rewrite it anyway.
+# The line content itself is untouched.
+#
+# THE FIRST BATCHED RUN ON HARDWARE.  Until this log, merlin.perf.firesim_batch's own docstring said
+# of the MERLIN_BATCH/MERLIN_WINDOW frame "THE UART FRAME IS PROPOSED, NOT OBSERVED" -- the module
+# could link and admit a batch nothing had ever printed.  This is a real run of a real build: 13
+# measured windows in ONE runworkload-full, 6 GEMM shapes x 2 arms plus an order-effect control that
+# repeats window 0.
+#
+#   elf_sha256          866758e423b8bfdb3033b775bdce9a35da360d5249bf34e383c3f08e833425aa
+#   operand_blob_sha256 4ea6c5b52b537c3945a446a97c08d50847d5653b8dcf7b605fbf9df0c8bb7690
+#   uartlog_sha256      52a9d21da0fe43a99b1cadc06599732aa6e92ffd9761a177ee61a2671230443f
+#   batch_id            gemm6x2
+#   order effect        26 ppm (531,701 -> 531,715 on the repeated window 0)
+#
+# EVERY WINDOW'S DIGEST EQUALS THE ORACLE.  The digest on each LB_RECORD line is the FNV-1a word
+# digest of that window's output, and each equals what merlin.perf.layer_bench.reference computes
+# off-device in exact integer arithmetic for the same spec.  That is what makes these cycle counts
+# results rather than numbers: FireSim job 730 cleared both its declared cycle thresholds, printed
+# an argmax marker byte-identical to a correct run's, and was wrong.
+#
+# Kept so the batched frame is pinned to a log the hardware produced, the way
+# job610_uart_marker_skeleton.log pins the solo one, rather than to a shape someone wrote to match
+# the parser.
+MERLIN_INVOCATIONS warmup=1 measured=1
+MERLIN_BATCH begin id=gemm6x2 windows=13
+MERLIN_WINDOW begin label=s512x512x512
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s512x512x512 cycles=531701 digest=8466922728085698976
+LB_DONE s512x512x512
+METRIC cycles 531701
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s512x512x512
+MERLIN_WINDOW begin label=l512x512x512
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l512x512x512 cycles=545744 digest=8466922728085698976
+LB_DONE l512x512x512
+METRIC cycles 545744
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l512x512x512
+MERLIN_WINDOW begin label=s12544x256x64
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s12544x256x64 cycles=971097 digest=8355844006066967625
+LB_DONE s12544x256x64
+METRIC cycles 971097
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s12544x256x64
+MERLIN_WINDOW begin label=l12544x256x64
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l12544x256x64 cycles=1196229 digest=8355844006066967625
+LB_DONE l12544x256x64
+METRIC cycles 1196229
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l12544x256x64
+MERLIN_WINDOW begin label=s12544x64x256
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s12544x64x256 cycles=816442 digest=6891887945910199145
+LB_DONE s12544x64x256
+METRIC cycles 816442
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s12544x64x256
+MERLIN_WINDOW begin label=l12544x64x256
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l12544x64x256 cycles=810687 digest=6891887945910199145
+LB_DONE l12544x64x256
+METRIC cycles 810687
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l12544x64x256
+MERLIN_WINDOW begin label=s3136x512x128
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s3136x512x128 cycles=807378 digest=4331501310112100985
+LB_DONE s3136x512x128
+METRIC cycles 807378
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s3136x512x128
+MERLIN_WINDOW begin label=l3136x512x128
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l3136x512x128 cycles=919243 digest=4331501310112100985
+LB_DONE l3136x512x128
+METRIC cycles 919243
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l3136x512x128
+MERLIN_WINDOW begin label=s3136x128x512
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s3136x128x512 cycles=810632 digest=4646494722628410928
+LB_DONE s3136x128x512
+METRIC cycles 810632
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s3136x128x512
+MERLIN_WINDOW begin label=l3136x128x512
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l3136x128x512 cycles=863123 digest=4646494722628410928
+LB_DONE l3136x128x512
+METRIC cycles 863123
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l3136x128x512
+MERLIN_WINDOW begin label=s784x1024x256
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s784x1024x256 cycles=814190 digest=7372960748720956690
+LB_DONE s784x1024x256
+METRIC cycles 814190
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s784x1024x256
+MERLIN_WINDOW begin label=l784x1024x256
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD l784x1024x256 cycles=814918 digest=7372960748720956690
+LB_DONE l784x1024x256
+METRIC cycles 814918
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=l784x1024x256
+MERLIN_WINDOW begin label=s512x512x512__order_control
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+LB_RECORD s512x512x512__order_control cycles=531715 digest=8466922728085698976
+LB_DONE s512x512x512__order_control
+METRIC cycles 531715
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=s512x512x512__order_control
+MERLIN_BATCH end id=gemm6x2

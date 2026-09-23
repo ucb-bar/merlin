@@ -1,0 +1,68 @@
+# GENERATED-EDITABLE residual side-input for the target-agnostic capability deriver (merlin.targetgen.capability_manifests.manifest_for). Provenance-tagged; requires_human_review. This is the human intent/prose the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes / encoding codes are layered on from facts.json when 'facts_source: rtl'. Regenerable but hand-owned.
+capabilities:
+  ops:
+  - matmul
+  - elementwise
+compiler_obligations: []
+compute_units:
+- accumulate:
+  - acc: f32
+    in: fp32
+    weight: fp32
+  - acc: f32
+    in: fp16
+    weight: fp16
+  - acc: f32
+    in: bf16
+    weight: bf16
+  - acc: i32
+    in: int8
+    weight: int8
+  dtypes:
+  - fp32
+  - fp16
+  - bf16
+  - int8
+  kind: vector
+  name: vector
+  ops:
+  - matmul
+  - elementwise
+  requant:
+    ref: merlin.llvmlower.passes_quant_int
+  scaling: per_channel
+family: cpu_vector
+features:
+- vector_unit
+hardware_promises:
+- ieee_float
+- widening_integer_accumulate
+legality: []
+memory_model:
+  resident: false
+name: rvv
+provenance: SpacemiT K1 X60 rv64gcv (VLEN=256); RVV datapaths per merlin.rvvgen.k1 + llvmlower.passes_quant_int (int8 W8A8 vwmacc) + passes_xdsl.lower_bf16_matmul_f32acc.
+requires_human_review: true
+runtime:
+  default_backend: baremetal
+runtime_promises:
+- metrics
+status: prototype
+version: '0.1'
+# WHICH SUBSTRATE MAY PRODUCE WHICH NUMBER -- see the radiance/gemmini residuals for the rationale.
+# This target is the in-tree reference lane engine: functional cycles from spike, wall time from the
+# real K1 board. Declared explicitly because the beam previously reached this pairing by a hardcoded
+# `"spike" if not vlen else "k1"` heuristic, which is the pick-by-field-name bug the authority model
+# exists to abolish.
+measurement:
+  cycles_from: spike
+  wall_from: k1
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: rvv_lane_peak
+  citable_tier: rtl
+  notes:
+    - "The K1 board's measured noise floor is >=1.9% (band 2.6%), so a wall-time delta below that
+       margin is a tie, not a win."
+    - "`rvv_lane_peak` is a NAME, not an implementation: nothing computes this denominator yet, so
+       attainment against it is UNKNOWN rather than available."

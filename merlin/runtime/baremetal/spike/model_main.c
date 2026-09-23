@@ -15,10 +15,15 @@
 #include "model_gen.h"
 #include "model_io.h"
 
+void console_init(void);
 void htif_puts(const char *);
+unsigned long long merlin_memref_rank_mismatches(void);
 void htif_putd(long);
 void htif_putc(char);
 void htif_exit(int);
+#ifdef MERLIN_PROF_BAREMETAL
+void merlin_prof_dump(void);
+#endif
 
 /* Weights are loaded at a fixed absolute address (a separate ELF section, see
  * model_link.ld) and addressed by literal constant — with multi-GB blobs they sit
@@ -27,7 +32,7 @@ void htif_exit(int);
 #define MERLIN_WEIGHTS_BASE_ADDR 0x200000000ULL
 #endif
 
-static float OUT[MERLIN_OUT_ELEMS];
+#define OUT ((float *)MERLIN_OUTPUT_PTR[0])
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
 
 int main(int hart) {
@@ -35,11 +40,23 @@ int main(int hart) {
     for (;;)
       ;
   }
+  /* Before the first character. On a hosted substrate this is a no-op; on real silicon it programs
+   * the console UART's clocks and baud divisor, without which printing hangs the core. */
+  console_init();
   uint64_t c0;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
 
-  merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
-             MERLIN_INPUT_PTR, OUT, DESCS);
+  merlin_reset_session();
+  merlin_prepare_step(0);
+  merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
+                   MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
+#if MERLIN_N_STATE_PAIRS > 0
+  if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
+                          MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
+                          MERLIN_STATE_INPUT_ARGS, MERLIN_STATE_OUTPUT_INDICES) != 0) {
+    htif_puts("FAIL state ABI mismatch\n"); htif_exit(1);
+  }
+#endif
 
   uint64_t c1;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c1));
@@ -87,6 +104,37 @@ int main(int hart) {
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));
   htif_putc('\n');
+  /* Build identity, so a console log mailed back from someone else's board can be tied to a specific
+     binary instead of being unattributable. Absent unless the builder defines it -> byte-identical. */
+#ifdef MERLIN_BUILD_HASH
+  htif_puts("METRIC build_hash " MERLIN_BUILD_HASH "\n");
+#endif
+  /* Which channel this log came out of, and the clock `cycles` above was counted against -- a cycle
+     count is uninterpretable as time without it, and someone reading a mailed-back log has no other
+     way to tell a 50 MHz reset-clock run from a PLL-raised one. */
+#ifdef MERLIN_CONSOLE_NAME
+  htif_puts("METRIC console " MERLIN_CONSOLE_NAME "\n");
+#endif
+#ifdef MERLIN_CHIP_FREQ_HZ
+  htif_puts("METRIC chip_freq_hz ");
+  htif_putd((long)(uint64_t)MERLIN_CHIP_FREQ_HZ);
+  htif_putc('\n');
+#endif
+  /* What the runtime REFUSED to do. memrefCopy declines a copy whose two descriptors disagree on rank,
+     because it cannot be performed and computing through it stores outside any mapping. A refusal is still
+     a wrong answer -- the copy did not happen -- so a run that hit one has to say so, or it grades badly
+     with no reason given. Reported unconditionally: zero is the common case, and a metric that appears only
+     when things break is one nobody knows to look for. */
+  htif_puts("METRIC memref_rank_mismatch ");
+  htif_putd((long)merlin_memref_rank_mismatches());
+  htif_putc('\n');
+#ifdef MERLIN_PROF_BAREMETAL
+  /* Per-op ticks, emitted only by a build that instrumented the IR to produce them. Placed after the
+     output and the cycle metric so a profiled run is a superset of a normal one -- the same grade, the
+     same whole-model cycle count, plus the breakdown -- rather than a different run that has to be
+     compared across images. */
+  merlin_prof_dump();
+#endif
   htif_puts("DONE\n");
   htif_exit(0);
   return 0;

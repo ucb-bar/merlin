@@ -1,0 +1,867 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/synth_capsule_corpus.py --target atlas --write
+# Do not hand-edit. These entries exist because the target's own conformance requirement asks for
+# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a
+# claim the requirement does not make, and the next regeneration discards it.
+provenance:
+  generated_by: merlin.targetgen.corpus_synth.synthesize
+  target: atlas
+  n_required_cells: 18
+  n_entries: 36
+  budget: 160
+  precision_preference_kept:
+  - fp8_e4m3
+  - bf16
+  precision_preference_dropped:
+  - i8
+  - mxfp8
+  - fp16
+  - f32
+  cells_no_writer_can_express: []
+  shape_regions_no_writer_can_express:
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''fp8_e4m3''): no builder materializes
+    a transposed-layout region for this family at this dtype'
+  - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''fp8_e4m3''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'movement.batched (rank axis, family ''movement'', dtype ''fp8_e4m3''): no builder materializes a
+    rank-3 region for this family at this dtype'
+  cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
+    writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
+    nothing can write; adding a builder for that op closes it
+  composition_shapes_required:
+  - A
+  - A->A
+  - A->H->A
+  - H
+  - H->A->H
+  - routing
+  composition_note: one micro-model capsule is synthesized for this axis, and its composition is whatever
+    the derived inventory produces. A shape listed here that the micro model does not reach is not covered
+    by synthesis -- emitting a capsule per shape would mean inventing inventories no capture supports
+  host_only_unsynthesizable:
+  - movement/f32 (no materializable op at this dtype)
+  - movement/i8 (no materializable op at this dtype)
+  - contraction/i64 (no materializable op at this dtype)
+  host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
+    rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
+  geometry_classes_unsynthesizable:
+  - wide_skinny (the heaviest shape in this class carries a 589824000-element tensor, more than the 262144
+    this target's operand store holds, and no common divisor of its extents fits while every extent stays
+    at or above its floor (min(original, tile edge 32)) and the shape stays in its class -- so no capsule
+    of this aspect ratio is both representative and buildable here)
+  geometry_note: 'a geometric class (aspect ratio) real models present that the corpus could not emit
+    a capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region in the class,
+    and their tier follows that size: one too large to certify inside the budget is graded at the loop
+    tier and names the certified sibling it rests on'
+  accumulation_depth_unsizable:
+  - a single 32x32 output tile already costs 361s against a 300.0s budget on this target, so no reduction
+    of any depth is certifiable
+  accumulation_depth_note: 'a reduction depth this target could not size. Kept separate from `cells_no_writer_can_express`
+    because the two license different actions: a cell with no writer needs a builder, while an unsized
+    depth needs a CERTIFICATION RUN -- the writer is there and the measured history to size it against
+    is not. Reporting them together would make ''we never timed this target'' read as ''the corpus cannot
+    express this'''
+  memory_regimes_status: resolved
+  memory_regimes_unreachable: []
+  memory_regime_note: 'a regime with no capsule shape that reaches it on this target. `fits_on_reuse`
+    is always here: a capsule''s declared inputs are all live at once, so peak-live and total coincide
+    and the regime that separates them cannot arise from inputs alone'
+  precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
+    dropped token is reported rather than silently ignored
+capsules:
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_aligned
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_partial
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_sub_tile
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/sub_tile (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp8_e4m3_aligned
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp8_e4m3_partial
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp8_e4m3_sub_tile
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp8_e4m3/sub_tile (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_aligned
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/aligned (basis=observed, admitted_by=['mxu',
+    'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_partial
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/partial (basis=observed, admitted_by=['mxu',
+    'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_sub_tile
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/sub_tile (basis=observed, admitted_by=['mxu',
+    'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp8_e4m3_aligned
+  op: bias_add
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/aligned (basis=observed,
+    admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp8_e4m3_partial
+  op: bias_add
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/partial (basis=observed,
+    admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp8_e4m3_sub_tile
+  op: bias_add
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/sub_tile (basis=observed,
+    admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_aligned
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_partial
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_sub_tile
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/sub_tile (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_movement_fp8_e4m3_aligned
+  op: movement
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp8_e4m3_partial
+  op: movement
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile
+  K: 2*tile-1
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp8_e4m3_sub_tile
+  op: movement
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp8_e4m3/sub_tile (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  M: tile/8
+  K: tile/4
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_elementwise_map_f32
+  op: gelu
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 8392 ''elementwise_map'' region(s)
+    at f32, and this target''s manifest admits ''elementwise_map'' at no such dtype -- so every one of
+    them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
+    them correctly from one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_contraction_f32
+  op: depthwise_conv2d
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 2195 ''contraction'' region(s)
+    at f32, and this target''s manifest admits ''contraction'' at no such dtype -- so every one of them
+    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
+    correctly from one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_attention_bf16
+  op: attention_full
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 3 ''attention'' region(s) at
+    bf16, and this target''s manifest admits ''attention'' at no such dtype -- so every one of them must
+    be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly
+    from one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_softmax_bf16
+  op: softmax
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 2 ''softmax'' region(s) at bf16,
+    and this target''s manifest admits ''softmax'' at no such dtype -- so every one of them must be placed
+    on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly from
+    one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_only_normalization
+  op: layernorm
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source: pytorch
+  source_role: derived_sweep
+  source_reference: 'synthesized for host-only family ''normalization'': real captures contain it and
+    this target''s capability manifest admits no capability for it, so the compiler must leave it on the
+    host lane. dtype f32 is the one the captures carry for this family'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    not_asserted_reason: the target declares no capability for this family; the capsule exists to prove
+      the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_only_reduction
+  op: reduce_sum
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source: pytorch
+  source_role: derived_sweep
+  source_reference: 'synthesized for host-only family ''reduction'': real captures contain it and this
+    target''s capability manifest admits no capability for it, so the compiler must leave it on the host
+    lane. dtype f32 is the one the captures carry for this family'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    not_asserted_reason: the target declares no capability for this family; the capsule exists to prove
+      the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model
+  kind: model
+  name: SY_micro_model
+  micro_model: true
+  source_role: derived_sweep
+  source_reference: 'synthesized for the composition axis: one layer per admitted family, one per family
+    a real capture contains that the manifest does not admit, sized to the target''s own tile edge, with
+    host layers interleaved into the interior. Inventory and extents come from micro_model.spec; the shapes
+    the requirement names are [''A'', ''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.0
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: composition
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_rank_contraction_batched
+  op: gemv_batched
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''contraction''
+    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
+    come from capability_probes'
+  label: public
+  semantic:
+    generalization_axis: rank
+  B: 2
+  pass_requirements:
+  - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_epilogue_relu
+  op: matmul
+  operand_dtype: fp8_e4m3
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - relu
+  source_role: derived_sweep
+  source_reference: 'synthesized for the epilogue axis: this target can fuse a ''relu'' stage onto a contraction
+    (evidenced by [''isa_instruction_class'']), and a (family, dtype, alignment) cell cannot demand a
+    particular stage -- so without this the capability is reported covered by whichever single stage the
+    cell axis happened to pick'
+  label: public
+  semantic:
+    generalization_axis: epilogue
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_epilogue_bias_add
+  op: matmul
+  operand_dtype: fp8_e4m3
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - bias_add
+  source_role: derived_sweep
+  source_reference: 'synthesized for the epilogue axis: this target can fuse a ''bias_add'' stage onto
+    a contraction (evidenced by [''isa_instruction_class'']), and a (family, dtype, alignment) cell cannot
+    demand a particular stage -- so without this the capability is reported covered by whichever single
+    stage the cell axis happened to pick'
+  label: public
+  semantic:
+    generalization_axis: epilogue
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_gemv_like
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''gemv_like'': real captures present 2 contraction
+    region(s) of this aspect ratio carrying 0.0 of all contraction MAC work, and the heaviest of them
+    is M=1 K=256 N=1000. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 1000 written output elements exceeds
+    the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_fp8_e4m3_aligned'''
+  label: public
+  semantic:
+    generalization_axis: shape_geometry
+  M: 1
+  K: 256
+  N: 1000
+  max_oracle_tier: L2
+  extends: SY_contraction_fp8_e4m3_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_odd_tail_heavy
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures present 16 contraction
+    region(s) of this aspect ratio carrying 0.000413 of all contraction MAC work, and the heaviest of
+    them is M=196 K=256 N=768. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 150528 written output elements
+    exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
+    on ''SY_contraction_fp8_e4m3_aligned'''
+  label: public
+  semantic:
+    generalization_axis: shape_geometry
+  M: 196
+  K: 256
+  N: 768
+  max_oracle_tier: L2
+  extends: SY_contraction_fp8_e4m3_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_squareish_gemm
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures present 58 contraction
+    region(s) of this aspect ratio carrying 0.001016 of all contraction MAC work, and the heaviest of
+    them is M=196 K=1024 N=256. Every other synthesized capsule is square, so without this the corpus
+    cannot tell a compiler that tiles this ratio well from one that does not. 50176 written output elements
+    exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
+    on ''SY_contraction_fp8_e4m3_aligned'''
+  label: public
+  semantic:
+    generalization_axis: shape_geometry
+  M: 196
+  K: 1024
+  N: 256
+  max_oracle_tier: L2
+  extends: SY_contraction_fp8_e4m3_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_tall_skinny
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''tall_skinny'': real captures present 441 contraction
+    region(s) of this aspect ratio carrying 0.004431 of all contraction MAC work, and the heaviest of
+    them is M=1024 K=256 N=128. Every other synthesized capsule is square, so without this the corpus
+    cannot tell a compiler that tiles this ratio well from one that does not. 131072 written output elements
+    exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
+    on ''SY_contraction_fp8_e4m3_aligned'''
+  label: public
+  semantic:
+    generalization_axis: shape_geometry
+  M: 1024
+  K: 256
+  N: 128
+  max_oracle_tier: L2
+  extends: SY_contraction_fp8_e4m3_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_resnet50
+  model: resnet50
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''resnet50'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_lstmnetvit
+  model: lstmnetvit
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''lstmnetvit'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_smolvla
+  model: smolvla
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''smolvla'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_tiny_llama
+  model: tiny_llama
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''tiny_llama'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering

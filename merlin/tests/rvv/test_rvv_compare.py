@@ -1,12 +1,11 @@
 """Structural generated-vs-curated comparison — the gap-router's diagnostic signal."""
-from merlin.kernels.compare import (RvvFingerprint, compare_fingerprints,
-                                    _decisions_from_asm, _canon_op)
+
+from merlin.kernels.compare import RvvFingerprint, _canon_op, _decisions_from_asm, compare_fingerprints
 
 _KEY = {"op": "gemm", "dtype": "f32", "shape_regime": "square_small"}
 
 # expert: e32m4 + scalar-broadcast fused fma + vl-polymorphic loop
-_CURATED_C = ("vl = __riscv_vsetvl_e32m4(n);\n"
-              "vacc0 = __riscv_vfmacc_vf_f32m4(vacc0, a0, vb, vl);\n")
+_CURATED_C = "vl = __riscv_vsetvl_e32m4(n);\nvacc0 = __riscv_vfmacc_vf_f32m4(vacc0, a0, vb, vl);\n"
 # ours: separate fmul+fadd (no fma), fixed immediate VL, lower LMUL
 _GEN_ASM = (
     "   10:\t00\tvsetivli\ta0,8,e32,m1,ta,ma\n"
@@ -25,7 +24,7 @@ def test_canon_op_unifies_c_and_asm():
 
 def test_decisions_from_asm_detects_no_fma_gap():
     d = _decisions_from_asm(_GEN_ASM)
-    assert d["fma_form"] is None          # vfmul+vfadd, NOT fused -> the measured gap
+    assert d["fma_form"] is None  # vfmul+vfadd, NOT fused -> the measured gap
     assert d["lmul_class"] == "m1"
     assert d["vl_strategy"] == "vsetivli_fixed"
 

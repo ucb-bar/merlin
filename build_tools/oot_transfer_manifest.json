@@ -1,0 +1,579 @@
+{
+  "version": 1,
+  "kind": "oot-transfer-inventory",
+  "status": "inventory_only_no_transfer_performed",
+  "source_revision": "6b83c05a7ea7e7eb50fc688670cfa547f16f315c",
+  "scope": "Tracked payload under out/artifacts/targets and Radiance capsule-bench audits. Generated untracked evidence, machines, private answers, and remote repository creation are excluded.",
+  "coverage_limit": "Literal reference scan covers src/merlin, merlin/tests, merlin/contract, build_tools, docs and experiments/definitions. Composed paths, dynamic discovery and historical outputs require separate review; this is not a complete dependency closure.",
+  "before_transfer": [
+    "Choose and authorize destination target repositories; no destination URL is inferred.",
+    "Preserve every source byte and original provenance. Do not relabel a graded package as a fresh certification.",
+    "Keep the generated artifact's private grading answers unavailable to candidate input bundles.",
+    "Update target registry lookup and explicit consumer paths; keep historical readers working during staged cutover.",
+    "Update hardware_pins and phase2 edit contracts with exact migrated package identities and verify fingerprints.",
+    "Replay package loading and affected compiler/capsule tests without silently skipping missing reference packages.",
+    "Audit omitted external/untracked dependencies. Radiance L3 README cites cases, SHA256SUMS and replay scripts not included in this tracked payload.",
+    "Keep frozen vendored source intact in evidence packages; a dependency-managed redistribution is a different artifact."
+  ],
+  "counts": {
+    "files": 92,
+    "python_files": 26,
+    "groups": 10
+  },
+  "groups": [
+    {
+      "source_root": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908",
+      "target": "radiance",
+      "classification": "historical-audit-evidence",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/README.md",
+          "sha256": "9924143963bf1910dcf949d5d3995ff0d8cd6dab1f66d9f6cfca1aadf3fd1f52"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/audit.py",
+          "sha256": "0309efb679f5ae55189eb343660c99a84959c5b1ac62927f221d5e81dafe728b"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/coverage.json",
+          "sha256": "d0dac0678b404be07ea0da0610f70298315583c43433eac1f63e89ab63babd51"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_negative/command_buffer.json",
+          "sha256": "8a4efe8471386e46614ded61e27b50f0a6457b620c65dd32e6167214b66e68a7"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_negative/lowered.llvm.mlir",
+          "sha256": "0bed7314f13123abedfddd2548fdbf8148edb65565cecff2f499320ebfdaba00"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_negative/receipt.json",
+          "sha256": "9bc6e2721877822d8b70a9d275d41b91cd39ee17cc9dc79fc13407a35165b31d"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_positive/command_buffer.json",
+          "sha256": "8a4efe8471386e46614ded61e27b50f0a6457b620c65dd32e6167214b66e68a7"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_positive/lowered.llvm.mlir",
+          "sha256": "0bed7314f13123abedfddd2548fdbf8148edb65565cecff2f499320ebfdaba00"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_positive/receipt.json",
+          "sha256": "b367b8a1800489c62fdeb4d5ff580d20bc6320f3aa7844e53e89e4401294713b"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/l2_receipt.json",
+          "sha256": "ebe806ce82c28e25e95eab87d82f2d6ab92e2e75ffc084f7220e81636d33f473"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/run_l2.py",
+          "sha256": "fab2e2b3c0ec53ff5b9c8ddb52c8064ef1fbe6c21f3b651ffbb75cbfb05409c5"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/verify.py",
+          "sha256": "81c0ae4a2dd80edbeabd822cb739efc62dbd0da69ccb5a0cee4d7203fb9d4f14"
+        }
+      ],
+      "literal_reference_files": [
+        "docs/design/radiance_staged_evaluation.md",
+        "merlin/tests/targetgen/test_radiance_application_family_audit.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908",
+      "target": "radiance",
+      "classification": "historical-audit-evidence",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/README.md",
+          "sha256": "304e659f1cf65700b1b71bad92ab67d86d6a1ed07b38f8e8b5ab0eb26f6c740c"
+        },
+        {
+          "path": "out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py",
+          "sha256": "b2bb76eb4012660988ed2648263304908ce2398aa17d04a9720f10f787d752d4"
+        }
+      ],
+      "literal_reference_files": [
+        "build_tools/scripts/no_local_paths_ratchet.txt",
+        "merlin/tests/runtime/test_gsim_result_page.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/atlas",
+      "target": "atlas",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/atlas/contracts/residual.yaml",
+          "sha256": "9517a466b1675cbc7dae311333498de38942cbc1f1c2da3fa3a08dc7e11405e2"
+        }
+      ],
+      "literal_reference_files": [
+        "docs/design/derived_capsule_axes.md",
+        "merlin/tests/targetgen/test_onboard.py",
+        "merlin/contract/hardware_pins.yaml",
+        "merlin/contract/capsules/profiles/atlas.yaml"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/gemmini",
+      "target": "gemmini",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/PROVENANCE.md",
+          "sha256": "37b585be6c97f4d9695c333739d2ebc91d5c605af8ebdd813ed3eb8dea66499a"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/REPORT.md",
+          "sha256": "234c09c575a3f714f5a70add26f53856156fdc986ae844d8a655ba7b65ec183e"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/SHA256SUMS",
+          "sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/docs/PLAN.md",
+          "sha256": "01f61d4ac59b0a33d2aa15e51d9c8f2ca3d1107269a661c49c8e84bbd8055bd9"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/docs/isa_probe.ops",
+          "sha256": "eebbd17a614fd11e4ab0855c14534ee4c77a8c6a42a727c5d15983dcd9ba0df5"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/docs/iteration_notes.md",
+          "sha256": "131aa3d58e3e0ff50cde65fdd2ea2d91201e814726f5b7c8995cf0eca953cd02"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/docs/merlin_provenance.md",
+          "sha256": "059d519603cdd625a42f340fd43dfacefea6ff05982d97bba3af385ab17f4bab"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/docs/public_facts_used.md",
+          "sha256": "8a91de311601e3c2f0f883abaae599c4492c4b6978980fccb69c535ed2e1141f"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/manifest.yaml",
+          "sha256": "cc5f5e127e373ed6bee8d7ede71b2cbc40d9b3661cdb8240d389a38847beb444"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/__init__.py",
+          "sha256": "2486d00c3bc40597795332aa62dbd6cc5fb2f173e60a55c4da182bf86a6c9df9"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/gemmini-opt",
+          "sha256": "3bdefb4edfdf485a42332835ac5a79c9abc1fdc4e594269d5a45be24f6dc202d"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/gemmini_opt.py",
+          "sha256": "3ae836a54cebec877ed64807918f2645c6f1a537d38b3e847b61dd861d71226a"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/immutabledict/__init__.py",
+          "sha256": "7ac43f32fc5a4403600263055dca00f644a41238cf5d50e8040acbd8391d472b"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/immutabledict/py.typed",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/ir_ingest.py",
+          "sha256": "e0ee9b550fd55226f616fdcce1dea8a172a47b91b35a029c502829faf3788976"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/lowering/__init__.py",
+          "sha256": "be247002f62865a87698fd1cf1b217035d46777925f3fe5c955488ed01265f8d"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/lowering/isa.py",
+          "sha256": "a5954568453d93a36994b4ad86e627fc7b96f05521dea975a227c5fcb348c494"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/ordered_set/__init__.py",
+          "sha256": "cad6b380ab3204a8bdb85b41b7ddfcc97c50b5d6add55082ebcd6cf6cd0232a8"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/ordered_set/py.typed",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/targetgen/__init__.py",
+          "sha256": "8864b59168b6668e1c36ec5aa0176eb84b355a851c1c471d5542ebabaca038eb"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/targetgen/generate/__init__.py",
+          "sha256": "24babf10638a0593b12035c5be5b479e50bb2b67e9b24226991584bb7ec076cf"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/targetgen/generate/llvm_artifact.py",
+          "sha256": "10fe573c0dd1beb244e14cc9781e622e5ae527fbf3291c63927e68ad2f796ccf"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/targetgen/synthesize/__init__.py",
+          "sha256": "3bd75b314b2b745e56963f24689d99dd0ce9cd07e0044e22017c670da9f53839"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/targetgen/synthesize/tiling.py",
+          "sha256": "ace614c95330565ef858ea6c54a7bbc99f2dc5b15a28ac7c361ae74e24f3af0a"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/transforms.py",
+          "sha256": "157e006a3c7c731d0a87afe572b8effec142adea13a6f918157a913fbed1907c"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/typing_extensions.py",
+          "sha256": "433d11d170d3a24d2eb065ebc1bfe848cea7e3d7ce68567ab52bea2d4c2f7ed8"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/xdsl_dialects/__init__.py",
+          "sha256": "5f5377c67d2a0e04cbebf07b69b5c956e970f9fb218032d0b38b0a57620ff62b"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/xdsl_dialects/gemmini.py",
+          "sha256": "aeb505f170f79fd1fb451fe98ebaddd8dd8439f76b8f3d096de09e4254ed294e"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/xdsl_dialects/merlin_iface.py",
+          "sha256": "566dd746be2763014d30cb8da9f6e470e5f4cfb3d83c43b700794fea12b03adf"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/contracts/dialect_plan.yaml",
+          "sha256": "4195a07284997cf96e59d2d88faf396e5a6f115376fe8904403a4c7793ba939b"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/contracts/target_contract.yaml",
+          "sha256": "ac7724dbdcef6428f20b7bb9327178e83f9c0de08953dc7d5157294c2e08a9a9"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/dialect.py",
+          "sha256": "4ad0510434b87d5f1616a2e48b4ad36998b49ec1f53e57d6bfb610b45a2d87e2"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/inputs/rtl_facts.yaml",
+          "sha256": "d82d4fc7b56a6d7766fcf6930bf61a3345ec468f31446f5c5fb85b4cfa6f53db"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/lowering.yaml",
+          "sha256": "0a114cd1747fb3dc903cbe498af0685674feabe3020bbd13576c9f1dfcda60ad"
+        },
+        {
+          "path": "out/artifacts/targets/gemmini/hand_v0/manifest.yaml",
+          "sha256": "7d7e0425fecffea8910aacb989b746692789e3b5c0d113a0b9eee6ebbba7c094"
+        }
+      ],
+      "literal_reference_files": [
+        "merlin/contract/phase2_edit_contracts/gemmini/gemmini_xdsl_oot_v1_epilogue.yaml",
+        "merlin/contract/phase2_edit_contracts/gemmini/gemmini_xdsl_rtl_v0.yaml",
+        "docs/reference/experiment_abi.md",
+        "docs/guides/reproducing_whole_model_on_rtl.md",
+        "docs/guides/generated_target_repos.md",
+        "docs/guides/gemmini_oot_package.md",
+        "merlin/tests/targetgen/test_triton_radiance.py",
+        "merlin/tests/targetgen/test_triton_portability.py",
+        "merlin/tests/gemmini/test_gemmini_c0.py",
+        "merlin/tests/gemmini/test_block_schedule_matches_packages.py",
+        "merlin/tests/gemmini/test_bench_contract.py",
+        "merlin/tests/gemmini/test_triton_gemmini_c0.py",
+        "merlin/tests/data/block_schedule/AGENT.md",
+        "merlin/tests/ir/test_triton_convergence.py",
+        "merlin/tests/ir/test_interface_elementwise_gap.py",
+        "merlin/tests/ir/test_lower_module_refactor.py",
+        "merlin/tests/infra/test_triton_cli.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/muon",
+      "target": "muon",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/muon/reference_v0/manifest.yaml",
+          "sha256": "45c2d4f4b298acbcba027c1613c45d4d09a675c2c46439637e9265cb5ea8bdcd"
+        },
+        {
+          "path": "out/artifacts/targets/muon/reference_v0/muon-opt",
+          "sha256": "f507ba70b0b61eccd3d9164b109267a86a3c7402c09386c6d539ef1f3cb610b2"
+        }
+      ],
+      "literal_reference_files": []
+    },
+    {
+      "source_root": "out/artifacts/targets/mx_gemmini",
+      "target": "mx_gemmini",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/mx_gemmini/contracts/residual.yaml",
+          "sha256": "2251e6abb3fa8f2167edbf621dc14238cacffd41c8f5d4306c11c04b201253b6"
+        }
+      ],
+      "literal_reference_files": [
+        "merlin/tests/targetgen/test_semantic_coverage.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/radiance",
+      "target": "radiance",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/radiance/contracts/residual.yaml",
+          "sha256": "adacd0238f6c34554d4a168a8e03a43551db609af5cf1e01d6094ae22514be07"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/backend.py",
+          "sha256": "aa0798362bfa4a59345c05410648ffb88ca4c9e49aca524013bd59dc959af5f5"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/contracts/target_contract.yaml",
+          "sha256": "79a8fb36f79663091316c447699fcfd23eeee8f5f9b06ca5a8b4376f0dfaca7a"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/derive_facts.py",
+          "sha256": "ab5d63b8573fc2194c8503a680d9c4c81c9684b1d2aed43da3ddc77983d4a479"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/dialect.py",
+          "sha256": "4d13bb3220665948782d149f9e17e07404579591981aacb00435d76080caa325"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/inputs/derived_facts.yaml",
+          "sha256": "63e4abada30984536fab106684323d103cfefb86400b82921eceb1833ca28f43"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/lowering.yaml",
+          "sha256": "6cadfe7eda201312049b575d68d419dfdd86414708e68276313c62774559ccec"
+        },
+        {
+          "path": "out/artifacts/targets/radiance/hand_v0/manifest.yaml",
+          "sha256": "605515fe72d1667485d654869d870aa8090e7c934107b1dc0eae1c4a30176066"
+        }
+      ],
+      "literal_reference_files": [
+        "docs/design/radiance_staged_evaluation.md",
+        "build_tools/scripts/no_local_paths_ratchet.txt",
+        "docs/design/triton_frontend.md",
+        "merlin/tests/targetgen/test_generate_bundles.py",
+        "merlin/tests/targetgen/test_cross_target.py",
+        "merlin/contract/overfit_register.yaml",
+        "merlin/tests/targetgen/test_triton_radiance.py",
+        "merlin/tests/targetgen/test_plugin_block.py",
+        "merlin/tests/targetgen/test_generalization_difftest.py",
+        "merlin/tests/targetgen/test_radiance_backend.py",
+        "merlin/contract/schedule_ir_coverage.yaml",
+        "merlin/tests/targetgen/test_semantic_coverage.py",
+        "merlin/tests/ir/test_interface_elementwise_gap.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/rvv",
+      "target": "rvv",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/rvv/contracts/residual.yaml",
+          "sha256": "07da19194fc926511489b103e7ae757662048d0130641bd73150f639ee0430a4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/baseline_runs/README.md",
+          "sha256": "9dc1f94c43f4776f059a581ebeed2a44150b7eda5f3279e68f874ef78adc828b"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/baseline_runs/matmul_f32_64/results.yaml",
+          "sha256": "66af93139edb9cce59e6e0a7762a8df40eb16e14e8243d432393635d9b9d6161"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/baseline_runs/softmax_f32_64/results.yaml",
+          "sha256": "87ddd7738121e840dc9af31f5122c16f556bcc02d0a1f2b29eea9bfdbe6335ae"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/knobs.yaml",
+          "sha256": "a8d2d970ce5837eecdecea2836ef42f68f392177d554dcd7898a43e9520833d6"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/manifest.yaml",
+          "sha256": "3f12233aa1f66319dedf360d90bbcfcc9f273ec1a475fc9e9127df1a5c05ffdf"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0_int8/knobs.yaml",
+          "sha256": "514e9798b0c0c5c260e2227eda84292aa4f06f78c9065dd346554f8f93e18497"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0_int8/manifest.yaml",
+          "sha256": "50ae0beb6a1bbc8fd81bd05c433b9b70ceb45d6d1d7ed5134fb9e28fde5289a1"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/hand_v0_int8/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_microkernel_v3_int8/knobs.yaml",
+          "sha256": "fe09e69c8633348e2a8ed460529757d5ef34bd5923d0d34061ba124a563c4e15"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_microkernel_v3_int8/manifest.yaml",
+          "sha256": "66b3e6b1627d762e03ec78cd8ec84dda5f6fbaaec2a77b9a17b08e7363e62bfb"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_microkernel_v3_int8/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_v1_d1_20260618T212554Z/knobs.yaml",
+          "sha256": "f07588193d0acc1b10c3d506ba98d1b6a505a59e885dec2dbc79851b7a223842"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_v1_d1_20260618T212554Z/manifest.yaml",
+          "sha256": "ecd3bc3c8d3050e26d1433d2721a64b73e25fb74b25060e18314cf8e1f76b9b2"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_v1_d1_20260618T212554Z/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel/knobs.yaml",
+          "sha256": "5a4e23c03d9339c100a6076ef0481853646c0884f6745cf33a0a4c075164e74d"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel/manifest.yaml",
+          "sha256": "d24f00a70fe636a590fb6c1b1d3cbe4e6e82d981b46761740aa71057179bbfba"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf/knobs.yaml",
+          "sha256": "175a1ce21b22806054ddac55e514df624a81b0882cc882390cd7686b982efabc"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf/manifest.yaml",
+          "sha256": "3799c1553d7d394bb63dde0b5016a9739916012754cd406c4446d5bcaef0f0f6"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/knobs.yaml",
+          "sha256": "e77739ab33f4cc14ba4ffab832d22bd04c5e8238470843a2ba6f34063f843e13"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/manifest.yaml",
+          "sha256": "e951acf0cc7565be32767dfd2f7a7371e1e69d6dc6232dadd3abc173bccce66b"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/schedule.mlir",
+          "sha256": "928064a1264cf3dd4e70c1f6d162f989c3cc67160c36e2c19a94e731c10867b4"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/knobs.yaml",
+          "sha256": "a8d2d970ce5837eecdecea2836ef42f68f392177d554dcd7898a43e9520833d6"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/manifest.yaml",
+          "sha256": "a35fc4fb6aef6ee9b2602695ce448135508fe0278cd629ef893746de141c00c9"
+        },
+        {
+          "path": "out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/schedule.mlir",
+          "sha256": "dec409ddd8a08eec90f4aefea8e4f73d5f02770b5d358bc6c340c73add9fc3c1"
+        }
+      ],
+      "literal_reference_files": [
+        "docs/reference/rvv_kernel_mining_methodology.md",
+        "docs/guides/beam_search.md",
+        "merlin/contract/hardware_pins.yaml",
+        "build_tools/scripts/rvv_chia_beam.py",
+        "build_tools/scripts/k1_pkg_cflags_ab.py",
+        "build_tools/scripts/k1_lever_ablation.py",
+        "build_tools/scripts/k1_op_profile.py",
+        "build_tools/scripts/k1_e2e_rvv.py",
+        "build_tools/scripts/k1_int8_et_campaign.py",
+        "build_tools/scripts/k1_codegen_vs_handc.py",
+        "build_tools/scripts/make_delivery.py",
+        "build_tools/scripts/k1_int8_wholemodel_ab.py",
+        "build_tools/scripts/k1_dispatch_breakdown.py",
+        "build_tools/scripts/k1_multicore_kernel_ab.py",
+        "build_tools/scripts/k1_escape_cost.py",
+        "build_tools/scripts/run_autonomous_beam_experiment.py",
+        "build_tools/scripts/k1_e2e_xnnpack.py",
+        "build_tools/scripts/k1_amax_reduction_ab.py",
+        "build_tools/scripts/k1_e2e_activation.py",
+        "merlin/tests/targetgen/test_model_host_lane_pin.py",
+        "build_tools/scripts/k1_e2e_general_validate.py",
+        "build_tools/scripts/scalar_remainder.py",
+        "build_tools/scripts/k1_int8_fair_compare.py",
+        "build_tools/scripts/k1_kernel_speedup.py",
+        "merlin/tests/kernels/test_microkernel_space.py",
+        "merlin/tests/rvv/test_vec_noncontraction_lever.py",
+        "merlin/tests/rvv/test_beam_objective.py",
+        "merlin/tests/rvv/test_beam_teachers.py",
+        "src/merlin/mining/runner.py",
+        "merlin/tests/rvv/test_section_build.py",
+        "merlin/tests/rvv/test_selfcopy_erase.py",
+        "src/merlin/mining/op_sweep.py",
+        "src/merlin/mining/autotune.py",
+        "src/merlin/mining/escape_sweep.py",
+        "src/merlin/mining/beam_cli.py",
+        "merlin/tests/dse/test_lever_ablation.py",
+        "merlin/contract/capsules/profiles/radiance.yaml",
+        "merlin/tests/infra/test_perf_agent_stage.py"
+      ]
+    },
+    {
+      "source_root": "out/artifacts/targets/saturn_opu_mxv256d128",
+      "target": "saturn_opu_mxv256d128",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/saturn_opu_mxv256d128/contracts/residual.yaml",
+          "sha256": "194592e4e2c19d52f8b32e6016df7f4a90347082542a3563b44da9bdb1216ff0"
+        }
+      ],
+      "literal_reference_files": []
+    },
+    {
+      "source_root": "out/artifacts/targets/saturn_vec",
+      "target": "saturn_vec",
+      "classification": "reference-target-package",
+      "status": "not_moved",
+      "destination_repository": null,
+      "files": [
+        {
+          "path": "out/artifacts/targets/saturn_vec/hand_v0/dialect.py",
+          "sha256": "c345ca334177f33a90a80f80595881309e533cdd93bfc4efe9cbdea449199022"
+        },
+        {
+          "path": "out/artifacts/targets/saturn_vec/hand_v0/manifest.yaml",
+          "sha256": "4227374e6ad47c4c8706e3dc78bb5e63ad5103352443fa18e3e10749de37f1ef"
+        }
+      ],
+      "literal_reference_files": [
+        "merlin/tests/ir/test_saturn_vec_dialect.py"
+      ]
+    }
+  ]
+}

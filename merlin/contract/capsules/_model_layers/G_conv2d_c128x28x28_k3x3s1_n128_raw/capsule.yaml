@@ -1,0 +1,80 @@
+name: G_conv2d_c128x28x28_k3x3s1_n128_raw
+kind: layer
+source_role: model_derived
+source_reference: the bare-accumulator sibling of G_conv2d_c128x28x28_k3x3s1_n128_bias_add_acc_scale_relu
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 1152
+  - 128
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 28
+  - 28
+  - 128
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 128
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 1
+    - 1
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+# CAPPED, NOT CERTIFIED. This member's operands exceed what a cycle-accurate certification can
+# afford, so declaring L3 for itself made it unverifiable by construction: no sibling can pass a
+# tier deeper than the one it already claims. It is an EXTENSION of a certified sibling --
+# `phase_policy.anchors` derives which one witnesses this obligation, so naming it here would
+# either duplicate that answer or contradict it. The guarantee is the sibling's; this member
+# carries the real shape.
+max_oracle_tier: L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

@@ -1,0 +1,9 @@
+{
+  "schema": "merlin_firesim_uart_validation_policy_v1",
+  "policy_id": "resnet50_group_model_correctness_v2",
+  "workload": "merlin-checkpoint",
+  "success_markers": [
+    "GM_ARGMAX got=21 want=21 agrees=1",
+    "GM_COSINE_PPM 997981"
+  ]
+}

@@ -1,0 +1,32 @@
+# CPU-host dialect plan for the K1.  The abstraction is intentionally CPU-shaped rather than
+# model-shaped so an accelerator target (for example, a matrix unit) can reuse it for non-offloaded work.
+target: k1_cpu
+dialect_name: rvvhost
+ops:
+  - {name: pack, summary: "pack an immutable RHS into a CPU/RVV-friendly layout"}
+  - {name: matmul, summary: "contract using scalar or RVV lanes with an explicit accumulation type"}
+  - {name: commit, summary: "apply epilogue and materialize an accumulator"}
+  - {name: release, summary: "end packed-tensor lifetime"}
+  - {name: vector_map, summary: "VL-aware elementwise map with explicit tail policy"}
+  - {name: vector_reduce, summary: "VL-aware reduction with explicit identity and accumulation type"}
+  - {name: scalar_map, summary: "scalar correctness/fallback implementation of an elementwise map"}
+  - {name: scalar_reduce, summary: "scalar correctness/fallback implementation of a reduction"}
+  - {name: parallel_for, summary: "deterministic disjoint partition across Linux harts"}
+types:
+  - {name: packed_tensor}
+  - {name: accumulator}
+lowering:
+  - {from: interface.resident_pack, to: rvvhost.pack}
+  - {from: interface.matmul, to: rvvhost.matmul}
+  - {from: interface.commit, to: rvvhost.commit}
+  - {from: interface.resident_evict, to: rvvhost.release}
+  - {from: interface.vector_map, to: rvvhost.vector_map}
+  - {from: interface.vector_reduce, to: rvvhost.vector_reduce}
+tests:
+  - {lit: scalar_vector_equivalence}
+  - {lit: dynamic_vl_tail}
+  - {lit: fixed_vlen_requires_probe}
+  - {lit: multicore_partition_exact_cover}
+  - {lit: packed_rhs_lifetime}
+confidence: medium
+requires_human_review: false

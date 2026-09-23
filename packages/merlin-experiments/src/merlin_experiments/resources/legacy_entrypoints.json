@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "entrypoints": {
+    "capsule_derivation": {
+      "default": "merlin/contract/capsules/generate_corpus.py"
+    },
+    "capsule_bench": {
+      "default": "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py",
+      "rtlchecks": "merlin/experiments/capsule_bench/harness/run_rtlchecks_qa_loop.py"
+    },
+    "measured_claims": {
+      "default": "merlin/experiments/gemmini_perf_bench/scripts/run_agentic_perf_experiment.py"
+    },
+    "model_portfolio": {
+      "default": "merlin/experiments/gemmini_perf_bench/scripts/launch_global_agent_experiment.py"
+    }
+  }
+}

@@ -1,0 +1,106 @@
+name: G_conv2d_c3x224x224_k7x7s2_n64_bias_add_acc_scale_relu_maxpool
+kind: layer
+source_role: model_derived
+source_reference: '1 compute group(s) of resnet50 on gemmini: groups [1]'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 147
+  - 64
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 224
+  - 224
+  - 3
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 64
+  dtype: i32
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 3
+    kh: 7
+    kw: 7
+    stride:
+    - 2
+    - 2
+    padding:
+    - 3
+    - 3
+    - 3
+    - 3
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue:
+    - bias_add
+    - acc_scale
+    - relu
+    - maxpool
+    output_dtype: i8
+    semantic: conv2d_im2col
+    pool_in_dims:
+    - 112
+    - 112
+    pool_size:
+    - 3
+    - 3
+    pool_stride:
+    - 2
+    - 2
+    pool_padding:
+    - 1
+    - 1
+    - 1
+    - 1
+    pool_pad_value: -128
+    bias: B
+    acc_scale: 0.0034612307785188024
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.0034612307785188024
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map
+  - reduction

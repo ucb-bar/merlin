@@ -1,0 +1,81 @@
+# Corpus locations the library reads. Resolved ONLY through merlin.targetgen.corpora — no library
+# module spells a corpus path, checkout directory or corpus-selecting environment variable itself, so
+# adding a corpus (or moving one) is an edit here, not in core code.
+
+# Historical capsule corpora that broad read-only diagnostics may inspect, relative to merlin/.
+# These are NOT an implicit grading/default Phase 1 corpus: graded_capsule_roots requires a
+# matching target descriptor, and new example runs require an explicitly sealed Phase 0 release.
+# A root that is not on disk is skipped by the reader. The second root is the perf-bench corpus: library-consumed (the RTL checks
+# screen it), so its proper home is merlin/benchmarks/; relocating it waits on the perf-bench scripts that
+# still read it in place. When it moves, change the line below — every reader already comes through here.
+capsule_corpora:
+  - contract/capsules
+  - experiments/gemmini_perf_bench/kernels
+
+# Expert kernel corpora the kernel-mining layer builds from (keyed by framework name, which is also the
+# framework_contracts/<name>.yaml stem). Per corpus:
+#   sources          kernel.source spellings that name this corpus (matched case-insensitively)
+#   layout           standalone_benchmarks — each benchmark dir ships its own kernel TU + harness, so it
+#                    builds and runs as-is (the kernel ceiling and the guaranteed asm path);
+#                    single_tu — a framework kernel TU compiled best-effort against include_subdirs
+#   checkout         directory name of a local clone under <repo>/tmp/kernels/
+#   ext              optional fallback inside a configured external checkout: ext_path(name)/subpath
+#   benchmarks       (standalone_benchmarks) the benchmark tree under the corpus root
+#   include_subdirs  (single_tu) header roots under the corpus root, in -I order ("" = the root itself)
+# The root is MERLIN_<NAME>_REPO when set (the same convention the kernel-index CLI uses), else the local
+# clone when present, else the ext fallback when present, else the local clone path (so an error names the
+# place a clone is expected).
+kernel_corpora:
+  saturn:
+    sources: [saturn, saturn_vectors, saturn-vectors]
+    layout: standalone_benchmarks
+    checkout: saturn-vectors
+    ext: {name: chipyard, subpath: generators/saturn}
+    benchmarks: benchmarks
+  xnnpack:
+    sources: [xnnpack]
+    layout: single_tu
+    checkout: XNNPACK
+    include_subdirs: ["", src, include]
+  openblas:
+    sources: [openblas]
+    layout: single_tu
+    checkout: OpenBLAS
+    include_subdirs: ["", kernel/riscv64]
+
+# Corpora the SCHEDULING-IR expressiveness measurement reads (merlin/contract/schedule_ir_coverage.yaml
+# rows point at these by name through `evidence.corpus`). A separate section from `kernel_corpora`
+# because the consumer is different: the mining layer BUILDS a kernel corpus, this one only reads a
+# corpus that is already there and asks whether it can stand as expert evidence.
+#
+# WHY EACH ONE NAMES A PIN RATHER THAN A PATH. A measurement that claims a target's schedule agrees
+# with that target's experts is a claim about a particular checkout, and the hardware-provenance
+# convention already has one registry for that. Naming the pin gets three things no path literal can:
+# the root environment variable (so an unresolvable corpus reports UNMEASURED naming the input it
+# needs, instead of a zero denominator), the declared revision (so the result records which bytes it is
+# about), and drift detection (so a corpus that has moved off its pin says so rather than passing).
+#
+#   pin       an entry in merlin/contract/hardware_pins.yaml; its root_env + path locate the checkout
+#   kernels   subdirectory under that root holding the corpus itself
+#   unit      how the corpus is counted: `directory` (one kernel per subdirectory) or a file suffix
+#   admits    eligibility verdicts that may stand as EXPERT evidence, per `provenance_record`
+#   provenance_record  merlin/-relative audit classifying each kernel's origin. A corpus with no such
+#             record admits nothing: "we did not check who wrote these" is not the same as "experts
+#             wrote these", and the second is the claim the measurement would otherwise be making.
+sched_corpora:
+  simt_kernels:
+    pin: radiance_kernels
+    kernels: kernels
+    unit: directory
+    admits: [hand]
+    provenance_record: experiments/llm_kernel_vs_compiler_v0/eligibility/provenance/kernel_provenance.yaml
+  systolic_rocc_tests:
+    pin: gemmini_isa_headers
+    kernels: bareMetalC
+    unit: .c
+    admits: []
+  npu_baremetal_assembly:
+    pin: atlas_npu
+    kernels: baremetal/assembly
+    unit: .S
+    admits: []

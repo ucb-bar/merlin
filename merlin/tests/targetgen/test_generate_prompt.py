@@ -1,12 +1,13 @@
 """The prompt slot resolver — the only target-specific content in an agent task prompt. Every slot must
 derive from {the descriptor + the RTL fact bundle + the codegen endpoint}, never a gemmini literal.
 """
+
 from __future__ import annotations
 
-from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
 from merlin.targetgen.generate_prompt import prompt_slots
+from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
-_GEM_DESC = "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml"
+_GEM_DESC = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 
 
 def _gem_slots():
@@ -15,8 +16,8 @@ def _gem_slots():
 
 def test_tool_and_symbol_are_derived_from_the_target_name():
     s = _gem_slots()
-    assert s["tool_stem"] == "gemmini-opt"          # {target}-opt, not a literal
-    assert s["kernel_symbol"] == "gemmini_kernel"   # {target}_kernel, not a literal
+    assert s["tool_stem"] == "gemmini-opt"  # {target}-opt, not a literal
+    assert s["kernel_symbol"] == "gemmini_kernel"  # {target}_kernel, not a literal
 
 
 def test_endpoint_is_fork_free_insn_and_not_llvm_prescriptive():
@@ -36,8 +37,10 @@ def test_corpus_families_are_globbed_not_a_hardcoded_list():
 
 def test_sim_tiers_and_isa_facts_come_from_manifest_and_discovery():
     s = _gem_slots()
-    assert s["sim_tiers"] == {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
-    assert s["isa_facts"].startswith("# Target ISA facts: gemmini")   # the derived provenance-tagged brief
+    # The prompt shows the tier LADDER, which names fidelities; `elaborated_rtl` at L3 is deliberate,
+    # since which of vcs/gsim/verilator answers there is an availability decision made per run.
+    assert s["sim_tiers"] == {"L2": "spike", "L3": "elaborated_rtl", "L4": "firesim"}
+    assert s["isa_facts"].startswith("# Target ISA facts: gemmini")  # the derived provenance-tagged brief
 
 
 def test_slots_are_a_pure_function_of_target_identity():

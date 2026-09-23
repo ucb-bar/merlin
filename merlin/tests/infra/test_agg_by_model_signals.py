@@ -1,0 +1,159 @@
+"""The comparison table must carry the variables that explain the outcome, not just the score.
+
+Measured on the 2026-08 gemmini campaign: two runs both read `0/20`, but one reached the numeric and trace
+tiers on 17 of 20 capsules and lost only on the hardware encoding, while the other reached no tier at all.
+The run that scored 20/20 used the RTL-derived tooling every round and read for 73% of its actions before
+its first edit; the runs that scored zero read for 9% and then rewrote heavily. None of that was in the
+table, so the table said the two zeros were the same result.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+
+@pytest.fixture(scope="module")
+def agg():
+    from merlin.agentreport.phase1 import by_model
+
+    return by_model
+
+
+def _run_dir(tmp_path, per_capsule, extra_results=0):
+    d = tmp_path / "run"
+    g = d / "grading_public"
+    g.mkdir(parents=True)
+    (g / "score_capsule.json").write_text(json.dumps({"per_capsule": per_capsule}))
+    # leftovers from a wider grading pass: present on disk, not part of the graded set
+    for i in range(extra_results):
+        p = g / "runs" / "bench" / f"leftover_{i}"
+        p.mkdir(parents=True)
+        (p / "capsule_result.json").write_text(json.dumps({"capsule": f"leftover_{i}", "status": "fail", "tiers": {}}))
+    return d
+
+
+def test_partial_credit_distinguishes_two_identical_zeros(agg, tmp_path):
+    reached = [
+        {"capsule": f"c{i}", "tiers": {"L0": {"status": "pass"}, "L1": {"status": "pass"}, "L2": {"status": "fail"}}}
+        for i in range(17)
+    ]
+    reached += [{"capsule": f"d{i}", "tiers": {}} for i in range(3)]
+    never = [{"capsule": f"e{i}", "tiers": {"L0": {"status": "fail"}}} for i in range(20)]
+
+    got_reached = agg._tier_reach(_run_dir(tmp_path / "a", reached))
+    got_never = agg._tier_reach(_run_dir(tmp_path / "b", never))
+    assert got_reached == {"L1": 17, "none": 3}
+    assert got_never == {"none": 20}
+    assert got_reached != got_never, "two runs that both score 0/20 must not look identical"
+
+
+def test_leftover_result_files_do_not_inflate_the_graded_set(agg, tmp_path):
+    """A regrade or a wider pass leaves extra capsule dirs; the graded set is the grader's own record."""
+    per = [{"capsule": f"c{i}", "tiers": {"L3": {"status": "pass"}}} for i in range(20)]
+    reach = agg._tier_reach(_run_dir(tmp_path, per, extra_results=123))
+    assert reach == {"L3": 20}, f"graded set inflated by leftovers: {reach}"
+
+
+def test_behaviour_reads_both_driver_event_shapes(agg, tmp_path):
+    """Codex records actions as items; the CLI drivers record tool_use blocks. Reading one shape reported
+    the codex runs as making zero edits -- false, and backwards from the point of the metric."""
+    d = tmp_path / "codexrun" / "rounds"
+    d.mkdir(parents=True)
+    ev = [{"event": {"type": "item.completed", "item": {"type": "command_execution"}}} for _ in range(3)]
+    ev += [{"event": {"type": "item.completed", "item": {"type": "file_change"}}}]
+    (d / "round_00.codex_events.timestamped.jsonl").write_text("\n".join(json.dumps(e) for e in ev))
+    b = agg._behaviour(tmp_path / "codexrun")
+    assert b["actions"] == 4 and b["writes"] == 1
+    assert b["recon_before_first_write"] == 3, "recon is the actions taken before the first edit"
+
+
+def test_conformance_reports_whether_the_tooling_was_ever_used(agg, tmp_path):
+    import yaml
+
+    d = tmp_path / "run"
+    d.mkdir()
+    (d / "qa_loop_state.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "rounds": [
+                    {"conformance": {"conformant": False, "checks": {"isa_tools_used": False, "cca_used": False}}},
+                    {"conformance": {"conformant": True, "checks": {"isa_tools_used": True, "cca_used": False}}},
+                ]
+            }
+        )
+    )
+    c = agg._conformance(d)
+    assert c["ever"]["isa_tools_used"] is True, "used in any round counts as used"
+    assert c["ever"]["cca_used"] is False
+    assert c["conformant_rounds"] == 1
+
+
+def test_a_missing_or_disagreeing_sink_is_reported(agg, tmp_path):
+    """Two cost surfaces disagreed once: this table read a run at $28.19 over 46.4M tokens while the other
+    reported it unpriced with zero. The data was fine and the grouping was not -- but a silent
+    disagreement between cost surfaces is how a wrong dollar figure gets quoted."""
+    import json as _j
+
+    missing = tmp_path / "nosink"
+    missing.mkdir()
+    assert agg._sink_check(missing) == {"sink_present": False}
+
+    ok = tmp_path / "withsink"
+    (ok / "logs").mkdir(parents=True)
+    (ok / "logs" / "metrics.jsonl").write_text(
+        "\n".join(_j.dumps({"name": "gen_ai.usage.input_tokens", "value": v}) for v in (1000, 2000))
+    )
+    got = agg._sink_check(ok)
+    assert got["sink_present"] is True and got["sink_input_tokens"] == 3000
+
+
+def test_the_reconciliation_section_names_the_offending_run(agg):
+    """The report must name which run is unreconciled, not just say something is wrong."""
+
+    def _row(rid, tokens_in, sink):
+        return {
+            "run_id": rid,
+            "model": "m",
+            "arm": "a",
+            "tokens_input": tokens_in,
+            "sink": sink,
+            "public": {"passed": "0/20", "n": 0, "total": 20},
+            "hidden": {"passed": "0/5", "n": 0, "total": 5},
+            "converged": False,
+            "n_rounds": 1,
+            "tool_calls": 0,
+            "wall_s": 0,
+            "active_wall_s": 0,
+            "rate_limit_wait_s": 0,
+            "tokens_total": tokens_in,
+            "tokens_output": 0,
+            "tokens_cached": 0,
+            "tokens_by_model": {},
+            "cost_usd": 0.0,
+            "notional_usd": None,
+            "billing_mode": "metered",
+            "codex": {},
+            "highest_tier": None,
+            "oracle_mode": None,
+            "gradeable": True,
+            "integrity_status": "clean",
+            "first_failure_planes": {},
+            "bundle_id": None,
+            "driver": "opencode",
+            "provider": "bedrock",
+            "conformance": {},
+            "tier_reach": {},
+            "behaviour": {},
+        }
+
+    rows = [
+        _row("clean", 3000, {"sink_present": True, "sink_input_tokens": 3000}),
+        _row("nosink", 10, {"sink_present": False}),
+        _row("skewed", 1_000_000, {"sink_present": True, "sink_input_tokens": 10}),
+    ]
+    md = agg.markdown(agg.by_model(rows), rows, None, target="fixture")
+    assert "nosink" in md and "skewed" in md, "an unreconciled run must be named"
+    section = md[md.index("## telemetry reconciliation") :]
+    assert "clean" not in section.split("##")[1], "a reconciled run should not be flagged"

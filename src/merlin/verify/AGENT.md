@@ -1,0 +1,87 @@
+# AGENT.md — src/merlin/verify
+
+## Purpose
+
+Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT) layers that sit beside
+the capsule oracle ladder. The bench grades *outcomes*; this package verifies *passes*. Model, results
+and working log: `docs/design/compiler_verification.md`.
+
+## Modules
+
+- `tools.py` — locate FileCheck / llvm-lit / mlir-opt / mlir-translate; `None` is a first-class answer.
+- `smt_ops.py` — the one `smt` op xDSL does not ship: the solver scope the SMT-LIB exporter requires.
+- `smt_export.py` — xDSL `smt` module -> upstream `mlir-translate --export-smtlib` -> z3.
+- `smt_semantics.py` — a semantics for the `interface` dialect, given by lowering it to `smt`.
+- `refine.py` — translation validation: assert the negation of the refinement relation, solve.
+- `proofs.py` — audit `contract.prove` tokens as verified / asserted / unattributed.
+- `counterexamples.py` — turn a solver counterexample into a capsule the bench grades, by writing a
+  explicitly experiment-declared SMT sidecar entry (prefix `CX`, `source_role: smt_counterexample`)
+  that Phase0's explicit `load_profile(..., smt_profile=...)` merges. Core does not discover that
+  output path or import the experiment catalog. Going through the generator is the point: registration,
+  dedupe, `MANIFEST.yaml` provenance, scrubbing and `golden.yaml` all come for free, and the input
+  VALUES land under `out/artifacts/verification/` rather than in a capsule directory. An earlier
+  `witness.py` wrote the directory itself, got none of that, and put a counterexample-inputs file
+  where no ignore rule matched it — in a public repo. It is gone; do not reintroduce that shape.
+- `faults.py` — the seeded fault corpus, one knob each, applied to real pass output.
+- `evaluate.py` — run every fault past every layer; produce the detection matrix.
+- `merlin.verify.plots` — optional analysis-owned figures under
+  `packages/merlin-analysis/src/merlin/verify/`, each generated from a JSON record, never a literal.
+- `merlin.verify.replay` / `merlin.verify.replay_layers` — optional analysis-owned historical replay,
+  under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
+
+## Invariants
+
+- **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
+  solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
+  pass. This is the single rule the whole package is shaped around.
+- **Multiply at the DATA's width, never the accumulator's.** Bit-blasted multiplier area scales as
+  terms x width^2, so declaring an i8 element at a 32-bit accumulator width and constraining it down
+  spends 16x the partial-product area for the same product. Measured 2026-09-05: refuting
+  `swapped_matmul_operands` at 8x8x8 took 439 s that way and 26 s with a 16-bit multiply. Elements are
+  declared at their own dtype width; `Encoder.sign_extend` widens via `smt.bv.concat` (the high half
+  of `ashr(x, w-1)` is all sign bits, so concat IS sign extension). A product too wide for its
+  accumulator raises rather than truncating.
+- **Verification cost is not refutation cost, and the cheap one proves nothing about the other.** For
+  a correct program both sides of the query are syntactically identical, so z3's rewriter collapses
+  it in preprocessing without bit-blasting a single multiplier; `unsat` in seconds at a shape where
+  `sat` never returns is the normal case, not a surprise. Never cite a scaling curve measured on
+  correct programs as evidence that fault detection is tractable at that shape.
+- **A detection rate is only worth as much as its denominator.** `replay.py` exists because the first
+  answer to "would this have caught real bugs?" was seven hand-picked fixes, six caught — a
+  demonstration chosen after the layers existed, by someone who knew what they check. Never cite that
+  shape of number. The replacement fixes the population before drawing (every `fix(` commit touching an
+  observed path), draws with a recorded seed, uses shuffle-then-take so a larger sample EXTENDS the
+  smaller one rather than replacing it, reports `unreplayable` commits instead of dropping them, and
+  reports the rate over fixes that PREDATE the layers separately — a fix that shipped with its own
+  regression test is caught by that test, not by the layer.
+- **A shadowed package that will not import is not a detection.** The replay pins old files over a copy
+  of all package owners, which can fail to import because a sibling moved. Exit 1 alone is not proof:
+  a trusted live bootstrap must record executed assertion/numeric checks. Import, setup, runtime and
+  all-skipped failures are unavailable. Missing expected numeric outputs are explicit rejections.
+  New records name `executed_checks_v2`; old exit-code-only records are not equivalent. The lit layer
+  remains unqualified in replay until its child commands provide isolated execution receipts;
+  standalone lit remains available. Do not silently present a partial instrument as all five layers.
+- **`unsat` is the PASS** for a refinement query, and `sat` must carry a counterexample. If a model
+  ever comes back empty, the exporter's trailing `(reset)` is being handed to z3 — see `smt_export`.
+- **Never CHECK a generated target dialect's op mnemonics.** They are invented per backend-generation
+  run and have no derivation source; that experiment was run over 383 real runs and removed. Check the
+  stable in-tree dialects (`contract`/`schedule`/`interface`/`runtime`) or the decoded instruction
+  stream, which `targetgen/rtl_check_compiler.py` already owns.
+- **Emitting a check is not verifying anything.** A check that was generated but never run records
+  `unmeasured`; only a green suite records `verified`.
+- Floats are verified structurally, never bit-exactly: reassociation is a legal backend choice, so a
+  bit-exact float refinement would reject *correct* backends. `smt_semantics` raises rather than
+  pretending.
+- Verdicts are written to the shared log (`MERLIN_VERIFY_LOG`) that `check_pass_obligations.py` reads,
+  via `xdsl_dialects.lowering.passes.record_verification`. Recording never gates a run.
+
+## Gotchas
+
+- Core owns the `merlin.verify` namespace initializer; optional analysis contributes figures and
+  historical replay. Run tests with the intended checkout's interpreter; the shared test configuration
+  pins that checkout's core and extension source roots. Historical replay instead explicitly pins
+  its composite frozen source root and refuses fallback to live or editable source owners.
+- xDSL ships the `smt` dialect but **not** `smt.solver`, and has no extract/concat/extend op. Checked
+  0.68 and 0.70 — identical. Upgrading does not help; `smt_ops` supplies the scope and
+  `smt_semantics.in_range` constrains element widths with the shift identity instead.
+- Keep queries quantifier-free: take extents CONCRETE from the IR's own types.

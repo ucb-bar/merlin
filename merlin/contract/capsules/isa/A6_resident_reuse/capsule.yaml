@@ -36,7 +36,7 @@ operation:
       out: Y1
       epilogue:
       - relu
-      output_dtype: i32
+      output_dtype: i8
     semantic: resident_reuse
 numeric_policy:
   compare: exact_int
@@ -60,3 +60,11 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto

@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/agent_bench
 
+Status: reference — the target-agnostic agent-benchmark scaffold other benches converge toward; no runs of its own.
+
 Reusable, target-agnostic **agent benchmark scaffold**: compare a baseline agent vs a
 merlin-assisted agent on a held-out task. Tracked source only (task prompts
 `TASK_baseline.md`/`TASK_merlin_assisted.md`, `setup_baseline_sandbox.sh`, `grade.sh`, `hidden/`

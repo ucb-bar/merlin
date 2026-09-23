@@ -11,12 +11,20 @@ Usage:
 Each BUNDLE is a directory name under out/artifacts/recaptures/ (e.g. rdt2_int8_consistent). The build runs
 locally; the run is submitted to the queue via zephyr_model.run_on_firesim (FIRESIM_QUEUE=1).
 """
-import argparse, json, shutil, sys, time, traceback
+
+import argparse
+import json
+import shutil
+import sys
+import time
+import traceback
 from pathlib import Path
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
+from merlin.common.artifacts import recaptures_dir  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 
 
@@ -38,7 +46,8 @@ def cycle_report(ledger: Path) -> int:
     rvv are not comparable — the int8 win lives on the Saturn-OPU vector tile). Uses the most
     recent row per (model, dtype, backend)."""
     if not ledger.is_file():
-        print(f"no ledger at {ledger}"); return 1
+        print(f"no ledger at {ledger}")
+        return 1
     # (backend, model) -> {dtype: cycles}; last row wins (ledger is append-only / time-ordered)
     cyc: dict[tuple, dict[str, int]] = {}
     for line in ledger.read_text().splitlines():
@@ -52,12 +61,12 @@ def cycle_report(ledger: Path) -> int:
         backend = r.get("backend", "scalar")
         parts = b.split("_")
         if "consistent" in parts:
-            parts = parts[:parts.index("consistent")]
+            parts = parts[: parts.index("consistent")]
         dtype = parts[-1] if parts else ""
         model = "_".join(parts[:-1]) if len(parts) > 1 else b
         cyc.setdefault((backend, model), {})[dtype] = int(r["cycles"])
     print(f"{'backend':8s} {'model':18s} {'fp32_cycles':>14s} {'int8_cycles':>14s} {'speedup':>9s}")
-    for (backend, model) in sorted(cyc):
+    for backend, model in sorted(cyc):
         d = cyc[(backend, model)]
         fp, i8 = d.get("fp32"), d.get("int8")
         sp = f"{fp / i8:.2f}x" if (fp and i8) else "-"
@@ -69,16 +78,47 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("bundles", nargs="*")
     ap.add_argument("--ledger", default="/tmp/fs_sweep.jsonl")
-    ap.add_argument("--int8", action="store_true",
-                    help="run the W8A8 INTEGER-compute datapath (i8xi8->i32 + integer "
-                         "nonlinears) and gate multi-tier vs golden_w8a8.npy + golden.npy")
-    ap.add_argument("--report", action="store_true",
-                    help="print the int8-vs-fp32 cycle/speedup table from the ledger and exit")
-    ap.add_argument("--backend", default="scalar", choices=("scalar", "rvv"),
-                    help="scalar (Gemmini tile 0) or rvv (Saturn-OPU vector tile 1). The int8 "
-                         "throughput win lives on rvv — i8 lanes pack ~4x an f32 lane.")
-    ap.add_argument("--rvv-hart", type=int, default=1,
-                    help="hart the rvv model object runs on (Saturn-OPU tile = hart 1)")
+    ap.add_argument(
+        "--int8",
+        action="store_true",
+        help="run the W8A8 INTEGER-compute datapath (i8xi8->i32 + integer "
+        "nonlinears) and gate multi-tier vs golden_w8a8.npy + golden.npy",
+    )
+    ap.add_argument(
+        "--report", action="store_true", help="print the int8-vs-fp32 cycle/speedup table from the ledger and exit"
+    )
+    # The bitstream this sweep was written against is heterogeneous: its scalar host tile is hart 0 (a
+    # Gemmini tile) and its vector tile is hart 1 (a Saturn-OPU tile) -- hence --rvv-hart's default.
+    ap.add_argument(
+        "--backend",
+        default="scalar",
+        choices=("scalar", "rvv"),
+        help="scalar (the scalar host tile, hart 0) or rvv (the vector tile, see "
+        "--rvv-hart). The int8 throughput win lives on rvv — i8 lanes pack ~4x an "
+        "f32 lane.",
+    )
+    ap.add_argument(
+        "--rvv-hart", type=int, default=1, help="hart the rvv model object runs on (the vector tile's hart)"
+    )
+    # Routing the contractions to a matrix unit is a THIRD thing, orthogonal to --backend: the host
+    # core still runs everything the unit does not take, so the image is an rvv (or scalar) image
+    # that additionally dispatches to the unit. Both names are required together and neither has a
+    # default -- which unit a chip carries and in which geometry is a fact about that chip.
+    ap.add_argument(
+        "--matrix-unit",
+        default=None,
+        help="route contractions to this provider-declared matrix unit",
+    )
+    ap.add_argument(
+        "--matrix-support-target",
+        help="explicit OOT support provider target for matrix routing (distinct from the unit name)",
+    )
+    ap.add_argument(
+        "--matrix-config",
+        default=None,
+        help="the unit's hardware configuration class, e.g. the one the bitstream was built "
+        "from; decides the tile edge, so it is not optional",
+    )
     # Build scratch goes on /scratch (3 TB), NOT /tmp (the small shared root disk) — a
     # multi-GB external-weights image in /tmp pressures root, where /home caches already
     # sit at ~94%. /scratch is the project's filesystem with terabytes free.
@@ -87,28 +127,80 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-run even if already passed")
     args = ap.parse_args()
     ledger = Path(args.ledger)
+    routing_args = (args.matrix_unit, args.matrix_config, args.matrix_support_target)
+    if any(routing_args) and not all(routing_args):
+        ap.error(
+            "--matrix-unit, --matrix-config and --matrix-support-target go together: the tile edge comes from the "
+            "configuration, so a unit without one would be routed at a guessed geometry"
+        )
+    matrix = (
+        zm.MatrixRouting(unit=args.matrix_unit, config=args.matrix_config, support_target=args.matrix_support_target)
+        if args.matrix_unit
+        else None
+    )
 
     if args.report:
         return cycle_report(ledger)
+
+    if matrix:
+        from merlin.targetgen.plugins import load_declared
+
+        provider = load_declared(args.matrix_support_target, "matrix_lowering")
+        enc = provider.derive_encodings(provider.load_contract(args.matrix_unit)).encodings
 
     for bundle in args.bundles:
         if not args.force and already_done(ledger, bundle):
             print(f"SKIP {bundle} (already passed in ledger)", flush=True)
             continue
-        mdir = ROOT / "artifacts" / "recaptures" / bundle
-        rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-               "int8_compute": bool(args.int8), "backend": args.backend}
+        mdir = recaptures_dir() / bundle
+        rec = {
+            "bundle": bundle,
+            "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "int8_compute": bool(args.int8),
+            "backend": "matrix" if matrix else args.backend,
+        }
         try:
             golden = np.load(mdir / "golden.npy")
             # 1. build the chipyard image locally (int8: real W8A8 integer datapath). The rvv
             #    backend targets the Saturn-OPU vector tile (hart 1) where i8xi8->i32 packs ~4x
             #    the lanes of f32 — that is where the int8 throughput win actually shows up.
-            b = zm.build_app(mdir, f"{args.workroot}/{bundle}", board="chipyard_riscv64",
-                             backend=args.backend, rvv_hart=args.rvv_hart, cpus=2,
-                             int8_compute=args.int8)
+            extra = {}
+            if matrix:
+                # The feature is what makes the rewrite look for contractions at all; without it the
+                # routing object is inert and the image would be an ordinary rvv image wearing the
+                # matrix label.
+                from merlin.llvmlower.impr_features import OPU_MATMUL_NAME, PEROP_BLOCK_NAME
+
+                extra = {"matrix": matrix, "features": frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME])}
+            b = zm.build_app(
+                mdir,
+                f"{args.workroot}/{bundle}",
+                board="chipyard_riscv64",
+                backend=args.backend,
+                rvv_hart=args.rvv_hart,
+                cpus=2,
+                int8_compute=args.int8,
+                **extra,
+            )
             rec["ram_mb"] = b["ram_bytes"] // (1024 * 1024)
-            print(f"BUILT {bundle} ram={rec['ram_mb']}MB -> submitting to firesim-queue",
-                  flush=True)
+            # The anti-cheat, in both directions, on the bytes that will boot. An image carrying none
+            # of the unit's instructions computes correct answers on the host core and passes every
+            # numerical gate below -- the most comfortable way for a matrix-unit run to be wrong. And
+            # an unrouted image that DOES carry them is not the control it would be compared against.
+            if args.matrix_unit or matrix:
+                from merlin.kernels.decode import opu as unit_audit
+
+                counts = {
+                    k: int(v) for k, v in sorted((unit_audit.audit_object(b["elf"], enc).counts or {}).items()) if v
+                }
+                rec["unit_instruction_counts"] = counts
+                if matrix and not counts:
+                    raise RuntimeError(
+                        f"the image for {bundle} contains NONE of "
+                        f"{args.matrix_unit}'s instructions, so it would measure the "
+                        "host core while claiming the unit"
+                    )
+            print(f"BUILT {bundle} ram={rec['ram_mb']}MB -> submitting to firesim-queue", flush=True)
             # 2. run on FireSim through the queue, gate cos. For int8, gate multi-tier vs the
             #    W8A8 reference (T1) + the fp32 golden (T2); golden_w8a8.npy is generated by
             #    run_model(int8_compute=True) (the host W8A8 sim) and may be absent.
@@ -118,13 +210,17 @@ def main() -> int:
                 if w8a8_path.is_file():
                     refs["w8a8"] = np.load(w8a8_path)
                 r = zm.run_on_firesim(b["elf"], references=refs, queue=True, timeout=args.timeout)
-                rec.update(w8a8_cos=r.get("w8a8_cos"), w8a8_rel=r.get("w8a8_rel"),
-                           fp32_cos=r.get("fp32_cos"), fp32_argmax=r.get("fp32_argmax"))
+                rec.update(
+                    w8a8_cos=r.get("w8a8_cos"),
+                    w8a8_rel=r.get("w8a8_rel"),
+                    fp32_cos=r.get("fp32_cos"),
+                    fp32_argmax=r.get("fp32_argmax"),
+                )
             else:
-                r = zm.run_on_firesim(b["elf"], reference=golden, queue=True,
-                                      timeout=args.timeout)
-            rec.update(cos=r.get("cos"), rel=r.get("rel"), ok=bool(r.get("ok")),
-                       cycles=r.get("metrics", {}).get("cycles"))
+                r = zm.run_on_firesim(b["elf"], reference=golden, queue=True, timeout=args.timeout)
+            rec.update(
+                cos=r.get("cos"), rel=r.get("rel"), ok=bool(r.get("ok")), cycles=r.get("metrics", {}).get("cycles")
+            )
             # cos covers only the dumped prefix (<=4096). For larger outputs the model
             # also emits a full-output SUM and a full per-row ARGMAX — gate those too so
             # the WHOLE output is validated, not just its first 4096 elements.
@@ -149,15 +245,19 @@ def main() -> int:
                 if r.get("argmax") is not None:
                     last = golden.shape[-1]
                     g_arg = golden.astype(np.float32).reshape(-1, last).argmax(1)
-                    hw = np.asarray(r["argmax"]); k = min(len(hw), len(g_arg))
+                    hw = np.asarray(r["argmax"])
+                    k = min(len(hw), len(g_arg))
                     frac = float((hw[:k] == g_arg[:k]).mean()) if k else 0.0
                     rec["argmax_match"] = frac
                     checks.append(frac > 0.999)
                 if checks:
                     rec["ok"] = bool(rec["ok"] and all(checks))
-            print(f"FSIM {bundle}: cos={rec['cos']:.7f} ok={rec['ok']} "
-                  f"sum_rel={rec.get('sum_rel')} argmax={rec.get('argmax_match')} "
-                  f"cyc={rec['cycles']}", flush=True)
+            print(
+                f"FSIM {bundle}: cos={rec['cos']:.7f} ok={rec['ok']} "
+                f"sum_rel={rec.get('sum_rel')} argmax={rec.get('argmax_match')} "
+                f"cyc={rec['cycles']}",
+                flush=True,
+            )
         except Exception as e:
             rec["error"] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
             rec["ok"] = False

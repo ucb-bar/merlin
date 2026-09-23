@@ -9,7 +9,7 @@ themselves are a library-consumed benchmark input and live in `merlin/benchmarks
 ## What belongs here
 
 - `run_l2.py` — the harness. The ablation `.c` kernels do NOT live here (they moved to
-  `merlin/benchmarks/cost_calib/`, read by both this harness and `merlin.cost_model.calibrate`).
+  `merlin/benchmarks/cost_calib/`, read by both this harness and `merlin/targets/gemmini/cost_model/calibrate.py`).
 
 ## What does not belong here
 

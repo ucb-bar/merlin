@@ -5,6 +5,11 @@
 receivers:
   otlp:
     protocols:
+      # 0.0.0.0 here is the CONTAINER's interface, not the host's, and is correct: a
+      # container process that binds 127.0.0.1 is unreachable even from its own published
+      # port. What decides host exposure is the `-p` publish, which must name 127.0.0.1
+      # (see claude_code_otel.md). Do not "harden" these two lines instead -- that breaks
+      # the receiver while leaving the actual exposure untouched.
       http:
         endpoint: 0.0.0.0:4318
       grpc:

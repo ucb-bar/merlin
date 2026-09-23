@@ -10,6 +10,7 @@ ucb-bar/rvv-mlir. These tests pin the two properties that make the fix trustwort
 
 Everything runs against a LOCAL bare remote (``file://``) — the harness never pushes to GitHub.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -20,8 +21,7 @@ from merlin.targetgen import publish as P
 
 
 def _git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
-                          timeout=120, check=True)
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=120, check=True)
 
 
 @pytest.fixture()
@@ -39,22 +39,15 @@ def bare_remote(tmp_path):
     _git("push", "origin", "main", cwd=seed)
     # one package branch, as a real publish would leave it
     _git("checkout", "--orphan", "stable/impr_tuned_wholemodel_vf_int8", cwd=seed)
-    _git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty",
-         "-m", "pkg", cwd=seed)
+    _git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "pkg", cwd=seed)
     _git("push", "origin", "stable/impr_tuned_wholemodel_vf_int8", cwd=seed)
     return f"file://{bare}"
 
 
-def test_index_lists_only_certified_packages():
-    """Uncertified packages are never published, so the page must not point at them."""
+def test_index_does_not_upgrade_unbound_historical_packages():
+    """Historical embedded statuses cannot authorize new index certification claims."""
     entries = P.index_entries("rvv")
-    assert entries, "no certified rvv packages found"
-    for e in entries:
-        sel = P.select_champion("rvv", package_id=e["package_id"])
-        ok, _ = P._check_gate(sel)
-        assert ok, f"{e['package_id']} is listed but would not pass the publish gate"
-    # the int8 and fp32 families are distinguished, so an int8 consumer is not sent to fp32
-    assert {e["dtype"] for e in entries} >= {"fp32", "int8_w8a8"}
+    assert entries == []
 
 
 def test_index_tree_is_a_landing_page_not_a_package(tmp_path):
@@ -71,9 +64,11 @@ def test_index_tree_is_a_landing_page_not_a_package(tmp_path):
         assert e["branch"] in readme and e["package_id"] in readme
 
 
-def test_index_never_advertises_a_branch_absent_from_the_remote(tmp_path):
+def test_index_never_advertises_a_branch_absent_from_the_remote(tmp_path, monkeypatch):
     """The whole point: a listed branch a consumer checks out must exist."""
     dest = tmp_path / "repo"
+    # Routing only: inject synthetic gate admission; this is not certification.
+    monkeypatch.setattr(P, "_check_gate", lambda selection: (True, "synthetic routing fixture"))
     info = P.assemble_index_tree("rvv", dest, only_branches={"stable/impr_tuned_wholemodel_vf_int8"})
     assert [e["branch"] for e in info["entries"]] == ["stable/impr_tuned_wholemodel_vf_int8"]
     readme = (dest / "README.md").read_text()
@@ -86,7 +81,12 @@ def test_publish_index_dry_run_touches_no_remote(bare_remote):
     assert any("dry-run" in a for a in res["actions"])
 
 
-def test_publish_index_execute_writes_default_branch(bare_remote, tmp_path):
+def test_publish_index_execute_writes_default_branch(bare_remote, tmp_path, monkeypatch):
+    # Stable synthetic source identity even while another agent commits unrelated work.
+    monkeypatch.setattr(P, "_git_sha_full", lambda: "a" * 40)
+    monkeypatch.setattr(P, "git_sha7", lambda: "aaaaaaa")
+    # Independently exercise index publication plumbing without granting real authority.
+    monkeypatch.setattr(P, "_check_gate", lambda selection: (True, "synthetic routing fixture"))
     res = P.publish_index("rvv", remote=bare_remote, dry_run=False)
     assert res.get("commit_sha"), f"index not pushed: {res['actions']}"
     # only the branch that actually exists on this remote is listed

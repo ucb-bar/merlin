@@ -1,31 +1,29 @@
 """Dual-mode agent mining harness (mock LLM, deterministic): representative vs per_kernel + the
 mode comparison. Real LLM runs (merlin.common.llm.complete) need ANTHROPIC_API_KEY; the harness
 degrades to finding={} without it, so this suite uses an injected mock."""
-from merlin.kernels.types import NormalizedKernel
-from merlin.kernels.dossier import build_dossier
-from merlin.kernels import agent_mine
 
-_G_VF = ("size_t vl=__riscv_vsetvl_e32m4(n);\n"
-         "v=__riscv_vfmacc_vf_f32m4(v,a,b,vl);\n__riscv_vse32_v_f32m4(c,v,vl);\n")
-_G_NOFMA = ("size_t vl=__riscv_vsetvl_e32m1(n);\n"
-            "x=__riscv_vfmul_vv_f32m1(a,b,vl);\nx=__riscv_vfadd_vv_f32m1(x,c,vl);\n")
+from merlin.kernels import agent_mine
+from merlin.kernels.dossier import build_dossier
+from merlin.kernels.types import NormalizedKernel
+
+_G_VF = "size_t vl=__riscv_vsetvl_e32m4(n);\nv=__riscv_vfmacc_vf_f32m4(v,a,b,vl);\n__riscv_vse32_v_f32m4(c,v,vl);\n"
+_G_NOFMA = "size_t vl=__riscv_vsetvl_e32m1(n);\nx=__riscv_vfmul_vv_f32m1(a,b,vl);\nx=__riscv_vfadd_vv_f32m1(x,c,vl);\n"
 
 
 def _nk(t, p):
-    return NormalizedKernel(source="xnnpack", target="rvv", path=p, op="gemm", dtype="f32",
-                            raw_text=t)
+    return NormalizedKernel(source="xnnpack", target="rvv", path=p, op="gemm", dtype="f32", raw_text=t)
 
 
 def _mock_llm(prompt):
     ex = "true" if '"fma_form": "vf"' in prompt else "false"
-    return ('{"algorithm":"gemm","is_exemplary":' + ex +
-            ',"compiler_levers":["use vfmacc.vf","e32m4 LMUL"],'
-            '"contract_refinements":[],"caveats":[]}')
+    return (
+        '{"algorithm":"gemm","is_exemplary":' + ex + ',"compiler_levers":["use vfmacc.vf","e32m4 LMUL"],'
+        '"contract_refinements":[],"caveats":[]}'
+    )
 
 
 def _doss():
-    return [build_dossier(_nk(_G_VF, "a.c")), build_dossier(_nk(_G_VF, "b.c")),
-            build_dossier(_nk(_G_NOFMA, "c.c"))]
+    return [build_dossier(_nk(_G_VF, "a.c")), build_dossier(_nk(_G_VF, "b.c")), build_dossier(_nk(_G_NOFMA, "c.c"))]
 
 
 def test_build_prompt_includes_dossier_facts():
@@ -50,7 +48,7 @@ def test_compare_modes_measures_cost_and_agreement():
     assert cmp["representative"]["n_calls"] == 2
     assert cmp["per_kernel"]["n_calls"] == 3
     assert cmp["call_ratio"] == 1.5
-    assert cmp["exemplary_agreement"] == 1.0   # rep finding matched per-kernel on all overlaps
+    assert cmp["exemplary_agreement"] == 1.0  # rep finding matched per-kernel on all overlaps
 
 
 def test_parse_findings_tolerant():

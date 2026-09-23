@@ -3,7 +3,7 @@ title: Getting started — the setup and prerequisites reference
 kind: guide
 status: current
 owner: core
-last_verified: 2026-07-22
+last_verified: 2026-09-20
 related: [reproducibility, architecture, repo_structure, integrations, model2mlir, rvv_e2e,
           beam_search, gemmini_experiment, zephyr, dse, dse_guidance, targetgen, adding_a_target]
 code_refs:
@@ -11,8 +11,8 @@ code_refs:
   - .env.example
   - .gitmodules
   - build_tools/scripts/check_repro_env.py
-  - merlin/python/merlin/common/paths.py
-  - merlin/python/merlin/common/artifacts.py
+  - src/merlin/common/paths.py
+  - src/merlin/common/artifacts.py
 ---
 
 # Getting started
@@ -24,28 +24,40 @@ lists only its own workflow-specific extras. For *what* the repo is read
 [Repository structure](../reference/repo_structure.md); for the by-intent workflow index read the
 [reproducibility master guide](reproducibility.md).
 
-**Read this first, then jump to your workflow.** The core SDK and the full test suite install and run
-with nothing but `uv` — no submodules, no external toolchains. Every board / simulator / model-lowering
-/ agentic feature is an **opt-in** that resolves an external tool through a `MERLIN_*` environment
-variable and **degrades fail-closed** when unset (its tests skip, its runner records `not_run` — never
-a fabricated pass). So set up only the pieces for the workflow you actually run; §4 is the map.
+**Read this first, then jump to your workflow.** The core SDK installs without research packages,
+submodules or external toolchains. Phase execution, studies, boards and model capture are opt-in.
+The full historical test suite also references private corpora and retained run artifacts; a fresh
+clone cannot be assumed to pass every test without those inputs. Missing prerequisites must remain
+explicit failures or documented skips, never fabricated passes. Set up the pieces for your workflow;
+§4 is the map.
 
 ## 1. Base install — needed for every workflow
 
-The project uses [uv](https://docs.astral.sh/uv/) (the in-repo `.venv` is Python 3.13; the package
-supports 3.10+). A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
+The project uses [uv](https://docs.astral.sh/uv/) and Python 3.12+, per `requires-python`
+in `pyproject.toml`. A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
 submodules are opt-in per task (§5).
 
 ```bash
 git clone https://github.com/ucb-bar/merlin.git
 cd merlin
-uv sync --all-extras                                    # .venv + merlin (editable) + every extra below
-uv run python build_tools/scripts/check_structure.py    # verify the tree/docs invariants hold
-.venv/bin/python -m pytest merlin/tests                 # run the suite (plain `python` is not on PATH)
+uv venv
+uv pip install -e '.[dev,xdsl,targetgen]'
+.venv/bin/python -m merlin.cli --help
 ```
 
-`.venv/bin/python` is the driver interpreter for everything in the docs (plain `python` is not on
-PATH). Without `uv`: `pip install -e '.[dev,xdsl,targetgen,kernels-ast,kernels-exo,kernels-parquet,kernels-plots]'`.
+Install the optional distributions needed by your workflow, or all four for development:
+
+```bash
+uv pip install -e packages/merlin-experiments -e packages/merlin-dse -e packages/merlin-mining -e packages/merlin-analysis
+.venv/bin/merlin experiment list
+.venv/bin/python build_tools/scripts/check_structure.py
+.venv/bin/python -m pytest merlin/tests packages/merlin-experiments/tests packages/merlin-dse/tests packages/merlin-mining/tests
+```
+
+The experiment package installs its pinned AET dependency; no implicit sibling checkout is
+required. Use `.venv/bin/python` directly or `uv run --no-sync` after these explicit installs:
+an automatic root-only sync can remove separately installed extensions. Without `uv`, use a
+Python virtual environment and the equivalent `python -m pip install` commands.
 
 The RTL-grounded targetgen flow additionally reuses the sibling **`mlc`** package (§5). It lives at a
 machine-specific path (`$MERLIN_MLC_DIR`), so it is not a `uv sync` dependency — install it editable
@@ -112,7 +124,7 @@ capabilities it reports (key → what it needs):
 | `gemmini_vcs` / `firesim` | Gemmini VCS (L4) / FireSim (L5) | `MERLIN_GEMMINI_SIMV` / `MERLIN_EXT_FIRESIM_QUEUE`, `FIRESIM_ROOT` |
 | `zephyr_spike` | Zephyr SW whole-model build_app path | `ZEPHYR_BASE`, `MERLIN_ZEPHYR_SW`, `ZEPHYR_SDK_INSTALL_DIR`, `MERLIN_CHIPYARD` |
 | `circt_firtool` | CIRCT firtool + FileCheck (RTL checks) | `firtool` / `FileCheck` on PATH, `MERLIN_CHIPYARD` |
-| `chia` | chia agentic-loop framework | a `uv venv` at `out/build/chia-venv` |
+| `chia` | Chia public integration API | compatible `merlin-experiments[chia]` in `MERLIN_CHIA_PYTHON` or `out/build/chia-venv` |
 | `llm_api` | Anthropic API for real agentic runs | `ANTHROPIC_API_KEY`, `MERLIN_LLM_MODEL` |
 
 ## 4. Prerequisites by workflow
@@ -122,15 +134,15 @@ not available on a fresh machine. "board-gated" items are called out in §5.
 
 | Workflow / guide | Required beyond base install | Optional / fallback |
 |---|---|---|
-| Kernel mining ([kernel_mining](kernel_mining.md)) | external kernel-source repos by `MERLIN_<SOURCE>_REPO` (XNNPACK, OpenBLAS, Exo, Triton, Autocomp); extras `.[kernels-exo,kernels-parquet,kernels-plots]` | LLM escalation needs `ANTHROPIC_API_KEY` (deterministic outputs stand alone without it) |
-| DSE / design-pressure ([dse](dse.md), [design_pressure](design_pressure.md), [dse_guidance](dse_guidance.md)) | base install only — runs on committed captures/fixtures | measured evidence needs an `aet` run; cycle-exact calibration needs the sim toolchain (see [dse_guidance](dse_guidance.md)) |
+| Kernel mining ([kernel_mining](kernel_mining.md)) | `packages/merlin-mining` for search/campaign commands; external kernel-source repos by `MERLIN_<SOURCE>_REPO` (XNNPACK, OpenBLAS, Exo, Triton, Autocomp); extras `.[kernels-exo,kernels-parquet,kernels-plots]` | LLM escalation needs `ANTHROPIC_API_KEY` (deterministic outputs stand alone without it) |
+| DSE / design-pressure ([dse](dse.md), [design_pressure](design_pressure.md), [dse_guidance](dse_guidance.md)) | `packages/merlin-dse` plus declared captures/reference data | measured evidence needs an `aet` run; cycle-exact calibration needs the sim toolchain (see [dse_guidance](dse_guidance.md)) |
 | model2MLIR capture ([model2mlir](model2mlir.md)) | `MERLIN_M2M_DIR` + the m2m capture venv (`MERLIN_M2M_VENV`); model repos | — (a full smolVLA capture is RAM-heavy; committed bundles ingest without re-capture) |
 | RVV end-to-end ([rvv_e2e](rvv_e2e.md)) | `llvm_m2m_toolchain` (m2m + clang-23) + capture bundles + `spike_rv64gcv` | K1 board is **optional** — spike rv64gcv is the bit-exact fallback |
 | Beam search ([beam_search](beam_search.md)) | frozen `hand_v0` baseline (in-tree) + expert objdump fixtures + a K1 board **or** spike | `spike_rv64gcv` substitutes for the physical K1 (correctness/cycles, no wall-clock); `chia` only for Ray fan-out |
-| Gemmini experiment ([gemmini_experiment](gemmini_experiment.md)) | `bwrap` on PATH + the sim toolchain (`MERLIN_CHIPYARD` → spike/verilator) + `ANTHROPIC_API_KEY` for real agentic runs + `out/build/chia-venv` for fan-out | mock LLM fallback runs without a key (no real agentic run); VCS/FireSim rungs skip if absent |
+| Gemmini experiment ([gemmini_experiment](gemmini_experiment.md)) | `packages/merlin-experiments` + `bwrap` on PATH + the sim toolchain (`MERLIN_CHIPYARD` → spike/verilator) + `ANTHROPIC_API_KEY` for real agentic runs + `out/build/chia-venv` for fan-out | mock LLM fallback runs without a key (no real agentic run); VCS/FireSim rungs skip if absent |
 | Zephyr / FireSim / spike ([zephyr](zephyr.md)) | `ZEPHYR_BASE`, `MERLIN_ZEPHYR_SW`, `ZEPHYR_SDK_INSTALL_DIR`, `MERLIN_CHIPYARD` | spike substitutes for 2-tile FireSim |
 | Target generation ([targetgen](targetgen.md), [adding_a_target](adding_a_target.md)) | base install + extra `.[targetgen]` (jsonschema) | RTL-grounded targets additionally use `circt_firtool` and the sibling `mlc` package (editable-installed from `MERLIN_MLC_DIR`, §5) |
-| External baselines ([integrations](integrations.md)) | the relevant framework repo/build + its venv by `MERLIN_*` var (§5) | each arm skips independently when its var is unset |
+| External baselines ([integrations](integrations.md)) | `packages/merlin-analysis` + the relevant framework repo/build + its venv by `MERLIN_*` var (§5) | each arm skips independently when its var is unset |
 | Publish a champion (reproducibility §8) | base install; a local `git init --bare` remote | a real GitHub push is human-gated (never automatic) |
 
 ## 5. External dependencies — where each one comes from
@@ -155,11 +167,13 @@ mlc` is a normal import. `MERLIN_MLC_DIR` still locates mlc's **non-Python asset
 mlc-derived RTL facts report honest-unavailable rather than crashing.
 
 **LLVM / MLIR 23 + clang-23.** The whole-model path needs a standalone LLVM/MLIR-23 install
-(`mlir-translate`) and `clang-23`. Point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` and
-`MERLIN_CLANG` at them, or set `MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23. In-repo
-there is a prebuilt `third_party/llvm-install/` and the `third_party/llvm-project` submodule (the LLVM
-monorepo — the dominant clone cost, init only if you build it yourself:
-`git submodule update --init --depth 1 third_party/llvm-project`).
+(`mlir-translate`) and `clang-23`. The repo builds its own at `third_party/llvm-install/`, which
+`llvmlower.toolchain` defaults to — but that path is **gitignored, so a fresh clone does not have it**;
+build it with [Building the pinned LLVM/MLIR toolchain](llvm_toolchain.md) (`third_party/llvm-project` is
+the submodule it builds from, and the dominant clone cost:
+`git submodule update --init --depth 1 third_party/llvm-project`). To use an LLVM 23 you already have
+instead, point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` / `MERLIN_CLANG` at it (or
+`MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23).
 
 **spike + RISC-V toolchain (chipyard).** The rv64gcv RVV oracle and the RISC-V cross toolchain come
 from a [chipyard](https://github.com/ucb-bar/chipyard) checkout (`spike`,
@@ -175,7 +189,7 @@ cannot be provisioned by a `git clone`. Set `MERLIN_K1_HOST=root@<board-ip>` and
 `spike rv64gcv` gives bit-exact RVV correctness (and cycle counts under the simulator); only the
 real-wall-clock speedup claims require the board, and those steps record `not_run` when it is absent.
 Board-SSH note: the campus path filters inbound `:22` to that segment, so the board also listens on
-**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `rvvgen/k1.py`); a
+**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `mining/k1.py`); a
 board that pings but hangs on `:22` is not down — use 2222.
 
 **Gemmini / Saturn / Muon simulators.** Gemmini functional (spike, L2) and RTL-cycle (verilator, L3)
@@ -191,8 +205,10 @@ functional+cycle-accurate certification without them. Saturn (`MERLIN_SATURN_*`)
 for spike. See [Zephyr backend](zephyr.md).
 
 **chia (agentic loops).** The Ray-based agentic fan-out runs under an **isolated** venv at
-`out/build/chia-venv` (never the main `.venv`):
-`uv venv out/build/chia-venv --python 3.13 && uv pip install --python out/build/chia-venv -e /path/to/chia -e .`.
+`out/build/chia-venv`, or an explicit `MERLIN_CHIA_PYTHON`, separate from the main driver.
+Install the pinned `merlin-experiments[chia]` extra with core in that environment; see
+[Chia and AET setup](integrations.md#chia-and-aet). A Python executable alone is not readiness:
+the preflight imports the integration API without starting Ray or launching agents.
 
 **Anthropic API key (agentic loops).** The kernel-mining beam proposer and the Gemmini QA-loop arms
 call the Anthropic API via `merlin.common.llm.complete`. Set `ANTHROPIC_API_KEY` (+ optionally

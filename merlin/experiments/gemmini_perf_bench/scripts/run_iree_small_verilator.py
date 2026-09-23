@@ -15,15 +15,30 @@ runner now does a short feasibility PROBE per kernel, records the verdict into p
 approaches.iree_dialect.per_sim.verilator = {infeasible: true, reason, probe_s}, and exits — no multi-hour
 hangs, no leaked verilator children. Pass --force --timeout N to actually attempt a full run anyway.
 """
-from __future__ import annotations
-import argparse, json, subprocess, sys, time
-from pathlib import Path
-import _pbcommon as PB
-sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
-from merlin.runtime.backends import gemmini as gem  # noqa: E402
 
-SMALL = ["G00_single_tile_16x16x16", "G02_rect_32x64x16", "G03_kaccum_16x128x16",
-         "G04_wideN_16x16x128", "G05_tallM_128x16x16"]
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import _pbcommon as PB
+
+sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
+from merlin.runtime.backends.base import get_backend  # noqa: E402
+
+gem = get_backend("gemmini")  # evicted to its own target package; reached via the registry
+
+SMALL = [
+    "G00_single_tile_16x16x16",
+    "G02_rect_32x64x16",
+    "G03_kaccum_16x128x16",
+    "G04_wideN_16x16x128",
+    "G05_tallM_128x16x16",
+]
 PROBE_S = 120  # if no program output (OUT/METRIC/DONE) appears within this, declare infeasible
 
 
@@ -32,8 +47,7 @@ def _probe(elf: Path, probe_s: int) -> tuple[bool, str, float]:
     on timeout so nothing leaks."""
     vsim = gem.verilator_path()
     t0 = time.time()
-    p = subprocess.Popen([str(vsim), str(elf)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         text=True)
+    p = subprocess.Popen([str(vsim), str(elf)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         out, _ = p.communicate(timeout=probe_s)
         return ("DONE" in out), out[-300:], time.time() - t0
@@ -59,10 +73,14 @@ def main(argv=None):
     for kid in SMALL:
         elf = elfs / f"{kid}.elf"
         if not elf.is_file():
-            print(f"  {kid}: no ELF"); continue
+            print(f"  {kid}: no ELF")
+            continue
         reached, tail, secs = _probe(elf, a.timeout if a.force else PROBE_S)
-        ap_iree = by.get(kid, {}).get("approaches", {}).setdefault(
-            "iree_dialect", {"approach": "iree_dialect", "per_sim": {}})
+        ap_iree = (
+            by.get(kid, {})
+            .get("approaches", {})
+            .setdefault("iree_dialect", {"approach": "iree_dialect", "per_sim": {}})
+        )
         if reached:
             _outs, raw = gem.parse_output(tail)  # tail unlikely to hold full metrics; re-run if needed
             cyc = raw.get("cycles")
@@ -71,9 +89,11 @@ def main(argv=None):
             print(f"  {kid}: reached DONE in {secs:.0f}s, cycles={cyc}")
         else:
             ap_iree.setdefault("per_sim", {})["verilator"] = {
-                "infeasible": True, "probe_s": round(secs),
+                "infeasible": True,
+                "probe_s": round(secs),
                 "reason": "IREE runtime too heavy for verilator (~kHz): no program output within probe; "
-                          "use FireSim L5. See module docstring."}
+                "use FireSim L5. See module docstring.",
+            }
             infeasible += 1
             print(f"  {kid}: INFEASIBLE — no DONE in {secs:.0f}s (only harness banner). Marked, skipped.")
     (run / "perf_results.json").write_text(json.dumps(pr, indent=2))

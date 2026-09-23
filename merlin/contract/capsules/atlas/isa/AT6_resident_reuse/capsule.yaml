@@ -1,7 +1,7 @@
 name: AT6_resident_reuse
 kind: isa
 source_role: handauthored_compiler_test
-source_reference: one resident weight, two activation tiles
+source_reference: one resident weight
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -36,7 +36,7 @@ operation:
       out: Y1
       epilogue: []
       output_dtype: bf16
-    output_dtype: bf16
+    semantic: resident_reuse
 numeric_policy:
   compare: tolerance_float
   dtype: bf16
@@ -44,15 +44,27 @@ numeric_policy:
   rtol: 0.02
 expected:
   instruction_classes:
-  - CONFIG_EX
-  - GMEM_LD
-  - FMA
-  - GMEM_ST
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
   modes:
     resident_reuse: true
 required_oracle_tiers:
 - L0
 - L1
+- L2
 - L3
 vcs: optional
 firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 342.24
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

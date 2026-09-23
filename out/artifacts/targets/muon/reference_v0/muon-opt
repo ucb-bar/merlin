@@ -17,9 +17,17 @@ import json
 import sys
 from pathlib import Path
 
-# make `merlin` importable regardless of how the script is launched
-_REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_REPO / "merlin" / "python"))
+# make `merlin` importable regardless of how/where this tool is launched: WALK UP from this file to the
+# first ancestor that holds ``merlin/python/merlin`` and add it to sys.path. A fixed ``parents[N]`` is
+# fragile — this reference package is materialized at different depths on different machines / fresh
+# clones (and copied into build/workspace dirs), so a hardcoded depth silently pointed at the wrong dir
+# and left the tool relying entirely on an externally-set PYTHONPATH. The upward search is layout- and
+# clone-independent; if the tool is copied OUTSIDE the repo tree it still honours the harness PYTHONPATH.
+for _anc in Path(__file__).resolve().parents:
+    _mp = _anc / "merlin" / "python"
+    if (_mp / "merlin").is_dir():
+        sys.path.insert(0, str(_mp))
+        break
 
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir, GRAMMAR_VERSION
 from merlin.targetgen.contract import schemas
@@ -75,9 +83,15 @@ def main(argv: list[str]) -> int:
 
     cb = _load_cb(input_mlir)
 
-    if "--emit-simt-cpp" in flags:
-        from merlin.runtime.backends.muon_codegen import emit_kernel_cpp
-        sys.stdout.write(emit_kernel_cpp(cb))
+    if "--emit-target-artifact" in flags or "--emit-simt-cpp" in flags:
+        # Thesis path: emit an LLVM-dialect MLIR kernel LOWERING (compiled fork-free by the oracle), not a
+        # C++ kernel. (The legacy --emit-simt-cpp flag is accepted for back-compat but now also emits MLIR.)
+        # The SIMT reference codegen was evicted to its own target package (OV11); load it through the same
+        # plugin-discovery seam the runtime uses (merlin.targets.* is not import-path-loadable by design),
+        # never the pre-eviction merlin.runtime.backends.muon_codegen_mlir path.
+        from merlin.runtime.backends.base import get_backend
+        emit_kernel_mlir = get_backend("muon").muon_codegen_mlir.emit_kernel_mlir
+        sys.stdout.write(emit_kernel_mlir(cb))
         return 0
     if emit_cb_path is not None:
         schemas.validate_command_buffer(cb)          # fail-closed before writing

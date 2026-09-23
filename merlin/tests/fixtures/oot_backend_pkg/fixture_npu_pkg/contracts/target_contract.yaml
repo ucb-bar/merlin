@@ -1,0 +1,15 @@
+# Hand-authored MINIMAL out-of-tree target package for the OOT PACKAGE-backend discovery
+# regression test (merlin/tests/runtime/test_oot_backend_discovery.py). fixture_npu_pkg is a
+# SYNTHETIC target name (not a shipped target). Unlike the sibling fixture_npu (whose plugin.backend
+# is a single .py file), here plugin.backend names a DIRECTORY (a package with an __init__.py) whose
+# implementation is split across relative-import-coupled modules — the shape an evicted accelerator
+# backend takes when it spans backend.py + codegen.py and cannot be inlined into one file.
+name: fixture_npu_pkg
+version: '0.1'
+plugin:
+  # Backend PACKAGE (a directory relative to this package root). base._load_oot_backend loads it as
+  # merlin._oot_backends.fixture_npu_pkg with its own __path__, so its `from .capabilities import ...`
+  # resolves out-of-tree; the package __init__'s module-level base.register runs on import.
+  backend: backend
+runtime:
+  default_backend: simulator

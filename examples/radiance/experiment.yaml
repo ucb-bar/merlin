@@ -1,0 +1,33 @@
+schema_version: 1
+id: radiance-functional
+target: radiance
+description: Capsule derivation and installed functional compiler authoring; reviewed inputs and toolchain admission remain required.
+phases:
+  0:
+    adapter: capsule_derivation
+    config:
+      recipe: phase0/recipe.yaml
+      performance_template: ../../experiments/templates/phase0/performance.yaml
+      synth_profile: ../../experiments/reference-data/phase0/radiance.synth.yaml
+      smt_profile: ../../merlin/contract/capsules/profiles/radiance.smt.yaml
+      hidden_profile: ../../merlin/contract/capsules/profiles/radiance.hidden.yaml
+      descriptor: target/descriptor.yaml
+  1:
+    adapter: capsule_bench
+    config:
+      require_reviewed_corpus: true
+      descriptor: target/descriptor.yaml
+      arm: merlin_assisted
+      treatment: rtlchecks
+      # Regenerate/review this bundle for the selected corpus before execution.
+      bundle: merlin_assisted_rtlchecks_public_v0
+      bundle_manifest: ../../merlin/experiments/capsule_bench/targets/radiance/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+      # Required operator-owned timing evidence; not supplied by this example.
+      oracle_timing: ../../merlin/experiments/capsule_bench/targets/radiance/.oracle_timing.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900

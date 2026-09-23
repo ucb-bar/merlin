@@ -1,0 +1,18 @@
+schema_version: 1
+kind: template
+id: model-portfolio-template
+target: OPERATOR_TARGET
+description: Template only; supply a frozen campaign config and a writable candidate checkout, with explicit authoring budget.
+phases:
+  2:
+    adapter: model_portfolio
+    mode: model_portfolio
+    config:
+      campaign_config: ../operator-inputs/campaign-config.json
+      deployment: ../operator-inputs/portfolio-deployment.json
+      candidate: ../operator-inputs/candidate
+      round_seconds: 600
+      iteration_seconds: 600
+      max_tool_calls: 40
+      max_rounds: 1
+      total_authoring_seconds: 600

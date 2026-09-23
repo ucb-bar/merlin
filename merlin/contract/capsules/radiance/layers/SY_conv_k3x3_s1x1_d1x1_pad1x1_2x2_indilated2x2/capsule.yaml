@@ -1,0 +1,79 @@
+name: SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the convolution-window axis: window k3x3/s1x1/d1x1/pad1x1_2x2/indilated2x2,
+  recovered structurally from 2 region(s) of [''deepjscc_int8'']. torch-mlir emits
+  im2col, so a captured convolution carries no padding/stride/dilation attribute at
+  all and the geometry comes from the gather''s affine map and its padding producer'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 36
+  - 16
+  dtype: fp16
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 3
+  - 3
+  - 4
+  dtype: fp16
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 4
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 1
+    - 1
+    - 2
+    - 2
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: f32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: conv_window
+  must_accelerate: true
+  eligible: auto
+  conv_window: k3x3/s1x1/d1x1/pad1x1_2x2/indilated2x2
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 191.01589024066925
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

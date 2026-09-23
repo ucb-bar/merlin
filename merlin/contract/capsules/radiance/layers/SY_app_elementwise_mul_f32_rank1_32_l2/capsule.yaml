@@ -1,0 +1,62 @@
+name: SY_app_elementwise_mul_f32_rank1_32_l2
+kind: layer
+source_role: model_derived
+source_reference: declared application capture smolvla_fp32_consistent/model.mlir
+  sha256=27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c; structural
+  region index 904, prov.region_id=mul_22, prov.op=mul, prov.aten=aten.mul.Tensor;
+  exact operands/results tensor<32xf32>; 56 exact-shape occurrences in this capture
+  and 168 across the six declared application captures
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A
+  role: input
+  shape:
+  - 32
+  dtype: f32
+- name: B
+  role: input
+  shape:
+  - 32
+  dtype: f32
+operation:
+  op: mul
+  attributes:
+    out: Y0
+    arg_order:
+    - A
+    - B
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: mul
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: elementwise_map
+  generalization_axis: application
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.7808860931545496
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

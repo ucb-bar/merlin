@@ -1,14 +1,19 @@
 """Assemble a single styled results page for the RTL-derived checks + arcilator middle-tier + perf work.
 Embeds every figure (base64) into a cream-card page. -> reports/RTL_ARC_RESULTS.html"""
+
 from __future__ import annotations
-import base64, json
+
+import base64
+import json
 from pathlib import Path
+
 import _pbcommon as PB
 
 R = PB.REPORTS
 CREAM, INK = "#F6F1E7", "#2B2B2B"
 arc = json.loads((PB.REPO / "merlin/targets/gemmini/contracts/rtl_facts/arc_results.json").read_text())
-ok = sum(c["bitexact"] for c in arc["capsules"]); n = len(arc["capsules"])
+ok = sum(c["bitexact"] for c in arc["capsules"])
+n = len(arc["capsules"])
 
 
 def b64(name):
@@ -61,4 +66,4 @@ html = f"""<!doctype html><meta charset=utf-8><title>RTL-derived checks + arcila
 </div>"""
 out = R / "RTL_ARC_RESULTS.html"
 out.write_text(html)
-print(f"wrote {out} ({len(html)//1024} KB, {sum(1 for _ in R.glob('fig_arc_*.png'))+3} figures embedded)")
+print(f"wrote {out} ({len(html) // 1024} KB, {sum(1 for _ in R.glob('fig_arc_*.png')) + 3} figures embedded)")

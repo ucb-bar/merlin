@@ -1,0 +1,104 @@
+# The console of the group-model program running on the Spike functional model, filtered to
+# its protocol lines; every other line dropped.  The line content itself is untouched.
+#
+# THE FIRST OBSERVED UART IN THIS PROTOCOL.  Until this run the 'METRIC cycles N' line and the
+# MERLIN_WINDOW frame were things the harness was CHANGED to print and nothing had printed --
+# firesim_batch's own docstring says of the frame "PROPOSED, NOT OBSERVED".  This is a real run
+# of a real build: the program was compiled for the 71-group resnet50 capture with the vendor
+# library and the riscv64-unknown-elf toolchain, and these are the bytes it emitted.
+#
+#   elf_sha256          220f2296c45790d36747e02cea9475299c293cac7fbd6e77b9dba1a603cc5547
+#   program_sha256      77eb79ffb4ed2fde005922a3065e1c86204e2d8972161d5e19e5927b8c2399e2
+#   window_label        group_model
+#   device_groups       71 of 72
+#   capture             out/artifacts/recaptures/resnet50_sum_and_mean_20260917
+#
+# All 71 of its group checksums equal the oracle in
+# merlin/contract/firesim_uart_policies/resnet50_group_model_cycle_claim_v2.json, as do seven
+# real FPGA runs -- so the emission change did not disturb what the program computes.
+#
+# WHAT THIS IS NOT: a hardware measurement.  Spike is a FUNCTIONAL model; its 'METRIC cycles'
+# value is an instruction count, not a cycle count from the device, and no performance claim may
+# cite it.  What it establishes is the PROTOCOL: that a build of this harness emits lines the
+# receipt parser accepts, framed around the numbers a v2 policy declares.
+MERLIN_INVOCATIONS warmup=1 measured=1
+MERLIN_WINDOW begin label=group_model
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+GM_GROUP 1 conv2d 72474 sum=5663048
+GM_GROUP 2 matmul 5756 sum=1902727
+GM_GROUP 3 conv2d 53677 sum=3305741
+GM_GROUP 4 matmul 21787 sum=-1923966
+GM_GROUP 5 matmul 21787 sum=-3855119
+GM_GROUP 6 sum 7883 sum=4037050
+GM_GROUP 7 matmul 5756 sum=1461282
+GM_GROUP 8 conv2d 53677 sum=3227305
+GM_GROUP 9 matmul 21787 sum=-2428442
+GM_GROUP 10 sum 7881 sum=4953110
+GM_GROUP 11 matmul 5756 sum=3045690
+GM_GROUP 12 conv2d 53677 sum=3332260
+GM_GROUP 13 matmul 21787 sum=-3681748
+GM_GROUP 14 sum 7881 sum=5851743
+GM_GROUP 15 matmul 15590 sum=1748882
+GM_GROUP 16 conv2d 39033 sum=1133852
+GM_GROUP 17 matmul 10539 sum=66187
+GM_GROUP 18 conv2d 189450 sum=-293640
+GM_GROUP 19 sum 4027 sum=2817782
+GM_GROUP 20 matmul 4129 sum=1179122
+GM_GROUP 21 conv2d 82263 sum=1349931
+GM_GROUP 22 matmul 10539 sum=-3695797
+GM_GROUP 23 sum 4027 sum=2719035
+GM_GROUP 24 matmul 4129 sum=920672
+GM_GROUP 25 conv2d 82263 sum=1092582
+GM_GROUP 26 matmul 10539 sum=-4580607
+GM_GROUP 27 sum 4027 sum=2431829
+GM_GROUP 28 matmul 4129 sum=1142961
+GM_GROUP 29 conv2d 82263 sum=1187582
+GM_GROUP 30 matmul 10539 sum=-4759471
+GM_GROUP 31 sum 4027 sum=2449321
+GM_GROUP 32 matmul 5676 sum=460792
+GM_GROUP 33 conv2d 31549 sum=1428826
+GM_GROUP 34 matmul 5813 sum=-1896972
+GM_GROUP 35 conv2d 208775 sum=-504805
+GM_GROUP 36 sum 2093 sum=1516369
+GM_GROUP 37 matmul 3726 sum=323392
+GM_GROUP 38 conv2d 82574 sum=446858
+GM_GROUP 39 matmul 5813 sum=-1735432
+GM_GROUP 40 sum 2093 sum=1521253
+GM_GROUP 41 matmul 3726 sum=239157
+GM_GROUP 42 conv2d 82574 sum=203884
+GM_GROUP 43 matmul 5813 sum=-1035532
+GM_GROUP 44 sum 2093 sum=917975
+GM_GROUP 45 matmul 3726 sum=41398
+GM_GROUP 46 conv2d 82574 sum=66683
+GM_GROUP 47 matmul 5813 sum=-485004
+GM_GROUP 48 sum 2093 sum=328987
+GM_GROUP 49 matmul 3726 sum=21408
+GM_GROUP 50 conv2d 82574 sum=109348
+GM_GROUP 51 matmul 5813 sum=-539679
+GM_GROUP 52 sum 2093 sum=367230
+GM_GROUP 53 matmul 3726 sum=55520
+GM_GROUP 54 conv2d 82574 sum=140898
+GM_GROUP 55 matmul 5813 sum=-990872
+GM_GROUP 56 sum 2093 sum=469739
+GM_GROUP 57 matmul 6195 sum=96512
+GM_GROUP 58 conv2d 14136 sum=184603
+GM_GROUP 59 matmul 3095 sum=-1930374
+GM_GROUP 60 conv2d 211066 sum=-760102
+GM_GROUP 61 sum 2093 sum=59566
+GM_GROUP 62 matmul 2678 sum=20633
+GM_GROUP 63 conv2d 15505 sum=33876
+GM_GROUP 64 matmul 3095 sum=-886153
+GM_GROUP 65 sum 2093 sum=25625
+GM_GROUP 66 matmul 2678 sum=9465
+GM_GROUP 67 conv2d 15505 sum=38427
+GM_GROUP 68 matmul 3095 sum=-842367
+GM_GROUP 69 sum 2093 sum=32648
+GM_GROUP 70 mean 1845 sum=1248
+GM_GROUP 71 matmul 3557 sum=467
+GM_ARGMAX got=21 want=21 agrees=1
+GM_COSINE_PPM 997981
+METRIC cycles 1936744
+MERLIN_PROFILE measured end rc=0
+MERLIN_WINDOW end label=group_model

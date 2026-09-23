@@ -4,30 +4,41 @@ The core value: the legal RoCC funct set must come from the DECODER (the silicon
 (provably wrong). These tests cover the pure reconciliation logic (no mlc needed), the honest fallback
 when the HW dialect cannot be parsed, and — when mlc is available — the bridge resolve/guard.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.rtl import mlc_bridge as B
-from merlin.targetgen.rtl import circt_introspect as C
 from merlin.common.paths import repo_root
+from merlin.targetgen.rtl import circt_introspect as C
+from merlin.targetgen.rtl import mlc_bridge as B
+
+pytestmark = pytest.mark.target("gemmini", "radiance", "saturn_opu_mxv256d128")
 
 _MLC_OK = B.mlc_available()[0]
 
 
 # --------------------------------------------------------------------------- pure reconciliation
 def test_reconcile_prefers_decoder_and_records_discrepancy():
-    header = {"name": "funct_decode_table", "legal_funct": list(range(26)),  # [0..25], header-parsed
-              "names": {"25": "LOOP_WS_CONFIG_SPAD_C", "3": "COMPUTE"}, "method": "scala_header_parse"}
-    decoder = {"name": "funct_decode_table", "legal_funct": [0, 1, 2, 3, 126],
-               "method": "decoder_icmp_fanout(mlc)", "evidence": "decoder set"}
+    header = {
+        "name": "funct_decode_table",
+        "legal_funct": list(range(26)),  # [0..25], header-parsed
+        "names": {"25": "LOOP_WS_CONFIG_SPAD_C", "3": "COMPUTE"},
+        "method": "scala_header_parse",
+    }
+    decoder = {
+        "name": "funct_decode_table",
+        "legal_funct": [0, 1, 2, 3, 126],
+        "method": "decoder_icmp_fanout(mlc)",
+        "evidence": "decoder set",
+    }
     out = C._reconcile_funct(decoder, header)
-    assert out["method"].startswith("decoder_icmp_fanout")          # decoder wins (it is the silicon)
+    assert out["method"].startswith("decoder_icmp_fanout")  # decoder wins (it is the silicon)
     assert out["legal_funct"] == [0, 1, 2, 3, 126]
-    assert 25 in out["header_only_functs"]                          # phantom: header claims, silicon doesn't
-    assert 126 in out["decoder_only_functs"]                        # missing: silicon decodes, header omits
-    assert out["names"]["3"] == "COMPUTE"                           # names borrowed from the header
-    assert out["names"]["126"] == "?"                               # decoded-but-unnamed surfaced honestly
+    assert 25 in out["header_only_functs"]  # phantom: header claims, silicon doesn't
+    assert 126 in out["decoder_only_functs"]  # missing: silicon decodes, header omits
+    assert out["names"]["3"] == "COMPUTE"  # names borrowed from the header
+    assert out["names"]["126"] == "?"  # decoded-but-unnamed surfaced honestly
 
 
 def test_reconcile_falls_back_to_header_when_no_decoder():
@@ -46,8 +57,10 @@ def test_decoder_extraction_returns_none_when_no_core_hw(monkeypatch):
 
 
 # --------------------------------------------------------------------------- B2 end-to-end (mlc-gated)
-@pytest.mark.skipif(not _MLC_OK or B.core_hw_mlir("gemmini") is None,
-                    reason="mlc / prebuilt core HW dialect not available for the example target")
+@pytest.mark.skipif(
+    not _MLC_OK or B.core_hw_mlir("gemmini") is None,
+    reason="mlc / prebuilt core HW dialect not available for the example target",
+)
 def test_decoder_derived_opcode_set_fixes_the_header_set():
     """The decisive B1/B2 result on the gemmini example target: the decoder-derived legal opcode set
     (from mlc's version-matched core HW dialect) drops the phantom header code 25 and adds the real
@@ -55,8 +68,14 @@ def test_decoder_derived_opcode_set_fixes_the_header_set():
     funct = C.extract_funct_table_via_decoder("gemmini")
     assert funct is not None and funct["method"].startswith("decoder_icmp_fanout")
     legal = set(funct["legal_funct"])
-    assert 25 not in legal and 126 in legal          # phantom dropped, real decoded code added
-    header = C.extract_funct_table(C.isa_scala_path("gemmini").read_text(errors="replace"))
+    assert 25 not in legal and 126 in legal  # phantom dropped, real decoded code added
+    block = C._scala_funct_block("gemmini")
+    assert block is not None
+    header = C.extract_funct_table(
+        C.isa_scala_path("gemmini").read_text(errors="replace"),
+        start_comment=block[0],
+        stop_declaration=block[1],
+    )
     reconciled = C._reconcile_funct(funct, header)
     assert reconciled["header_only_functs"] == [25] and reconciled["decoder_only_functs"] == [126]
 
@@ -75,31 +94,37 @@ def test_require_mlc_raises_when_unavailable(monkeypatch):
 
 
 # --------------------------------------------------------------------------- arc oracle (B2, mlc-gated)
-@pytest.mark.skipif(not _MLC_OK or not B.arc_available("gemmini"),
-                    reason="mlc / prebuilt arc model not available for the example target")
+@pytest.mark.skipif(
+    not _MLC_OK or not B.arc_available("gemmini"),
+    reason="mlc / prebuilt arc model not available for the example target",
+)
 def test_arc_core_loads_rtl_model_for_target():
     """The compile-from-RTL oracle primitive, TARGET-AGNOSTIC: arc_core(target) loads mlc's arcilator
     model for any target (gemmini here as the example argument) and exposes its state by NAME — the
     basis for internal-state probes spike cannot give, without verilator."""
     core = B.arc_core("gemmini")
-    assert core.num_state_bytes > 0                 # a real RTL model loaded from mlc's arc .so
-    assert core.manifest_port_names()               # named input/output ports discovered from the RTL
+    assert core.num_state_bytes > 0  # a real RTL model loaded from mlc's arc .so
+    assert core.manifest_port_names()  # named input/output ports discovered from the RTL
 
 
 # --------------------------------------------------------- FINE behavioural role classification (pure)
 # The feature-vector -> fine ISA name mapping is a pure function of MEASURED behaviour (no arc, no mlc):
 # an RTL change that altered a funct's behaviour would change the derived name and trip the cross-check.
 
+
 def test_classify_fine_role_compute_cluster_split_by_accumulator_and_weight_flip():
     # writes the accumulator AND flips the weight double-buffer => uses the freshly preloaded weights
-    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": True}) \
-        == ("COMPUTE_PRELOADED", True)
+    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": True}) == (
+        "COMPUTE_PRELOADED",
+        True,
+    )
     # writes the accumulator, NO flip => reuses the stationary weights
-    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": False}) \
-        == ("COMPUTE_ACCUMULATE", True)
+    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": False}) == (
+        "COMPUTE_ACCUMULATE",
+        True,
+    )
     # loads weights, commits no MAC => PRELOAD
-    assert B._classify_fine_role("compute", {"writes_accumulator": False, "loads_weights": True}) \
-        == ("PRELOAD", True)
+    assert B._classify_fine_role("compute", {"writes_accumulator": False, "loads_weights": True}) == ("PRELOAD", True)
 
 
 def test_classify_fine_role_load_cluster_split_by_config_id():
@@ -122,8 +147,10 @@ def test_classify_fine_role_coarse_grounded_fallbacks_are_flagged_not_fine_deriv
     assert B._classify_fine_role("config", {}) == ("CONFIG", False)
 
 
-@pytest.mark.skipif(not _MLC_OK or not B.arc_available("gemmini"),
-                    reason="mlc / prebuilt arc model not available for the example target")
+@pytest.mark.skipif(
+    not _MLC_OK or not B.arc_available("gemmini"),
+    reason="mlc / prebuilt arc model not available for the example target",
+)
 def test_fine_roles_behaviourally_reproduce_the_hand_semantic_class():
     """END-TO-END on the arc: derive the FINE roles, then assert every hand-declared semantic_class NAME is
     reproduced by the RTL behaviour (fine cross-check empty). This is what makes the manifest names provably
@@ -148,6 +175,7 @@ def test_fine_roles_behaviourally_reproduce_the_hand_semantic_class():
 # confirmation is a pure function of the MEASURED effect signature: macc accumulates, mvin overwrites
 # (idempotent), shift conserves accumulator magnitude (relocates). No arc, no mlc needed for this half.
 
+
 def test_opu_category_confirm_predicates_separate_macc_mvin_shift():
     macc = {"writes_accumulator": True, "accumulates": True, "conserves_magnitude": False}
     mvin = {"writes_accumulator": True, "accumulates": False, "conserves_magnitude": False}
@@ -166,19 +194,136 @@ def test_opu_category_confirm_predicates_separate_macc_mvin_shift():
 _OPU_TGT = "saturn_opu_mxv256d128"
 
 
-@pytest.mark.skipif(not _MLC_OK or not B.arc_available(_OPU_TGT),
-                    reason="mlc / prebuilt OPU arc model not available")
+@pytest.mark.skipif(not _MLC_OK or not B.arc_available(_OPU_TGT), reason="mlc / prebuilt OPU arc model not available")
 def test_opu_op_categories_confirmed_by_measured_effect():
     """END-TO-END on the OPU arc: drive each one-hot op-category port and CONFIRM its structural name by
     measured datapath effect. macc ACCUMULATES (the MRF cells grow monotonically across repeated issues),
     mvin OVERWRITES (idempotent load — writes the bank once, magnitude does not grow), shift RELOCATES
     accumulator readout through the clusters_*/pipe chain (accumulator magnitude conserved). The OPU has no
     op encoding, so this CONFIRMS the port names by behaviour — the cross-check must find NO residue."""
-    er = B.spatial_effect_roles(_OPU_TGT)   # cold cache -> regen-on-demand on the live arc
+    er = B.spatial_effect_roles(_OPU_TGT)  # cold cache -> regen-on-demand on the live arc
     assert er["derived"] is True
     feats = er["features"]
-    assert feats["macc"]["writes_accumulator"] and feats["macc"]["accumulates"]        # accumulate
-    assert feats["mvin"]["writes_accumulator"] and not feats["mvin"]["accumulates"]    # idempotent overwrite
+    assert feats["macc"]["writes_accumulator"] and feats["macc"]["accumulates"]  # accumulate
+    assert feats["mvin"]["writes_accumulator"] and not feats["mvin"]["accumulates"]  # idempotent overwrite
     assert feats["shift"]["conserves_magnitude"] and not feats["shift"]["writes_accumulator"]  # relocate
     # every structurally-declared category name is reproduced by RTL behaviour (no alarm)
     assert B.crosscheck_op_categories(_OPU_TGT) == []
+
+
+# --------------------------------------------------------------------------- arc-target name-bridge
+def test_arc_target_reads_alias_from_residual(monkeypatch):
+    """A composite target maps to its mlc arc key via the residual's ``arc_target``; a target with a
+    residual but no alias, or no residual at all, maps to itself. No target-name literal in the resolver
+    — the alias is data read from the residual, fail-closed to identity."""
+    from merlin.targetgen import capability_manifests as CM
+
+    fake = {"soc_alias": {"arc_target": "inner_cluster"}, "plain_res": {"family": "x"}}
+
+    def _fake_residual(name):
+        if name in fake:
+            return dict(fake[name])
+        raise KeyError(name)
+
+    monkeypatch.setattr(CM, "_load_residual", _fake_residual)
+    B._ARC_TARGET_CACHE.clear()
+    try:
+        assert B._arc_target("soc_alias") == "inner_cluster"  # alias honored
+        assert B._arc_target("plain_res") == "plain_res"  # residual, no alias -> identity
+        assert B._arc_target("no_such_target") == "no_such_target"  # no residual -> identity (fail-closed)
+    finally:
+        B._ARC_TARGET_CACHE.clear()
+
+
+def test_arc_target_radiance_aliases_but_rocc_targets_do_not():
+    """The shipped radiance residual declares an arc_target so its arc lookups resolve to the mlc cluster
+    key (radiance's bit-exact model is registered under the embedding cluster's name); a RoCC/systolic
+    target that ships no alias stays itself."""
+    B._ARC_TARGET_CACHE.clear()
+    try:
+        rad = B._arc_target("radiance")
+    except Exception:  # noqa: BLE001
+        pytest.skip("radiance residual absent")
+    finally:
+        B._ARC_TARGET_CACHE.clear()
+    assert rad and rad != "radiance"  # aliased to the mlc arc cluster key
+    assert B._arc_target("gemmini") == "gemmini"  # no alias -> identity
+    B._ARC_TARGET_CACHE.clear()
+
+
+# ----------------------------------------------------------------- circt-opt is its own dependency
+#
+# The binary and the Python package were one dependency: `circt-opt` was only ever looked for inside
+# mlc's own `third_party/`, whose submodules run to tens of gigabytes. A clone that wanted the one CIRCT
+# build had to take all of it, which is why a fresh checkout could not extract a fact. These pin the
+# three-place resolution that separates them, and — the part that matters — that an explicit override
+# FAILS CLOSED instead of quietly using a different binary than the caller named.
+
+
+@pytest.fixture
+def _fake_circt(tmp_path, monkeypatch):
+    """A resolver with nothing found anywhere, and the three places it can be planted."""
+    import merlin.common.paths as paths
+
+    places = {"env": {}, "path": None, "mlc": tmp_path / "mlc_checkout"}
+    monkeypatch.setattr(paths, "env", lambda key, default=None: places["env"].get(key, default))
+    monkeypatch.setattr(B.shutil, "which", lambda name: places["path"])
+    monkeypatch.setattr(B, "mlc_dir", lambda: places["mlc"])
+
+    def plant(where: str) -> str:
+        if where == "mlc":
+            b = places["mlc"] / "third_party" / "circt" / "build" / "bin" / "circt-opt"
+        else:
+            b = tmp_path / f"{where}_circt-opt"
+        b.parent.mkdir(parents=True, exist_ok=True)
+        b.write_text("#!/bin/sh\n")
+        return str(b)
+
+    places["plant"] = plant
+    return places
+
+
+def test_nothing_anywhere_is_honestly_unavailable(_fake_circt):
+    assert B.circt_opt_bin() is None
+
+
+def test_mlcs_own_copy_is_still_found_with_nothing_configured(_fake_circt):
+    """Backward compatibility, and it is the whole reason this resolution order ends where it does: an
+    existing checkout must keep working with no variable set."""
+    planted = _fake_circt["plant"]("mlc")
+    assert str(B.circt_opt_bin()) == planted
+
+
+def test_path_is_used_before_mlcs_copy(_fake_circt):
+    _fake_circt["plant"]("mlc")
+    on_path = _fake_circt["plant"]("path")
+    _fake_circt["path"] = on_path
+    assert str(B.circt_opt_bin()) == on_path
+
+
+def test_an_explicit_override_wins_over_both(_fake_circt):
+    _fake_circt["plant"]("mlc")
+    _fake_circt["path"] = _fake_circt["plant"]("path")
+    declared = _fake_circt["plant"]("declared")
+    _fake_circt["env"]["MERLIN_CIRCT_OPT"] = declared
+    assert str(B.circt_opt_bin()) == declared
+
+
+def test_an_override_that_does_not_exist_refuses_rather_than_falling_through(_fake_circt):
+    """THE POINT OF THE ORDERING. A caller that names a binary is making a claim about which toolchain a
+    result came from. Falling back to a different one because the named one is missing produces a number
+    attributed to a toolchain that never ran it -- so a bad override is unavailable, not a default.
+    """
+    _fake_circt["plant"]("mlc")
+    _fake_circt["path"] = _fake_circt["plant"]("path")
+    _fake_circt["env"]["MERLIN_CIRCT_OPT"] = "/nonexistent/circt-opt"
+    assert B.circt_opt_bin() is None
+
+
+def test_the_unavailable_reason_names_every_place_it_looked(_fake_circt, monkeypatch):
+    """A reason that named only mlc's build directory sent every reader to build the submodule, which
+    is the expensive answer and usually not the needed one."""
+    monkeypatch.setattr(B, "mlc_dir", lambda: _fake_circt["mlc"])
+    ok, reason = B.mlc_available()
+    assert ok is False
+    assert "MERLIN_CIRCT_OPT" in reason and "PATH" in reason

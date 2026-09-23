@@ -3,7 +3,7 @@
 multicore board, and gate correctness against the torch goldens.
 
 For each int8 bundle (small -> large): build a K1 Linux rv64gcv binary via the int8 package
-(rvvgen.k1.build_k1_binary, which threads int8_compute=True), scp + run on the board, parse
+(mining.k1.build_k1_binary, which threads int8_compute=True), scp + run on the board, parse
 OUT/METRIC/DONE, gate the output prefix vs golden_w8a8 (T1) and the fp32 golden (T2), objdump the
 model object to confirm genuine integer RVV was emitted, and record a resumable JSONL ledger +
 coverage table. The board run cleans its own /tmp (run_on_k1); we clean the host work dir per model
@@ -16,21 +16,39 @@ Usage:
   MERLIN_K1_HOST=root@<board-ip> .venv/bin/python build_tools/scripts/k1_int8_model_sweep.py \
       --ledger /path/to/tmp/k1_int8.jsonl
 """
-import argparse, json, shutil, subprocess, sys, time, traceback
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import time
+import traceback
 from pathlib import Path
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
-from merlin.baselines import bundle as _bundle         # noqa: E402
-from merlin.rvvgen import load_rvv_package           # noqa: E402
-from merlin.rvvgen import k1 as k1mod                  # noqa: E402
+from merlin.baselines import bundle as _bundle  # noqa: E402
+from merlin.llvmlower import custom_isa  # noqa: E402
+from merlin.mining import k1 as k1mod  # noqa: E402
+from merlin.mining import load_rvv_package  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
-from merlin.llvmlower import custom_isa                 # noqa: E402
 
 # small -> large (bundle sizes from inventory); pi05 excluded.
-DEFAULT_ORDER = ["small_llama", "bitvla", "openvla", "rdt2", "rdt", "xr0",
-                 "tiny_llama", "smolvla", "molmoact", "groot_n1d7"]
+DEFAULT_ORDER = [
+    "small_llama",
+    "bitvla",
+    "openvla",
+    "rdt2",
+    "rdt",
+    "xr0",
+    "tiny_llama",
+    "smolvla",
+    "molmoact",
+    "groot_n1d7",
+]
 PKG = ROOT / "out/artifacts/targets" / "rvv" / "hand_v0_int8"
 RVV_INT = ("vmul.vv", "vwmacc", "vmacc", "vsext", "vle8", "vadd.vv")
 
@@ -91,8 +109,7 @@ def main() -> int:
         print("ERROR: set --host or MERLIN_K1_HOST", flush=True)
         return 2
     if not k1mod.available():
-        print(f"ERROR: K1 unavailable (host={k1mod.K1_HOST}, toolchain={k1mod.toolchain_cc()})",
-              flush=True)
+        print(f"ERROR: K1 unavailable (host={k1mod.K1_HOST}, toolchain={k1mod.toolchain_cc()})", flush=True)
         return 2
     pkg = load_rvv_package(PKG)
     ledger = Path(a.ledger)
@@ -115,7 +132,9 @@ def main() -> int:
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"), "target": "k1"}
         if not (mdir / "model.mlir").is_file():
             rec.update(ran=False, error="bundle missing")
-            _append(ledger, rec); print(f"MISS {bundle}", flush=True); continue
+            _append(ledger, rec)
+            print(f"MISS {bundle}", flush=True)
+            continue
         work = Path(a.workroot) / bundle
         t0 = time.time()
         try:
@@ -125,28 +144,38 @@ def main() -> int:
                 refs["w8a8"] = np.load(w8)
             res = k1mod.run_on_k1(mdir, work, pkg, timeout=a.timeout)
             gate = zm._gate(res["prefix"], refs)
-            rec.update(ran=True, gate_ok=bool(gate.get("ok")),
-                       cos=gate.get("cos"), rel=gate.get("rel"),
-                       w8a8_cos=gate.get("w8a8_cos"), w8a8_rel=gate.get("w8a8_rel"),
-                       fp32_cos=gate.get("fp32_cos"), fp32_argmax=gate.get("fp32_argmax"),
-                       vlen=res.get("vlen"),
-                       wall_ns=res.get("metrics", {}).get("wall_ns"),
-                       cycles_est=res.get("metrics", {}).get("cycles"),
-                       tiers=list(refs))
+            rec.update(
+                ran=True,
+                gate_ok=bool(gate.get("ok")),
+                cos=gate.get("cos"),
+                rel=gate.get("rel"),
+                w8a8_cos=gate.get("w8a8_cos"),
+                w8a8_rel=gate.get("w8a8_rel"),
+                fp32_cos=gate.get("fp32_cos"),
+                fp32_argmax=gate.get("fp32_argmax"),
+                vlen=res.get("vlen"),
+                wall_ns=res.get("metrics", {}).get("wall_ns"),
+                cycles_est=res.get("metrics", {}).get("cycles"),
+                tiers=list(refs),
+            )
             # run_on_k1 builds into work/<mode>/ (v|omp|scalar); find the model.o that was used.
-            mo = next(iter(sorted(work.rglob("model.o"), key=lambda p: p.stat().st_mtime,
-                                  reverse=True)), work / "model.o")
+            mo = next(
+                iter(sorted(work.rglob("model.o"), key=lambda p: p.stat().st_mtime, reverse=True)), work / "model.o"
+            )
             rec["int_rvv"] = objdump_int_rvv(mo)
-            print(f"K1 {bundle}: ok={rec['gate_ok']} cos={rec.get('cos')} "
-                  f"int_rvv={rec['int_rvv'].get('any_int_rvv')} wall_ms="
-                  f"{(rec.get('wall_ns') or 0)/1e6:.1f} vlen={rec.get('vlen')}", flush=True)
+            print(
+                f"K1 {bundle}: ok={rec['gate_ok']} cos={rec.get('cos')} "
+                f"int_rvv={rec['int_rvv'].get('any_int_rvv')} wall_ms="
+                f"{(rec.get('wall_ns') or 0) / 1e6:.1f} vlen={rec.get('vlen')}",
+                flush=True,
+            )
         except Exception as e:  # noqa: BLE001
             rec.update(ran=False, error=f"{type(e).__name__}: {str(e).splitlines()[0][:300]}")
             print(f"K1 {bundle} ERR: {rec['error']}", flush=True)
             traceback.print_exc()
         rec["build_run_s"] = round(time.time() - t0, 1)
         _append(ledger, rec)
-        shutil.rmtree(work, ignore_errors=True)   # bound host disk (big int8 binaries)
+        shutil.rmtree(work, ignore_errors=True)  # bound host disk (big int8 binaries)
 
     _coverage(ledger, names)
     return 0
@@ -172,13 +201,17 @@ def _coverage(ledger: Path, names: list) -> None:
         b = name if name.endswith("_consistent") else f"{name}_int8_consistent"
         r = rows.get(b)
         if not r:
-            print(f"{b:<32} -", flush=True); continue
-        if not r.get("ran"):
-            print(f"{b:<32} FAIL  -     -         -        {r.get('error','')[:40]}", flush=True)
+            print(f"{b:<32} -", flush=True)
             continue
-        print(f"{b:<32} yes   {str(r.get('gate_ok')):<5} {str(r.get('cos'))[:8]:<9} "
-              f"{str(r.get('int_rvv',{}).get('any_int_rvv')):<8} "
-              f"{(r.get('wall_ns') or 0)/1e6:.1f}", flush=True)
+        if not r.get("ran"):
+            print(f"{b:<32} FAIL  -     -         -        {r.get('error', '')[:40]}", flush=True)
+            continue
+        print(
+            f"{b:<32} yes   {str(r.get('gate_ok')):<5} {str(r.get('cos'))[:8]:<9} "
+            f"{str(r.get('int_rvv', {}).get('any_int_rvv')):<8} "
+            f"{(r.get('wall_ns') or 0) / 1e6:.1f}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

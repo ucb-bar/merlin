@@ -1,4 +1,5 @@
 """Every emitted DSE dict validates against its schema."""
+
 from merlin.common import schemas
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.synthesize import FEATURE_RESIDENT

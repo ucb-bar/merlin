@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin-mining"
+version = "0.0.1"
+description = "Optional kernel search, fork campaigns, agents, and reports for Merlin"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = ["merlin==0.0.1", "numpy", "pyyaml"]
+
+[project.optional-dependencies]
+compiler = ["xdsl>=0.68"]
+
+[project.scripts]
+merlin-kernel-report = "merlin.mining.report:main"
+merlin-kernel-mine = "merlin.mining.mine:main"
+merlin-kernel-autotune = "merlin.mining.autotune:main"
+merlin-kernel-beam = "merlin.mining.beam_cli:main"
+merlin-kernel-opt = "merlin.mining.op_sweep:main"
+merlin-rvv-report = "merlin.mining.report:main"
+merlin-rvv-mine = "merlin.mining.mine:main"
+merlin-rvv-autotune = "merlin.mining.autotune:main"
+merlin-rvv-beam = "merlin.mining.beam_cli:main"
+merlin-rvv-opt = "merlin.mining.op_sweep:main"
+merlin-cca-route = "merlin.mining.route_report:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["merlin.mining*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

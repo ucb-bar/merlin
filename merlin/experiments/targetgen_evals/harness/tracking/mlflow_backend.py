@@ -20,6 +20,7 @@ class MLflowBackend:
 
         try:
             import mlflow as _mlflow
+
             self._mlflow = _mlflow
         except ImportError:
             local.warn(
@@ -51,10 +52,7 @@ class MLflowBackend:
             local.log_param("mlflow_tracking_uri", uri)
             local.log_param("mlflow_experiment_name", exp_name)
         except Exception as e:
-            local.warn(
-                f"MLflow setup failed ({e}); falling back to local-only tracking. "
-                "Is the MLflow server running?"
-            )
+            local.warn(f"MLflow setup failed ({e}); falling back to local-only tracking. Is the MLflow server running?")
             self._enabled = False
 
     @property
@@ -165,6 +163,7 @@ class MLflowBackend:
             return
         try:
             import yaml
+
             with open(manifest_path) as f:
                 manifest = yaml.safe_load(f) or {}
             obs = manifest.setdefault("observability", {})

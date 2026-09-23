@@ -1,0 +1,79 @@
+name: G_matmul_m3136k64n64_bias_add_acc_scale_relu
+kind: layer
+source_role: model_derived
+source_reference: '1 compute group(s) of resnet50 on gemmini: groups [2]'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 3136
+  - 64
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 64
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - bias_add
+    - acc_scale
+    - relu
+    output_dtype: i8
+    bias: B
+    acc_scale: 0.019933897080131928
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.019933897080131928
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: true
+    acc_scale: true
+    i8: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+# CAPPED, NOT CERTIFIED. This member's operands exceed what a cycle-accurate certification can
+# afford, so declaring L3 for itself made it unverifiable by construction: no sibling can pass a
+# tier deeper than the one it already claims. It is an EXTENSION of a certified sibling --
+# `phase_policy.anchors` derives which one witnesses this obligation, so naming it here would
+# either duplicate that answer or contradict it. The guarantee is the sibling's; this member
+# carries the real shape.
+max_oracle_tier: L2
+vcs: optional
+firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map

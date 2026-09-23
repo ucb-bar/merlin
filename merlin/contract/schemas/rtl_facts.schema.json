@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/contract/rtl_facts.schema.json",
+  "title": "RTL facts artifact",
+  "description": "What one target's hardware IS, extracted from that target's own sources. Consumed by ~40 modules and, until this schema existed, described by none of them: each reader recognised the shape it wanted by the presence of a key, and the three shapes on disk differ in more than which keys they carry. `source` is a mapping in two families and a bare STRING in a third, so every reader reaching for a key inside it crashed on that one. Datapaths are named by ROLE in two families and by FORMAT in a third, so a name is not a role. Two families carry no `arrays` at all. A shape recognised by sniffing is a shape nobody declared, and adding a family meant discovering every sniffing site by breaking it. FAMILY is therefore required and is the discriminator: it names which extractor produced the artifact, and what it is obliged to carry follows from that. Its vocabulary is `targetgen.families.FamilyProfile.fact_extractor` -- the routing key that already decides which extractor runs -- rather than a second vocabulary for one thing.",
+  "type": "object",
+  "required": ["schema_version", "family", "facts"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The artifact format's own version. NOT a family discriminator, though it was pressed into service as one: two of the three families spell a family-specific token here while the third spells a bare number shared by three different shapes, so it can separate some pairs and not others."
+    },
+    "family": {
+      "type": "string",
+      "enum": ["circt_static", "simt_config", "opu"],
+      "description": "Which extractor produced this artifact, and therefore which shape its body has. Taken from the producing family's own `fact_extractor` so the two cannot drift: a family added there arrives here, and an artifact claiming a family that does not exist is refused rather than read as the nearest one."
+    },
+    "generator": {
+      "type": "object",
+      "description": "What produced the artifact. Absent on one cached artifact today, which is why it is not required: making it required would fail an artifact that is otherwise readable, and a schema that refuses what the tree actually contains gets bypassed rather than satisfied.",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "The bytes the extraction READ, by digest, plus `toolchain`: which BUILD of circt-opt / firtool / mlc did the reading. Its other keys differ per family because the inputs differ per family -- an elaborated design, a perf-model config and a state manifest are not the same kind of thing -- so they are not constrained here beyond being an object. `toolchain` is not required: an artifact that predates the field records nothing about its toolchain, which is a different state from one that looked and recorded UNKNOWN, and demanding it would retroactively fail every reviewed pin.",
+      "properties": {
+        "toolchain": {
+          "type": "object",
+          "description": "Per tool, its self-reported version, else a digest of its bytes, else the string UNKNOWN with an `unknown_reason`. Never an omitted tool: a tool that was not found is a visible fact about the extraction, and an absent key is invisible."
+        }
+      }
+    },
+    "unknown": {
+      "type": "object",
+      "description": "Why an extraction did not ground what it owed, kept OUTSIDE `facts` on purpose. Putting a reason in the body would make an ungrounded artifact test as populated, which is the difference between 'this device has no such thing' and 'we could not look'. Its PRESENCE is also what exempts an artifact from its family's positive obligation below: an extraction that states what it could not read is a legal result, and one that states nothing and carries nothing is not."
+    },
+    "families": {
+      "type": "array",
+      "description": "Every extractor that contributed, for a HYBRID target whose declared compute-unit kinds route to more than one. Absent on a single-family artifact, so nothing that existed before grows a key. When it is present the body carries more than one family's shape at once by construction, so the single-family shape constraints below do not apply to it.",
+      "items": {"type": "string", "enum": ["circt_static", "simt_config", "opu"]},
+      "minItems": 2
+    },
+    "conflicts": {
+      "type": "array",
+      "description": "Readings two of a hybrid's extractors both derived and DISAGREED on. Kept rather than resolved: a device whose two halves report different geometries has a real problem, and a merge that hides it turns that problem into a wrong number nobody can trace.",
+      "items": {"type": "object"}
+    },
+    "served_for": {
+      "type": "object",
+      "description": "Stamped at read time when one design's artifact is served for a variant of it. Outside `facts` so the body every consumer reads is byte-identical to the base's."
+    },
+    "provenance": {"type": "object"},
+    "cross_check": {"type": "object"},
+    "rtl_hierarchy_counts": {"type": "object"},
+    "facts": {
+      "type": "object",
+      "description": "The body. Empty is a legal artifact and a distinct state: it means the extractor ran and grounded nothing, which a consumer must be able to tell apart from a rich body -- but only WITH a top-level `unknown` saying why. Without one it is not a result at all, and the per-family blocks below refuse it. A body key ending `_undeterminable` is a recorded refusal, not a fact, and does not count towards anything required here.",
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "source": {
+          "description": "What the facts were extracted FROM. A mapping in two families and a bare string in the third; both are accepted here because both are on disk, and `common.facts_view.source` is the one reader that normalises them. A consumer that indexes into this directly is the bug this permissiveness documents.",
+          "oneOf": [{"type": "object"}, {"type": "string", "minLength": 1}]
+        },
+        "interfaces": {
+          "type": "array",
+          "description": "Command streams, decode tables and feature blocks, each a named block. Always a LIST of named blocks, never a mapping of block name to block -- the one shape every family agrees on.",
+          "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
+        },
+        "memories": {
+          "type": "array",
+          "description": "On-chip stores. Only `name` is common across families: one gives bytes and depth, one gives banks and row widths, one gives cells and bits per entry. `targetgen.address_space` is the reader that turns any of them into a store with a role and a capacity.",
+          "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
+        },
+        "arrays": {
+          "type": "array",
+          "description": "Compute arrays. Absent on every family whose device has none, which is a fact about the device and not a gap in the extraction.",
+          "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
+        },
+        "datapaths": {
+          "type": "array",
+          "description": "Arithmetic datapaths. The NAMING AXIS differs by family: two name a datapath by its role, one names it by its format. A reader that treats a name as a role is wrong on one of the three.",
+          "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}
+        },
+        "timing": {
+          "type": "array",
+          "description": "Per-MODULE register-chain depths. Not per-instruction latencies: they corroborate a declared cost, they do not supply one.",
+          "items": {"type": "object", "required": ["module"]}
+        },
+        "simt": {
+          "type": "object",
+          "description": "Thread geometry. Flat positive integers; a zero or missing extent is not a degenerate hierarchy, it is an unread one.",
+          "properties": {
+            "lanes_per_warp": {"type": "integer", "minimum": 1},
+            "warps_per_core": {"type": "integer", "minimum": 1},
+            "cores": {"type": "integer", "minimum": 1}
+          }
+        },
+        "spatial": {
+          "type": "object",
+          "description": "Tile geometry and element widths for a spatial tensor tile.",
+          "properties": {"tile_dim": {"type": "object"}}
+        },
+        "census": {"type": "object"},
+        "datapaths_undeterminable": {"type": "array"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "A SINGLE-FAMILY artifact is held to its family's shape. A hybrid (see `families`) carries two shapes at once by construction and is covered by the last block instead.",
+      "if": {"required": ["family"], "properties": {"family": {"const": "simt_config"}}, "not": {"required": ["families"]}},
+      "then": {
+        "anyOf": [
+          {"required": ["unknown"]},
+          {
+            "properties": {
+              "facts": {
+                "description": "A SIMT body describes a thread geometry and a shared store, and describes no compute array: reading one as a systolic body finds neither. Stated POSITIVELY as well as negatively -- a rule that only forbids another family's keys is satisfied by an empty body, so `facts: {}` validated as a SIMT extraction and every consumer read it as a device with no threads. `simt` is the one fact nothing else stands in for; `target` says which device the geometry belongs to, which the provenance convention requires of any artifact that claims a hardware fact.",
+                "required": ["simt", "target"],
+                "not": {"required": ["arrays"]}
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {"required": ["family"], "properties": {"family": {"const": "opu"}}, "not": {"required": ["families"]}},
+      "then": {
+        "anyOf": [
+          {"required": ["unknown"]},
+          {
+            "properties": {
+              "facts": {
+                "description": "A spatial body carries its tile geometry under `spatial`, not as an array list plus a memory list -- and it must actually carry it. A command-buffer tile has no decode table to fall back on, so an artifact without its geometry leaves this class of target with nothing to compile from.",
+                "required": ["spatial", "target"],
+                "not": {"required": ["simt"]}
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {"required": ["family"], "properties": {"family": {"const": "circt_static"}}, "not": {"required": ["families"]}},
+      "then": {
+        "anyOf": [
+          {"required": ["unknown"]},
+          {
+            "properties": {
+              "facts": {
+                "description": "A statically extracted body describes neither a thread geometry nor a spatial tile: those belong to the other two families, and a body carrying one is not this family's shape. What it must carry is WHICH device it describes, plus at least one thing it actually read. The structural obligation proper (a mesh needs `arrays` + `memories` + `datapaths`, a vector unit needs `datapaths`, a scalar pipe needs `interfaces`) cannot live here, because this one extractor serves three different compute-unit KINDS and the schema only sees the extractor -- it is declared per kind as `families.FamilyProfile.required_facts` and enforced by the production writer, which knows the kind set. This is the backstop that stops an empty body from passing as an extraction of anything.",
+                "required": ["target"],
+                "allOf": [
+                  {"not": {"required": ["simt"]}},
+                  {"not": {"required": ["spatial"]}},
+                  {
+                    "$comment": "At least one section the extractor could only have got by reading the design. `target` alone is an artifact that named a device and grounded nothing.",
+                    "anyOf": [
+                      {"required": ["source"]},
+                      {"required": ["arrays"]},
+                      {"required": ["memories"]},
+                      {"required": ["datapaths"]},
+                      {"required": ["interfaces"]}
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "$comment": "A hybrid's artifact is the merge of two families' bodies, so no single family's shape constraint applies to it. What still must hold is that it grounded something or said why not.",
+      "if": {"required": ["families"]},
+      "then": {
+        "anyOf": [
+          {"required": ["unknown"]},
+          {"properties": {"facts": {"minProperties": 1, "required": ["target"]}}}
+        ]
+      }
+    }
+  ]
+}

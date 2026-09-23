@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-07-14
 related: [core_dialects, llvm_integration]
-code_refs: [merlin/python/merlin/xdsl_dialects/lowering, merlin/python/merlin/llvmlower]
+code_refs: [src/merlin/xdsl_dialects/lowering, src/merlin/llvmlower]
 ---
 
 # The Merlin lowering pipeline, phase by phase
@@ -183,7 +183,7 @@ Files: `llvmlower/codegen.py`, `runtime/abi/mlir_runtime.c`, `runtime/baremetal/
 - **Merlin C runtime** (`merlin/runtime/c/`) — generic descriptor builder + arg table +
   weights blob + bump allocator (`baremetal/spike/merlin_malloc.c`). Drives the whole
   compiled `forward()` on host and on **spike bare-metal RVV**.
-- `merlin/python/merlin/runtime/backends/spike_model.py` — build (lower → cgen → rv64gcv
+- `src/merlin/runtime/backends/spike_model.py` — build (lower → cgen → rv64gcv
   → link weights blob + harness) + run (`spike --isa=rv64gcv_zfh_zvfh`) + verify.
 **Verified:** a complete small LLaMA (RMSNorm/RoPE/attention/softmax/SwiGLU/lm_head) runs
 end-to-end on spike with RVV — **spike == host == torch, cos 0.9999999** (`test_spike_model.py`).

@@ -1,0 +1,189 @@
+# THE WINDOW PLAN FOR MEASURING EXCHANGE RATES, designed against the cost model that exists.
+#
+# WHAT THIS REPLACES. `perf_exchange_rates.yaml` carries a three-arm sketch in a comment. Two of its
+# three arms survive contact with the code and one does not; the corrections are recorded in
+# The declared phase-2 measurement contract is summarized where it applies below.
+#
+# THE MODEL THESE WINDOWS ARE DESIGNED AGAINST. Two different cost models exist and they disagree:
+#
+#   * `targetgen.routing.MeasuredCost.__call__` prices a tiled unit with a SINGLE SQUARE tile edge:
+#     pairs = ceil(m/tile)*ceil(n/tile), cost = pairs*k*tile^2/rate + pairs*tile_overhead + dispatch.
+#     It is SYMMETRIC in m and n, so any reshape preserving the tile-pair count is priced identically.
+#   * `perf.envelope.array_issue_time` -> `perf.mesh_occupancy.tile_issue_cycles` prices the
+#     sequencer's own loop against a RECTANGULAR array:
+#         issue(tile) = rows * ceil(depth/array_rows) * ceil(cols/array_cols)
+#     and is deliberately ASYMMETRIC -- rows are charged linearly, cols are charged by the ceiling.
+#     `cost_plane.derived_floor` calls this "the tight one ... including the partial-block waste a
+#     division cannot see".
+#
+# The windows below are designed against the SECOND model, because it is the one that can see a
+# partial block at all. A plan designed against the first would find every arm flat by construction.
+#
+# ALGEBRA THE WINDOWS REST ON. Let E be the array edge, DERIVED from the target's own facts and never
+# written here. A contraction M x N x K is cut into A chunks along M and B chunks along N; K IS NEVER
+# CUT (splitting the reduction reassociates the accumulation and per-group checksums stop being
+# comparable). Summing tile_issue_cycles over the chunk grid:
+#
+#     issue = (sum_i m_i) * ceil(K/E) * (sum_j ceil(n_j/E)) = M * ceil(K/E) * S,   S = sum_j ceil(n_j/E)
+#
+# Two consequences do all the work:
+#   * every n_j an exact multiple of E  =>  S = N/E, INVARIANT under any such retiling, while the
+#     dispatch count A*B varies freely. That is a clean dispatches arm.
+#   * n_j = E/2 or E/4  =>  each chunk still costs a whole array width, so S doubles or quadruples
+#     while the useful MACs do not move at all. Compensating with coarser M chunks holds A*B fixed.
+#     That is a clean mesh-issue arm.
+#
+# Shapes are declared in EDGE MULTIPLES so the plan is target-agnostic: every ratio below is
+# independent of E, and the checker verifies the isolation algebraically rather than at one E.
+
+schema: exchange_rate_window_plan_v1
+version: 1
+
+# The device these rates will belong to. A rate is per DEVICE, never per configuration string.
+design: firesim_gemmini_rocket_u250_30mhz
+
+# ---------------------------------------------------------------------------------------------
+# WHAT IS ACTUALLY MEASURED, AND WHAT IS ONLY MODELLED. Recorded because the difference decides
+# what the fit means, and it is not visible from the term names.
+# ---------------------------------------------------------------------------------------------
+regressors:
+  host_dynamic_operations_total:
+    source: measured
+    detail: >-
+      Read from the host counters (`perf.hw_counters`). This is the one term of the three that the
+      machine reports.
+  dispatches:
+    source: plan_derived
+    detail: >-
+      `structural_delta` takes it from `plan.emitted_dispatches` -- verified emitted tasks, not a
+      runtime count. It also counts `issued_configuration_instructions` SEPARATELY, which is what
+      makes arm H below possible; see that arm's precondition.
+  mesh_issue_cycles:
+    source: model_derived
+    detail: >-
+      NOT a hardware counter. It appears nowhere in the counter infrastructure -- only in the
+      exchange-rate ledger's comment. It is computed from the declared tiles by
+      `mesh_occupancy.mesh_occupancy`. So this regressor is a MODEL QUANTITY regressed against
+      measured total cycles, and a poor fit falsifies the model as readily as it falsifies the rate.
+      Stated here so the resulting ledger entry's provenance can say so.
+
+# ---------------------------------------------------------------------------------------------
+# THE FIT IS TRIANGULAR, NOT THREE INDEPENDENT ISOLATIONS. This is the plan's main finding and its
+# main concession: `host_dynamic_operations_total` and `dispatches` ARE NOT MUTUALLY SEPARABLE by
+# any retiling. A dispatch is issued BY host instructions, so every window that adds a group adds
+# host operations in fixed proportion. No choice of tiling breaks that link.
+#
+# What does break it is a change to the LOOP BODY rather than the tiling: the contraction emitter
+# re-emits a load configuration before every operand move, which is redundant whenever the stride is
+# unchanged. Hoisting it removes host operations at constant dispatches, constant issue cycles and
+# bit-identical output. So arm H is fit FIRST and its rate is carried into arm D as a known
+# quantity. Each arm below must leave no term free: every term is varied, pinned, or already fit.
+# ---------------------------------------------------------------------------------------------
+fit_order: [H, D, I, C]
+
+# Program shape for the fitting arms, in edge multiples (M = a*E, N = b*E, K = c*E).
+base_shape: {a: 16, b: 16, c: 16}
+
+arms:
+
+  # -------------------------------------------------------------------------------------------
+  - id: H
+    term: host_dynamic_operations_total
+    varies: host_config_emissions
+    pinned: [dispatches, mesh_issue_cycles, useful_macs]
+    previously_fit: []
+    mechanism: >-
+      Identical tiling in all three windows; only the number of configuration instructions emitted
+      per tile changes, by hoisting the redundant re-emission out of the operand loops. The edit is
+      to the granted scheduling symbol, not to the configuration encoder -- the phase-2 edit contract
+      draws that line deliberately.
+    precondition: >-
+      REQUIRES that a configuration instruction is not counted as a dispatch. `structural_delta`
+      carries `issued_configuration_instructions` as a term distinct from `dispatches`, which is
+      good evidence, but it has NOT been confirmed against the emitter that populates
+      `plan.emitted_dispatches`. Confirm before running; if a config IS a dispatch, this arm moves
+      two terms and `host_dynamic_operations_total` is NOT separable on this machine at all -- which
+      is a finding, and `exchange_rates` refusing the rate is then the correct outcome.
+    windows:
+      - {id: H0, m_edges: 4, n_edges: 1, k_chunks: 1, config_per_tile: 2}
+      - {id: H1, m_edges: 4, n_edges: 1, k_chunks: 1, config_per_tile: 1}
+      - {id: H2, m_edges: 4, n_edges: 1, k_chunks: 1, config_per_tile: 0}
+
+  # -------------------------------------------------------------------------------------------
+  - id: D
+    term: dispatches
+    varies: dispatches
+    pinned: [mesh_issue_cycles, useful_macs, host_config_emissions]
+    previously_fit: [host_dynamic_operations_total]
+    mechanism: >-
+      Every N chunk is an exact multiple of E, so S = N/E and the modelled issue cycles are invariant
+      while the dispatch count runs 1, 2, 4, 8. This arm is the one the ledger's existing sketch got
+      right, and it is reproduced here unchanged in substance.
+    caveat: >-
+      `host_config_emissions` is pinned per tile, but the PER-GROUP host prologue is not: eight
+      groups cost eight prologues. That residue is why arm H is fit first -- its rate prices the
+      host-operation delta this arm still carries.
+    windows:
+      - {id: D0, m_edges: 16, n_edges: 16, k_chunks: 1, config_per_tile: 2}
+      - {id: D1, m_edges: 8,  n_edges: 16, k_chunks: 1, config_per_tile: 2}
+      - {id: D2, m_edges: 8,  n_edges: 8,  k_chunks: 1, config_per_tile: 2}
+      - {id: D3, m_edges: 4,  n_edges: 8,  k_chunks: 1, config_per_tile: 2}
+
+  # -------------------------------------------------------------------------------------------
+  - id: I
+    term: mesh_issue_cycles
+    varies: mesh_issue_cycles
+    pinned: [dispatches, useful_macs, host_config_emissions]
+    previously_fit: [host_dynamic_operations_total]
+    mechanism: >-
+      N chunks narrower than the array edge (E, E/2, E/4). Each still occupies the full array width
+      for its whole tile, so S runs 1x, 2x, 4x while the useful MACs do not move. The M chunks are
+      coarsened in compensation so the dispatch count stays exactly 64 in all three windows.
+    refutes: >-
+      The ledger's sketch called this "vary the tile ASPECT", and a reading of `MeasuredCost` says an
+      aspect change preserving the tile-pair count is priced identically. Both are true of
+      `MeasuredCost` and neither is true of `mesh_occupancy`, which charges rows and cols
+      differently. The windows below vary the CHUNK WIDTH against a fixed array width, which is the
+      thing that model actually prices.
+    windows:
+      - {id: I0, m_edges: 4,  n_edges: 1,    k_chunks: 1, config_per_tile: 2}
+      - {id: I1, m_edges: 8,  n_edges: 0.5,  k_chunks: 1, config_per_tile: 2}
+      - {id: I2, m_edges: 16, n_edges: 0.25, k_chunks: 1, config_per_tile: 2}
+
+  # -------------------------------------------------------------------------------------------
+  - id: C
+    term: closure
+    varies: none
+    pinned: []
+    previously_fit: [host_dynamic_operations_total, dispatches, mesh_issue_cycles]
+    role: closure
+    shape: {a: 12, b: 12, c: 8}
+    mechanism: >-
+      A program at a DIFFERENT shape in which all three terms are known. The three fitted rates price
+      it and the sum is compared against its measured total; the residue is the
+      `closure_residual_fraction` the ledger entry must carry. Without this the three slopes are
+      three unrelated fits and `exchange_rates` refuses them under the declared 0.05 bound -- which
+      is the correct outcome, not a failure.
+    windows:
+      - {id: C0, m_edges: 3, n_edges: 0.5, k_chunks: 1, config_per_tile: 2}
+
+# ---------------------------------------------------------------------------------------------
+# Provided by `perf.firesim_batch`, NOT reimplemented here: one bootbinary, N framed windows, one
+# runworkload, per-window group checksums, a stray or missing METRIC line invalidating the batch,
+# and the last window repeating window 0 as the order control. The plan declares that it relies on
+# these; the mechanism lives there.
+# ---------------------------------------------------------------------------------------------
+batch:
+  mechanism: merlin.perf.firesim_batch
+  order_control: repeat_window_0_as_last
+  requires:
+    - shared weight blob, sha256-verified across members
+    - per-window declared group checksums (a v2 UART validation policy; v1 cannot support a cycle claim)
+    - order-control divergence invalidates every window, including the ones that looked fine
+
+bit_identity:
+  rule: >-
+    Every window within an arm must produce a BIT-IDENTICAL compared slice. M/N chunking partitions
+    the output and changes no accumulation order; K is never cut. Where a narrow N chunk requires
+    zero padding, the padding is outside the compared slice.
+  enforced_by: per-window group checksums in the batch receipt, not by this plan

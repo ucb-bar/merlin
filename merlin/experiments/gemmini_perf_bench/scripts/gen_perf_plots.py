@@ -20,12 +20,14 @@ import numpy as np
 
 import _pbcommon as PB
 import perf_style as S
+import perf_reporting as PR
 
 ARMS5 = ["golden", "baseline", "merlin_targetgen", "iree_dialect", "merlin_native"]
 
 
 def _load(run_id):
     run = PB.RUNS / run_id
+    PR.refuse_legacy_cross_approach(run, "gen_perf_plots.py")
     pr = json.loads((run / "perf_results.json").read_text())
     fs_path = run / "firesim_arm_results.json"
     fs = json.loads(fs_path.read_text()) if fs_path.is_file() else {}

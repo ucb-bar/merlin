@@ -1,60 +1,70 @@
 {
   "arm_order": [
     "baseline",
+    "cpp_merlininfra",
     "merlin",
     "merlin_rtlchecks"
   ],
   "cond_order": [
     "kernels",
-    "no-kernels"
+    "no-kernels",
+    "kernel-library"
   ],
   "cells": {
     "baseline|kernels": {
       "n_runs": 1,
-      "n_valid": 1,
+      "n_valid": 0,
       "run_ids": [
-        "rb_abc4"
+        "rb_g3arm_20260908"
       ],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
-          "mean": 33.628,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            33.628
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "cost",
           "unit": "$"
         },
         "wall_s": {
-          "mean": 48.00826666666667,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            48.00826666666667
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "active wall",
           "unit": "min"
         },
         "n_rounds": {
-          "mean": 2.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            2
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "rounds",
           "unit": "rounds"
         },
         "passed": {
-          "mean": 25.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            25
-          ],
-          "label": "capsules passed",
-          "unit": "/25"
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -87,6 +97,22 @@
       "n_valid": 0,
       "run_ids": [],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
           "mean": null,
           "std": null,
@@ -116,8 +142,326 @@
           "std": null,
           "n": 0,
           "values": [],
-          "label": "capsules passed",
-          "unit": "/25"
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "baseline|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|kernels": {
+      "n_runs": 1,
+      "n_valid": 0,
+      "run_ids": [
+        "rbinfra_g3arm_20260908"
+      ],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|no-kernels": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -146,10 +490,28 @@
       }
     },
     "merlin|kernels": {
-      "n_runs": 0,
+      "n_runs": 1,
       "n_valid": 0,
-      "run_ids": [],
+      "run_ids": [
+        "merlin_g3arm_20260908_r2"
+      ],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
           "mean": null,
           "std": null,
@@ -179,8 +541,8 @@
           "std": null,
           "n": 0,
           "values": [],
-          "label": "capsules passed",
-          "unit": "/25"
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -213,6 +575,22 @@
       "n_valid": 0,
       "run_ids": [],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
           "mean": null,
           "std": null,
@@ -242,8 +620,87 @@
           "std": null,
           "n": 0,
           "values": [],
-          "label": "capsules passed",
-          "unit": "/25"
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "merlin|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -276,6 +733,22 @@
       "n_valid": 0,
       "run_ids": [],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
           "mean": null,
           "std": null,
@@ -305,8 +778,8 @@
           "std": null,
           "n": 0,
           "values": [],
-          "label": "capsules passed",
-          "unit": "/25"
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -339,6 +812,22 @@
       "n_valid": 0,
       "run_ids": [],
       "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
         "cost_usd": {
           "mean": null,
           "std": null,
@@ -368,8 +857,87 @@
           "std": null,
           "n": 0,
           "values": [],
-          "label": "capsules passed",
-          "unit": "/25"
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "merlin_rtlchecks|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "rtl_clean": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules RTL-clean (L3)",
+          "unit": "#"
+        },
+        "l2_only": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "L2-only (L3 rejected)",
+          "unit": "#"
+        },
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed (L2 gate)",
+          "unit": "#"
         },
         "think_pct": {
           "mean": null,
@@ -399,6 +967,8 @@
     }
   },
   "metrics": [
+    "rtl_clean",
+    "l2_only",
     "cost_usd",
     "wall_s",
     "n_rounds",
@@ -407,5 +977,5 @@
     "sims_skipped",
     "sims_run"
   ],
-  "tag_filter": "abc4"
+  "tag_filter": "g3arm_20260908"
 }

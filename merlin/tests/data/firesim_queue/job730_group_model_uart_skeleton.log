@@ -1,0 +1,95 @@
+# Protocol marker lines from FireSim queue job 730's UART (the measured resnet50
+# group-model run, hw_config alveo_u250_firesim_gemmini_rocket_30mhz, submitted as
+# workload 'merlin-checkpoint' from
+# out/artifacts/perf-bench/gemmini/rcp_ours_pinned_input_20260919T040238Z/group_model_program.elf), in order, from its
+# uartlog; every other line dropped.  The only edit is stripping each line's trailing
+# CR: the FPGA console emits CRLF and git would rewrite it anyway.  The line content
+# itself is untouched.
+#
+# THE RUN THAT WAS WRONG.  It published 23,787,829 cycles -- under both declared cycle
+# thresholds -- with an argmax marker BYTE-IDENTICAL to a correct run's, and every one of
+# its 71 group checksums differs from the oracle, starting at group 1 (5,652,929 against
+# 5,663,048).  Kept so the admission rule is tested against the run it exists for, rather
+# than against a mutation somebody wrote to match it.
+#
+# Note what this log does NOT contain: a 'METRIC cycles N' line or a
+# 'MERLIN_INVOCATIONS' line.  It publishes 'GROUP_MODEL_TOTAL cycles: N' instead, which
+# is why no run of this harness could be sealed at all, independently of correctness.
+MERLIN_PROFILE warmup begin
+MERLIN_PROFILE warmup end rc=0
+MERLIN_PROFILE measured begin
+GM_GROUP 1 conv2d 1329754 sum=5652929
+GM_GROUP 2 matmul 56125 sum=1901234
+GM_GROUP 3 conv2d 496562 sum=3255078
+GM_GROUP 4 matmul 223596 sum=-1897595
+GM_GROUP 5 matmul 228179 sum=-3839148
+GM_GROUP 6 sum 484304 sum=4041774
+GM_GROUP 7 matmul 206529 sum=1428591
+GM_GROUP 8 conv2d 496131 sum=3276799
+GM_GROUP 9 matmul 220733 sum=-2871854
+GM_GROUP 10 sum 438395 sum=4723209
+GM_GROUP 11 matmul 206423 sum=2981042
+GM_GROUP 12 conv2d 497033 sum=3216917
+GM_GROUP 13 matmul 220250 sum=-3263977
+GM_GROUP 14 sum 493593 sum=5552623
+GM_GROUP 15 matmul 407525 sum=1524637
+GM_GROUP 16 conv2d 603727 sum=1147066
+GM_GROUP 17 matmul 208104 sum=40353
+GM_GROUP 18 conv2d 518025 sum=-151532
+GM_GROUP 19 sum 269736 sum=2792195
+GM_GROUP 20 matmul 208043 sum=1171514
+GM_GROUP 21 conv2d 538777 sum=1341826
+GM_GROUP 22 matmul 208538 sum=-3397871
+GM_GROUP 23 sum 268688 sum=2715523
+GM_GROUP 24 matmul 207939 sum=939299
+GM_GROUP 25 conv2d 538567 sum=1101661
+GM_GROUP 26 matmul 208508 sum=-4683069
+GM_GROUP 27 sum 274751 sum=2407785
+GM_GROUP 28 matmul 208200 sum=1201566
+GM_GROUP 29 conv2d 538852 sum=1215639
+GM_GROUP 30 matmul 208535 sum=-4921818
+GM_GROUP 31 sum 269616 sum=2423485
+GM_GROUP 32 matmul 411754 sum=470275
+GM_GROUP 33 conv2d 468599 sum=1455948
+GM_GROUP 34 matmul 217605 sum=-2100010
+GM_GROUP 35 conv2d 421256 sum=-372081
+GM_GROUP 36 sum 147222 sum=1544721
+GM_GROUP 37 matmul 235490 sum=327309
+GM_GROUP 38 conv2d 487744 sum=460539
+GM_GROUP 39 matmul 217606 sum=-1918809
+GM_GROUP 40 sum 152404 sum=1521280
+GM_GROUP 41 matmul 235027 sum=232433
+GM_GROUP 42 conv2d 487983 sum=205727
+GM_GROUP 43 matmul 217637 sum=-1035397
+GM_GROUP 44 sum 152395 sum=919951
+GM_GROUP 45 matmul 235082 sum=42614
+GM_GROUP 46 conv2d 488025 sum=67520
+GM_GROUP 47 matmul 217734 sum=-508281
+GM_GROUP 48 sum 152594 sum=327883
+GM_GROUP 49 matmul 235486 sum=22385
+GM_GROUP 50 conv2d 487937 sum=111417
+GM_GROUP 51 matmul 217656 sum=-552877
+GM_GROUP 52 sum 152271 sum=364937
+GM_GROUP 53 matmul 235278 sum=57299
+GM_GROUP 54 conv2d 487907 sum=141780
+GM_GROUP 55 matmul 217599 sum=-959096
+GM_GROUP 56 sum 151630 sum=476977
+GM_GROUP 57 matmul 468485 sum=96264
+GM_GROUP 58 conv2d 693439 sum=187822
+GM_GROUP 59 matmul 269849 sum=-1888466
+GM_GROUP 60 conv2d 613752 sum=-774443
+GM_GROUP 61 sum 127789 sum=61773
+GM_GROUP 62 matmul 302780 sum=20769
+GM_GROUP 63 conv2d 696950 sum=35716
+GM_GROUP 64 matmul 269846 sum=-884624
+GM_GROUP 65 sum 127844 sum=26277
+GM_GROUP 66 matmul 303012 sum=10482
+GM_GROUP 67 conv2d 696838 sum=40886
+GM_GROUP 68 matmul 269955 sum=-847218
+GM_GROUP 69 sum 122468 sum=35374
+GM_GROUP 70 mean 11271 sum=1351
+GM_GROUP 71 matmul 397892 sum=712
+GM_ARGMAX got=21 want=21 agrees=1
+GM_COSINE_PPM 988504
+GROUP_MODEL_TOTAL cycles: 23787829
+MERLIN_PROFILE measured end rc=0

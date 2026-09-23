@@ -1,4 +1,0 @@
-set_size,primitive_set,worst_workload_coverage,macro_coverage,micro_coverage,max_regret
-1,gemv_lane_64,0.1289,0.7997,0.643,0.8711
-2,gemv_lane_64 + tile_8x16,0.9977,0.9998,1.0,0.0023
-3,gemv_lane_128 + gemv_lane_64 + tile_8x16,0.9977,0.9998,1.0,0.0023

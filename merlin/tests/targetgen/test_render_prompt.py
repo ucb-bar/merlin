@@ -2,24 +2,31 @@
 so a target's prompt is generated, never hand-authored. The invariant: for a fixed (experiment, arm),
 two targets' prompts differ ONLY in the derived slots — the shared skeleton is byte-identical.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
-from merlin.targetgen.generate_prompt import render_prompt, prompt_slots
+from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
+from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
-_GEM = "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml"
-_RAD = "merlin/experiments/radiance_capsule_bench_v0/target_experiment.yaml"
+pytestmark = pytest.mark.target("gemmini", "radiance", "atlas")
+
+_GEM = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+_RAD = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 
 _SHARED_BLOCKS = [
     "non-exempt out-of-tree MLIR target backend",
-    "never author a compute kernel",                       # compiler-not-kernel
+    "never author a compute kernel",  # compiler-not-kernel
     "Compute must be compiler-GENERATED, never an authored/library kernel",
     "integrity_exempt: false",
     "qa/verdict.json",
     "Final status line",
-    "parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact",
+    "parse",
+    "lower_interface_to_target",
+    "emit_command_buffer",
+    "emit_target_artifact",
+    "emit_analysis_bundle",
 ]
 
 
@@ -39,6 +46,15 @@ def test_gemmini_prompt_has_shared_blocks_and_its_slots():
     assert "Target ISA facts: gemmini" in p
 
 
+def test_verification_contract_is_narrow_then_full_and_session_neutral():
+    p, _ = _render("gemmini", _GEM)
+    assert "check ONLY the capsule" in p
+    assert "full set once before you declare done" in p
+    assert "After EVERY build" not in p
+    assert "each round is a FRESH session" not in p
+    assert "--capsules <changed-capsule-or-subset>" in p
+
+
 def test_radiance_prompt_has_radiance_slots_and_no_gemmini_leakage(monkeypatch):
     try:
         p, s = _render("radiance", _RAD, monkeypatch)
@@ -50,19 +66,62 @@ def test_radiance_prompt_has_radiance_slots_and_no_gemmini_leakage(monkeypatch):
     assert "gemmini" not in p.lower() and "rocc" not in p.lower() and "0x7b" not in p
 
 
+_ATLAS = "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
+
+
+def test_grading_model_is_derived_from_the_corpus_not_hardcoded_integer():
+    """The certification-model sentence must follow the corpus goldens: atlas's independent-float
+    (fp8/bf16) corpus grades within a tolerance against the program-oracle and marks the integer
+    self-consistency cross-checks not_applicable. Telling a float-MXU agent the grading is 'exact-integer,
+    no tolerance' would make it build the wrong backend.
+
+    gemmini's corpus is MIXED — an int8 systolic datapath whose generalization capsules are authored in
+    float through the PyTorch frontend — so it must say the model is decided PER CAPSULE and describe
+    BOTH. Collapsing a mixed corpus to either single sentence (the old any()-float predicate returned
+    whole-corpus float as soon as one float capsule existed) misdescribes the grading for the rest of it.
+    """
+    _, gs = _render("gemmini", _GEM)
+    assert "exact-integer" in gs["grading_model"] and "no tolerance" in gs["grading_model"]
+    assert "PER CAPSULE" in gs["grading_model"], "a mixed corpus must not claim one grading model"
+    assert "tolerance" in gs["grading_model"] and "not_applicable" in gs["grading_model"]
+    try:
+        _, as_ = _render("atlas", _ATLAS)
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"atlas not resolvable: {e}")
+    assert "tolerance" in as_["grading_model"] and "not_applicable" in as_["grading_model"]
+    assert "exact-integer" not in as_["grading_model"]
+
+
+# Whole sections whose CONTENT is derived from endpoint_kind (how the kernel receives operands + how it
+# terminates) — a RoCC/pointer-argument endpoint and a self-hosted-ISA DRAM-map+halt endpoint legitimately
+# differ here. They are derived, not overfit, so the shared-skeleton comparison must drop them.
+_ENDPOINT_SECTIONS = ("## DRAM address", "## Program termination")
+
+
 def _canonicalize(p: str, s: dict) -> str:
     # replace target-specific slot VALUES with fixed tokens, and drop the derived per-target blocks
-    # (the ISA-facts brief + the corpus-family bullets) — what remains is the shared skeleton.
+    # (the ISA-facts brief, the corpus-family bullets, and the endpoint-derived ABI/termination sections) —
+    # what remains is the shared skeleton.
     for val, tok in ((s["kernel_symbol"], "KSYM"), (s["tool_stem"], "TOOL"), (s["target"], "T")):
         p = p.replace(val, tok)
+    # The CHEAP SCREEN the per-edit command names is derived too: the tier and the simulator this
+    # target's contract declares below its RTL tiers (spike on one target, cyclotron on another).
+    # Guarded on non-empty -- a target that declares no screen yields "", and replacing "" would
+    # rewrite every character in the prompt.
+    for val, tok in ((s["screen_sim"], "SCREENSIM"), (s["screen_tier"], "SCREENTIER")):
+        if val:
+            p = p.replace(val, tok)
     p = p.replace(s["endpoint_desc"], "ENDPOINT")
-    out, in_facts = [], False
+    p = p.replace(s["grading_model"], "GRADING")  # float-vs-integer grading model is a derived slot
+    out, in_facts, in_endpoint = [], False, False
     for ln in p.splitlines():
+        if ln.startswith("## "):  # section boundary: re-decide whether we're in a dropped one
+            in_endpoint = any(ln.startswith(h) for h in _ENDPOINT_SECTIONS)
         if ln.startswith("## Target ISA facts"):
             in_facts = True
         if ln.startswith("## Final status line"):
             in_facts = False
-        if in_facts or ln.startswith("- `"):
+        if in_facts or in_endpoint or ln.startswith("- `"):
             continue
         out.append(ln)
     return "\n".join(out)

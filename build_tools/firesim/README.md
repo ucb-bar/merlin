@@ -25,6 +25,27 @@ linker script for exactly this reason.
 
 ## Files
 
+### `make_chipyard_overlay.py` — build a design without writing into a shared checkout
+
+```bash
+python build_tools/firesim/make_chipyard_overlay.py --base <shared chipyard> --overlay <new dir> \
+    [--exclude-generator NAME]... [--private-dir REL]...
+```
+
+Creates a directory with the checkout's shape in which everything a build READS is a symlink back
+to the base and everything it WRITES (sbt targets, the generator jar, Chisel elaboration, Golden
+Gate output, the host driver, `deploy/` results and logs) is private. Use it when the shared
+checkout is not yours to change: other sessions build in it, or its submodules do not all compile
+together. `--exclude-generator` leaves `generators/NAME` empty, and Chipyard's own build rule then
+skips that optional generator, so nothing is patched. `--private-dir` copies one directory a build
+step rewrites in place, such as an accelerator's generated parameter header. Pass the OVERLAY path
+as `TARGET_PROJECT_MAKEFRAG` and as the queue's `--chipyard`.
+
+A bitstream and the host driver that talks to it must come from one elaboration. A driver that make
+considers stale is rebuilt during `infrasetup`, inside the FPGA lock, by whichever account runs the
+queue daemon; if that account cannot write the checkout the job fails before the flash. Build both
+in one overlay, before submitting.
+
 ### `preflight.py` — read-only "will a run work here?"
 
 ```bash
@@ -63,7 +84,7 @@ so nothing in the repo uses this today. Adapted, not exercised.
 ## Provenance, and what was deliberately not ported
 
 These files derive from `build_tools/firesim/` in the **deprecated IREE-based merlin** at
-`/scratch2/agustin/merlin` (a different project — see the two-merlins distinction). That tree
+a separate IREE-era checkout (a different project — see the two-merlins distinction). That tree
 targets IREE/VMFB bare-metal; we target a Zephyr application plus merlin's own data-driven C
 runtime. What changed, and what was left behind:
 

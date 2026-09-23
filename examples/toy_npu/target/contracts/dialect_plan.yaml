@@ -1,0 +1,33 @@
+# ToyNPU dialect plan (validates against merlin/schemas/dialect_plan.schema.yaml).
+target: toy_npu
+dialect_name: toynpu
+# Generic xDSL factory knobs and runtime mapping; this target owns the choices.
+construction: {matmul_rhs_typed: true, matmul_vl_policy: false}
+runtime_opcodes:
+  res_pack: RES_PACK
+  matmul: MATMUL_RESIDENT
+  commit: COMMIT
+  evict: EVICT
+  vector_map: VECTOR_MAP
+  vector_reduce: VREDUCE
+ops:
+  - {name: res_pack,      summary: "pack + make RHS resident"}
+  - {name: matmul,        summary: "matmul vs resident tensor -> accumulator"}
+  - {name: commit,        summary: "apply epilogue + commit accumulator"}
+  - {name: evict,         summary: "free resident storage"}
+  - {name: vector_map,    summary: "elementwise combine (add/mul/identity) + activation on the vector lanes"}
+  - {name: vector_reduce, summary: "reduce a tensor (sum) on the vector lanes"}
+types:
+  - {name: resident_tensor}
+  - {name: accumulator}
+lowering:
+  - {from: interface.resident_pack,  to: toynpu.res_pack}
+  - {from: interface.matmul,         to: toynpu.matmul}
+  - {from: interface.commit,         to: toynpu.commit}
+  - {from: interface.resident_evict, to: toynpu.evict}
+  - {from: interface.vector_map,     to: toynpu.vector_map}
+  - {from: interface.vector_reduce,  to: toynpu.vector_reduce}
+tests:
+  - {lit: res_pack_roundtrip}
+  - {lit: matmul_commit_epilogue}
+  - {lit: evict_after_use}

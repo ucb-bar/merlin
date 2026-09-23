@@ -1,0 +1,78 @@
+# AGENT.md — merlin/python/merlin/llvmlower
+
+## Purpose
+
+Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream MLIR pipeline → LLVM IR → x86 (verification) / rv64gcv (deployment) objects. This is the llvm-project plane for running entire models (smolVLA) on RVV, complementing the per-kernel `runtime/backends` path.
+
+## What belongs here
+
+- `cli.py` exposes the existing file-lowering API through `merlin lower`, without
+  capture, optional research workflows or deployment. It requires fresh output,
+  defaults to LLVM IR only, and forwards audit/sidecar options. `LowerResult.audit_index`
+  identifies the invocation's exact audit index; callers must not guess the latest child.
+- `passes_xdsl.py` — Merlin-authored rewrites: `quant_ext.dequantize_per_channel` → `linalg.generic`; `llvm.emit_c_interface`; (future) `scf.parallel` → `merlin_parallel_for`.
+  Structural preprocessing accepts the invocation's shared IR audit and records parsed
+  input plus each completed rewrite. Inspection must preserve pass order, statistics and
+  executable serialization; failures keep only the completed prefix. The textual repair
+  path is not re-parsed merely to create diagnostic views.
+- `torchao_affine.py` — decompose the two torchao activation-quant ops a dynamic-activation capture leaves as opaque `func.call`s to body-less externs (`choose_qparams_affine`, `quantize_affine`) into linalg. Bit-exact against torchao's own implementation (`merlin/tests/ir/test_torchao_affine.py`); the block layout comes from the call's types and the quant range/eps from the scheme the bundle records in `prov.quantization`, and anything underivable raises rather than defaulting. Runs first in BOTH `dispatch_runtime.run_model` and `zephyr_model._prepare_model_mlir`.
+- `pipeline.py` — upstream pass pipeline + `translate_module_to_llvmir` (in the model2MLIR venv).
+- `codegen.py`, `toolchain.py`, `weights_pack.py` (manifest/safetensors → blob + arg table), `abi.py` (`_mlir_ciface_forward` host runner + `ScalarArg`), `lower.py`/`cli.py`.
+- `kernel_backend.py` — compile one outlined kernel func in isolation + check it vs a numpy reference (the per-kernel bisection harness; used by `runtime.dispatch_runtime`).
+- `declaration_access.py` repairs printer-dropped bufferization attributes for
+  explicitly named private declarations. Callers supply positional access policy;
+  this owner does not import a target rewrite or assume its dtype/signature record.
+  It preserves the existing simple declaration syntax, not a general MLIR parser.
+  Device and matrix-unit file rewrites share it and refuse unpatched declarations.
+- `int8_contractions.py` owns structural signed-int8/int32 contraction outlining,
+  declaration emission and signature sidecars. Callers supply selection, symbol
+  prefix and sidecar filename explicitly; no target ABI names are defaults.
+  Both the outlined CPU backend and the legacy matrix route use this owner.
+  The matrix ABI and shim are owned by the selected OOT provider's
+  `matrix_lowering` plugin; they are not shared-core imports. Core kernel-emitter
+  and certification dependencies still need migration; the shim move does not
+  qualify a native route.
+- `compact_abi.py` — opt-in all-pointer entry compaction from an explicit compiler/runtime
+  base-buffer layout. Requires target-derived pointer index widths, a distinct entry symbol,
+  complete per-argument bindings, and verifies the whole CFG under pointer substitution.
+  It does not infer arena reuse, alignment, no-alias facts, or compatibility with an old harness.
+- `impr_features.py` + the per-feature modules next to it (`selfcopy.py`, `transpose_fuse.py`,
+  `epilogue_fusion.py`) — NAMED, default-off edits to the pass list / transform schedule. A feature
+  defines its own edit and registers itself; the empty feature set must leave the pipeline
+  byte-identical. `epilogue_fusion.py` fuses a per-output epilogue (the int8 requant) into the loop
+  nest of the reduction that produced it, via affine producer-consumer fusion at zero compute
+  tolerance. `requant_fuse.py` does the same job for a contraction the per-op schedule has already
+  tiled and vectorized (where the affine fusion is inert): it tiles the epilogue on TENSORS and fuses
+  the contraction and its accumulator fill into that tile loop, so the model-sized i32 accumulator is
+  never built. Two registered points, because they differ in kind — the plain one only removes the
+  traversal, the `_vec` one also reshapes the epilogue tile — and the emitted-code evidence separates
+  them.
+- `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
+
+## What does not belong here
+
+- Hand-written kernels (`merlin/runtime/baremetal/spike/`), command-buffer pipeline (`xdsl_dialects/lowering/`), model capture (model2MLIR).
+
+## Invariants
+
+- **Target-agnostic.** Everything here is target-independent: the same `.ll` produces
+  x86 (verification) and rv64gcv (deployment); the *only* place a target enters is
+  clang's `--target`/`-march` in `codegen.py`, selected by `lower_model(..., target=)`.
+  Do not branch on target in the passes, weights packer, ABI, or runner. Target-specific
+  code belongs only in `merlin/runtime/baremetal/<env>/` and `xdsl_dialects/targets/`.
+  The RVV vectorization stage (when added) must be a target-parameterized entry in the
+  pass list, not a hardcoded fork.
+- `buffer-results-to-out-params` MUST include `modify-public-functions hoist-static-allocs` — otherwise it silently skips the public `@forward` and the entry returns heap-allocated descriptors.
+- `quant_ext.*` parses as `builtin.unregistered`: match `op.op_name.data`, not `op.name`.
+- Weight tensors are never embedded in C arrays — pointers into the safetensors payload blob, offsets straight from the header (`weights_pack.pack`).
+- Vectorization is clang `-O2 -march=rv64gcv` auto-vectorization (verified: emits vsetvli). A scalable-vector tile/vectorize MLIR path may be layered later.
+- Host (x86 ctypes) parity vs torch reference is the gate before any spike run.
+- `HostModel.load` defaults to `RTLD_LOCAL`, including the >1024-arg trampoline path: the trampoline receives the loaded library's exact entry address. Several model/kernel `.so`s must coexist without their shared `forward`/`memrefCopy` symbols clashing. `emit_c_interface` wraps only memref args as descriptor pointers; scalar args are passed by value — use `abi.ScalarArg` (the dispatch runtime relies on this for `cumsum`-style kernels).
+
+## Testing expectations
+
+`merlin/python/tests/test_llvmlower.py` — synthetic slice e2e (host execution vs Python reference); toolchain-gated tests auto-skip when clang/m2m venv are absent.
+
+## Notes for future agents
+
+Tools: torch-mlir wheel python = full upstream pass registry + translate; clang-23 from `/path/to/merlin-iree/...` targets riscv64 with `+v`. The 27k-line full model goes through the venv pipeline as text — expect minutes, not seconds.

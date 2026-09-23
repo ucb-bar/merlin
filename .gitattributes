@@ -15,3 +15,7 @@ CMakeLists.txt text eol=lf
 *.png binary
 *.o binary
 *.a binary
+
+# Archived evidence is content-addressed. Preserve original bytes (including CSV CRLF)
+# across relocation and checkout rather than silently changing recorded hashes.
+experiments/reference-data/** -text -eol

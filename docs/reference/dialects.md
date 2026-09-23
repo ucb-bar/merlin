@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-07-14
 related: [core_dialects, xdsl]
-code_refs: [merlin/python/merlin/xdsl_dialects]
+code_refs: [src/merlin/xdsl_dialects]
 ---
 
 # Dialects
@@ -45,5 +45,5 @@ Then each real target has its own dialect (e.g. `toynpu`, gemmini, saturn, radia
 | Which command buffer / queue runs it?   | runtime               |
 | Was software-visible residency worth it? | dse                  |
 
-Prototype all five in `merlin/python/merlin/xdsl_dialects/`; promote stable ones to a future
+Prototype all five in `src/merlin/xdsl_dialects/`; promote stable ones to a future
 MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`).

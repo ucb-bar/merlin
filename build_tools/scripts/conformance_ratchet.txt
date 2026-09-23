@@ -1,0 +1,118 @@
+# Conformance-coverage debt that MAY ONLY SHRINK.
+#
+# Each line is `<target> <axis>:<item>` — target-scoped on purpose, because a bare cell name would let one
+# target's accepted debt silently excuse another's (`contraction/f32/aligned` is a real gap on more than
+# one target here). `cell:` entries are (semantic_family, dtype, tile_alignment) coverage cells;
+# `composition:` entries are host/accelerator composition shapes; the remaining axis tags are declared in
+# `check_conformance_coverage.AXES`, which is also what decides that an axis reaches the verdict at all.
+#
+# NEVER ADD A LINE. A new gap means a corpus that no longer evidences something a real model needs — write
+# the capsule instead. Regenerate the requirement with:
+#   build_tools/scripts/check_conformance_coverage.py --target <t> --write \
+#       merlin/contract/capsules/conformance/<t>.yaml
+#
+# ⚠️ THE ONE EXEMPTION TO "NEVER ADD A LINE", AND WHY THIS FILE GREW ON 2026-09-21. Six axes were being
+# measured, printed with the same `*` un-ratcheted marker as the rest, and never accumulated into the
+# gate's debt — so a gap on any of them printed as a violation while `--fail-on-uncovered` returned 0.
+# Wiring them (`host_lane`, `epilogue`, `conv_geometry`, `scope`, `groups`, `carried_state`) exposed 11
+# gaps at once. NONE of them is newly incurred: every one was already uncovered and simply could not be
+# counted. Adding them here is what makes them countable, and the ratchet may only shrink from here.
+# A line added for any other reason is the thing this file exists to prevent.
+#
+# ---------------------------------------------------------------------------------------------------
+# RESOLVED AND DELETED on 2026-09-21 — recorded so the shrink is auditable rather than silent:
+#   gemmini cell:elementwise_map/i8/aligned      gemmini composition:A->H->A
+#   gemmini cell:elementwise_map/i8/partial      gemmini memory:fits_single
+#   gemmini cell:movement/i8/partial             gemmini memory:spills
+# The corpus now reports 12/12 cells, 6/6 compositions and 3/3 memory regimes. (The memory regime is
+# covered by PRESENCE, not by pressure — the largest member sits at 2.00x capacity while 97.2% of real
+# contraction regions spill — but that is a question for the regime axis to start asking, not debt the
+# cell axis should keep carrying.)
+
+# ---------------------------------------------------------------------------------------------------
+# gemmini — the aspect ratio no capsule reproduces. Pre-existing and already failing this gate before
+# the axis wiring; it is the one line here that was countable all along.
+#
+# 4.6% of real contraction MAC work sits in the `unknown` geometry class. A cell cannot express aspect
+# ratio, and aspect ratio is where a tiling compiler fails.
+gemmini geometry:unknown
+
+# ---------------------------------------------------------------------------------------------------
+# gemmini — the host lane, newly countable.
+#
+# No capsule proves an f32 movement lands on the HOST. The negative lane matters as much as the positive
+# one: a compiler that quietly accelerates a dtype the datapath does not admit is wrong in a way no
+# pass-rate over accelerator capsules can see. Cheapest line in this file to close — it is one
+# host-lane capsule of a shape the synthesizer already builds for other dtypes.
+gemmini host_lane:movement/f32
+
+# ---------------------------------------------------------------------------------------------------
+# gemmini — ADJACENCY. Ten chains, one finding, newly countable.
+#
+# `scope` derives the chains real captures present (`movement -> contraction` occurs 2,863 times across
+# the captures, `elementwise_map -> elementwise_map` 2,507) and the corpus witnesses 2 of 12. The reason
+# is structural and is the whole point of recording it: the corpus is SYNTHESIZED ONE REGION AT A TIME,
+# so almost no capsule contains two adjacent regions, and a compiler that mishandles the boundary
+# between two regions — a layout disagreement, a fence it needed, an accumulator it reused — is tested
+# by nothing here. This is the corpus-shaped hole behind the measured whole-model lowering defects.
+#
+# Closing these needs chain-shaped capsules. `model_slices/` begins that work but its members are 2-3
+# ops, and the requirement below runs to chains of five. It is real corpus work, not a one-line fix.
+gemmini scope:elementwise_map -> elementwise_map
+gemmini scope:elementwise_map -> elementwise_map -> elementwise_map
+gemmini scope:elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+gemmini scope:elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+gemmini scope:elementwise_map -> movement
+gemmini scope:elementwise_map -> reduction -> reduction
+gemmini scope:movement -> contraction -> contraction
+gemmini scope:movement -> elementwise_map -> elementwise_map -> movement
+gemmini scope:movement -> movement
+gemmini scope:normalization -> movement
+# The twelfth chain, from the same evidence as the four lines below: recovering the VLA captures added
+# it to the requirement. Same structural cause as the ten above.
+gemmini scope:movement -> elementwise_map -> elementwise_map
+
+# ---------------------------------------------------------------------------------------------------
+# gemmini — NEW REQUIREMENT FROM RECOVERED EVIDENCE, not new debt.
+#
+# `model_coverage.load_module` never applied the multi-result normalizer that `parse_mlir_text` has
+# always applied, so five captures -- `bitvla` and four `smolvla` bundles -- failed to parse and were
+# recorded as unreadable in every target's spec. The requirement was derived from 27 captures; it is now
+# derived from 32, and the spec no longer carries an `unreadable` note. These three obligations are what
+# those five models actually demand and nothing had been asked to cover before.
+#
+# ⚠️ THE TWO `attention` LINES ARE A DOUBLE-COUNTED REQUIREMENT, not a corpus gap, and the distinction
+# is why they are recorded here rather than fixed with a capsule. `host_lane` derives every
+# (family, dtype) pair the captures contain and the manifest does not admit; `host_only` derives every
+# family the manifest admits at NO dtype. A family with no admitted dtype satisfies both, so `attention`
+# is required once as a host-only family AND once per dtype as a host-lane pair.
+#
+# `corpus_synth` resolves that by delegating: its host-lane loop skips a family the narrow host-only
+# axis already carries, and emits `SY_host_only_attention` instead. That is the right call -- one
+# capsule proving a family never reaches the accelerator is the evidence, and a per-dtype restatement
+# is not additional. But the requirement still counts the pairs, so they can never be covered, and the
+# gate reads a permanent gap where the corpus is actually complete.
+#
+# The real fix is in `conformance.host_lane_cells`: a family required as wholly host-only should not
+# also be required per dtype on the host lane. That narrows a derived requirement, which wants its own
+# change and its own argument, so these sit here until then. `SY_host_lane_attention_bf16` used to
+# cover one of them incidentally and was pruned when the requirement was re-derived, which is what
+# surfaced the double count.
+#
+# `movement/bf16` below is a genuine gap of the ordinary kind.
+#
+# `attention/f32` and `movement/bf16` are HOST-LANE obligations: work the compiler must place on the
+# host because this target's datapath does not admit it. The int8 captures that previously drove the
+# requirement carry neither at those widths; the VLA captures do. A compiler that quietly accelerates
+# one of them is wrong in a way no accelerator pass-rate can see, which is the whole point of the
+# negative lane -- so these want a host-lane capsule each, of a shape the synthesizer already builds
+# for other dtypes.
+gemmini host_lane:attention/f32
+gemmini host_lane:attention/bf16
+gemmini host_lane:movement/bf16
+
+# `relu` is the CARRIED-STATE axis's first obligation ever to reach the verdict. The axis asks whether a
+# capsule can show a stage leaking across commands -- state the hardware carries that a program must
+# not depend on. It was derived, never printed and never accumulated until the axis wiring landed, so
+# this is the same "already uncovered, newly countable" case as the block above.
+gemmini carried_state:relu

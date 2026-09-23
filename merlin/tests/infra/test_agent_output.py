@@ -1,10 +1,17 @@
 """Structured agent-output helper — regex-free JSON/code extraction + constrained calls."""
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.common.agent_output import (StructuredOutputError, extract_code_block, locate_json,
-                                        parse_json, strip_code_fence, structured_agent_call)
+from merlin.common.agent_output import (
+    StructuredOutputError,
+    extract_code_block,
+    locate_json,
+    parse_json,
+    strip_code_fence,
+    structured_agent_call,
+)
 
 
 def test_strip_code_fence():
@@ -26,7 +33,7 @@ def test_locate_json_first_balanced_not_greedy():
 
 def test_parse_json_variants():
     assert parse_json('```json\n{"is_exemplary": true}\n```') == {"is_exemplary": True}
-    assert parse_json('Here it is: [1, 2, 3] done', default=None) == [1, 2, 3]
+    assert parse_json("Here it is: [1, 2, 3] done", default=None) == [1, 2, 3]
     assert parse_json("garbage", default={}) == {}
     assert parse_json(None, default={}) == {}
     with pytest.raises(StructuredOutputError):

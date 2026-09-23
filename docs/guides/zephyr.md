@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-07-22
 related: [getting_started, reproducibility, runtime, tinyllama_int8_rvv_zephyr]
-code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py]
+code_refs: [src/merlin/runtime/backends/zephyr_model.py]
 ---
 
 # Zephyr runtime backend

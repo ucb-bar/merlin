@@ -1,0 +1,183 @@
+# THE EDITABLE SURFACE OF THE PHASE-2 SUBJECT PACKAGE.
+#
+# This is the package phase 2 actually forks: a functionally-certified mixed host/mesh backend whose
+# own manifest already declares 29 `optimization_surfaces`. Those declarations are the CANDIDATE's
+# statement about itself and confer no authority -- `compiler_edit_scope` records
+# `candidate_manifest_grants_authority: false` and refuses a manifest edit outside that key. This file
+# is the HOST's statement, which is the one that binds.
+#
+# THE ROOT IS `compiler/`, NOT THE PACKAGE DIRECTORY, and this is load-bearing rather than cosmetic.
+# The package keeps `manifest.yaml` one level down, at `<package>/compiler/manifest.yaml`.
+# `inspect_compiler_edits` special-cases the name `manifest.yaml` only at the contract root. Rooting
+# this contract at the package directory would therefore leave the manifest as an ordinary file --
+# the protection against a candidate widening its own authority would be silently OFF while the
+# contract looked exactly the same. Verified by reading `inspect_compiler_edits`, not assumed.
+#
+# SYMBOL GRANULARITY IS THE POINT. `mlir_oot/tables/loop_ws.py` holds both a pinned descriptor
+# encoding and the block-shape choice that reads it. Granting `block_shape` alone grants the choice
+# without granting the encoding, and `compiler_edit_scope._remainder` enforces exactly that: every
+# other definition in the file, and every module-level constant in it, must come out AST-identical.
+
+schema: compiler_edit_contract_v1
+
+target: gemmini
+package_id: gemmini_xdsl_oot_v1_epilogue
+
+package:
+  root: out/artifacts/targets/gemmini/gemmini_xdsl_oot_v1_epilogue/compiler
+  entrypoint_command: emit_command_buffer
+  entrypoint_chain: >-
+    manifest.commands.emit_command_buffer -> gemmini-opt -> gemmini_opt.Pipeline.lower ->
+    (model_lane.MixedBuilder.build | source_conv_model_lane.SourceConvBuilder.build) ->
+    plan.Builder -> schedule.Scheduler.run -> cmdbuf.write
+  certified: "manifest.publication (quoted, not re-derived): functionally certified fork"
+  sibling_note: >-
+    `gemmini_xdsl_oot_v1_jackcfg` is byte-identical in its whole `support/` tree and differs only in
+    `tables/rtl_facts.py` and `tables/loop_ws_contract.json` capacity numbers (halved scratchpad and
+    accumulator). Every symbol below exists in it at the same path:symbol, so this contract transfers
+    to that fork unchanged; only the INPUTS to the two block_shape choices differ.
+
+# ---------------------------------------------------------------------------------------------
+# DECISIONS UNDER STUDY. `load` refuses this file BY NAME if any owner below is not also in
+# `existing_symbols`.
+# ---------------------------------------------------------------------------------------------
+required_decisions:
+
+  - decision: epilogue_placement
+    owner: "mlir_oot/lowering/schedule.py:readout_plan"
+    why: >-
+      THE deciding symbol, and the one a plausible-looking contract omits. It splits a commit's
+      declared epilogue into `native_stages` -- folded into the accumulator store path via the
+      CONFIG_ST activation/scale fields -- and `host_stages`, a separate post-loop CPU pass. Every
+      other symbol here reacts to that split; none of them make it. A contract without this symbol
+      admits an agent that can reshape loops all day and can never move an epilogue, which is the
+      one trade the exchange-rate work exists to price.
+
+  - decision: epilogue_emission_site
+    owner: "mlir_oot/lowering/schedule.py:Scheduler.contraction"
+    why: >-
+      Where the decision is CARRIED OUT: routes the contraction's output to the destination directly
+      (fused) or to a staging buffer, and emits the trailing fence plus single `host_epilogue`
+      instruction after the whole M/N/K nest only when the readout is not native. Placement that is
+      decided but not emittable is not placement.
+
+  - decision: operation_grouping
+    owner: "mlir_oot/lowering/model_lane.py:MixedBuilder.build"
+    why: >-
+      THE grouping decision: partitions the entry block into alternating mesh tasks and host
+      segments, decides which values must stay in DRAM, and carries output-less host runs into the
+      next segment. This is where a fusion win or a materialization loss is actually chosen.
+
+  - decision: contraction_blocking
+    owner: "mlir_oot/lowering/schedule.py:Scheduler.block_shape"
+    why: >-
+      The (bm, bn, bk) tile-block extents for the explicit schedule, chosen against accumulator and
+      scratchpad capacity. This is the symbol the exchange-rate sweep's windows are produced by
+      editing; without it no window plan is reachable from inside the contract.
+
+# ---------------------------------------------------------------------------------------------
+# THE EDITABLE SURFACE.
+# ---------------------------------------------------------------------------------------------
+existing_symbols:
+
+  # -- epilogue placement and its emission --------------------------------------------------
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/schedule.py, symbol: readout_plan}
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/schedule.py, symbol: Scheduler._check_host_stages}
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/schedule.py, symbol: Scheduler._check_host_budget}
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/plan.py, symbol: _epilogue_from}
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/plan.py, symbol: epilogue_out_shape}
+  - {surface_id: epilogue_placement, path: mlir_oot/lowering/plan.py, symbol: Builder._op_commit}
+  - {surface_id: epilogue_emission, path: mlir_oot/codegen/llvm_emit.py, symbol: Emitter.emit_epilogue}
+  - {surface_id: epilogue_emission, path: mlir_oot/codegen/llvm_emit.py, symbol: Emitter._apply_scalar_stages}
+
+  # -- the loop nest, and where the epilogue lands relative to it ----------------------------
+  - {surface_id: contraction_schedule, path: mlir_oot/lowering/schedule.py, symbol: Scheduler.contraction}
+  - {surface_id: contraction_schedule, path: mlir_oot/lowering/schedule.py, symbol: Scheduler.block_shape}
+  - {surface_id: contraction_schedule, path: mlir_oot/lowering/schedule.py, symbol: Scheduler.bias_add}
+  - {surface_id: convolution_schedule, path: mlir_oot/lowering/schedule.py, symbol: Scheduler.convolution}
+  # Reads the pinned LOOP_WS capacity partition and chooses extents from it. The pinned descriptor
+  # encoding in the same file is NOT granted; symbol granularity keeps them apart.
+  - {surface_id: contraction_schedule, path: mlir_oot/tables/loop_ws.py, symbol: block_shape}
+
+  # -- grouping, ordering and hazards --------------------------------------------------------
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: MixedBuilder.build}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: MixedBuilder._mesh}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: mesh_eligible}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: _exclusive_absorbed}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: _absorbed_candidates}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/model_lane.py, symbol: _place_integer_contractions}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/source_conv_model_lane.py, symbol: SourceConvBuilder.build}
+  - {surface_id: operation_grouping, path: mlir_oot/lowering/source_conv_model_lane.py, symbol: mesh_eligible}
+  - {surface_id: task_ordering, path: mlir_oot/lowering/schedule.py, symbol: Scheduler.run}
+  - {surface_id: route_selection, path: mlir_oot/gemmini_opt.py, symbol: Pipeline.lower}
+
+helper_extensions:
+  # The package's own `components:` block lists these directories per entrypoint, so a module added
+  # to one is picked up WITHOUT a manifest edit -- which matters, because a manifest edit is refused.
+  - directory: mlir_oot/lowering
+    surface_ids: [epilogue_placement, contraction_schedule, convolution_schedule, operation_grouping, task_ordering]
+    reason: "planning and scheduling helpers; source_conv_plan.py already sits here as one"
+  - directory: mlir_oot/codegen
+    surface_ids: [epilogue_emission]
+    reason: "host-lane emission helpers for a separate-pass epilogue"
+
+ancillary_paths:
+  - docs/iteration_notes.md
+  - docs/PLAN.md
+
+# ---------------------------------------------------------------------------------------------
+# OUTSIDE THE BOUNDARY, WITH THE ARGUMENT FOR EACH.
+# ---------------------------------------------------------------------------------------------
+excluded:
+
+  - what: "mlir_oot/tables/isa.py and mlir_oot/ir/gemmini_dialect.py (all symbols)"
+    why: >-
+      RoCC funct constants, the accumulator address bits, and the rs1/rs2 bit packers. An agent that
+      wins by changing an encoding has built a different machine, and the win does not transfer to
+      the next fork of the same hardware.
+
+  - what: "mlir_oot/tables/rtl_facts.py, mlir_oot/tables/loop_ws_contract.json"
+    why: >-
+      DIM, scratchpad and accumulator capacity, dtype widths, and the pinned descriptor schema. These
+      are the hardware's own facts. They are also precisely what distinguishes this package from
+      `jackcfg`, so editing them turns an A/B between schedules into an A/B between machines.
+
+  - what: "mlir_oot/tables/loop_ws.py:expression, loop_ws_static, and the module's constants"
+    why: >-
+      The pinned descriptor's expression evaluator and its records. `block_shape` in the same file IS
+      granted; the split is deliberate and is enforced at AST-symbol granularity.
+
+  - what: "mlir_oot/lowering/plan.py:row_pitch, Buffer.pitch, Buffer.nbytes"
+    why: >-
+      Address and pitch arithmetic. Correctness-critical, and an error here changes results rather
+      than cycles -- a cycle delta measured across such an edit is not attributable to a schedule.
+
+  - what: "the inline offset arithmetic inside the granted Scheduler methods"
+    why: >-
+      NOT separable by this mechanism, and recorded as a limitation rather than a boundary. The
+      a_offset/b_offset/c_offset computations live INSIDE `Scheduler.contraction`, which is granted
+      whole. Granting a method grants its address arithmetic. This contract therefore does not, and
+      cannot, prevent an address-arithmetic edit; what catches one is the functional gate and the
+      per-group checksums, not the edit scope. Stating it here so nobody reads the boundary as
+      stronger than it is.
+
+  - what: "mlir_oot/cmdbuf.py (validate, write), mlir_oot/codegen/gemmini_module.py:build, plan.py:Builder._command_buffer, plan.py:kernel_args"
+    why: "Mechanical serialization of decisions already made upstream. Nothing here chooses anything."
+
+  - what: "mlir_oot/frontend/, the parse and verify entrypoints"
+    why: >-
+      They decide WHAT PROGRAM is compiled. Every phase-2 A/B and every exchange-rate window compares
+      two compilations of the SAME program; an edit here breaks that premise invisibly.
+
+  - what: "the whole `support/` tree (vendored merlin harness)"
+    why: >-
+      Outside the contract root entirely, and correctly so: it is the measuring apparatus. It is also
+      byte-identical to the `jackcfg` fork's copy, so an edit to it would silently decouple the two.
+      Note that nothing in `compiler/` imports `support/merlin/xdsl_dialects/lowering/emit_command_buffer.py`
+      -- that file is merlin's own core-dialect stage, reached from `support/merlin/verify/evaluate.py`,
+      and is not this package's `emit_command_buffer` entrypoint despite the shared name.
+
+  - what: manifest.yaml
+    why: >-
+      Protected by `inspect_compiler_edits`, but ONLY because this contract is rooted at `compiler/`
+      where the file actually is. See the header.

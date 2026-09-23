@@ -8,9 +8,16 @@ the conventions the tooling enforces so your PRs land smoothly.
 merlin uses [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv sync --all-extras                 # .venv with merlin (editable) + xDSL + dev deps
-python build_tools/scripts/install_git_hooks.py   # enable the pre-commit gate (per clone)
+uv venv
+uv pip install -e '.[dev,xdsl,targetgen]' -e packages/merlin-experiments -e packages/merlin-dse -e packages/merlin-mining -e packages/merlin-analysis
+.venv/bin/python build_tools/scripts/install_git_hooks.py   # enable the pre-commit gate (per clone)
 ```
+
+This resolves each distribution's declared dependencies, including the pinned AET revision;
+do not use `--no-deps` for a fresh setup. Run `.venv/bin/python` or `uv run --no-sync`
+afterwards: a root-only `uv sync` can remove separately installed extensions. For a core-only
+checkout, omit the four `packages/` arguments. See [getting started](docs/guides/getting_started.md)
+for workflow-specific installation and external prerequisites.
 
 External dependencies (chipyard, model2MLIR, boards, sibling repos) are **not vendored** — point at
 them via environment variables (copy `.env.example` → `.env` and edit). The repo locates itself via
@@ -18,11 +25,14 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 
 ## Where things go
 
-- **Code**: under the internal `merlin/` tree (XLA-style). Keep the repo root clean — new top-level
-  directories need justification.
+- **Code**: shared compiler machinery in `src/merlin`; optional research in `packages/`.
+  Preserve the shared namespace initializers owned by core. Experiment definitions live in
+  `experiments/catalog.yaml`, not in ad-hoc launch scripts. See the
+  [repository structure](docs/reference/repo_structure.md).
 - **Tests**: `merlin/tests/<bucket>/test_<area>.py`, one of the subsystem buckets
-  (`kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`). Resolve paths via
-  `merlin.common.paths`, never `Path(__file__).parents[N]`. Run: `.venv/bin/python -m pytest merlin/tests`.
+  (`kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`). Distribution-specific installation
+  and orchestration tests also live in `packages/*/tests/`. Resolve paths via
+  `merlin.common.paths`, never `Path(__file__).parents[N]`.
 - **Generated output**: only under `out/{runs,artifacts,build}` — via
   `merlin.common.artifacts` (`start_run`/`new_product`/`cache_dir`), never hand-built paths. A
   PreToolUse/pre-commit gate blocks writes outside `out/`. See `.claude/skills/artifact-layout`.
@@ -36,13 +46,21 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 - Keep PRs focused and reasonably small; write a clear description of the change and its rationale.
 - Ensure the gates pass (the pre-commit hook runs these; you can run them directly):
   ```bash
-  python build_tools/scripts/check_structure.py        # repo/test structure
-  python build_tools/scripts/check_artifact_layout.py  # out/ layout
-  python build_tools/scripts/check_docs.py             # docs freshness / front-matter
-  .venv/bin/python -m pytest merlin/tests              # tests
+  .venv/bin/python build_tools/scripts/check_structure.py        # repo/test structure
+  .venv/bin/python build_tools/scripts/check_artifact_layout.py  # out/ layout
+  .venv/bin/python build_tools/scripts/check_docs.py             # docs freshness / front-matter
+  .venv/bin/python -m pytest merlin/tests packages/merlin-experiments/tests packages/merlin-dse/tests packages/merlin-mining/tests
   ```
+- Distinguish code regressions from unavailable inputs: the full suite includes private corpora,
+  retained experiment records, compiler builds and hardware. Report the actual passing subset and
+  missing prerequisites; do not manufacture fixtures or weaken grading to make a fresh clone green.
 - Match the surrounding code style. C/C++ follows `.clang-format`/`.clang-tidy`; Python follows the
-  `[tool.ruff]` config in `pyproject.toml`.
+  `[tool.ruff]` config in `pyproject.toml`, formatted with the pinned ruff
+  (`uvx ruff@0.16.8 check --select I --fix <files> && uvx ruff@0.16.8 format <files>`). The pre-commit
+  hook refuses changed Python that is not formatted. If a formatter run moves a `# target-ok:`-style
+  marker off the line it excuses, pin that statement with `  # fmt: skip`.
+- Restyle-only commits are listed in `.git-blame-ignore-revs`; run
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so blame skips them.
 - Commit messages follow `type(scope): imperative summary` (e.g. `fix(runtime): ...`).
 
 ## Code of conduct

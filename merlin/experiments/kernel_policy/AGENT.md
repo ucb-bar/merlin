@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/kernel_policy
 
+Status: frozen — the kernel-mining policy results are in `FINDINGS.md`; `merlin/benchmarks/cost_calib` cites `stageF/run_l2.py`.
+
 ## Purpose
 
 Experiment: kernel mining -> policy rules.

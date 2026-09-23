@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-07-14
 related: [core_dialects]
-code_refs: [merlin/python/merlin/xdsl_dialects, merlin/schemas]
+code_refs: [src/merlin/xdsl_dialects, merlin/schemas]
 ---
 
 # Contracts
@@ -21,6 +21,6 @@ hardware/runtime promises. Contracts are the legality/evidence layer.
 Schema: `merlin/schemas/target_contract.schema.yaml` (target side) and
 `merlin/schemas/workload_region.schema.yaml` (workload side). The eventual IR home is the
 `contract` dialect (see `docs/dialects.md`); prototype it in
-`merlin/python/merlin/xdsl_dialects/contract.py`.
+`src/merlin/xdsl_dialects/contract.py`.
 
-Example (ToyNPU): `merlin/targets/toy_npu/contracts/target_contract.yaml`.
+Example (ToyNPU): `examples/toy_npu/target/contracts/target_contract.yaml`.

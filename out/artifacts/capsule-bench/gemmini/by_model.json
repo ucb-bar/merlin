@@ -1,0 +1,582 @@
+{
+  "target": "gemmini",
+  "arm_filter": null,
+  "tag_filter": "gemarm4",
+  "n_runs": 6,
+  "models": {
+    "gpt-5.6-sol": {
+      "model": "gpt-5.6-sol",
+      "n_runs": 3,
+      "runs": [
+        "merlincirct_gemarm4_codex",
+        "merlincirct_gemarm4_codex2",
+        "merlincirct_gemarm4_codex3"
+      ],
+      "best_public": "20/20",
+      "best_hidden": "5/5",
+      "best_public_n": 20,
+      "best_hidden_n": 5,
+      "metered_cost_usd": 0.0,
+      "unpriced_runs": 0,
+      "notional_cost_usd": 21.079300000000003,
+      "unknown_billing_cost_usd": 0.0,
+      "subscription_notional_runs": 3,
+      "unknown_billing_runs": 0,
+      "notional_unpriced_runs": 0,
+      "lower_bound_token_runs": 0,
+      "tokens_total": 26648234,
+      "tool_calls": 190,
+      "planes": {}
+    },
+    "glm5": {
+      "model": "glm5",
+      "n_runs": 1,
+      "runs": [
+        "merlincirct_gemarm4_glm5"
+      ],
+      "best_public": "0/20",
+      "best_hidden": "0/5",
+      "best_public_n": 0,
+      "best_hidden_n": 0,
+      "metered_cost_usd": 28.1852,
+      "unpriced_runs": 0,
+      "notional_cost_usd": 0.0,
+      "unknown_billing_cost_usd": 0.0,
+      "subscription_notional_runs": 0,
+      "unknown_billing_runs": 0,
+      "notional_unpriced_runs": 0,
+      "lower_bound_token_runs": 0,
+      "tokens_total": 46441832,
+      "tool_calls": 599,
+      "planes": {
+        "spike": 17,
+        "command_buffer_schema": 3
+      }
+    },
+    "nemotron": {
+      "model": "nemotron",
+      "n_runs": 2,
+      "runs": [
+        "merlincirct_gemarm4_nemotron",
+        "merlincirct_gemarm4_nemotron3"
+      ],
+      "best_public": "0/20",
+      "best_hidden": "0/5",
+      "best_public_n": 0,
+      "best_hidden_n": 0,
+      "metered_cost_usd": 3.8879,
+      "unpriced_runs": 0,
+      "notional_cost_usd": 0.0,
+      "unknown_billing_cost_usd": 0.0,
+      "subscription_notional_runs": 0,
+      "unknown_billing_runs": 0,
+      "notional_unpriced_runs": 0,
+      "lower_bound_token_runs": 0,
+      "tokens_total": 25387853,
+      "tool_calls": 786,
+      "planes": {
+        "parse": 20,
+        "numeric_golden": 20
+      }
+    }
+  },
+  "runs": [
+    {
+      "run_id": "merlincirct_gemarm4_codex",
+      "arm": "merlin_rtlchecks",
+      "model": "gpt-5.6-sol",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "codex",
+      "provider": "subscription",
+      "converged": true,
+      "n_rounds": 1,
+      "public": {
+        "passed": "20/20",
+        "n": 20,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "5/5",
+        "n": 5,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": "L3",
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {},
+      "wall_s": 1468.844,
+      "active_wall_s": null,
+      "rate_limit_wait_s": null,
+      "tool_calls": 45,
+      "tokens_total": 6591224,
+      "tokens_input": 229542,
+      "tokens_output": 44114,
+      "tokens_cached": 6317568,
+      "tokens_by_model": {
+        "gpt-5.6-sol": {
+          "input": 229542,
+          "cache_create": 0,
+          "cache_read": 6317568,
+          "output": 44114,
+          "reasoning": 15140,
+          "messages": 60
+        }
+      },
+      "cost_usd": null,
+      "notional_usd": 5.6299,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 229542
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": true,
+          "isa_tools_used": true,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "ever": {
+          "no_regex_ok": true,
+          "isa_tools_used": true,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 1
+      },
+      "tier_reach": {
+        "L3": 20
+      },
+      "behaviour": {
+        "actions": 45,
+        "recon_before_first_write": 33,
+        "recon_fraction": 0.733,
+        "writes": 4,
+        "invalid_calls": 0,
+        "distinct_tools": 2
+      },
+      "codex": {
+        "driver": "codex",
+        "billing_mode": "subscription_notional",
+        "rounds_with_usage": 1,
+        "rounds_without_usage": 0,
+        "tokens_are_lower_bound": false
+      },
+      "billing_mode": "subscription_notional"
+    },
+    {
+      "run_id": "merlincirct_gemarm4_codex2",
+      "arm": "merlin_rtlchecks",
+      "model": "gpt-5.6-sol",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "codex",
+      "provider": "subscription",
+      "converged": true,
+      "n_rounds": 1,
+      "public": {
+        "passed": "20/20",
+        "n": 20,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "5/5",
+        "n": 5,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": "L3",
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {},
+      "wall_s": 1633.903,
+      "active_wall_s": null,
+      "rate_limit_wait_s": null,
+      "tool_calls": 78,
+      "tokens_total": 10125955,
+      "tokens_input": 364039,
+      "tokens_output": 50300,
+      "tokens_cached": 9711616,
+      "tokens_by_model": {
+        "gpt-5.6-sol": {
+          "input": 364039,
+          "cache_create": 0,
+          "cache_read": 9711616,
+          "output": 50300,
+          "reasoning": 16638,
+          "messages": 99
+        }
+      },
+      "cost_usd": null,
+      "notional_usd": 8.185,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 364039
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": true,
+          "isa_tools_used": true,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "ever": {
+          "no_regex_ok": true,
+          "isa_tools_used": true,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 1
+      },
+      "tier_reach": {
+        "L3": 20
+      },
+      "behaviour": {
+        "actions": 78,
+        "recon_before_first_write": 28,
+        "recon_fraction": 0.359,
+        "writes": 13,
+        "invalid_calls": 0,
+        "distinct_tools": 2
+      },
+      "codex": {
+        "driver": "codex",
+        "billing_mode": "subscription_notional",
+        "rounds_with_usage": 1,
+        "rounds_without_usage": 0,
+        "tokens_are_lower_bound": false
+      },
+      "billing_mode": "subscription_notional"
+    },
+    {
+      "run_id": "merlincirct_gemarm4_codex3",
+      "arm": "merlin_rtlchecks",
+      "model": "gpt-5.6-sol",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "codex",
+      "provider": "subscription",
+      "converged": true,
+      "n_rounds": 1,
+      "public": {
+        "passed": "20/20",
+        "n": 20,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "1/5",
+        "n": 1,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": "L2",
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {},
+      "wall_s": 1474.78,
+      "active_wall_s": 1474.78,
+      "rate_limit_wait_s": 0.0,
+      "tool_calls": 67,
+      "tokens_total": 9931055,
+      "tokens_input": 234043,
+      "tokens_output": 42228,
+      "tokens_cached": 9654784,
+      "tokens_by_model": {
+        "gpt-5.6-sol": {
+          "input": 234043,
+          "cache_create": 0,
+          "cache_read": 9654784,
+          "output": 42228,
+          "reasoning": 14022,
+          "messages": 77
+        }
+      },
+      "cost_usd": null,
+      "notional_usd": 7.2644,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 234043
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": true,
+          "isa_tools_used": false,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "ever": {
+          "no_regex_ok": true,
+          "isa_tools_used": false,
+          "cca_used": true,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 0
+      },
+      "tier_reach": {
+        "L2": 19,
+        "L3": 1
+      },
+      "behaviour": {
+        "actions": 67,
+        "recon_before_first_write": 21,
+        "recon_fraction": 0.313,
+        "writes": 17,
+        "invalid_calls": 0,
+        "distinct_tools": 2
+      },
+      "codex": {
+        "driver": "codex",
+        "billing_mode": "subscription_notional",
+        "rounds_with_usage": 1,
+        "rounds_without_usage": 0,
+        "tokens_are_lower_bound": false
+      },
+      "billing_mode": "subscription_notional"
+    },
+    {
+      "run_id": "merlincirct_gemarm4_glm5",
+      "arm": "merlin_rtlchecks",
+      "model": "glm5",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "opencode",
+      "provider": "bedrock",
+      "converged": false,
+      "n_rounds": 6,
+      "public": {
+        "passed": "0/20",
+        "n": 0,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "0/5",
+        "n": 0,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": null,
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {
+        "spike": 17,
+        "command_buffer_schema": 3
+      },
+      "wall_s": 26461.659,
+      "active_wall_s": 26461.659,
+      "rate_limit_wait_s": 0.0,
+      "tool_calls": 599,
+      "tokens_total": 46441832,
+      "tokens_input": 46241786,
+      "tokens_output": 200046,
+      "tokens_cached": 0,
+      "tokens_by_model": {
+        "amazon-bedrock/zai.glm-5": {
+          "input": 46241786,
+          "cache_create": 0,
+          "cache_read": 0,
+          "output": 200046,
+          "reasoning": 0,
+          "messages": 867
+        }
+      },
+      "cost_usd": 28.1852,
+      "notional_usd": null,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 46241786
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": false,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": true
+        },
+        "ever": {
+          "no_regex_ok": false,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 0
+      },
+      "tier_reach": {
+        "L1": 17,
+        "none": 3
+      },
+      "behaviour": {
+        "actions": 599,
+        "recon_before_first_write": 53,
+        "recon_fraction": 0.088,
+        "writes": 114,
+        "invalid_calls": 3,
+        "distinct_tools": 9
+      },
+      "codex": {},
+      "billing_mode": "metered"
+    },
+    {
+      "run_id": "merlincirct_gemarm4_nemotron",
+      "arm": "merlin_rtlchecks",
+      "model": "nemotron",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "opencode",
+      "provider": "bedrock",
+      "converged": false,
+      "n_rounds": 12,
+      "public": {
+        "passed": "0/20",
+        "n": 0,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "0/5",
+        "n": 0,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": null,
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {
+        "parse": 20
+      },
+      "wall_s": 3823.932,
+      "active_wall_s": 3823.932,
+      "rate_limit_wait_s": 0.0,
+      "tool_calls": 507,
+      "tokens_total": 18506132,
+      "tokens_input": 18394973,
+      "tokens_output": 111159,
+      "tokens_cached": 0,
+      "tokens_by_model": {
+        "amazon-bedrock/nvidia.nemotron-super-3-120b": {
+          "input": 18394973,
+          "cache_create": 0,
+          "cache_read": 0,
+          "output": 111159,
+          "reasoning": 0,
+          "messages": 1042
+        }
+      },
+      "cost_usd": 2.8315,
+      "notional_usd": null,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 18394973
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": false,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": true
+        },
+        "ever": {
+          "no_regex_ok": true,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 0
+      },
+      "tier_reach": {
+        "none": 20
+      },
+      "behaviour": {
+        "actions": 507,
+        "recon_before_first_write": 46,
+        "recon_fraction": 0.091,
+        "writes": 87,
+        "invalid_calls": 2,
+        "distinct_tools": 7
+      },
+      "codex": {},
+      "billing_mode": "metered"
+    },
+    {
+      "run_id": "merlincirct_gemarm4_nemotron3",
+      "arm": "merlin_rtlchecks",
+      "model": "nemotron",
+      "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+      "driver": "opencode",
+      "provider": "bedrock",
+      "converged": false,
+      "n_rounds": 12,
+      "public": {
+        "passed": "0/20",
+        "n": 0,
+        "total": 20
+      },
+      "hidden": {
+        "passed": "0/5",
+        "n": 0,
+        "total": 5
+      },
+      "integrity_status": "clean",
+      "highest_tier": null,
+      "oracle_mode": "contract-routed(L2+L3)",
+      "gradeable": true,
+      "first_failure_planes": {
+        "numeric_golden": 20
+      },
+      "wall_s": 1410.977,
+      "active_wall_s": 1410.977,
+      "rate_limit_wait_s": 0.0,
+      "tool_calls": 279,
+      "tokens_total": 6881721,
+      "tokens_input": 6833502,
+      "tokens_output": 48219,
+      "tokens_cached": 0,
+      "tokens_by_model": {
+        "amazon-bedrock/nvidia.nemotron-super-3-120b": {
+          "input": 6825407,
+          "cache_create": 0,
+          "cache_read": 0,
+          "output": 48174,
+          "reasoning": 0,
+          "messages": 582
+        },
+        "nvidia.nemotron-super-3-120b": {
+          "input": 8095,
+          "cache_create": 0,
+          "cache_read": 0,
+          "output": 45,
+          "reasoning": 0,
+          "messages": 1
+        }
+      },
+      "cost_usd": 1.0564,
+      "notional_usd": null,
+      "sink": {
+        "sink_present": true,
+        "sink_input_tokens": 6833502
+      },
+      "conformance": {
+        "last_round": {
+          "no_regex_ok": false,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": false
+        },
+        "ever": {
+          "no_regex_ok": true,
+          "isa_tools_used": false,
+          "cca_used": false,
+          "full_selfcheck": true
+        },
+        "conformant_rounds": 0
+      },
+      "tier_reach": {
+        "none": 20
+      },
+      "behaviour": {
+        "actions": 279,
+        "recon_before_first_write": 24,
+        "recon_fraction": 0.086,
+        "writes": 21,
+        "invalid_calls": 16,
+        "distinct_tools": 6
+      },
+      "codex": {},
+      "billing_mode": "metered"
+    }
+  ]
+}

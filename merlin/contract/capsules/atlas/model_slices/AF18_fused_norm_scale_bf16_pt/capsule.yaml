@@ -1,0 +1,60 @@
+name: AF18_fused_norm_scale_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch fused rsqrt+scale bf16 (atlas smolvla_fused_norm_scale)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: VAR
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: bf16
+- name: MAT
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: bf16
+operation:
+  op: fused_norm_scale
+  attributes:
+    out: Y0
+    arg_order:
+    - VAR
+    - MAT
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeBinary
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: fused_norm_scale
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: elementwise_map
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 2.818125
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

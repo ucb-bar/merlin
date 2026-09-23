@@ -2,9 +2,10 @@
 
 ## Purpose
 
-The single pytest suite for merlin (~754 tests): unit + integration across kernels, MLIR/xDSL
-compilation, DSE, runtime/backends, model bringup, validation. This is the sole `testpaths` entry
-in `pyproject.toml`. Test fixtures/data live in `fixtures/` and `data/` here.
+The cross-subsystem pytest suite for merlin: unit + integration across kernels, MLIR/xDSL
+compilation, DSE, runtime/backends, model bringup, validation. This is the root project's
+`testpaths` entry; optional distributions also have focused `packages/*/tests/` suites.
+Shared test fixtures/data live in `fixtures/` and `data/` here.
 
 ## What belongs here
 
@@ -12,8 +13,8 @@ in `pyproject.toml`. Test fixtures/data live in `fixtures/` and `data/` here.
 
 ## What does not belong here
 
-- Library/application source (lives under `merlin/python/merlin/`).
-- Generated outputs (those are gitignored under `runs/` / `artifacts/`).
+- Library/application source (`src/merlin/` or `packages/*/src/`).
+- Generated outputs (those belong under the configured `out/` root).
 
 ## Invariants
 

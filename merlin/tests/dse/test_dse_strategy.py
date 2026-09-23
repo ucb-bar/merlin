@@ -1,12 +1,19 @@
 """Strategy substrate: strategies reproduce contract costs and round-trip through the schema."""
+
 from merlin.common import schemas
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
 from merlin.dse.cost_model import evaluate_cost
 from merlin.dse.hardware_space import default_cost_model
-from merlin.dse.strategy import (Strategy, behavior_descriptors, default_strategies,
-                                 evaluate_strategy, from_dict, load_strategies,
-                                 strategy_from_passes)
+from merlin.dse.strategy import (
+    Strategy,
+    behavior_descriptors,
+    default_strategies,
+    evaluate_strategy,
+    from_dict,
+    load_strategies,
+    strategy_from_passes,
+)
 from merlin.dse.variants import contract_plans
 
 
@@ -19,8 +26,8 @@ def test_strategies_reproduce_contract_costs():
     contracts = {k: evaluate_cost(rpv, p, cm)["cycles"] for k, p in contract_plans(rpv).items()}
     by_id = {s.id: evaluate_strategy(s, rpv, cm)["cycles"] for s in default_strategies()}
     assert by_id["opaque_baseline"] == contracts["I0"]
-    assert by_id["resident_sw_visible"] == contracts["I2"]                 # resident == I2
-    assert by_id["resident_commit_sw_visible"] == contracts["I3"]          # resident+commit == I3
+    assert by_id["resident_sw_visible"] == contracts["I2"]  # resident == I2
+    assert by_id["resident_commit_sw_visible"] == contracts["I3"]  # resident+commit == I3
 
 
 def test_strategy_id_is_stable_and_content_addressed():

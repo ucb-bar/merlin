@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-22
 related: [getting_started, dse, design_pressure]
-code_refs: [merlin/python/merlin/dse_guidance]
+code_refs: [packages/merlin-dse/src/merlin/dse_guidance]
 ---
 
 # DSE Guidance — Workload-Contract Analysis
@@ -63,7 +63,7 @@ structural DSE candidates only when those contracts justify them, and gates quan
 on measurement. Concretely: across the captured zoo, every int8/fp8 model stores weights low-bit
 but runs **f32 matmuls** — native low-bit compute and the packed layout are absent from the
 capture (a hidden DSE axis), reported by the numerical-contract audit with no speedup/accuracy
-claim. See `merlin/benchmarks/dse_guidance/case_study/`.
+claim. See `experiments/reference-data/dse/case_study/`.
 
 ## Design envelope vs calibration
 
@@ -289,7 +289,7 @@ elementwise/norm/view/glue kernel). This grounds the `dispatches per replan` inp
 `command_batching` / `autonomous_K_loop` in a *measured* number instead of an estimate; the
 opportunity is larger than the matmul-only view implied. Data:
 `merlin/benchmarks/dse_guidance/measured_dispatch.yaml`; report:
-`benchmarks/dse_guidance/case_study/dispatch_coupling_report.md`. Honest scope: the dispatch
+`experiments/reference-data/dse/case_study/dispatch_coupling_report.md`. Honest scope: the dispatch
 *count* is measured; per-dispatch *host cost* is host-interpreter timing (Python reference
 executor), not the deployable C runtime — so no speedup is claimed.
 
@@ -346,7 +346,11 @@ from `prov.fqn`, and emits `case_study.md` + `cross_workload_provenance.csv` (pe
 flat-vs-recovered with explicit evidence labels: `recovered_from_ir` / `recovered_from_prov_fqn` /
 `assumed_reference` / `calibrated` / `uncalibrated` / `unavailable`). OpenVLA's vision-backbone vs
 LM-decode split is recovered; every candidate stays `blocked_by: missing_calibration`. A committed
-copy lives at `merlin/benchmarks/dse_guidance/case_study/`.
+copy lives at `experiments/reference-data/dse/case_study/`, separate from generated output.
+`--query` and `--insight-mining` read this reference by default; use `--case-study-dir`
+to consume a newly generated study. `MERLIN_OUT_ROOT` redirects new outputs, not the
+reference snapshot. `MERLIN_DSE_REFERENCE_DIR` selects reference input for an installed
+consumer without a checkout. The migration's file hashes are recorded beside the snapshot.
 
 Exhaustive study across the **real model zoo** — every captured workload under
 `out/artifacts/recaptures/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,

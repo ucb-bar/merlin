@@ -1,0 +1,83 @@
+{
+ "schema_version": "2.0",
+ "family": "circt_static",
+ "fixture_note": "The structural subset of a SECOND elaboration's own committed RTL-facts cache. A different elaboration is a different device for provenance purposes: it is kept apart from device_a and the two are never merged into one machine.",
+ "elaboration": "UniversalResNet50GemminiRocketConfig",
+ "facts": {
+  "target": "device_b",
+  "arrays": [
+   {
+    "name": "mesh",
+    "rows": 16,
+    "cols": 16,
+    "tiles": 256,
+    "pe_per_tile": 1,
+    "parent": "AlwaysOutTransposer",
+    "count": 256,
+    "source": "mlc geometry.discover_mesh_dim + instantiation_counts(Mesh->Tile)=256, (Tile->PE_256)=1"
+   }
+  ],
+  "memories": [
+   {
+    "name": "scratchpad",
+    "banks": 4,
+    "row_elems": 16,
+    "depth": 4096,
+    "elem_bits": 8,
+    "bytes": 262144,
+    "rows": 16384,
+    "evidence": "4x `smem mem : UInt<8>[16] [4096]` @ Scratchpad.scala:251"
+   },
+   {
+    "name": "accumulator",
+    "banks": 2,
+    "addr_width": 9,
+    "depth": 512,
+    "lanes": 16,
+    "lane_bits": 32,
+    "row_bytes": 64,
+    "bytes": 65536,
+    "rows": 1024,
+    "module": "AsymmetricTwoPortSyncMem (2 x `smem UInt<256>[1] [512]`)",
+    "evidence": "circt_introspect.extract_accumulator over the core HW dialect"
+   }
+  ],
+  "datapaths": [
+   {
+    "name": "input",
+    "dtype": "i8",
+    "evidence": "scratchpad smem UInt<8>"
+   },
+   {
+    "name": "accumulator",
+    "dtype": "i32",
+    "evidence": "AccumulatorMem SInt<32>"
+   },
+   {
+    "name": "spatial_partial_sum",
+    "dtype": "i32",
+    "evidence": "PE in_b/out_b/out_c SInt<32>; declared spatialArrayOutputType SInt(20) is INERT"
+   },
+   {
+    "name": "store_dma",
+    "bits": 128,
+    "evidence": "StreamWriter io.req.bits.data UInt<128> (= DIM x i8); pinned revision is UInt<512>"
+   }
+  ],
+  "interfaces": [
+   {
+    "name": "accumulator_readout",
+    "acc_read_full_width": false,
+    "store_dma_bits": 128,
+    "offchip_dtypes": [
+     "int8"
+    ],
+    "status": "derived",
+    "method": "store-path width in the elaborated FIRRTL + the build's own attested ABI header",
+    "evidence": "StreamWriter io.req.bits.data : UInt<128> (= DIM x int8) in this elaboration, where the gemmini_rtl pin's is UInt<512> (= DIM x int32). Scratchpad.scala's `writer_data_width = if (acc_read_full_width) acc_w else spad_w` is where the absence lives -- AccumulatorMem's read request still carries a `full : UInt<1>` field and cannot witness it. The attested header agrees by omission: ACC_READ_SMALL_WIDTH is defined, ACC_READ_FULL_WIDTH is not.",
+    "consequence": "no int32 tensor can leave this device: the mvout path cannot move an int32 accumulator row, and the narrow path applies the accumulator scale and clips to elem_t (int8).",
+    "l2_oracle_is_blind_to_this": "MEASURED 2026-09-09, not inferred from source. A hand-written full-width int32 mvout for capsule A2_single_tile_matmul, compiled against this target's own attested ABI and run on this device's own Spike extension, returns bit-exact int32 and reports errors=0 -- a program this RTL cannot build. Cause, read in the extension source: the full-width accumulator read is implemented UNCONDITIONALLY off the address bit (spike_qualification/extension/gemmini.cc:222, 'bool const full = (sp_addr >> 29) & 0x1;', and :265, 'sizeof_output = full ? sizeof(acc_t) : sizeof(elem_t)'), not gated on ACC_READ_FULL_WIDTH. L2 must therefore NEVER be cited as evidence about this device's readout width. Console, sources and ELF digests: out/artifacts/capsule-bench/gemmini_universal/l2_oracle_smoke_20260909T092925Z_328c2e2/"
+   }
+  ]
+ }
+}

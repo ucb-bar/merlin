@@ -1,0 +1,11 @@
+merlin/contract/
+merlin/contract/capsules/isa/
+merlin/contract/capsules/layers/
+merlin/contract/capsules/model/
+merlin/contract/capsules/model_slices/
+experiments/capsule_bench/targets/gemmini_universal/contracts/isa_include/gemmini.h
+experiments/capsule_bench/targets/gemmini_universal/contracts/isa_include/gemmini_params.h
+experiments/capsule_bench/targets/gemmini_universal/task/
+third_party/llvm-install/
+experiments/capsule_bench/targets/gemmini_universal/contracts/hwbringup_gemmini_universal_v0
+experiments/capsule_bench/targets/gemmini_universal/scripts/agent_selfcheck.py

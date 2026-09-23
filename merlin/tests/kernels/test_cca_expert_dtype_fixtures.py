@@ -11,6 +11,7 @@ that `cca.lift_asm` generalizes past the single f32 GEMM it started with:
     f32), which is numerically non-comparable to our f32-accumulate datapath -- the expert-wall
     caveat this test documents so the comparison is never read as apples-to-apples.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -40,7 +41,7 @@ def test_each_dtype_fixture_lifts_without_error(fixture: Path):
     c = _lift(fixture)
     assert c.op == "matmul"
     assert c.compute is not None and c.vector is not None
-    assert c.vector.sew in (16, 32)             # a real vector vtype was read, not None
+    assert c.vector.sew in (16, 32)  # a real vector vtype was read, not None
 
 
 def test_int8_fixture_shows_widening_mac():

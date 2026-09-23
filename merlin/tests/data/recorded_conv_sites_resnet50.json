@@ -1,0 +1,2657 @@
+{
+ "schema": "recorded_conv_sites_v1",
+ "source": "out/artifacts/perf-bench/gemmini/development_phase2_global_encoding_20260908/validation/canonical/default/resnet50/command_buffer.json",
+ "note": "the 53 CONV2D sites of the recorded whole-model emission: attributes and operand shape/dtype only. No golden, no reference output -- this is the compiler's own record of what it emitted, vendored so the refusal-stack regression pin is unconditional.",
+ "sites": [
+  {
+   "attributes": {
+    "kernel": [
+     7,
+     7,
+     3,
+     64
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     3,
+     3,
+     3,
+     3
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      3,
+      224,
+      224
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      112,
+      112
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     64,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     64,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     64,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     64,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     64,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     64,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     64,
+     64
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     64,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      64,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      56,
+      56
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     128,
+     128
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     128,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     512
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      56,
+      56
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     128,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     128,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     128,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     128,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     128,
+     128
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     128,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      128,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      28,
+      28
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     1024
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      28,
+      28
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     256,
+     256
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     256,
+     1024
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      256,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      14,
+      14
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     512,
+     512
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     2048
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     1024,
+     2048
+    ],
+    "stride": [
+     2,
+     2
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      1024,
+      14,
+      14
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     2048,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     512,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     2048
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     2048,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     3,
+     3,
+     512,
+     512
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  },
+  {
+   "attributes": {
+    "kernel": [
+     1,
+     1,
+     512,
+     2048
+    ],
+    "stride": [
+     1,
+     1
+    ],
+    "padding": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "dilation": [
+     1,
+     1
+    ],
+    "layout": "nchw_streamed_row_im2col",
+    "output_dtype": "i32"
+   },
+   "operands": {
+    "ifm": {
+     "shape": [
+      1,
+      512,
+      7,
+      7
+     ],
+     "dtype": "i8"
+    },
+    "weight": {
+     "shape": null,
+     "dtype": null
+    },
+    "dst": {
+     "shape": [
+      1,
+      2048,
+      7,
+      7
+     ],
+     "dtype": "i32"
+    }
+   }
+  }
+ ]
+}

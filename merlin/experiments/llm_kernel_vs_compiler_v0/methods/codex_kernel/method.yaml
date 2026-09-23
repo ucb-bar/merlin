@@ -1,0 +1,27 @@
+# Kernel-generation arm A1 — Codex on the ChatGPT subscription seat.
+#
+# Runs in parallel with, and BLIND to, the bedrock arm.
+method: codex_kernel
+driver: codex                       # capsule_bench/harness/codex_agent.py
+model: gpt-5.6-sol                  # the seat's own default; an API-only slug is refused with a 400
+provider: subscription
+billing_mode: subscription_notional # billed_usd = 0; a notional figure needs a real rate, else no figure
+effort: high
+seeds: [1, 2, 3]
+
+# Codex CLI 0.147.0 contract, measured from live runs rather than docs.
+cli:
+  approval: "-c approval_policy=never"   # --ask-for-approval DOES NOT EXIST; passing it aborts the launch
+  sandbox: workspace-write
+accounting:
+  # input_tokens ALREADY contains cached + cache_write, so translation SUBTRACTS rather than copies.
+  input_tokens_includes_cached: true
+  # Usage appears only on turn.completed. A failed turn is UNPRICED, never 0.
+  unpriced_on_failed_turn: true
+  # No event carries a timestamp; wall time comes from harness-side stamps only.
+  timestamps_from_harness: true
+isolation:
+  # A fresh CODEX_HOME changes the cached-token profile, so every arm must construct it identically
+  # or cache-hit rate differs for a reason unrelated to the treatment.
+  codex_home: per_run_identical
+  auth_bind: writable    # single-use refresh tokens rotate; a read-only bind kills every later run

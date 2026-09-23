@@ -1,0 +1,9 @@
+schema_version = 1
+purpose = "LLVM Python rewrite/pass runner, independent of model capture"
+binding_module = "torch_mlir"
+qualification = "legacy environment baseline; independent install still requires compiler regression suite"
+
+[packages]
+torch-mlir = "20260531.828"
+torch = "2.10.0"
+numpy = "2.4.6"

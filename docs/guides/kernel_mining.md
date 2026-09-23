@@ -5,7 +5,7 @@ status: current
 owner: kernels
 last_verified: 2026-07-22
 related: [getting_started, integrations, dse, beam_search, rvv_kernel_mining_methodology]
-code_refs: [merlin/python/merlin/kernels]
+code_refs: [src/merlin/kernels]
 ---
 
 # Kernel abstraction mining (Workstream 2)
@@ -57,14 +57,14 @@ XNNPACK RVV / OpenBLAS RVV / Autocomp (Gemmini) / Exo (compiled C + schedule .py
 
 ## Modules
 
-`merlin/python/merlin/kernels/`:
+`src/merlin/kernels/`:
 - `ingest/` — per-source adapters → `NormalizedKernel` (`types.py`, incl. `content_hash`).
   XNNPACK parses the ukernel symbol; OpenBLAS parses `kernel/riscv64` filenames (vector
   kernels only, scalar fallbacks skipped); Autocomp parses the `void test(...)` signature;
   Exo **compiles specs to C** and also mines schedule `.py`; Triton extracts one record per
   `@triton.jit` function (default subtrees `python/tutorials` + `python/triton_kernels`),
   with `source="triton_cpu"` for the CPU fork.
-- `markers.py` — the `(ISA-family, motif) → regex` table; the heart of extraction.
+- `markers.py` — loads the `(ISA-family, motif) → regex` table from `framework_contracts/feature_extraction/<family>.yaml` (which also maps each `kernel.target` to its family); the heart of extraction. Expert-corpus locations come from `merlin/contract/corpora.yaml`.
 - `features/` — pure `extract_*` functions, incl. `shape_regime.py` (working-set bytes,
   arithmetic intensity, regime labels) and `roles.py` (L2 memory roles, **measured** reuse).
 - `classify.py` / `evidence.py` — features → canonical motif set + evidence ids/markers.

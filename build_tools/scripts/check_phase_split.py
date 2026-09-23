@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Report which phase each capsule can serve, and refuse a corpus that cannot say why.
+
+THE RULE THIS GATE ENFORCES. A capsule that serves only one phase is not a defect -- a movement family
+contracts nothing and belongs to phase 1, and a member too large to certify belongs to phase 2 resting
+on a certified sibling. What IS a defect is a single-phase member whose reason nobody recorded, because
+that is indistinguishable from a member somebody forgot to size. Every single-phase verdict here
+therefore carries a derived reason, and a verdict with none fails the gate.
+
+WHY IT CANNOT GATE ON THE RATIO. The healthy state is a large ``both`` set, and it would be easy to
+write ``fail if both < x``. That gate would be satisfiable by DELETING the members that serve one phase,
+which improves the ratio and destroys coverage -- the same trap ``check_semantic_coverage`` already
+documents for ARR, where gating on the score makes the rational response to a hard family to remove it
+from the contract. So this gate checks that the split is EXPLAINED, never that it is favourable.
+
+UNMEASURED IS NOT CLEAN. A target with no certification history cannot have its phase-1 membership
+decided at all. That is reported as ``undetermined`` and, with ``--strict``, is a non-zero exit --
+never a pass. The remedy is to certify that target's corpus once, not to weaken this check.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
+
+from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+
+from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.targetgen import cert_cost as CC  # noqa: E402
+from merlin.targetgen import phase_policy as PP  # noqa: E402
+
+#: The budget a capsule is sized against. A declared choice, not a measurement -- it is the number the
+#: corpus is willing to spend per member, and it is stated here so a reader can see it rather than
+#: finding it inside a fit.
+DEFAULT_BUDGET_S = 300.0
+
+
+def _corpus_root() -> Path:
+    return merlin_dir() / "contract" / "capsules"
+
+
+def _targets(root: Path) -> list[str]:
+    """Declared profile aliases retain the existing corpus-directory grouping."""
+    targets = sorted(item.profile for item in all_declarations())
+    if not targets:
+        raise ValueError("phase-split requires a nonempty Phase 0 declaration inventory")
+    return targets
+
+
+def _capsules_for(root: Path, target: str, subtrees: set[str]) -> list[Path]:
+    """A target owns a subtree, except the one whose corpus sits at the corpus root. Which one that is
+    is found by elimination rather than written down, so this file names no target."""
+    if target in subtrees:
+        return sorted((root / target).rglob("capsule.yaml"))
+    excluded = subtrees | {"profiles"}
+    return sorted(p for p in root.rglob("capsule.yaml") if p.relative_to(root).parts[0] not in excluded)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--target", help="only this target (default: every target with a public profile)")
+    ap.add_argument("--budget-s", type=float, default=DEFAULT_BUDGET_S)
+    ap.add_argument("--json", action="store_true", help="emit the report as JSON")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="an undecidable target (no certification history) is a failure, not a note",
+    )
+    args = ap.parse_args(argv)
+
+    import yaml
+
+    root = _corpus_root()
+    targets = _targets(root)
+    subtrees = {t for t in targets if (root / t).is_dir()}
+    if args.target:
+        selected = for_target(args.target).profile
+        if selected not in targets:
+            print(f"[FAIL] phase-split: {args.target!r} has no public profile; known: {targets}")
+            return 2
+        targets = [selected]
+
+    report: dict[str, dict] = {}
+    unexplained: list[str] = []
+    undecided: list[str] = []
+    orphaned: list[str] = []
+    unverified: list[str] = []
+    unreachable_levers: list[str] = []
+
+    for t in targets:
+        caps = []
+        for p in _capsules_for(root, t, subtrees):
+            try:
+                doc = yaml.safe_load(p.read_text())
+            except Exception:  # noqa: BLE001 - an unreadable capsule is reported, never skipped silently
+                unexplained.append(f"{t}: {p} could not be read")
+                continue
+            if isinstance(doc, dict):
+                caps.append(doc)
+        runtime_target = for_target(t).target
+        fit = CC.fit_for(runtime_target)
+        ca = PP.cycle_accurate_seen(runtime_target)
+        rep = PP.split_report(caps, target=runtime_target, fit=fit, budget_s=args.budget_s, cycle_accurate_available=ca)
+        counts = rep["counts"]
+        report[t] = {
+            "n_capsules": rep["n_capsules"],
+            "counts": counts,
+            "cert_fit_samples": getattr(fit, "n_samples", None),
+            "single_phase_reasons": rep["single_phase_reasons"],
+        }
+
+        anc = PP.anchors(
+            caps, target=runtime_target, fit=fit, budget_s=args.budget_s, cycle_accurate_available=ca, verify=True
+        )
+        report[t]["obligations"] = anc["n_obligations"]
+        report[t]["paired"] = anc["n_paired"]
+        report[t]["orphaned"] = anc["n_orphaned"]
+        report[t]["verified"] = anc.get("n_verified", 0)
+        report[t]["self_certified"] = anc.get("n_self_certified", 0)
+        if anc.get("n_unverified"):
+            reasons = sorted({r.get("verification", "") for r in anc["paired"] if not r.get("verified")})
+            unverified.append(
+                f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) rest on "
+                "an `extends` no result on disk backs: " + "; ".join(reasons[:3])
+            )
+        if anc["n_orphaned"]:
+            orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing ({anc['orphaned'][0]['why']})")
+
+        # A phase-2 member exists to carry a performance claim, and a claim whose family cannot reach a
+        # verdict costs a certification floor to tell nobody anything. REPORTED, not gated: an
+        # unreachable lever is a finding about a declaration, and gating on the count would make
+        # deleting the family the rational response -- the trap this file already refuses for the ratio.
+        reach = PP.lever_reach_report(caps)
+        report[t]["lever_reach"] = reach
+        for why, names in reach["unreachable"].items():
+            unreachable_levers.append(f"{t}: {len(names)} member(s) ({', '.join(names[:3])}) -- {why}")
+
+        for v in rep["verdicts"]:
+            if v.phase in (PP.PHASE1, PP.PHASE2, PP.NEITHER) and not v.reason.strip():
+                unexplained.append(f"{t}: {v.name} is {v.phase} with no recorded reason")
+        if counts[PP.UNDETERMINED]:
+            undecided.append(
+                f"{t}: {counts[PP.UNDETERMINED]} of {rep['n_capsules']} undecidable "
+                f"({'no measured certification history' if fit is None else 'a predicate could not answer'})"
+            )
+
+    if args.json:
+        print(json.dumps(report, indent=1, default=str))
+    else:
+        print(
+            f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
+            f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}{'selfcert':>9}  cert-fit"
+        )
+        for t, r in report.items():
+            c = r["counts"]
+            n = r["cert_fit_samples"]
+            print(
+                f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
+                f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
+                f"{r['orphaned']:>8}{r.get('verified', 0):>7}{r.get('self_certified', 0):>9}"
+                f"  {('n=%d' % n) if n else 'none'}"
+            )
+
+    if unexplained:
+        print(
+            "\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
+            "from a member nobody sized:"
+        )
+        for line in unexplained[:20]:
+            print(f"  - {line}")
+        return 1
+
+    if orphaned:
+        head = "[FAIL]" if args.strict else "[note]"
+        print(
+            f"\n{head} phase-split: a phase-2 member is admissible only as an EXTENSION of a sibling "
+            "that WAS certified; one resting on nothing is an L2 pass on a shape nothing ever "
+            "certified cycle-accurately:"
+        )
+        for line in orphaned:
+            print(f"  - {line}")
+
+    if unverified:
+        # ⚠️ STRICT-FATAL, LIKE EVERY OTHER FINDING HERE. This branch printed and returned 0 even under
+        # --strict, so "29 of 29 unverified" was a note nobody gated on -- and raising the verified
+        # count would have improved a number that gates nothing. An unchecked `extends` reads as
+        # certified, which is precisely the claim this file refuses to let a corpus make for free.
+        head = "[FAIL]" if args.strict else "[note]"
+        print(
+            f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
+            "because an unchecked one reads as certified:"
+        )
+        for line in unverified:
+            print(f"  - {line}")
+
+    if unreachable_levers:
+        print(
+            "\n[note] phase-split: a phase-2 member carries a performance claim, and a family whose "
+            "declaration contradicts itself reaches no verdict -- the member costs a certification "
+            "floor to tell nobody anything:"
+        )
+        for line in unreachable_levers[:10]:
+            print(f"  - {line}")
+
+    if undecided:
+        head = "[FAIL]" if args.strict else "[note]"
+        print(
+            f"\n{head} phase-split: a target with no certification history cannot have its phase-1 "
+            "membership decided; certify its corpus once rather than weakening this check:"
+        )
+        for line in undecided:
+            print(f"  - {line}")
+        if args.strict:
+            return 1
+    if (orphaned or unverified) and args.strict:
+        return 1
+
+    print("\n[  ok] phase-split: every single-phase verdict carries a derived reason.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

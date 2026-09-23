@@ -1,0 +1,20 @@
+# Holdout/public OVERLAP debt that MAY ONLY SHRINK.
+#
+# Each line is `<target> overlap:<count>` — the number of held-out points that coincide with a public
+# point and are, for now, tolerated. Target-scoped on purpose: every target's sidecar was authored
+# separately and inherits a different number of duplicates, so a flat allowance would let one target's
+# debt excuse another's.
+#
+# A line here is an admission that N of that target's "holdouts" measure memorisation rather than
+# transfer. NEVER RAISE A COUNT. Lower it by re-parameterizing the holdout in the sidecar (a `sweeps:`
+# block generates legal-but-unseen points automatically) and re-running:
+#   build_tools/scripts/check_holdout_disjointness.py --fail-on-overlap
+#
+# The counts themselves leak nothing: which points collide is deliberately never reported.
+
+# atlas — two of its eight hand-authored holdouts are DELIBERATE duplicates of a public program: they
+# re-salt the operands from the capsule name and re-run the same shape, which measures data
+# independence. That is worth measuring and it is NOT transfer, so the overlap is recorded here rather
+# than hidden. Do not "fix" it by deleting those capsules; the transfer claim rests on the other six
+# plus the generated sweep, all of which the gate confirms are disjoint.
+atlas overlap:2

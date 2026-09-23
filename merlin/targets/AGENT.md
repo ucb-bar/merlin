@@ -1,10 +1,8 @@
 # AGENT.md — merlin/targets
 
 ## Purpose
-Hand-authored **reference target DEFINITIONS** — the small, curated contracts/docs/examples that
-describe a target to TargetGen + the lowering pipeline. `toy_npu` is the generic canonical example;
-`gemmini` and `saturn` are reference instances. Reference instances are fine; keep target-specifics
-out of general machinery.
+Legacy compatibility paths for target metadata now authored under `examples/<target>/target/`.
+Remaining K1 input is deferred; new definitions belong in examples or OOT support providers.
 
 ## Canonical per-target shape (same for every target — predictable for agents)
 - `contracts/` **(required)** — `target_contract.yaml`, `dialect_plan.yaml` (validate against
@@ -13,6 +11,8 @@ out of general machinery.
   `.gitkeep`/`AGENT.md` (real codegen products go to `artifacts/targets/<target>/`, not here).
 - `docs/` *(when there's content)* — architecture/isa/runtime reference notes.
 - `examples/` *(when there's content)* — small `.mlir` inputs.
+- `tools/` *(when there's content)* — target-owned tools that shared code reaches only through a
+  `plugin.<key>` entry in the contract (`merlin.targetgen.plugins.load_declared`), never by name.
 - `contracts/rtl_facts/facts.json` *(RTL-grounded targets, e.g. gemmini)* — the **promoted pin** of a
   `circt_introspect` run (the run is the source of truth; the pin is the offline/CI fallback).
 
@@ -28,10 +28,10 @@ The **shared** interface-dialect spec is NOT per-target: `merlin_iface.irdl.mlir
 - Serious production targets → external repos / MLIR plugins.
 
 ## Used by
-`merlin.xdsl_dialects.targets.{toynpu,saturn}`, `merlin.xdsl_dialects.lowering`, `merlin.targetgen`.
-RTL checks resolve facts via `merlin.targetgen.rtl.facts.rtl_facts_path(target)` (default gemmini pin;
-override with `$MERLIN_RTL_FACTS` / `--facts` / `explicit=`). Muon has no curated dir here — the
-resolver routes it to `artifacts/targets/muon/`.
+`merlin.xdsl_dialects.lowering`, `merlin.targetgen`.
+RTL checks resolve facts via `merlin.targetgen.rtl.facts.rtl_facts_path(target)`;
+override with `$MERLIN_RTL_FACTS` / `--facts` / `explicit=`. Historical links here are
+not proof of a qualified facts bundle.
 
 ## Invariants
 Only curated reference definitions in-tree; generated products live under `artifacts/targets/`.

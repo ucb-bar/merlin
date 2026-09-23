@@ -24,4 +24,4 @@ commands:
   emit_command_buffer:
     argv: ["{tool}", "--convert-iface-to-muon", "--emit-command-buffer={output_json}", "{input_mlir}"]
   lower_target_to_llvm:
-    argv: ["{tool}", "--convert-iface-to-muon", "--emit-simt-cpp", "{input_mlir}"]
+    argv: ["{tool}", "--convert-iface-to-muon", "--emit-target-artifact", "{input_mlir}"]

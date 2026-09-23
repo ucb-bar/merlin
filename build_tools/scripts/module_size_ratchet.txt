@@ -1,0 +1,30 @@
+# Library modules over MODULE_SIZE_LIMIT lines when the rule was added (2026-09-16), measured after the
+# tree was run through ruff format so the count is of formatted code. Known debt, not an allowlist:
+# this list may only SHRINK (check_ratchets_shrink.py holds it). A module leaves the list when it is
+# split below the limit; a NEW module over the limit fails check_structure.py. Consumed by:
+# check_structure.py (module size). The number after `#` is the size when recorded, for reference.
+merlin/python/merlin/baselines/executorch_session.py  # 1807
+merlin/python/merlin/baselines/voyager_schedule.py  # 1621
+merlin/python/merlin/compare/host_experiment.py  # 2468
+merlin/python/merlin/compare/paper_k1_orchestrator.py  # 1669
+merlin/python/merlin/compare/paper_measurement_controller.py  # 1941
+merlin/python/merlin/dse_guidance/case_study.py  # 1662
+merlin/python/merlin/dse_guidance/insight_mining.py  # 3680
+merlin/python/merlin/dse_guidance/presentation_plots.py  # 1520
+merlin/python/merlin/llvmlower/impr_features.py  # 3972
+merlin/python/merlin/llvmlower/passes_quant_int.py  # 1814
+merlin/python/merlin/llvmlower/pipeline.py  # 1651
+merlin/python/merlin/mining/k1.py  # 2299
+merlin/python/merlin/perf/calibration.py  # 1581
+merlin/python/merlin/perf/harvest.py  # 1729
+merlin/python/merlin/perf/host_source_witness.py  # 2016
+merlin/python/merlin/runtime/backends/zephyr_model.py  # 2982
+merlin/python/merlin/targetgen/capability_discovery.py  # 3023
+merlin/python/merlin/targetgen/capsule_grade.py  # 1537
+merlin/python/merlin/targetgen/capsule_runner.py  # 5145
+merlin/python/merlin/targetgen/capsule_source.py  # 1942
+merlin/python/merlin/targetgen/conformance.py  # 2221
+merlin/python/merlin/targetgen/corpus_spec.py  # 1703
+merlin/python/merlin/targetgen/corpus_synth.py  # 1765
+merlin/python/merlin/targetgen/publish.py  # 1897
+merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # 1748

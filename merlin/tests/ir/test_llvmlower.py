@@ -3,6 +3,7 @@
 Gated on the external toolchain (m2m venv with torch-mlir, clang-23); auto-skips when
 absent. The host execution is the verification oracle preceding spike RVV runs.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -47,9 +48,9 @@ def test_carry_provenance_threads_prov_loc_and_transforms():
 
     first = TestOp()
     carry_provenance(first, src, "bf16_f32acc")
-    assert first.attributes["prov.region_id"].data == "matmul_0"       # join key preserved
+    assert first.attributes["prov.region_id"].data == "matmul_0"  # join key preserved
     assert first.attributes["prov.fqn"].data == "blocks.0.attn.q"
-    assert isinstance(first.location, NameLoc)                          # in-IR location carried
+    assert isinstance(first.location, NameLoc)  # in-IR location carried
     assert first.attributes["prov.transforms"].data == "bf16_f32acc"
 
     # A SECOND rewrite appends — the breadcrumb is an ordered chain, not a last-writer-wins scalar.
@@ -83,10 +84,10 @@ def test_weights_pack_against_real_manifest():
     manifest = base / "smolvla_int8.safetensors.manifest.json"
     st = base / "smolvla_int8.safetensors"
     entries = pack(manifest, st)
-    assert len(entries) == 1106          # params; 4 buffers are runtime-computed
+    assert len(entries) == 1106  # params; 4 buffers are runtime-computed
     assert entries[0].arg_index == 0
     total = sum(e.nbytes for e in entries)
-    assert 400e6 < total < 600e6         # ~0.47 GB int8 weights
+    assert 400e6 < total < 600e6  # ~0.47 GB int8 weights
     table = emit_c_table(entries)
     assert "MERLIN_WEIGHT_COUNT 1106" in table
     missing = missing_buffers(manifest, st)
@@ -107,9 +108,15 @@ def test_slice_lowers_and_executes_on_host(tmp_path):
     zp = (ctypes.c_int32 * 6)(*[1, 0, -2, 3, 0, 1])
     x = (ctypes.c_float * 32)(*[(i % 5) - 2 for i in range(32)])
     y = (ctypes.c_float * 24)()
-    model([(ctypes.addressof(w), (8, 6)), (ctypes.addressof(s), (6,)),
-           (ctypes.addressof(zp), (6,)), (ctypes.addressof(x), (4, 8)),
-           (ctypes.addressof(y), (4, 6))])
+    model(
+        [
+            (ctypes.addressof(w), (8, 6)),
+            (ctypes.addressof(s), (6,)),
+            (ctypes.addressof(zp), (6,)),
+            (ctypes.addressof(x), (4, 8)),
+            (ctypes.addressof(y), (4, 6)),
+        ]
+    )
 
     W = [[(r * 6 + c) % 7 - 3 for c in range(6)] for r in range(8)]
     X = [[(r * 8 + c) % 5 - 2 for c in range(8)] for r in range(4)]
@@ -147,7 +154,7 @@ def test_slice_compiles_to_rvv_object(tmp_path):
     if not spike.available():
         pytest.skip("chipyard objdump unavailable")
     dasm = subprocess.run(
-        [spike.gcc_path().with_name("riscv64-unknown-elf-objdump"), "-d",
-         res.riscv_obj], capture_output=True, text=True).stdout
+        [spike.gcc_path().with_name("riscv64-unknown-elf-objdump"), "-d", res.riscv_obj], capture_output=True, text=True
+    ).stdout
     assert "_mlir_ciface_forward" in dasm
     assert "vset" in dasm  # auto-vectorized RVV

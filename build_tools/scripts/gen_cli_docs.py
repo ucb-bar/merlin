@@ -8,6 +8,7 @@ Usage:
   python build_tools/scripts/gen_cli_docs.py           # (re)write docs/reference/cli.md
   python build_tools/scripts/gen_cli_docs.py --check    # exit 1 if docs/reference/cli.md is stale vs pyproject
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,8 +23,10 @@ HEADER = (
     "# CLI reference\n\n"
     "_Generated from `pyproject.toml [project.scripts]` by "
     "`build_tools/scripts/gen_cli_docs.py` — do not edit by hand; run the generator._\n\n"
-    "These console-scripts are installed by `pip install -e merlin/python`. Each is a thin "
-    "entrypoint over a module in the `merlin` package (no separate `tools/` layer). Run any with `--help`.\n\n"
+    "Core console-scripts are installed with `pip install -e .` from the repo root. "
+    "Optional research distributions under `packages/` are installed separately; their commands "
+    "are listed below when declared. `src/merlin` is source, not an installable project. "
+    "Each command is a thin module entrypoint. Run any with `--help`.\n\n"
     "| Command | Backing module |\n|---|---|\n"
 )
 
@@ -32,6 +35,12 @@ def render() -> str:
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     scripts = data.get("project", {}).get("scripts", {})
     rows = "".join(f"| `{name}` | `{target}` |\n" for name, target in sorted(scripts.items()))
+    for project in sorted((REPO / "packages").glob("*/pyproject.toml")):
+        metadata = tomllib.loads(project.read_text(encoding="utf-8")).get("project", {})
+        commands = metadata.get("scripts", {})
+        if commands:
+            rows += f"\n## {metadata.get('name', project.parent.name)}\n\n| Command | Backing module |\n|---|---|\n"
+            rows += "".join(f"| `{name}` | `{target}` |\n" for name, target in sorted(commands.items()))
     return HEADER + rows
 
 
@@ -40,8 +49,10 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
         if cur != new:
-            sys.stderr.write("docs/reference/cli.md is stale vs pyproject [project.scripts]; "
-                             "run: python build_tools/scripts/gen_cli_docs.py\n")
+            sys.stderr.write(
+                "docs/reference/cli.md is stale vs pyproject [project.scripts]; "
+                "run: python build_tools/scripts/gen_cli_docs.py\n"
+            )
             return 1
         print("docs/reference/cli.md: up to date")
         return 0

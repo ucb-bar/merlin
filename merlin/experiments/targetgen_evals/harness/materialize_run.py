@@ -34,7 +34,10 @@ def git_root(start: Path) -> Path:
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=start, capture_output=True, text=True, check=True,
+            cwd=start,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         if out:
             return Path(out)
@@ -87,11 +90,11 @@ def materialize(
     if run_dir.exists():
         if force:
             import shutil
+
             shutil.rmtree(run_dir)
         else:
             print(
-                f"ERROR: run directory already exists: {run_dir}\n"
-                f"Use --force to overwrite.",
+                f"ERROR: run directory already exists: {run_dir}\nUse --force to overwrite.",
                 file=sys.stderr,
             )
             return 1
@@ -107,6 +110,13 @@ def materialize(
     (run_dir / "patches").mkdir()
     (run_dir / "metrics").mkdir()
     (run_dir / "contracts").mkdir()
+
+    # Render the target-agnostic method/skill templates for this concrete target: the {target}
+    # placeholders in methods/<m>/prompt.md + skills/<s>/AGENT.md are filled from the invoked target id
+    # and written into the run dir, so the run carries the exact instruction set the agent follows.
+    from harness.render import materialize_rendered_prompts
+
+    materialize_rendered_prompts(root, run_dir, method, target)
 
     # Write run_manifest.yaml
     now_iso = datetime.now(tz=timezone.utc).isoformat()
@@ -168,6 +178,7 @@ def materialize(
 
     # Start logger and record init event
     from harness.tracking import TargetGenRunLogger
+
     logger = TargetGenRunLogger.start(
         target=target,
         method=method,
@@ -179,14 +190,16 @@ def materialize(
         experiment_name=experiment_name,
         otel_endpoint=otel_endpoint,
     )
-    logger.log_params({
-        "target": target,
-        "method": method,
-        "seed": seed,
-        "budget": budget,
-        "is_smoke_test": is_smoke_test,
-        "git_hash_at_init": git_hash,
-    })
+    logger.log_params(
+        {
+            "target": target,
+            "method": method,
+            "seed": seed,
+            "budget": budget,
+            "is_smoke_test": is_smoke_test,
+            "git_hash_at_init": git_hash,
+        }
+    )
     logger.log_event("init_run.completed", {"run_id": run_id, "run_dir": str(run_dir)})
     logger.finish("success")
     logger.patch_manifest(manifest_path)

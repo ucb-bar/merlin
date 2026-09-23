@@ -1,11 +1,12 @@
 """Session-3 coverage: OpenBLAS ingest, content-hash dedup, shape regimes + regime matrix,
 L6/L8 emission, invariants, audit, plots, and --json CLI output."""
+
 import json
-from merlin.common.paths import merlin_dir
 import os
 
 import pytest
 
+from merlin.common.paths import merlin_dir
 from merlin.kernels import audit, invariants, policy, validate
 from merlin.kernels.emit.kernel_record import emit_kernel_record
 from merlin.kernels.ingest.generic import ingest_generic
@@ -18,10 +19,11 @@ OPENBLAS = os.path.join(DATA, "openblas")
 
 # ---------- A: OpenBLAS ingest + dedup ----------
 
+
 def test_openblas_ingest_parses_and_skips_scalar():
     diag = {}
     ks = {k.path.split("/")[-1]: k for k in ingest_openblas(OPENBLAS, diagnostics=diag)}
-    assert diag["scalar_skipped"] == 1          # amax.c is a scalar fallback
+    assert diag["scalar_skipped"] == 1  # amax.c is a scalar fallback
     gemm = ks["dgemm_kernel_8x4_zvl128b.c"]
     assert (gemm.op, gemm.dtype) == ("gemm", "f64")
     assert gemm.shape == {"MR": 8, "NR": 4, "vlen_bits": 128}
@@ -32,8 +34,7 @@ def test_openblas_ingest_parses_and_skips_scalar():
 def test_openblas_gemm_motifs():
     gemm = next(k for k in ingest_openblas(OPENBLAS) if k.op == "gemm")
     motifs = set(emit_kernel_record(gemm)["evidence"]["motifs"])
-    assert {"packed_rhs", "accumulator_lifetime",
-            "vector_length_polymorphic", "tiling_blocking"} <= motifs
+    assert {"packed_rhs", "accumulator_lifetime", "vector_length_polymorphic", "tiling_blocking"} <= motifs
 
 
 def test_dedupe_records_drops_cross_source_copies():
@@ -47,21 +48,38 @@ def test_dedupe_records_drops_cross_source_copies():
 
 # ---------- B: shape regimes ----------
 
+
 def test_shape_regime_labels():
-    rec = emit_kernel_record(NormalizedKernel(
-        source="autocomp", target="gemmini", path="k.c", op="matmul", dtype="i8",
-        shape={"M": 512, "K": 512, "N": 512}, raw_text="for (;;) {}"))
+    rec = emit_kernel_record(
+        NormalizedKernel(
+            source="autocomp",
+            target="gemmini",
+            path="k.c",
+            op="matmul",
+            dtype="i8",
+            shape={"M": 512, "K": 512, "N": 512},
+            raw_text="for (;;) {}",
+        )
+    )
     sr = rec["features"]["shape_regime"]
     assert "large_square" in sr["regime"] and "compute_bound" in sr["regime"]
     assert sr["rhs_size_bytes"] == 512 * 512
-    rec2 = emit_kernel_record(NormalizedKernel(
-        source="g", target="rvv", path="k.c", op="gemm", dtype="f32",
-        shape={"M": 8, "K": 1000, "N": 1000}, raw_text=""))
+    rec2 = emit_kernel_record(
+        NormalizedKernel(
+            source="g",
+            target="rvv",
+            path="k.c",
+            op="gemm",
+            dtype="f32",
+            shape={"M": 8, "K": 1000, "N": 1000},
+            raw_text="",
+        )
+    )
     sr2 = rec2["features"]["shape_regime"]
     assert {"skinny", "tail_heavy", "memory_bound", "capacity_overflow"} <= set(sr2["regime"])
-    rec3 = emit_kernel_record(NormalizedKernel(
-        source="g", target="rvv", path="k.c", op="gemm", dtype="f32",
-        shape={"MR": 4}, raw_text=""))
+    rec3 = emit_kernel_record(
+        NormalizedKernel(source="g", target="rvv", path="k.c", op="gemm", dtype="f32", shape={"MR": 4}, raw_text="")
+    )
     assert rec3["features"]["shape_regime"]["regime"] == ["unknown"]
 
 
@@ -79,13 +97,13 @@ def test_regime_matrix_silent_on_negative_controls():
     promo = policy.promote(_stats(["packed_rhs"]))
     v = validate.validate_policies(promo.rules)
     rm = v["packed_rhs_policy"]["regime_matrix"]
-    assert rm["negative_controls"] == {"mutable_rhs": "correctly_silent",
-                                       "no_reuse": "correctly_silent"}
+    assert rm["negative_controls"] == {"mutable_rhs": "correctly_silent", "no_reuse": "correctly_silent"}
     assert all(c["status"] == "fails" for c in rm["cells"] if c["reuse"] < 2)
     assert all(c["status"] == "holds" for c in rm["cells"] if c["reuse"] >= 2)
 
 
 # ---------- C: L6/L8 ----------
+
 
 def test_promote_emits_l6_l8():
     promo = policy.promote(_stats(["packed_rhs", "accumulator_commit"]))
@@ -94,20 +112,20 @@ def test_promote_emits_l6_l8():
     assert dr["resident_packed_tensor"]["status"] == "proposed"
     assert "capacity_constraint" in dr["resident_packed_tensor"]["required_verifiers"]
     assert all(r["requires_llvm_fork"] is False for r in promo.llvm_requirements)
-    assert all(r["status"] == "not_justified_pending_stage_F_G"
-               for r in promo.llvm_requirements)
+    assert all(r["status"] == "not_justified_pending_stage_F_G" for r in promo.llvm_requirements)
 
 
 # ---------- D: invariants + audit + plots ----------
 
+
 def _corpus():
     recs = []
     for name, src, tgt, op, dt in (
-            ("xnnpack_qs8_gemm_rvv.c", "xnnpack", "rvv", "gemm", "i8"),
-            ("xnnpack_f32_vadd_rvv.c", "xnnpack", "rvv", "vadd", "f32"),
-            ("autocomp_gemmini_matmul.c", "autocomp", "gemmini", "matmul", "i8")):
-        nk = list(ingest_generic(os.path.join(DATA, name), source=src, target=tgt,
-                                 op=op, dtype=dt))[0]
+        ("xnnpack_qs8_gemm_rvv.c", "xnnpack", "rvv", "gemm", "i8"),
+        ("xnnpack_f32_vadd_rvv.c", "xnnpack", "rvv", "vadd", "f32"),
+        ("autocomp_gemmini_matmul.c", "autocomp", "gemmini", "matmul", "i8"),
+    ):
+        nk = list(ingest_generic(os.path.join(DATA, name), source=src, target=tgt, op=op, dtype=dt))[0]
         recs.append(emit_kernel_record(nk))
     return recs
 
@@ -132,39 +150,59 @@ def test_invariants_catch_planted_violation():
 
 def test_audit_samples_are_deterministic_with_context(tmp_path):
     idx = tmp_path / "idx.json"
-    idx.write_text(json.dumps({"repo": OPENBLAS, "records": [
-        emit_kernel_record(k) for k in ingest_openblas(OPENBLAS)]}), encoding="utf-8")
+    idx.write_text(
+        json.dumps({"repo": OPENBLAS, "records": [emit_kernel_record(k) for k in ingest_openblas(OPENBLAS)]}),
+        encoding="utf-8",
+    )
     md1, s1 = audit.audit(audit.load_indexed([str(idx)]), ["packed_rhs"], 2, 0, 3, False)
     md2, _ = audit.audit(audit.load_indexed([str(idx)]), ["packed_rhs"], 2, 0, 3, False)
-    assert md1 == md2                                # seed-deterministic
+    assert md1 == md2  # seed-deterministic
     assert s1["motifs"]["packed_rhs"]["sampled"] == 1  # only the gemm fixture fires it
-    assert "B[bi + 0]" in md1 or "bi += 4" in md1      # real context lines re-read
+    assert "B[bi + 0]" in md1 or "bi += 4" in md1  # real context lines re-read
 
 
 def test_plots_smoke(tmp_path):
     pytest.importorskip("matplotlib")
     from merlin.kernels import plots
+
     recs = _corpus()
     stats = policy.aggregate(recs)
     promo = policy.promote(stats, min_kernels=1)
     paths = plots.generate_all(recs, stats, promo, None, tmp_path)
     names = {p.name for p in paths}
-    assert {"motif_source_heatmap.png", "motif_prevalence.png", "promotion_funnel.png",
-            "motif_cooccurrence.png", "motif_op_heatmap.png"} <= names
+    assert {
+        "motif_source_heatmap.png",
+        "motif_prevalence.png",
+        "promotion_funnel.png",
+        "motif_cooccurrence.png",
+        "motif_op_heatmap.png",
+    } <= names
     assert all(p.stat().st_size > 0 for p in paths)
 
 
 # ---------- E: --json CLI mode ----------
 
+
 def test_cli_extract_json_output(tmp_path, capsys):
     from merlin.kernels.cli_extract import main as extract_main
+
     idx = tmp_path / "idx.json"
     idx.write_text(json.dumps({"records": _corpus()}), encoding="utf-8")
-    rc = extract_main(["--inputs", str(idx),
-                       "--out", str(tmp_path / "a.yaml"),
-                       "--policies", str(tmp_path / "p.yaml"),
-                       "--report", str(tmp_path / "r.md"),
-                       "--min-kernels", "1", "--json"])
+    rc = extract_main(
+        [
+            "--inputs",
+            str(idx),
+            "--out",
+            str(tmp_path / "a.yaml"),
+            "--policies",
+            str(tmp_path / "p.yaml"),
+            "--report",
+            str(tmp_path / "r.md"),
+            "--min-kernels",
+            "1",
+            "--json",
+        ]
+    )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["kernels"] == 3

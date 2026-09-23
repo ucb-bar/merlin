@@ -6,6 +6,7 @@ Usage:
   gen_package_docs.py            # (re)generate docs/reference/module_index.md
   gen_package_docs.py --check    # exit 1 if the index is stale, or an AGENT.md is missing/stale
 """
+
 from __future__ import annotations
 
 import ast
@@ -13,27 +14,59 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _source_layout  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
-PKG = ROOT / "merlin" / "python" / "merlin"
+PKG = _source_layout.core_package(ROOT)
 INDEX = ROOT / "docs" / "reference" / "module_index.md"
 
 # Phrases that were copy-pasted boilerplate and misrepresent live code — must never reappear.
-STALE_PHRASES = ("no real logic yet", "no real algorithms", "no real passes yet",
-                 "todo stubs only at this stage", "placeholder modules with explicit todos")
+STALE_PHRASES = (
+    "no real logic yet",
+    "no real algorithms",
+    "no real passes yet",
+    "todo stubs only at this stage",
+    "placeholder modules with explicit todos",
+)
 
 
 def _first_docline(init: Path) -> str:
+    """The docstring's first PARAGRAPH, unwrapped -- not its first physical line.
+
+    Reading one line cut nine package purposes mid-sentence wherever the author had wrapped at 100
+    columns: `merlin.mining` published "fork an iteration of the RVV codegen (a transform-dialect"
+    to the module index and to its own AGENT.md, with the close paren and the verb on line two.
+    """
     try:
         doc = ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))) or ""
     except Exception:
         doc = ""
-    return doc.strip().splitlines()[0].strip() if doc.strip() else "(no module docstring — add one)"
+    doc = doc.strip()
+    if not doc:
+        return "(no module docstring — add one)"
+    para: list[str] = []
+    for line in doc.splitlines():
+        if not line.strip():
+            break
+        para.append(line.strip())
+    text = " ".join(para)
+    if len(text) > 200:
+        cut = text.rfind(" ", 0, 200)
+        text = text[: cut if cut > 0 else 200].rstrip(" ,;:") + "…"
+    return text
 
 
 def _packages() -> list[tuple[Path, Path]]:
-    """(relative-dir, __init__path) for every importable package under merlin/, sorted."""
-    return sorted(((init.parent.relative_to(PKG), init) for init in PKG.rglob("__init__.py")),
-                  key=lambda t: str(t[0]))
+    """(repo-relative-dir, __init__path) for core and separately distributed extensions."""
+    return sorted(
+        (
+            (relative.parent, ROOT / relative)
+            for relative in _source_layout.python_files(ROOT, _source_layout.SOURCE_SCAN_ROOTS)
+            if relative.name == "__init__.py"
+        ),
+        key=lambda item: _source_layout.module_name(item[1], ROOT) or str(item[0]),
+    )
 
 
 def gen_index() -> str:
@@ -48,7 +81,7 @@ def gen_index() -> str:
         "|---|---|",
     ]
     for rel, init in _packages():
-        dotted = "merlin." + str(rel).replace(os.sep, ".") if str(rel) != "." else "merlin"
+        dotted = _source_layout.module_name(init, ROOT)
         purpose = _first_docline(init).replace("|", "\\|")
         out.append(f"| `{dotted}` | {purpose} |")
     return "\n".join(out) + "\n"
@@ -56,33 +89,51 @@ def gen_index() -> str:
 
 def _gen_agent_md(rel: Path) -> str:
     """Minimal AGENT.md for a package: Purpose (from __init__ docstring) + module list."""
-    d = PKG / rel
+    d = ROOT / rel
     label = str(rel).replace(os.sep, "/")
     purpose = _first_docline(d / "__init__.py")
-    mods = [f"- `{f.name}` — {_first_docline(f)}"
-            for f in sorted(d.glob("*.py")) if f.name != "__init__.py"]
-    subpkgs = sorted(s.name for s in d.iterdir() if s.is_dir() and (s / '__init__.py').is_file())
-    body = [f"# AGENT.md — merlin/python/merlin/{label}", "", "## Purpose", "", purpose, ""]
+    mods = [f"- `{f.name}` — {_first_docline(f)}" for f in sorted(d.glob("*.py")) if f.name != "__init__.py"]
+    subpkgs = sorted(s.name for s in d.iterdir() if s.is_dir() and (s / "__init__.py").is_file())
+    body = [f"# AGENT.md — {label}", "", "## Purpose", "", purpose, ""]
     if mods:
         body += ["## Modules", "", *mods, ""]
     if subpkgs:
         body += ["## Subpackages", "", *[f"- `{s}/`" for s in subpkgs], ""]
-    body += ["<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.",
-             "     Add hand-written notes (invariants, gotchas) below. -->", ""]
+    body += [
+        "<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.",
+        "     Add hand-written notes (invariants, gotchas) below. -->",
+        "",
+    ]
     return "\n".join(body)
 
 
 def _check_agent_md(errors: list[str]) -> None:
     for rel, init in _packages():
         agent = init.parent / "AGENT.md"
-        label = "merlin." + str(rel).replace(os.sep, ".") if str(rel) != "." else "merlin"
+        label = _source_layout.module_name(init, ROOT)
         if not agent.is_file():
             errors.append(f"package {label}: missing AGENT.md")
             continue
+        # The header names the package. Four survived a rename pointing at the old path -- mining/
+        # still called itself rvvgen -- which is exactly the kind of drift a reader believes.
+        want = rel.as_posix()
+        head = agent.read_text(encoding="utf-8").splitlines()[0]
+        if want not in head and _source_layout.policy_path(want) not in head:
+            errors.append(f"package {label}: AGENT.md header says {head.strip()!r}, not {want!r}")
         low = agent.read_text(encoding="utf-8").lower()
         for ph in STALE_PHRASES:
             if ph in low:
                 errors.append(f"package {label}: stale AGENT.md phrase {ph!r}")
+        # The package docstring is what the generated module index publishes, so the same phrases must
+        # not survive there either. Until 2026-09-14 only AGENT.md was read, and two packages with dozens
+        # of importers still told every reader of the index "Scaffold package. No real logic yet."
+        try:
+            doc = (ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))) or "").lower()
+        except SyntaxError:
+            doc = ""
+        for ph in STALE_PHRASES:
+            if ph in doc:
+                errors.append(f"package {label}: stale __init__ docstring phrase {ph!r}")
 
 
 def main(argv: list[str]) -> int:
@@ -107,8 +158,7 @@ def main(argv: list[str]) -> int:
         if not agent.is_file():
             agent.write_text(_gen_agent_md(rel), encoding="utf-8")
             created += 1
-    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); "
-          f"generated {created} missing AGENT.md")
+    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); generated {created} missing AGENT.md")
     return 0
 
 

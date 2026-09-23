@@ -9,6 +9,7 @@ IREE is spike-only (no verilator), so its verilator cell stays `·`.
 
 Usage: merge_iree_arm.py [--run-id perf_full_0001]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,15 +39,23 @@ def main(argv: list[str] | None = None) -> int:
         if not rec:
             continue
         if rec.get("error") and rec.get("cycles") is None:
-            r.setdefault("approaches", {})["iree_dialect"] = {"approach": "iree_dialect",
-                                                              "error": rec["error"], "per_sim": {}}
+            r.setdefault("approaches", {})["iree_dialect"] = {
+                "approach": "iree_dialect",
+                "error": rec["error"],
+                "per_sim": {},
+            }
         else:
             r.setdefault("approaches", {})["iree_dialect"] = {
                 "approach": "iree_dialect",
-                "per_sim": {"spike": {"cycles": rec.get("cycles"),
-                                      "correct": rec.get("correct"),
-                                      "util_pct": rec.get("util_pct"),
-                                      "wall_s": rec.get("wall_s")}}}
+                "per_sim": {
+                    "spike": {
+                        "cycles": rec.get("cycles"),
+                        "correct": rec.get("correct"),
+                        "util_pct": rec.get("util_pct"),
+                        "wall_s": rec.get("wall_s"),
+                    }
+                },
+            }
         merged += 1
     pr.write_text(json.dumps(rows, indent=2))
     print(f"merged iree_dialect into {merged}/{len(rows)} kernels of {pr}")

@@ -1,0 +1,12 @@
+{
+ "calls": {
+  "adaptive_avg_pool2d": "quantized_ops.adaptive_avg_pool2d(x, [1,1]) and (x, [2,3])",
+  "dequantize": "quantized_ops.dequantize(int32 x, bf16 scale) -> torch.bfloat16",
+  "linear": "aten.linear(x_bf16, w.to(bf16), b.to(bf16)) [small, big bias] and aten.linear(fp32...).to(bf16) [big bias]",
+  "max_pool2d": "quantized_ops.max_pool2d(tile, [3,3], [2,2], [0,0], [1,1], False) on a tile padded before by (0, 1, 1, 0) with -inf",
+  "quantize": "quantized_ops.quantize(x, scale, qmap=get_quantization_map('int8'))"
+ },
+ "seed": 0,
+ "torch": "2.12.1+cu130",
+ "voyager_commit": "f9d4c498d8fb97fd67e2dac781abf42112517998"
+}

@@ -23,8 +23,8 @@ validation_notes: >-
 example: |
   target: toy_npu
   sources:
-    source_dirs: [merlin/targets/toy_npu/docs]
-    examples_dirs: [merlin/targets/toy_npu/examples]
+    source_dirs: [examples/toy_npu/target/docs]
+    examples_dirs: [examples/toy_npu/target/examples]
   files:
     - {path: docs/architecture.md, kind: doc, summary: "ToyNPU architecture overview"}
     - {path: examples/repeated_rhs_matmul.mlir, kind: example, summary: "repeated RHS matmul"}

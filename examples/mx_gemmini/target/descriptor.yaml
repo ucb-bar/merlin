@@ -1,0 +1,116 @@
+# Declarative per-target experiment SETUP for MX-GEMMINI (GemminiMxFPConfigs.defaultMxFPConfig) — a 4th
+# target that is a CONFIG VARIANT of gemmini: the same generator, the same RoCC ISA (OpcodeSet.custom3),
+# the same 16x16 weight-stationary systolic mesh (DIM=16) and accumulator — only the numeric datapath
+# differs. Instead of int8/fp32, its PEs are microscaling block-scaled FP (MxFloat: inputType(3,3,2),
+# accType(8,8,4); block_e8m0 scaling via MxRequantizer). This is the very systolic MX PE that radiance
+# embeds as its low-bit unit ("these are overwritten by radiance" in ConfigsFP.scala), so standing it up
+# as its own target closes the loop with radiance's compute_units.
+#
+# Authoritative RTL source (facts DERIVED, not fitted): the chipyard gemmini generator config
+#   generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala :: GemminiMxFPConfigs.defaultMxFPConfig
+# (meshRows=meshColumns=16, dataflow=WS, sp_capacity=256KB, acc_capacity=64KB, opcodes=custom3) plus the
+# MX datapath modules (MxFPMul.scala, MxRequantizer.scala). Because mx-gemmini is a systolic MXU sharing
+# gemmini's structure and ISA, its STRUCTURAL profile (DIM, mesh dataflow, accumulator residency, the
+# RoCC opcode set) is exactly gemmini's; the MX block-scaling + requant is the added capability.
+#
+# Oracle: mx-gemmini elaborates through chipyard just like gemmini, so its RTL oracle is the chipyard
+# sim (spike/verilator) — sim_via=chipyard, the same bespoke sim gemmini declares. An mlc arc model is
+# not yet registered for the MX config (arc_available("mx_gemmini")=False), so arc-matmul discovery is
+# unavailable until mlc registers it; that is honest, not a gap — the chipyard sim is the RTL tier and
+# the target-agnostic math oracle is the L0/L1 floor. MX numerics (block-scaled FP) are what make the
+# stock-gemmini arc model insufficient here, which is exactly why the sim is the authority.
+target: mx_gemmini
+resources_root: merlin/experiments/capsule_bench/targets/mx_gemmini
+numeric_profile: examples/mx_gemmini/phase0/recipe.yaml
+
+rtl:
+  via: mlc            # structural facts shared with gemmini; MX datapath from the chipyard config
+
+hardware_spec:
+  # NOTE: the structural facts (RoCC opcode set, mesh DIM=16, the ConfigsFP.scala source) are DERIVED
+  # from the RTL, not declared here — they are documented in the header comment above for the reader.
+  # Do NOT re-add `isa`/`dim`/`rtl_config` as descriptor fields: the loader never reads them (a baked
+  # `dim: 16` reads as authoritative but is ignored, which is exactly the overfit smell).
+  # Shipped ISA doc for the derived assembler/disassembler/linter — the MX-Gemmini MMIO/RoCC command word
+  # (derived from mxgemmini_mmio.h:66). Self-contained (no model venv). The MMIO map + microscaling dtypes +
+  # E8M0 block scale + bf16 accumulate are carried as derived ABI data in the sibling mmio_abi.py.
+  isa_headers:
+    - examples/mx_gemmini/phase1/contracts/hwbringup_mx_v0/isa_include/isa_definition.py
+  hwbringup_set: examples/mx_gemmini/phase1/contracts/hwbringup_mx_v0
+
+# MX-Gemmini's OWN corpus root (mirrors atlas's per-target subtree) — per-format microscaling GEMM
+# (mxfp8/mxfp6/mxfp4 operands, E8M0 block scales, bf16 accumulate) generated from profiles/mx_gemmini.yaml
+# with hardware-semantics goldens from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless
+# for the MX PE) — that reuse was the wrong bit this closes.
+capsule_corpus: merlin/contract/capsules/mx_gemmini/isa
+
+# mx-gemmini elaborates through chipyard like gemmini; its RTL oracle is the chipyard sim.
+toolchain:
+  sim_via: chipyard
+
+answer_surfaces:
+  prior_backends: []
+
+# ---------------------------------------------------------------------------------------------------
+# THE FROZEN HOST LANE — pinned INFRASTRUCTURE, never a thing under test.
+#
+# This experiment measures the TARGET lane: the target dialect, the target transforms, the partitioning
+# decision and the boundary/dispatch across it. It does not measure, and must never reward, a second CPU
+# backend. A submission that wins by rewriting the host compiler has moved the work off the accelerator
+# and off the question, and its score would be read as a compiler result about the target.
+#
+# So the host lane is declared here, beside `hardware_spec`, and for the same reason: it is irreducible
+# SETUP a run needs and cannot derive. It is granted to every arm READ-ONLY (an agent that cannot see
+# what the host lane does cannot reason about where the boundary should fall), and the surface that
+# would let it be CHANGED is denied to every arm.
+#
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# `branch` is informational: branches move, and the same branch name on a fork and on upstream are
+# different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
+# a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE HOST THIS TARGET'S LANE COMPILES FOR, a key of merlin.runtime.boards.
+#
+# Declared because nothing derives it: the board is a fact about the SoC the accelerator sits in, not
+# about the accelerator. Its absence was silent -- `system_for` yields host=None, `place.host_units`
+# then synthesizes a SCALAR-ONLY host, and work that belongs on the host vector lane lands on a scalar
+# one with no error, because "no board declared" and "a board with no vector unit" were the same value.
+#
+# chipyard_kodiak, not chipyard_riscv64, on this target's own evidence: `toolchain.sim_via: chipyard`
+# says the SoC is chipyard, and `host_lane` below pins an RVV package -- so the host must have a vector
+# unit, and chipyard_kodiak is the chipyard board that declares vector harts (2 of 3, VLEN 512).
+host:
+  board: chipyard_kodiak
+
+host_lane:
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
+  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
+  # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
+  # exists; never invent one.
+  commit: UNKNOWN
+  # The pinned artifact as it exists in this tree: the transform schedule + knobs that ARE the host
+  # lane's codegen. Repo-root-relative.
+  # WHICH PRECISION LANE THIS IS (see gemmini's descriptor for why it is declared rather than
+  # discovered): checkable at load time, and cross-checked against the package's own knobs by `resolve`.
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  # Granted READ-ONLY to every arm. Reading the frozen lane is necessary; it is how an agent knows what
+  # the host side costs and therefore where to put the boundary.
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  # DENIED to every arm: the host compiler's implementation. This is the surface a submission would have
+  # to touch to become a second CPU backend. It is deliberately a DIFFERENT path from the read-only
+  # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
+  # and "read-only" would silently become "invisible".
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

@@ -1,0 +1,34 @@
+# mlc arc models: what merlin needs to know about each bit-exact model mlc builds, keyed by the mlc arc
+# key (the `runs/circt-arc/<key>/` directory under MERLIN_MLC_DIR).
+#
+# DATA, read only by merlin.targetgen.rtl.mlc_bridge (load_arc_models / arc_model). The library holds no
+# arc key and no file name: registering a model is an entry here, never an edit to library code. A merlin
+# target reaches its model under its own name, or under the `arc_target` its contracts/residual.yaml
+# declares (a composite SoC whose model mlc registers under the embedded cluster's name).
+#
+# Fields (closed set; an unknown field or value is refused at load):
+#   kind          The compute-unit kind of a model merlin reaches under the model's own name and has no
+#                 capability manifest for yet. It routes fact extraction by kind
+#                 (merlin.targetgen.families.FamilyProfile.fact_extractor). A target with a manifest
+#                 always takes the manifest's kind; this is never consulted for it.
+#   isa_encoding  The file, under `runs/circt-arc/<key>/outputs/`, that mlc's isa_encoding pass writes the
+#                 recovered instruction encoding to ({inst_width, fields, opcodes, provenance}). The
+#                 lookup goes through the target's `arc_target`, because the encoding is the aliased
+#                 core's own ISA. A model with no entry has no encoding fact, and mlc_bridge says so
+#                 instead of guessing a file name.
+schema_version: 1
+
+arc_models:
+  # The Muon SIMT cluster arc. mlc.discover.isa_encoding.regenerate_muon writes the encoding here, and
+  # radiance reaches this model through `arc_target: muon` in its residual.
+  muon:
+    isa_encoding: muon_isa.json
+
+  # Saturn OuterProductUnit arc configs. mlc's fingerprint map lays them out two levels deep
+  # (`saturn_opu/<config>/outputs`) and drives both with its OPU cosim. Neither config has a capability
+  # manifest committed in this tree: the mxv256d128 one is generated from its residual, and the v128d64
+  # one exists only as an mlc arc model.
+  saturn_opu_mxv256d128:
+    kind: spatial
+  saturn_opu_v128d64:
+    kind: spatial

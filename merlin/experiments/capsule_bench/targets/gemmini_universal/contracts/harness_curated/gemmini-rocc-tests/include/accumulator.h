@@ -1,0 +1,1 @@
+../../../../../../../../../examples/gemmini/phase1/contracts/harness_curated/gemmini-rocc-tests/include/accumulator.h

@@ -15,20 +15,19 @@ def run(run_dir: Path, manifest: dict) -> dict:
     }
 
     contracts_dir = run_dir / "contracts"
-    expected = ["target_contract.yaml", "dialect_plan.yaml",
-                "lowering_plan.yaml", "runtime_adapter_plan.yaml"]
+    expected = ["target_contract.yaml", "dialect_plan.yaml", "lowering_plan.yaml", "runtime_adapter_plan.yaml"]
 
     found = [f for f in expected if (contracts_dir / f).exists()]
     metrics["contract_files_found"] = found
 
     if not found:
         metrics["errors"].append(
-            "No contract files found under contracts/; "
-            "evidence coverage cannot be computed for an empty run"
+            "No contract files found under contracts/; evidence coverage cannot be computed for an empty run"
         )
         return metrics
 
     import yaml
+
     total_claims = 0
     evidenced_claims = 0
     unsupported_claims = 0

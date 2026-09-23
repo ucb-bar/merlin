@@ -21,12 +21,21 @@ int main(int argc, char **argv) {
   if (fread(weights, 1, n, f) != (size_t)n) { fprintf(stderr, "read failed\n"); return 1; }
   fclose(f);
 
-  float *out = malloc((size_t)MERLIN_OUT_ELEMS * sizeof(float));
   merlin_descriptor_t descs[MERLIN_N_ARGS];
-  merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, weights, MERLIN_INPUT_PTR, out, descs);
+  merlin_reset_session();
+  merlin_prepare_step(0);
+  merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, weights, MERLIN_INPUT_PTR,
+                   MERLIN_OUTPUT_PTR, descs);
+#if MERLIN_N_STATE_PAIRS > 0
+  if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
+                          MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
+                          MERLIN_STATE_INPUT_ARGS, MERLIN_STATE_OUTPUT_INDICES) != 0) {
+    fprintf(stderr, "state ABI mismatch\n"); return 1;
+  }
+#endif
 
   FILE *o = fopen(out_path, "wb");
-  fwrite(out, sizeof(float), MERLIN_OUT_ELEMS, o);
+  fwrite(MERLIN_OUTPUT_PTR[0], sizeof(float), MERLIN_OUT_ELEMS, o);
   fclose(o);
   printf("wrote %d output elems to %s\n", MERLIN_OUT_ELEMS, out_path);
   return 0;

@@ -1,0 +1,363 @@
+"""certify_rvv — isolated, measured K-ladder for one (RVV package x workload), coupled across
+spike (correctness + emitted-instruction evidence) and K1 (cycle truth). Mirrors the gemmini
+oot_runner discipline: never raises for a gate/measurement failure (records status + reason),
+and ``not_run_is_not_pass`` — an unreachable target is ``not_run``, never a false ``pass``.
+
+K-ladder:
+  K0  load + integrity (cflags allowlist, manifest schema)            -> registry.load_rvv_package
+  K1  non-perturbation: hand_v0 schedule == pipeline.RVV_TRANSFORM_SCHEDULE
+  K2  build via apply_rvv_package -> model.o + zephyr.elf
+  K3  spike correctness: run_on_spike + _gate(references) -> gate_ok
+  K4  spike instruction histogram: disassemble(model.o); expected_instructions present
+  K5  K1 cycles: cross-compile + deploy + rdcycle (not_run when board/toolchain absent)
+  K6  delta-vs-baseline: speedup ONLY credited if K3 gate_ok (fail-closed)
+"""
+
+from __future__ import annotations
+
+import traceback
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from ..common import schemas
+from ..common.yaml import load_yaml, write_yaml
+from ..llvmlower import codegen_env as _codegen_env
+from ..llvmlower import custom_isa, pipeline
+from ..runtime.backends import zephyr_model as zm
+from . import k1 as k1mod
+from .apply import apply_rvv_package
+from .registry import RvvPackage, load_rvv_package
+
+
+def _instruction_histogram(disasm: str) -> dict[str, int]:
+    """Histogram of RVV mnemonics in an objdump -d dump (the emitted-instruction evidence)."""
+    from ..common.driver_output import is_vector_mnemonic
+
+    hist: Counter[str] = Counter()
+    for line in disasm.splitlines():
+        # objdump -d: "   1036a:\t<hex enc>\t<mnemonic>\t<operands>"
+        fields = line.split("\t")
+        if len(fields) < 3:
+            continue
+        mnem = fields[2].strip().split()[0] if fields[2].strip() else ""
+        if mnem and is_vector_mnemonic(mnem):
+            hist[mnem] += 1
+    return dict(sorted(hist.items()))
+
+
+def _expected_present(hist: dict[str, int], expected: list[str]) -> bool:
+    """Each expected token must prefix-match at least one emitted mnemonic (vfmacc -> vfmacc.vv)."""
+    keys = list(hist)
+    return all(any(k == e or k.startswith(e) for k in keys) for e in expected)
+
+
+def _load_references(model_dir: Path) -> dict[str, np.ndarray]:
+    refs: dict[str, np.ndarray] = {}
+    g = model_dir / "golden.npy"
+    if g.is_file():
+        refs["fp32"] = np.load(g)
+    w = model_dir / "golden_w8a8.npy"
+    if w.is_file():
+        refs["w8a8"] = np.load(w)
+    return refs
+
+
+def _baseline_results(baseline_run_dir: Path | None, workload: str) -> dict | None:
+    if baseline_run_dir is None:
+        return None
+    p = Path(baseline_run_dir) / "results.yaml"
+    if not p.is_file():
+        return None
+    r = load_yaml(p)
+    return r if r.get("workload") == workload else None
+
+
+#: Default board measurement protocol for a certified fork: SUSTAINED, not cold.
+#:
+#: The beam ranks forks on this number and every ours-vs-framework ratio is read against it, so it has
+#: to be the same protocol the other side is measured under. ExecuTorch's runner has no warmup and
+#: averages its cold first execution into --num_executions; measured on small_llama int8 its cold
+#: inference is 1.62x its warm one, so a cold-vs-warm comparison misreads by that much -- and it
+#: misreads AGAINST us, since our side was the fully cold one. Measured on the same model, ours went
+#: 6,446,228 ns cold to 4,878,645 ns sustained: 1.32x, purely from measuring the right thing.
+#:
+#: Two untimed inferences are enough here (the second and third timed iterations agree to well under
+#: the board's 1.9% floor), and five timed ones keep a single outlier from moving the min.
+_CERTIFY_WARMUP = 2
+_CERTIFY_ITERS = 5
+
+#: The measuring legs this runner implements, which is what it runs when a caller names none: the
+#: spike leg (correctness gate + functional cycles) and the board leg (wall time), each labelled with
+#: the substrate that produced it. The rvv target's contract declares the same pair as its
+#: measurement authority (cycles_from / wall_from); test_substrate_names_derived holds them together.
+DEFAULT_TARGETS: tuple[str, ...] = ("spike", k1mod.SUBSTRATE)
+
+
+def certify_rvv(
+    package_dir: str | Path,
+    model_dir: str | Path,
+    *,
+    runs_root: str | Path,
+    run_id: str,
+    targets: tuple[str, ...] = DEFAULT_TARGETS,
+    baseline_run_dir: str | Path | None = None,
+    harts: int = 2,
+    iters: int = _CERTIFY_ITERS,
+    warmup: int = _CERTIFY_WARMUP,
+    timeout: int = 3600,
+) -> dict[str, Any]:
+    """Build one RVV package for one workload, measure it on ``targets``, write results.yaml.
+
+    ``model_dir`` is a workload bundle (model.mlir + inputs.npz + golden.npy [+ golden_w8a8.npy]).
+    Returns the results dict (also written to ``runs_root/run_id/results.yaml``). Never raises for a
+    package/gate/measurement failure — those are recorded; only an internal harness bug raises.
+    """
+    package_dir, model_dir = Path(package_dir), Path(model_dir)
+    run_dir = Path(runs_root) / run_id
+    gen = run_dir / "generated"
+    gen.mkdir(parents=True, exist_ok=True)
+    workload = model_dir.name
+
+    ladder: dict[str, str] = {}
+    rec: dict[str, Any] = {
+        "status": "error",
+        "target": "rvv",
+        "workload": workload,
+        "package": {"run_id": Path(package_dir).name},
+        "ladder": ladder,
+        "correctness": {},
+        "measurement": [],
+        "instruction_histogram": {},
+        "expected_instructions_present": None,
+        "delta_vs_baseline": None,
+        "failure": None,
+    }
+
+    def fail(rung: str, reason: str, status: str = "fail") -> dict[str, Any]:
+        ladder[rung] = status
+        rec["status"] = status
+        rec["failure"] = {"rung": rung, "reason": reason}
+        _write(run_dir, rec)
+        return rec
+
+    # K0 — load + integrity
+    try:
+        pkg: RvvPackage = load_rvv_package(package_dir)
+        ladder["K0"] = "pass"
+    except Exception as e:  # schema / cflags-allowlist / parse
+        return fail("K0", f"{type(e).__name__}: {e}")
+    rec["package"] = {"run_id": pkg.run_id, "dtype_strategy": pkg.dtype_strategy}
+
+    # K1 — non-perturbation (only the baseline must equal the shipping constant)
+    if pkg.run_id == "hand_v0" and pkg.schedule_text != pipeline.RVV_TRANSFORM_SCHEDULE:
+        return fail("K1", "hand_v0 schedule diverged from pipeline.RVV_TRANSFORM_SCHEDULE")
+    ladder["K1"] = "pass"
+
+    # K2 — build
+    try:
+        build = apply_rvv_package(pkg, model_dir, gen, board="spike_riscv64", harts=harts, arena_mb=64)
+        model_o = gen / "model.o"
+        ladder["K2"] = "pass"
+    except Exception as e:
+        rec["failure"] = {"rung": "K2", "trace": traceback.format_exc()[-1500:]}
+        return fail("K2", f"build failed: {type(e).__name__}: {e}", status="error")
+
+    # K4 — instruction histogram (objdump evidence). Done before K3 so a run failure still
+    # leaves the emitted-instruction evidence in the record.
+    try:
+        disasm = custom_isa.disassemble(model_o)
+        (gen / "objdump.txt").write_text(disasm, encoding="utf-8")
+        hist = _instruction_histogram(disasm)
+        rec["instruction_histogram"] = hist
+        any_rvv = bool(hist)
+        rec["any_rvv"] = any_rvv
+        # 'never run scalar' (user directive): any_rvv is too weak — a kernel with vector LOADS but
+        # SCALAR compute (fmadd.s / mul) passes it while being effectively scalar (the ~200x int8 gap).
+        # Record the compute-bearing scalar-fallback symbols via rvv_audit so the framework gates on
+        # genuine vector COMPUTE, not merely 'some RVV present'. Kept as EVIDENCE at the whole-model
+        # ladder (legit scalar helper symbols exist); op_sweep applies the hard scalar-FAIL for the
+        # isolated-kernel case where the whole timed region IS the compute kernel.
+        try:
+            from ..runtime.rvv_audit import classify_disasm
+
+            _rep = classify_disasm(disasm, source="K4")
+            rec["scalar_compute_fallback"] = _rep.scalar_fallback_symbols()
+            rec["rvv_coverage"] = _rep.coverage_overall
+        except Exception:  # noqa: BLE001
+            rec["scalar_compute_fallback"] = None
+        rec["expected_instructions_present"] = _expected_present(hist, pkg.expected_instructions)
+        ladder["K4"] = "pass" if any_rvv else "fail"
+    except Exception as e:
+        ladder["K4"] = "not_run"
+        rec.setdefault("notes", {})["K4"] = f"{type(e).__name__}: {e}"
+
+    # K3 — spike correctness gate
+    refs = _load_references(model_dir)
+    if "spike" in targets:
+        try:
+            run = zm.run_on_spike(build["elf"], harts=harts, mem_bytes=build.get("ram_bytes", 1 << 31), timeout=timeout)
+            gate = zm._gate(run["prefix"], refs) if refs else {"ok": None}
+            rec["correctness"] = {
+                "gate_ok": gate.get("ok"),
+                "fp32_cos": gate.get("fp32_cos"),
+                "fp32_rel": gate.get("fp32_rel"),
+                "fp32_argmax": gate.get("fp32_argmax"),
+                "fp32_max_rel": gate.get("fp32_max_rel"),
+                "w8a8_cos": gate.get("w8a8_cos"),
+                "w8a8_rel": gate.get("w8a8_rel"),
+            }
+            cyc = run.get("metrics", {}).get("cycles")
+            rec["measurement"].append({"target": "spike", "cycle_accurate": False, "cycles": cyc})
+            ladder["K3"] = "pass" if gate.get("ok") else ("fail" if refs else "not_run")
+        except Exception as e:
+            ladder["K3"] = "fail"
+            rec["failure"] = {"rung": "K3", "reason": f"{type(e).__name__}: {e}"}
+    else:
+        ladder["K3"] = "not_run"
+
+    # K5 — K1 cycles (real silicon). not_run when board/toolchain unavailable.
+    if k1mod.SUBSTRATE in targets:
+        if k1mod.available():
+            try:
+                kr = k1mod.run_on_k1(model_dir, gen, pkg, timeout=timeout, iters=iters, warmup=warmup)
+                m = kr.get("metrics", {})
+                # K1's Bianbu kernel traps userspace `rdcycle`, so K1 cycles are an estimate
+                # derived from the delegated `rdtime` timebase (cycle_accurate=False); the raw
+                # timebase ticks + wall ns are the real-silicon ground truth. spike/FireSim stay
+                # the cycle-accurate authorities; K1 is the fast real-hardware wall measurement.
+                rec["measurement"].append(
+                    {
+                        "target": k1mod.SUBSTRATE,
+                        "cycle_accurate": False,
+                        "cycles": m.get("cycles"),
+                        "time_ticks": m.get("time_ticks"),
+                        "wall_ns": m.get("wall_ns"),
+                        "vlen": kr.get("vlen", k1mod.VLEN),
+                        # The PROTOCOL that produced this wall. Ours is
+                        # min-of-`iters` after `warmup` untimed; ExecuTorch's
+                        # runner has no warmup and averages its cold first
+                        # execution in. A wall whose protocol is not recorded
+                        # cannot be shown to match the number it is divided by.
+                        "warmup": warmup,
+                        "iters": iters,
+                        # The CONDITIONS the board was in. run_on_k1 already
+                        # probes these before and after the run and they were
+                        # being dropped here -- which is exactly how a ~2x
+                        # board-condition change went unnoticed: two runs of the
+                        # BYTE-IDENTICAL frozen seed (same baseline digest
+                        # 631fd07f9426) measured 349,877,321 and 175,682,867 ns,
+                        # 1.9915x apart. `speedup` is internal (fork/seed) so it
+                        # cancelled and looked right, while attainment divides by
+                        # an EXTERNAL wall and absorbed the whole factor
+                        # (0.634 -> 1.287 on the same winner). Nothing in the
+                        # artifact could catch it because nothing recorded this.
+                        "board_conditions": kr.get("board_conditions"),
+                        # What the COMPILER ran under. knobs.yaml does not
+                        # determine the binary on its own: the lowering path
+                        # reads a couple of dozen MERLIN_* variables and several
+                        # steer codegen (the per-op block cap, vectorize-rank
+                        # tagging, OPU packing and alignment, worker stack). Two
+                        # runs with identical recorded configuration emitted
+                        # different binaries and ran 1.61x apart with nothing
+                        # able to say why.
+                        "codegen_env": _codegen_env.snapshot(),
+                        "codegen_env_digest": _codegen_env.digest(),
+                    }
+                )
+                # K1 correctness gate: when spike did NOT gate (absent / not a target), the K1 output
+                # vs golden IS a real-silicon correctness signal — gate on it (same zm._gate the spike
+                # path uses) so the beam can rank forks on measured K1 speedup WITHOUT spike. K6 speedup
+                # stays fail-closed on this gate; source is recorded so K1-gated ≠ spike-gated.
+                if not rec["correctness"].get("gate_ok") and refs and kr.get("prefix") is not None:
+                    kg = zm._gate(kr["prefix"], refs)
+                    rec["correctness"] = {
+                        "gate_ok": kg.get("ok"),
+                        "fp32_cos": kg.get("fp32_cos"),
+                        "fp32_rel": kg.get("fp32_rel"),
+                        "fp32_argmax": kg.get("fp32_argmax"),
+                        "fp32_max_rel": kg.get("fp32_max_rel"),
+                        "w8a8_cos": kg.get("w8a8_cos"),
+                        "w8a8_rel": kg.get("w8a8_rel"),
+                        "source": k1mod.SUBSTRATE,
+                    }
+                ladder["K5"] = "pass"
+            except Exception as e:
+                ladder["K5"] = "not_run"
+                rec.setdefault("notes", {})["K5"] = f"{type(e).__name__}: {e}"
+        else:
+            ladder["K5"] = "not_run"
+            rec.setdefault("notes", {})["K5"] = "K1 unavailable (toolchain or board unreachable)"
+    else:
+        ladder["K5"] = "not_run"
+
+    # K6 — delta vs baseline (speedup only credited if K3 gate ok: fail-closed)
+    base = _baseline_results(baseline_run_dir, workload)
+    if base is not None:
+        delta: dict[str, Any] = {"baseline_run_id": base.get("package", {}).get("run_id")}
+        gate_ok = bool(rec["correctness"].get("gate_ok"))
+        for m in rec["measurement"]:
+            tgt = m["target"]
+            bcyc = next((b["cycles"] for b in base.get("measurement", []) if b["target"] == tgt), None)
+            if bcyc and m.get("cycles"):
+                speedup = (bcyc / m["cycles"]) if gate_ok else None
+                delta[f"cycles_{tgt}"] = {"baseline": bcyc, "this": m["cycles"], "speedup": speedup}
+        delta["correctness_regressed"] = (not gate_ok) and base.get("correctness", {}).get("gate_ok")
+        rec["delta_vs_baseline"] = delta
+        ladder["K6"] = "pass"
+    else:
+        ladder["K6"] = "not_run"
+
+    # Overall status: pass iff no mandatory rung failed (K3 only mandatory when references exist).
+    mandatory = ["K0", "K1", "K2"] + (["K3"] if refs else [])
+    rec["status"] = "pass" if all(ladder.get(k) == "pass" for k in mandatory) else "fail"
+    _write(run_dir, rec)
+    return rec
+
+
+def _write(run_dir: Path, rec: dict[str, Any]) -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    problems = schemas.validate(rec, "rvv_result")
+    if problems:
+        rec.setdefault("notes", {})["schema"] = problems
+    return write_yaml(run_dir / "results.yaml", rec, header="RVV experiment result (merlin.mining.runner.certify_rvv)")
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Certify an RVV package on a workload (spike+K1).")
+    ap.add_argument("--package", required=True, help="out/artifacts/targets/rvv/<run_id>/ dir")
+    ap.add_argument("--workload", required=True, help="workload bundle dir (model.mlir+inputs+golden)")
+    ap.add_argument("--run-id", default=None, help="run id (default: <pkg>_<workload>)")
+    ap.add_argument("--runs-root", default="out/runs/rvv_experiment")
+    ap.add_argument(
+        "--targets", default=",".join(DEFAULT_TARGETS), help=f"comma list: {','.join(DEFAULT_TARGETS)},firesim"
+    )
+    ap.add_argument("--baseline-run-dir", default=None, help="baseline run dir for delta")
+    ap.add_argument("--harts", type=int, default=2)
+    ap.add_argument("--timeout", type=int, default=3600)
+    a = ap.parse_args(argv)
+    run_id = a.run_id or f"{Path(a.package).name}_{Path(a.workload).name}"
+    rec = certify_rvv(
+        a.package,
+        a.workload,
+        runs_root=a.runs_root,
+        run_id=run_id,
+        targets=tuple(a.targets.split(",")),
+        baseline_run_dir=a.baseline_run_dir,
+        harts=a.harts,
+        timeout=a.timeout,
+    )
+    print(
+        f"{run_id}: status={rec['status']} ladder={rec['ladder']} "
+        f"gate_ok={rec['correctness'].get('gate_ok')} "
+        f"any_rvv={bool(rec['instruction_histogram'])}"
+    )
+    return 0 if rec["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

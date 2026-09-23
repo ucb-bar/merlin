@@ -1,0 +1,62 @@
+# Which execution engines' ACCELERATOR performance counters carry real values.
+#
+# Not a convenience table: an engine absent from here is UNKNOWN, and UNKNOWN is refused rather than
+# reported. The failure this exists to prevent is specific and cost a session many hours -- an
+# optimization loop read accelerator occupancy counters off a functional ISS that FABRICATES them,
+# so its only feedback signal was noise, and nothing in the receipt said so.
+#
+# `verdict` is one of:
+#   real        -- the counters are wired to RTL event signals; values are measurements
+#   fabricated  -- the engine synthesises values; any number it reports is noise
+#   untimed     -- the engine has no cycle model at all, so cycle counters are meaningless even
+#                  when they are not fabricated
+# Every entry must cite the evidence, by file and line, in the engine's OWN sources.
+version: 1
+
+engines:
+
+  spike:
+    verdict: fabricated
+    scope: accelerator_counters
+    evidence: >-
+      The RoCC accelerator model increments every counter with rand() on EVERY accelerator
+      instruction: `gemmini_state.counter_val[i] += rand() & 0x1ff` and
+      `gemmini_state.counter_external[i] = rand() & 0xf` in `counter_increment_random()`, called
+      unconditionally from the instruction handler. `rand() & 0xf` is [0,15], which is why a byte
+      counter reads single digits after a whole-model inference.
+    evidence_source: generators/gemmini/software/libgemmini/gemmini.cc
+    evidence_symbol: counter_increment_random
+    also: >-
+      Spike is a functional ISS: it retires one instruction per cycle, so `cycles` equals `instret`
+      by construction and is an instruction count, not a cycle count. Useful as a RELATIVE measure of
+      scalar work; never a hardware performance result.
+    verified: 2026-09-08
+
+  firesim:
+    verdict: real
+    scope: accelerator_counters
+    evidence: >-
+      Counter event signals are connected unconditionally via `connectEventSignal` /
+      `connectExternalCounter`; the `use_firesim_simulation_counters` build flag gates only the
+      AutoCounter `PerfCounter(...)` printfs, not the software-readable counter file. An unconnected
+      counter port ties to 0 (`CounterEventIO.init`), so an absent counter reads zero rather than
+      garbage.
+    evidence_source: generators/gemmini/src/main/scala/gemmini/Controller.scala
+    verified: 2026-09-08
+
+  verilator:
+    verdict: real
+    scope: accelerator_counters
+    evidence: >-
+      Same elaborated RTL as the FPGA flow, so the same connected counter events.
+    evidence_source: generators/gemmini/src/main/scala/gemmini/Controller.scala
+    verified: 2026-09-08
+
+  gsim:
+    verdict: real
+    scope: accelerator_counters
+    evidence: >-
+      Compiles the same FIRRTL as the Verilator reference and is held to it by a per-capsule
+      equivalence certificate, so it observes the same counter events.
+    evidence_source: merlin/contract/hardware_pins.yaml
+    verified: 2026-09-08

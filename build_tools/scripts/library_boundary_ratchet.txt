@@ -1,0 +1,19 @@
+# Library modules that name `experiments/` as a path component -- the consumption-direction boundary
+# (benchmarks/ = the library reads it; experiments/ = only consumes the library). Recorded as debt when
+# the scan was made structural (2026-09-18); the line scan it replaces reported eleven docstrings that
+# merely explain the boundary, so the true count was never visible. Debt, not an allowlist: this list
+# may only SHRINK (check_ratchets_shrink.py holds it). A module leaves it by reaching its corpus through
+# merlin.targetgen.corpora instead of spelling the path. Consumed by: check_structure.py (library
+# boundary). The number after `#` is the count of path literals in that module when recorded.
+merlin/python/merlin/common/storage_cli.py  # 2
+merlin/python/merlin/compare/host_experiment.py  # 2
+merlin/python/merlin/targetgen/capsule_runner.py  # 1
+merlin/python/merlin/targetgen/conformance.py  # 1
+merlin/python/merlin/targetgen/dram_facts.py  # 1
+merlin/python/merlin/targetgen/generate_bundles.py  # 5
+merlin/python/merlin/targetgen/isa_model.py  # 1
+merlin/python/merlin/targetgen/routing.py  # 2
+merlin/python/merlin/targetgen/rtl/circt_introspect.py  # 1
+merlin/python/merlin/targetgen/target_experiment.py  # 1
+merlin/python/merlin/targetgen/target_registry.py  # 1
+merlin/python/merlin/targetgen/verification_spec.py  # 1

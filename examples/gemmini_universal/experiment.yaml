@@ -1,0 +1,26 @@
+schema_version: 1
+id: gemmini-universal-functional
+target: gemmini_universal
+description: Functional compiler authoring for the separately pinned Universal configuration; requires a fresh reviewed corpus release and provisioned toolchain.
+inputs:
+  target: target/descriptor.yaml
+phases:
+  1:
+    adapter: capsule_bench
+    config:
+      require_reviewed_corpus: true
+      descriptor: target/descriptor.yaml
+      arm: merlin_assisted
+      treatment: rtlchecks
+      # Historical source bundle only; regenerate and review before verified execution.
+      bundle: merlin_assisted_rtlchecks_public_v0
+      bundle_manifest: ../../merlin/experiments/capsule_bench/targets/gemmini_universal/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+      # Required operator-owned timing evidence; never synthesize a placeholder.
+      oracle_timing: ../../merlin/experiments/capsule_bench/targets/gemmini_universal/.oracle_timing.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900

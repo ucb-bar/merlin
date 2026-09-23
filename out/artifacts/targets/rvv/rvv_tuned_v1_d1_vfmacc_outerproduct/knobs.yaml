@@ -1,0 +1,41 @@
+# RVV codegen tunable surface, AS DATA. The authoritative artifact is schedule.mlir (the
+# transform-dialect text clang lowers to RVV); these knobs DESCRIBE it + carry the cflags. A
+# generator (rvvgen.from_strategy) emits schedule.mlir FROM these knobs for variant packages;
+# for hand_v0 the schedule is a verbatim capture of pipeline.RVV_TRANSFORM_SCHEDULE and the
+# knobs below mirror it exactly.
+schedule_file: schedule.mlir
+
+# Which linalg contraction ops the schedule tiles + vectorizes (fixed-width vectors). Extending
+# this set beyond the two contraction ops is experimental: a blanket vectorize of
+# transposes/reduces/elementwise explodes into vector.extract that does not lower in this
+# LLVM-23 build (see pipeline.py). tile == vector here (fixed-width, smaller dims masked).
+op_match:
+  - {op: linalg.matmul,       tile: [4, 8, 1],    vector: [4, 8, 1]}
+  - {op: linalg.batch_matmul, tile: [1, 4, 8, 1], vector: [1, 4, 8, 1]}
+
+# Vector-lowering patterns applied to func bodies (transform.apply_patterns.vector.*).
+lowering_patterns:
+  - lower_contraction
+  - lower_masked_transfers
+  - lower_transpose
+  - lower_shape_cast
+
+# Informational: Saturn-OPU vLen=128 is tuned for LMUL=1 (e32m1); the schedule emits fixed-width
+# vectors, not scalable. The SpacemiT K1 is vLen=256 — a separate measurement axis (do not assume
+# a schedule transfers between VLENs; certify_rvv records the VLEN per target).
+lmul_policy: m1
+
+# The RVV-specific cflags. The applier appends zephyr_model._CFLAGS_COMMON. -fno-vectorize /
+# -fno-slp-vectorize disable clang autovec so ONLY the schedule's fixed-width vectors reach the
+# Saturn lanes (autovec emits fractional-LMUL the Saturn-OPU wedges on — the RVV-on-FASED hang).
+cflags: ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize"]
+
+# Selects an existing lowering path; no new lowering logic. fp32 | int8_w8a8 | bf16_f32acc.
+dtype_strategy: fp32
+
+# objdump evidence contract — the MEASURED fp32-GEMM instruction set of THIS baseline schedule
+# (recorded by certify_rvv as evidence, not a hard gate). KNOWN GAP vs expert kernels (XNNPACK):
+# the schedule's lower_contraction emits vfmul.vv + vfadd.vv SEPARATELY, not the fused vfmacc.vv,
+# and uses vsetivli (immediate) not vsetvli. These divergences are exactly what the S4 comparison
+# + gap-router target (lever 2: a targeted contraction-lowering pattern to recover vfmacc).
+expected_instructions: [vsetivli, vle32.v, vfmul.vv, vfadd.vv]

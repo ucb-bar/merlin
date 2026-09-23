@@ -1,0 +1,2760 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/check_conformance_coverage.py --target gemmini --write merlin/contract/capsules/conformance/gemmini.yaml
+# Do not hand-edit: the point of this file is that it is evidence, not authorship.
+target: gemmini
+generated_by: merlin.targetgen.conformance.spec
+derivation:
+  admitted: capability manifest compute_units[].semantic_capabilities (family x dtype)
+  observed: model_coverage.regions_from_module over each captured model (name-first, provenance-tag fallback;
+    unresolved regions not counted)
+  required: admitted INTERSECT observed, x tile alignment where the target tiles
+  cell_vocabulary: "(semantic_family, dtype, tile_alignment) \u2014 identical to contract.materialize.cert_capsule_cover,\
+    \ so the existing cover measures this spec without a second definition of a cell"
+boundaries:
+  tile_edge: 16
+  tile_edge_is_hardware_fact: true
+  tile_edge_source: RTL facts arrays[].rows (the target leaves geometry to discovery rather than restating
+    it in the contract)
+  block_scale_group: null
+  block_scale_source: ''
+  operand_store_bytes: null
+  operand_store_source: ''
+  extent_probes:
+  - boundary: tile_edge
+    edge: 16
+    source: RTL facts arrays[].rows (the target leaves geometry to discovery rather than restating it
+      in the contract)
+    points:
+    - 1
+    - 4
+    - 8
+    - 15
+    - 16
+    - 17
+    - 32
+composition:
+  required:
+    A:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_int8
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    A->A:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    A->H->A:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_int8
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    H:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    H->A->H:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_int8
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    routing:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_int8
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+  whole_model_shape:
+    bitvla: routing
+    deepjscc_int8: routing
+    gemma2_2b_int8: routing
+    gemma2_2b_int8_full: routing
+    gemma2_2b_int8_full_seq8: routing
+    gemma2_2b_int8_full_seq8_pretransposed: routing
+    gemma2_2b_int8_full_seq8_sliced: routing
+    gemma2_2b_int8_full_seq8_sliced_tiledhead: routing
+    gemma2_2b_int8_full_spec: routing
+    gemma2_2b_int8_full_spec_pretransposed: routing
+    gemma2_2b_int8_section1: routing
+    gemma2_2b_int8_section12: routing
+    gemma2_2b_int8_section2: routing
+    gemma2_2b_int8_spec: routing
+    gemma2_2b_int8_spec_pretransposed: routing
+    lstmnetvit_fp8: H
+    lstmnetvit_int8: routing
+    lstmnetvit_int8_pretransposed: H
+    lstmnetvit_int8_w8a8: routing
+    openvla: routing
+    rdt2: H
+    small_llama: routing
+    small_llama_fp8: routing
+    small_llama_int8: routing
+    small_llama_int8_pretransposed: routing
+    small_llama_pretransposed: routing
+    smolvla: routing
+    smolvla_denoise_step_fp32_app: routing
+    smolvla_int8: routing
+    smolvla_pretransposed: routing
+    spectformer_int8_full: routing
+    spectformer_int8_full_pretransposed: H
+  captures_unreadable: {}
+  axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
+    \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
+    \ adjacent accelerator pairs and host islands, and each of those is a composition the corpus must\
+    \ exercise somewhere. Taking only the whole-model label would demand `routing` and nothing else, the\
+    \ narrowest reading of the richest evidence"
+  why_orthogonal: the composition axis is NOT crossed with family/dtype/alignment. A cross product would
+    demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
+    cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
+    in it
+shape_generalization:
+  required:
+  - probe: contraction.transpose
+    axis: layout
+    family: contraction
+    dtype: i8
+    rank: 2
+    layout: transposed
+    m: 16
+    k: 16
+    n: 16
+    batch: 1
+  - probe: contraction.batched
+    axis: rank
+    family: contraction
+    dtype: i8
+    rank: 3
+    layout: null
+    m: 16
+    k: 16
+    n: 16
+    batch: 2
+  - probe: elementwise_map.batched
+    axis: rank
+    family: elementwise_map
+    dtype: i8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  - probe: movement.batched
+    axis: rank
+    family: movement
+    dtype: i8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  - probe: reduction.batched
+    axis: rank
+    family: reduction
+    dtype: i8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  axis_basis: 'the rank and operand-layout regions this target''s capability manifest DECLARES it handles,
+    via capability_probes. A (family, dtype, alignment) cell cannot express either: it says what arithmetic
+    the corpus must contain and nothing about whether the unit was ever asked for a batched region or
+    a transposed operand. Both are declared capabilities, so a target that claims them and is never asked
+    for one has an untested claim'
+  why_shape_corners_are_excluded: 'the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
+    restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
+    requirement with points already required under another name. NOTE the alignment axis now carries three
+    occupancy classes rather than two: `partial` rags one axis by one element (a nearly-full tile) and
+    `sub_tile` leaves the tile barely occupied, which the hand-authored corpus probes 45 times and the
+    derived corpus could not express at all. That is a genuinely distinct point, not a corner probe under
+    another name'
+host_lane:
+  required:
+  - family: elementwise_map
+    dtype: f32
+    n_regions: 14407
+    evidenced_by: captures_and_corpus
+  - family: movement
+    dtype: f32
+    n_regions: 6895
+    evidenced_by: captures
+  - family: reduction
+    dtype: f32
+    n_regions: 3586
+    evidenced_by: captures_and_corpus
+  - family: contraction
+    dtype: f32
+    n_regions: 3394
+    evidenced_by: captures_and_corpus
+  - family: normalization
+    dtype: f32
+    n_regions: 3057
+    evidenced_by: captures_and_corpus
+  - family: movement
+    dtype: bf16
+    n_regions: 1780
+    evidenced_by: captures
+  - family: elementwise_map
+    dtype: bf16
+    n_regions: 1548
+    evidenced_by: captures_and_corpus
+  - family: contraction
+    dtype: bf16
+    n_regions: 928
+    evidenced_by: captures_and_corpus
+  - family: attention
+    dtype: f32
+    n_regions: 84
+    evidenced_by: captures_and_corpus
+  - family: reduction
+    dtype: bf16
+    n_regions: 4
+    evidenced_by: corpus
+  - family: attention
+    dtype: bf16
+    n_regions: 3
+    evidenced_by: corpus
+  - family: normalization
+    dtype: bf16
+    n_regions: 3
+    evidenced_by: corpus
+  - family: softmax
+    dtype: bf16
+    n_regions: 2
+    evidenced_by: corpus
+  admitted_pairs:
+  - contraction/i8
+  - elementwise_map/i8
+  - movement/i8
+  - reduction/i8
+  captures_unreadable: {}
+  axis_basis: the (family, dtype) work real captures CONTAIN that this target's manifest does not admit.
+    The cells intersect admitted with observed and keep only what survives; this keeps what does NOT,
+    which is precisely the work the compiler has to place on the host. Both sides come from the same two
+    sources the cells do, read at the resolution the cells discard -- a region's dtype decides whether
+    the hardware may take it, so a family histogram cannot express it
+epilogue:
+  required:
+  - stage: relu
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: acc_scale
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: bias_add
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: maxpool
+    family: reduction
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  rejected:
+  - stage: requant
+    family: elementwise_map
+    why: no readout this target declares APPLIES the stage ('i8' applies ['acc_scale', 'bias', 'bias_add',
+      'maxpool', 'relu']; 'i32' applies []), so fusing it would declare a computation the hardware does
+      not perform. Stage-granular RTL-evidenced declaration overrides the family-granular manifest evidence
+      that would otherwise require it.
+  axis_basis: the epilogue stages this target can fuse onto a contraction, evidenced by its capability
+    manifest declaring the stage's family fused-only OR by its own instruction taxonomy resolving a class
+    for the role the stage needs, and then INTERSECTED with the stages its declared readout actually applies
+    -- the first two are family-granular and the last is stage-granular, so a target that fuses an activation
+    but not an integer requantize is described correctly instead of being asked for both. A (family, dtype,
+    alignment) cell cannot express WHICH epilogue rides the contraction, so a corpus derived from cells
+    alone tests one stage and calls the fusion capability covered
+groups:
+  status: ok
+  required: []
+  unstated:
+    stage 'cast' has no name in the capsule epilogue vocabulary: 22
+  captures_unreadable: {}
+  axis_basis: 'the compute groups this target''s captured models form: a contraction with the stages its
+    unit absorbs, by op, epilogue COMBINATION and operand format. A corpus that demands each stage once
+    demands no combination, so a backend that fuses any one stage and no two passes it; and the model
+    route is only as good as the patterns some capsule has certified'
+carried_state:
+  required:
+  - stage: relu
+    evidenced_by:
+    - manifest_composed_with
+  axis_basis: a readout stage with no operand and no parameter is configuration a unit stays in; a program
+    is two commands over one resident weight, the stage on the FIRST and none on the second, on a stimulus
+    that goes negative, so a backend that does not restore its configuration returns the second result
+    with the first one's stage applied
+application_shapes:
+  required:
+  - class: contraction/i8/aligned/fits_double/rank2/squareish_gemm
+    M: 48
+    K: 512
+    N: 16
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 262.8946985417773
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 96
+      - 512
+      - 64
+      clamped: true
+      representative_of: 6
+      work: 3538944
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/aligned/fits_double/rank2/squareish_gemm
+    M: 96
+    K: 512
+    N: 64
+    batch: 1
+    tier: L2
+    extends: contraction/i8/aligned/fits_double/rank2/squareish_gemm
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 6
+      work: 3538944
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/aligned/fits_double/rank2/wide_skinny
+    M: 48
+    K: 64
+    N: 16
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 262.8946985417773
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 96
+      - 64
+      - 512
+      clamped: true
+      representative_of: 2
+      work: 3145728
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/aligned/fits_double/rank2/wide_skinny
+    M: 96
+    K: 64
+    N: 512
+    batch: 1
+    tier: L2
+    extends: contraction/i8/aligned/fits_double/rank2/wide_skinny
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 2
+      work: 3145728
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/squareish_gemm
+    M: 48
+    K: 32
+    N: 16
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 262.8946985417773
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 345
+      - 32
+      - 256
+      clamped: true
+      representative_of: 2
+      work: 2826240
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/squareish_gemm
+    M: 345
+    K: 32
+    N: 256
+    batch: 1
+    tier: L2
+    extends: contraction/i8/partial/fits_double/rank2/squareish_gemm
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 2
+      work: 2826240
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/wide_skinny
+    M: 16
+    K: 64
+    N: 48
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 262.8946985417773
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 6
+      - 64
+      - 128
+      clamped: true
+      representative_of: 2
+      work: 49152
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/wide_skinny
+    M: 6
+    K: 64
+    N: 128
+    batch: 1
+    tier: L2
+    extends: contraction/i8/partial/fits_double/rank2/wide_skinny
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 2
+      work: 49152
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/gemv_like
+    M: 16
+    K: 32
+    N: 48
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 262.8946985417773
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 2
+      - 32
+      - 64
+      clamped: true
+      representative_of: 2
+      work: 4096
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/gemv_like
+    M: 2
+    K: 32
+    N: 64
+    batch: 1
+    tier: L2
+    extends: contraction/i8/partial/fits_double/rank2/gemv_like
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 2
+      work: 4096
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/projection_like
+    M: 16
+    K: 128
+    N: 16
+    batch: 1
+    tier: L3
+    extends: null
+    basis:
+      sized_by: measured_cost_model
+      budget_s: 300.0
+      budget_elements: 923
+      budget_metric: written_output_elements
+      fitted_seconds: 140.39628844618318
+      cost_fit:
+        target: gemmini
+        engine: verilator
+        intercept_s: 79.147
+        per_element_s: 0.239255
+        r2: 0.6039
+        n_samples: 34
+        measured_range_elements:
+        - 240
+        - 1024
+        metric: written_output_elements
+        n_sources: 34
+        attributed_by:
+          evidence: 34
+      clamped_from:
+      - 1
+      - 128
+      - 3
+      clamped: true
+      representative_of: 1
+      work: 384
+      source: lstmnetvit_int8_w8a8_consistent
+  - class: contraction/i8/partial/fits_double/rank2/projection_like
+    M: 1
+    K: 128
+    N: 3
+    batch: 1
+    tier: L2
+    extends: contraction/i8/partial/fits_double/rank2/projection_like
+    basis:
+      sized_by: application_shape
+      why: the shape the application actually contains, too large to certify cycle-accurately; admissible
+        only as an extension of the certified sibling of the same behavioural class
+      representative_of: 1
+      work: 384
+      source: lstmnetvit_int8_w8a8_consistent
+  refused:
+  - 'contraction/f32/aligned/spills/rank2/squareish_gemm: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (127 region(s), 7858028544 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/spills/rank2/unknown: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (24 region(s), 4831838208 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/bf16/partial/spills/rank2/wide_skinny: this target''s manifest does not admit contraction/bf16,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (352 region(s), 1775308800 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/spills/rank3/squareish_gemm: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (24 region(s), 1610612736 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/spills/rank3/tall_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (24 region(s), 1610612736 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/spills/rank2/wide_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (10 region(s), 1566572544 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/spills/rank2/wide_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (8 region(s), 171125760 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/bf16/partial/spills/rank2/projection_like: this target''s manifest does not admit contraction/bf16,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (64 region(s), 69427200 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/bf16/partial/fits_double/rank3/squareish_gemm: this target''s manifest does not admit
+    contraction/bf16, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (48 region(s), 40164480 MACs); an
+    accelerator capsule here would demand an offload the datapath cannot perform and could not pass under
+    any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/squareish_gemm: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (48 region(s), 35364480 MACs); an
+    accelerator capsule here would demand an offload the datapath cannot perform and could not pass under
+    any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/wide_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (12 region(s), 29693952 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/odd_tail_heavy: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (32 region(s), 26496000 MACs); an
+    accelerator capsule here would demand an offload the datapath cannot perform and could not pass under
+    any correct behaviour'
+  - 'contraction/f32/partial/spills/rank2/projection_like: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (32 region(s), 23142400 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/spills/rank2/gemv_like: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (28 region(s), 11607552 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/spills/rank2/tall_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (10 region(s), 6832128 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/fits_single/rank2/wide_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (4 region(s), 6291456 MACs); an accelerator capsule here
+    would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank2/squareish_gemm: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (4 region(s), 5652480 MACs); an accelerator
+    capsule here would demand an offload the datapath cannot perform and could not pass under any correct
+    behaviour'
+  - 'contraction/f32/aligned/fits_single/rank2/squareish_gemm: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (3 region(s), 5308416 MACs); an accelerator
+    capsule here would demand an offload the datapath cannot perform and could not pass under any correct
+    behaviour'
+  - 'contraction/f32/partial/fits_double/rank2/wide_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (10 region(s), 4615008 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/i8/partial/fits_double/rank2/tall_skinny: its operands carry 88,320 elements against
+    a cost model calibrated to 65,536, so the certification cost of this class is UNKNOWN rather than
+    affordable; measure a deeper operand first'
+  - 'contraction/i8/partial/spills/rank2/gemv_like: its operands carry 2,359,296 elements against a cost
+    model calibrated to 65,536, so the certification cost of this class is UNKNOWN rather than affordable;
+    measure a deeper operand first'
+  - 'contraction/f32/partial/fits_single/rank2/squareish_gemm: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (2 region(s), 2304000 MACs); an accelerator
+    capsule here would demand an offload the datapath cannot perform and could not pass under any correct
+    behaviour'
+  - 'contraction/f32/partial/fits_double/rank2/tall_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (14 region(s), 2084352 MACs); an accelerator capsule
+    here would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/aligned/fits_double/rank2/squareish_gemm: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (8 region(s), 786432 MACs); an accelerator
+    capsule here would demand an offload the datapath cannot perform and could not pass under any correct
+    behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/tall_skinny: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (8 region(s), 117888 MACs); an accelerator capsule here
+    would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank2/gemv_like: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (15 region(s), 108608 MACs); an accelerator capsule here
+    would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/small_dispatch_fragment: this target''s manifest does not
+    admit contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator.
+    It is already required by the host_lane axis at the same resolution (4 region(s), 73728 MACs); an
+    accelerator capsule here would demand an offload the datapath cannot perform and could not pass under
+    any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank3/gemv_like: this target''s manifest does not admit contraction/f32,
+    so the work in this class belongs on the HOST lane and not on the accelerator. It is already required
+    by the host_lane axis at the same resolution (4 region(s), 44160 MACs); an accelerator capsule here
+    would demand an offload the datapath cannot perform and could not pass under any correct behaviour'
+  - 'contraction/f32/partial/fits_double/rank2/projection_like: this target''s manifest does not admit
+    contraction/f32, so the work in this class belongs on the HOST lane and not on the accelerator. It
+    is already required by the host_lane axis at the same resolution (2 region(s), 768 MACs); an accelerator
+    capsule here would demand an offload the datapath cannot perform and could not pass under any correct
+    behaviour'
+  declared_applications: 7
+  n_classes: 35
+  n_regions: 943
+  total_work: 19709318176
+  captures_unreadable: {}
+  missing_capabilities: []
+  cost_model:
+    target: gemmini
+    engine: verilator
+    intercept_s: 79.147
+    per_element_s: 0.239255
+    r2: 0.6039
+    n_samples: 34
+    measured_range_elements:
+    - 240
+    - 1024
+    metric: written_output_elements
+    n_sources: 34
+    attributed_by:
+      evidence: 34
+  axis_basis: the contraction shapes this target's DECLARED applications contain, grouped by what the
+    compiler must do with them and sized to what a certification costs. A capsule at an application's
+    real shape is worthless if nobody can afford to certify it, so each class yields a cycle-accurate
+    capsule at an affordable size plus, when the application is larger, an L2 capsule at the true shape
+    that extends it -- never one without the other
+  cert_budget_s: 300.0
+  budget_source: declared
+cert_affordability:
+  max_elements: 923
+  budget_s: 300.0
+  metric: written_output_elements
+  engine: verilator
+  engine_choice: 'the slowest engine this target has measured history on: the ceiling must be payable
+    on whichever engine the run picks, so the binding constraint is the engine that takes longest'
+  engines:
+    gsim: 6424
+    verilator: 923
+  law: seconds = 79.147 + 0.239255 * output
+  calibrated_to_elements: 1024
+  extrapolated: false
+  basis: 'fitted on 34 cycle-accurate verilator certification(s) of THIS target (r2 0.6039, 240..1024
+    written elements); other engine ceilings: {''gsim'': 6424, ''verilator'': 923}'
+  why: 'the largest written output whose predicted certification fits the budget. A capsule above it is
+    graded at the loop tier and rests on a certified sibling -- not because it is uninteresting, but because
+    nobody can afford to run it cycle-accurately. Reduction depth does NOT count against this: K moves
+    the operands, not the result'
+oracle_tiers:
+- L2
+- L3
+shape_geometry:
+  required:
+  - class: gemv_like
+    family: contraction
+    M: 1
+    K: 227
+    N: 1024
+    out_elements: 1024
+    n_regions: 71
+    mac_fraction: 3.3e-05
+    observed_in:
+    - deepjscc_int8
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - rdt2
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 1
+      K: 2048
+      N: 9216
+      factor: 9
+  - class: odd_tail_heavy
+    family: contraction
+    M: 196
+    K: 256
+    N: 768
+    out_elements: 150528
+    n_regions: 17
+    mac_fraction: 0.000327
+    observed_in:
+    - openvla
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from: null
+  - class: projection_like
+    family: contraction
+    M: 56
+    K: 480
+    N: 160
+    out_elements: 8960
+    n_regions: 150
+    mac_fraction: 0.002062
+    observed_in:
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    scaled_from:
+      M: 113
+      K: 960
+      N: 320
+      factor: 2
+  - class: squareish_gemm
+    family: contraction
+    M: 256
+    K: 768
+    N: 192
+    out_elements: 49152
+    n_regions: 297
+    mac_fraction: 0.094342
+    observed_in:
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 1024
+      K: 3072
+      N: 768
+      factor: 4
+  - class: tall_skinny
+    family: contraction
+    M: null
+    K: null
+    N: null
+    out_elements: 12582912
+    n_regions: 782
+    mac_fraction: 0.035233
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    unreachable: the heaviest shape in this class carries a 12582912-element tensor, more than the 262144
+      this target's operand store holds, and no common divisor of its extents fits while every extent
+      stays at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so
+      no capsule of this aspect ratio is both representative and buildable here
+  - class: unknown
+    family: contraction
+    M: 256
+    K: 192
+    N: 768
+    out_elements: 196608
+    n_regions: 38
+    mac_fraction: 0.046099
+    observed_in:
+    - rdt2
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    scaled_from:
+      M: 1024
+      K: 768
+      N: 3072
+      factor: 4
+  - class: wide_skinny
+    family: contraction
+    M: null
+    K: null
+    N: null
+    out_elements: 32768000
+    n_regions: 2306
+    mac_fraction: 0.821905
+    observed_in:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    unreachable: the heaviest shape in this class carries a 589824000-element tensor, more than the 262144
+      this target's operand store holds, and no common divisor of its extents fits while every extent
+      stays at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so
+      no capsule of this aspect ratio is both representative and buildable here
+  captures_unreadable: {}
+  materialization_ceiling_elements: 262144
+  total_macs: 1886750735872
+  axis_basis: 'the geometric classes (shape_taxonomy.classify_geometry) that real captured models present,
+    each with the highest-MAC-mass shape in the class. A (family, dtype, alignment) cell cannot express
+    aspect ratio at all, and aspect ratio is where a tiling compiler fails: a 448:1 tall-skinny convolution
+    and a square projection are the same cell. EMPTY means the captures contain no readable contraction,
+    never that geometry does not matter'
+scope:
+  required:
+  - signature: movement -> contraction
+    occurrences: 2941
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    length: 2
+  - signature: elementwise_map -> elementwise_map
+    occurrences: 2470
+    observed_in:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    length: 2
+  - signature: elementwise_map -> elementwise_map -> elementwise_map
+    occurrences: 1491
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 3
+  - signature: elementwise_map -> reduction -> reduction
+    occurrences: 1141
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 3
+  - signature: elementwise_map -> movement
+    occurrences: 715
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 2
+  - signature: elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+    occurrences: 698
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 4
+  - signature: elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+    occurrences: 685
+    observed_in:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 5
+  - signature: movement -> movement
+    occurrences: 468
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    length: 2
+  - signature: movement -> elementwise_map -> elementwise_map
+    occurrences: 450
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_int8_w8a8
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    length: 3
+  - signature: normalization -> normalization
+    occurrences: 419
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    length: 2
+  - signature: normalization -> movement
+    occurrences: 311
+    observed_in:
+    - bitvla
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    length: 2
+  - signature: movement -> contraction -> contraction
+    occurrences: 295
+    observed_in:
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - openvla
+    - rdt2
+    - smolvla
+    - smolvla_pretransposed
+    length: 3
+  min_occurrences: 4
+  max_signatures: 12
+  dropped_below_threshold: 24
+  dropped_over_cap:
+  - movement -> elementwise_map -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> movement
+  - normalization -> reduction -> normalization
+  - reduction -> normalization
+  - normalization -> normalization -> normalization
+  - normalization -> normalization -> normalization -> normalization -> normalization
+  - movement -> contraction -> elementwise_map
+  - contraction -> generic
+  - movement -> elementwise_map
+  - elementwise_map -> elementwise_map -> movement -> movement
+  - contraction -> contraction
+  - contraction -> elementwise_map
+  - movement -> contraction -> generic
+  - elementwise_map -> movement -> movement -> movement
+  - normalization -> elementwise_map -> movement
+  - movement -> elementwise_map -> contraction
+  - movement -> movement -> movement
+  - movement -> contraction -> elementwise_map -> elementwise_map -> contraction -> elementwise_map
+  - movement -> contraction -> elementwise_map -> contraction -> elementwise_map
+  - movement -> contraction -> generic -> elementwise_map
+  - contraction -> movement
+  - elementwise_map -> contraction -> elementwise_map
+  - elementwise_map -> contraction
+  - elementwise_map -> elementwise_map -> movement -> contraction -> elementwise_map
+  - movement -> contraction -> movement
+  - contraction -> elementwise_map -> contraction -> elementwise_map
+  - contraction -> elementwise_map -> elementwise_map -> contraction -> elementwise_map
+  - elementwise_map -> elementwise_map -> reduction
+  - contraction -> generic -> elementwise_map
+  - elementwise_map -> movement -> movement -> contraction -> elementwise_map
+  - movement -> attention -> attention -> attention
+  - movement -> contraction -> generic -> elementwise_map -> contraction -> generic -> elementwise_map
+  - normalization -> elementwise_map -> contraction -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> movement
+  - movement -> contraction -> elementwise_map -> elementwise_map -> elementwise_map
+  - movement -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+  - movement -> elementwise_map -> elementwise_map -> movement -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement -> contraction
+  - elementwise_map -> movement -> contraction
+  - elementwise_map -> movement -> contraction -> movement
+  - elementwise_map -> reduction
+  - elementwise_map -> reduction -> reduction -> elementwise_map -> elementwise_map -> elementwise_map
+  - movement -> elementwise_map -> elementwise_map -> movement -> movement
+  - movement -> movement -> contraction -> movement
+  - elementwise_map -> movement -> movement
+  - attention -> attention
+  - attention -> attention -> attention
+  - attention -> attention -> movement
+  - attention -> movement
+  - contraction -> generic -> elementwise_map -> contraction -> generic -> elementwise_map
+  - movement -> attention -> movement
+  - movement -> reduction
+  - normalization -> contraction -> movement
+  - normalization -> normalization -> normalization -> contraction -> generic -> elementwise_map -> contraction
+    -> generic -> elementwise_map
+  - normalization -> normalization -> normalization -> normalization -> normalization -> contraction ->
+    generic -> elementwise_map -> contraction -> generic -> elementwise_map
+  - elementwise_map -> elementwise_map -> movement -> elementwise_map
+  - elementwise_map -> movement -> elementwise_map -> movement
+  - movement -> contraction -> elementwise_map -> elementwise_map
+  - elementwise_map -> elementwise_map -> elementwise_map -> movement -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> movement -> elementwise_map -> movement
+  - movement -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> contraction
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> contraction
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+    -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> generic
+  - movement -> movement -> contraction -> elementwise_map
+  - normalization -> normalization -> normalization -> elementwise_map
+  - normalization -> normalization -> normalization -> normalization -> elementwise_map
+  - normalization -> normalization -> normalization -> normalization -> normalization -> elementwise_map
+  - reduction -> reduction -> elementwise_map -> elementwise_map
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+  - contraction -> elementwise_map -> elementwise_map
+  - movement -> contraction -> elementwise_map -> elementwise_map -> contraction -> elementwise_map ->
+    elementwise_map
+  - reduction -> reduction
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+    -> movement -> elementwise_map -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement -> elementwise_map
+    -> movement
+  - elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement -> movement
+  - movement -> contraction -> elementwise_map -> contraction -> elementwise_map -> elementwise_map
+  - movement -> elementwise_map -> contraction -> elementwise_map
+  - movement -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map
+    -> elementwise_map
+  - movement -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement
+  - movement -> elementwise_map -> elementwise_map -> elementwise_map -> elementwise_map -> movement ->
+    contraction
+  - reduction -> elementwise_map
+  - reduction -> elementwise_map -> elementwise_map
+  captures_unreadable: {}
+conv_geometry:
+  required:
+  - signature: k16x16/s16x16/d1x1/padUNKNOWN
+    kernel:
+    - 16
+    - 16
+    stride:
+    - 16
+    - 16
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 64
+    - 64
+    out_spatial:
+    - 4
+    - 4
+    channels_in: 3
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 8
+    sources:
+    - openvla
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+  - signature: k3x3/s1x1/d1x1/pad1x1
+    kernel:
+    - 3
+    - 3
+    stride:
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 1
+    - 1
+    pad_after:
+    - 1
+    - 1
+    input_dilation:
+    - 1
+    - 1
+    pad_known: true
+    in_spatial:
+    - 16
+    - 16
+    out_spatial:
+    - 16
+    - 16
+    channels_in: 64
+    dtype: f32
+    padded: true
+    symmetric_pad: true
+    n_regions: 8
+    sources:
+    - deepjscc_int8
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+  - signature: k3x3/s1x1/d1x1/pad1x1_2x2/indilated2x2
+    kernel:
+    - 3
+    - 3
+    stride:
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 1
+    - 1
+    pad_after:
+    - 2
+    - 2
+    input_dilation:
+    - 2
+    - 2
+    pad_known: true
+    in_spatial:
+    - 16
+    - 16
+    out_spatial:
+    - 32
+    - 32
+    channels_in: 64
+    dtype: f32
+    padded: true
+    symmetric_pad: false
+    n_regions: 2
+    sources:
+    - deepjscc_int8
+  - signature: k3x3/s1x1/d1x1/padUNKNOWN
+    kernel:
+    - 3
+    - 3
+    stride:
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 18
+    - 18
+    out_spatial:
+    - 16
+    - 16
+    channels_in: 64
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 2
+    sources:
+    - deepjscc_int8
+  - signature: k3x3/s2x2/d1x1/pad1x1
+    kernel:
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 1
+    - 1
+    pad_after:
+    - 1
+    - 1
+    input_dilation:
+    - 1
+    - 1
+    pad_known: true
+    in_spatial:
+    - 64
+    - 64
+    out_spatial:
+    - 32
+    - 32
+    channels_in: 16
+    dtype: f32
+    padded: true
+    symmetric_pad: true
+    n_regions: 6
+    sources:
+    - deepjscc_int8
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+  - signature: k4x4/s4x4/d1x1/padUNKNOWN
+    kernel:
+    - 4
+    - 4
+    stride:
+    - 4
+    - 4
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 8
+    - 12
+    out_spatial:
+    - 2
+    - 3
+    channels_in: 64
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 8
+    sources:
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+  - signature: k5x5/s1x1/d1x1/padUNKNOWN
+    kernel:
+    - 5
+    - 5
+    stride:
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 68
+    - 68
+    out_spatial:
+    - 64
+    - 64
+    channels_in: 16
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 1
+    sources:
+    - deepjscc_int8
+  - signature: k7x7/s1x1/d1x1/padUNKNOWN
+    kernel:
+    - 7
+    - 7
+    stride:
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 70
+    - 70
+    out_spatial:
+    - 64
+    - 64
+    channels_in: 3
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 1
+    sources:
+    - deepjscc_int8
+  - signature: k7x7/s4x4/d1x1/pad3x3
+    kernel:
+    - 7
+    - 7
+    stride:
+    - 4
+    - 4
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 3
+    - 3
+    pad_after:
+    - 3
+    - 3
+    input_dilation:
+    - 1
+    - 1
+    pad_known: true
+    in_spatial:
+    - 60
+    - 90
+    out_spatial:
+    - 15
+    - 23
+    channels_in: 1
+    dtype: f32
+    padded: true
+    symmetric_pad: true
+    n_regions: 4
+    sources:
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+  - signature: k8x8/s8x8/d1x1/padUNKNOWN
+    kernel:
+    - 8
+    - 8
+    stride:
+    - 8
+    - 8
+    dilation:
+    - 1
+    - 1
+    pad_before:
+    - 0
+    - 0
+    pad_after:
+    - 0
+    - 0
+    input_dilation:
+    - 1
+    - 1
+    pad_known: false
+    in_spatial:
+    - 15
+    - 23
+    out_spatial:
+    - 1
+    - 2
+    channels_in: 32
+    dtype: f32
+    padded: null
+    symmetric_pad: true
+    n_regions: 8
+    sources:
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+  n_classes: 10
+  captures_unreadable: {}
+  axis_basis: the convolution windows real captures CONTAIN, recovered from the im2col gather's affine
+    map and its padding producer rather than from op attributes -- torch-mlir emits im2col, so a captured
+    convolution carries no padding/stride/dilation attribute to read. Each geometry is verified against
+    padded == (out-1)*stride + (kernel-1)*dilation + 1 and dropped when it does not hold, so an unverified
+    window never becomes an obligation
+memory_mapping:
+  required:
+    fits_double:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    fits_single:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    spills:
+    - bitvla
+    - deepjscc_int8
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - lstmnetvit_fp8
+    - lstmnetvit_int8
+    - lstmnetvit_int8_pretransposed
+    - lstmnetvit_int8_w8a8
+    - openvla
+    - rdt2
+    - small_llama
+    - small_llama_fp8
+    - smolvla
+    - smolvla_denoise_step_fp32_app
+    - smolvla_int8
+    - smolvla_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+  region_counts:
+    fits_double: 14713
+    fits_single: 4777
+    spills: 19618
+  capacity_rows: 16384
+  captures_unreadable: {}
+  why: ''
+  regime_extents:
+    fits_double:
+      M: tile
+      K: tile
+      N: tile
+      rows: 32
+      capacity_rows: 16384
+      fraction_of_capacity: 0.001953
+    fits_single:
+      M: 512*tile
+      K: tile
+      N: tile
+      rows: 8208
+      capacity_rows: 16384
+      fraction_of_capacity: 0.500977
+    spills:
+      M: 512*tile
+      K: 2*tile
+      N: 2*tile
+      rows: 16448
+      capacity_rows: 16384
+      fraction_of_capacity: 1.003906
+  regime_dtype: i8
+  reduction_depth:
+    capacity_rows: 16384
+    tile_dim: 16
+    m_tiles: 1
+    n_tiles: 1
+    by_regime:
+      fits_double:
+        points:
+        - K: 16
+          K_tiles: 1
+          M: 16
+          N: 16
+          rows: 32
+          capacity_rows: 16384
+          fraction_of_capacity: 0.001953
+        - K: 4096
+          K_tiles: 256
+          M: 16
+          N: 16
+          rows: 8192
+          capacity_rows: 16384
+          fraction_of_capacity: 0.5
+        unreachable: null
+        band_tile_multiples:
+        - 1
+        - 256
+      fits_single:
+        points:
+        - K: 4112
+          K_tiles: 257
+          M: 16
+          N: 16
+          rows: 8224
+          capacity_rows: 16384
+          fraction_of_capacity: 0.501953
+        - K: 8192
+          K_tiles: 512
+          M: 16
+          N: 16
+          rows: 16384
+          capacity_rows: 16384
+          fraction_of_capacity: 1.0
+        unreachable: null
+        band_tile_multiples:
+        - 257
+        - 512
+      spills:
+        points:
+        - K: 8208
+          K_tiles: 513
+          M: 16
+          N: 16
+          rows: 16416
+          capacity_rows: 16384
+          fraction_of_capacity: 1.001953
+        - K: 16384
+          K_tiles: 1024
+          M: 16
+          N: 16
+          rows: 32768
+          capacity_rows: 16384
+          fraction_of_capacity: 2.0
+        unreachable: null
+        band_tile_multiples:
+        - 513
+        - 1024
+    m_extent: 16
+    n_extent: 16
+    certified:
+      M: 16
+      K: 32
+      N: 16
+      K_tiles: 2
+      predicted_seconds: 81.0
+      budget_s: 300.0
+      sized_by: multi_pass_minimum_at_one_output_tile
+      extrapolated: false
+      why: two tiles of K is the shallowest reduction that writes the accumulator twice; the cost is the
+        output tile, which K does not move
+    certified_refusal: null
+  axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
+    own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
+    capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
+    on a hardware-interlocked target nothing else will report it either -- the schedule is correct whatever
+    it chooses
+host_only:
+  families:
+  - attention
+  - normalization
+  dtypes:
+    normalization: f32
+    attention: f32
+  observed_in:
+    attention: 84
+    normalization: 3057
+  basis: 'families a real capture contains and this target''s capability manifest does not admit. The
+    compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
+    an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
+    captures contain is admitted -- and never that none is needed: a target with an empty complement simply
+    cannot be asked this question, which is a different fact from passing it'
+diagnostics:
+  n_cells: 12
+  captures_read:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  captures_unreadable: {}
+  families_observed:
+    attention: 84
+    contraction: 4344
+    elementwise_map: 16996
+    movement: 10808
+    normalization: 3057
+    reduction: 3685
+  families_observed_via_primitives: {}
+  families_needed_but_not_admitted:
+  - attention
+  - normalization
+  families_admitted_but_no_model_uses: []
+  alignment_axis:
+  - aligned
+  - partial
+  - sub_tile
+  alignment_axis_narrowed_by_dtype: {}
+  scale_block_elements: null
+  admitted_status: resolved
+  notes:
+  - 2 family/families appear in a real capture but the hardware declares no capability for them (attention,
+    normalization); those are compiler work for the scalar/vector lane, not accelerator cells, and are
+    excluded from the requirement rather than silently counted as covered
+  axis_basis:
+    semantic_family: observed in a real capture (or all of its primitives were)
+    dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
+      \ from them; every dtype the hardware declares for an observed family is required"
+    tile_alignment: 'both, wherever the target tiles: a unit that only ever sees whole tiles has never
+      exercised its tail path'
+personas: {}
+cells:
+- cell: contraction/i8/aligned
+  family: contraction
+  dtype: i8
+  alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 4344
+- cell: contraction/i8/partial
+  family: contraction
+  dtype: i8
+  alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 4344
+- cell: contraction/i8/sub_tile
+  family: contraction
+  dtype: i8
+  alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 4344
+- cell: elementwise_map/i8/aligned
+  family: elementwise_map
+  dtype: i8
+  alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 16996
+- cell: elementwise_map/i8/partial
+  family: elementwise_map
+  dtype: i8
+  alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 16996
+- cell: elementwise_map/i8/sub_tile
+  family: elementwise_map
+  dtype: i8
+  alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 16996
+- cell: movement/i8/aligned
+  family: movement
+  dtype: i8
+  alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 10808
+- cell: movement/i8/partial
+  family: movement
+  dtype: i8
+  alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 10808
+- cell: movement/i8/sub_tile
+  family: movement
+  dtype: i8
+  alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 10808
+- cell: reduction/i8/aligned
+  family: reduction
+  dtype: i8
+  alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 3685
+- cell: reduction/i8/partial
+  family: reduction
+  dtype: i8
+  alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 3685
+- cell: reduction/i8/sub_tile
+  family: reduction
+  dtype: i8
+  alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
+  basis: observed
+  observed_in:
+  - bitvla
+  - deepjscc_int8
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - lstmnetvit_int8_pretransposed
+  - lstmnetvit_int8_w8a8
+  - openvla
+  - rdt2
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
+  - smolvla
+  - smolvla_denoise_step_fp32_app
+  - smolvla_int8
+  - smolvla_pretransposed
+  - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
+  admitted_by:
+  - systolic_mesh
+  n_regions: 3685

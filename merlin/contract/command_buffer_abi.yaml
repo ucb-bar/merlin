@@ -5,10 +5,37 @@ version: "0.1"
 schema: schemas/command_buffer.schema.json
 top_level:
   required: [abi_version, target, commands]
-  optional: [backend, tensors, params, metrics_requested, resources]
+  optional: [backend, tensors, kernel_abi, params, metrics_requested, resources]
 tensors:
-  description: "name -> {shape:[..], dtype: i8|i16|i32, role: input|weight|bias|output}"
-  note: "leaf inputs only; outputs are produced by COMMIT and need not appear here"
+  description: "name -> {shape:[..], dtype: i8|i16|i32|f16|f32|bf16|fp8_e4m3|fp8_e5m2, role: input|weight|bias|output|scale|intermediate, base?: int}"
+  note: >
+    Declare EVERY tensor your kernel touches — inputs/weights AND the output. For an external_backend
+    (self-hosted-ISA) target graded on the program oracle, add `base` (the DRAM byte address your kernel
+    loads that input from / stores that output to): the oracle preloads inputs and reads the output back
+    at exactly these addresses, so they must match your kernel's loads/stores. `base` is optional (if you
+    omit it the harness assigns a canonical layout), but the OUTPUT tensor must be declared so its result
+    can be captured. For a command_buffer (ISA-less) target the leaf inputs alone still suffice.
+kernel_abi:
+  description: >-
+    Optional explicit pointer boundary for one submitted whole-program kernel. This is the admissible
+    form for a program whose submitted ELF contains more work than the accelerator-only `commands`
+    stream can represent, such as mesh -> scalar-host -> mesh. It is an allocation/call contract, not
+    permission for the harness to implement an operation.
+  kind: whole_program
+  args: "ordered [{tensor: declared_tensor_name, access: read|write|readwrite}, ...]"
+  outputs: "non-empty [tensor_name, ...], exactly the tensors whose declared role is output"
+  launch: >-
+    Optional {kind: simt_single_warp|simt_all_warps}. Requests an evaluator-owned launch wrapper which
+    activates every RTL-derived lane in the current warp, or every warp and lane on the one-core launch
+    path, before calling the submitted external kernel, then restores manager-only execution before the
+    harness continues. The buffer supplies no geometry, CSR, opcode, or mask: those are derived from the
+    target runtime/RTL facts and checked against `resources`.
+  invariants: >-
+    Every tensor declared in `tensors` appears in args exactly once and every arg names a declared
+    tensor. input/weight/bias/scale roles have read access; output/intermediate roles have write access.
+    The runner allocates/materializes those buffers, performs one unmeasured warm kernel call, measures
+    exactly one complete kernel call, and prints only outputs. It does not reconstruct scalar regions,
+    add/remove work, or infer a candidate-specific pointer order.
 opcodes:
   RES_PACK:
     operands: {src: leaf_or_handle, dst: handle}
@@ -23,14 +50,178 @@ opcodes:
   COMMIT:
     operands: {src: acc_handle, dst: output_tensor, bias: "tensor (optional)"}
     attributes:
-      epilogue: "ordered subset of [bias_add, requant, acc_scale, relu]"
+      # THE epilogue vocabulary of this ABI. It has exactly ONE definition --
+      # merlin.runtime.commandbuffer.EPILOGUE_STAGES -- from which this line, the strict validator's enum
+      # in schemas/command_buffer.schema.json, interface_dialect_contract.yaml and the dialect verifiers
+      # are all derived; build_tools/scripts/check_epilogue_vocabulary.py fails if any of them drifts.
+      # It is deliberately NOT derived per-target: this schema is target-INDEPENDENT (one validator for
+      # every target), so no single target's RTL can define it. It is the set of stages the command-buffer
+      # ENGINES implement. Whether a given target can EXECUTE a stage is a separate question, answered by
+      # its own capability manifest and, at run time, by its oracle -- and an engine that does not
+      # implement a listed stage REJECTS IT BY NAME rather than skipping it (see `semantics` below).
+      # The per-opcode lines further down are documented SUBSETS of this one, never extensions.
+      epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
       output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
       acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
-      requant_shift: "int; only for the integer requant stage (round-half-up arithmetic shift)"
-    semantics: "apply epilogue stages in listed order, then cast to output_dtype"
+      requant_shift: "int; the integer requant stage's round-half-up arithmetic shift; REQUIRED iff requant in epilogue, defaulted by nothing -- an omitted shift is not 4, it is a stage whose one parameter nobody stated, and every engine would then apply its own"
+      # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
+      # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
+      # lpad), which is where this class of target fuses pooling, so they ride on the command that
+      # reads the accumulator out.
+      pool_in_dims: "[H, W] -- the spatial extent the committed ROWS unflatten to (the ABI's orows/ocols). REQUIRED: an [M, N] accumulator carries no spatial extent, and 25 rows is 5x5 or 25x1"
+      pool_size: "[ph, pw] pooling window. REQUIRED -- no default"
+      pool_stride: "[sh, sw] pooling stride. REQUIRED -- no default"
+      pool_padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      pool_pad_value: "int; REQUIRED iff any pool_padding entry is nonzero -- the identity element of a max over a padded cell is a datapath property (-inf mathematically, commonly 0 in a store path) and is never assumed"
+    semantics: >-
+      apply epilogue stages in listed order, then cast to output_dtype. Every stage but `maxpool` is
+      elementwise and preserves the accumulator's [M, N] shape; `maxpool` is a WINDOWED MAX that
+      reshapes the M rows to [batch, H, W] (batch = M / (H*W)), walks the window, and commits
+      [batch*Ho*Wo, N] with Ho = (H + pt + pb - ph) // sh + 1 (Wo likewise). A stage this engine does
+      not implement is REJECTED BY NAME, never skipped: golden and reference both skipping one AGREE,
+      and the capsule then passes having proved nothing about the stage it declared.
   EVICT:
     operands: {handle: resident_handle}
     semantics: "release the resident weight's working-set budget"
+  # Whole-op opcodes (no residency decomposition). The authoritative enumeration of the interface
+  # mnemonics that reach them is targetgen.contract.interface_emit.defined_mnemonics(), read from the
+  # parser's own tables; an op the parser does not define now RAISES rather than being dropped.
+  MOVEMENT:
+    operands: {src: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the container dtype the values land in (operand dtype in, accumulate dtype out)"
+      semantic: "string; the movement form being exercised (e.g. mvin_mvout)"
+    semantics: >-
+      identity load->store round-trip through the accelerator: dst holds src's values UNCHANGED,
+      only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
+      the data survives the trip bit-for-bit.
+  ATTENTION_QK:
+    operands: {q: tensor, k: tensor, dst: output_tensor}
+    attributes:
+      epilogue: "ordered subset of [acc_scale, requant, relu]"
+      output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
+    semantics: >-
+      dst = q @ transpose(k), the first matmul of attention: q is [m, d] and k is [n, d] -- K is stored
+      ROW-PER-KEY, so the contraction is over the TRAILING head dim of BOTH operands and dst is [m, n].
+      The transpose is part of the op's definition and is NOT spelled as an attribute: there is no
+      transpose_rhs / rhs_transposed / transpose_b flag, and an unrecognised attribute is rejected rather
+      than ignored. Operand keys are exactly q / k / dst (the interface grammar's positional operands for
+      the `attention_qk` mnemonic).
+  ATTENTION_PV:
+    operands: {p: tensor, v: tensor, dst: output_tensor}
+    attributes:
+      epilogue: "ordered subset of [acc_scale, requant, relu]"
+      output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
+    semantics: >-
+      dst = p @ v, the second matmul of attention: p is [m, s] over s keys, v is [s, d].
+      NO transpose (unlike ATTENTION_QK, which contracts the trailing head dim of both operands).
+  BATCHED_MATMUL:
+    operands: {a: tensor, w: tensor, dst: output_tensor}
+    semantics: >-
+      Independently varying batched contraction A[*B, M, K] @ W[*B, K, N] -> dst[*B, M, N].
+      A, W, and dst have the same rank, which is at least three; *B is a non-empty, identical,
+      strictly-positive static batch prefix on all three tensors. There is NO broadcasting and no
+      implicit shared/resident weight: both a and w are read in full. Execution may flatten *B to
+      product(*B) independent 2-D contractions, but slices follow row-major lexicographic order and
+      the declared destination retains the original batch axes. Integer multiplication accumulates
+      in i32; an i8 x i8 command therefore declares an i32 destination. The tensor shapes, not an
+      optional `batch` attribute, are authoritative.
+  BIAS_ADD:
+    operands: {src: tensor, bias: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the ACCUMULATOR's dtype -- see semantics; the stage runs before any requant"
+      epilogue: "ordered subset of [bias_add]; the stage this op IS, listed for symmetry with COMMIT"
+    semantics: >-
+      dst[i, j] = src[i, j] + bias[j] -- one length-N vector added to every row. This is the
+      `bias_add` COMMIT stage standing on its own, over an already-committed tensor rather than over
+      an accumulator, so that a fused matmul+bias has an unfused half to be measured against.
+      BOTH OPERANDS ARE IN THE ACCUMULATOR'S DTYPE, not the operand dtype: the bias lands on the
+      accumulator before any requant, so on an i8 x i8 -> i32 datapath the vector is i32. Declared in
+      the operand dtype it would be a different computation from the one the fused capsule performs,
+      and the two members' cycles would not be summable -- which is the whole basis of the comparison.
+      A target with no separate vector-add class is expected to fold this into its accumulator
+      read-out; its capsule then requires no vector instruction, which the derived
+      `expected_instruction_coverage` already reflects rather than demanding one.
+  RESIDUAL_ADD:
+    operands: {lhs: tensor, rhs: tensor, dst: output_tensor}
+    attributes:
+      lhs_scale: "f32 -- REQUIRED, no default; carries lhs into the output's domain"
+      rhs_scale: "f32 -- REQUIRED, no default; carries rhs into the output's domain"
+      bound_lsb: "int >= 0 -- REQUIRED, no default; see semantics"
+      epilogue: "ordered subset of [relu]"
+      output_dtype: "an integer dtype; the sum is saturated into it before the activation"
+    semantics: >-
+      dst[i, j] = relu?( sat( roundeven( f32(lhs[i, j]) * lhs_scale + f32(rhs[i, j]) * rhs_scale ) ) ),
+      every product and the sum in IEEE single precision, ties to even. Two tensors that are already
+      quantized, possibly at different scales, summed into one output domain: a residual connection.
+      THE REFERENCE ROUNDS ONCE. That is what a fake-quantized capture computes (dequantize both,
+      add in floating point, quantize), and it is not what every unit computes: a unit with a
+      scaled, rounding load rounds EACH operand into the output's domain and then adds integers,
+      which can differ from the reference by one output step per operand. The two are different
+      functions, so the op does not pretend otherwise. `bound_lsb` is the DECLARED number of output
+      steps a target's result may lie from the reference, and a capsule grades with exactly that
+      absolute tolerance (`numeric_policy.compare: bounded_int`). Zero demands the capture's
+      arithmetic; one admits per-operand rounding. It has no default because a tolerance chosen
+      after a result is seen is not a gate, and a model that uses the op owes an accuracy receipt
+      for the bound it declares.
+  CONV2D:
+    operands: {ifm: tensor, weight: resident_handle_or_tensor, dst: output_tensor}
+    attributes:
+      kernel: "[kh, kw, ci, co] -- REQUIRED; ci must equal the ifm's channel dim"
+      stride: "[stride_h, stride_w]; default [1, 1]"
+      padding: "[top, left, bottom, right] zero-pad; default [0, 0, 0, 0]"
+      dilation: "[dilation_h, dilation_w]; default [1, 1]"
+      layout: "nhwc (the ONLY layout defined; anything else is rejected by name)"
+      epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool] -- the readout a COMMIT applies"
+      acc_scale: "f32 -- REQUIRED iff acc_scale is in epilogue; NO default (a stage declared without its multiplier is refused by every engine, never applied at 1.0)"
+      bias: "name of a declared tensor of role bias, shape [Co], in the ACCUMULATOR's dtype -- REQUIRED iff bias_add/bias is in epilogue; resolved by the same reader a COMMIT's bias is"
+      output_dtype: "an INTEGER dtype: i32/i64 read out whole, i8/i16/... saturate to that width"
+      # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
+      # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
+      # lpad), which is where this class of target fuses pooling, so they ride on the command that
+      # reads the accumulator out.
+      pool_in_dims: "[Ho, Wo] -- the conv's OWN output extent. Declared so the flat [N*Ho*Wo, Co] product can be unflattened, and CROSS-CHECKED against the geometry derived from kernel/stride/padding/dilation: a disagreement is rejected, never reconciled"
+      pool_size: "[ph, pw] pooling window. REQUIRED -- no default"
+      pool_stride: "[sh, sw] pooling stride. REQUIRED -- no default"
+      pool_padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      pool_pad_value: "int; REQUIRED iff any pool_padding entry is nonzero -- the identity element of a max over a padded cell is a datapath property (-inf mathematically, commonly 0 in a store path) and is never assumed"
+    semantics: >-
+      dst = im2col(ifm) @ resolve(weight): the NHWC activation is gathered into its
+      [N*Ho*Wo, Kh*Kw*Ci] im2col matrix (column order kh, kw, ci; out-of-bounds taps read zero) and
+      contracted against the PRE-im2col'd weight [Kh*Kw*Ci, Co], giving [N*Ho*Wo, Co]. Ho/Wo follow
+      the usual (H + pt + pb - (dh*(kh-1)+1)) // sh + 1. There is no separate COMMIT: the epilogue
+      and the narrowing happen here -- including a fused `maxpool`, which pools the [N*Ho*Wo, Co]
+      product down to [N*Hp*Wp, Co] exactly as the fused conv loop's pooling store does.
+    unsupported: >-
+      Grouped/depthwise convolution (no groups attribute exists), a non-nhwc layout, a bias stage
+      that names no tensor, an acc_scale stage that names no multiplier, and a non-integer
+      output_dtype. Each is REJECTED by name rather than ignored -- an ignored conv parameter is exactly the silent wrong answer this
+      opcode was added to stop.
+  K_CHAIN:
+    operands: {src: tensor, weight: tensor, weight2: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the accumulator/output dtype of both contractions"
+    semantics: >-
+      dst = (src @ weight) @ weight2. This is the canonical whole-op representation for a composed
+      two-matmul linalg graph when the frontend has not decomposed it into residency commands. The
+      intermediate result is not externally observable; a target may fuse the chain or lower it into
+      two ordinary tiled contractions. Shapes must satisfy src[M,K], weight[K,N], weight2[N,P], and
+      dst[M,P]. This opcode is target-independent model vocabulary, not permission to dispatch on one
+      corpus shape.
+  DEPTHWISE_CONV2D:
+    operands: {src: tensor, weight: tensor, dst: output_tensor}
+    attributes:
+      kernel: "[kh, kw]; must match weight's trailing dimensions"
+      stride: "[stride_h, stride_w]; default [1, 1]"
+      padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      dilation: "[dilation_h, dilation_w]; default [1, 1]"
+      output_dtype: "logical output dtype"
+    semantics: >-
+      NCHW depthwise convolution with groups equal to the input channel count: weight has shape
+      [C, 1, Kh, Kw], each output channel consumes only the corresponding input channel, and output
+      geometry follows the ordinary convolution stride/padding/dilation rule. A target may lower the
+      window formation through generated im2col linalg, scalar/vector lanes, or a native convolution
+      instruction; the command does not prescribe a target or a capsule shape.
 correctness_gate: >-
   Integer workloads => exact equality (==), never a tolerance. reference_outputs(cb) and
   simulate(cb)["outputs"] MUST be equal (L0), and equal to the oracle output (L1/L2).

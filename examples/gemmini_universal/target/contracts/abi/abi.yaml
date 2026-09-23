@@ -1,0 +1,85 @@
+# The SOFTWARE ABI for gemmini_universal -- Jack's "Universal" ResNet-50 Gemmini on Alveo U250.
+#
+# WHY THIS FILE EXISTS AT ALL. `hardware_pins.yaml`'s `gemmini_universal_rtl` records, as an open gap,
+# "No generated gemmini_params.h for this configuration exists anywhere, so the software ABI is
+# UNKNOWN". That gap is now CLOSED, and it is closed by an attested artifact rather than by a plausible
+# candidate: the header below is the one the FPGA build itself elaborated, it sits in that build's own
+# output directory, and the SPIKE FUNCTIONAL MODEL for this device was compiled from a BYTE-IDENTICAL
+# copy of it. Two independent consumers of the same bytes is provenance; shape agreement alone is not,
+# which is why the pin refused the same digest when it was only known as "a header whose #define set
+# matches".
+#
+# The bytes are carried IN THIS TREE (not symlinked into /scratch/jack) so a verdict about this device
+# cites a file this repo can hash, and so nothing here depends on another user's directory staying put.
+abi_id: gemmini_universal_elaborated_v1
+header: gemmini_params.h
+sha256: d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5
+bytes: 2686
+
+source:
+  # The FPGA build's own elaborated header. NOT `hardware/include/gemmini_params.h`, which is a hardlink
+  # into a TVM build tree -- byte-identical, but not the artifact the build attested.
+  path: /scratch/jack/experiments/universal_resnet50_gemmini_20260906/hardware/fpga_build/gemmini_params.elaborated.h
+  read_only: true
+  owner: another user's experiment tree; merlin reads it and never writes it
+
+corroboration:
+  # The Spike extension for this device was built from these exact bytes. Same digest, different
+  # directory, different consumer.
+  - artifact: /scratch/jack/experiments/universal_resnet50_gemmini_20260906/spike_qualification/extension/gemmini_params.h
+    sha256: d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5
+    relation: byte-identical
+  - artifact: /scratch/jack/experiments/universal_resnet50_gemmini_20260906/spike_qualification/extension/libgemmini.so
+    sha256: f3de40ced95c6697e5b27acf938803c4a961d811ab0fa04000f992cb45a2b124
+    relation: >-
+      the L2 functional oracle, linked against the header above (its sibling gemmini_params.h in the
+      same directory is the byte-identical copy)
+  # The frozen config contract's `expected_generated_header` block predicted every #define below,
+  # including the ABSENCE of ACC_READ_FULL_WIDTH. It agrees field for field.
+  - artifact: /scratch/jack/experiments/universal_resnet50_gemmini_20260906/hardware/UNIVERSAL_GEMMINI_U250.yaml
+    sha256: 5d4aa1e286d83783f782bf0beac1f5042324432b18bd774faf076f9e40c06497
+    relation: expected_generated_header agrees on DIM/ADDR_LEN/BANK_NUM/BANK_ROWS/ACC_ROWS/MAX_BYTES/
+      elem_t/acc_t/scale_t/acc_scale_t/scale_acc_t/HAS_MVIN_SCALE and on ACC_READ_FULL_WIDTH being absent
+
+# THE DELTA AGAINST MERLIN'S CURATED GEMMINI HEADER, which is the whole reason this target is separate.
+# Measured by diff, not asserted: ONE line.
+delta_vs_gemmini:
+  other_header: merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
+  other_sha256: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924
+  diff: >-
+    exactly one line: merlin's gemmini header defines BOTH `ACC_READ_SMALL_WIDTH` and
+    `ACC_READ_FULL_WIDTH`; this one defines only `ACC_READ_SMALL_WIDTH`. Everything else -- DIM 16,
+    ADDR_LEN 32, BANK_NUM 4, BANK_ROWS 4096, ACC_ROWS 1024, MAX_BYTES 64, int8/int32/float -- is
+    identical. A one-line diff is not a small difference here: it removes the only path by which an
+    int32 accumulator row leaves the device.
+
+# The #defines a derivation reads out of this header, quoted with their line numbers so a claim can be
+# checked against the file rather than against this summary.
+defines:
+  XCUSTOM_ACC: {value: 3, line: 7}
+  DIM: {value: 16, line: 8}
+  ADDR_LEN: {value: 32, line: 9}
+  BANK_NUM: {value: 4, line: 10}
+  BANK_ROWS: {value: 4096, line: 11}
+  ACC_ROWS: {value: 1024, line: 12}
+  MAX_BYTES: {value: 64, line: 13}
+  elem_t: {value: int8_t, line: 17}
+  acc_t: {value: int32_t, line: 20}
+  HAS_MVIN_SCALE: {value: defined, line: 23}
+  ACC_READ_SMALL_WIDTH: {value: defined, line: 80}
+  ACC_READ_FULL_WIDTH: {value: ABSENT, line: null}
+
+gaps:
+  - >-
+    The ISA MACRO header (`gemmini.h`) is NOT carried here. This target's capsule-bench hwbringup set
+    reuses merlin's curated `gemmini.h` (sha 007826db4fdaf357...), whose surface is a SUPERSET of what
+    this RTL implements plus the MX/CONFIG_SCALE_MEM fields this RTL DOES implement and the pinned
+    gemmini revision does not. That reuse is deliberate and recorded rather than silent, but it is not
+    an attested artifact of THIS build: no `gemmini.h` was regenerated from this parameter set. A
+    program that reaches for a macro whose funct is absent from this device's `legal_funct` (only 25,
+    LOOP_WS_CONFIG_SPAD_C, is header-only here) is not caught by the header.
+  - >-
+    `MAX_BLOCK_LEN_ACC` is `MAX_BYTES/(DIM*4)` = 1, i.e. the header still expresses accumulator moves in
+    units of a 4-byte element. That arithmetic is unchanged from a full-width build; the RESTRICTION
+    lives in `ACC_READ_FULL_WIDTH` being absent, not in a narrowed block length. Reading the block-length
+    macros as the readout-width statement would get the wrong answer.

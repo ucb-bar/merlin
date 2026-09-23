@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=none
+title: Frozen Compiler Paper Study
+purpose: >-
+  Versioned input contract for a holdout-safe compiler comparison. Development workloads and paper
+  models are disjoint; the compiler policy is frozen before any paper-model compilation. Backends,
+  precision, stateful session semantics, correctness gates, memory policy, and hardware core counts
+  are declared before measurement. Primary comparisons cover complete continuous sessions; exact
+  stage-subset timings may be retained only as diagnostic attribution. External-runtime options
+  declare every non-framework model source imported by an exporter in external_model_sources; each
+  declaration binds its environment key, source root/file, full Git SHA, and source-file SHA-256.
+  core_counts is a set-like sequence of unique exact positive integers; duplicate counts would
+  create duplicate matrix-cell identities and are rejected.
+required_top_level_fields:
+  - version
+  - label
+  - status
+  - target
+  - primary_precision
+  - development_corpus
+  - paper_inputs
+  - holdout_models
+  - freeze
+  - models
+  - backends
+example: |
+  version: 2
+  label: rvv_mlir_k1_paper
+  status: draft
+  target: k1
+  primary_precision: w8a8
+  development_corpus: {capsules: [matmul], excluded_models: [gemma2_2b]}
+  paper_inputs: {path: out/artifacts/paper-inputs/k1/v1/pinned, sha256: unresolved}
+  holdout_models: [gemma2_2b]
+  freeze: {policy_sha256: unresolved, runtime_sha256: unresolved,
+           toolchain_authority_path: unresolved, toolchain_authority_sha256: unresolved,
+           frozen_at: unresolved}
+  models: []
+  backends: []

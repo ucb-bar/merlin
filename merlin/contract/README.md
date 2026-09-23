@@ -19,6 +19,11 @@ emit_command_buffer         interface.mlir,{out.json} -> command_buffer.json
 lower_target_to_llvm        interface.mlir            -> LLVM/RoCC MLIR (stdout)
 ```
 
+Packages may also declare the optional `emit_analysis_bundle` command. It accepts the same
+`{input_mlir}` and `{output_json}` placeholders, writes the command buffer to `{output_json}`, and
+prints the target artifact on stdout in one compiler process. Host analysis feature-detects it;
+certification and packages without it continue to use the four required entrypoints above.
+
 The Merlin runner (`python -m merlin.targetgen.oot_runner`) then certifies:
 
 ```

@@ -1,0 +1,213 @@
+"""Non-destructive bridge from a completed capsule-bench run to the shared **aet** telemetry store.
+
+The capsule-bench harness already writes its own per-run telemetry (``cost_time_toolcalls.yaml`` via
+:mod:`merlin.targetgen.experiment_tokens`) and its trajectory plots. This bridge does NOT replace any
+of that — it ADDITIONALLY re-parses the same stream-json transcript(s) with aet's parser and records
+the run into aet's canonical ``<run_dir>/logs/metrics.jsonl`` + ``<run_dir>/metrics/trajectory.json``
+so every experiment becomes visible to ``aet spend`` / ``aet plot`` for cross-experiment cost tracking
+and the shared budget ceiling.
+
+Design contract:
+  * **opt-in, then STICKY** — a no-op unless ``MERLIN_AET_SINK=1`` *or* the run directory already
+    carries an aet record from an earlier session (see :func:`aet_sink_enabled`), so default runs are
+    unchanged while a ``--resume`` from another shell keeps recording instead of silently stopping.
+  * **lazy + soft** — aet is imported inside the function; if it is not installed (or anything fails),
+    the bridge warns and returns ``False`` rather than raising, so a telemetry hiccup never fails a run.
+  * **target-agnostic** — the target/suite/method/model/run_id all arrive as arguments from the run's
+    own metadata (never hardcoded here).
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def aet_sink_enabled(run_dir: str | Path | None = None) -> bool:
+    """True when the aet telemetry sink is on for this run.
+
+    Two ways to be on, and the second one is the point:
+
+    1. the ``MERLIN_AET_SINK`` env var is set (1/true/yes/on) in THIS process, the original opt-in;
+    2. ``run_dir`` already HAS an aet record (``logs/metrics.jsonl``) -- i.e. some earlier session of
+       this same run opted in.
+
+    Without (2) the opt-in lives only in one process's environment, so a ``--resume`` launched from a
+    different shell silently stops recording and the run's telemetry ends wherever the first session
+    did. MEASURED on the atlas capsule-bench run of 2026-09-04: the first session wrote
+    ``logs/metrics.jsonl`` until 22:34Z and two later ``--resume`` launches wrote nothing at all --
+    ``/proc/<pid>/environ`` of the live resumed process carried no ``MERLIN_AET_SINK``. The run itself,
+    not an exported variable, is what remembers that it is being recorded.
+    """
+    if os.environ.get("MERLIN_AET_SINK", "").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    return run_dir is not None and (Path(run_dir) / "logs" / "metrics.jsonl").is_file()
+
+
+def _warn(msg: str) -> None:
+    print(f"[aet-bridge] {msg}", file=sys.stderr, flush=True)
+
+
+def _resolve_transcripts(run_dir: Path, transcript_paths) -> list[Path]:
+    """The stream-json transcript(s) to feed aet: explicit paths if given, else the run's combined
+    ``transcript.jsonl`` (written by the harness), else every per-round transcript under ``rounds/``."""
+    if transcript_paths:
+        items = transcript_paths if isinstance(transcript_paths, (list, tuple)) else [transcript_paths]
+        return [Path(p) for p in items if Path(p).is_file()]
+    combined = run_dir / "transcript.jsonl"
+    if combined.is_file():
+        return [combined]
+    rounds = run_dir / "rounds"
+    if rounds.is_dir():
+        return sorted(rounds.glob("*.transcript.jsonl"))
+    return []
+
+
+def emit_to_aet(
+    *,
+    run_dir: str | Path,
+    run_id: str,
+    method: str,
+    model: str,
+    target: str,
+    suite: str = "capsule-bench",
+    project: str = "merlin",
+    seed: int = 0,
+    transcript_paths=None,
+    save_trajectory: bool = True,
+    billing_mode: str = "metered",
+) -> bool:
+    """Feed one completed run's telemetry into the shared aet store (additive; never destructive).
+
+    Parses ``transcript_paths`` (or the run's combined transcript) with aet's ``parse_stream`` and
+    records token usage, per-model usage, cost and agent-turn count via ``EvalRunLogger`` into
+    ``<run_dir>/logs/`` — the layout ``aet spend``/``aet plot`` discover. When ``save_trajectory`` is
+    set it also writes the cumulative ``<run_dir>/metrics/trajectory.json``.
+
+    All metadata (``method``=arm, ``model``, ``target``, ``suite``, ``run_id``) comes from the run
+    record — nothing target-specific is baked in here. Returns ``True`` on success, ``False`` on any
+    soft failure (aet absent, no transcript, parse/log error) after warning.
+
+    ``billing_mode`` guards the shared spend store: a subscription-seat run (a ChatGPT/Codex account)
+    is not charged per token, so it logs **cost 0** and keeps its projection in the
+    ``cost.subscription_notional_usd`` metric. Otherwise the list-price estimate below would enter
+    ``aet spend`` as real money and consume a budget ceiling nobody is actually being billed against.
+    """
+    run_dir = Path(run_dir)
+    transcripts = _resolve_transcripts(run_dir, transcript_paths)
+    if not transcripts:
+        _warn(f"no stream-json transcript found under {run_dir}; skipping aet sink")
+        return False
+
+    try:
+        from aet.tracking.claude_stream import parse_stream
+        from aet.tracking.run_logger import EvalRunLogger
+    except Exception as e:  # aet not installed / import error → soft no-op
+        _warn(f"aet unavailable ({e}); install the 'telemetry' extra to enable the sink")
+        return False
+
+    try:
+        stream_text = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in transcripts)
+        result = parse_stream(stream_text)
+
+        # Raw (non-cache) input tokens: gen_ai.usage.input_tokens is the *raw* prefill bucket; the
+        # cache buckets are logged separately, so the rollup does not double-count.
+        raw_input = sum(t.input_tokens for t in result.turn_usage)
+        # Cost fallback chain: authoritative CLI total_cost_usd → summed per-model costUSD → a
+        # per-turn list-price ESTIMATE. The estimate covers a KILLED / timed-out run whose
+        # transcript was truncated before the terminal `result` event, so both authoritative
+        # sources are 0/empty; without it such a run records cost=$0 and can silently blow a budget
+        # ceiling even though real per-turn usage exists. estimated_cost_usd() returns None for a
+        # cost-unavailable model — in that case we leave cost at 0 (never fabricate) but still
+        # record the real turn count below.
+        cost = result.cost_usd or sum(mu.cost_usd for mu in result.model_usage)
+        cost_is_estimate = False
+        if not cost:
+            est = result.estimated_cost_usd()  # PriceTable.from_env(); per-turn × list price
+            if est is not None:
+                cost, cost_is_estimate = est, True
+        notional = None
+        if billing_mode != "metered":
+            notional, cost, cost_is_estimate = cost, 0.0, False
+
+        logger = EvalRunLogger.start(
+            project=project,
+            suite=suite,
+            target=target,
+            method=method,
+            seed=seed,
+            run_id=run_id,
+            run_path=run_dir,
+            tracking_mode="local",
+        )
+        logger.log_token_usage(
+            input_tokens=raw_input,
+            output_tokens=result.total_output_tokens,
+            cache_creation_tokens=result.total_cache_creation_tokens,
+            cache_read_tokens=result.total_cache_read_tokens,
+            model=result.model or model,
+        )
+        # Record the true within-run per-model split (an Opus orchestrator + delegated Sonnet
+        # sub-agents + Haiku background all show distinctly), for EVERY run — not just complete
+        # ones. per_model_usage() prefers the authoritative result-event ``modelUsage`` when present
+        # and falls back to the per-turn split for a truncated/killed run (where ``model_usage`` is
+        # empty), so ``per_model.*`` metrics are always written, never lost with the missing result
+        # event.
+        per_model = result.per_model_usage()
+        if per_model:
+            logger.log_model_usage(per_model)
+        logger.log_cost(cost, model=result.model or model)
+        if notional is not None:
+            logger.log_param("billing_mode", billing_mode)
+            logger.log_metric("cost.subscription_notional_usd", round(notional, 4))
+        # TURN COUNT. ``result.num_turns`` is the CLI's own figure taken from the LAST ``result`` event,
+        # and it is authoritative only when a CLI actually reported one. Two ways it lies here:
+        #   * a driver whose terminator carries no count. The codex driver emits
+        #     ``{"type":"result","subtype":"success"}`` with no ``num_turns``, so aet's parser reads
+        #     ``int(None or 0) == 0`` and -- because a result event WAS present -- skips its own
+        #     "no result event" fallback. MEASURED: the atlas run's final record said
+        #     ``aet.agent.num_turns: 0`` for a transcript holding 794 assistant turns, while the mid-run
+        #     records (parsed before any result event existed) said 101, 186, 282 ... 634.
+        #   * a COMBINED multi-round transcript, where the last result event describes only the last
+        #     round and the earlier rounds' turns vanish.
+        # Taking the max with the assistant turns actually present in the transcript fixes both without
+        # ever discarding a larger authoritative figure, and never invents a turn that is not there.
+        observed_turns = len(result.turn_usage)
+        logger.log_agent_turns(max(int(result.num_turns or 0), observed_turns))
+        # Recorded separately so the two are distinguishable after the fact rather than merged.
+        logger.log_metric("aet.agent.assistant_turns", observed_turns)
+        if result.session_id:
+            logger.log_session_id(result.session_id)
+        logger.close()
+
+        if save_trajectory:
+            _save_trajectory(run_dir, result, run_id=run_id, model=result.model or model, suite=suite)
+
+        cost_note = " (per-turn ESTIMATE; transcript truncated, no result event)" if cost_is_estimate else ""
+        if notional is not None:
+            cost_note = f" ({billing_mode}: ${notional:.4f} notional, not billed)"
+        _warn(
+            f"recorded run {run_id} → {run_dir}/logs "
+            f"(cost=${cost:.4f}{cost_note}, "
+            f"turns={max(int(result.num_turns or 0), observed_turns)}, "
+            f"tools={result.tool_call_count})"
+        )
+        return True
+    except Exception as e:
+        _warn(f"failed to record run {run_id} into aet: {e}")
+        return False
+
+
+def _save_trajectory(run_dir: Path, result, *, run_id: str, model: str, suite: str) -> None:
+    """Best-effort cumulative RunTrajectory → ``<run_dir>/metrics/trajectory.json`` (soft on error)."""
+    try:
+        from aet.trajectory.build import append_round
+        from aet.trajectory.classify import ActivityClassifier
+        from aet.trajectory.model import RunTrajectory
+
+        traj = RunTrajectory(run_id=run_id, source=f"import:{suite}", model=model)
+        append_round(traj, result, classifier=ActivityClassifier())
+        traj.to_json(run_dir / "metrics" / "trajectory.json")
+    except Exception as e:
+        _warn(f"trajectory build skipped for {run_id}: {e}")

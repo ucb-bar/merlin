@@ -1,0 +1,268 @@
+"""The rate table must be a BOUND built from measured evidence, never a summary of it.
+
+Every test here pins a decision where the tempting implementation is wrong in a way that would not
+show up as a crash: averaging repeated measurements, defaulting an unmeasured class, or pricing a
+program whose work is only partly counted. Each of those produces a plausible number, and a plausible
+number is exactly what a ceiling must not be.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from merlin.perf import compose_estimate as CE
+from merlin.perf import rate_table as RT
+
+
+def _resident_buffer(*, jobs: int = 1, m: int = 16, k: int = 16, n: int = 16) -> dict:
+    """A resident-weight matmul program, in the same ABI shape the certified corpus emits."""
+    tensors = {"W": {"shape": [k, n], "dtype": "i8", "role": "weight"}}
+    commands = [
+        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}}
+    ]
+    for j in range(jobs):
+        tensors[f"A{j}"] = {"shape": [m, k], "dtype": "i8", "role": "input"}
+        tensors[f"Y{j}"] = {"shape": [m, n], "dtype": "i32", "role": "output"}
+        commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": f"A{j}", "rhs": "W_res", "dst": f"acc{j}"}})
+        commands.append(
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": f"acc{j}", "dst": f"Y{j}"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            }
+        )
+    commands.append({"opcode": "EVICT", "operands": {"handle": "W_res"}})
+    return {"abi_version": "0.1", "target": "t", "tensors": tensors, "commands": commands}
+
+
+def _program(name: str, buffer: dict, *measured: float) -> RT.Program:
+    p = RT.Program(digest=RT.program_digest(buffer), buffer=buffer, workload=name)
+    p.measured.update(float(m) for m in measured)
+    p.submissions.add("sub")
+    return p
+
+
+def _table(programs, *, peak: float = 256.0) -> RT.RateTable:
+    return RT.rates_for("t", peak_macs_per_cycle=peak, programs={p.digest: p for p in programs})
+
+
+def _key(buffer: dict) -> str:
+    """The rate key for this buffer, DERIVED rather than spelled out here.
+
+    A rate is keyed on the cost class -- the compute opcode refined by arithmetic density -- and
+    hardcoding the spelling in a test turns "the slowest program sets the rate", which is what these
+    assert, into a test about how a bucket happens to be named.
+    """
+    key = CE.cost_class(buffer)
+    assert key is not None, "the fixture must price a cost class or the test proves nothing"
+    return key
+
+
+class TestTheRateIsTheSlowestNotTheTypical:
+    def test_the_slowest_program_of_a_class_sets_its_rate(self):
+        """A ceiling divides by the slowest rate; a mean of rates would be beaten by half the corpus."""
+        fast = _program("fast", _resident_buffer(jobs=4), 100.0)
+        slow = _program("slow", _resident_buffer(jobs=2), 900.0)
+        table = _table([fast, slow])
+
+        rate = table.rates[_key(slow.buffer)]
+        assert rate.slowest_from == "slow"
+        # 2 jobs x 16x16x16 = 8192 MACs over 900 cycles.
+        assert rate.slowest_macs_per_cycle == pytest.approx(8192 / 900)
+        assert rate.fastest_macs_per_cycle > rate.slowest_macs_per_cycle
+        assert rate.n_programs == 2
+
+    def test_a_buffer_measured_several_times_uses_its_slowest_and_is_not_discarded(self):
+        """One buffer compiled by two submissions is two programs, so the spread is real evidence.
+
+        Discarding it threw away 42 of 84 programs on the corpus this was written against -- half the
+        evidence on disk -- and discarding is not conservative: it removes the slow observation that
+        the ceiling exists to cover.
+        """
+        multi = _program("multi", _resident_buffer(jobs=2), 311.0, 316.0, 317.0)
+        table = _table([multi])
+
+        assert _key(multi.buffer) in table.rates, "a multi-measured buffer must still be priced"
+        assert table.rates[_key(multi.buffer)].slowest_macs_per_cycle == pytest.approx(8192 / 317.0)
+        recorded = table.disagreements
+        assert len(recorded) == 1 and recorded[0]["used"] == 317.0
+        assert recorded[0]["measured"] == [311.0, 316.0, 317.0]
+
+    def test_nothing_is_averaged(self):
+        """The mean of 311/316/317 describes no run that happened, so it must not appear."""
+        multi = _program("multi", _resident_buffer(jobs=2), 311.0, 316.0, 317.0)
+        table = _table([multi])
+        mean_rate = 8192 / ((311.0 + 316.0 + 317.0) / 3)
+        assert table.rates[_key(multi.buffer)].slowest_macs_per_cycle != pytest.approx(mean_rate)
+
+
+class TestAnUnmeasuredClassIsNeverGivenANumber:
+    def test_rate_for_an_unrated_class_is_none(self):
+        """`None` and a plausible default are the difference between declining and guessing."""
+        table = _table([_program("only", _resident_buffer(), 300.0)])
+        assert table.rate_for("CONV2D") is None
+        assert table.rate_for(None) is None
+        assert table.rate_for("") is None
+
+    def test_the_classes_nothing_priced_are_named(self):
+        """A caller reading only `rates` sees a table that looks complete for whatever it holds."""
+        table = _table([_program("only", _resident_buffer(), 300.0)])
+        assert "MATMUL_RESIDENT" not in table.unpriced_classes
+        assert "CONV2D" in table.unpriced_classes
+        assert list(table.to_dict()["unpriced_classes"]) == list(table.unpriced_classes)
+
+    def test_a_table_built_on_no_derived_peak_is_refused(self):
+        """A rate table over an assumed peak describes a machine nobody has."""
+        with pytest.raises(ValueError, match="derived structural peak"):
+            RT.rates_for("t", peak_macs_per_cycle=0.0, programs={})
+
+
+class TestOnlyEvidenceThatCanBoundAnythingContributes:
+    def test_a_program_whose_work_is_only_partly_counted_is_refused(self):
+        """A lower-bound price yields a too-slow rate, and a ceiling from a too-slow rate is too tight.
+
+        This is the asymmetry that makes the refusal necessary: the structural FLOOR accepts the same
+        program happily, because a floor may err downward.
+        """
+        buffer = _resident_buffer(jobs=1)
+        buffer["commands"].insert(1, {"opcode": "SOMETHING_UNPRICED", "operands": {}})
+        table = _table([_program("partial", buffer, 300.0)])
+
+        assert table.rates == {}, "an unpriced command must not silently set a ceiling"
+        assert any("lower bound" in r["reason"] for r in table.refusals)
+
+    def test_a_program_with_no_priced_opcode_is_refused_with_its_reason(self):
+        movement = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {"X": {"shape": [4, 4], "dtype": "i8", "role": "input"}},
+            "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}],
+        }
+        table = _table([_program("moved", movement, 50.0)])
+
+        assert table.rates == {}
+        assert any("priced vocabulary" in r["reason"] for r in table.refusals)
+
+    def test_a_program_with_no_measurement_contributes_nothing(self):
+        table = _table([_program("unmeasured", _resident_buffer())])
+        assert table.rates == {} and table.n_programs_seen == 1
+
+
+class TestTheTableCarriesWhatIsNeededToDistrustIt:
+    def test_every_rate_states_the_cycle_domain_it_was_observed_over(self):
+        """A rate is an empirical bound over a domain; priced outside it, it is an extrapolation."""
+        # Both carry 4096 MACs per compute command, so they share one cost class and the domain
+        # this asserts is the domain of a single rate.
+        one, eight = _resident_buffer(jobs=1), _resident_buffer(jobs=8)
+        table = _table([_program("a", one, 300.0), _program("b", eight, 1800.0)])
+        assert _key(one) == _key(eight)
+        rate = table.rates[_key(one)]
+        assert (rate.cycles_min, rate.cycles_max) == (300.0, 1800.0)
+        assert "domain" in rate.to_dict()["licence"]
+
+    def test_the_table_declares_its_evidence_contended_and_unpromotable(self):
+        """Harvested numbers are trace_derived: other engines were live in the same window."""
+        provenance = _table([_program("a", _resident_buffer(), 300.0)]).to_dict()["provenance"]
+        assert provenance["kind"] == "trace_derived"
+        assert "never promotable" in provenance["note"] or "promotable" in provenance["note"]
+
+
+class TestTheGateOnUsingTheseRatesAtAll:
+    """Held-out containment is the acceptance gate: a signal is exposed on measured agreement."""
+
+    def _ladder(self, n: int):
+        """`n` resident programs whose measured cycles all sit inside a plausible band."""
+        out = []
+        for i in range(n):
+            jobs = 1 + (i % 8)
+            buf = _resident_buffer(jobs=jobs, m=16 + i, k=16, n=16)
+            # ~40 MACs/cycle, comfortably between the 256 peak floor and any slow ceiling.
+            macs = jobs * (16 + i) * 16 * 16
+            out.append(_program(f"w{i}", buf, macs / 40.0))
+        return {p.digest: p for p in out}
+
+    def test_rates_are_derived_from_one_half_and_scored_on_the_other(self):
+        """Deriving and testing on one set reports how well a bound covers the data that set it."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
+        assert result["n_train"] > 0 and result["n_test"] > 0
+        assert result["n_train"] + result["n_test"] == 24
+
+    def test_the_split_is_deterministic_so_a_rerun_cannot_launder_a_failure(self):
+        programs = self._ladder(24)
+        a = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        b = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert (a["n_train"], a["contained"], a["n_decided"]) == (b["n_train"], b["contained"], b["n_decided"])
+
+    def test_the_two_miss_directions_are_reported_separately(self):
+        """Below the floor and above the ceiling are different defects; one rate would hide both."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
+        assert "below_floor" in result and "above_ceiling" in result
+        assert result["contained"] + result["below_floor"] + result["above_ceiling"] == result["n_decided"]
+
+    def test_a_program_below_the_structural_floor_is_counted_as_a_floor_miss(self):
+        """A measurement under the floor means the floor is not a floor -- a peak or a counter is wrong."""
+        programs = self._ladder(24)
+        # One test-half program made impossibly fast: 8192 MACs in 1 cycle beats a 256-MAC/cycle peak.
+        victim = next(p for d, p in programs.items() if int(d[-1], 16) % 2 == 1)
+        victim.measured.clear()
+        victim.measured.add(1.0)
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert result["below_floor"] >= 1
+        assert result["containment_rate"] < 1.0
+
+    def test_the_width_is_reported_because_containment_alone_is_cheap(self):
+        """A band wide enough contains everything, so a containment rate without a width says little."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
+        assert result["median_band_width"] is not None and result["median_band_width"] > 1.0
+        assert "order of magnitude" in result["width_note"]
+
+
+class TestASerializedTableIsNotAnAnswerKey:
+    """MEASURED LEAK, not caution. A sibling cost fit emitted the run paths its samples came from;
+    those runs include the grading passes over the HELD-OUT capsules, and a writer that embedded the
+    dict verbatim published ten holdout capsule names and 238 local absolute paths into the tree every
+    graded arm can read. This table is harvested from the very same runs.
+
+    The first artifact this module wrote carried 8 holdout capsule names and 497 absolute paths.
+    """
+
+    def _leaky_table(self) -> RT.RateTable:
+        buf = _resident_buffer(jobs=2)
+        p = _program("H0_matmul_hidden", buf, 400.0)
+        p.submissions.add("/scratch/someone/out/runs/t/capsule-bench/_holdout_codex/sub")
+        p.measured.add(500.0)  # force a disagreement row too
+        table = _table([p])
+        table.refusals.append(
+            {
+                "what": "cycle count",
+                "reason": "the stage reached status 'fail'",
+                "where": "/scratch/someone/out/runs/t/grading_hidden/H3_movement_hidden/result.json",
+            }
+        )
+        return table
+
+    def test_paths_and_workload_identities_are_withheld_by_default(self):
+        blob = __import__("json").dumps(self._leaky_table().to_dict())
+        assert "_hidden" not in blob, "a held-out capsule name is an answer key"
+        assert "/scratch/" not in blob, "a public artifact carries no local absolute path"
+        assert "_holdout" not in blob
+
+    def test_the_reason_survives_redaction_because_that_is_the_actionable_part(self):
+        doc = self._leaky_table().to_dict()
+        assert any("status" in r.get("reason", "") for r in doc["refusals"])
+        assert all("where" not in r for r in doc["refusals"])
+
+    def test_a_local_caller_can_still_ask_for_provenance(self):
+        blob = __import__("json").dumps(self._leaky_table().to_dict(include_provenance=True))
+        assert "/scratch/" in blob, "withholding must be a default, not a capability removal"
+
+    def test_the_acceptance_gate_redacts_on_the_same_terms(self):
+        """`undecided` names the workload it could not decide, and that name can be a holdout."""
+        programs = {}
+        for i in range(8):
+            buf = _resident_buffer(jobs=1 + i, m=16 + i)
+            nm = "H3_movement_hidden" if i % 2 else f"w{i}"
+            pr = _program(nm, buf, (1 + i) * (16 + i) * 256 / 40.0)
+            programs[pr.digest] = pr
+        doc = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert "_hidden" not in __import__("json").dumps(doc)

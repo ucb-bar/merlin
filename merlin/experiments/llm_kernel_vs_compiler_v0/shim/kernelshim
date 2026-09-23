@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""kernelshim -- grade an AGENT'S KERNEL through the standard capsule contract.
+
+An agent in this study writes a compute kernel, not a whole backend package. The oracle grades
+packages. This shim is the adapter between the two, and it is deliberately thin:
+
+  parse / lower_interface_to_target / emit_command_buffer   -> DELEGATED to the reference tool
+  lower_target_to_llvm (the target artifact)                -> the agent's kernel, verbatim
+
+The split is the point. A command buffer describes the harness's own scaffolding -- buffer names,
+shapes, dtypes, dispatch order -- and is identical no matter who wrote the kernel. Letting each arm
+re-derive it would make arms differ in scaffolding as well as in kernel, so a score difference could
+not be attributed to the thing under test. Only the compute artifact varies.
+
+The agent's kernel arrives by path in ``MERLIN_KVC_KERNEL_FILE`` rather than on argv, because the
+runner's argv is fixed by the package manifest and is the same for every arm.
+
+INTEGRITY. This package is ``integrity_exempt`` -- it delegates to a tool that imports Merlin -- so
+the usual scan is skipped for it. That exemption covers the SHIM, never the submission, so the shim
+runs its own scan over the agent's kernel text alone. Every result produced through it carries
+``artifact_provenance: agent_kernel_in_harness_shim``, so a number is never read as "an agent wrote
+the whole backend".
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+#: Needles that would let a submission fake a pass instead of computing one. Checked against the
+#: AGENT'S KERNEL ONLY. Kept blunt on purpose: a kernel has no legitimate reason to import the
+#: grader, read a golden, or shell out.
+_FORBIDDEN = (
+    "import merlin",
+    "from merlin",
+    "golden.yaml",
+    "golden_",
+    "capsule_golden",
+    "expected_instruction_coverage",
+    "subprocess",
+    "os.system",
+)
+
+_ENV_KERNEL = "MERLIN_KVC_KERNEL_FILE"
+_ENV_REFERENCE = "MERLIN_KVC_REFERENCE_TOOL"
+
+
+def _die(msg: str, code: int = 1) -> None:
+    sys.stderr.write(f"kernelshim: {msg}\n")
+    raise SystemExit(code)
+
+
+def _reference_tool() -> Path:
+    """The tool whose scaffolding entrypoints this shim reuses."""
+    p = os.environ.get(_ENV_REFERENCE, "")
+    if not p:
+        _die(f"{_ENV_REFERENCE} is unset -- the shim needs the reference tool for the "
+             f"scaffolding entrypoints it does not implement")
+    tool = Path(p)
+    if not tool.is_file():
+        _die(f"reference tool not found at {tool}")
+    return tool
+
+
+def _kernel_text() -> str:
+    """The agent's kernel, scanned before it is allowed anywhere near the oracle."""
+    p = os.environ.get(_ENV_KERNEL, "")
+    if not p:
+        _die(f"{_ENV_KERNEL} is unset -- there is no submission to grade")
+    f = Path(p)
+    if not f.is_file():
+        _die(f"kernel file not found at {f}")
+    text = f.read_text(encoding="utf-8")
+    if not text.strip():
+        _die("submitted kernel is empty")
+    low = text.lower()
+    hits = [n for n in _FORBIDDEN if n in low]
+    if hits:
+        # Fail closed and name what tripped: a silent pass here would let a submission that read the
+        # answer key be graded as though it had computed one.
+        _die(f"submission integrity scan FAILED, found {hits}; a kernel may not import the "
+             f"grader, read a golden, or shell out")
+    return text
+
+
+def main(argv: list[str]) -> int:
+    flags = [a for a in argv if a.startswith("-")]
+
+    # The compute artifact is the ONLY thing the agent supplies.
+    if "--emit-target-artifact" in flags or "--emit-simt-cpp" in flags:
+        sys.stdout.write(_kernel_text())
+        return 0
+
+    # Everything else is harness scaffolding: delegate verbatim so every arm shares it exactly.
+    r = subprocess.run([sys.executable, str(_reference_tool()), *argv],
+                       capture_output=True, text=True)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    return r.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

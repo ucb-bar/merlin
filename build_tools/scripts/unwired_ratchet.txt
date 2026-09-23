@@ -1,0 +1,45 @@
+# Modules under the instrumented packages that no production code imports.
+# May only shrink: wire the module into a production path, or delete it.
+# growth-accepted: the gate is new; this is debt it discovered, not debt added.
+merlin/python/merlin/perf/convolution_window_work_order.py
+merlin/python/merlin/perf/deps/measured.py
+merlin/python/merlin/perf/emitter_reach.py
+merlin/python/merlin/perf/explicit_plan_adapter.py
+merlin/python/merlin/perf/host_epilogue_site_inventory.py
+merlin/python/merlin/perf/integer_address_equivalence.py
+merlin/python/merlin/perf/phase2_calibration_bundle.py
+merlin/python/merlin/perf/physical_layout_capture.py
+merlin/python/merlin/perf/pipeline_projection.py
+merlin/python/merlin/perf/quantization_planner.py
+merlin/python/merlin/perf/structural_planner.py
+merlin/python/merlin/targetgen/_aten_opset_worker.py
+merlin/python/merlin/targetgen/_capsule_bundle_worker.py
+merlin/python/merlin/targetgen/_m2m_capture_worker.py
+merlin/python/merlin/targetgen/_pt2_capture_worker.py
+merlin/python/merlin/targetgen/artifact_dag.py
+merlin/python/merlin/targetgen/capture_source.py
+merlin/python/merlin/targetgen/config_domains.py
+merlin/python/merlin/targetgen/contract/command_operands.py
+merlin/python/merlin/targetgen/contraction_egraph.py
+merlin/python/merlin/targetgen/heavy_oracles.py
+merlin/python/merlin/targetgen/inline_assembly_probe.py
+merlin/python/merlin/targetgen/isa_side_effects.py
+merlin/python/merlin/targetgen/iteration_recorder.py
+merlin/python/merlin/targetgen/linalg_lower.py
+merlin/python/merlin/targetgen/oracle_helpers/functional_errata_runner.py
+merlin/python/merlin/targetgen/oracle_helpers/isa_introspect.py
+merlin/python/merlin/targetgen/oracle_helpers/program_cosim.py
+merlin/python/merlin/targetgen/output_reachability.py
+merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py
+merlin/python/merlin/targetgen/rtl/gen_isa_module.py
+merlin/python/merlin/targetgen/rtl/gen_numeric_facts.py
+merlin/python/merlin/targetgen/rtl/gen_rocc_replay.py
+merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py
+merlin/python/merlin/targetgen/rtl/replay_json_to_h.py
+merlin/python/merlin/targetgen/semantic_fuzzer.py
+merlin/python/merlin/targetgen/store_probe.py
+merlin/python/merlin/verify/ablation.py
+merlin/python/merlin/verify/plots.py
+merlin/python/merlin/verify/proofs.py
+merlin/python/merlin/verify/replay.py
+merlin/python/merlin/verify/replay_layers.py

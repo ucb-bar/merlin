@@ -25,10 +25,10 @@ operation:
     out: Y0
     epilogue:
     - relu
-    output_dtype: i32
+    output_dtype: i8
 numeric_policy:
   compare: exact_int
-  dtype: i32
+  dtype: i8
 expected:
   instruction_classes:
   - FLUSH
@@ -48,3 +48,13 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map

@@ -1,0 +1,39 @@
+# Feature-extraction contract for the RVV (RISC-V Vector) ISA family.
+family: rvv
+# markers.py: the kernel.target spellings that select this family (matched case-insensitively).
+targets: [rvv, riscv]
+# roles.py: register blocking — a loaded weight vector feeds MR accumulators, so the static
+# reuse proxy is the number of distinct vector-accumulator registers (MR).
+rhs_reuse:
+  method: distinct_register
+  register_prefix: vacc
+  label: register-block MR               # plots.py: how this family's reuse count is measured
+# loops.py: for a C-vector family the tiling marker is just "a loop exists", so tiling is NOT
+# treated as an explicit directive (loops.py then requires >=2-deep nest or register blocking).
+loops:
+  tiling_is_directive: false
+# markers.py: motif -> regex patterns; a motif fires if ANY pattern matches the kernel text. They match
+# DECISIONS, never constants. Single-quoted, so each string is the regex verbatim.
+markers:
+  # Packed weights: XNNPACK's pointer-advance idiom `w = (const T*) w + nr/vl/vlmax`,
+  # and OpenBLAS's packed-B index advance `bi += NR` / `B[bi + n]` scalar broadcasts.
+  packed_rhs:
+    - '\bw\s*=\s*\(const[^)]*\)\s*w\s*\+\s*(?:nr|vl|vlmax|k\b)'
+    - 'const\s+void\s*\*\s*restrict\s+w'
+    - '\bbi\s*\+=\s*\d+'
+    - '\bB\[bi\s*\+'
+  # Accumulators: widening / fma multiply-accumulate and live vacc registers.
+  accumulator_lifetime: ['__riscv_v[wf]?macc', '\bvacc\d*\b']
+  # Epilogue before store: fp clamp (vfmax/vfmin) and requant narrowing converts.
+  epilogue_before_commit: ['__riscv_vfm(?:ax|in)', '__riscv_vf?n?cvt']
+  # Vector-length-agnostic loop: vsetvl/vsetvlmax driving the trip count.
+  vector_length_polymorphic: ['__riscv_vsetvl(?:max)?_e\d+m\d+']
+  intrinsic_lowering: ['__riscv_v']
+  # Discriminating RVV decisions (evidence snippets; the classified motifs of the same name in
+  # classify.py drive promotion — these markers give audit the matched substrings).
+  lmul_grouping: ['_e\d+m[248]\b', '#define\s+\w+[^\n]*_e\d+m[248]\b']
+  scalar_broadcast_fma: ['__riscv_vf?macc_vf']
+  int8_widening_mac: ['__riscv_vw(?:macc|maccu|maccsu|maccus)\w*']
+  vl_polymorphic_tail: ['__riscv_vsetvl_e\d+mf?\d+']
+  vector_reduction: ['__riscv_v(?:f)?red(?:usum|osum|sum|max|min|maxu|minu)\w*']
+  requant_narrowing: ['__riscv_v(?:f)?ncvt\w*', '__riscv_vnclip\w*', '__riscv_vse8\b']

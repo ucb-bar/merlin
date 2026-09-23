@@ -1,35 +1,2737 @@
 # Capsule corpus provenance — which capsules are deterministically regenerable vs hand-authored.
 #
 # `generated` capsules are emitted by generate_corpus.py (re-run is byte-stable). `hand_authored`
-# capsules have no generator yet — movement (A1), conv (B3/B4), and the held-out hidden set — and are
-# the frozen source-of-record. ALL capsules stay committed regardless: they are graded, versioned
-# benchmark INPUTS (agents are scored against exact goldens), not regenerated on the fly. This file is
-# rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
+# capsules have no generator yet — movement (A1) and conv (B3/B4) — and are the frozen
+# source-of-record. Public capsules stay committed: they are graded, versioned benchmark INPUTS (the
+# op/shape/dtype an agent compiles against), not regenerated on the fly.
+#
+# HOLDOUTS ARE COUNTED, NEVER NAMED. This file is tracked and sits inside the `merlin/contract/` tree
+# every arm is granted read-only, so naming a held-out capsule handed the agent under test the op
+# family it was being generalization-tested on. `held_out` therefore carries counts only; the holdout
+# specification lives in the untracked `profiles/<target>.hidden.yaml` sidecars.
+#
+# This file is rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
 generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
-  - isa/A0_config_smoke
-  - isa/A2_single_tile_matmul
-  - isa/A3_k_accumulation
-  - isa/A4_acc_scale_i8
-  - isa/A5_relu_epilogue
-  - isa/A6_resident_reuse
-  - isa/A7_edge_padding
-  - layers/B0_quantized_linear_i8
-  - layers/B1_linear_relu_i8
-  - layers/B2_linear_acc_scale_relu_i8
-  - model_slices/C0_mlp_linear1
-  - model_slices/C1_mlp_activation_linear2
-  - model_slices/C2_attention_q_projection
-  - model_slices/C3_attention_k_projection
-  - model_slices/C4_attention_v_projection
-  - model_slices/C5_attention_qk_matmul
-  - model_slices/C6_attention_pv_matmul
+- _model_layers/G_conv2d_c1024x14x14_k1x1s2_n2048_bias_add
+- _model_layers/G_conv2d_c1024x14x14_k1x1s2_n2048_raw
+- _model_layers/G_conv2d_c128x28x28_k3x3s1_n128_bias_add_acc_scale_relu
+- _model_layers/G_conv2d_c128x28x28_k3x3s1_n128_raw
+- _model_layers/G_conv2d_c3x224x224_k7x7s2_n64_bias_add_acc_scale_relu_maxpool
+- _model_layers/G_conv2d_c3x224x224_k7x7s2_n64_raw
+- _model_layers/G_matmul_m1k2048n1000_bias_add
+- _model_layers/G_matmul_m1k2048n1000_raw
+- _model_layers/G_matmul_m3136k64n64_bias_add_acc_scale_relu
+- _model_layers/G_matmul_m3136k64n64_raw
+- _perf/PB00_island_m16k32h16n16
+- _perf/PB01_no_island_m16k32h16n16
+- _perf/PB02_island_m16k64h16n16
+- _perf/PB03_no_island_m16k64h16n16
+- _perf/PC00_k64
+- _perf/PC01_k128
+- _perf/PF00_fused_matmul_bias_m16k16n16
+- _perf/PF01_matmul_m16k16n16
+- _perf/PF02_bias_add_m16k16n16
+- _perf/PF03_fused_matmul_bias_m16k32n16
+- _perf/PF04_matmul_m16k32n16
+- _perf/PF05_bias_add_m16k32n16
+- _perf/PK00_k16
+- _perf/PK01_k32
+- _perf/PK02_k64
+- _perf/PK03_k128
+- _perf/PL00_k16
+- _perf/PL01_k16
+- _perf/PL02_k32
+- _perf/PL03_k32
+- _perf/PM00_m16n16
+- _perf/PM01_m16n32
+- _perf/PM02_m16n48
+- _perf/PM03_m16n64
+- _perf/PM04_m32n16
+- _perf/PM05_m32n32
+- _perf/PM06_m32n48
+- _perf/PM07_m32n64
+- _perf/PM08_m48n16
+- _perf/PM09_m48n32
+- _perf/PM10_m48n48
+- _perf/PM11_m48n64
+- _perf/PM12_m64n16
+- _perf/PM13_m64n32
+- _perf/PM14_m64n48
+- _perf/PM15_m64n64
+- _perf/PQ00_j1_k16
+- _perf/PQ01_j2_k16
+- _perf/PQ02_j4_k16
+- _perf/PQ03_j8_k16
+- _perf/PQ04_j16_k16
+- _perf/PQ05_j1_k32
+- _perf/PQ06_j2_k32
+- _perf/PQ07_j4_k32
+- _perf/PQ08_j8_k32
+- _perf/PQ09_j16_k32
+- _perf/PR00_fits_double_k16
+- _perf/PR01_fits_double_k2048
+- _perf/PR02_fits_double_k4096
+- _perf/PR03_fits_single_k4112
+- _perf/PR04_fits_single_k6144
+- _perf/PR05_fits_single_k8192
+- _perf/PR06_spills_k8208
+- _perf/PR07_spills_k12288
+- _perf/PR08_spills_k16384
+- _perf/PV00_c16
+- _perf/PV01_c32
+- _perf/PV02_c48
+- _perf/PV03_c64
+- isa/A0_config_smoke
+- isa/A2_single_tile_matmul
+- isa/A3_k_accumulation
+- isa/A4_acc_scale_i8
+- isa/A5_relu_epilogue
+- isa/A6_resident_reuse
+- isa/A7_edge_padding
+- isa/FE00_fused_epilogue_tail_15x16x17
+- isa/FE01_fused_epilogue_tail_15x32x17
+- isa/FT00_movement_tail_15x15
+- isa/FT01_movement_tail_17x15
+- isa/GS0_matmul_spec
+- isa/SY_contraction_i8_aligned
+- isa/SY_contraction_i8_partial
+- isa/SY_contraction_i8_sub_tile
+- isa/SY_elementwise_map_i8_aligned
+- isa/SY_elementwise_map_i8_partial
+- isa/SY_elementwise_map_i8_sub_tile
+- isa/SY_geometry_gemv_like
+- isa/SY_geometry_odd_tail_heavy
+- isa/SY_geometry_projection_like
+- isa/SY_geometry_squareish_gemm
+- isa/SY_movement_i8_aligned
+- isa/SY_movement_i8_partial
+- isa/SY_movement_i8_sub_tile
+- isa/SY_reduction_i8_aligned
+- isa/SY_reduction_i8_partial
+- isa/SY_reduction_i8_sub_tile
+- isa/SY_regime_fits_double
+- isa/SY_regime_fits_single
+- isa/SY_regime_spills
+- layers/B0_quantized_linear_i8
+- layers/B1_linear_relu_i8
+- layers/B2_linear_acc_scale_relu_i8
+- layers/GB0_batched_matmul_i8
+- layers/GC0_conv2d_i8
+- layers/GC7_conv2d_pad_i8
+- layers/GC8_conv2d_stride2_i8
+- layers/GM0_deep_k_fits_single_i8
+- layers/GM1_deep_k_spills_i8
+- layers/GP0_matmul_maxpool_i8
+- layers/GP1_matmul_maxpool_tail_i8
+- layers/GP2_conv2d_maxpool_i8
+- layers/GQ0_conv2d_requant_relu_i8
+- layers/GQ1_conv2d_1x1_requant_relu_i8
+- layers/GQ2_conv2d_pad_requant_relu_i8
+- layers/GQ3_conv2d_stride2_requant_relu_i8
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+- layers/SY_carried_relu_i8
+- layers/SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+- layers/SY_conv_k3x3_s1x1_d1x1_pad1x1
+- layers/SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+- layers/SY_conv_k3x3_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k3x3_s2x2_d1x1_pad1x1
+- layers/SY_conv_k4x4_s4x4_d1x1_padUNKNOWN
+- layers/SY_conv_k5x5_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k7x7_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k7x7_s4x4_d1x1_pad3x3
+- layers/SY_conv_k8x8_s8x8_d1x1_padUNKNOWN
+- layers/SY_epilogue_acc_scale
+- layers/SY_epilogue_bias_add
+- layers/SY_epilogue_maxpool
+- layers/SY_epilogue_relu
+- layers/SY_kdepth_fits_double
+- layers/SY_kdepth_fits_single
+- layers/SY_kdepth_spills
+- model/GX0_interop_rvv_lane
+- model/M0_small_llama_gemmini
+- model/M1_lstmnetvit_gemmini
+- model/M2_microvit_gemmini
+- model/M3_host_island_seam_gemmini
+- model/M4_smolvla_denoise_gemmini
+- model/SY_micro_model
+- model/SY_model_resnet50
+- model/SY_model_tiny_llama
+- model_slices/C0_mlp_linear1
+- model_slices/C1_mlp_activation_linear2
+- model_slices/C2_attention_q_projection
+- model_slices/C3_attention_k_projection
+- model_slices/C4_attention_v_projection
+- model_slices/C5_attention_qk_matmul
+- model_slices/C6_attention_pv_matmul
+- model_slices/C7_attention_qk_i8
+- model_slices/GC1_depthwise_bf16_pt
+- model_slices/GC2_maxpool_bf16_pt
+- model_slices/GC3_avgpool_bf16_pt
+- model_slices/GC4_global_avg_bf16_pt
+- model_slices/GC5_fused_matmul_bias_bf16_pt
+- model_slices/GC6_bias_add_bf16_pt
+- model_slices/GF1_softmax_bf16_pt
+- model_slices/GF2_attn_full_bf16_pt
+- model_slices/GF3_geglu_bf16_pt
+- model_slices/GF4_add_bf16_pt
+- model_slices/GF5_gelu_bf16_pt
+- model_slices/GN0_layernorm_host_only_bf16_pt
+- model_slices/SY_host_lane_contraction_bf16
+- model_slices/SY_host_lane_contraction_f32
+- model_slices/SY_host_lane_elementwise_map_bf16
+- model_slices/SY_host_lane_elementwise_map_f32
+- model_slices/SY_host_lane_reduction_bf16
+- model_slices/SY_host_lane_reduction_f32
+- model_slices/SY_host_lane_softmax_bf16
+- model_slices/SY_host_only_attention
+- model_slices/SY_host_only_normalization
+- model_slices/SY_rank_contraction_batched
 hand_authored:
-  - isa/A1_mvin_mvout
-  - layers/B3_conv2d_im2col_i8
-  - layers/B4_conv2d_relu_i8
-  - hidden/H0_matmul_hidden
-  - hidden/H1_acc_scale_hidden
-  - hidden/H2_k_accum_hidden
-  - hidden/H3_movement_hidden
-  - hidden/H4_conv_hidden
+- isa/A1_mvin_mvout
+- layers/B1s_linear_relu_signed_i8
+- layers/B3_conv2d_im2col_i8
+- layers/B4_conv2d_relu_i8
+- model/SY_model_smolvla
+held_out:
+  n_generated: 10
+  n_hand_authored: 5
+performance_generation:
+  gemmini:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: ab3e2f6fd6e2f9af23f4cc056dc5b03966b3ec144ccbe55d989bbd2e06d4f808
+    facts:
+      target: gemmini
+      sha256: 8fc000afce215987631ae6ca00c6d80496b74ee88764c493f26c50b3803b73c5
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 12
+      generated_families: 9
+      generated_members: 59
+      by_family:
+        PK:
+          admitted_members: 4
+          written_members: 4
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 2
+          written_members: 2
+        PF:
+          admitted_members: 6
+          written_members: 6
+        PL:
+          admitted_members: 4
+          written_members: 4
+        PG:
+          admitted_members: 0
+          written_members: 0
+        PR:
+          admitted_members: 9
+          written_members: 9
+        PQ:
+          admitted_members: 10
+          written_members: 10
+        PM:
+          admitted_members: 16
+          written_members: 16
+        PV:
+          admitted_members: 4
+          written_members: 4
+        PB:
+          admitted_members: 4
+          written_members: 4
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied:
+        - explicit_completion
+        refuted:
+        - self_hosted_program
+        unestablished: []
+        facts:
+          self_hosted_program:
+            satisfied: false
+            tier: rtl_facts
+            evidence: 'facts.interfaces: 26 legal opcodes, widest 0x7e -> endpoint
+              inline_asm_insn'
+            missing: []
+          explicit_completion:
+            satisfied: true
+            tier: rtl_facts
+            evidence: 2 module(s) in this target's own elaborated FIRRTL expose a
+              DECOUPLED completion channel (LoadController, StoreController); read
+              from the .fir the facts name, so it describes what this configuration
+              emitted rather than what the generator can emit
+            missing: []
+        required_execution_capabilities: []
+        satisfied_execution_capabilities: []
+        refuted_execution_capabilities: []
+        unestablished_execution_capabilities: []
+        execution_capability_facts: {}
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PG
+      sweep: PG
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - multiple_operand_encodings
+        satisfied: []
+        refuted:
+        - multiple_operand_encodings
+        unestablished: []
+        facts:
+          multiple_operand_encodings:
+            satisfied: false
+            tier: contract_declared
+            evidence: the contraction family declares ['int8'] operand encoding(s);
+              with fewer than two there is no encoding to choose, so an encoding lever
+              cannot be exercised here
+            missing: []
+        required_execution_capabilities: []
+        satisfied_execution_capabilities: []
+        refuted_execution_capabilities: []
+        unestablished_execution_capabilities: []
+        execution_capability_facts: {}
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    blocked_unimplemented:
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors: []
+  atlas:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: 0cb381234f3481a335f727e688542f61cda2f9bd0437f0ae53ebfa540a47b2c1
+    facts:
+      target: atlas
+      sha256: d168f3d71a0c30b5637ab47d09b07d3b7fb1ad5c12d7cb102e8361e5ffe7617c
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 12
+      generated_families: 0
+      generated_members: 0
+      by_family:
+        PK:
+          admitted_members: 4
+          written_members: 0
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 6
+          written_members: 0
+        PL:
+          admitted_members: 4
+          written_members: 0
+        PG:
+          admitted_members: 4
+          written_members: 0
+        PR:
+          admitted_members: 9
+          written_members: 0
+        PQ:
+          admitted_members: 0
+          written_members: 0
+        PM:
+          admitted_members: 16
+          written_members: 0
+        PV:
+          admitted_members: 4
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied:
+        - self_hosted_program
+        refuted:
+        - explicit_completion
+        unestablished: []
+        facts:
+          self_hosted_program:
+            satisfied: true
+            tier: rtl_facts
+            evidence: 'facts.interfaces: 42 legal opcodes, widest 0x26d7 -> endpoint
+              external_backend'
+            missing: []
+          explicit_completion:
+            satisfied: false
+            tier: rtl_facts
+            evidence: 84 module(s) of this target's own elaboration were read (hw
+              dialect) and NONE exposes a completion field, so no engine signals that
+              its work finished; the elaboration is the authority for what this configuration
+              emitted, and it was read rather than missing
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted:
+        - explicit_completion
+        unestablished:
+        - independent_engine_ports
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: declared kinds ['systolic']; facts declare interfaces ['funct_decode_table']
+            missing:
+            - a second engine group at all
+          explicit_completion:
+            satisfied: false
+            tier: rtl_facts
+            evidence: 84 module(s) of this target's own elaboration were read (hw
+              dialect) and NONE exposes a completion field, so no engine signals that
+              its work finished; the elaboration is the authority for what this configuration
+              emitted, and it was read rather than missing
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PQ
+      sweep: PQ
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - host_dispatched_queue
+        - explicit_completion
+        satisfied: []
+        refuted:
+        - explicit_completion
+        unestablished:
+        - host_dispatched_queue
+        facts:
+          host_dispatched_queue:
+            satisfied: null
+            tier: not_established
+            evidence: facts declare interfaces ['funct_decode_table']
+            missing:
+            - a host command-queue interface in facts.interfaces
+          explicit_completion:
+            satisfied: false
+            tier: rtl_facts
+            evidence: 84 module(s) of this target's own elaboration were read (hw
+              dialect) and NONE exposes a completion field, so no engine signals that
+              its work finished; the elaboration is the authority for what this configuration
+              emitted, and it was read rather than missing
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    blocked_unimplemented:
+    - family: PB
+      status: blocked_unimplemented
+      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
+        accelerator on the target''s oracle and the host lane in-process on the development
+        machine, so a seam differential would price this workstation rather than the
+        SoC'
+      emitter:
+        status: blocked
+        entry: new:host_seam_differential
+        knobs:
+          needs: per_lane_cycle_accounting
+          unblocked_by: fused_single_elf
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors:
+    - family: PK
+      member: PK00_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK01_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK02_k128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK03_k256
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF00_fused_matmul_bias_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF01_matmul_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF02_bias_add_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF03_fused_matmul_bias_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF04_matmul_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF05_bias_add_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL00_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL01_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL02_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL03_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG00_encoding0_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG01_encoding1_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG02_encoding0_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG03_encoding1_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR00_fits_double_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR01_fits_double_k6144
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR02_fits_double_k12288
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR03_fits_single_k12320
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR04_fits_single_k18432
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR05_fits_single_k24576
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR06_spills_k24608
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR07_spills_k45056
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR08_spills_k65536
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM00_m32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM01_m32n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM02_m32n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM03_m32n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM04_m64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM05_m64n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM06_m64n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM07_m64n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM08_m96n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM09_m96n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM10_m96n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM11_m96n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM12_m128n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM13_m128n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM14_m128n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM15_m128n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV00_c32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV01_c64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV02_c96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV03_c128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+  mx_gemmini:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+    facts:
+      target: mx_gemmini
+      sha256: 01cb25d5511342a9137b7077e600dde6ff71427a83daf7461578da026891061e
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 10
+      generated_families: 1
+      generated_members: 4
+      by_family:
+        PK:
+          admitted_members: 0
+          written_members: 0
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PG:
+          admitted_members: 4
+          written_members: 4
+        PR:
+          admitted_members: 0
+          written_members: 0
+        PQ:
+          admitted_members: 0
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PK
+      sweep: PK
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - self_hosted_program
+        - explicit_completion
+        facts:
+          self_hosted_program:
+            satisfied: null
+            tier: family_default
+            evidence: family default for compute-unit kind 'systolic'
+            missing:
+            - RTL decode facts (facts.interfaces.funct_decode_table)
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (mx_gemmini_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - independent_engine_ports
+        - explicit_completion
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: declared kinds ['systolic']; facts declare interfaces none
+            missing:
+            - a second engine group at all
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (mx_gemmini_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      sweep: PF
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      sweep: PL
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PR
+      sweep: PR
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        satisfied:
+        - managed_scratchpad
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          managed_scratchpad:
+            satisfied: true
+            tier: residual_declared
+            evidence: 'residual memory_model DECLARES [''accumulators'', ''block_scale_memory'',
+              ''resident''] (intent, not RTL-grounded: no memory is discovered in
+              these facts)'
+            missing: []
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      sweep: PQ
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - host_dispatched_queue
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - host_dispatched_queue
+        - explicit_completion
+        facts:
+          host_dispatched_queue:
+            satisfied: null
+            tier: not_established
+            evidence: facts declare interfaces none
+            missing:
+            - a host command-queue interface in facts.interfaces
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (mx_gemmini_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    blocked_unimplemented:
+    - family: PB
+      status: blocked_unimplemented
+      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
+        accelerator on the target''s oracle and the host lane in-process on the development
+        machine, so a seam differential would price this workstation rather than the
+        SoC'
+      emitter:
+        status: blocked
+        entry: new:host_seam_differential
+        knobs:
+          needs: per_lane_cycle_accounting
+          unblocked_by: fused_single_elf
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors: []
+  radiance:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: 0cb381234f3481a335f727e688542f61cda2f9bd0437f0ae53ebfa540a47b2c1
+    facts:
+      target: radiance
+      sha256: 59591d26dc57eddfde5e47b51e8d0d7db7fdccf5c971b323c4a2d40aba4256d2
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 12
+      generated_families: 1
+      generated_members: 4
+      by_family:
+        PK:
+          admitted_members: 0
+          written_members: 0
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PG:
+          admitted_members: 4
+          written_members: 4
+        PR:
+          admitted_members: 0
+          written_members: 0
+        PQ:
+          admitted_members: 0
+          written_members: 0
+        PM:
+          admitted_members: 0
+          written_members: 0
+        PV:
+          admitted_members: 0
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PK
+      sweep: PK
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied:
+        - self_hosted_program
+        refuted: []
+        unestablished:
+        - explicit_completion
+        facts:
+          self_hosted_program:
+            satisfied: true
+            tier: rtl_facts
+            evidence: 'facts.interfaces: a self_hosted_isa interface declaring its
+              own encoding -> endpoint external_backend'
+            missing: []
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces ['self_hosted_isa'] and carry no
+              port list, and the elaborated FIRRTL could not be read to recover one
+              (no elaboration artifact is named by this target's facts (the facts
+              name no elaboration artifact of either kind); port facts are UNKNOWN,
+              which is not the same as the RTL exposing no such port). UNKNOWN, not
+              absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - independent_engine_ports
+        - explicit_completion
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: the residual declares 2 unit kinds ['simt', 'systolic'], but
+              declaring two units is not observing two ports
+            missing:
+            - evidence that two engines issue independently (a movement interface,
+              or a workload showing both carrying work in one run)
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces ['self_hosted_isa'] and carry no
+              port list, and the elaborated FIRRTL could not be read to recover one
+              (no elaboration artifact is named by this target's facts (the facts
+              name no elaboration artifact of either kind); port facts are UNKNOWN,
+              which is not the same as the RTL exposing no such port). UNKNOWN, not
+              absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      sweep: PF
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      sweep: PL
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PR
+      sweep: PR
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        satisfied:
+        - managed_scratchpad
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          managed_scratchpad:
+            satisfied: true
+            tier: rtl_facts
+            evidence: facts.memories discovered 1 explicitly sized on-chip memories
+              (shared_memory)
+            missing: []
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      sweep: PQ
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - host_dispatched_queue
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - host_dispatched_queue
+        - explicit_completion
+        facts:
+          host_dispatched_queue:
+            satisfied: null
+            tier: not_established
+            evidence: facts declare interfaces ['self_hosted_isa']
+            missing:
+            - a host command-queue interface in facts.interfaces
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces ['self_hosted_isa'] and carry no
+              port list, and the elaborated FIRRTL could not be read to recover one
+              (no elaboration artifact is named by this target's facts (the facts
+              name no elaboration artifact of either kind); port facts are UNKNOWN,
+              which is not the same as the RTL exposing no such port). UNKNOWN, not
+              absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PM
+      sweep: PM
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      sweep: PV
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        - managed_scratchpad
+        satisfied:
+        - managed_scratchpad
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+          managed_scratchpad:
+            satisfied: true
+            tier: rtl_facts
+            evidence: facts.memories discovered 1 explicitly sized on-chip memories
+              (shared_memory)
+            missing: []
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
+    blocked_unimplemented:
+    - family: PB
+      status: blocked_unimplemented
+      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
+        accelerator on the target''s oracle and the host lane in-process on the development
+        machine, so a seam differential would price this workstation rather than the
+        SoC'
+      emitter:
+        status: blocked
+        entry: new:host_seam_differential
+        knobs:
+          needs: per_lane_cycle_accounting
+          unblocked_by: fused_single_elf
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors: []
+  saturn_opu_rvv:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+    facts:
+      target: saturn_opu_rvv
+      sha256: d3cba573ea465b09d57061fce7896145fa0d4a34b8eec732b1bc398edd771445
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 10
+      generated_families: 0
+      generated_members: 0
+      by_family:
+        PK:
+          admitted_members: 0
+          written_members: 0
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PG:
+          admitted_members: 0
+          written_members: 0
+        PR:
+          admitted_members: 0
+          written_members: 0
+        PQ:
+          admitted_members: 0
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PK
+      sweep: PK
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - self_hosted_program
+        - explicit_completion
+        facts:
+          self_hosted_program:
+            satisfied: null
+            tier: family_default
+            evidence: family default for compute-unit kind 'spatial'
+            missing:
+            - RTL decode facts (facts.interfaces.funct_decode_table)
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_rvv_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - independent_engine_ports
+        - explicit_completion
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: declared kinds ['spatial']; facts declare interfaces none
+            missing:
+            - a second engine group at all
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_rvv_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      sweep: PF
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      sweep: PL
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      sweep: PG
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - multiple_operand_encodings
+        satisfied: []
+        refuted:
+        - multiple_operand_encodings
+        unestablished: []
+        facts:
+          multiple_operand_encodings:
+            satisfied: false
+            tier: contract_declared
+            evidence: the contraction family declares ['int8'] operand encoding(s);
+              with fewer than two there is no encoding to choose, so an encoding lever
+              cannot be exercised here
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      sweep: PR
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        facts:
+          managed_scratchpad:
+            satisfied: null
+            tier: not_established
+            evidence: facts discovered no memories and the residual declares no memory
+              model
+            missing:
+            - a memory in facts.memories, or a residual memory_model
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      sweep: PQ
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - host_dispatched_queue
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - host_dispatched_queue
+        - explicit_completion
+        facts:
+          host_dispatched_queue:
+            satisfied: null
+            tier: not_established
+            evidence: facts declare interfaces none
+            missing:
+            - a host command-queue interface in facts.interfaces
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_rvv_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    blocked_unimplemented:
+    - family: PB
+      status: blocked_unimplemented
+      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
+        accelerator on the target''s oracle and the host lane in-process on the development
+        machine, so a seam differential would price this workstation rather than the
+        SoC'
+      emitter:
+        status: blocked
+        entry: new:host_seam_differential
+        knobs:
+          needs: per_lane_cycle_accounting
+          unblocked_by: fused_single_elf
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors: []
+  saturn_opu:
+    shared_template:
+      path: merlin/contract/capsules/profiles/_perf.yaml
+      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+    facts:
+      target: saturn_opu
+      sha256: e94ea487aef83246a5b9759a58762369cc7f6eb8c2c278ff4f413a8107669472
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    - family: PB
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    counts:
+      declared_families: 10
+      generated_families: 0
+      generated_members: 0
+      by_family:
+        PK:
+          admitted_members: 0
+          written_members: 0
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PG:
+          admitted_members: 0
+          written_members: 0
+        PR:
+          admitted_members: 0
+          written_members: 0
+        PQ:
+          admitted_members: 0
+          written_members: 0
+        PB:
+          admitted_members: 0
+          written_members: 0
+        PT:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PK
+      sweep: PK
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - self_hosted_program
+        - explicit_completion
+        facts:
+          self_hosted_program:
+            satisfied: null
+            tier: family_default
+            evidence: family default for compute-unit kind 'spatial'
+            missing:
+            - RTL decode facts (facts.interfaces.funct_decode_table)
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      sweep: PC
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - independent_engine_ports
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - independent_engine_ports
+        - explicit_completion
+        facts:
+          independent_engine_ports:
+            satisfied: null
+            tier: not_established
+            evidence: declared kinds ['spatial']; facts declare interfaces none
+            missing:
+            - a second engine group at all
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PF
+      sweep: PF
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PL
+      sweep: PL
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - layer_regime
+      - tile_regime
+    - family: PG
+      sweep: PG
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - multiple_operand_encodings
+        satisfied: []
+        refuted:
+        - multiple_operand_encodings
+        unestablished: []
+        facts:
+          multiple_operand_encodings:
+            satisfied: false
+            tier: contract_declared
+            evidence: the contraction family declares ['int8'] operand encoding(s);
+              with fewer than two there is no encoding to choose, so an encoding lever
+              cannot be exercised here
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - encoding_a
+      - encoding_b
+    - family: PR
+      sweep: PR
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - managed_scratchpad
+        - structural_pipeline_depth
+        facts:
+          managed_scratchpad:
+            satisfied: null
+            tier: not_established
+            evidence: facts discovered no memories and the residual declares no memory
+              model
+            missing:
+            - a memory in facts.memories, or a residual memory_model
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is no_facts for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - K
+      comparison_roles:
+      - resident
+      - spilling
+    - family: PQ
+      sweep: PQ
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - host_dispatched_queue
+        - explicit_completion
+        satisfied: []
+        refuted: []
+        unestablished:
+        - host_dispatched_queue
+        - explicit_completion
+        facts:
+          host_dispatched_queue:
+            satisfied: null
+            tier: not_established
+            evidence: facts declare interfaces none
+            missing:
+            - a host command-queue interface in facts.interfaces
+          explicit_completion:
+            satisfied: null
+            tier: not_established
+            evidence: the facts declare interfaces none and carry no port list, and
+              the elaborated FIRRTL could not be read to recover one (this target's
+              elaboration is recorded as CIRCT hw dialect (saturn_opu_soc.hw.mlir)
+              and that file is not on this host; port facts are UNKNOWN, which is
+              not the same as the RTL exposing no such port). UNKNOWN, not absent
+            missing:
+            - the elaborated .fir this target's facts name, so module ports can be
+              read; or an activity source declaring completion_observable (merlin.perf.decompose.ActivitySource)
+              -- headroom.concurrency_traits never defaults this
+      fit_axes:
+      - K
+      comparison_roles:
+      - barrier_after_every_job
+      - minimum_barriers
+    blocked_unimplemented:
+    - family: PB
+      status: blocked_unimplemented
+      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
+        accelerator on the target''s oracle and the host lane in-process on the development
+        machine, so a seam differential would price this workstation rather than the
+        SoC'
+      emitter:
+        status: blocked
+        entry: new:host_seam_differential
+        knobs:
+          needs: per_lane_cycle_accounting
+          unblocked_by: fused_single_elf
+      fit_axes:
+      - K
+      comparison_roles:
+      - island
+      - no_island
+    - family: PT
+      status: blocked_unimplemented
+      reason: the cohort's starting depth is a MEASURED property of the target --
+        the depth at which its realised compute/movement overlap stops rising -- and
+        no materializer can derive it without consuming a recorded overlap probe.
+        Minting the depths from a written-down number would repeat PK's own defect,
+        a cohort placed by assumption rather than by evidence, and would overfit the
+        first machine measured
+      emitter:
+        status: blocked
+        entry: new:overlap_settled_depth_materializer
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: overlap_settled_reduction_depth
+          needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+          unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+      fit_axes:
+      - K
+      comparison_roles:
+      - prediction
+      - measurement
+    errors: []
+roster_generation:
+  gemmini:
+    not_built: []
+  atlas:
+    not_built:
+    - capsule: SY_model_resnet50
+      model: resnet50
+      operand_dtype: fp8_e4m3
+      quant_scheme: float8_dyn_act_float8_weight
+      status: not_built
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
+    - capsule: SY_model_lstmnetvit
+      model: lstmnetvit
+      operand_dtype: fp8_e4m3
+      quant_scheme: float8_dyn_act_float8_weight
+      status: not_built
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
+    - capsule: SY_model_smolvla
+      model: smolvla
+      operand_dtype: fp8_e4m3
+      quant_scheme: float8_dyn_act_float8_weight
+      status: not_built
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
+    - capsule: SY_model_tiny_llama
+      model: tiny_llama
+      operand_dtype: fp8_e4m3
+      quant_scheme: float8_dyn_act_float8_weight
+      status: not_built
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
+    not_built_reason_correction: 'The four not_built rows above are accurate about
+      their DECLARED scheme and misleading about this host''s reach. torchAO''s float8_dyn_act_float8_weight
+      asserts CUDA>=8.9 or MI300 (this host is a TITAN RTX, compute capability 7.5,
+      and the assert fires on CPU too), so those four entries as DECLARED still cannot
+      be built here. But the numerics they stand for can: the capture runs weight-only
+      (float8_weight_only_e4m3, which needs no gated kernel) and the ACTIVATION half
+      is added to the REFERENCE on the capture''s own instance, in the same process,
+      with the weights it externalized and never re-quantized, by rounding every nn.Linear
+      input through torch.float8_e4m3fn before the eager golden run -- which is what
+      the device does when mesh_program_run._encode_operand encodes an operand into
+      the cb''s declared format. capsule_source.write_model_capsule takes that route
+      when an entry declares `golden_activation_quant`, and REFUSES to write unless
+      the rounding demonstrably changed the output. So "needs an Ada/Hopper/MI300
+      host" is true of the torchAO config, not of the capsule.'
+    built_out_of_band:
+      note: 'Minted 2026-09-09 by build path `capsule_source.write_model_capsule`
+        with `golden_activation_quant: fp8_e4m3`, under hand-authored profile entries
+        (M5/M6), NOT under the synthesized SY_model_* names -- profiles/atlas.synth.yaml
+        is DERIVED and its roster entries declare the gated dyn-act scheme. STAGED,
+        not installed: the atlas model corpus is bind-mounted into the live cohort
+        run merlincirct_atlas_arm4_cohort_20260909_r3, whose grader enumerates that
+        tree, so installing mid-run would move its denominator. Staging root: out/artifacts/capsule-bench/atlas/roster_mint_20260909/
+        (README there carries the install steps and the profile entries). NOTE: a
+        full `generate_corpus.py --target atlas` REWRITES roster_generation.atlas
+        wholesale and will drop these two keys; re-add them, or fold the entries into
+        the profile so the generator records them itself.'
+      capsules:
+      - capsule: M5_resnet50_fp8_atlas
+        model: resnet50
+        roster_name_it_covers: SY_model_resnet50
+        operand_dtype: fp8_e4m3
+        quant_scheme: float8_weight_only_e4m3
+        golden_activation_quant: fp8_e4m3
+        status: built
+        validated: 'capsule_common.load_capsule + contract.schemas.validate_capsule
+          PASS. NOT graded: no atlas backend package can lower it -- the 09-06 atlas
+          OOT compiler declines its interface with "linalg-on-tensors lowering is
+          not implemented yet", so it would be an elaboration_error row, and it sits
+          behind gate.after_op_pass_fraction 0.8 in any case.'
+        activation_quantization:
+          hooked_nn_linear_modules: 1
+          elements: 1000
+          elements_changed: 1000
+          cosine_vs_weight_only: 0.9998527680457763
+          max_abs_delta: 0.14339542388916016
+          caveat: 'torchAO''s default filter quantizes nn.Linear only, and resnet50
+            is convolutional: exactly one module (fc) is quantized and hooked, and
+            the shipped linalg carries f32 convolutions. The same is true of the existing
+            int8 SY_model_resnet50 (17 i8 tokens against 5,801 f32).'
+        certified: not_established
+      - capsule: M6_smolvla_fp8_atlas
+        model: smolvla
+        roster_name_it_covers: SY_model_smolvla
+        operand_dtype: fp8_e4m3
+        quant_scheme: float8_weight_only_e4m3
+        golden_activation_quant: fp8_e4m3
+        status: captured_not_written
+        reason: 'The CAPTURE succeeded (ok, 0 opaque, 8,545 linalg ops, 303 nn.Linear
+          hooked, cosine 0.99619 against the weight-only golden) and the capsule write
+          then failed closed in `capsule_source.model_input_abi`: `contract.linalg_iface.parse_linalg_mlir`
+          (xDSL) cannot parse a MULTI-RESULT `linalg.generic`, which is what smolvla''s
+          aten.min.dim arg-reduce lowers to (8 of them). The reported error names
+          the FOLLOWING op (a tensor.expand_shape) because the parser loses alignment.
+          DTYPE-INDEPENDENT: the fp32 recapture out/artifacts/recaptures/smolvla_denoise_step_fp32_app/model.mlir
+          has the same 8, so bf16 is not a remedy either. Repro is three lines of
+          MLIR; see the staging README.'
+  mx_gemmini:
+    not_built: []
+  radiance:
+    not_built: []
+  saturn_opu_rvv:
+    not_built: []
+  saturn_opu:
+    not_built: []
+lane_generation:
+  gemmini:
+    forbid_not_provable: []
+  saturn_opu_rvv:
+    forbid_not_provable: []
+  radiance:
+    forbid_not_provable: []
+  atlas:
+    forbid_not_provable:
+    - capsule: SY_host_lane_attention_bf16
+      family: attention_full
+      reason: '''SY_host_lane_attention_bf16'' forbids `on_mesh`, but ''atlas'' classifies
+        its program as ''A->H->A'' rather than host-only: it contains region(s) the
+        manifest admits, so the assertion demands the compiler decline work it is
+        entitled to do. Choose a family whose decomposition this target admits nothing
+        of, or drop the forbid'
+  mx_gemmini:
+    forbid_not_provable:
+    - capsule: SY_host_lane_attention_bf16
+      family: attention_full
+      reason: '''SY_host_lane_attention_bf16'' forbids `on_mesh`, but ''mx_gemmini''
+        classifies its program as ''routing'' rather than host-only: it contains region(s)
+        the manifest admits, so the assertion demands the compiler decline work it
+        is entitled to do. Choose a family whose decomposition this target admits
+        nothing of, or drop the forbid'
+  saturn_opu:
+    forbid_not_provable: []
+superseded_generation:
+  gemmini:
+    removed: []
+  radiance:
+    removed: []
+  atlas:
+    removed: []
+  saturn_opu_rvv:
+    removed: []
+  mx_gemmini:
+    removed: []
+  saturn_opu:
+    removed: []

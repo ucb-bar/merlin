@@ -1,0 +1,107 @@
+# The vocabularies the performance rules are written against.
+#
+# This directory is DATA. A rule expressed as code is a rule that eventually gets a target baked
+# into it -- and `check_no_target_name.py` scans a `.py` here while it does not scan YAML, so the
+# separation is enforced as well as intended. Keep logic in `merlin/python/merlin/perf/harvest.py`;
+# keep every fact about which rules exist, what they gate on, and which experiment settles them,
+# here.
+#
+# The registry answers one question in four columns:
+#     detected trait  ->  required model term  ->  optimization family  ->  experiment family
+# A rule fires only when both gates pass: the `when` block says the rule is ABOUT this target, and
+# the evidence carries at least TWO POINTS PER FITTED PARAMETER at at least as many distinct
+# x-levels as there are parameters. The second gate is why the emitted set is computed rather than
+# curated: a rate fitted through one point cannot separate a per-unit cost from a fixed overhead,
+# and a registry that emitted it anyway would be publishing a number the evidence does not contain.
+
+schema_version: 1
+
+# ---------------------------------------------------------------------------------------------
+# Observation axes. Each names WHAT VARIES and WHAT IS OBSERVED, in instrument-neutral terms, so a
+# second instrument can carry the same axis without the rules changing. `harvest.axes_from_suite`
+# builds them from a measured corpus; an axis nothing can carry is still declared here, because a
+# rule that defers for want of that axis has to name what would settle it.
+# ---------------------------------------------------------------------------------------------
+axes:
+  movement_beat_count:
+    x: beats the instrument counted for the transfer
+    y: the movement engine's busy cycles
+    settles: the per-beat transfer rate and the fixed cost paid once per transfer
+  moved_byte_footprint:
+    x: beats the instrument counted
+    y: bytes the program actually touched
+    settles: the width of one beat
+  compute_group_count:
+    x: drained result groups the program issues to one compute unit
+    y: measured busy cycles less the delays the program itself scheduled
+    settles: what the unit's own pipeline contributes per drained result
+  back_to_back_compute:
+    x: compute ops accumulated into one drained result
+    y: measured busy cycles
+    settles: the initiation interval, which is NOT the completion latency
+    caution: >-
+      a corpus in which every drain takes exactly one compute op says nothing about this axis. Two
+      points that show a naive extension is wrong do not show what is right, and a correction fitted
+      to the single disagreeing point is indistinguishable from the law having been correct.
+  zero_work_program:
+    x: engine ops the program issues
+    y: total cycles to halt
+    settles: the run's fixed startup cost
+    caution: >-
+      separable only by a program that does no engine work. Fitting an intercept through programs
+      that DO work confounds startup with everything else that is constant across them.
+  working_set_bytes:
+    x: bytes resident when the unit runs
+    y: total cycles to halt
+    settles: the capacity at which the cost per byte changes
+  algorithmic_bytes:
+    x: bytes the algorithm needs
+    y: bytes the program moved
+    settles: transfer amplification
+  concurrent_unit_busy:
+    x: summed per-unit busy cycles
+    y: the total the instrument reports
+    settles: the overlap coefficient in the composition operator
+    caution: >-
+      an instrument whose per-unit buckets PARTITION the cycle count returns zero overlap whether
+      or not overlap exists. Answering this needs an instrument that can report two units busy in
+      the same cycle, or the issue-to-wait distance in the program.
+
+# ---------------------------------------------------------------------------------------------
+# What a settled term would let a compiler DO. A term with no optimization family behind it is a
+# number for a report, not a lever.
+# ---------------------------------------------------------------------------------------------
+optimization_families:
+  tile_shaping: choose tile extents against the datapath's real geometry rather than a guessed one
+  pipeline_amortization: size work per drained result so the fill is paid once instead of per tile
+  issue_packing: accumulate several computes into one drain where the unit can absorb them
+  transfer_shaping: shape descriptors so a transfer moves whole beats and no partial ones
+  transfer_batching: amortize the fixed per-transfer cost across fewer, larger moves
+  residency: keep operands resident across uses instead of re-fetching them
+  overlap_policy: issue movement and compute so they run concurrently where the machine allows it
+  startup_amortization: amortize the run's fixed cost across more work per launch
+
+# ---------------------------------------------------------------------------------------------
+# How a term is settled. The family is the SHAPE of the experiment, not a script.
+# ---------------------------------------------------------------------------------------------
+experiment_families:
+  shape_sweep: the same operation at several operand shapes, everything else held
+  size_sweep: the same transfer at several sizes, everything else held
+  packing_sweep: the same total work split across a varying number of drained results
+  isolation_probe: a program that exercises exactly one thing and halts
+  residency_sweep: a working set grown until the cost per byte changes
+  overlap_probe: two engines given independent work, instrumented for simultaneous busy
+  ratio_probe: two quantities the instrument reports for the same run, compared directly
+
+# ---------------------------------------------------------------------------------------------
+# Policy for identifying the movement engine by BEHAVIOUR rather than by name: its busy cycles are
+# an affine function of the beat counters, and no other unit's are. Two candidates mean the
+# question was not answered, so the pairing is refused rather than picked.
+# ---------------------------------------------------------------------------------------------
+movement_pairing:
+  min_r2: 0.99
+  max_runner_up_r2: 0.9
+
+# Relative tolerance for comparing a recovered constant against one the instrument declares.
+tolerances:
+  relative: 0.02

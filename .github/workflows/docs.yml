@@ -10,6 +10,9 @@ on:
       - 'pyproject.toml'
       - 'build_tools/scripts/**'
       - 'merlin/python/merlin/**/__init__.py'
+      - 'src/merlin/**/__init__.py'
+      - 'packages/**/src/**/__init__.py'
+      - 'packages/*/pyproject.toml'
       - '**/AGENT.md'
       - '.github/workflows/docs.yml'
   pull_request:

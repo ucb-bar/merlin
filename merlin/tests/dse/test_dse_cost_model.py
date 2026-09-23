@@ -1,4 +1,5 @@
 """Cost-model invariants that hold independent of absolute calibration."""
+
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.synthesize import FEATURE_ACCUMULATOR, FEATURE_RESIDENT
 from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
@@ -24,7 +25,7 @@ def test_variant_cycle_ordering():
 
 
 def test_exploitability_bounds_and_zero_at_reuse_one():
-    assert exploitability(0.98, 1.0) == 0.0       # no oracle benefit -> 0
+    assert exploitability(0.98, 1.0) == 0.0  # no oracle benefit -> 0
     assert 0.0 <= exploitability(2.3, 2.6) <= 1.0
     r1 = row_for(_rpv(1), FEATURE_RESIDENT, 1, CM)
     assert r1["exploitability"] == 0.0
@@ -33,7 +34,7 @@ def test_exploitability_bounds_and_zero_at_reuse_one():
 def test_exploitability_rises_with_reuse():
     e1 = row_for(_rpv(1), FEATURE_RESIDENT, 1, CM)["exploitability"]
     e4 = row_for(_rpv(4), FEATURE_RESIDENT, 4, CM)["exploitability"]
-    assert e1 == 0.0 and e4 > 0.5          # benefit becomes exploitable as reuse grows
+    assert e1 == 0.0 and e4 > 0.5  # benefit becomes exploitable as reuse grows
 
 
 def test_interface_is_not_free():
@@ -46,10 +47,12 @@ def test_interface_is_not_free():
 
 def test_phase_transition_best_changes_category():
     """The best contract moves I0 -> I2 -> I3 as the action horizon grows (epilogue on)."""
+
     def best(H):
         rpv = _rpv(H, epilogue=True)
         lat = {c: evaluate_cost(rpv, p, CM)["cycles"] for c, p in contract_plans(rpv).items()}
         return min(lat, key=lambda c: lat[c])
+
     assert best(1) == "I0"
     assert best(4) == "I2"
     assert best(32) == "I3"

@@ -5,7 +5,7 @@ status: current
 owner: frontends
 last_verified: 2026-07-22
 related: [getting_started, lowering_pipeline, reproducibility, rvv_e2e]
-code_refs: [merlin/python/merlin/frontends]
+code_refs: [src/merlin/frontends]
 ---
 
 # model2MLIR frontend (smolVLA)
@@ -13,7 +13,7 @@ code_refs: [merlin/python/merlin/frontends]
 [model2MLIR](https://github.com/ucb-bar/model2MLIR) (`m2m`) converts PyTorch models to
 **standard linalg-on-tensors MLIR** (`tensor`/`linalg`/`arith`/`scf`/`func`, weights
 externalized to safetensors, `prov.*` provenance on every op). Merlin treats it as a
-frontend: `merlin/python/merlin/frontends/` parses its artifacts and lifts matmul
+frontend: `src/merlin/frontends/` parses its artifacts and lifts matmul
 facts into the contract → schedule → interface → target → runtime pipeline.
 
 ## Prerequisites
@@ -58,7 +58,7 @@ weights `*.safetensors` (fp32 1.2 GB / int8 506 MB) + manifest JSONs.
 A model enters Merlin as a **capture bundle**: the single, framework-neutral input that every
 baseline (ours, Buddy, TVM, ExecuTorch, ggml, …) ingests, so each arm starts from identical bytes
 and the comparison is apples-to-apples. Bundles are resolved by
-`merlin/python/merlin/baselines/bundle.py` (`resolve(model, variant)` →
+`src/merlin/baselines/bundle.py` (`resolve(model, variant)` →
 `CaptureBundle`) and live under `merlin.common.artifacts.recaptures_dir()`, i.e.
 
 ```
@@ -92,7 +92,7 @@ through `recaptures_dir()`.
 calls `m2m.capture.torchao_pipeline.apply_quantization` on the torch model before export; Merlin only
 *consumes* the already-quantized bundle. (Merlin invokes that same external function in exactly one
 place — its TVM baseline re-quantizes a live-loaded model to match the capture:
-`merlin/python/merlin/baselines/tvm.py:282`.) You add a quantized model by capturing it there and
+`packages/merlin-analysis/src/merlin/baselines/tvm.py:282`.) You add a quantized model by capturing it there and
 ingesting the resulting bundle:
 
 ```bash
@@ -103,18 +103,18 @@ ingesting the resulting bundle:
 **Working and tested today — int8 only.** The int8 path is **weight-only / W8A8**
 (`int8_dynamic_activation_int8_weight`) and is the one format with a *measured* accuracy gate:
 int8 passes **5/5** (see the accuracy-gate report referenced from
-`merlin/python/merlin/baselines/`). This is the only quantized path you should treat as real.
+`packages/merlin-analysis/src/merlin/baselines/`). This is the only quantized path you should treat as real.
 
 **Aspirational — not a working path.** `fp8` (`float8_dynamic_activation_float8_weight`),
 `int4_weight_only`, and `int4-weight + fp8-activation` are a documented **plan**, not a sweep. Their
 accuracy status is `unavailable` (no quantization run is executed and no accuracy number is asserted
 for them). The plan is emitted verbatim by
-`merlin/python/merlin/dse_guidance/numerical_contract.py::torchao_integration_plan_md()`, which
+`packages/merlin-dse/src/merlin/dse_guidance/numerical_contract.py::torchao_integration_plan_md()`, which
 states which format informs which DSE candidate and what must be measured (accuracy gate, packed
 layout + scale metadata preserved through capture, low-bit kernel cost) before each becomes
 DSE-legal. Treat fp8/int4 as **planned/unmeasured**, never as an available format.
 
-**Honest gap even for int8.** Per `merlin/python/merlin/dse_guidance/quant_metadata.py`, the int8
+**Honest gap even for int8.** Per `packages/merlin-dse/src/merlin/dse_guidance/quant_metadata.py`, the int8
 qdq capture is *torchao int8 weight-only*, which is **not necessarily a model's native scheme** — for
 example bitvla's native format is W1.58 ternary (packed int2 + absmean scale) BitLinear, so a
 torchao-int8 bundle is a stand-in, not the native datapath. This gap is recorded per workload (never
@@ -138,7 +138,7 @@ res = ff.drive_pipeline(rec, reuse=2, target="saturn")
 The integer pipeline executes a layer's i8 deployment GEMM with the model's real
 (M, K, N); capture dtype is preserved as provenance.
 
-## Whole-model lowering (`merlin/python/merlin/llvmlower/`)
+## Whole-model lowering (`src/merlin/llvmlower/`)
 
 The `llvmlower` package compiles an entire model2MLIR module to native code via the
 **MLIR → llvm-dialect → LLVM IR → clang** path (LLVM 23, from the IREE/torch-mlir

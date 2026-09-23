@@ -44,7 +44,7 @@ contract surface describes the *computation*, not where it runs.
 
 | Type | Meaning |
 |------|---------|
-| `tensor<RxCxDT>` | a dense 2-D tensor, `DT ∈ {i8, i32}` (builtin MLIR tensor type) |
+| `tensor<D0x...xDNxDT>` | a dense, nonempty ranked tensor; `DT` is a command-buffer-registered dtype (builtin MLIR tensor type) |
 | `!merlin_iface.resident` | an opaque handle to a resident (packed, stationary) weight |
 | `!merlin_iface.acc<i32>` | an opaque integer accumulator handle |
 
@@ -55,7 +55,7 @@ contract surface describes the *computation*, not where it runs.
 %W  = merlin_iface.tensor {name = "W",  role = "weight"} : tensor<16x16xi8>
 %A0 = merlin_iface.tensor {name = "A0", role = "input"}  : tensor<16x16xi8>
 ```
-`role ∈ {weight, input, bias}`. Result type gives shape + dtype.
+`role ∈ {weight, input, bias, scale}`. Result type gives shape + dtype.
 
 ### `merlin_iface.resident_pack` — make a weight resident
 ```mlir
@@ -79,10 +79,68 @@ Maps to `MATMUL_RESIDENT` (`operands: {lhs, rhs, dst}`). `dst` rows × resident 
       } : (!merlin_iface.acc<i32>) -> tensor<16x16xi8>
 ```
 Maps to `COMMIT` (`operands: {src, dst}`, `attributes: {epilogue, output_dtype, acc_scale?}`).
-- `epilogue` — ordered subset of `["bias_add", "requant", "acc_scale", "relu"]`.
+- `epilogue` — ordered subset of `["bias_add", "requant", "acc_scale", "relu", "maxpool"]`.
+- `bias = "B"` — required iff `"bias_add"` is in `epilogue`, and it names the `role = "bias"` tensor
+  the stage adds. The stage was listed here and the role was listed above, but nothing said WHICH
+  operand the stage consumes, so a module could declare that a bias is added without saying what to
+  add. The bias is a length-`N` vector added to every row, **in the accumulator's dtype**, before any
+  requant or activation — it lands on the accumulator, which is why the vector is `i32` on an
+  `i8 x i8 -> i32` datapath and not `i8`.
 - `output_dtype ∈ {i32, i8}` — `i32` = full-width readout, `i8` = scaled/clamped readout.
 - `acc_scale : f32` — required iff `"acc_scale"` is in `epilogue`. The `: f32` suffix is honest:
   the requant applies an **f32 multiply, round-to-nearest-even, clamp to i8**.
+- `"maxpool"` — the one epilogue stage that CHANGES the result extent, because the store path fuses
+  pooling into the accumulator readout. It reshapes the `M` rows to `[batch, H, W]` using
+  `pool_in_dims = [H, W]`, walks `pool_size` at `pool_stride` over `pool_padding`, and commits
+  `batch*Ho*Wo` rows (`Ho = (H + pt + pb - ph) / sh + 1`, floor; `Wo` likewise). `pool_in_dims`,
+  `pool_size` and `pool_stride` are **required** with no defaults — an `[M, N]` accumulator carries no
+  spatial extent, so `25` rows is `5x5` or `25x1` and only the declaration says which. Integer-list
+  attributes: `pool_size = [2, 2]`, never `["2", "2"]`.
+- `pool_pad_value : i64` — required iff any `pool_padding` entry is nonzero. The identity element of a
+  max over a padded cell is a datapath property (`-inf` mathematically, commonly `0` in a store path),
+  so it is declared rather than assumed.
+
+```mlir
+%Y0 = merlin_iface.commit %acc0 {
+        name = "Y0", epilogue = ["maxpool"], output_dtype = "i32",
+        pool_in_dims = [4, 4], pool_size = [2, 2], pool_stride = [2, 2], pool_padding = [0, 0, 0, 0]
+      } : (!merlin_iface.acc<i32>) -> tensor<4x16xi32>
+```
+
+### `merlin_iface.bias_add` — add a bias vector to a committed tensor
+```mlir
+%X  = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xi32>
+%B  = merlin_iface.tensor {name = "B", role = "bias"}  : tensor<16xi32>
+%Y0 = merlin_iface.bias_add %X, %B {name = "Y0", output_dtype = "i32"} :
+      (tensor<16x16xi32>, tensor<16xi32>) -> tensor<16x16xi32>
+```
+The `"bias_add"` commit stage standing on its own, over an already-committed tensor rather than over an
+accumulator. Same arithmetic, same length-`N`-vector-per-row broadcast, same dtype rule — its operands
+are in the **accumulator's** dtype because that is the domain the stage runs in, so a fused capsule and
+this one are performing the same addition on the same numbers.
+
+It exists so a fused epilogue has something to be measured against: the fusion claim is that
+`matmul+bias` fused costs less than the `matmul` and the `bias_add` it replaces, and that comparison
+needs the unfused halves to be expressible. A backend may map it to whatever its own vector or
+accumulator-readout path provides; a target with no separate vector class is expected to fold it into
+the readout, and its capsule then requires no vector instruction (see `expected_instruction_coverage`).
+
+### `merlin_iface.matmul_batched` — independent rank-N contractions
+
+```mlir
+%Y0 = merlin_iface.matmul_batched %A0, %W {
+        name = "Y0", batch = 2 : i64, output_dtype = "i32"
+      } : (tensor<2x16x32xi8>, tensor<2x32x16xi8>) -> tensor<2x16x16xi32>
+```
+
+Maps to `BATCHED_MATMUL` with the exact operand map `{a: A0, w: W, dst: Y0}`. For a nonempty
+batch prefix `B...`, its shapes are `A[B..., M, K]`, `W[B..., K, N]`, and `Y[B..., M, N]`.
+Both operands vary independently at every batch coordinate; broadcasting, shared-weight relabelling,
+and flattening `B...` into `M` change the operation and are not permitted. If present, `batch` equals
+the product of the batch-prefix extents. The result type declares the destination tensor's complete
+rank, shape, and dtype; the reference parser records that destination as `role = "output"`, just as it
+does for every named whole-op result. A fused program may later consume such a produced tensor; final
+output selection is then determined by command dataflow rather than by the role spelling alone.
 
 ### `merlin_iface.evict` — release a resident weight
 ```mlir
@@ -94,6 +152,9 @@ Maps to `EVICT` (`operands: {handle}`).
 
 - string: `k = "v"`; string list: `k = ["a", "b"]` (empty: `k = []`)
 - integer: `k = 4 : i64`; float: `k = 0.0625 : f32`
+- integer list (geometry — `kernel`, `stride`, `padding`, `dilation`, `pool_*`): `k = [2, 2]`,
+  **unquoted**. A quoted geometry parses back as strings and fails an arity/type check far from the
+  spelling that caused it.
 
 ## Worked example (g0 — matmul only, i32)
 

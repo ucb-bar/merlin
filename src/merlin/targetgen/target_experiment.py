@@ -1,0 +1,1416 @@
+"""Load a declarative per-target experiment descriptor — the target-parameterized replacement for the
+gemmini-hardcoded experiment setup.
+
+Per the derive-first rule, the hardware FACTS (ISA/opcode set, memory map, mesh DIM, arc model) are
+DERIVED from the RTL by mlc (``rtl_backend.target_profile`` / ``mlc_bridge``), never hand-written. What a
+run genuinely cannot derive — which RTL repo, which hardware-spec files every arm gets, which capsule
+corpus to grade on, how the simulator runs — is the irreducible SETUP, declared in a small YAML
+descriptor (``examples/<target>/target/descriptor.yaml`` in the catalog). A new accelerator supplies its own descriptor
+and registers its RTL with mlc; no per-target code.
+"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from merlin.common.paths import repo_root
+
+
+def _safe_relative(value: str, *, field: str) -> Path:
+    """Parse one descriptor path without letting it escape the repository/package it names."""
+    path = Path(str(value))
+    if path.is_absolute() or not path.parts or any(part == ".." for part in path.parts):
+        raise ValueError(f"host_lane.{field} must be a non-empty repo-relative path, got {value!r}")
+    return path
+
+
+def _is_within(path: Path, parent: Path) -> bool:
+    return path == parent or parent in path.parents
+
+
+def _declared_resource_root(document: dict, field: str, *, root: Path | None = None) -> Path | None:
+    """Validate an optional ownership path lexically, without filesystem access."""
+    if field not in document:
+        return None
+    value = document[field]
+    if not isinstance(value, str) or not value.strip() or "\x00" in value or ".." in Path(value).parts:
+        raise ValueError(f"{field} must be a non-empty path without parent traversal")
+    return (root if root is not None else repo_root()) / value
+
+
+def declared_resources_root(document: dict, *, root: Path | None = None) -> Path | None:
+    """Resolve explicit resource ownership; absence retains the descriptor's sibling layout."""
+    return _declared_resource_root(document, "resources_root", root=root)
+
+
+def declared_task_root(document: dict, *, root: Path | None = None) -> Path | None:
+    """Resolve separately authored tasks; absence retains the shared resource layout."""
+    return _declared_resource_root(document, "task_root", root=root)
+
+
+def declared_contracts_root(document: dict, *, root: Path | None = None) -> Path | None:
+    """Resolve authored contract resources independently of generated bundle locations."""
+    return _declared_resource_root(document, "contracts_root", root=root)
+
+
+def resolve_resource_path(
+    relative: str | Path, *, resources: Path, task: Path | None = None, contracts: Path | None = None
+) -> Path:
+    """Resolve one lexical resource member under its declared owner, without probing disk."""
+    member = Path(relative)
+    if member.is_absolute() or ".." in member.parts:
+        raise ValueError("experiment resource must be a relative path without parent traversal")
+    overrides = {"task": task, "contracts": contracts}
+    selected = overrides.get(member.parts[0]) if member.parts else None
+    return selected.joinpath(*member.parts[1:]) if selected is not None else resources / member
+
+
+def descriptor_resources_root(descriptor: str | Path, *, root: Path | None = None) -> Path:
+    """Select startup resources before full descriptor validation, without probing those resources.
+
+    Historical native setup sources sibling environment defaults even for an unreadable or
+    malformed descriptor. Preserve that ordering; an explicit malformed resource declaration
+    is never silently replaced by the sibling convention.
+    """
+    path = Path(descriptor)
+    try:
+        document = yaml.safe_load(path.read_bytes())
+    except (OSError, yaml.YAMLError):
+        document = None
+    if isinstance(document, dict):
+        selected = declared_resources_root(document, root=root)
+        if selected is not None:
+            return selected
+    return path.parent
+
+
+#: The capsule category holding model-derived layer capsules. Underscore-prefixed on purpose: a
+#: category so named is not a sibling of the graded corpus.
+MODEL_LAYERS_CATEGORY = "_model_layers"
+
+
+@dataclass(frozen=True)
+class HostLane:
+    """Descriptor-owned identity of the frozen scalar/vector compiler used beside an accelerator.
+
+    This is infrastructure, not the submitted accelerator package.  ``package`` identifies the exact
+    artifact grading must pass to ``compile_rvv``; ``read_only`` and ``deny_modification`` describe the
+    corresponding agent grant boundary.
+    """
+
+    description: str
+    repo_canonical: str
+    branch: str
+    commit: str
+    package: str
+    requires_paths: tuple[str, ...]
+    read_only: tuple[str, ...]
+    deny_modification: tuple[str, ...]
+    #: Which precision lane this package IS, in ``compile_cli._DTYPE_STRATEGY``'s vocabulary. Declared
+    #: rather than discovered so a profile key is checkable at LOAD time; ``resolve`` still cross-checks
+    #: it against the package's own manifest, so a package whose knobs drift from its declaration is
+    #: refused rather than silently used for the wrong dtype.
+    dtype_strategy: str | None = None
+    #: How this package came to exist, closed vocabulary. ``published`` means it was checked out of
+    #: ``repo_canonical`` and ``branch`` names the revision. ``in_tree_minted`` means it was generated
+    #: HERE (promote_champion) and never existed upstream -- for which a branch name would be a
+    #: fiction, so one is not required and the pin is carried by the package digest instead.
+    provenance: str = "published"
+
+    #: The provenance values a descriptor may declare.
+    PROVENANCE = ("published", "in_tree_minted")
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path) -> HostLane | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+        provenance = str(value.get("provenance", "published"))
+        if provenance not in cls.PROVENANCE:
+            raise ValueError(
+                f"{descriptor}: host_lane.provenance must be one of {list(cls.PROVENANCE)}, got {provenance!r}"
+            )
+        required = ["description", "repo_canonical", "package", "requires_paths", "read_only", "deny_modification"]
+        # A published lane must name the revision it was published at. An in-tree-minted one must not
+        # be made to invent one: gemmini's int8 package records
+        # `authoring.mode: deterministic_generated_from_spec` and was never checked out of the remote,
+        # so `branch: UNKNOWN` was the honest answer to a question that should not have been asked.
+        if provenance == "published":
+            required += ["branch", "commit"]
+        missing = [name for name in required if name not in value]
+        if missing:
+            raise ValueError(f"{descriptor}: host_lane is missing required field(s) {missing}")
+
+        def paths(name: str) -> tuple[str, ...]:
+            raw = value[name]
+            if not isinstance(raw, (list, tuple)) or any(not isinstance(path, str) for path in raw):
+                raise ValueError(f"{descriptor}: host_lane.{name} must be a list of paths")
+            return tuple(raw)
+
+        return cls(
+            description=str(value["description"]),
+            repo_canonical=str(value["repo_canonical"]),
+            branch=str(value.get("branch", "")) or "UNKNOWN",
+            commit=str(value.get("commit", "")) or "UNKNOWN",
+            package=str(value["package"]),
+            requires_paths=paths("requires_paths"),
+            read_only=paths("read_only"),
+            deny_modification=paths("deny_modification"),
+            dtype_strategy=(lambda v: str(v) if v else None)(value.get("dtype_strategy")),
+            provenance=provenance,
+        )
+
+    def resolve(self, *, root: Path | None = None, descriptor: Path | None = None) -> tuple[Path, dict[str, Any]]:
+        """Validate, load and identify the exact package grading is allowed to use.
+
+        The content digest uses the same tree-hash implementation as bundle locks.  It therefore joins
+        the descriptor-selected path to the bytes the experiment granted at launch and gives every model
+        result an independently checkable host-compiler identity.
+        """
+        root = (root or repo_root()).resolve()
+        package_rel = _safe_relative(self.package, field="package")
+        read_only = tuple(_safe_relative(path, field="read_only") for path in self.read_only)
+        denied = tuple(_safe_relative(path, field="deny_modification") for path in self.deny_modification)
+        if not read_only:
+            raise ValueError("host_lane grants no read-only path; its package is not pinned")
+        if not self.requires_paths:
+            raise ValueError("host_lane.requires_paths is empty; package content is not pinned")
+        if not any(_is_within(package_rel, grant) for grant in read_only):
+            raise ValueError(
+                f"host_lane package {self.package!r} is outside every read-only grant; the agent and "
+                "grader would not share the declared compiler"
+            )
+        masked_by = [str(path) for path in denied if _is_within(package_rel, path)]
+        if masked_by:
+            raise ValueError(f"host_lane package {self.package!r} is masked by denied path(s) {masked_by}")
+
+        package_lexical = root / package_rel
+        try:
+            package = package_lexical.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(f"host_lane package {self.package!r} is missing or unreadable") from exc
+        if not _is_within(package, root) or not package.is_dir():
+            raise ValueError(f"host_lane package {self.package!r} does not resolve to a directory inside {root}")
+
+        # A symlink would let a path that looks pinned consume bytes outside the hashed/granted tree.
+        # The sandbox snapshot rejects the same shape, so grading and agent visibility stay congruent.
+        relative = package_lexical.relative_to(root)
+        prefixes = (root.joinpath(*relative.parts[:i]) for i in range(1, len(relative.parts) + 1))
+        symlinks = [path for path in prefixes if path.is_symlink()]
+        symlinks += [path for path in package.rglob("*") if path.is_symlink()]
+        if symlinks:
+            raise ValueError(f"host_lane package contains a symlink: {symlinks[0]}")
+
+        required_paths: list[str] = []
+        missing_required: list[str] = []
+        for raw in self.requires_paths:
+            rel = _safe_relative(raw, field="requires_paths")
+            required_paths.append(rel.as_posix())
+            if not (package / rel).exists():
+                missing_required.append(rel.as_posix())
+        if missing_required:
+            raise ValueError(f"host_lane package {self.package!r} is missing required path(s) {missing_required}")
+
+        # The real loader is part of validation: presence alone is insufficient if the manifest/knobs
+        # are malformed or if knobs redirect the schedule outside the package whose digest we record.
+        from ..mining.registry import load_rvv_package
+
+        loaded = load_rvv_package(package)
+        schedule_rel = _safe_relative(str(loaded.knobs.get("schedule_file", "schedule.mlir")), field="schedule_file")
+        schedule = package / schedule_rel
+        if not schedule.is_file() or schedule.is_symlink():
+            raise ValueError(f"host_lane schedule {schedule_rel.as_posix()!r} is not a regular in-package file")
+        try:
+            schedule.resolve(strict=True).relative_to(package)
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"host_lane schedule {schedule_rel.as_posix()!r} escapes the pinned package") from exc
+
+        from merlin.common.tree_hash import hash_tree
+
+        hashed = hash_tree(package)
+        digest = hashed.get("sha256")
+        if not hashed.get("present") or not digest or int(hashed.get("n_files") or 0) < 1:
+            raise ValueError(f"host_lane package {self.package!r} has no hashable content")
+        identity = {
+            "descriptor": str(descriptor) if descriptor else None,
+            "package": package_rel.as_posix(),
+            "resolved_package": str(package),
+            "package_sha256": str(digest),
+            "n_files": int(hashed["n_files"]),
+            "required_paths": required_paths,
+            "read_only_grants": [path.as_posix() for path in read_only],
+            "repo_canonical": self.repo_canonical,
+            "branch": self.branch,
+            "commit": self.commit,
+            "target": loaded.name,
+            "run_id": loaded.run_id,
+            "dtype_strategy": loaded.dtype_strategy,
+            "declared_dtype_strategy": self.dtype_strategy,
+            "provenance": self.provenance,
+            "schedule_file": schedule_rel.as_posix(),
+        }
+        # DECLARED vs LOADED, checked here rather than at the call site. The grading path already
+        # compared the loaded strategy against the capsule's compile dtype; what it could not catch was
+        # a descriptor whose profile key says one lane and whose package is another, because nothing
+        # held the descriptor's own claim. With both recorded, a package whose knobs drift from the
+        # declaration it is filed under is refused instead of quietly serving the wrong precision.
+        if self.dtype_strategy and str(loaded.dtype_strategy) != self.dtype_strategy:
+            raise ValueError(
+                f"host_lane package {self.package!r} declares dtype_strategy "
+                f"{self.dtype_strategy!r} in the descriptor but its manifest says "
+                f"{loaded.dtype_strategy!r}; the descriptor and the package disagree about which "
+                f"precision lane this is"
+            )
+        return package, identity
+
+
+@dataclass(frozen=True)
+class HostLaneMatrix:
+    """The host lanes a target can be graded against, keyed by precision.
+
+    The host lane was one package per target, but it was never really one: gemmini needs the int8
+    package while the other five need the fp32 one, and the descriptor expressed that by having a
+    different `package` and giving up on `branch`. Making it a keyed set says the real shape -- a lane
+    is (compiler package x board), and which one applies follows the capsule's compile dtype.
+
+    Single-mapping descriptors keep loading unchanged: they become a one-entry matrix whose default is
+    that entry, so nothing that has one lane has to learn about two.
+    """
+
+    default: str
+    profiles: dict
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path) -> HostLaneMatrix | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+        if "profiles" not in value:
+            lane = HostLane.from_mapping(value, descriptor=descriptor)
+            key = lane.dtype_strategy or "default"
+            return cls(default=key, profiles={key: lane})
+        raw = value["profiles"]
+        if not isinstance(raw, dict) or not raw:
+            raise ValueError(f"{descriptor}: host_lane.profiles must be a non-empty mapping")
+        shared = {k: v for k, v in value.items() if k not in ("profiles", "default")}
+        profiles = {}
+        for name, body in raw.items():
+            if not isinstance(body, dict):
+                raise ValueError(f"{descriptor}: host_lane.profiles.{name} must be a mapping")
+            profiles[str(name)] = HostLane.from_mapping({**shared, **body}, descriptor=descriptor)
+        default = str(value.get("default") or "")
+        if default not in profiles:
+            raise ValueError(f"{descriptor}: host_lane.default must name one of {sorted(profiles)}, got {default!r}")
+        return cls(default=default, profiles=profiles)
+
+    def for_dtype(self, dtype: str | None) -> HostLane:
+        """The lane a capsule compiled at ``dtype`` is graded against.
+
+        NEVER falls back across precision. Serving an fp32 lane to an int8 capsule would grade a
+        submission against a host compiler that cannot produce the arithmetic the capsule declares, and
+        the mismatch would show up as a numeric failure attributed to the accelerator.
+        """
+        if dtype is None:
+            return self.profiles[self.default]
+        try:
+            from merlin.compile_cli import _DTYPE_STRATEGY
+
+            strategy = _DTYPE_STRATEGY.get(dtype)
+        except Exception:  # noqa: BLE001 -- no mapping is not a wrong mapping
+            strategy = None
+        if strategy is None:
+            return self.profiles[self.default]
+        if strategy in self.profiles:
+            return self.profiles[strategy]
+        raise ValueError(
+            f"no host lane declared for dtype {dtype!r} (strategy {strategy!r}); this target declares "
+            f"{sorted(self.profiles)}. Refusing to substitute another precision's lane"
+        )
+
+
+@dataclass(frozen=True)
+class PreflightCapabilityProbe:
+    """One target-owned fixture that demonstrates a named hardware capability.
+
+    The generic preflight treats ``capability`` and operation identities as opaque data. ``adapter`` owns
+    the execution/lowering mechanism, ``fixture`` names its target-owned input, and ``requirements`` names
+    operation identities as ``{domain, dialect, operation}``. Scalar ISA, RVV, and target-dialect probes
+    share one protocol without teaching the harness any target's mnemonics or dialect.
+    """
+
+    capability: str
+    adapter: str
+    fixture: dict[str, Any]
+    requirements: dict[str, Any]
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path, index: int) -> PreflightCapabilityProbe:
+        field = f"preflight.capability_probes[{index}]"
+        if not isinstance(value, dict):
+            raise ValueError(f"{descriptor}: {field} must be a mapping")
+        capability = value.get("capability")
+        adapter = value.get("adapter")
+        fixture = value.get("fixture")
+        requirements = value.get("requirements")
+        if not isinstance(capability, str) or not capability.strip():
+            raise ValueError(f"{descriptor}: {field}.capability must be a non-empty string")
+        if (
+            not isinstance(adapter, str)
+            or not adapter.strip()
+            or ":" not in adapter
+            or not all(adapter.strip().partition(":")[::2])
+        ):
+            raise ValueError(f"{descriptor}: {field}.adapter must be a non-empty 'module:callable' reference")
+        if not isinstance(fixture, dict) or not fixture:
+            raise ValueError(f"{descriptor}: {field}.fixture must be a non-empty mapping")
+        if not isinstance(requirements, dict):
+            raise ValueError(f"{descriptor}: {field}.requirements must be a mapping")
+        operations = requirements.get("operations")
+        if not isinstance(operations, list) or not operations:
+            raise ValueError(f"{descriptor}: {field}.requirements.operations must be a non-empty list")
+        identities = []
+        for op_index, operation in enumerate(operations):
+            if not isinstance(operation, dict):
+                raise ValueError(f"{descriptor}: {field}.requirements.operations[{op_index}] must be a mapping")
+            domain, dialect, name = (operation.get("domain"), operation.get("dialect"), operation.get("operation"))
+            if (
+                not isinstance(domain, str)
+                or not domain.strip()
+                or not isinstance(dialect, str)
+                or not dialect.strip()
+                or not isinstance(name, str)
+                or not name.strip()
+            ):
+                raise ValueError(
+                    f"{descriptor}: {field}.requirements.operations[{op_index}] requires non-empty "
+                    "domain, dialect, and operation"
+                )
+            identities.append((domain, dialect, name))
+        if len(set(identities)) != len(identities):
+            raise ValueError(f"{descriptor}: {field}.requirements.operations contains duplicates")
+        return cls(
+            capability=capability.strip(),
+            adapter=adapter.strip(),
+            fixture=copy.deepcopy(fixture),
+            requirements=copy.deepcopy(requirements),
+        )
+
+
+@dataclass(frozen=True)
+class TargetExperiment:
+    """The declarative SETUP for one target's experiment (derivable facts are NOT here)."""
+
+    target: str
+    isa_headers: tuple[str, ...]  # shared hardware-spec headers (bundle-convention path STRINGS)
+    hwbringup_set: str | None  # shared RTL/ISA/README/example set (bundle-convention path STRING)
+    # OPTIONAL declarative setup: the curated baremetal C harness (linker/crt/headers, NO kernels) an
+    # agent's compiler needs — only chipyard-sim targets have one; arc/cyclotron targets omit it. A path
+    # relative to the experiment dir. Genuinely per-target setup, so declared (not derived).
+    curated_harness: str | None
+    capsule_corpus: Path  # the corpus the arms author against + are graded on (resolved)
+    sim_via: str  # how the simulator runs (e.g. "chipyard")
+    rtl_via: str  # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
+    # OPTIONAL: where the accelerator's RTL lives (a local path or a URL). When set, the descriptor
+    # itself points at the RTL so onboarding can validate the pointer + wire mlc discovery at it, rather
+    # than ASSUMING the RTL was separately registered with mlc. None (the default) keeps the legacy
+    # contract: the RTL is already registered with mlc under ``target``. Additive + backward-compatible.
+    rtl_repo: str | None
+    # Prior backends / reference exemplars the agent must NOT read/copy (an experiment CHOICE, so
+    # declared, not derived). Names under ``artifacts/targets/<target>/``.
+    prior_backends: tuple[str, ...]
+    path: Path  # the descriptor file this came from
+    # Digest of the exact descriptor bytes parsed into this object.  Keeping the load-time identity
+    # closes a TOCTOU hole in formal cohort materialization: a descriptor edited after loading must not
+    # be represented by a cohort record carrying the new file digest and the old parsed exclusions.
+    descriptor_sha256: str
+    # OPTIONAL: the KNOWN-GOOD self-contained model program the pre-flight runs end-to-end through the
+    # grading oracle (assemble→cosim→readback, compared bit-exact to its own golden) to prove the oracle
+    # produces a correct verdict BEFORE a paid run — not just that ``arc_available`` is True. Genuinely
+    # per-target SETUP (which shipped validation program to smoke), so declared, not derived. Only an
+    # ``external_backend`` (self-hosted-ISA program-oracle) target needs one; others leave it None.
+    preflight_smoke_program: str | None = None
+    # Optional executable support identity for the codegen smoke. Resource ownership
+    # (backend_package_dir) does not select executable providers.
+    preflight_codegen_backend: str | None = None
+    # OPTIONAL independent capability demonstrations. Unlike ``preflight_smoke_program`` (one broad
+    # oracle-connectivity check), each record names the capability it establishes and the derived ISA
+    # operations its target-owned fixture must actually demonstrate. Empty means no additional claim.
+    preflight_capability_probes: tuple[PreflightCapabilityProbe, ...] = ()
+    # OPTIONAL: repo-relative dir of the BACKEND package whose ``contracts/`` hold this target's
+    # rtl_facts / irdl pins, when it is NOT ``merlin/targets/<target>``. An experiment target can be
+    # served by a differently-named core package; leaving that to be inferred from the target name
+    # yields bundle grants pointing at paths that cannot exist (a CIRCT arm granted nothing while the
+    # manifest claims otherwise). Declared, never inferred; default preserves same-name targets.
+    backend_package_dir: str | None = None
+    # OPTIONAL: the contract the descriptor DECLARES as this target's capability manifest, repo-root
+    # relative. It was parsed and thrown away before — no field held it — so every descriptor's
+    # ``hardware_spec.target_contract`` was dead data, and what the tooling actually read was whatever
+    # ``target_registry.resolve(target)`` found by name. That was invisible in both directions: for one
+    # target the two paths resolve to DIFFERENT contracts (one naming its fp8 datapaths, the other
+    # carrying the fail-closed ``unnamed_float_datapaths`` derivation), and for another the registry
+    # resolves NOTHING while the declaration is right there, which is why its STARTER_PROMPT.md silently
+    # failed to render. Kept as a declaration, deliberately NOT as an override: see
+    # :func:`declared_vs_resolved_contract`.
+    declared_contract: str | None = None
+    # Authored recipe carrying the complete declared numerical regime, not hardware evidence.
+    numeric_profile: str | None = None
+    # Explicit authored resource ownership, independent of the descriptor's location.
+    # None preserves historical sibling resources, including standalone frozen releases.
+    resources_root: Path | None = None
+    # Optional authored prompt directory; overrides only the task resource subtree.
+    task_root: Path | None = None
+    # Optional authored contract directory, including a declared curated harness.
+    contracts_root: Path | None = None
+    # Optional per-bundle information treatments. Keys are exact bundle variant suffixes
+    # (``hwbringup_v0``, ``hwbringup_nokernel_v0``, ...); values carry extra read-only grants,
+    # deeper denials, a stable condition label, and source pins. Empty preserves legacy descriptors.
+    information_sets: dict[str, dict[str, Any]] | None = None
+    # OPTIONAL: capsule DIRECTORY NAMES this experiment withholds from the PUBLIC graded set. An
+    # experiment CHOICE about scope (which capsules a paid agentic loop is scored on), so declared per
+    # target, never inferred — the library reads it as data and knows nothing about any target's corpus.
+    #
+    # Why the knob exists: a whole-model capsule costs one oracle invocation per matmul layer, and the
+    # cost is the MODEL's, not the compiler's. Measured on radiance: 15 layers ~= 45 min, and the four
+    # model capsules together are 297 layers ~= 15 h per arm per ROUND, which makes a 12-round A/B
+    # unreachable while adding nothing the first model has not already shown. Withholding is honest only
+    # because it is visible: the excluded names land in the run's own manifest and the denominator moves
+    # with them. It is NOT a way to drop capsules a submission fails — see the fail-closed check in
+    # :func:`~merlin.targetgen.contract.materialize.materialize_public_capsules`, which refuses an
+    # exclusion that matches no capsule so a typo cannot quietly widen the set back open.
+    graded_exclude: tuple[str, ...] = ()
+    # Optional explicit public search cohort. Unlike an exclusion list, this remains reviewable when a
+    # generated corpus grows: a new capsule does not silently enter an expensive repeated search. The
+    # full source corpus, hidden set, performance set, and separately scheduled model capstones remain
+    # available; this field controls only the public/dev denominator of the agentic search campaign.
+    graded_include: tuple[str, ...] = ()
+    graded_cohort_policy: str | None = None
+    # Optional frozen-candidate cohorts that run AFTER the paid search.  These are deliberately
+    # separate from ``graded_include``: search is feedback to the compiler, while an evaluation cohort
+    # is held out until the candidate is frozen.  Each stage records its own capsule names, required
+    # oracle tier/engine and predecessor, so a target cannot quietly use its external comparison suite
+    # as the workload it optimizes against.
+    evaluation_cohorts: dict[str, dict[str, Any]] | None = None
+    # Optional decomposition of ``graded_exclude`` for formal cohort provenance.  Capability exclusions
+    # must be independently proven by the frozen hardware predicate; resource exclusions must be an
+    # explicit model-only allowlist under a named policy, with the retained representative models named.
+    graded_capability_exclude: tuple[str, ...] = ()
+    graded_resource_exclude: tuple[str, ...] = ()
+    graded_resource_policy: str | None = None
+    graded_required_models: tuple[str, ...] = ()
+    # OPTIONAL: the complete-model capsule Phase 2 treats as its fixed global objective when the
+    # immutable Phase 1 snapshot predates capsule-level ``performance.global_objective`` metadata.
+    # This is an experiment declaration, not a size/latency heuristic: choosing the smallest measured
+    # program made a focused host-island seam masquerade as an end-to-end objective.  New snapshots
+    # should declare the objective on the capsule itself; this field keeps older, already-sealed Phase 1
+    # evidence usable without rewriting or rerunning it.
+    performance_global_objective: str | None = None
+    # THE PHASE PARTITION of the admitted cohort -- a third, independent fact, and deliberately NOT a
+    # third exclusion list by default. ``phase_policy.phase_of`` DERIVES which phase a member can serve
+    # from what can be checked about it at this target's declared certification budget: whether its
+    # answer can be certified inside that budget, and whether its work can be priced.
+    #
+    # ``graded_phase2_only`` records the members that CANNOT serve the declared phase. Recording is the
+    # point: a headline "n/N" over a cohort whose members reach different tiers is the misreading this
+    # bench keeps producing, and the fix is to make the tier visible, not to shrink N. ``check_phase_split``
+    # says so about itself -- a gate on the ratio "would be satisfiable by DELETING the members that serve
+    # one phase, which improves the ratio and destroys coverage" -- and the runner already prices
+    # certification separately (it certifies a derived covering set and marks the rest ``budget_deferred``),
+    # so admission was never a promise to certify.
+    #
+    # ``graded_phase_exclude`` is the narrower thing: members actually REMOVED from the denominator on
+    # phase grounds. It must be a subset of ``graded_phase2_only`` -- a row cannot be dropped for failing
+    # a verdict it did not fail -- and it is kept apart from the capability and resource lists because
+    # collapsing a derived verdict into a human decision loses the only thing that says which rows would
+    # come back if the budget moved.
+    graded_phase2_only: tuple[str, ...] = ()
+    graded_phase_exclude: tuple[str, ...] = ()
+    graded_phase: int | None = None
+    graded_phase_budget_s: float | None = None
+    graded_phase_policy: str | None = None
+    # Claim-bearing descriptors pin their expected source/admitted cardinalities.  Exclusion lists pin
+    # the public names; hidden names stay sealed and only their counts are declared.
+    graded_expected_source_capsules: int | None = None
+    graded_expected_admitted_capsules: int | None = None
+    hidden_expected_source_capsules: int | None = None
+    hidden_expected_admitted_capsules: int | None = None
+    # OPTIONAL: which DISCOVERED memory group is this device's on-chip OPERAND store, given as the name
+    # prefix its sibling banks share. Only the LABEL is declared; the capacity itself stays RTL-derived
+    # (mlc's discovered depth x row_bytes, summed over the group). This exists because mlc classifies a
+    # memory map for some targets and refuses for others -- it discovers atlas's 39 SRAMs and then raises
+    # "no memory map discovered", so the ``capacity_fit`` contract obligation was undecidable there while
+    # being enforced on gemmini. Guessing the operand store from the bank list is not safe (this device's
+    # instruction memory is LARGER than its operand file, so "the biggest one" picks IMEM), so the
+    # descriptor names it and the bytes are still read out of the RTL.
+    operand_store: str | None = None
+    # OPTIONAL for legacy/minimal descriptors. Targeted whole-model grading requires it and fails closed
+    # when absent; keeping None loadable lets descriptor tooling report the omission instead of making
+    # unrelated onboarding helpers crash while parsing an otherwise useful partial descriptor.
+    host_lanes: HostLaneMatrix | None = None
+    # OPTIONAL: which BOARD this target's host lane compiles for, a key of ``merlin.runtime.boards``.
+    #
+    # Nothing declared it anywhere, and the omission was silent in the worst way: ``system_for`` returns
+    # ``System(host=None, ...)`` unless a board is passed, ``place.host_units(None)`` then synthesizes
+    # only a scalar host, and every placement that should have landed on the host VECTOR lane landed on
+    # a scalar one instead -- with no error, because "no board" and "a board with no vector unit" were
+    # the same value. The only caller that had a host at all was a test, which hardcoded one.
+    #
+    # Declared rather than derived because the board is a fact about the SoC the accelerator sits in,
+    # not about the accelerator: two targets can share an RTL and be brought up on different boards.
+    # Left None where the evidence does not name one -- ``system_for_experiment`` then reports the
+    # omission instead of fabricating a host, since a made-up host is worse than an absent one.
+    host_board: str | None = None
+    # OPTIONAL: the only things capsule SYNTHESIS cannot derive.
+    #
+    # `models` -- which workloads this target is FOR. The requirement's `observed` half comes from model
+    # captures, and `check_conformance_coverage._captures()` currently globs the whole recapture
+    # directory, so an untracked directory listing is the denominator of a tracked requirement.
+    # `precision_preference` -- a RANKING over the dtypes the target already admits, used only to break
+    # ties on axes no required cell pins. It is filtered against the admitted set and can never widen
+    # it; a token that does not survive is reported, not silently ignored.
+    # `max_synthesized_capsules` -- the budget that turns "too many capsules" into an error rather than
+    # a truncation, because a silently dropped point reads downstream as a covered one.
+    #
+    # Absent is not an error: a target that declares none simply gets no tie-break, and the derived
+    # requirement alone determines its corpus.
+    workload_spec: dict | None = None
+
+    # WHICH ORACLE TIERS COST AN EXCLUSIVE, SHARED RESOURCE -- and so cannot be bought per capsule.
+    #
+    # `oracle_resources: {<tier>: {exclusive_resource: <name>, batched: true, queue_wall_limit_s: N}}`.
+    # This is the RARE non-derivable setup the descriptor exists for: no RTL fact says "there is one
+    # FPGA and a queue in front of it, and jobs on it are scheduled by a human". A target with a
+    # private simulator declares nothing here and every path behaves exactly as before.
+    #
+    # It is declared PER TARGET rather than written down in the runner because the tier name means
+    # nothing on its own: one target's L5 is an FPGA behind a shared queue, another's is a second
+    # local simulator. Reading it from here is what keeps "L5" and "firesim" out of the code that
+    # decides what a tier costs.
+    oracle_resources: dict[str, dict[str, Any]] | None = None
+    # Explicit installed/frozen source ownership; None preserves legacy checkout discovery.
+    source_root: Path | None = None
+
+    def _source_root(self) -> Path:
+        return self.source_root if self.source_root is not None else repo_root()
+
+    @property
+    def batched_oracle_tiers(self) -> frozenset[str]:
+        """The tiers this target declares as BATCHED -- measured N windows at a time, never solo.
+
+        A capsule cannot buy one of these on its own: it accumulates into a round-group and the
+        group is submitted as one job. Empty for every target that declares no such resource.
+        """
+        return frozenset(
+            tier
+            for tier, body in (self.oracle_resources or {}).items()
+            if isinstance(body, dict) and body.get("batched") is True
+        )
+
+    def exclusive_resource(self, tier: str) -> str | None:
+        """The shared resource ``tier`` contends for on this target, or None when it contends for none."""
+        body = (self.oracle_resources or {}).get(tier)
+        return (
+            str(body.get("exclusive_resource")) if isinstance(body, dict) and body.get("exclusive_resource") else None
+        )
+
+    def queue_wall_limit_seconds(self, tier: str) -> float | None:
+        """The wall a single job on ``tier``'s resource may occupy, or None when undeclared.
+
+        None is UNKNOWN, never unlimited: a caller sizing a batch must refuse rather than assume.
+        """
+        body = (self.oracle_resources or {}).get(tier)
+        if not isinstance(body, dict):
+            return None
+        value = body.get("queue_wall_limit_s")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            return None
+        return float(value)
+
+    @property
+    def host_lane(self) -> HostLane | None:
+        """This target's DEFAULT host lane, for the readers that predate the matrix."""
+        return None if self.host_lanes is None else self.host_lanes.profiles[self.host_lanes.default]
+
+    def resolve_host_lane(self, *, root: Path | None = None, dtype: str | None = None) -> tuple[Path, dict[str, Any]]:
+        """Validate and identify the host lane a capsule at ``dtype`` is graded against.
+
+        ``dtype=None`` keeps the pre-matrix behaviour (the declared default), so every existing caller
+        is unchanged; passing one selects the profile whose precision matches, and raises rather than
+        substituting when this target declares no lane for it.
+        """
+        if self.host_lanes is None:
+            raise ValueError(f"{self.path}: targeted whole-model grading requires a host_lane declaration")
+        return self.host_lanes.for_dtype(dtype).resolve(
+            root=root if root is not None else self.source_root, descriptor=self.path
+        )
+
+    def declared_contract_path(self) -> Path | None:
+        """The declared contract as an absolute path, if the descriptor names one that exists."""
+        if not self.declared_contract:
+            return None
+        p = self._source_root() / self.declared_contract
+        return p if p.is_file() else None
+
+    @property
+    def exp_name(self) -> str:
+        """The experiment dir path RELATIVE TO ``merlin/experiments`` (e.g.
+        ``capsule_bench/targets/gemmini``) — for the exp-scoped bundle paths. In the target-neutral layout
+        each target lives under ``capsule_bench/targets/<target>/``; this returns that full relative path
+        (not just the leaf) so ``experiments/{exp_name}/...`` reconstructs the real location. Falls back to
+        the bare dir name when the descriptor is not under an ``experiments/`` root."""
+        d = self.resource_path(".")
+        for anc in d.parents:
+            if anc.name == "experiments":
+                return str(d.relative_to(anc))
+        return d.name
+
+    # DERIVED target-specific paths (bundle-convention strings) — from the backend package, never
+    # hand-listed.
+    @property
+    def backend_package(self) -> str:
+        """Repo-relative dir of the target's BACKEND package, where its contracts/ live.
+
+        Defaults to ``merlin/targets/<target>`` — true whenever the experiment target and the backend
+        package share a name (gemmini, atlas, ...). It is NOT universally true: an experiment target may
+        be served by a differently-named core package (a SIMT experiment served by its core's package),
+        and assuming otherwise silently produces grant paths that can never exist — a bundle that
+        *looks* like it hands the CIRCT arm its RTL facts while handing it nothing. So the mapping is a
+        DECLARED fact (``backend_package`` in the descriptor) whenever it differs, never inferred."""
+        d = self.backend_package_dir
+        return str(d).rstrip("/") if d else f"merlin/targets/{self.target}"
+
+    @property
+    def rtl_facts_pin(self) -> str:
+        return f"{self.backend_package}/contracts/rtl_facts/"
+
+    @property
+    def irdl_pin(self) -> str:
+        return f"{self.backend_package}/contracts/irdl/"
+
+    def corpus_rel(self) -> str:
+        """Corpus grant: repository-relative when possible, explicit absolute otherwise."""
+        return self._grant_path(self.capsule_corpus) + "/"
+
+    def _grant_path(self, path: Path) -> str:
+        try:
+            return str(path.absolute().relative_to(self._source_root().absolute()))
+        except ValueError:
+            return str(path.absolute())
+
+    def resource_path(self, relative: str | Path) -> Path:
+        """Select a descriptor-owned resource without probing or resolving its aliases.
+
+        Task, harness and bundle readers share this location rule. A resource name
+        must be relative and cannot traverse parents. This is lexical validation,
+        not a filesystem sandbox: grant admission still validates symlink ownership.
+        Explicit resources_root selects ownership independently of the descriptor.
+        Explicit task_root overrides only task and its descendants.
+        Explicit contracts_root overrides only contracts and its descendants.
+        Legacy and frozen descriptors without it retain their sibling resource layout.
+        """
+        return resolve_resource_path(
+            relative,
+            resources=self.resources_root if self.resources_root is not None else self.path.parent,
+            task=self.task_root,
+            contracts=self.contracts_root,
+        )
+
+    def experiment_resource(self, relative: str) -> str:
+        """Resolve scaffolding from its descriptor, preserving legacy bundle spellings."""
+        path = self.resource_path(relative).absolute()
+        legacy = self._source_root().absolute() / "merlin" / "experiments"
+        try:
+            return "experiments/" + path.relative_to(legacy).as_posix()
+        except ValueError:
+            return self._grant_path(path)
+
+    def corpus_siblings(self) -> list[str]:
+        """Sibling capsule CATEGORIES that actually EXIST beside the primary corpus (e.g. layers/
+        model_slices) — globbed, not a hardcoded gemmini taxonomy. Repo-root-relative strings.
+
+        A sibling category holds capsule dirs DIRECTLY (``d/*/capsule.yaml``). A subdir that instead holds
+        its OWN categories (``d/*/*/capsule.yaml``) is a different TARGET's corpus that merely nests under
+        the same parent (e.g. ``capsules/atlas/`` beside gemmini's ``capsules/isa``) — it is NOT a sibling
+        of this corpus and must be excluded, or a target's capsules leak into another target's set."""
+        parent = self.capsule_corpus.parent
+        out = []
+        for d in sorted(parent.iterdir()) if parent.is_dir() else []:
+            if (
+                d.is_dir()
+                and d != self.capsule_corpus
+                and d.name != "hidden"
+                and not d.name.startswith(("_", "."))  # skip __pycache__/dotdirs, not corpora
+                and next(d.glob("*/capsule.yaml"), None) is not None
+            ):  # a CATEGORY, not a nested corpus
+                out.append(self._grant_path(d) + "/")
+        return out
+
+    def hidden_corpus(self) -> str | None:
+        """The hidden-capsule deny path (sibling ``hidden/`` of the corpus), if present."""
+        h = self.capsule_corpus.parent / "hidden"
+        return self._grant_path(h) + "/" if h.is_dir() else None
+
+    def graded_roots(self) -> list[Path]:
+        """Every root the PUBLIC/dev grade must read: the primary corpus plus its sibling categories.
+
+        This exists because "the corpus" and "what gets graded" had drifted apart. The descriptor names
+        one directory (``.../isa``), but a target's capsules are split by kind across sibling categories,
+        so grading the named directory alone scores a subset — for this repo's targets, 8 of 20 for one
+        and 21 of 28 for another — while reporting a clean denominator.
+
+        The obvious alternative, grading their shared parent, is wrong in the other direction: that
+        parent also holds other targets' corpora, which would leak foreign capsules into the suite.
+        :meth:`corpus_siblings` already draws that line structurally (a CATEGORY holds capsule dirs
+        directly; a nested corpus holds categories), so this is just its resolved form.
+        """
+        return [self.capsule_corpus, *(self._source_root() / s for s in self.corpus_siblings())]
+
+    def model_layer_roots(self) -> list[Path]:
+        """The roots holding capsules generated from the layers real models form, or an empty list.
+
+        A FOURTH root set, and like the performance one it is kept out of the graded suite by the
+        underscore on its category (:meth:`corpus_siblings` skips it). These capsules carry a
+        model's own extents, which cost minutes each at the functional tier and hours at an RTL one,
+        and a backend certified on the corpus has typically never met them. They are feedback a
+        backend author asks for, not a term of the score.
+        """
+        parent = self.capsule_corpus.parent
+        root = parent / MODEL_LAYERS_CATEGORY
+        return [root] if root.is_dir() else []
+
+    def perf_roots(self) -> list[Path]:
+        """The roots holding this target's PERFORMANCE capsules — empty when it ships none.
+
+        A third root set beside :meth:`graded_roots` and :meth:`hidden_roots`, and it has to exist
+        separately because performance capsules are deliberately NOT graded: they are ``label: dev``
+        A/Bs on identical work, and the underscore prefix on ``_perf`` is the mechanism that keeps
+        :meth:`corpus_siblings` from admitting them to the functional suite.
+
+        ⚠️ THAT MAKES A GRADED-ROOTS SCAN THE WRONG WAY TO FIND THEM. Measured: gemmini's fusion and
+        amortization groups (``fmb_*`` with three members, ``amort_*`` with two) live in
+        ``capsules/_perf``, so a scan of its graded roots reports "no comparison group has two members"
+        and a caller concludes the performance families do not exist. Scanning the whole corpus tree is
+        wrong in the other direction -- it finds ANOTHER target's groups, whose fusion pairs say nothing
+        about the one being launched. Per-target and underscore-prefixed is the only location that is
+        both complete and not another target's.
+        """
+        parent = self.capsule_corpus.parent
+        if not parent.is_dir():
+            return []
+        return [
+            d
+            for d in sorted(parent.iterdir())
+            if d.is_dir() and d.name.startswith("_") and next(d.glob("*/capsule.yaml"), None) is not None
+        ]
+
+    def hidden_roots(self) -> list[Path]:
+        """The roots the HIDDEN grade must read — empty when the target ships no hidden capsules.
+
+        Empty is a real answer and the caller must not paper over it: grading the public roots with the
+        ``hidden`` label matches nothing and yields a 0/0 "pass" that never ran.
+        """
+        h = self.hidden_corpus()
+        return [self._source_root() / h] if h else []
+
+    def information_set(self, variant: str) -> dict[str, Any]:
+        """A defensive copy of the treatment declared for ``variant`` (or an empty mapping)."""
+        return copy.deepcopy((self.information_sets or {}).get(variant) or {})
+
+    def evaluation_cohort(self, name: str) -> dict[str, Any]:
+        """Return one declared post-search cohort, failing closed on an unknown stage."""
+        cohorts = self.evaluation_cohorts or {}
+        if name not in cohorts:
+            raise KeyError(f"unknown evaluation cohort {name!r}; declared stages: {sorted(cohorts)}")
+        return copy.deepcopy(cohorts[name])
+
+    def effective_exclusions(self, source_names) -> tuple[str, ...]:
+        """Resolve the descriptor's exclusion or inclusion policy against a concrete source set."""
+        source = {str(name) for name in source_names}
+        if self.graded_include:
+            include = set(self.graded_include)
+            unknown = sorted(include - source)
+            if unknown:
+                raise ValueError(f"graded_include names capsules absent from the source corpus: {unknown}")
+            return tuple(sorted(source - include))
+        return tuple(sorted(self.graded_exclude))
+
+
+#: Historical descriptor names/layouts remain discoverable after authored examples are checked.
+#: Explicit descriptors may have any filename; target identity always comes from their YAML.
+_DESCRIPTOR_FILE = "target_experiment.yaml"
+_DESCRIPTOR_GLOBS = ("*/*/targets/{t}/{f}", "*/targets/{t}/{f}", "targets/{t}/{f}")
+
+
+def _declared_target(descriptor: Path) -> str | None:
+    """The ``target`` a descriptor declares, or None when it is unreadable/not a descriptor.
+
+    Deliberately a cheap YAML read rather than :func:`load_target_experiment`: this is used to SCAN, and
+    a validation error in one target's descriptor must not hide another target's descriptor.
+    """
+    try:
+        doc = yaml.safe_load(descriptor.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    name = doc.get("target") if isinstance(doc, dict) else None
+    return str(name) if name else None
+
+
+def descriptor_for(target: str) -> Path | None:
+    """The experiment descriptor that DECLARES ``target``, or None when the target ships none.
+
+    Resolution: ``$MERLIN_TARGET_EXPERIMENT`` when it names THIS target (so a run pointed at one
+    descriptor is never served another), then authored ``examples/*/target/descriptor.yaml`` inputs,
+    then the legacy ``targets/<target>/`` convention and a scan of every discoverable legacy descriptor
+    for one whose ``target:`` matches — because A DIRECTORY NAME IS NOT ALWAYS
+    THE TARGET NAME (see :func:`~merlin.targetgen.target_registry.declared_target_for`).
+
+    Returns None rather than raising: a caller that cannot find a descriptor must degrade to the naming
+    convention, not fail.
+    """
+    from merlin.common.paths import merlin_dir
+
+    env = os.environ.get("MERLIN_TARGET_EXPERIMENT")
+    if env:
+        p = Path(env)
+        # `is_file()` is the load-bearing half: an agent sandbox inherits this variable from the launcher
+        # while the path it names is masked, and a descriptor that cannot be READ must fall through to the
+        # conventions below rather than be treated as found.
+        if p.is_file() and _declared_target(p) == target:
+            return p
+    for candidate in sorted((repo_root() / "examples").glob("*/target/descriptor.yaml")):
+        if candidate.is_file() and _declared_target(candidate) == target:
+            return candidate
+    root = merlin_dir()
+    for pattern in _DESCRIPTOR_GLOBS:
+        for cand in sorted(root.glob(pattern.format(t=target, f=_DESCRIPTOR_FILE))):
+            if cand.is_file() and _declared_target(cand) == target:
+                return cand
+    for pattern in _DESCRIPTOR_GLOBS:
+        for cand in sorted(root.glob(pattern.format(t="*", f=_DESCRIPTOR_FILE))):
+            if cand.is_file() and _declared_target(cand) == target:
+                return cand
+    return None
+
+
+def load_target_experiment(descriptor: str | Path, *, source_root: Path | None = None) -> TargetExperiment:
+    """Load + validate a target descriptor. Shared-spec paths are kept as the bundle-
+    convention STRINGS (so the governance check compares like-for-like); the capsule corpus is resolved.
+
+    Explicit source_root owns repository-relative descriptor/resource paths and is retained by
+    path-resolving methods. Omission preserves legacy checkout discovery and descriptor spelling.
+    """
+    if source_root is not None:
+        source_root = Path(source_root).absolute()
+    p = Path(descriptor)
+    if source_root is not None and not p.is_absolute():
+        p = source_root / p
+    descriptor_bytes = p.read_bytes()
+    doc = yaml.safe_load(descriptor_bytes.decode("utf-8"))
+    if not isinstance(doc, dict) or not doc.get("target"):
+        raise ValueError(f"{p}: not a target-experiment descriptor (missing 'target')")
+    numeric_profile = doc.get("numeric_profile")
+    if numeric_profile is not None and (
+        not isinstance(numeric_profile, str)
+        or not numeric_profile.strip()
+        or not Path(numeric_profile).name
+        or ".." in Path(numeric_profile).parts
+    ):
+        raise ValueError(f"{p}: numeric_profile must name a file without parent traversal")
+    root = source_root if source_root is not None else repo_root()
+    hw = doc.get("hardware_spec") or {}
+    grading = doc.get("grading") or {}
+    if not isinstance(grading, dict):
+        raise ValueError(f"{p}: grading must be a mapping")
+    resource_bound = grading.get("resource_bound") or {}
+    phase_bound = grading.get("phase_bound") or {}
+    expected_cohort = grading.get("expected_cohort") or {}
+    hidden_admission = grading.get("hidden_capability_admission") or {}
+    search_cohort = grading.get("search_cohort") or {}
+    raw_evaluation_cohorts = grading.get("evaluation_cohorts") or {}
+    for field, value in (
+        ("grading.resource_bound", resource_bound),
+        ("grading.phase_bound", phase_bound),
+        ("grading.expected_cohort", expected_cohort),
+        ("grading.hidden_capability_admission", hidden_admission),
+        ("grading.search_cohort", search_cohort),
+        ("grading.evaluation_cohorts", raw_evaluation_cohorts),
+    ):
+        if not isinstance(value, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+
+    def names(value, *, field: str) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+            raise ValueError(f"{p}: {field} must be a list of non-empty capsule names")
+        out = tuple(value)
+        if len(set(out)) != len(out):
+            raise ValueError(f"{p}: {field} contains duplicate capsule names")
+        return out
+
+    def count(mapping: dict, key: str, *, field: str) -> int | None:
+        if key not in mapping:
+            return None
+        value = mapping[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{p}: {field}.{key} must be a non-negative integer")
+        return value
+
+    evaluation_cohorts: dict[str, dict[str, Any]] = {}
+    for stage, raw_stage in raw_evaluation_cohorts.items():
+        field = f"grading.evaluation_cohorts.{stage}"
+        if not isinstance(stage, str) or not stage or Path(stage).name != stage:
+            raise ValueError(f"{p}: evaluation-cohort name {stage!r} must be one safe name")
+        if not isinstance(raw_stage, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+        include = names(raw_stage.get("include_capsules"), field=f"{field}.include_capsules")
+        if not include:
+            raise ValueError(f"{p}: {field}.include_capsules must not be empty")
+        policy = raw_stage.get("policy")
+        predecessor = raw_stage.get("after")
+        tier = raw_stage.get("oracle_tier")
+        engine = raw_stage.get("oracle_engine")
+        for key, value in (("policy", policy), ("after", predecessor), ("oracle_engine", engine)):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{p}: {field}.{key} must be a non-empty string")
+        if tier not in {"L0", "L1", "L2", "L3", "L4", "L5"}:
+            raise ValueError(f"{p}: {field}.oracle_tier must be one of L0..L5")
+        roles = names(raw_stage.get("require_source_roles"), field=f"{field}.require_source_roles")
+        evaluation_cohorts[stage] = {
+            **copy.deepcopy(raw_stage),
+            "policy": policy.strip(),
+            "after": predecessor.strip(),
+            "oracle_tier": tier,
+            "oracle_engine": engine.strip(),
+            "include_capsules": include,
+            "require_source_roles": roles,
+        }
+
+    raw_information_sets = doc.get("information_sets") or {}
+    if not isinstance(raw_information_sets, dict):
+        raise ValueError(f"{p}: information_sets must be a mapping keyed by bundle variant")
+    information_sets: dict[str, dict[str, Any]] = {}
+    for variant, body in raw_information_sets.items():
+        field = f"information_sets.{variant}"
+        if not isinstance(variant, str) or not variant.startswith("hwbringup_") or Path(variant).name != variant:
+            raise ValueError(f"{p}: information-set key {variant!r} must be an hwbringup_* variant")
+        if not isinstance(body, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+        condition = body.get("condition")
+        if not isinstance(condition, str) or not condition.strip():
+            raise ValueError(f"{p}: {field}.condition must be a non-empty string")
+        normalized: dict[str, Any] = {"condition": condition.strip()}
+        for key in ("allowed", "denied"):
+            rows = body.get(key) or []
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise ValueError(f"{p}: {field}.{key} must be a list of mappings")
+            clean = []
+            for index, row in enumerate(rows):
+                value = row.get("path")
+                if not isinstance(value, str) or not value:
+                    raise ValueError(f"{p}: {field}.{key}[{index}].path must be non-empty")
+                _safe_relative(value, field=f"{field}.{key}[{index}].path")
+                clean.append(copy.deepcopy(row))
+            normalized[key] = clean
+        pins = body.get("source_pins") or []
+        if (
+            not isinstance(pins, list)
+            or any(not isinstance(pin, str) or not pin for pin in pins)
+            or len(set(pins)) != len(pins)
+        ):
+            raise ValueError(f"{p}: {field}.source_pins must be a list of unique pin names")
+        normalized["source_pins"] = list(pins)
+        information_sets[variant] = normalized
+
+    performance = doc.get("performance") or {}
+    if not isinstance(performance, dict):
+        raise ValueError(f"{p}: performance must be a mapping")
+    raw_global_objective = performance.get("global_objective_capsule")
+    if raw_global_objective is not None:
+        if (
+            not isinstance(raw_global_objective, str)
+            or not raw_global_objective
+            or Path(raw_global_objective).name != raw_global_objective
+            or raw_global_objective in (".", "..")
+        ):
+            raise ValueError(f"{p}: performance.global_objective_capsule must be one capsule directory name")
+        performance_global_objective = raw_global_objective
+    else:
+        performance_global_objective = None
+
+    preflight = doc.get("preflight") or {}
+    if not isinstance(preflight, dict):
+        raise ValueError(f"{p}: preflight must be a mapping")
+    codegen_backend = preflight.get("codegen_backend")
+    if "codegen_backend" in preflight and (not isinstance(codegen_backend, str) or not codegen_backend.strip()):
+        raise ValueError(f"{p}: preflight.codegen_backend must be a non-empty string")
+    raw_capability_probes = preflight.get("capability_probes") or []
+    if not isinstance(raw_capability_probes, list):
+        raise ValueError(f"{p}: preflight.capability_probes must be a list")
+    capability_probes = tuple(
+        PreflightCapabilityProbe.from_mapping(value, descriptor=p, index=index)
+        for index, value in enumerate(raw_capability_probes)
+    )
+    capability_names = [probe.capability for probe in capability_probes]
+    if len(set(capability_names)) != len(capability_names):
+        raise ValueError(f"{p}: preflight.capability_probes contains duplicate capability names")
+
+    legacy_exclude = names(grading.get("exclude_capsules"), field="grading.exclude_capsules")
+    search_include = names(search_cohort.get("include_capsules"), field="grading.search_cohort.include_capsules")
+    search_policy = search_cohort.get("policy")
+    if search_include and (not isinstance(search_policy, str) or not search_policy.strip()):
+        raise ValueError(f"{p}: grading.search_cohort requires a non-empty policy")
+    capability_exclude = names(grading.get("capability_exclude_capsules"), field="grading.capability_exclude_capsules")
+    resource_exclude = names(resource_bound.get("exclude_capsules"), field="grading.resource_bound.exclude_capsules")
+    required_models = names(
+        resource_bound.get("required_admitted_models"), field="grading.resource_bound.required_admitted_models"
+    )
+    phase_exclude = names(phase_bound.get("exclude_capsules"), field="grading.phase_bound.exclude_capsules")
+    phase2_only = names(phase_bound.get("phase2_only_capsules"), field="grading.phase_bound.phase2_only_capsules")
+    outside = sorted(set(phase_exclude) - set(phase2_only))
+    if outside:
+        raise ValueError(
+            f"{p}: grading.phase_bound.exclude_capsules names {outside}, which the recorded phase-2-only "
+            "set does not contain; a row may not be dropped for failing a verdict it did not fail"
+        )
+    split_exclude = capability_exclude + resource_exclude + phase_exclude
+    if search_include and (legacy_exclude or split_exclude):
+        raise ValueError(f"{p}: grading.search_cohort cannot be combined with exclusion policies")
+    if legacy_exclude and split_exclude:
+        raise ValueError(
+            f"{p}: grading may use legacy exclude_capsules or the explicit capability/resource split, not both"
+        )
+    # Each row leaves the denominator for exactly ONE reason. An overlap is not a harmless duplicate: it
+    # would let a row be reported under whichever heading reads best, and the arithmetic below (source ==
+    # admitted + the three lists) would double-count it.
+    for a_name, a, b_name, b in (
+        ("capability", capability_exclude, "resource", resource_exclude),
+        ("capability", capability_exclude, "phase", phase_exclude),
+        ("resource", resource_exclude, "phase", phase_exclude),
+    ):
+        overlap = sorted(set(a) & set(b))
+        if overlap:
+            raise ValueError(f"{p}: {a_name} and {b_name} exclusions overlap: {overlap}")
+    if resource_exclude and (not resource_bound.get("policy") or not required_models):
+        raise ValueError(f"{p}: resource exclusions require a named policy and admitted model capstones")
+    phase_number = phase_bound.get("phase")
+    phase_budget = phase_bound.get("budget_s")
+    if phase_bound:
+        if not isinstance(phase_number, int) or isinstance(phase_number, bool) or phase_number < 1:
+            raise ValueError(f"{p}: grading.phase_bound.phase must name the phase this run serves")
+        if not phase_bound.get("policy"):
+            raise ValueError(f"{p}: phase exclusions require a named policy")
+        if not isinstance(phase_budget, (int, float)) or isinstance(phase_budget, bool) or phase_budget <= 0:
+            raise ValueError(
+                f"{p}: grading.phase_bound.budget_s must state the certification budget the phase "
+                "verdict was derived at -- the verdict is meaningless without it, because a member "
+                "priced out at one budget is admitted at another"
+            )
+    if set(required_models) & set(split_exclude):
+        raise ValueError(f"{p}: a required admitted model is also excluded")
+
+    raw_oracle_resources = doc.get("oracle_resources") or {}
+    if not isinstance(raw_oracle_resources, dict):
+        raise ValueError(f"{p}: oracle_resources must be a mapping keyed by oracle tier")
+    oracle_resources: dict[str, dict[str, Any]] = {}
+    for tier, body in raw_oracle_resources.items():
+        field = f"oracle_resources.{tier}"
+        if tier not in {"L0", "L1", "L2", "L3", "L4", "L5"}:
+            raise ValueError(f"{p}: {field} must name an oracle tier L0..L5")
+        if not isinstance(body, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+        resource = body.get("exclusive_resource")
+        if not isinstance(resource, str) or not resource.strip():
+            raise ValueError(f"{p}: {field}.exclusive_resource must name the contended resource")
+        if not isinstance(body.get("batched"), bool):
+            raise ValueError(
+                f"{p}: {field}.batched must say explicitly whether this tier is measured N "
+                "windows at a time; a tier whose shape is unstated cannot be scheduled"
+            )
+        limit = body.get("queue_wall_limit_s")
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, (int, float)) or limit <= 0):
+            raise ValueError(f"{p}: {field}.queue_wall_limit_s must be a positive number of seconds")
+        oracle_resources[tier] = copy.deepcopy(body)
+
+    expected_source = count(expected_cohort, "source_capsules", field="grading.expected_cohort")
+    expected_admitted = count(expected_cohort, "admitted_capsules", field="grading.expected_cohort")
+    if (expected_source is None) != (expected_admitted is None):
+        raise ValueError(f"{p}: grading.expected_cohort must declare both source and admitted counts")
+    if expected_source is not None and search_include and expected_admitted != len(search_include):
+        raise ValueError(f"{p}: grading.expected_cohort admitted count must equal search_cohort size")
+    if expected_source is not None and not search_include and expected_source != expected_admitted + len(split_exclude):
+        raise ValueError(f"{p}: grading.expected_cohort arithmetic does not match the declared exclusions")
+    hidden_source = count(hidden_admission, "source_capsules", field="grading.hidden_capability_admission")
+    hidden_admitted = count(hidden_admission, "admitted_capsules", field="grading.hidden_capability_admission")
+    if (hidden_source is None) != (hidden_admitted is None):
+        raise ValueError(f"{p}: grading.hidden_capability_admission must declare both source and admitted counts")
+    if hidden_source is not None and hidden_admitted > hidden_source:
+        raise ValueError(f"{p}: hidden admitted count exceeds its sealed source count")
+    return TargetExperiment(
+        target=str(doc["target"]),
+        isa_headers=tuple(hw.get("isa_headers") or []),
+        hwbringup_set=hw.get("hwbringup_set"),
+        curated_harness=hw.get("curated_harness"),
+        capsule_corpus=root / doc["capsule_corpus"] if doc.get("capsule_corpus") else None,
+        sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
+        rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
+        rtl_repo=(lambda r: str(r) if r else None)((doc.get("rtl") or {}).get("repo")),
+        operand_store=(lambda v: str(v) if v else None)((doc.get("rtl") or {}).get("operand_store")),
+        prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
+        path=p,
+        descriptor_sha256=hashlib.sha256(descriptor_bytes).hexdigest(),
+        source_root=source_root,
+        preflight_smoke_program=(lambda s: str(s) if s else None)(preflight.get("smoke_program")),
+        preflight_codegen_backend=codegen_backend,
+        preflight_capability_probes=capability_probes,
+        declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
+        numeric_profile=numeric_profile,
+        resources_root=declared_resources_root(doc, root=root),
+        task_root=declared_task_root(doc, root=root),
+        contracts_root=declared_contracts_root(doc, root=root),
+        information_sets=information_sets,
+        backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
+        # Cohort admission (which capsules are graded, and why one is not) alongside the host-lane
+        # MATRIX. `host_lane` is no longer a constructor field: a target declares a lane per dtype and
+        # the singular `.host_lane` property returns the default, so every existing caller still reads
+        # one lane while a capsule compiled at another dtype resolves its own.
+        graded_exclude=legacy_exclude or split_exclude,
+        graded_include=search_include,
+        graded_cohort_policy=(search_policy.strip() if isinstance(search_policy, str) else None),
+        evaluation_cohorts=evaluation_cohorts,
+        graded_capability_exclude=capability_exclude,
+        graded_resource_exclude=resource_exclude,
+        graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
+        graded_required_models=required_models,
+        performance_global_objective=performance_global_objective,
+        graded_phase2_only=phase2_only,
+        graded_phase_exclude=phase_exclude,
+        graded_phase=(
+            int(phase_number) if isinstance(phase_number, int) and not isinstance(phase_number, bool) else None
+        ),
+        graded_phase_budget_s=(
+            float(phase_budget)
+            if isinstance(phase_budget, (int, float)) and not isinstance(phase_budget, bool)
+            else None
+        ),
+        graded_phase_policy=(lambda s: str(s) if s else None)(phase_bound.get("policy")),
+        graded_expected_source_capsules=expected_source,
+        graded_expected_admitted_capsules=expected_admitted,
+        hidden_expected_source_capsules=hidden_source,
+        hidden_expected_admitted_capsules=hidden_admitted,
+        host_lanes=HostLaneMatrix.from_mapping(doc.get("host_lane"), descriptor=p),
+        host_board=(lambda v: str(v) if v else None)((doc.get("host") or {}).get("board")),
+        workload_spec=(lambda v: dict(v) if isinstance(v, dict) else None)(doc.get("workload_spec")),
+        oracle_resources=oracle_resources or None,
+    )
+
+
+def batched_oracle_tiers(target: str | None) -> frozenset[str]:
+    """The tiers ``target``'s own descriptor declares as batched, or ``frozenset()``.
+
+    Deliberately a cheap YAML read of the one key rather than :func:`load_target_experiment`: this
+    is consulted on the grading path, where a validation error somewhere else in another target's
+    descriptor must not decide whether THIS capsule's tier is batched. A target with no descriptor,
+    an unreadable one, or no declaration yields the empty set and every caller behaves exactly as
+    it did before the declaration existed.
+    """
+    if not target:
+        return frozenset()
+    descriptor = descriptor_for(target)
+    if descriptor is None:
+        return frozenset()
+    try:
+        doc = yaml.safe_load(descriptor.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return frozenset()
+    resources = doc.get("oracle_resources") if isinstance(doc, dict) else None
+    if not isinstance(resources, dict):
+        return frozenset()
+    return frozenset(
+        str(tier) for tier, body in resources.items() if isinstance(body, dict) and body.get("batched") is True
+    )
+
+
+def declared_vs_resolved_contract(te: TargetExperiment) -> tuple[Path | None, Path | None, str]:
+    """``(declared, resolved, verdict)`` for this target's capability contract.
+
+    Verdicts: ``"agree"`` (same file, or nothing declared and one resolves), ``"declared_only"`` (the
+    registry resolves nothing — the declaration is the only contract there is), ``"stale_declaration"``
+    (the declared path does not exist but the registry resolves one), ``"mismatch"`` (both exist and are
+    DIFFERENT files), or ``"none"`` (no contract at all).
+
+    A mismatch is reported, never resolved here. Picking a winner would silently change what an agent is
+    told the hardware is — the two saturn_opu contracts disagree on whether its fp8 datapaths are named
+    (``fp8_e4m3``/``fp8_e5m2``) or honestly unnamed (``float8`` + ``unnamed_float_datapaths``), and that is
+    the difference between a target that declares two formats and one that admits its RTL does not name
+    them. Which is authoritative is a call for whoever owns the contract, so this surfaces it and the
+    readiness gate fails on it.
+    """
+    from . import target_registry
+
+    declared = te.declared_contract_path()
+    try:
+        resolved = target_registry.resolve(te.target).contract_path
+        resolved = resolved if resolved and Path(resolved).is_file() else None
+    except Exception:  # noqa: BLE001 — an unresolvable target is one of the answers
+        resolved = None
+    if declared and resolved:
+        same = Path(declared).resolve() == Path(resolved).resolve()
+        return declared, resolved, "agree" if same else "mismatch"
+    if declared:
+        return declared, None, "declared_only"
+    if resolved:
+        return None, resolved, "stale_declaration" if te.declared_contract else "agree"
+    return None, None, "none"
+
+
+def shared_spec_paths(te: TargetExperiment, variant: str | None = None) -> set[str]:
+    """The shared hardware-spec path strings the descriptor makes authoritative — the ISA headers + the
+    hwbringup set EVERY arm's bundle must grant (a constant input, not assistance)."""
+    paths = set(te.isa_headers)
+    if te.hwbringup_set:
+        paths.add(te.hwbringup_set)
+    if variant:
+        paths.update(
+            entry["path"]
+            for entry in te.information_set(variant).get("allowed", ())
+            if isinstance(entry, dict) and entry.get("path")
+        )
+    return paths
+
+
+def bundles_match_descriptor(te: TargetExperiment, manifest_paths) -> list[str]:
+    """Governance: the descriptor is the single source of truth for the shared hardware spec. Return the
+    drift — for each bundle manifest, the shared-spec paths it fails to grant in ``allowed``. Empty list
+    means every arm's bundle is consistent with the descriptor (so a run for this target is honest)."""
+    drift: list[str] = []
+    for mp in manifest_paths:
+        doc = yaml.safe_load(Path(mp).read_text())
+        variant = str(doc.get("variant") or "")
+        info = te.information_set(variant) if variant else {}
+        required = shared_spec_paths(te, variant or None)
+        allowed = {e.get("path") for e in (doc.get("allowed") or []) if isinstance(e, dict)}
+        denied = {e.get("path") for e in (doc.get("denied") or []) if isinstance(e, dict)}
+        missing = required - allowed
+        if missing:
+            drift.append(f"{Path(mp).parent.name}: missing shared-spec {sorted(missing)}")
+        expected_denied = {
+            entry["path"] for entry in info.get("denied", ()) if isinstance(entry, dict) and entry.get("path")
+        }
+        if expected_denied - denied:
+            drift.append(f"{Path(mp).parent.name}: missing information-set denial {sorted(expected_denied - denied)}")
+        expected_condition = info.get("condition")
+        if expected_condition and doc.get("condition") != expected_condition:
+            drift.append(f"{Path(mp).parent.name}: condition {doc.get('condition')!r} != {expected_condition!r}")
+        expected_pins = list(info.get("source_pins") or ())
+        if list(doc.get("source_pins") or ()) != expected_pins:
+            drift.append(f"{Path(mp).parent.name}: source_pins {doc.get('source_pins')!r} != {expected_pins!r}")
+    return drift
+
+
+# --------------------------------------------------------------------------- capability manifest
+@dataclass(frozen=True)
+class CapabilityManifest:
+    """The per-target capability model that drives GENERATION — a human-reviewed cache derived from RTL
+    facts + the designer's docs (the committed ``target_contract.yaml``), NOT hand-invented for merlin.
+
+    It resolves the target's PRIMARY compute-unit ``kind`` (the unit not embedded in another) and, via
+    the family registry, the generation defaults (codegen endpoint, RTL tiers, perf fields, whether an
+    op->``.insn`` encoding derivation + trace gate apply). Any default may be overridden by an optional
+    ``runner``/``endpoint_kind`` block in the contract. Core generators consult this by ``kind`` so they
+    never branch on a target name."""
+
+    target: str
+    kind: str  # primary compute-unit kind (systolic|simt|vector|scalar)
+    endpoint_kind: str  # inline_asm_insn (default) | upstream_target | external_backend | command_buffer
+    suite: str
+    dtype: str  # run-identity dtype token (e.g. i8xi8_i32, f32)
+    fourth_output_name: str | None  # None -> the runner derives it from endpoint_kind
+    tier_sim: dict  # tier -> sim name (empty -> family/arc default)
+    rtl_tiers: tuple[str, ...]
+    perf_fields: tuple[str, ...]
+    trace_gate: str | None  # trace-gate plugin name (e.g. "rocc_insn") or None
+    force_match_policy: dict | None  # optional oracle output-equality override (float target -> {compare,atol})
+    encoding_required: bool
+    encoding: dict  # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
+    contract: dict  # the full target_contract.yaml (for consumers that need more)
+
+
+def _primary_kind(units) -> str:
+    """The kind of the target's primary compute unit = the one NOT contained by any other."""
+    contained = {c for u in units for c in u.contains}
+    primary = [u for u in units if u.name not in contained]
+    return (primary[0] if primary else units[0]).kind
+
+
+def _derived_dtype_token(units) -> str:
+    """A run-identity dtype token DERIVED from the primary compute unit's first accumulate rule
+    (``<in>x<weight>_<acc>``). Replaces the former gemmini ``i8xi8_i32`` fail-open default so a target
+    that omits ``runner.dtype`` (e.g. an mx target) is labeled by its OWN datapath, never mislabeled as
+    gemmini int8. Falls back to ``"unknown"`` (fail-closed, surfaced in the run label) if no rule."""
+    for u in units:
+        if u.accumulate:
+            a = u.accumulate[0]
+            if a.inp and a.acc:
+                return f"{a.inp}x{a.weight or a.inp}_{a.acc}"
+    return "unknown"
+
+
+def load_capability_manifest(target: str, *, contract_path: str | Path | None = None) -> CapabilityManifest:
+    """Load a target's capability manifest from its committed ``target_contract.yaml`` + fill the family
+    defaults. Raises if the target has no contract or no compute_units (fail-closed: no fabricated kind).
+
+    ``contract_path`` reads that file instead of asking the registry. It exists for the case where the
+    registry resolves NOTHING and a descriptor names the contract explicitly — the alternative there is
+    not "use the resolved one", it is "render no prompt at all", which is what used to happen. It is not
+    a general override: when the registry does resolve a contract, callers pass nothing and any
+    disagreement with the declaration is reported by :func:`declared_vs_resolved_contract`."""
+    from . import compute_units, families, target_registry  # lazy: avoid import-order cycles
+
+    if contract_path is not None:
+        contract = yaml.safe_load(Path(contract_path).read_text(encoding="utf-8"))
+    else:
+        contract = target_registry.resolve(target).load_contract()
+    units = compute_units.compute_units(contract)
+    if not units:
+        raise ValueError(f"{target}: target_contract has no compute_units — cannot derive a kind")
+    kind = _primary_kind(units)
+    prof = families.family_profile(kind)
+    runner = contract.get("runner") or {}
+    endpoint = contract.get("endpoint_kind") or prof.endpoint_kind_default
+    if endpoint not in families.ENDPOINT_KINDS:
+        raise ValueError(f"{target}: endpoint_kind {endpoint!r} not in {families.ENDPOINT_KINDS}")
+    encoding = dict(contract.get("encoding") or {})
+    # An address width does not imply any accelerator's flag layout. This loader
+    # returns declared data; target-specific derivation belongs to OOT support.
+    return CapabilityManifest(
+        target=target,
+        kind=kind,
+        endpoint_kind=endpoint,
+        suite=runner.get("suite") or f"{target}-capsule-bench",
+        dtype=runner.get("dtype") or _derived_dtype_token(units),
+        fourth_output_name=runner.get("fourth_output_name"),
+        tier_sim=dict(runner.get("tier_sim") or {}),
+        rtl_tiers=tuple(runner.get("rtl_tiers") or prof.default_rtl_tiers),
+        perf_fields=tuple(runner.get("perf_fields") or prof.perf_fields),
+        # The RoCC-.insn trace gate applies ONLY to an inline_asm_insn (RoCC) endpoint — it decodes a
+        # host `.insn` stream from lowered.llvm.mlir. A self-hosted-ISA (external_backend, emits kernel.S)
+        # or ISA-less (command_buffer) target has no such stream, so it defaults to no trace gate (unless
+        # the contract explicitly declares one). Keys on the endpoint, never a target name.
+        trace_gate=runner.get("trace_gate", prof.trace_gate if endpoint == "inline_asm_insn" else None),
+        # Optional oracle output-equality override (a float target declares {compare: float, atol: ...}
+        # so its oracle comparison is tolerant regardless of the per-capsule numeric_policy). None ->
+        # the capsule's own numeric_policy governs (integer capsules -> exact).
+        force_match_policy=runner.get("force_match_policy"),
+        encoding_required=prof.encoding_required,
+        encoding=encoding,
+        contract=contract,
+    )

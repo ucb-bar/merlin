@@ -1,0 +1,74 @@
+{
+ "schema_version": "2.0",
+ "family": "circt_static",
+ "fixture_note": "A SECOND, SYNTHETIC machine, written as data only. It exists to prove the bound is a function of a target's facts and not of the code: nothing in merlin/python/merlin knows this device, and adding it required no core edit. Everything about it differs from device_a -- a wider array with two multipliers per element, smaller stores under different names, a narrow transfer path -- and the consequence is a qualitatively different answer: here the DRAM traffic term binds, where on device_a the array does.",
+ "elaboration": "synthetic_wide_array_narrow_bus",
+ "facts": {
+  "target": "device_c",
+  "arrays": [
+   {
+    "name": "grid",
+    "rows": 32,
+    "cols": 32,
+    "container": "Grid",
+    "element": "Cell",
+    "instances": 1024,
+    "mac_idiom": {
+     "muls": 2,
+     "adds": 3
+    },
+    "source": "synthetic fixture"
+   }
+  ],
+  "memories": [
+   {
+    "name": "operand_sram",
+    "banks": 2,
+    "depth": 1024,
+    "row_elems": 32,
+    "elem_bits": 8,
+    "bytes": 65536,
+    "rows": 2048,
+    "evidence": "synthetic fixture: 2 x 1024 rows of 32 x i8"
+   },
+   {
+    "name": "psum",
+    "banks": 2,
+    "depth": 64,
+    "lanes": 32,
+    "lane_bits": 32,
+    "row_bytes": 128,
+    "bytes": 16384,
+    "rows": 128,
+    "evidence": "synthetic fixture: 2 x 64 rows of 32 x i32"
+   }
+  ],
+  "datapaths": [
+   {
+    "name": "operand",
+    "dtype": "i8",
+    "evidence": "synthetic fixture: operand_sram holds i8"
+   },
+   {
+    "name": "psum",
+    "dtype": "i32",
+    "evidence": "synthetic fixture: psum accumulates in i32"
+   },
+   {
+   "name": "host_link",
+   "role": "movement",
+   "bits": 64,
+    "evidence": "synthetic fixture: the transfer path is 64 bits wide"
+   }
+  ],
+  "interfaces": [
+   {
+    "name": "readout",
+    "offchip_dtypes": [
+     "int8"
+    ],
+    "evidence": "synthetic fixture: results leave the device requantised to i8"
+   }
+  ]
+ }
+}

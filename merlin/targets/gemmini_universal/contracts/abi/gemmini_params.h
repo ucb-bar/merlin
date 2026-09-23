@@ -1,0 +1,1 @@
+../../../../../examples/gemmini_universal/target/contracts/abi/gemmini_params.h

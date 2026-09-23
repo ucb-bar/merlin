@@ -1,0 +1,256 @@
+"""Aggregate the N>=3 A/B/C experiment (arm × condition × repeats) with error bars.
+
+The N=1 abc4 gave point estimates; this aggregates the `--repeats N` runs from launch_ab_batch into
+mean ± std per (arm, condition) cell so the magnitude claims (cost / wall / rounds / sim-runs-skipped /
+25-pass) have the dispersion the comparison needs. Honest about N: each cell records n_valid; cells with
+n<2 print mean only (std undefined) and are flagged.
+
+Two axes:
+  • arm        — baseline (C++) · merlin (xDSL) · merlin_rtlchecks (xDSL+CIRCT)
+  • condition  — kernels, no-kernels, or kernel-library; the archived bundle manifest is authoritative
+                 and `_nk`/`_kl` run-id suffixes remain a compatibility fallback.
+
+Reuses agg_agentic_results.load_run (cost/tokens/rounds/fullsuite) and additionally reads, per run:
+  • timing_detailed.json  -> think+gen vs tool/wait split, CIRCT sims_skipped/sims_run
+  • full_suite_audit.json  -> passed X/25 (completeness)
+
+-> reports/ab_results.json (+ reports/figs/fig_ab_*.png with error bars). Reads on-disk artifacts only.
+Usage: agg_ab_results.py [--tag abc5]   (tag filters run-ids; default = all tagged runs found)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+
+import yaml
+
+from . import runs as AAR
+
+# Keyed to agg_agentic_results.ARM_ORDER. cpp_merlininfra was absent from both, so a batch that ran it
+# aggregated to nothing: _arm_of resolved the rung correctly from the bundle id and the cell it belonged
+# to had never been created.
+ARM_ORDER = ["baseline", "cpp_merlininfra", "merlin", "merlin_rtlchecks"]
+ARM_LABEL = {
+    "baseline": "baseline (C++)",
+    "cpp_merlininfra": "C++ & merlin infra",
+    "merlin": "merlin (xDSL)",
+    "merlin_rtlchecks": "merlin+CIRCT",
+}
+COND_ORDER = ["kernels", "no-kernels", "kernel-library"]
+
+
+def _condition_of(run_dir: Path) -> str:
+    manifest = run_dir / "input_bundle_manifest.yaml"
+    if manifest.is_file():
+        try:
+            condition = str((yaml.safe_load(manifest.read_text()) or {}).get("condition") or "")
+            if condition in COND_ORDER:
+                return condition
+        except Exception:
+            pass
+    # Compatibility with runs created before manifests recorded the condition.
+    if "_kl" in run_dir.name:
+        return "kernel-library"
+    return "no-kernels" if "_nk" in run_dir.name else "kernels"
+
+
+def _timing(d: Path) -> dict:
+    t = d / "timing_detailed.json"
+    if not t.is_file():
+        return {}
+    try:
+        return json.loads(t.read_text())
+    except Exception:
+        return {}
+
+
+def _stat(vals: list[float]) -> dict:
+    xs = [v for v in vals if isinstance(v, (int, float))]
+    if not xs:
+        return {"mean": None, "std": None, "n": 0, "values": []}
+    mean = sum(xs) / len(xs)
+    std = math.sqrt(sum((x - mean) ** 2 for x in xs) / (len(xs) - 1)) if len(xs) > 1 else 0.0
+    return {"mean": mean, "std": std, "n": len(xs), "values": xs}
+
+
+# metrics aggregated per cell: key -> (extractor(run_dict, timing_dict), label, unit)
+def _passed(r):
+    fs = r.get("fullsuite") or {}
+    return (fs.get("all") or {}).get("passed")
+
+
+# L3 IS THE PRIMARY METRIC and is listed first so every table and figure leads with it. `rtl_clean`
+# counts capsules that PASS and clear cycle-accurate L3; `l2_only` counts those the cheap gate passed
+# and L3 rejected. Under bwrap the materializer caps required_oracle_tiers at L2, so a bare `passed`
+# is a GATE number: measured across six gemmini runs it over-stated by exactly six (93/97 gate vs 87
+# RTL-clean), identically regardless of arm or seeding. `passed` is kept because the gate score is
+# still the loop's own convergence signal, but it is no longer what a reader sees first.
+METRICS = {
+    "rtl_clean": (lambda r, t: r.get("rtl_clean"), "capsules RTL-clean (L3)", "#"),
+    "l2_only": (lambda r, t: r.get("l2_only"), "L2-only (L3 rejected)", "#"),
+    "cost_usd": (lambda r, t: r.get("cost_usd"), "cost", "$"),
+    "wall_s": (lambda r, t: (r.get("wall_s") or 0) / 60.0, "active wall", "min"),
+    "n_rounds": (lambda r, t: r.get("n_rounds"), "rounds", "rounds"),
+    "passed": (lambda r, t: _passed(r), "capsules passed (L2 gate)", "#"),
+    "think_pct": (lambda r, t: t.get("think_pct"), "think+gen share", "%"),
+    "sims_skipped": (lambda r, t: (t.get("circt_gate") or {}).get("sims_skipped"), "CIRCT sims skipped", "#"),
+    "sims_run": (lambda r, t: (t.get("circt_gate") or {}).get("sims_run"), "sims actually run", "#"),
+}
+
+
+def collect(tag: str | None, *, inputs: AAR.ReportInputs) -> dict:
+    fa = inputs.reports_root / "full_suite_audit.json"
+    audit = json.loads(fa.read_text()) if fa.is_file() else {}
+    # cells[(arm, cond)] = list of per-run records
+    cells: dict[tuple, list] = {(a, c): [] for a in ARM_ORDER for c in COND_ORDER}
+    for sub in AAR.RUN_DIRS:
+        base = inputs.runs_root / sub  # out/runs/<target>/capsule-bench/<arm>
+        if not base.is_dir():
+            continue
+        for d in sorted(base.iterdir()):
+            if not d.is_dir():
+                continue
+            if tag and tag not in d.name:
+                continue
+            arm = AAR._arm_of(d)
+            if arm is None:
+                continue
+            r = AAR.load_run(d, audit)
+            if not r:
+                continue
+            cond = _condition_of(d)
+            r["_timing"] = _timing(d)
+            cells[(arm, cond)].append(r)
+    return cells
+
+
+def aggregate(cells: dict) -> dict:
+    out = {"arm_order": ARM_ORDER, "cond_order": COND_ORDER, "cells": {}, "metrics": list(METRICS)}
+    for (arm, cond), runs in cells.items():
+        valid = [r for r in runs if r.get("valid")]
+        cell = {"n_runs": len(runs), "n_valid": len(valid), "run_ids": [r["run_id"] for r in runs], "metrics": {}}
+        for mk, (fn, label, unit) in METRICS.items():
+            cell["metrics"][mk] = {**_stat([fn(r, r.get("_timing", {})) for r in valid]), "label": label, "unit": unit}
+        out["cells"][f"{arm}|{cond}"] = cell
+    return out
+
+
+def plot(agg: dict, outdir: Path) -> list[Path]:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        print(f"[plot] matplotlib unavailable ({e}); JSON written, skipping figs.")
+        return []
+    outdir.mkdir(parents=True, exist_ok=True)
+    written = []
+    # One entry per rung in ARM_ORDER, and a fallback rather than a KeyError: a batch that ran the C++
+    # infra rung crashed here AFTER writing ab_results.json, so the numbers existed and the figures did
+    # not. `.get` keeps a future arm from doing the same before someone picks it a colour.
+    colors = {"baseline": "#7a7a7a", "cpp_merlininfra": "#b08a3a", "merlin": "#4878a8", "merlin_rtlchecks": "#3a8a5a"}
+    # one grouped bar chart per metric: x = condition, grouped bars = arm, error bar = std
+    for mk in ("rtl_clean", "l2_only", "cost_usd", "wall_s", "n_rounds", "sims_skipped"):
+        fig, ax = plt.subplots(figsize=(7, 4.2))
+        # Bar geometry follows ARM_ORDER instead of assuming three arms. The old `0.25` with an
+        # `(i - 1)` offset centred a 3-arm group; a 4th arm overlapped its neighbour and the whole
+        # group sat off-centre over its tick.
+        n_arms = max(1, len(ARM_ORDER))
+        width = 0.8 / n_arms
+        xs = range(len(COND_ORDER))
+        any_data = False
+        for i, arm in enumerate(ARM_ORDER):
+            means, errs = [], []
+            for cond in COND_ORDER:
+                m = agg["cells"][f"{arm}|{cond}"]["metrics"][mk]
+                means.append(m["mean"] if m["mean"] is not None else 0)
+                errs.append(m["std"] if (m["std"] is not None and m["n"] > 1) else 0)
+                any_data = any_data or (m["mean"] is not None)
+            offs = [x + (i - (n_arms - 1) / 2) * width for x in xs]
+            ax.bar(
+                offs,
+                means,
+                width,
+                yerr=errs,
+                capsize=4,
+                label=ARM_LABEL.get(arm, arm),
+                color=colors.get(arm, "#999999"),
+                edgecolor="white",
+            )
+        unit = next(v for k, v in [(mk, METRICS[mk][2])])
+        label = METRICS[mk][1]
+        ax.set_xticks(list(xs))
+        ax.set_xticklabels(COND_ORDER)
+        ax.set_ylabel(f"{label} ({unit})")
+        ax.set_title(f"{label} by arm × condition  (mean ± std, error bars)")
+        ax.legend(fontsize=8, frameon=False)
+        ax.spines[["top", "right"]].set_visible(False)
+        fig.tight_layout()
+        p = outdir / f"fig_ab_{mk}.png"
+        if any_data:
+            fig.savefig(p, dpi=130)
+            written.append(p)
+        plt.close(fig)
+    return written
+
+
+def main(argv=None, *, defaults: AAR.ReportInputs | None = None):
+    ap = argparse.ArgumentParser()
+    AAR.add_input_arguments(ap)
+    ap.add_argument("--tag", default=None, help="filter run-ids by tag substring (e.g. abc5); default=all")
+    ap.add_argument(
+        "--out-dir",
+        default=None,
+        help="write ab_results.json + figs/ here instead of the target's report dir. A "
+        "wiring PROBE (e.g. readiness_check section D) must pass a scratch dir: this "
+        "aggregate is a real result, and probing under an unrelated descriptor would "
+        "otherwise overwrite it with an empty skeleton.",
+    )
+    a = ap.parse_args(argv)
+    inputs = AAR.resolve_inputs(ap, a, defaults)
+    cells = collect(a.tag, inputs=inputs)
+    agg = aggregate(cells)
+    agg["tag_filter"] = a.tag
+    out_dir = Path(a.out_dir) if a.out_dir else inputs.reports_root
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p = out_dir / "ab_results.json"
+    p.write_text(json.dumps(agg, indent=2))
+    print(f"wrote {p}")
+    figs = plot(agg, out_dir / "figs")
+    for f in figs:
+        print(f"  fig: {f}")
+    # console summary
+    for arm in ARM_ORDER:
+        for cond in COND_ORDER:
+            c = agg["cells"][f"{arm}|{cond}"]
+            if not c["n_runs"]:
+                continue
+            cm = c["metrics"]
+
+            def fmt(mk):
+                m = cm[mk]
+                if m["mean"] is None:
+                    return "—"
+                s = f"{m['mean']:.1f}" + (f"±{m['std']:.1f}" if m["n"] > 1 else "")
+                return s
+
+            print(
+                f"  {arm:16s} [{cond:10s}] n={c['n_valid']}/{c['n_runs']}  "
+                f"${fmt('cost_usd')}  {fmt('wall_s')}min  {fmt('n_rounds')}rd  "
+                f"{fmt('passed')}/25  skips={fmt('sims_skipped')}"
+            )
+    n_total = sum(c["n_valid"] for c in agg["cells"].values())
+    if n_total < 6:
+        print(
+            f"\n  ⚠ only {n_total} valid runs across all cells — N<2 per cell means std is undefined; "
+            f"run launch_ab_batch with --repeats>=3 before quoting magnitudes."
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,42 @@
+# Tracked files that name a personal directory and CANNOT be generalised (2026-09-16).
+# Known debt, not an allowlist: this list may only SHRINK (check_ratchets_shrink.py holds it).
+# Consumed by: check_no_local_paths.py
+#
+# Three legitimate kinds live here, and nothing else should:
+#
+#  1. MEASUREMENT PROVENANCE -- a record of where bytes were actually read from. Generalising it
+#     would make it false: a frozen `python_executable` sits beside its sha256, a hardware pin names
+#     the build a certificate was sealed against, an ABI record names the FPGA build the header came
+#     from. The path is the evidence.
+#  2. POINT-IN-TIME REPORTS under out/artifacts/ -- findings written on a day, about a machine, by
+#     the convention that reports are not docs. Editing one rewrites history rather than fixing code.
+#  3. THE GUARDRAIL ITSELF -- `voyager_h2h/AGENT.md` says never to read another researcher's tree.
+#     The rule has to name the tree to be a rule.
+#
+# Everything else was fixed rather than listed: resolved from .env (merlin.common.paths.env /
+# ext_path), resolved as a sibling of the repo, or moved under $TMPDIR.
+
+# -- 1. measurement provenance ---------------------------------------------------------------
+build_tools/scripts/make_torchao_affine_reference.py
+merlin/benchmarks/rvv_paper/study_v2.yaml
+merlin/contract/hardware_pins.yaml
+merlin/contract/perf_reference_targets.yaml
+examples/gemmini_universal/target/descriptor.yaml
+merlin/experiments/cpu_host_compiler_v0/experiment.yaml
+examples/gemmini_universal/target/contracts/abi/abi.yaml
+examples/gemmini_universal/target/contracts/target_contract.yaml
+merlin/tests/data/torchao_affine/PROVENANCE.json
+
+# -- 2. point-in-time reports ------------------------------------------------------------------
+out/artifacts/capsule-bench/gemmini/experiment_preflight_report.md
+out/artifacts/capsule-bench/gemmini/generalization_arr.json
+out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/README.md
+out/artifacts/perf-bench/gemmini/CLOSING_THE_GAP_CURRENT_20260908.md
+out/artifacts/perf-bench/gemmini/PHASE2_CURRENT_CHECKPOINT_20260908.md
+out/artifacts/perf-bench/gemmini/PHASE2_EXPERIMENT_AND_TOOLING_HANDOFF_20260908.md
+out/artifacts/perf-bench/gemmini/phase2_codex2refreeze_20260908.spec.json
+out/artifacts/perf-bench/gemmini/q536_native_loopconv_hybrid_receipt.json
+out/artifacts/targets/radiance/hand_v0/inputs/derived_facts.yaml
+
+# -- 3. the guardrail itself -------------------------------------------------------------------
+merlin/experiments/voyager_h2h/AGENT.md

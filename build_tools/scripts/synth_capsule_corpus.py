@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""Synthesize a target's capsule-profile entries from its DERIVED conformance requirement.
+
+The corpus pipeline derives every per-capsule field already; what was hand-written was WHICH capsules
+exist -- roughly 180 entries across six profiles, and the one input a new target's owner cannot
+reasonably be asked to produce. This closes the loop: requirement in, entries out, in the shape
+``generate_corpus.py`` already consumes.
+
+Generation creates a versioned artifact, never overwrites the experiment's declared
+``synth_profile`` reference. Review the result before selecting it as a new experiment input.
+``--check`` compares fresh derivation with the declared reference without modifying either.
+Existing references may include reviewed manual policy overrides; drift is not permission
+to discard them.
+
+Modes, mirroring the sibling gates in this directory:
+
+  --target NAME   synthesize one target (repeatable); default: every target with a conformance spec
+  --write         create a versioned synthesis artifact under out/artifacts/verification/<target>/
+  --check         re-derive and diff against the tracked file; non-zero on drift
+  --json          machine-readable
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve()
+# Source-checkout bootstrap for core; optional Phase 0 is an installed distribution.
+for _p in (_HERE.parents[2] / "src",):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+from merlin_experiments.phase0.synthesis_policy import apply_model_gates  # noqa: E402
+
+from merlin.targetgen.corpora import conformance_reference, conformance_reference_dir  # noqa: E402
+from merlin.targetgen.corpus_synth import SynthesisError, synthesize  # noqa: E402
+
+_HEADER = (
+    "# DERIVED — regenerate with:\n"
+    "#   build_tools/scripts/synth_capsule_corpus.py --target {target} --write\n"
+    "# Do not hand-edit. These entries exist because the target's own conformance requirement asks for\n"
+    "# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a\n"
+    "# claim the requirement does not make, and the next regeneration discards it.\n"
+)
+
+
+def _targets(explicit: list[str]) -> list[str]:
+    if explicit:
+        return explicit
+    root = conformance_reference_dir()
+    return sorted(item.target for item in all_declarations() if (root / f"{item.target}.yaml").is_file())
+
+
+def _workload_spec(target: str) -> dict:
+    """The declared workload spec for ``target``, or an empty one.
+
+    Absent is not an error: a target that declares no preference simply gets no tie-break, and the
+    requirement alone still determines the corpus.
+    """
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    desc = for_target(target).descriptor
+    return dict(getattr(load_target_experiment(desc), "workload_spec", None) or {})
+
+
+def _gradeable_candidates(entries: list[dict]) -> list[dict]:
+    """Entries a GOLDEN ENGINE grades, i.e. the op-level ones.
+
+    A model capsule carries no `op`: its program is the derived micro model and its verdict comes from
+    the whole-model path, not from an engine selected by dtype. Asking the golden question of it raises
+    on the missing key, which reads as "gradeability could not be decided" for the whole target and
+    blocks a synthesis that is fine.
+    """
+    return [e for e in entries if e.get("op")]
+
+
+def _ungradeable(entries: list[dict], target: str) -> list[dict]:
+    """Entries whose (op, dtype) pair no golden engine can grade -- reported, never written.
+
+    ⚠️ AN OP BEING MATERIALIZABLE IS NOT THE SAME AS BEING GRADEABLE. `corpus_synth` chooses the
+    cheapest op that exercises a family and can be WRITTEN, which is the right question for a builder
+    and the wrong one for a golden: the engine is picked by the entry's DTYPE, and each engine covers a
+    different op set. Two measured cases, both of which crashed inside the writer rather than being
+    reported here:
+
+      * radiance's `attention` cells resolve to `attention_mx`, whose golden exists only in the
+        block-scaled engine, while the cells are fp16/bf16/f32 -- so the SIMT engine raised
+        "no SIMT golden for op 'attention_mx'".
+      * a body-only op at a non-float dtype needs a `quant_scheme` (a weight-only capture emits a float
+        matmul, which cannot grade an integer datapath), and without one the generator refuses it.
+
+    The check lives here rather than in `corpus_synth` because which engine grades which op is the
+    GENERATOR's knowledge; importing it into the synthesizer would make a pure module depend on the
+    thing that consumes it. Reported as a cell that could not be expressed, with the reason, so the
+    requirement shows an honest hole instead of a corpus that fails to build.
+    """
+    from merlin_experiments.phase0 import writer
+
+    out = []
+    binding = _binding(target) if entries else None
+    for entry in entries:
+        regime, _ = writer._entry_regime(entry, binding)
+        source = entry.get("source")
+        why = None
+        if source == "pytorch" and regime != "simt" and not entry.get("quant_scheme"):
+            why = (
+                f"a pytorch-sourced capsule needs a float dtype or a declared quant_scheme; this "
+                f"cell is {entry.get('operand_dtype')!r} (regime {regime!r})"
+            )
+        elif source is None and regime == "simt" and entry["op"] in _MX_ONLY_GOLDEN:
+            why = (
+                f"{entry['op']!r} has a golden only in the block-scaled engine, and this cell is "
+                f"{entry.get('operand_dtype')!r} (regime {regime!r})"
+            )
+        if why:
+            out.append(
+                {
+                    "name": entry["name"],
+                    "op": entry["op"],
+                    "dtype": entry.get("operand_dtype"),
+                    "regime": regime,
+                    "reason": why,
+                }
+            )
+    return out
+
+
+#: Ops whose golden exists ONLY in the block-scaled engine. Read from the engine's own dispatch rather
+#: than guessed: `generate_corpus._simt_golden` and `_float_golden` raise by name for these, and the
+#: block-scaled path is the only one that implements them.
+#:
+#: `gemv_batched` LEFT this set when the integer, specir and SIMT engines each grew a batched branch --
+#: a batched contraction is B independent ones and every engine already knew how to do one. While it
+#: was here, the seven batched regions radiance's own requirement asks for were dropped by this filter
+#: and, because the drop was recorded into a key the profile writer never emitted, they vanished from
+#: the tracked artifact entirely: required, counted in `n_entries`, and present nowhere.
+_MX_ONLY_GOLDEN = frozenset({"attention_mx"})
+
+
+def _binding(target: str):
+    from merlin_experiments.phase0 import profiles
+
+    from merlin.targetgen import corpus_spec as CSPEC
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    declaration = for_target(target)
+    prof = profiles.load_profile(declaration.profile, include_holdouts=False, **declaration.profile_inputs())
+    te = load_target_experiment(declaration.descriptor)
+    return CSPEC.derive_binding(te, prof.get("datapath") or {})
+
+
+def synth_for(target: str) -> dict:
+    import yaml
+
+    declaration = for_target(target)
+    spec_path = conformance_reference(declaration.target)
+    if not spec_path.is_file():
+        return {
+            "target": target,
+            "status": "no_conformance_spec",
+            "detail": f"no derived requirement at {spec_path}; write one with "
+            f"check_conformance_coverage.py --target {target} --write",
+        }
+    doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
+    try:
+        out = synthesize(doc, workload_spec=_workload_spec(target))
+    except SynthesisError as exc:
+        return {"target": target, "status": "unsynthesizable", "detail": str(exc)}
+
+    try:
+        bad = _ungradeable(_gradeable_candidates(list(out.get("capsules") or ())), target)
+    except Exception as exc:  # noqa: BLE001 -- cannot check is not "all fine"
+        return {
+            "target": target,
+            "status": "ungradeable_unchecked",
+            "detail": f"could not decide gradeability: {type(exc).__name__}: {exc}",
+            **out,
+        }
+    if bad:
+        keep = {b["name"] for b in bad}
+        out["capsules"] = [e for e in out["capsules"] if e["name"] not in keep]
+        out["ungradeable"] = bad
+        # INTO THE PROVENANCE, which is the block `_render` actually writes. Recording the drop only on
+        # the returned dict put it somewhere no tracked file carries: seven radiance entries were
+        # required by the spec, counted by `n_entries`, removed here, and then absent from the profile
+        # with nothing anywhere saying so. A hole this corpus reports by name everywhere else was the
+        # one thing this path made invisible.
+        prov = dict(out.get("provenance") or {})
+        prov["ungradeable_entries"] = bad
+        prov["ungradeable_note"] = (
+            "entries the requirement asked for whose (op, dtype) no golden engine can grade. They are "
+            "NOT in `capsules` below; adding a golden branch for the op in that dtype's engine is what "
+            "closes them. `n_entries` counts what synthesis produced, `n_written` what survived this "
+            "filter -- a difference between the two with an empty list here would be a silent drop"
+        )
+        prov["n_written"] = len(out["capsules"])
+        out["provenance"] = prov
+    try:
+        out = apply_model_gates(out, declaration.recipe)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return {"target": target, "status": "invalid_synthesis_policy", "detail": str(exc)}
+    return {"target": target, "status": "ok", **out}
+
+
+def _render(target: str, res: dict) -> str:
+    import yaml
+
+    return _HEADER.format(target=target) + yaml.safe_dump(
+        {"provenance": res["provenance"], "capsules": res["capsules"]}, sort_keys=False, width=100
+    )
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--target", action="append", default=[])
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--write", action="store_true")
+    mode.add_argument("--check", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+
+    targets = _targets(a.target)
+    if not targets:
+        print(
+            "no --target given and no tracked conformance spec found; write one with "
+            "check_conformance_coverage.py --target NAME --write",
+            file=sys.stderr,
+        )
+        return 2
+
+    results = [synth_for(t) for t in targets]
+
+    rc = 0
+    for res in results:
+        target = res["target"]
+        if res["status"] != "ok":
+            if not a.json:
+                print(f"== {target}: {res['status']} — {res.get('detail', '')}")
+            # An unsynthesizable requirement is a FAILURE under --check: it means the requirement asks
+            # for something no capsule can express, which is the state this whole loop exists to make
+            # impossible to ship silently.
+            rc = rc or (
+                1
+                if res["status"] == "invalid_synthesis_policy" or (a.check and res["status"] == "unsynthesizable")
+                else 0
+            )
+            continue
+        declaration = for_target(target)
+        reference = declaration.synth_profile
+        if a.check and reference is None:
+            print(f"== {target}: no synth_profile reference declared by its experiment", file=sys.stderr)
+            rc = 1
+            continue
+        text = _render(target, res)
+        if a.write:
+            from merlin.common.artifacts import new_product
+
+            product = new_product(
+                "verification",
+                version=1,
+                target=declaration.target,
+                update_latest=False,
+                sources=[str(declaration.definition), str(declaration.recipe)],
+                notes="Phase 0 synthesized capsule entries; review before selecting as an experiment input",
+            )
+            out_path = product.add_artifact("synth.yaml")
+            out_path.write_text(text, encoding="utf-8")
+            product.write_manifest()
+            res["output"] = str(out_path)
+            if not a.json:
+                print(
+                    f"wrote {out_path} — {len(res['capsules'])} entry/entries from "
+                    f"{res['provenance']['n_required_cells']} required cell(s)"
+                )
+        elif a.check:
+            have = reference.read_text(encoding="utf-8") if reference.is_file() else ""
+            if have != text:
+                print(
+                    f"== {target}: DRIFT — {reference} differs from a fresh derivation; "
+                    "use --write to create a review artifact (the reference will not be overwritten)",
+                    file=sys.stderr,
+                )
+                rc = 1
+            elif not a.json:
+                print(f"== {target}: ok ({len(res['capsules'])} entry/entries)")
+        elif not a.json:
+            print(
+                f"== {target}: {len(res['capsules'])} entry/entries from "
+                f"{res['provenance']['n_required_cells']} required cell(s)"
+            )
+            for e in res["capsules"]:
+                # A whole-model entry names neither: its program is the model and its dtype is the
+                # compile format the roster axis derived. Printing "-" says that, where indexing raised.
+                print(f"     {e['name']:38s} op={str(e.get('op') or '-'):12s} dtype={e.get('operand_dtype') or '-'}")
+    if a.json:
+        print(json.dumps(results, indent=2))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

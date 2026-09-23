@@ -1,0 +1,75 @@
+abstraction_features:
+- simt
+- cvfpu
+- tensor_core
+- microscaling
+- resident_packed_tensor
+- accumulator_commit
+- command_buffer
+- metrics
+generator: radiance-derive-facts-v2
+hardware_provenance:
+  all_pins_ok: false
+  hardware_pins:
+    radiance_kernels:
+      drift:
+      - '45 uncommitted change(s): the declared revision does not describe what would
+        be read'
+      forbidden_present: []
+      missing_paths: []
+      observed:
+        branch: main
+        commit: 56aad6e1620c452bd131c948f72352dab0754d6e
+        dirty_files: 45
+        path: /scratch2/agustin/radiance-kernels
+        present: true
+        remote: https://github.com/ucb-bar/radiance-kernels.git
+      ok: false
+      pin: radiance_kernels
+    radiance_muon_rtl:
+      drift:
+      - '18 uncommitted change(s): the declared revision does not describe what would
+        be read'
+      forbidden_present: []
+      missing_paths: []
+      observed:
+        branch: graphics
+        commit: 6a9b4cd95081100dc932e422cc52777bc9a98b2d
+        dirty_files: 18
+        path: /scratch2/agustin/chipyard/generators/radiance
+        present: true
+        remote: https://github.com/ucb-bar/chipyard.git
+      ok: false
+      pin: radiance_muon_rtl
+  merlin:
+    commit: 087ff1f74453be54800849550fd2f90d066127ff
+    dirty_files: 33
+  source_digest: 2d13f75b8e0971a35bfdec002bfa60965da71648745354f8be36abcac045aefd
+  sources:
+  - /scratch2/agustin/chipyard/generators/radiance/chipyard/RadianceConfigs.scala
+  - /scratch2/agustin/radiance-kernels/lib/include/VX_config.h
+  - /scratch2/agustin/radiance-kernels/lib/include/mu_intrinsics.h
+lanes_per_warp: 16
+provenance:
+  features:
+    accumulator_commit: compute_units[].accumulate declares an accumulator dtype
+    command_buffer: 'runtime.default_backend: simulator'
+    metrics: 'runtime_promises: metrics'
+    resident_packed_tensor: 'memory_model.resident: true'
+  lanes_per_warp: capabilities.simt.lanes_per_warp from the committed manifest
+  resident_storage_bytes: TapeoutSmemConfig.size in RadianceConfigs.scala, reached
+    from class RadianceMuonConfig -> WithRadianceCluster(smemConfig=...); corroborated
+    by MU_SMEM_SIZE_BYTES in mu_intrinsics.h (header witness absent)
+  smem_aperture_bytes: "1 << SMEM_LOG_SIZE from VX_config.h \u2014 the ADDRESS WINDOW,\
+    \ not the capacity (the same header derives IO_BASE_ADDR from it); never size\
+    \ a tile against this"
+  smem_banks: TapeoutSmemConfig.numBanks
+  smem_depth_rows: size / row_bytes / banks (the generator's own division)
+  smem_row_bytes: TapeoutSmemConfig.numWords * wordSize
+  warps_per_core: capabilities.simt.warps_per_core from the committed manifest
+resident_storage_bytes: 131072
+smem_aperture_bytes: 524288
+smem_banks: 4
+smem_depth_rows: 512
+smem_row_bytes: 64
+warps_per_core: 8

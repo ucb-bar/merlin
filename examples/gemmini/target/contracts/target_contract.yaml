@@ -1,0 +1,327 @@
+# Gemmini target contract (prototype).
+#
+# Gemmini (Berkeley systolic-array accelerator, chipyard generators/gemmini) modeled at
+# the Merlin compiler level as a tensor-resident target: a weight-stationary matrix kept
+# resident in the array/scratchpad and reused across the region, with an i32 accumulator
+# committed via mvout. This is a PROTOTYPE contract for the C0 certification path
+# (i8 x i8 -> i32, matmul only); it is not yet RTL-certified.
+#
+# Mesh geometry, scratchpad/accumulator capacities and datapath dtypes are NOT declared here: they are
+# CIRCT-extracted FACTS (merlin.targetgen.rtl — arrays/memories/datapaths) that consumers read from the
+# fact bundle directly. This contract carries only intent + the ABI encoding surface facts cannot ground.
+name: gemmini
+version: 0.1
+family: tensor_resident
+# Retained reference metadata does not ship an executable backend. Select the OOT
+# gemmini-mlir support provider explicitly; its contract owns plugin.backend.
+# Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
+# ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
+# stock LLVM — no gemmini-forked toolchain.
+endpoint_kind: inline_asm_insn
+# The Scala source mixes instruction functs with CONFIG rs1 subfields and CISC aliases. These
+# extraction anchors describe this target's ISA-source layout; core never assumes their names.
+# Decoder-derived legal codes remain authoritative whenever the elaborated HW dialect is available.
+rtl_extraction:
+  # Authored source/role anchors for the legacy FIRRTL reader; core only implements the parser.
+  firrtl_role_probe:
+    array: {name: mesh, parent_module_contains: Mesh, child_module_prefix: Tile}
+    memory: {name: scratchpad, declaration_contains: "smem mem : UInt<", source_contains: Scratchpad.scala, datapath_name: input}
+    interfaces:
+      - {module: ReservationStation, name: rocc_cmd, evidence: "module ReservationStation (RoCC decode/dispatch)"}
+      - {module: FrontendTLB, name: dma_tlb, evidence: "module FrontendTLB"}
+  scala_funct_block:
+    start_comment: "// funct values"
+    stop_declaration: CONFIG_EX
+  accumulator_memory:
+    module: AccumulatorMem
+    memory_name: accumulator
+    address_port: io_write_bits_addr
+    data_prefix: io_write_bits_data_
+    data_suffix: _0
+    mask_prefix: io_write_bits_mask_
+    firrtl_data_field: io.write.bits.data
+  boolean_feature_gate:
+    feature: max_pool
+    module: StoreController
+    node: pooling_is_enabled
+    dynamic_operand_contains: pool
+    config_field: has_max_pool
+runner:
+  suite: gemmini-capsule-bench
+  dtype: i8xi8_i32
+  # A TIER IS A FIDELITY, NOT A SIMULATOR. L3 is "the elaborated design ran it"; vcs, gsim and
+  # verilator all answer at that fidelity and which one does is an availability/cost decision, resolved
+  # by merlin.targetgen.rtl_engine_policy (ENGINE_PRIORITY = vcs, gsim, verilator) and recorded per run.
+  # This used to read {L3: verilator, L4: vcs, L5: firesim}, which ranked VCS *above* Verilator as
+  # though it were a higher fidelity -- it is the same elaborated RTL, only better licensed for signoff
+  # -- and left GSIM unnameable, so a GSIM cert had to be forced past the contract by
+  # MERLIN_REQUIRED_RTL_ENGINE. FireSim is a genuinely different rung (FPGA-emulated), so it keeps one.
+  tier_sim: {L2: spike, L3: elaborated_rtl, L4: firesim}
+  # The DECLARED bespoke-sim engine (chipyard elaborates the spike L2 / verilator L3 tiers). Read by
+  # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
+  # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
+  sim_via: chipyard
+# The ABI encoding surface RTL discovery cannot ground (opcode/funct3/legal-funct/DIM come from the
+# fact bundle; THESE do not). Declared once from the Gemmini ISA doc (human-reviewed) and consumed as
+# the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
+# hand-coded constants in GemminiToLLVM.cpp / gemmini_codegen_mlir.py / rocc_decode.py.
+encoding:
+  addr_len: 32             # RoCC accumulator/scratchpad address field width (bits). The lone irreducible
+                           # anchor; header-cross-checkable (gemmini_params.h `#define ADDR_LEN 32`).
+  rocc_custom_slot: 3      # which RISC-V custom slot (0..3) this accelerator's RoCC is wired to (SoC
+                           # OpcodeSet.custom3). The major opcode (0x7b) is the RISC-V standard encoding
+                           # of THIS slot — derived by circt_introspect, not baked. Reviewed ABI fact the
+                           # accelerator's own decoder cannot ground (it sees only the funct7 fan-out).
+  # readout_bits are NOT declared here: they are DERIVED from addr_len + the 3-flag-bit accumulator-address
+  # convention + float32(1.0) by target_experiment.derived_readout_bits (grounded in gemmini.h's own
+  # `1<<(ADDR_LEN-1)` / `3<<(ADDR_LEN-2)` / `full_C<<(ADDR_LEN-3)` address arithmetic). Byte-identical to
+  # the former {f1,c_acc,acc_i8,acc_accum,full_c_bit} hex; cross-checked by test_encoding_manifest.
+  semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
+    0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared).
+    1: MVIN2               # LOAD2_CMD: load-state 1, used for an independent second operand stream.
+    2: MVIN                # HEADER-DERIVED: each name == gemmini.h `#define k_<NAME> <code>` (cross-checked
+    3: MVOUT               # by circt_introspect.crosscheck_semantic_class_names) — this block is the
+    4: COMPUTE_PRELOADED   # human-reviewed cache of those header names, kept for the codes the compiler
+    5: COMPUTE_ACCUMULATE  # actually emits. Only funct 15 shortens the header's LOOP_CONV_WS to the
+    6: PRELOAD             # compiler alias LOOP_CONV (the _WS dataflow suffix is implicit); all others exact.
+    7: FLUSH
+    8: LOOP_WS
+    15: LOOP_CONV
+  # config_subtype: CONFIG (funct 0) refined by rs1 & 0x3. NAMES are HEADER-DERIVED (gemmini.h
+  # `#define CONFIG_EX 0` / `CONFIG_LD 1` / `CONFIG_ST 2`); the CODES are the rs1[1:0] sub-field the RTL
+  # decoder fans out on (comb.icmp-eq over a width-2 comb.extract — ExecuteController rs1[1:0]==0 -> EX,
+  # StoreController rs1[1:0]==2 -> ST). Cross-checked by mlc_bridge.crosscheck_config_subtype. Kept here as
+  # the reviewed cache of the 3 subtypes the compiler emits (the 4th decoded value, 3=CONFIG_BERT, is unused).
+  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}
+  # Phase-0 baseline obligation, in this implementation's issue order. This is target-authored
+  # compiler input, not a property Merlin may infer from RoCC transport. Other declared classes
+  # (accumulate and hardware-loop alternatives) require separate operation-specific capsules before
+  # they can be claimed as covered; adding them to every matmul would falsely reject valid kernels.
+  corpus_issue_order: [FLUSH, CONFIG_EX, CONFIG_LD, MVIN, CONFIG_ST, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+  # WHICH CLASSES A HARDWARE LOOP DOES THE WORK OF. A capsule declares the instruction classes its
+  # operation needs; a design with a loop FSM performs several of them with ONE instruction, so a
+  # program that uses the loop is not missing them. Without this a convolution lowered the way this
+  # hardware prefers is reported as missing four classes, and `trace_all_pass` (which gates the run's
+  # formal verdict) is false for a correct program -- while the host-compute audit fails the
+  # fine-grained lowering for gathering the patches on the host. No lowering could satisfy both.
+  # EVIDENCE, from this target's own ISA header: `gemmini_loop_conv_ws` (gemmini.h) issues functs
+  # 16-21 then 15, carrying the DRAM pointers for input, weights, bias and output plus the loop
+  # bounds, so the movement and the multiply-accumulate are the loop's own work; the vendor's
+  # `tiled_conv_auto` emits exactly this and no per-element host gather. `gemmini_loop_ws` (funct 8)
+  # is the same statement for a matmul. Codes are the RTL-derived ones named above.
+  class_subsumes:
+    LOOP_CONV: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+    LOOP_WS: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+status: prototype
+features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+# No `ops`/`types` are declared: the TARGET DIALECT is a design decision the agent OWNS (it writes its
+# own out-of-tree MLIR backend, interface -> target dialect), verified against the CIRCT oracle. Nothing
+# here pre-defines that vocabulary.
+runtime:
+  backends: [simulator, spike_gemmini, verilator]
+  # Default runtime backend the lowering pipeline stamps onto the runtime module when a caller passes
+  # none (DERIVED here, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: baremetal
+  # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
+  # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
+  # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen
+  # stay coherent: it is the pure chipyard GemminiConfigs.defaultConfig Gemmini on a Rocket host — the
+  # certified 16x16 int8 mesh above (byte-identical Gemmini core to the prior gemmini+OPU Shuttle config;
+  # dropping the OPU/Shuttle changes only host cycle counts, not the mesh or the ISA facts, and makes the
+  # Verilator path coherent with the FireSim path). Change here + re-derive facts + re-cert to move.
+  rtl_sim_config: GemminiRocketConfig
+# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units). The C0 systolic
+# mesh is int8 (i8 x i8 -> i32). The input/accumulator dtypes are themselves CIRCT-extracted facts
+# (datapaths), so the (in,weight)->acc `accumulate` matrix is NOT re-declared here. `requant` is an
+# OPAQUE reference to Gemmini's own accumulator-scale lowering (rounding-shift / FP-scale-multiply) —
+# Merlin does not model that arithmetic here.
+compute_units:
+  - name: systolic_mesh
+    kind: systolic
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: per_channel
+    requant: {ref: gemmini.accumulator_scale}
+    # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
+    # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
+    # mvin/mvout DMA (movement), and max pooling fused on the store path (reduction).
+    #
+    # ⚠️ WHAT IS ENCODABLE IS NOT WHAT IS BUILT, and this is the one place that distinction bites.
+    # The shipped ISA header defines five activation modes -- `NO_ACTIVATION 0, RELU 1, LAYERNORM 2,
+    # IGELU 3, SOFTMAX 4`. Only RELU exists in THIS design. `AccumulatorScale.scala` gates the
+    # LAYERNORM / IGELU / SOFTMAX arms on `has_nonlinear_activations && has_normalizations`;
+    # `GemminiConfigs.scala` declares `has_normalizations: Boolean = false`, and the `defaultConfig`
+    # this build elaborates never sets it. So the encodings are real and the hardware is not, and
+    # declaring `normalization` or `softmax` here on the strength of the header would over-declare --
+    # which is precisely how a corpus acquires capsules the RTL cannot execute. They stay out until a
+    # build that sets `has_normalizations = true` is pinned, at which point this is a one-line change.
+    # No attention hardware in any configuration.
+    semantic_capabilities:
+      # rank 4 is the im2col convolution path, not an assumption: the RTL funct table carries a
+      # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
+      # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
+      # ineligible and silently left them out of the ARR denominator.
+      # rank 3 is the BATCHED contraction path. Unlike rank 4 this is not a distinct hardware
+      # sequence: `linalg_lower` lowers a single batched matmul (batch,m,k)@(batch,k,n) by looping
+      # the batch and calling the same (M,N,K) kernel per independent slice, so the region IS
+      # acceleratable and the evidence class is LOWERING, not RTL. Omitting it made every batched
+      # matmul ineligible before it reached the device rewrite -- the machinery existed and the
+      # contract forbade its use. Three other targets already ship batched capsules (atlas
+      # AF12, mx_gemmini MF5, radiance RP10/R11); gemmini shipped none because of this line.
+      # Declaring a narrower rank set than the target can execute is the same denominator loss the
+      # mx_gemmini rank bug was (see merlin/python/merlin/targetgen/eligibility.py).
+      - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
+      # Epilogue-only: per-channel scaling + requant apply on the way OUT of the accumulator, so an
+      # elementwise map exists ONLY fused behind a contraction. Standalone would be a false_fallback.
+      - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}
+      - {family: movement, dtypes: [int8]}
+      # Max pooling, fused on the readout/store path -- NOT a standalone reduction unit, which is why
+      # it composes with the two families that can produce the values it pools. Derived, and derived
+      # from the ELABORATED design rather than from the ISA: the fact bundle records
+      # `facts.source.config = GemminiRocketConfig`, that config elaborates this generator's
+      # `defaultConfig`, and that config sets `has_max_pool = true` (Configs.scala). The ISA side
+      # agrees -- `gemmini_extended2_config_st(..., pool_stride, pool_size, pool_out_dim, ...)` and
+      # `gemmini_loop_conv_ws(..., pool_size, pool_stride, pool_padding, ..., no_pool, ...)` -- so
+      # both rungs evidence it. Undeclared until now, which excluded every pooling region in every
+      # captured model from the requirement as "the hardware declares no capability for it".
+      - {family: reduction, dtypes: [int8], composed_with: [contraction, movement]}
+# capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
+# scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
+# bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
+# against the oracle. (Kept as a present key for schema compliance.)
+capabilities: {}
+# Which substrate may produce which number. Declared because the alternative is a consumer picking by
+# field name, and two substrates here both emit `cycles` while only one is authoritative.
+measurement:
+  cycles_from: spike          # the functional-cycles reference for this path
+  wall_from: k1               # real silicon: the only wall-time authority
+  cycles_tier: functional
+  wall_tier: silicon
+  speed_of_light: mesh_macs_per_cycle
+  citable_tier: rtl           # below this a number is not a hardware claim
+  notes:
+    - "k1 also carries a `cycles` field, but it is an rdtime-derived ESTIMATE, not authoritative.
+       Picking cycles by field name rather than by authority gets that estimate."
+memory_model:
+  resident: true
+  accumulators: true
+  # THE WIDEST PAYLOAD ONE MEMORY-MOVEMENT INSTRUCTION MAY CARRY, in bytes. An ABI bound, DECLARED
+  # here rather than extracted, for the same reason `encoding.addr_len` is: the RTL-facts schema has
+  # no field for it, and the value is what this device's own generated parameter header commits to.
+  # Consumers turn it into a block length the only way that is correct -- floored against the array
+  # tile edge and the input datapath's element width (`trace_check.movement_bound_for`) -- so nothing
+  # downstream needs a second constant, and the byte budget rather than the block count is recorded
+  # because the header derives the latter from the former (`MAX_BLOCK_LEN (MAX_BYTES/(DIM*1))`) at a
+  # different element width for each path. OMIT THE BLOCK ENTIRELY on a target whose transfer payload
+  # is unknown: a consumer that reads no bound reports nothing, where a guessed one would invent an
+  # optimization the hardware cannot do or hide one it can.
+  dma:
+    # header-cross-checkable (gemmini_params.h `#define MAX_BYTES 64`), from the header pinned by
+    # content as `include/gemmini_params.h` under the `gemmini_isa_headers` pin (hardware_pins.yaml).
+    max_transfer_bytes: 64
+  # How the hardware resolves a producer/consumer hazard. Declared rather than extracted because the
+  # RTL evidences it without deciding it: a delay instruction is strong evidence for `explicit`, but
+  # its ABSENCE is not evidence for `interlocked` -- a machine may interlock and still expose a delay.
+  # It inverts the performance lever (reorder to overlap here; remove over-conservative separation
+  # there) and it decides which gate is able to fail at all, so it is never defaulted.
+  hazard_resolution: interlocked
+  hazard_evidence:
+    kind: target_rtl
+    sources:
+      - "elaborated design hierarchy: rockettile.gemmini.reservation_station (io_busy)"
+    note: >-
+      The accelerator tracks its own command dependencies, so a reordering of a legal command stream
+      cannot change the answer. A correctness falsifier therefore cannot fire on a scheduling change
+      here, and the falsifier must be measured occupancy instead.
+prototype_scope:
+  workload: repeated_rhs_matmul
+  conformance_level: C0
+  epilogue: none
+  output_dtype: i32
+oracle_ladder:
+  level_0: {name: merlin_reference_and_command_buffer_sim, derived_from_rtl: false}
+  level_1: {name: spike_gemmini_functional, derived_from_rtl: false}
+  level_2: {name: gemmini_verilator_rtl, derived_from_rtl: true}
+  level_3: {name: firesim, derived_from_rtl: true}
+oracle_blind_spots:
+  # What a tier of the ladder above cannot observe, in the vocabulary the capsule corpus states about
+  # itself. Read by merlin.targetgen.oracle_blind_spots: a capsule in one of these classes is not
+  # certified by a pass at a listed tier, whatever the pass says.
+  - id: accumulator_base_rotation
+    tiers: [L2]
+    engine: spike_gemmini_functional
+    axes:
+      - [instruction_class, LOOP_WS]
+      - [instruction_class, LOOP_CONV]
+    what: >-
+      After every loop command issued with a non-zero output address the RTL rotates the accumulator
+      base by the accumulator depth over the number of concurrent loops. The functional model pins
+      the base at row zero, so a program that reads the accumulator across two loop commands sees
+      different rows on the two engines.
+    evidence: >-
+      One executable, unchanged: the functional tier reported 0 of 1000 outputs wrong and the FPGA
+      reported 1000 of 1000 wrong, with a different top-1 class.
+    reproducer: >-
+      Two back-to-back loop commands that write through the accumulator with an output address set,
+      the second reading what the first accumulated.
+  - id: residual_operand_store_state
+    tiers: [L0, L1]
+    engine: merlin_reference_and_command_buffer_sim
+    axes:
+      - [mode, padded_edge]
+    what: >-
+      The command-buffer simulator models tensors and has no operand store. A program whose result
+      depends on what the store held at entry (the out-of-bounds taps of a padded convolution that
+      the program never wrote) is judged there as if the store were zero.
+    evidence: >-
+      One padded 3x3 convolution run after a command that left non-zero rows in the store: the
+      instruction-level functional tier differs from the declared convolution in 8 of 27 elements,
+      and the command-buffer tiers report no difference.
+    reproducer: >-
+      Move a non-zero tensor into the operand-store rows a padded convolution gathers from, then
+      run the convolution.
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_tile_to_mesh_shape
+  - must_commit_accumulator_before_reuse
+  - must_respect_scratchpad_capacity
+hardware_promises:
+  - weight_stationary_resident_array
+  - widening_integer_accumulate
+  - cycle_counter
+runtime_promises:
+  - command_buffer
+  - metrics
+certification:
+  status: uncertified
+confidence: medium
+requires_human_review: true
+notes: >-
+  Hand-curated prototype contract for the Gemmini C0 RTL-certification path. Mesh geometry, scratchpad/
+  accumulator capacities and datapath dtypes are CIRCT-extracted facts (not declared here); consumers
+  read them from the fact bundle. Spike-Gemmini is a functional bootstrap model (derived_from_rtl:
+  false); only Verilator/FireSim count as RTL-certified.
+
+# How a runner-owned harness calls into this target's kernel. These are conventions of this target's
+# own bare-metal test environment, not RTL facts, so they cannot be derived and are declared here.
+# Consumed by merlin.targetgen.contract.harness_abi; previously hardcoded in the generic compile path.
+harness_abi:
+  entry_symbol: gemmini_kernel
+  fence_symbol: gemmini_fence
+  includes:
+    - include/gemmini_testutils.h
+  cycle_window_metric: cycle_window_gemmini_region
+
+# Registry pins (merlin/contract/hardware_pins.yaml) this target's results depend on. Read by
+# merlin.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
+hardware_pins:
+  - gemmini_rtl
+
+# Families this target DECLARES (the hardware has them) but whose probes cannot yet be turned
+# into a runnable capsule. Recorded with a reason rather than left silent: a family that is
+# declared, probed and never graded is an untested claim, and the coverage gate refuses to let
+# one hide as an empty `skipped` list.
+unmaterializable_families:
+  elementwise_map: >-
+    no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
+    Needs a merlin_iface elementwise mnemonic + a recompute entry.

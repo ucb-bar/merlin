@@ -1,0 +1,1068 @@
+{
+  "version": 1,
+  "source_root": "out/artifacts/dse-guidance/case_study",
+  "destination_root": "experiments/reference-data/dse/case_study",
+  "note": "Byte-preserving extraction of committed analysis evidence; this does not certify or regenerate its scientific claims.",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "7c07c9dde325ad8a1318df0ba2a3c2ca1b80318956df4da84f863c18396bbf10"
+    },
+    {
+      "path": "abstraction_pressure_ranking.csv",
+      "sha256": "cb432cf9b9ce808a0db5eedd216f122941478e75ef30e9f75828183dd9b1114f"
+    },
+    {
+      "path": "abstraction_pressure_table.csv",
+      "sha256": "c9b721360a7c014340e978b9a6b12e35c70ae2ae53179b57d238418623d7a8a4"
+    },
+    {
+      "path": "accumulator_contract_table.csv",
+      "sha256": "48b9f250893b8acdbf9a4686c8fc8be10e1a21224566619ac9add68b8771cf33"
+    },
+    {
+      "path": "accuracy_gate_report.md",
+      "sha256": "3228a342e527cf011aafb5fffc8f6c2a024ea3e0e8eff7358fd9dab4b0ac49f2"
+    },
+    {
+      "path": "accuracy_gate_results.csv",
+      "sha256": "af4932e5699d9fcad7d1ae1190ec7f71e23d9fe051755d59b1ad33db6f2f2fc9"
+    },
+    {
+      "path": "accuracy_gated_dtype_candidates.csv",
+      "sha256": "753285124737a2bf26b7dbc5cd755721be7f6ab2e1dd876940da45866ecb9e0d"
+    },
+    {
+      "path": "arithmetic_intensity.csv",
+      "sha256": "6801ab65fa499c17dc7fbf257ca037f2b174620e5612162f1128da2a65da0f0b"
+    },
+    {
+      "path": "bitvla/abstraction_candidates.yaml",
+      "sha256": "2516e2a73364e858046b034654d05a9d44eb1e92c79cf6783116f793a284a0f7"
+    },
+    {
+      "path": "bitvla/command_graph.yaml",
+      "sha256": "b6360b50dec2d065ad86fefed6b1ac4ca4c8c5f31bdb577a0450cce72116940c"
+    },
+    {
+      "path": "bitvla/design_envelope.md",
+      "sha256": "b32a87cad81a11f8e388ca2ad5ac1a393ab5c1d61056244f9d23ef7a2a599953"
+    },
+    {
+      "path": "bitvla/design_envelope.yaml",
+      "sha256": "36c5b28eb70aa6351e6ef9a5f9c4eaac2eeb62b6284137050abd99484b74bf2c"
+    },
+    {
+      "path": "bitvla/dse_candidate_axes.md",
+      "sha256": "d98e5fa26745611eab3381f0d0180b452bafee907ac2a890eb5e0d548c98508f"
+    },
+    {
+      "path": "bitvla/dse_readiness.yaml",
+      "sha256": "a72c458629f0dfec108a9f33280f6011ea72205e62bcfd211bd57eef3f435dbc"
+    },
+    {
+      "path": "bitvla/dse_search_space_template.yaml",
+      "sha256": "a11d2d917ebf8c3fa4370aa0d2862a276426d096778c3c6e99d2fa0fe75a0a05"
+    },
+    {
+      "path": "bitvla/measurement_plan.yaml",
+      "sha256": "79f32f10e6c802ffb93321576cb5da5601c2715e4b11d0c7d9ae28f4d8bb2cbb"
+    },
+    {
+      "path": "bitvla/memory_envelope.yaml",
+      "sha256": "d7a0939fd9b8a22662f1d60020e3faac2b44f3867f70820d088ea3189ddfc9a9"
+    },
+    {
+      "path": "bitvla/numerical_candidate_certificates.yaml",
+      "sha256": "60143878806a20aa667842c7a3e8dda3c1f9efe65f4e0716d70a904481aafddd"
+    },
+    {
+      "path": "bitvla/numerical_contract.yaml",
+      "sha256": "3b7565d8c5c7d79251f4a9c92684540302cb2150fed11ad0e632c6356a47e251"
+    },
+    {
+      "path": "bitvla/region_attribution.yaml",
+      "sha256": "e30d5a7f49576c0598e62cad32b5a15caa7d51f7c70fd33a839d041ae7b878dd"
+    },
+    {
+      "path": "bitvla/state_lifetime.yaml",
+      "sha256": "4d39655fba77b4b4143cee14f3fd0a8a8a3db00c68fc3aafd545b6c4567065ca"
+    },
+    {
+      "path": "bitvla/workload_contract_report.md",
+      "sha256": "eebfc00c800fcc06d1c138d1cec30c5646fb2295256d79923fc0c9ed3131d744"
+    },
+    {
+      "path": "boundary_candidate_contracts.yaml",
+      "sha256": "29ea7e00babf4e57c13803b98f4637d656a6c297d2cd80e7c7b3fca684336e9f"
+    },
+    {
+      "path": "boundary_dse_knobs.yaml",
+      "sha256": "c95d53a589d73b15858a80f4e9ce1e67fef297da37ca579ee1f2a2ae85fde99d"
+    },
+    {
+      "path": "boundary_placement_report.md",
+      "sha256": "6f8e6461ee3c472be7005a2a0191920aa6aa438b86d779294f37703ec0bc464a"
+    },
+    {
+      "path": "buffer_requirement_table.csv",
+      "sha256": "b72a03377ff8abdbc0cd09dfc6dc52487e24dc30f8fbe78e7652a385bbe0fa6d"
+    },
+    {
+      "path": "buffering_requirement_table.csv",
+      "sha256": "7ae52fa6023abca637452c38a6d7eeaaa7efed10399d6a2d15b7721922825448"
+    },
+    {
+      "path": "cache_vs_scratchpad_boundary.md",
+      "sha256": "039794bc9ea1c18512842e4f0e0b351c7dea7f228e113eaade8086fcd5893ca0"
+    },
+    {
+      "path": "capacity_requirement_table.csv",
+      "sha256": "f418aebf1a19fc09e99816ecb76cfd2fc88777f7a506a6c428384c8f7f2a2350"
+    },
+    {
+      "path": "capture_level_ablation.csv",
+      "sha256": "deb646855aedba32e08f0b48141dd802c5c8dd783d983c873b6ce6cfdfe6dded"
+    },
+    {
+      "path": "case_study.md",
+      "sha256": "2d5c280e8873022e41735ba9f574e1233cc9c1ec10db500db5295201ec1e7d97"
+    },
+    {
+      "path": "case_study_summary.md",
+      "sha256": "4b149518d8d7ea2e98ff0c5cc1480362ec549c4a50bda0b17d80cdc838415862"
+    },
+    {
+      "path": "claim_evidence_matrix.csv",
+      "sha256": "d1fbcd986bc8501f35aa9f7b44f3f13f00e037764b2c6498d1ce287ceefe7157"
+    },
+    {
+      "path": "command_isa_candidates.yaml",
+      "sha256": "76c61ae7049ec81f5e7bd5336d1da68ebff2ccd33760c158548ab2aec146ce3a"
+    },
+    {
+      "path": "compiler_proof_matrix.csv",
+      "sha256": "27838d4334a26afcc981343b2e8b61da9e15ae89ba9e752150bc0fa5940322eb"
+    },
+    {
+      "path": "concurrency_windows.csv",
+      "sha256": "e26a215139dcc906044253773f29f19073e94845bf5b13bea6d8699ac9c42367"
+    },
+    {
+      "path": "critical_path_table.csv",
+      "sha256": "b6f86800aa7002e73b1b0fb1771a6a0f83c7e452ef56b31365b5b2d9d45aea8c"
+    },
+    {
+      "path": "cross_workload_coverage_report.md",
+      "sha256": "bc649614e3d70eb2d7250fc30cce9daa9f1f0e7c0766b99c0e1065a82dc60d1f"
+    },
+    {
+      "path": "cross_workload_provenance.csv",
+      "sha256": "62b8f3f74e0c6381c8da4c5adb8c2e9ed1d7cb49b75e21ae15703e4d39bd464c"
+    },
+    {
+      "path": "current_state_audit.md",
+      "sha256": "00035a0260ff056f309c84c16750417e0baac20edec83a8391209ae84f2fb9fd"
+    },
+    {
+      "path": "dag_parallelism_report.md",
+      "sha256": "a90884b46e3e1a5a85719ee1a9d01feeb59f9c84859c36b1995f7900addd55ca"
+    },
+    {
+      "path": "data_movement_table.csv",
+      "sha256": "3110944624d7960f96186efffaca6478dcac07bea0755fecdf9ca18e92e6bd77"
+    },
+    {
+      "path": "dataflow_candidate_table.csv",
+      "sha256": "3e96d8f73c5900c293dbe619131ee06eaf718686e4a8a722c4da43eaa8d262f0"
+    },
+    {
+      "path": "dispatch_coupling.csv",
+      "sha256": "2cfe06181437cfcdd010e59b69fb44e1ef742cc871ef4c8ca719c8187b3b9d4e"
+    },
+    {
+      "path": "dispatch_coupling_report.md",
+      "sha256": "f35795123b806868ed88fc96989ae400dc851fc482e03f9ada49ca04f59fb0be"
+    },
+    {
+      "path": "dispatch_granularity_table.csv",
+      "sha256": "1737004e19bf72b6ebcc2b72bc007cd25c092ac3289515259027c6eb0d21571b"
+    },
+    {
+      "path": "dma_pressure_report.md",
+      "sha256": "29d54218b473780429991b5aaf13380a7471921ca88b0265f54afb6a0fab6ed4"
+    },
+    {
+      "path": "dma_stream_table.csv",
+      "sha256": "a5b9df418332a2b3906b094dc89ec4ecec0dc1273a4c6a18a895cb19024b049e"
+    },
+    {
+      "path": "dse_contract.json",
+      "sha256": "5d62ad2dd5339dac02e9e742df484ee61d0edb0b0b513cfc510d3e94404d8c59"
+    },
+    {
+      "path": "dse_readiness_summary.csv",
+      "sha256": "3f8a2618475d72ef469c0c8672582bd923d22d61ddadc89b63f4fe015bcb8247"
+    },
+    {
+      "path": "dse_search_space_knobs.md",
+      "sha256": "a3debb4c22783408f5bb22dd4fd0ab39d24fc1f8ac48928281d06e71ff8d96b4"
+    },
+    {
+      "path": "dse_search_space_knobs.yaml",
+      "sha256": "06621bf084bd869680e9f00320970019f8657834f85722acc287d08b2edab217"
+    },
+    {
+      "path": "dse_search_space_template_iterative_denoise.yaml",
+      "sha256": "e2b8a9fa03b9728583b5ae0b325dc87a699e1bbcdbfe0aa6bffb00f518ed5a3c"
+    },
+    {
+      "path": "dse_search_space_template_token_decode.yaml",
+      "sha256": "041d9bb00ae734f2a2b655e2fa16ed8ac9b2ba6d8b87bdf68173509fa7df5430"
+    },
+    {
+      "path": "dtype_capacity_table.csv",
+      "sha256": "302b1adaae2bfbac2106c1e7a101bfdef4b1488ed9a6e5fa2b0cf723f1f2aaa9"
+    },
+    {
+      "path": "epilogue_pattern_table.csv",
+      "sha256": "5f9fe92e7110274c829940bd97b5dc5e2994be1742b63fdb7b0f8fa99e35e88c"
+    },
+    {
+      "path": "fusion_opportunity_report.md",
+      "sha256": "c39c05bc7991cfcbdeba0a3ed4d678035ed2b7bcb22c1898ce8e88b6f144a235"
+    },
+    {
+      "path": "groot_n1d7/abstraction_candidates.yaml",
+      "sha256": "4ab60efb292788da771ca362a89009d0581d8555e85ee5d3d38129479f2c717d"
+    },
+    {
+      "path": "groot_n1d7/command_graph.yaml",
+      "sha256": "5eec3db19ccf86159ac47c3e0f333f1d615f107c02d5eb2cb1e2d0abff84ed81"
+    },
+    {
+      "path": "groot_n1d7/design_envelope.md",
+      "sha256": "30d3806de22e905e93650913ccacfcc600306d560b2871260098251c19fd86ff"
+    },
+    {
+      "path": "groot_n1d7/design_envelope.yaml",
+      "sha256": "3ebe1d3060c1c04af27a8b38ed702f775292cb5f83c882da18f75cb201acfa73"
+    },
+    {
+      "path": "groot_n1d7/dse_candidate_axes.md",
+      "sha256": "036cd44dad3dd3fb43c48e2d154849e2bd828b3f6a416fa5475057016af42613"
+    },
+    {
+      "path": "groot_n1d7/dse_readiness.yaml",
+      "sha256": "e7e07129abfb847a84752e6746e193b37ef5daf12db2ea5c2fc1686d87d69254"
+    },
+    {
+      "path": "groot_n1d7/dse_search_space_template.yaml",
+      "sha256": "d1950955f9e9557501fa6e6c767d8342480525cd6fac8f590f7aed4c685b4e52"
+    },
+    {
+      "path": "groot_n1d7/measurement_plan.yaml",
+      "sha256": "0c2af54f840454fcc15fad0137d1ed3369a7a4b0880a45de6dcc6dbd4026e27f"
+    },
+    {
+      "path": "groot_n1d7/memory_envelope.yaml",
+      "sha256": "acf601421fec5f779cc496c4c7251cc455eb3daf7b846c3a414434b867765c62"
+    },
+    {
+      "path": "groot_n1d7/numerical_candidate_certificates.yaml",
+      "sha256": "e2fe7c91136971626e5c70e7c0c07d18d5f4a6875c490776b1aec0154341132a"
+    },
+    {
+      "path": "groot_n1d7/numerical_contract.yaml",
+      "sha256": "2511f5b55146cbad863d72b9334093387dcb4136569715529b041922c549c385"
+    },
+    {
+      "path": "groot_n1d7/region_attribution.yaml",
+      "sha256": "492c5add63fc34c169d16d7042a148d2485cd68989e19d4c18a4a5839259ee54"
+    },
+    {
+      "path": "groot_n1d7/state_lifetime.yaml",
+      "sha256": "efa897a3191cdc6b2cc16535950f9ef04a4c0caf004638bad2f05a2db36a4510"
+    },
+    {
+      "path": "groot_n1d7/workload_contract_report.md",
+      "sha256": "aba7b4adf26e2968557bae43b3709ecb3fe06b118a26f7588892852c864ecd28"
+    },
+    {
+      "path": "heterogeneity_report.md",
+      "sha256": "b8afd9bb229498cad2c6b54989ef2d77e20b6ce18cbddaf378a575f0a9a0ff17"
+    },
+    {
+      "path": "hw_sw_boundary_matrix.csv",
+      "sha256": "89cd913594bdf91809ba7159210868f0cd466346c766c4c3e2acb4ea0bb6bb0d"
+    },
+    {
+      "path": "interface_contract_sketches.md",
+      "sha256": "382a9043b0d15e0326ea61e42cc106e082ed5bdd3765ff6f61275d2f57250508"
+    },
+    {
+      "path": "intra_op_sharding_report.md",
+      "sha256": "082d61ff0bf55c484cea57ac39f12ff6e9a93b7ca1cf296647bc2c16e948a7a2"
+    },
+    {
+      "path": "isa_candidate_primitives.yaml",
+      "sha256": "0071841ac5ba3cf6b911f98c0fae97d73057f5f724433b27b70f2fb6b5cc063d"
+    },
+    {
+      "path": "known_limitations.md",
+      "sha256": "9b8cdea8e57c80b5251c8d56bf64a51734f7f815b952a4c5e88f2055fbbbe350"
+    },
+    {
+      "path": "kv_cache_sizing.csv",
+      "sha256": "f2b035fca77eae899d2217d8add335987c7748422d0adc95bca17207e994d4fb"
+    },
+    {
+      "path": "loop_aware_contract.csv",
+      "sha256": "cd35468cb9368c2a2de0c797a46815990ce847a352febd9dedff21f8eb58a59d"
+    },
+    {
+      "path": "loop_preserving_recovery.csv",
+      "sha256": "17c30500a3019bb754e8836e2b5913fbe1aea010ad27c42dff93f62c9f5acd0c"
+    },
+    {
+      "path": "lost_numerical_contracts.csv",
+      "sha256": "6fa5407066b38b167596e76a9b1c01b06680a80947da569424c8399f06686a40"
+    },
+    {
+      "path": "low_bit_visibility.csv",
+      "sha256": "1aa66b4a1fa6ae2406dfc699c8e06ca056279252bffa00cb8d88653436a70387"
+    },
+    {
+      "path": "lowbit_capture_requirements.md",
+      "sha256": "c57a69f019cd3de81ba868026c1a04addecf8ea5b56d2f0071d25c76eb4b1338"
+    },
+    {
+      "path": "mapspace_seed_gaps_resolved.md",
+      "sha256": "338833d71d32b588416a12ad19aa418e41754e88a6fecd1dd4e3c5dc9c944662"
+    },
+    {
+      "path": "mapspace_seeds_loop.csv",
+      "sha256": "1629ed77f5a325d6dcb02fd0f885aee93a76bc94606345a04d3669a407e8291f"
+    },
+    {
+      "path": "mapspace_seeds_loop.yaml",
+      "sha256": "11fff5cad13577781dd5087958559f1b96e876e0ec4d7844241e6b3a2d2ef183"
+    },
+    {
+      "path": "measurement_priority_table.csv",
+      "sha256": "71bd6c7dc5fa90c2206accd8ddfc4113f799a2740ec7aff6df3da1844e5d2614"
+    },
+    {
+      "path": "memory_abstraction_candidates.yaml",
+      "sha256": "eb3640127ec817edee7663c7570bfa71664ec1942ee287786561a4d222ecd8ee"
+    },
+    {
+      "path": "memory_envelope_report.md",
+      "sha256": "e423d8256f77aefb7efc8c4111481fd505b00be404af118cf092ec6c835cada4"
+    },
+    {
+      "path": "memory_hierarchy_envelope.yaml",
+      "sha256": "85bf1fee12942d17c91f6f43cd8a7d2a803b24e3693c9415a0fd03cbebf26b9b"
+    },
+    {
+      "path": "molmoact/abstraction_candidates.yaml",
+      "sha256": "8d818c445ee7821a748ea44f7088b2478846da3a1228d26d6024ef22666eef1c"
+    },
+    {
+      "path": "molmoact/command_graph.yaml",
+      "sha256": "d7f134745229dc036cbf7aa6be068710547ae894109fcf46ec95ce277b582a75"
+    },
+    {
+      "path": "molmoact/design_envelope.md",
+      "sha256": "7d38eca31e1beb2b88e04d882d78e45c58bf67662093680bf21451eff04e4527"
+    },
+    {
+      "path": "molmoact/design_envelope.yaml",
+      "sha256": "2e6e4f6b4d525102da9e3e5c3f9119d1919786c71628753a765afdea76c67b48"
+    },
+    {
+      "path": "molmoact/dse_candidate_axes.md",
+      "sha256": "e55db1432552984aceec698444709b3931179b667e4a89a9a9e685e7fbc77e8e"
+    },
+    {
+      "path": "molmoact/dse_readiness.yaml",
+      "sha256": "2dd628e89f6e6321bfdff8ea8128deb701be82db3cd8f1677260ad8ae5f9723e"
+    },
+    {
+      "path": "molmoact/dse_search_space_template.yaml",
+      "sha256": "43ddb47f346cf975d2553cc87c41846ec46aeb926a0d10af9d2483761c3c60df"
+    },
+    {
+      "path": "molmoact/measurement_plan.yaml",
+      "sha256": "df0adb78ca590ee722647b71987e76ef510b8eabc016427013e622036705615f"
+    },
+    {
+      "path": "molmoact/memory_envelope.yaml",
+      "sha256": "e3cfe7fb9c780196b55da34de51cd58c5b6aef800c0effb2e6b8fe57d992ad19"
+    },
+    {
+      "path": "molmoact/numerical_candidate_certificates.yaml",
+      "sha256": "5ddf2932e2ae8860960241d18067d96f691e0038817a4361b5ca1dc70fe44e92"
+    },
+    {
+      "path": "molmoact/numerical_contract.yaml",
+      "sha256": "ae24ffdf37520732bbca2bb5bbdcb5cb95d7bc8b7f7587164e12822b34139cc7"
+    },
+    {
+      "path": "molmoact/region_attribution.yaml",
+      "sha256": "335e2ee141a4f4d12fd18d7882278acf1aee15e760c42cc13097a510a42ef6ea"
+    },
+    {
+      "path": "molmoact/state_lifetime.yaml",
+      "sha256": "fc091cc13849ea2c6d121af69f99c94f849291ba391bf9a6861cdf4f3a576e5c"
+    },
+    {
+      "path": "molmoact/workload_contract_report.md",
+      "sha256": "89f96ae9fb28b469eb1cfeb17b7ea57aaf20f1522a5735b2954d5bb3f0b11045"
+    },
+    {
+      "path": "multi_rate_contract.yaml",
+      "sha256": "13552da050653db70d8ae66331e994ea13824662bc1c5858ac5033eb8fd67f44"
+    },
+    {
+      "path": "native_lowbit_datapath.csv",
+      "sha256": "7e8ba0490a325af3087b381d5dce0e1baf614d5a03b390850755166819df9120"
+    },
+    {
+      "path": "numerical_contract_fidelity_report.md",
+      "sha256": "f3a1086d585f61d1403361ec929ee23a329d0f1cb7672972bd42f5c55dac64f4"
+    },
+    {
+      "path": "numerical_epilogue_candidates.yaml",
+      "sha256": "dcfec7f842b80d4c2271b94f926b77e3bde44b603ef550ecf11ddcf0e70bebc0"
+    },
+    {
+      "path": "openvla/abstraction_candidates.yaml",
+      "sha256": "99648ae37859d2e26ba80e101ec65a345612913de0a4c2d9f34a4bb3cc8a3770"
+    },
+    {
+      "path": "openvla/command_graph.yaml",
+      "sha256": "808aa15916ce679b162e60c65ec6bfc9f8f2784b0576e8330da6bc953e9718db"
+    },
+    {
+      "path": "openvla/design_envelope.md",
+      "sha256": "cab1819ccf46d784665ffab6ca5747dcb55bed0db13ef01afb783b841d225549"
+    },
+    {
+      "path": "openvla/design_envelope.yaml",
+      "sha256": "c8ee6fdf7ca2c0c57b1787c1bc102a7cacfaf12d86775bdc0ce9bef2c832dfa9"
+    },
+    {
+      "path": "openvla/dse_candidate_axes.md",
+      "sha256": "dca57c0c5a92acf159b14deb8b22573818b4cdd2fb4fdc4931a249c66e22a569"
+    },
+    {
+      "path": "openvla/dse_readiness.yaml",
+      "sha256": "88b835a687fb9b9bb5246f2e66904873d8e05caf903fdfd97fdcccb2ccbc44a1"
+    },
+    {
+      "path": "openvla/dse_search_space_template.yaml",
+      "sha256": "cfdc791a904eaf526004852606551f8133b9106d30978aa002fc0f799ca9612f"
+    },
+    {
+      "path": "openvla/measurement_plan.yaml",
+      "sha256": "95a1ad250aa3b7a1222f5fef9bfaabc23af6573087dd1126797102267ce67ffa"
+    },
+    {
+      "path": "openvla/memory_envelope.yaml",
+      "sha256": "8f38f7460e2a3c6b19ce4e746413d19ecc739004b4f60bc6969f67d73bcf3d06"
+    },
+    {
+      "path": "openvla/numerical_candidate_certificates.yaml",
+      "sha256": "2f208b1a438a23e160ff64baa42d3819f25ed66654a074b731efdf35397d16d6"
+    },
+    {
+      "path": "openvla/numerical_contract.yaml",
+      "sha256": "efbe42b421968e5dba3e5051fb4969ba2e6076eca698877f8eebef5f4d528f0c"
+    },
+    {
+      "path": "openvla/region_attribution.yaml",
+      "sha256": "0e1ac0c8dffe687d249fab76e7d60d71972f9557efdb5c04e1ff555388fc7bd7"
+    },
+    {
+      "path": "openvla/state_lifetime.yaml",
+      "sha256": "54a9e757b40cfed2316221e37c543d0659bb5bb892576af6805d632104be6288"
+    },
+    {
+      "path": "openvla/workload_contract_report.md",
+      "sha256": "75ac208e8fb3414e6c1976e7c1b0ed11b4ed71b6bee09b303475e1bcf212209c"
+    },
+    {
+      "path": "operand_locality_table.csv",
+      "sha256": "9fdbbd0ffe0ad7dd991f83379215362b1a2185c760b2ce7a60597313c0632b8f"
+    },
+    {
+      "path": "operator_cluster_table.csv",
+      "sha256": "87ff69c7b6e0f71d763a83ff55dc1cde31f41155616a8c711f51aeb40ee5e3b6"
+    },
+    {
+      "path": "operator_cluster_to_hierarchy.csv",
+      "sha256": "520a06e9e0cfb947938c64beba7ce85e76429f26bf767f2f4326c7aa9c81d40f"
+    },
+    {
+      "path": "operator_full_inventory.csv",
+      "sha256": "6bafd5cddfd84167bd7512abbe859a3eb07183d7fabfc3f84db365435cf079e4"
+    },
+    {
+      "path": "operator_geometry.yaml",
+      "sha256": "02237f5e93f50034087996ddb3cf95e2d9f62acabb47b5a7a42ffd79abc8b988"
+    },
+    {
+      "path": "operator_geometry_report.md",
+      "sha256": "ea88ec38da5010489c99cd1f99d43f5468438ffc06383ab8a36e3ebceaa626d1"
+    },
+    {
+      "path": "operator_shape_table.csv",
+      "sha256": "dcde4c80a5574dbbcd3ad9c28ba43da47e9ede1b660b7845b2fd13e0f33565b4"
+    },
+    {
+      "path": "overlap_opportunities.md",
+      "sha256": "ac42a5dd1653f6a8e10d063c83c762ed42059f56e2840e4576d1335404115b20"
+    },
+    {
+      "path": "parallel_hierarchy_hints.yaml",
+      "sha256": "83e7710d3b3873682e37d0153789bbe8fa47a090201aaf7c4f404f1d7640d399"
+    },
+    {
+      "path": "parallel_region_candidates.yaml",
+      "sha256": "2f238c1409e7b6470f9ee162fcb2a8f7d160d13d2fd9db6710822ba6a610dfea"
+    },
+    {
+      "path": "phase_rate_table.csv",
+      "sha256": "44825572c1f58d7ae22b51101cccd301d9b800a292f2f1a3d16a192d5b5a8989"
+    },
+    {
+      "path": "pi05/abstraction_candidates.yaml",
+      "sha256": "b167dba558ade5137b938cd4ecfe0d737262a5cf3a80672c19477c72ca25ad45"
+    },
+    {
+      "path": "pi05/command_graph.yaml",
+      "sha256": "374b9d9c85a48210758011baf80fdaef3089c31407c19cd686cbf33af6548c4f"
+    },
+    {
+      "path": "pi05/design_envelope.md",
+      "sha256": "f65ed4b2f5e5f1160d1fef8add5f98e8d1d1d1a0820d6f980ee1b8af66a6f0a2"
+    },
+    {
+      "path": "pi05/design_envelope.yaml",
+      "sha256": "badeb4f46313ec7e23c4d48a33a28df9e15486744df1927d5dacedba348563f8"
+    },
+    {
+      "path": "pi05/dse_candidate_axes.md",
+      "sha256": "3ea54a8096af2b11a880b6dbd0a8ef4515ca304679605df5db18dca860fb481a"
+    },
+    {
+      "path": "pi05/dse_readiness.yaml",
+      "sha256": "76ffbd5bd605ceb31cf436ca8b352864f56652a6d491b2b71a0f9e257adfeb58"
+    },
+    {
+      "path": "pi05/dse_search_space_template.yaml",
+      "sha256": "5de9059be0a3b832f38fd6594e080e9e5d53ba073831cc2594864c7b0b060f26"
+    },
+    {
+      "path": "pi05/measurement_plan.yaml",
+      "sha256": "7cda3c3cf198eeb5f891549a866a47a0f57938c4a6620ea8c9b5d72b56f7dbdf"
+    },
+    {
+      "path": "pi05/memory_envelope.yaml",
+      "sha256": "a68d66b1d9a4fb02daa44dc5e76c83f05d2142a242c142d89cbe821ed1e73e13"
+    },
+    {
+      "path": "pi05/numerical_candidate_certificates.yaml",
+      "sha256": "0ead9265182e0fed40c5832fcde95c4e299c77b0b789702f63a08ace7f677362"
+    },
+    {
+      "path": "pi05/numerical_contract.yaml",
+      "sha256": "ca0a99b897cd3ec7d2dbcdfb75cfd858258c952cebcfd7df5652ae18d4da70af"
+    },
+    {
+      "path": "pi05/region_attribution.yaml",
+      "sha256": "52d82d54e48d0f4a3d3c0741990880c13bf5ce3ef67f19e6f954615800361929"
+    },
+    {
+      "path": "pi05/state_lifetime.yaml",
+      "sha256": "e1de9485f463f843020fa7d965bf66081fb60d9e8a3ee3ec38a1eb31980ae602"
+    },
+    {
+      "path": "pi05/workload_contract_report.md",
+      "sha256": "60e1fcc4c584a33d0dd069be638e03b9005997802cb3442d4720b22ee32c098c"
+    },
+    {
+      "path": "pipeline_candidates.yaml",
+      "sha256": "001a1aeb2f8237fbc1241eb3b518bf5ac59dc16859ba6c4eae7f63d06cc276fa"
+    },
+    {
+      "path": "pipeline_envelope.yaml",
+      "sha256": "3377114315a6eafcef288f500704b36d349517d8a5eecdd08c0b63437abb0262"
+    },
+    {
+      "path": "pipeline_stage_table.csv",
+      "sha256": "d81f8e8ce0cf2093f13ef7b696253764da3bc58e84b412c33ed1626ace243fd0"
+    },
+    {
+      "path": "primitive_coverage_matrix.csv",
+      "sha256": "ed7fa48eeebf0923bf8543a2c3f9a0afc21395a553f5551bc0d2903b83656507"
+    },
+    {
+      "path": "primitive_coverage_report.md",
+      "sha256": "ee7d8f999a7e4a82aba9a981fb98c3aafe2f0b8e91aa0ceb6eafe6672d79bc0b"
+    },
+    {
+      "path": "primitive_regret_table.csv",
+      "sha256": "f4ce3caa5e6ad8efaf5d95fd53594a618e06607fcc7dd10bcc18724d0847d7be"
+    },
+    {
+      "path": "processing_unit_candidates.yaml",
+      "sha256": "dc5523b05db27aab45d3f74ba4e99b1c495bbfbd95212c899b7d41727fafef98"
+    },
+    {
+      "path": "processing_unit_guidance.yaml",
+      "sha256": "b05ab53dbc861ce28be7cf4d6da167838dc4b1cc845feef08976cfdf0aaf0883"
+    },
+    {
+      "path": "processing_unit_parallelism_report.md",
+      "sha256": "edb36e92a3a6607a7c8d7de7d3e1ff3e0131d4613c0d164eac8465fb50e420c8"
+    },
+    {
+      "path": "quant_metadata_visibility.csv",
+      "sha256": "7770e1f27dfc6654d1132ed03ca5926c5d1dc4b08e3a9d75b2309a3eaf2167dc"
+    },
+    {
+      "path": "rate_mismatch_report.md",
+      "sha256": "99bc24fc129bc4e8a66688afc92ded1d013f733064324475ad1ddfc25d002054"
+    },
+    {
+      "path": "rdt/abstraction_candidates.yaml",
+      "sha256": "178896290b1cc5744ffefe73a0711e477712c90890cbab4d6887c9f2fc9532f8"
+    },
+    {
+      "path": "rdt/command_graph.yaml",
+      "sha256": "2efaf59e897dad5e5f6084ab676636dd0babf0f2b0b67ee5d525cc4c1d3fe1b4"
+    },
+    {
+      "path": "rdt/design_envelope.md",
+      "sha256": "122257f4a226b4e8e695528d84ebe35db6d13b57e8b4262edd4c29d73a06c9a9"
+    },
+    {
+      "path": "rdt/design_envelope.yaml",
+      "sha256": "b7653a886b8e63d40d6c9cab6da0093fdb00fef8d3343025b3fa5b5d47db13ad"
+    },
+    {
+      "path": "rdt/dse_candidate_axes.md",
+      "sha256": "5cb8ddd7212b36556f5a420534cb7d1c3345e405ae380fb8e65826911d29f05f"
+    },
+    {
+      "path": "rdt/dse_readiness.yaml",
+      "sha256": "3aaa3e821d9dcb3c67588fc05f3f937f29a30a0b5d72c94bf9d7f15d9e35991e"
+    },
+    {
+      "path": "rdt/dse_search_space_template.yaml",
+      "sha256": "473fb23d5c76b4720f58a55427d3f8a0fd1212a758ae8f6e0626c1a4c38180cf"
+    },
+    {
+      "path": "rdt/measurement_plan.yaml",
+      "sha256": "7fa748c8e7316ce35c4696fd7f087538af3ca327e335b5b09c1327fc220e3de1"
+    },
+    {
+      "path": "rdt/memory_envelope.yaml",
+      "sha256": "8bd9ba2aaa9e7fd2efb90d868f61f954076f9fce2ae5da648e7023006c9cf6cd"
+    },
+    {
+      "path": "rdt/numerical_candidate_certificates.yaml",
+      "sha256": "82aaa0cb3ebeca02da05d6b060049f8e3974d5cf607f257223cd4e2a54a45a05"
+    },
+    {
+      "path": "rdt/numerical_contract.yaml",
+      "sha256": "059d932d94a2c92f96fec5f7509972156dd3e20de3a33cadc64a47d83090bad7"
+    },
+    {
+      "path": "rdt/region_attribution.yaml",
+      "sha256": "422deb1d767a2a98b58f4900c23483dbb113c1031b8d823858c9e1d6307b13bc"
+    },
+    {
+      "path": "rdt/state_lifetime.yaml",
+      "sha256": "2f2a5e90309b272bb956b3e91d5e0e045adcc2200614f9da1d08f980430545c5"
+    },
+    {
+      "path": "rdt/workload_contract_report.md",
+      "sha256": "01cbf3066a7a89e6a049dcde266457a7ef2db8c667f5305a1bf7581a92c78e4a"
+    },
+    {
+      "path": "rdt2/abstraction_candidates.yaml",
+      "sha256": "7efd7e8072de65489dc3b7afc0ffec380b4a300b0660e60b8c1d86b88c3347ae"
+    },
+    {
+      "path": "rdt2/command_graph.yaml",
+      "sha256": "aaf47d86bf82a5786c3b168340f77cd01905cee66eb4974865b3a13fa1d7b30d"
+    },
+    {
+      "path": "rdt2/design_envelope.md",
+      "sha256": "cea04e365f029cff5d591730a783eb5bc131d042b8ad3c286dd9682e8fc4eca4"
+    },
+    {
+      "path": "rdt2/design_envelope.yaml",
+      "sha256": "c38c93f9797ba7e35a5366e4829172591faf4c4cbf5d8b6ec5bd429a28f499cb"
+    },
+    {
+      "path": "rdt2/dse_candidate_axes.md",
+      "sha256": "79ec3ae87327b5079bfcefb6022d2e37019ef164c9a73dee829b05c0a38463da"
+    },
+    {
+      "path": "rdt2/dse_readiness.yaml",
+      "sha256": "df70b6dd99cf6810a79e099976ffbab2e0ffadbff218c41910e73be80f554438"
+    },
+    {
+      "path": "rdt2/dse_search_space_template.yaml",
+      "sha256": "4230da671bd99b8deccabc780d9cde04feaf248eaf78844533c0aa48cd5f6972"
+    },
+    {
+      "path": "rdt2/measurement_plan.yaml",
+      "sha256": "f5c0ed4cb9b4a9805c4e6a43c93a69c5b220e7b39e50911ee0dd908078351482"
+    },
+    {
+      "path": "rdt2/memory_envelope.yaml",
+      "sha256": "b2d08008a85a4d95740257953457616e70202e56c2faa80cfcef7383e38ce595"
+    },
+    {
+      "path": "rdt2/numerical_candidate_certificates.yaml",
+      "sha256": "f37a25e959ce23108c6bd11efe74524c13332428b2045b1b748f92cf115b24ec"
+    },
+    {
+      "path": "rdt2/numerical_contract.yaml",
+      "sha256": "393b8b0aeef0b4619563b6f3777ee946cd1987e602791c755863faa69a9a49fc"
+    },
+    {
+      "path": "rdt2/region_attribution.yaml",
+      "sha256": "4431f2398f90c8ed1118ea6b16276232b93945eb8fa1fecc59350c5a34018e2f"
+    },
+    {
+      "path": "rdt2/state_lifetime.yaml",
+      "sha256": "2fa870030f6fb40b7f210195d7338f2ddad652bda0babe14d4fc8e6f9cce9884"
+    },
+    {
+      "path": "rdt2/workload_contract_report.md",
+      "sha256": "500fab196e25daf03dbe65692d88521bf60a4316bdca4aa12155de4d5e97b3d5"
+    },
+    {
+      "path": "real_config_magnitudes.csv",
+      "sha256": "12634c057a0f7ce63b24c1064a3f7799ecc4a5e60422257ba4720f262c4a93b5"
+    },
+    {
+      "path": "realtime_requirement.csv",
+      "sha256": "b7d9a55e253b81b9cf6363f1e38923c7cfdc3a7326555678788f2cd7b987486c"
+    },
+    {
+      "path": "requirements_table.csv",
+      "sha256": "77cb8cc99a71f0cfa6047577464892373fbe83e999f690792787328eead016dd"
+    },
+    {
+      "path": "residency_from_ir.csv",
+      "sha256": "8caf563c7fa760a0e51378e85f92bbdfe324f05296c92dbba37288de5f911f0e"
+    },
+    {
+      "path": "resident_state_table.csv",
+      "sha256": "8346d7cc82934364d47b87df364277263c90727976feaa88a2bd5fcf56f8648c"
+    },
+    {
+      "path": "resource_pressure_table.csv",
+      "sha256": "c50b06abb4d8e3ef11c6a9a57e435067137abeb1e527468d9c251c29b7451471"
+    },
+    {
+      "path": "responsibility_split_matrix.csv",
+      "sha256": "b260b976be23fde267ca0031f8f38c24172dac7d4622aa5487d6b030064ecd1c"
+    },
+    {
+      "path": "reuse_lifetime_table.csv",
+      "sha256": "f5765af473cf04c292eb12f62372c0dc02ca67a108c81595a6dd75d9fad1d287"
+    },
+    {
+      "path": "runtime_object_candidates.yaml",
+      "sha256": "ff743f1f41a43d2701b320ea64ce871fbbccab2a4a62d5fb39fb8a84c904a1c8"
+    },
+    {
+      "path": "shape_summary_by_region.csv",
+      "sha256": "cf104a3bc25d32be238c41b55cb15be21cc0b42737a9dccf0972a8c83a19c7ec"
+    },
+    {
+      "path": "shape_summary_by_workload.csv",
+      "sha256": "80f617d22b30170c15fdeb1178ce6e270021772ee5fda31cb3bda363439bfe1d"
+    },
+    {
+      "path": "sharding_opportunities.yaml",
+      "sha256": "fb3b049b684a86b087e0e051ca0f1c5e5f2efc34ad86ecfd16a9a89809f797b1"
+    },
+    {
+      "path": "sharding_table.csv",
+      "sha256": "4d2ed95d03dd084ef9bccfa6d854695d59e4e04bfa8bf89d487df6bcb13d2742"
+    },
+    {
+      "path": "small_llama/abstraction_candidates.yaml",
+      "sha256": "c3aded864a6d734979af98bf1bf880a57a6ea54429009feda388a5f6fd4bdd66"
+    },
+    {
+      "path": "small_llama/command_graph.yaml",
+      "sha256": "f31c0ac93ae04f64961fe1598f85136b0135e506b4d9fd6bc05767e2f8785381"
+    },
+    {
+      "path": "small_llama/design_envelope.md",
+      "sha256": "77f18acd9df9ce15c03a5e95936dd46a3451e9f1e71e4375d179e1c7cd4b758a"
+    },
+    {
+      "path": "small_llama/design_envelope.yaml",
+      "sha256": "c4fac80c202141bd95004209adc544af8806fa94c695c2d9f35f412ab82b93e9"
+    },
+    {
+      "path": "small_llama/dse_candidate_axes.md",
+      "sha256": "abffb55a90a77230553a283418cf26c891174f9da7cdb87c0efff47fe754adbf"
+    },
+    {
+      "path": "small_llama/dse_readiness.yaml",
+      "sha256": "4a96cb812e3af425d4403038dced1d1ec0ea4411cdf1038bc3b0bb76206a9299"
+    },
+    {
+      "path": "small_llama/dse_search_space_template.yaml",
+      "sha256": "f647a4bda6b9525b14d9edfc9e7b97d55820a29099ecbaeeea852bcda3fbbe9c"
+    },
+    {
+      "path": "small_llama/measurement_plan.yaml",
+      "sha256": "abf04dbba2def453a16a57f88e434f83d9249a3bf512aad9a0be4188eeb65a8d"
+    },
+    {
+      "path": "small_llama/memory_envelope.yaml",
+      "sha256": "b61acc8cb3e8aae5db45dc77732d35776ea16bc532c37c36a157239ef2eb37be"
+    },
+    {
+      "path": "small_llama/numerical_candidate_certificates.yaml",
+      "sha256": "38d8fdb4b481587bec279fbfb9a4bd280cf579fd35a2644c5953b72a186ac696"
+    },
+    {
+      "path": "small_llama/numerical_contract.yaml",
+      "sha256": "e0a9de3377122456ccbb131044d0818d2d1f59aa6342b1a61d8dd90d5f8ea721"
+    },
+    {
+      "path": "small_llama/region_attribution.yaml",
+      "sha256": "1393e68568f279ce434cd3523a67fd547b85014ea1a7a95b37a09dc952fb789c"
+    },
+    {
+      "path": "small_llama/state_lifetime.yaml",
+      "sha256": "cdb97b3959eb4e8e52128de6c63bc0952a5b78cce5f4fb179c839fcc906cfaa8"
+    },
+    {
+      "path": "small_llama/workload_contract_report.md",
+      "sha256": "d333cba475f0abc14f0d724f1ccbc836aabf7b6feccae5cb91587ca30981fc61"
+    },
+    {
+      "path": "smolvla/abstraction_candidates.yaml",
+      "sha256": "70f947dfff86cb3a4c8fe1a5551e6cd961ea7075d0f61a2fae4cbb838c93076f"
+    },
+    {
+      "path": "smolvla/command_graph.yaml",
+      "sha256": "24f956c90854769d49a828846f342b117e050b9591152ea1591751551abb224b"
+    },
+    {
+      "path": "smolvla/design_envelope.md",
+      "sha256": "9a506e7107b539a71f7ceb6d5adb59d7cfe729d39ee238904b9c354708db4648"
+    },
+    {
+      "path": "smolvla/design_envelope.yaml",
+      "sha256": "7a8fe5f50768f5fe050a5e6f35bf1af9644a6743ffe5e1171895a77776dbbc82"
+    },
+    {
+      "path": "smolvla/dse_candidate_axes.md",
+      "sha256": "39bf9986c5ea05ffe3cb99ba2a1c737bb0e4b8f9151d3a1bccbb6a25e31871c4"
+    },
+    {
+      "path": "smolvla/dse_readiness.yaml",
+      "sha256": "d28b0f0cf40eae3431ba105e2e764dfff5ab5dfab0f4015efa8e2ad75d728fa1"
+    },
+    {
+      "path": "smolvla/dse_search_space_template.yaml",
+      "sha256": "054a31935bad5dbb2de0a8412fca4a67e1f8faabc14ef26307696005f4093b43"
+    },
+    {
+      "path": "smolvla/measurement_plan.yaml",
+      "sha256": "bdfee71ce9caf0772dd7cc514baeec098daa0614efc6943336d265523891c115"
+    },
+    {
+      "path": "smolvla/memory_envelope.yaml",
+      "sha256": "581f66604f9788bec57097bea934b90d8855b3574478ac4b5dec4e7f13a83378"
+    },
+    {
+      "path": "smolvla/numerical_candidate_certificates.yaml",
+      "sha256": "2ca5242b5cd4bc483bd4c143d2d0aadfe7b9423922bbfd0d6aa20c4bb51057f9"
+    },
+    {
+      "path": "smolvla/numerical_contract.yaml",
+      "sha256": "f776252239eaa971c9c8b62d852d21cfc5d94d72c3d84856b56616f36d4e9f49"
+    },
+    {
+      "path": "smolvla/region_attribution.yaml",
+      "sha256": "3a3d3783144df5b10d517dee26e21cc5c1a4d76efc5016a3a2cd78fc3974fcb6"
+    },
+    {
+      "path": "smolvla/state_lifetime.yaml",
+      "sha256": "a878664995af2d1dab63c78ca730d397cefb32bc9ca2051b3d0440679fe9ffa9"
+    },
+    {
+      "path": "smolvla/workload_contract_report.md",
+      "sha256": "5d29b338fe5bd0ea0838c0562751c88a9ef61518813e2678e5cbf69505fe1e98"
+    },
+    {
+      "path": "tile_waste_table.csv",
+      "sha256": "20edbfec7d4e48daa962442b4075b88d922893eebf649dd32bb862565c7a19e0"
+    },
+    {
+      "path": "timeloop_problem_shapes.yaml",
+      "sha256": "38ec199f75dcb852ae9fb5c272019e463550e23aa832c696b2348e2a1d3e4e10"
+    },
+    {
+      "path": "tiny_llama/abstraction_candidates.yaml",
+      "sha256": "e5d5cbe9a5f905035ef633788ebffeb5718d45da811e14c7af963f92928abc73"
+    },
+    {
+      "path": "tiny_llama/command_graph.yaml",
+      "sha256": "a7a448eecae6ccbfa65cead4f7a22f84498ea43bd98da992e6d6f23aa35b52e8"
+    },
+    {
+      "path": "tiny_llama/design_envelope.md",
+      "sha256": "1d20cf464049de9226d00f737725a1b1e98eaef975c56033f0fe19d1049f2ea4"
+    },
+    {
+      "path": "tiny_llama/design_envelope.yaml",
+      "sha256": "3590e4f719e29462a5d97a2bebc86b9a3296987b8916033ff5ee8b4f4553fe19"
+    },
+    {
+      "path": "tiny_llama/dse_candidate_axes.md",
+      "sha256": "03ad7ad2fb71ea58651e73f3610dd57281e72f2e17429b542fbc90e9c62318ca"
+    },
+    {
+      "path": "tiny_llama/dse_readiness.yaml",
+      "sha256": "1d133cd5bbbf38183edc4595e7d00a0bea8b23bdfcd12d025013f4e029d63db0"
+    },
+    {
+      "path": "tiny_llama/dse_search_space_template.yaml",
+      "sha256": "8dadd92e4674b17bc2d4369d4972e5217708ad9eaecf5fa44019d4213c59e6cc"
+    },
+    {
+      "path": "tiny_llama/measurement_plan.yaml",
+      "sha256": "e2351b5923e82a701fb9d3d000497fafa85560c48d73927911803b4f081b186a"
+    },
+    {
+      "path": "tiny_llama/memory_envelope.yaml",
+      "sha256": "0fac650de58c9ab74a5698f56f0a42b330585ce384259296e979aa16c7b1e01f"
+    },
+    {
+      "path": "tiny_llama/numerical_candidate_certificates.yaml",
+      "sha256": "c4be955ea73e4c89d2ee0655560b1d031680f7b6b602b9bfef74d77cabf9b62b"
+    },
+    {
+      "path": "tiny_llama/numerical_contract.yaml",
+      "sha256": "018fb0f230a31b76e0ebc77215b58d2c59747159da6bd282845f7c927fbe5fb4"
+    },
+    {
+      "path": "tiny_llama/region_attribution.yaml",
+      "sha256": "a1aded0584a8686cdbc93b18be5ee9f108f08e2c245ae7f541c9cfb709bc5839"
+    },
+    {
+      "path": "tiny_llama/state_lifetime.yaml",
+      "sha256": "0b56f37ef4f4587adfc15b6dd5e4d9f58295288bee2cee79e4642c7bb338c2e6"
+    },
+    {
+      "path": "tiny_llama/workload_contract_report.md",
+      "sha256": "1804beff75eed596cbe6478f9cf4f9c3a6893351804da98a5a980803be406512"
+    },
+    {
+      "path": "torchao_integration_plan.md",
+      "sha256": "b3bf6cbff3db9a5e27bbe6cca7dee28e1b9531b1a4b9d06953c70a94ddcd455d"
+    },
+    {
+      "path": "traffic_table.csv",
+      "sha256": "f120b87cb94a7641fae3d19fe932a3a010ad5a3636484b4cd0bdbf08e3c535fe"
+    },
+    {
+      "path": "verification_report.md",
+      "sha256": "4653066919edab7b4b7518255f303b0028a4c09dd757d9ddfa6eb7fec4688c34"
+    },
+    {
+      "path": "work_coverage_table.csv",
+      "sha256": "79ec8539e0f0aa27c650a508b07b20883788889afe9bc09082a645f88a7307d4"
+    },
+    {
+      "path": "workload_contract_graph.yaml",
+      "sha256": "f15a5e0c6e62c3bd797ef9dd5121569774847df04b0826ba0a46dd713b5c1d5f"
+    },
+    {
+      "path": "workload_contract_graph_summary.md",
+      "sha256": "a7bc7f0389d6f7ec4fef6203e15de5ef68b5b752846132f7cc08815161b223e0"
+    },
+    {
+      "path": "workload_contract_table.csv",
+      "sha256": "7ea4efd36162eea004e14a526b0e02eb920b4eaacf0a6bdfefabe921f500788a"
+    },
+    {
+      "path": "workload_family_table.csv",
+      "sha256": "06386d6d65c0e4341186ef2e619555bca201b7178c32c749799e27a2ed792102"
+    },
+    {
+      "path": "xr0/abstraction_candidates.yaml",
+      "sha256": "f13e412e7a831c984897c82649c62cc02363156530a93c19c1f2b194535c506b"
+    },
+    {
+      "path": "xr0/command_graph.yaml",
+      "sha256": "e9707d0c49f4d03eea848cc9b7bc94fa407b8387e7eaabdaafd7b820a10ec3fb"
+    },
+    {
+      "path": "xr0/design_envelope.md",
+      "sha256": "3c2c55a669473ff3e374272b9617d32cd9df4011eb788b6bc4a27d797035ae95"
+    },
+    {
+      "path": "xr0/design_envelope.yaml",
+      "sha256": "8926ecc7f1fb97b8ca7ebb98953a383a3a568da27afb2a02d17aa7f9990b74dd"
+    },
+    {
+      "path": "xr0/dse_candidate_axes.md",
+      "sha256": "434bda36bd7e027eb78171e6391dfde32e223125fb5181ecaf13a36280dc6a94"
+    },
+    {
+      "path": "xr0/dse_readiness.yaml",
+      "sha256": "50a8b70cdf1b4b8e256ed10471aca885815d8bedaea9fadfb2b4c870acb2d340"
+    },
+    {
+      "path": "xr0/dse_search_space_template.yaml",
+      "sha256": "39254f529229c61ddead17362fa7bb0d621f6907065c69851386193cb5f239bc"
+    },
+    {
+      "path": "xr0/measurement_plan.yaml",
+      "sha256": "09e0cb0b5d9db505dc051f648ef077309717b03a8160308bef2974fc61bdf063"
+    },
+    {
+      "path": "xr0/memory_envelope.yaml",
+      "sha256": "a05cddf3003c652281921d9e0a6fb0761e9211b09bc5ed96d59256cb6711e713"
+    },
+    {
+      "path": "xr0/numerical_candidate_certificates.yaml",
+      "sha256": "39e50889ee63750746e92c6e5b1f777a0ac373ff2bfe8e0538a1e8c69df00831"
+    },
+    {
+      "path": "xr0/numerical_contract.yaml",
+      "sha256": "af26bf81b00efe4cf28a58635a97d95b555b143b71ad4c08b651ac057a3045ee"
+    },
+    {
+      "path": "xr0/region_attribution.yaml",
+      "sha256": "c058ede067989b9c27ddda391989f3b06640892132dfa60c709628de06cf1080"
+    },
+    {
+      "path": "xr0/state_lifetime.yaml",
+      "sha256": "e539e95461da2a3356b1bcef156d34ecd8f727fbe4fa6c97e0b7ae935dac508f"
+    },
+    {
+      "path": "xr0/workload_contract_report.md",
+      "sha256": "a608f1151d2926a2fc8b2ebcaaada7329e07dc91b4d63ac66b7be0bb2db33482"
+    }
+  ]
+}

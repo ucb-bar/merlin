@@ -6,13 +6,13 @@ owner: rvvgen
 last_verified: 2026-07-20
 related: [beam_search, expert_gap_attribution, whole_model_op_profile, transpose_fusion, kernel_mining]
 code_refs:
-  - merlin/python/merlin/kernels/cca.py
-  - merlin/python/merlin/kernels/cca_contract.py
-  - merlin/python/merlin/kernels/action_catalog.py
-  - merlin/python/merlin/kernels/trace.py
-  - merlin/python/merlin/rvvgen/beam.py
-  - merlin/python/merlin/rvvgen/wholemodel_proposer.py
-  - merlin/python/merlin/llvmlower/op_profile.py
+  - src/merlin/kernels/cca.py
+  - src/merlin/kernels/cca_contract.py
+  - src/merlin/kernels/action_catalog.py
+  - src/merlin/kernels/trace.py
+  - packages/merlin-mining/src/merlin/mining/beam.py
+  - packages/merlin-mining/src/merlin/mining/wholemodel_proposer.py
+  - src/merlin/llvmlower/op_profile.py
   - build_tools/scripts/run_autonomous_beam_experiment.py
 ---
 
@@ -66,7 +66,7 @@ facet list from the dataclass so a new facet is never silently skipped).
 maps to a real facet — a ratchet (`FIELD_REGISTRY` classifies each facet.field IDENTITY / LEVER /
 METRIC / BACKEND_STUB; `KNOWN_OPEN` allowlists the not-yet-closed gaps). This is what stops the CCA
 from growing a vocabulary the compiler can't act on, or a lever the search can't reach. Closing an
-orphan (e.g. `compute.reduction_form` this session) means: add the facet inferer, add a default-OFF
+orphan (e.g. `compute.reduction_form`) means: add the facet inferer, add a default-OFF
 feature that emits it, add the route, remove it from `KNOWN_OPEN`.
 
 ## How we analyze other frameworks / expert kernels
@@ -114,7 +114,7 @@ number of additive passes (transpose fusion, self-copy erase, reduction, activat
 
 ## The beam engine
 
-`rvvgen/beam.run_beam` — generation by generation: propose → mint fork (`fork_from_action` /
+`mining/beam.run_beam` — generation by generation: propose → mint fork (`fork_from_action` /
 `wholemodel_proposer`) → certify (`runner.certify_rvv`) → rank → keep top-k → next depth (which
 *stacks* another lever onto a survivor).
 

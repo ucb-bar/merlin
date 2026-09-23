@@ -1,0 +1,96 @@
+name: G_conv2d_c128x28x28_k3x3s1_n128_bias_add_acc_scale_relu
+kind: layer
+source_role: model_derived
+source_reference: '3 compute group(s) of resnet50 on gemmini: groups [24, 29, 34]'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 1152
+  - 128
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 28
+  - 28
+  - 128
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 128
+  dtype: i32
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 128
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 1
+    - 1
+    - 1
+    - 1
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue:
+    - bias_add
+    - acc_scale
+    - relu
+    output_dtype: i8
+    semantic: conv2d_im2col
+    bias: B
+    acc_scale: 0.005765077542770927
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.005765077542770927
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+# CAPPED, NOT CERTIFIED. This member's operands exceed what a cycle-accurate certification can
+# afford, so declaring L3 for itself made it unverifiable by construction: no sibling can pass a
+# tier deeper than the one it already claims. It is an EXTENSION of a certified sibling --
+# `phase_policy.anchors` derives which one witnesses this obligation, so naming it here would
+# either duplicate that answer or contradict it. The guarantee is the sibling's; this member
+# carries the real shape.
+max_oracle_tier: L2
+vcs: optional
+firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map

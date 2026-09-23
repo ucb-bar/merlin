@@ -1,0 +1,57 @@
+name: RP0_linear_fp32_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch fp32 projection X@W (frontend-faithful linear)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: f32
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: f32
+operation:
+  op: linear
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+pytorch_ref:
+  op: linear
+  dtype: f32
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.linalg.mlir
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 3.8522062450647354
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

@@ -196,7 +196,7 @@ MERLIN_COMPILE_TIMEOUT_S=3600 merlin-rvv-beam \
 
 > **K1 SSH note.** The board sits on the Berkeley-IoT WiFi; the campus path filters inbound `:22` to
 > that segment (ICMP + high ports pass, `:22` is dropped). The board's `ssh.socket` therefore also
-> listens on **2222**, and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored by `rvvgen/k1.py` across all
+> listens on **2222**, and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored by `mining/k1.py` across all
 > ssh/scp). If `k1.available()` is False but the board pings, it is not down — recheck the port.
 
 **Outputs.** Beam runs under `out/runs/rvv/beam/<op>/<TS>_cca_beam_.../` (`beam_tree.yaml` = the full
@@ -217,11 +217,14 @@ certify and publish it. Four arms (raw C++ → +Merlin infra → +xDSL tooling �
 to 20/20 public capsules.
 
 ```bash
-S=merlin/experiments/gemmini_capsule_bench_v0/scripts
-.venv/bin/python $S/test_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
+S=merlin/experiments/capsule_bench/targets/gemmini/scripts
+.venv/bin/python $S/preflight_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
 .venv/bin/python $S/verify_no_cheat.py                        # static cheat-clean gate
 .venv/bin/python $S/launch_ab_batch.py --tag <tag> --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks --mode sequential
-.venv/bin/python merlin/experiments/gemmini_cert/run.py --simulators spike,verilator   # RTL conformance C0-C5
+# RTL conformance now belongs to the selected OOT support checkout.
+GEMMINI_SUPPORT=/absolute/path/to/gemmini-mlir/merlin-support
+MERLIN_TARGET_PATH="$GEMMINI_SUPPORT" PYTHONPATH="$GEMMINI_SUPPORT" \
+  .venv/bin/python "$GEMMINI_SUPPORT/examples/conformance/run.py" --simulators spike,verilator
 ```
 Do NOT set a tight `--round-timeout` (default 4h; a short cap is net-detrimental). The rate-limit
 watchdog + `--resume` carry it across session limits. **Full detail** — arms, sandbox mechanics, cert,

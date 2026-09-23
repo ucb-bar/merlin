@@ -6,15 +6,16 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
 
 ## What belongs here
 
-- Files appropriate to the purpose above.
+- Tracked source for maintenance, build automation, checks and documentation generators.
 
 ## What does not belong here
 
-- Hand-authored source or schemas.
-- Anything that should be tracked in git.
+- Application/library implementations (use `src/merlin/` or the owning optional distribution).
+- Generated artifacts, logs, caches or schema definitions.
 
 ## Invariants
 
-- Contents are gitignored; only AGENT.md/README.md are tracked.
+- These scripts are tracked source, not disposable build output.
 - Never commit generated artifacts here.
-- Use the documented subfolder structure.
+- Write generated products beneath the configured `out/` root using the shared path helpers.
+- Keep checks source-layout-aware across core and optional distributions.

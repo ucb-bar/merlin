@@ -5,24 +5,24 @@ source_reference: MLP first projection (64-wide hidden)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: X
-  role: input
-  shape:
-  - 32
-  - 32
-  dtype: fp8_e4m3
 - name: W
   role: weight
   shape:
   - 32
   - 64
   dtype: fp8_e4m3
+- name: X
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
 operation:
   op: linear
   attributes:
-    out: Y0
     lhs: X
     weight: W
+    out: Y0
     epilogue: []
     output_dtype: bf16
 numeric_policy:
@@ -32,15 +32,27 @@ numeric_policy:
   rtol: 0.02
 expected:
   instruction_classes:
-  - CONFIG_EX
-  - GMEM_LD
-  - FMA
-  - GMEM_ST
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
   modes:
     k_accumulate: true
 required_oracle_tiers:
 - L0
 - L1
+- L2
 - L3
 vcs: optional
 firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 402.16
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

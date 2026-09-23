@@ -4,6 +4,7 @@ The five ``semantic_memory`` benchmarks carry golden ``expected_candidate_featur
 test drives the full M1 spine (compute_rpv -> synthesize.recommended_features) and asserts the
 synthesizer reproduces each golden — the headline correctness gate for the pressure pass.
 """
+
 import glob
 import os
 
@@ -26,8 +27,13 @@ def _benchmarks():
 
 def test_benchmarks_present():
     names = {os.path.splitext(os.path.basename(f))[0] for f in _benchmarks()}
-    assert {"repeated_rhs_matmul", "matmul_bias_requant_relu", "no_reuse_matmul",
-            "capacity_stress_reuse", "vla_action_chunk_decode"} <= names
+    assert {
+        "repeated_rhs_matmul",
+        "matmul_bias_requant_relu",
+        "no_reuse_matmul",
+        "capacity_stress_reuse",
+        "vla_action_chunk_decode",
+    } <= names
 
 
 @pytest.mark.parametrize("path", _benchmarks(), ids=lambda p: os.path.basename(p))
@@ -61,21 +67,25 @@ def test_structural_legality_vs_endorsement_mechanism():
     shipped corpus.
     """
     from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
-    k_policy = [{
-        "policy": "packed_rhs_policy",
-        "when": {"rhs_reuse_count": ">= 2", "rhs_mutable": "false", "K": ">= 256"},
-        "actions": ["consider_resident_packed_tensor"],
-    }]
+
+    k_policy = [
+        {
+            "policy": "packed_rhs_policy",
+            "when": {"rhs_reuse_count": ">= 2", "rhs_mutable": "false", "K": ">= 256"},
+            "actions": ["consider_resident_packed_tensor"],
+        }
+    ]
     for k, endorsed in [(128, False), (256, True)]:
         rpv = compute_rpv(build_region(H=8, K=k))
         i2 = next(c for c in S.legal_contracts(rpv, k_policy) if c["id"] == "I2")
-        assert i2["legal"] is True                # structural legality ignores K
-        assert i2["policy_endorsed"] is endorsed   # endorsement honours K>=256
+        assert i2["legal"] is True  # structural legality ignores K
+        assert i2["policy_endorsed"] is endorsed  # endorsement honours K>=256
 
 
 def test_shipped_policy_endorses_when_structurally_legal():
     """With the shipped mined policy (no K condition), endorsement matches structural legality."""
     from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
+
     pol = S.load_policies()
     rpv = compute_rpv(build_region(H=8, K=128))
     i2 = next(c for c in S.legal_contracts(rpv, pol) if c["id"] == "I2")

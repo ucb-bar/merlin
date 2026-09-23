@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-07-14
 related: [targetgen, adding_a_target]
-code_refs: [merlin/python/merlin/targetgen/contract]
+code_refs: [src/merlin/targetgen/contract]
 ---
 
 # The Experiment ABI — a fair, repo-independent benchmark for target-backend generation
@@ -42,6 +42,11 @@ A package consumes an `*.interface.mlir` in the frozen `merlin_iface` grammar
 | `lower_interface_to_target` | interface.mlir → target MLIR (stdout) |
 | `emit_command_buffer` | interface.mlir → `command_buffer.json` |
 | `lower_target_to_llvm` | interface.mlir → LLVM/RoCC MLIR (stdout) |
+
+The four commands remain required for certification. A package may additionally declare
+`emit_analysis_bundle` for bounded whole-model analysis: one invocation writes the same command
+buffer to `{output_json}` and emits the same target artifact on stdout. Analysis feature-detects
+this command and otherwise invokes the two required emission commands separately.
 
 The lowered LLVM must define `llvm.func @gemmini_kernel(weight*, lhs*…, out*…)` (the kernel ABI);
 the **runner** owns the harness (embeds deterministic tensors by name, prints `OUT/METRIC/DONE`),

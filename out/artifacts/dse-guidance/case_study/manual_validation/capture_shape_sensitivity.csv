@@ -1,5 +1,0 @@
-workload,variant,capture_M_or_depth,n_linear_ops,top_op_mac_share,n_cross_attn_kv,cross_attn_kv_share,dominant_geometry_class,verdict
-tiny_llama,prefill_committed,M=4,15,,,,gemv_like,captured prefill (M2M_SEQ=4)
-tiny_llama,decode_variant,M=1,15,,,,gemv_like,true single-token decode (M2M_SEQ=1); GEMV holds at decode
-rdt,depth2_committed,depth=2,20,0.871,2,0.878,cross_attn.kv,one giant op = depth-2 artifact
-rdt,depth6_variant,depth=6,48,0.292,6,0.883,cross_attn.kv,distributed across 6 ops; top-op share drops 0.871->0.292

@@ -1,0 +1,59 @@
+name: AF2_softmax_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: PyTorch softmax bf16 (atlas smolvla_softmax)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+operation:
+  op: softmax
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.003046875
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeUnary
+  - TensorComputeBinary
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: softmax
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: softmax
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 0.06896728515625
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
+  applied_atol: 0.003046875
+  golden_scale: 0.15234375
+  rtol: 0.02
+  why: the declared absolute tolerance reached the falsifiability ceiling, so the
+    profile's own relative tolerance was applied at the golden's scale instead

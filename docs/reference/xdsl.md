@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-07-14
 related: [dialects, core_dialects]
-code_refs: [merlin/python/merlin/xdsl_dialects]
+code_refs: [src/merlin/xdsl_dialects]
 ---
 
 # xDSL — the default prototyping plane
@@ -19,7 +19,7 @@ It lets us iterate on dialects and lowerings in Python without a full LLVM/MLIR 
   synthesizes an xDSL dialect (IRDL ops/types → parser/printer/verifier) from the target's `dialect_plan`
   before any C++ TableGen.
 - **Research IR** for `contract / schedule / interface / runtime / dse`
-  (`merlin/python/merlin/xdsl_dialects/`).
+  (`src/merlin/xdsl_dialects/`).
 - **Standalone analysis/lowering playground** for design-pressure and DSE.
 
 ## What xDSL is NOT

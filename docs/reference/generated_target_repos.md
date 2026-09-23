@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-07-07
 related: [targetgen, adding_a_target]
-code_refs: [merlin/python/merlin/targetgen/generate]
+code_refs: [src/merlin/targetgen/generate]
 ---
 
 # Generated target repositories

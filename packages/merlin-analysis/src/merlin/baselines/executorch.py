@@ -1,0 +1,1485 @@
+"""ExecuTorch + XNNPACK baseline arm — run OUR models whole-model on the K1 with RVV, honestly.
+
+ExecuTorch is the *forced-whole-model* arm and, by design, the one that surfaces the MOST scalar
+fallback: ExecuTorch delegates whatever the XNNPACK partitioner can claim to XNNPACK's RVV
+microkernels, and runs everything else on the **portable (scalar) reference kernels**. This arm does
+not hide that — it labels every portable-kernel region as a :class:`ScalarFallback` and reports the
+binary-level RVV coverage from :mod:`.rvv_audit`.
+
+Pipeline (per model, fp32 first)::
+
+    model2MLIR loader.get_model_and_inputs()   (HF torch module)
+      -> torch.export.export (with OUR captured input, so it matches golden.npy)
+      -> to_edge_transform_and_lower(partitioner=[XnnpackPartitioner()])   [XNNPACK RVV delegate]
+      -> BundledProgram(.bpte): one test case = (captured input) -> golden.npy      [AOT, ET venv]
+      -> plan_kernels(.pte): which kernel libraries the runner must LINK           [derived, AOT]
+      -> cmake --preset riscv64-linux, SpacemiT-clang toolchain, -march=rv64gcv,
+         EXECUTORCH_BUILD_XNNPACK=ON + the planned EXECUTORCH_BUILD_KERNELS_* options
+         ->  executor_runner (rv64gcv glibc ELF)                                    [the RVV binary]
+      -> rvv_audit.audit_binary(executor_runner + libXNNPACK.a objects)   [mechanical RVV honesty]
+      -> push + run on the K1 (board_lock): bundled-IO Test_result: PASS/FAIL + error stats + timing
+
+Why the AOT export runs in a separate venv: ExecuTorch + its pinned torch are heavy and are NOT in
+merlin's ``.venv``. This runner shells out to ``build/baselines/executorch/et-venv`` (built once by
+``third_party/baselines/executorch/install_executorch.sh``) to produce the ``.bpte``, then does all
+the cross-compile / audit / board work itself. If that venv is absent, the model is a clean
+``not_built`` gap with a specific reason — never a fabricated result.
+
+Why the kernel PLAN is a step and not a constant: ``executor_runner`` registers whichever kernel
+libraries it was LINKED with, and only the portable set is linked by default. A program calling an
+operator outside that set aborts at ``Method::load`` (``There are N instructions don't have
+corresponding operator registered``) — measured on ``spectformer_int8``, whose FFT operators live
+only in ExecuTorch's ``optimized`` library. Which library owns an operator is an ExecuTorch-revision
+fact, so it is read from the pinned tree's kernel yamls per model rather than hardcoded here.
+
+Honesty (``not_run_is_not_pass``): torch.export failure, an unsupported op, a cross-compile break, a
+board-down condition — each yields a ``not_built``/``not_run`` result with a SPECIFIC ``gap_reason``.
+Correctness is gated on the board via the bundled-IO comparison against OUR golden.npy (max relative
+error < tolerance) plus a cosine computed from the dumped output; we never invent a cos/rel.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from merlin.baselines import bundle as _bundle
+from merlin.baselines import k1_exec, profile, rvv_audit
+from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
+from merlin.baselines.executorch_identity import (
+    ExecuTorchIdentity,
+    ExecuTorchIdentityError,
+    require_matching_executorch,
+)
+from merlin.common import artifacts
+from merlin.common import proc as _proc
+from merlin.common.paths import build_dir, repo_root
+from merlin.mining import k1
+
+FRAMEWORK = "executorch"
+
+# --- layout (build/ is gitignored; the ET source tree is the pinned submodule) ------------------
+_BUILD_ROOT = build_dir() / "baselines" / "executorch"
+_TOOLCHAIN_CMAKE = Path(__file__).with_name("executorch_spacemit_toolchain.cmake")
+_ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")
+_ET_INSPECT_HELPER = Path(__file__).with_name("_et_inspect.py")
+_ET_OPS_HELPER = Path(__file__).with_name("_et_ops.py")
+
+
+def et_source_dir() -> Path:
+    """Pinned ExecuTorch source tree, optionally shared by an isolated git worktree."""
+    configured = os.environ.get("MERLIN_ET_SOURCE", "").strip()
+    return Path(configured) if configured else repo_root() / "third_party" / "baselines" / "executorch"
+
+
+# Which ExecuTorch kernel library each ``functions.yaml`` in the PINNED source tree stands for, and
+# the cmake option that links it into ``executor_runner``. The op->library map is DERIVED by reading
+# these files at run time, never listed here: an operator's home moves between ExecuTorch revisions
+# (``_fft_r2c.out`` is optimized-only at the current pin), and a baked list would silently mis-plan
+# the build the moment the submodule is bumped. ``None`` marks the library that is always linked.
+_KERNEL_YAMLS: tuple[tuple[str, str, str | None], ...] = (
+    ("portable", "kernels/portable/functions.yaml", None),
+    ("optimized", "kernels/optimized/optimized.yaml", "EXECUTORCH_BUILD_KERNELS_OPTIMIZED"),
+    ("quantized", "kernels/quantized/quantized.yaml", "EXECUTORCH_BUILD_KERNELS_QUANTIZED"),
+)
+
+
+def et_regions_from_etdump(
+    etdump: str | Path, *, etrecord: str | Path | None = None, out: str | Path | None = None, timeout: int = 900
+) -> Path:
+    """Run ``_et_inspect`` (in the ET venv) over a pulled etdump -> ``et_regions.json``.
+
+    Shelled out rather than imported because the devtools ``Inspector`` lives in the ExecuTorch venv,
+    not merlin's; the helper is argv-in/JSON-out precisely so this boundary stays a process boundary.
+
+    ``etrecord`` is what lets the Inspector name a layer: without it the events carry operator names
+    but not the ``nn.Module`` fqn, so the result cannot be JOINED to our own per-op profile (whose
+    ``join_key`` is that same fqn). Absent etrecord is therefore reported, not silently accepted --
+    a table keyed on operator name alone would look like a comparison and align nothing.
+    """
+    etdump = Path(etdump)
+    if not etdump.is_file():
+        raise ExecuTorchError(
+            f"no etdump at {etdump}; the runner must be the "
+            f"EXECUTORCH_BUILD_RISCV_ETDUMP build and the run must pass "
+            f"--etdump_path"
+        )
+    out = Path(out) if out is not None else etdump.with_name("et_regions.json")
+    argv = [str(et_venv_python()), str(_ET_INSPECT_HELPER), "--etdump", str(etdump), "--out", str(out)]
+    if etrecord is not None and Path(etrecord).is_file():
+        argv += ["--etrecord", str(etrecord)]
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0 or not out.is_file():
+        raise ExecuTorchError(f"_et_inspect failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-700:]}")
+    return out
+
+
+def region_profiles_from_et_json(et_regions_json: str | Path) -> list[RegionProfile]:
+    """Turn ``_et_inspect``'s ``et_regions.json`` (per-op etdump timing aggregated by nn.Module fqn)
+    into per-region :class:`RegionProfile`s the region×framework compare consumes. The fqn is the
+    SHARED join key with the Merlin side; ``role`` is derived here via ``role_from_fqn``. A delegated /
+    unattributable op lands in the ``other`` bucket honestly (the XNNPACK-delegation asymmetry)."""
+    from merlin.capture.roles import role_from_fqn
+
+    rows = json.loads(Path(et_regions_json).read_text())
+    out: list[RegionProfile] = []
+    for r in rows:
+        fqn = r.get("fqn", "") or ""
+        out.append(
+            RegionProfile(
+                name=fqn.rsplit(".", 1)[-1] if fqn and fqn != "other" else "other",
+                region_id="",
+                fqn="" if fqn == "other" else fqn,
+                role=role_from_fqn(fqn) or "",
+                wall_ns=int(r.get("wall_ns") or 0),
+                note=f"executorch etdump ({r.get('n_events')} events"
+                + (", delegated/opaque" if r.get("delegated") else "")
+                + ")",
+            )
+        )
+    return out
+
+
+def et_venv_python() -> Path:
+    """Python interpreter of the ExecuTorch export venv. Override with ``MERLIN_ET_VENV``."""
+    v = os.environ.get("MERLIN_ET_VENV")
+    if v:
+        return Path(v) / "bin" / "python"
+    return _BUILD_ROOT / "et-venv" / "bin" / "python"
+
+
+def et_venv_available() -> bool:
+    """True iff the exporter exists and exactly matches the runtime source checkout."""
+    try:
+        et_identity()
+        return True
+    except ExecuTorchIdentityError:
+        return False
+
+
+def et_identity() -> ExecuTorchIdentity:
+    """Return the exact shared exporter/runtime-source identity or fail closed."""
+    return require_matching_executorch(et_venv_python(), et_source_dir())
+
+
+def et_identity_error() -> str:
+    """Machine-actionable preflight reason, empty only for an exact source match."""
+    try:
+        et_identity()
+        return ""
+    except ExecuTorchIdentityError as error:
+        return str(error)
+
+
+def et_commit() -> str:
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(et_source_dir()), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+class ExecuTorchError(RuntimeError):
+    pass
+
+
+def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
+    return _proc.run_checked(cmd, error=ExecuTorchError, wrap_timeout=False, tail=2000, **kw)
+
+
+# --- capture-bundle resolution (legacy fp32 LLM dir names, like buddy) --------------------------
+
+_LEGACY_FP32_DIRS: dict[str, str] = {
+    "tiny_llama": "tiny_consistent",
+    "small_llama": "small_consistent",
+}
+
+
+def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
+    b = _bundle.resolve(model, variant)
+    if b.golden.is_file() and b.inputs.is_file():
+        return b
+    if variant == "fp32" and model in _LEGACY_FP32_DIRS:
+        legacy = artifacts.recaptures_dir() / _LEGACY_FP32_DIRS[model]
+        if (legacy / "golden.npy").is_file():
+            return _bundle.CaptureBundle(model=model, variant=variant, root=legacy)
+    return b
+
+
+def capture_locations(model: str) -> dict[str, str]:
+    """Per-host LOCATION env the workload's own ``capture.toml`` declares — see
+    :func:`merlin.baselines.bundle.capture_locations`, which owns the rule (locations replayed,
+    smoke-fidelity knobs dropped). Kept as a name here because the export path reads it by this name;
+    the DECLARATION is read in one place so a second copy cannot drift from it."""
+    return _bundle.capture_locations(model)
+
+
+def loader_env(model: str) -> dict[str, str]:
+    """Full loader environment for a full-fidelity export: capture locations, then curated knobs."""
+    return _bundle.loader_env(model)
+
+
+# --- AOT export (in the ET venv) ----------------------------------------------------------------
+
+
+@dataclass
+class ExportResult:
+    pte: Path
+    ptd_files: list[Path]
+    input_files: list[Path]
+    golden: Path
+    delegated_nodes: int | None = None
+    total_call_nodes: int | None = None
+    summary: dict | None = None
+
+
+def _file_identity(path: Path) -> dict[str, str | int]:
+    """Cheap cache identity for an immutable campaign input or generated artifact."""
+    resolved = Path(path).resolve()
+    stat = resolved.stat()
+    return {"path": str(resolved), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def _read_export_cache(cache_path: Path, key: dict) -> ExportResult | None:
+    """Return a complete matching export, never a merely present ``model.pte``."""
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if cached.get("key") != key:
+            return None
+        pte = Path(cached["pte"]["path"])
+        if _file_identity(pte) != cached["pte"]:
+            return None
+        ptd_files = [Path(path) for path in cached.get("ptd_files", [])]
+        input_files = [Path(path) for path in cached.get("input_files", [])]
+        golden = Path(cached["golden"])
+        if not golden.is_file() or any(not path.is_file() for path in ptd_files + input_files):
+            return None
+        return ExportResult(
+            pte=pte,
+            ptd_files=ptd_files,
+            input_files=input_files,
+            golden=golden,
+            delegated_nodes=cached.get("delegated_nodes"),
+            total_call_nodes=cached.get("total_call_nodes"),
+            summary=cached.get("summary"),
+        )
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _failure_summary(text: str, *, max_chars: int = 900) -> str:
+    """Condense an export subprocess's output down to WHAT WENT WRONG, final exception first.
+
+    A gap_reason must name the failure. Slicing raw output does not do that: a python traceback puts
+    the exception LAST, and every consumer downstream truncates a long reason from the FRONT, so a
+    raw slice reliably delivers a stack-frame fragment ("File …/_passes/__init__.py, line 112, in
+    transform") and drops the one line that says which recipe failed and why. Two models' int8 gaps
+    read that way — a diagnosis indistinguishable from noise.
+
+    So: drop the traceback scaffolding (indented frame bodies, ``File "…"`` lines, caret markers,
+    chaining banners), keep the remaining column-0 lines, and put the LAST of them first so a
+    head-truncation still preserves the error itself. Structural line handling, no pattern matching.
+    """
+    scaffold = ("Traceback (", 'File "', "The above exception", "During handling")
+    keep = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line[:1].isspace() and not line.startswith(scaffold)
+    ]
+    if not keep:
+        keep = [line.strip() for line in text.splitlines() if line.strip()]
+    tail = keep[-6:]
+    if not tail:
+        return "(no output)"
+    summary = tail[-1]
+    if len(tail) > 1:
+        summary += "  <- " + " | ".join(tail[:-1])
+    return summary[:max_chars]
+
+
+def export_pte(
+    model: str,
+    b: _bundle.CaptureBundle,
+    work: Path,
+    *,
+    xnnpack: bool = True,
+    quantize: bool = False,
+    compute_golden: bool = False,
+    int8_subgraph: bool = False,
+    int8_whole_model: bool = False,
+    qd8: bool = False,
+    replay_captured_weights: bool = False,
+    extra_env: dict[str, str] | None = None,
+    timeout: int = 3600,
+    reuse_existing: bool = False,
+) -> ExportResult:
+    """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
+
+    Uses OUR captured ``inputs.npz`` (so the export trace matches the golden) and writes the raw
+    input bytes + external-constant ``.ptd`` alongside the ``.pte``. A whole fp32 LLM's weights blow
+    past flatbuffer's 2 GB program limit if embedded, hence external constants. Raises
+    :class:`ExecuTorchError` with a concrete message on torch.export / lowering failure.
+
+    ``compute_golden``: recompute the reference from the eager torch model on the captured input
+    (used for a layer-reduced fit-on-board config whose captured golden was made with the full
+    model); the correctness gate then compares ExecuTorch vs eager-torch for THIS exact config.
+    ``replay_captured_weights``: strictly load the bundle's safetensors state into the live torch
+    model before export. This is the identity-matched path for random-init captures; any missing or
+    unexpected state key refuses the export instead of silently benchmarking a fresh instantiation.
+    ``extra_env``: passed to the export subprocess (e.g. ``M2M_LLAMA_LAYERS`` for the reduced build).
+    """
+    try:
+        identity = et_identity()
+    except ExecuTorchIdentityError as error:
+        raise ExecuTorchError(str(error)) from error
+    py = et_venv_python()
+    loader = b.torch_loader
+    if not loader.is_file():
+        raise ExecuTorchError(
+            f"model2MLIR torch loader missing at {loader} (ExecuTorch ingests torch; no loader -> cannot export)"
+        )
+    # int8-subgraph / whole-model int8 force compute-golden (the fp32 reference is recomputed from
+    # THIS exact loaded model, so the int8-vs-fp32 cosine is measured against the right baseline).
+    if int8_subgraph or int8_whole_model:
+        compute_golden = True
+    work = work.resolve()  # the subprocess runs with cwd=work, so all paths must be absolute
+    work.mkdir(parents=True, exist_ok=True)
+    out = work / "model.pte"
+    # If compute_golden, write the golden into the work dir (do not clobber the captured golden).
+    golden = (work / "golden.npy") if compute_golden else b.golden.resolve()
+    cmd = [
+        py,
+        str(_ET_EXPORT_HELPER),
+        "--loader",
+        str(loader.resolve()),
+        "--inputs-npz",
+        str(b.inputs.resolve()),
+        "--golden-npy",
+        str(golden),
+        "--out",
+        str(out),
+        "--model-name",
+        model,
+        "--m2m-root",
+        str(_bundle.model2mlir_root()),
+    ]
+    captured_weights = None
+    if replay_captured_weights:
+        if not b.weights.is_file():
+            raise ExecuTorchError(f"captured-weight replay requested but {b.weights} is absent")
+        captured_weights = b.weights.resolve()
+        cmd += ["--captured-weights", str(captured_weights)]
+    if not xnnpack:
+        cmd.append("--no-xnnpack")
+    if quantize:
+        cmd.append("--quantize")
+    if qd8:
+        cmd.append("--qd8")
+    if compute_golden:
+        cmd.append("--compute-golden")
+    if int8_subgraph:
+        cmd.append("--int8-subgraph")
+    if int8_whole_model:
+        cmd.append("--int8-whole-model")
+    env = dict(os.environ)
+    if extra_env:
+        env.update(extra_env)
+    cache_path = work / "export_result.json"
+    cache_key = {
+        "model": model,
+        "executorch_identity": identity.as_dict(),
+        "loader": _file_identity(loader),
+        "inputs": _file_identity(b.inputs),
+        "capture_golden": _file_identity(b.golden),
+        "captured_weights": (_file_identity(captured_weights) if captured_weights is not None else None),
+        "xnnpack": bool(xnnpack),
+        "quantize": bool(quantize),
+        "compute_golden": bool(compute_golden),
+        "int8_subgraph": bool(int8_subgraph),
+        "int8_whole_model": bool(int8_whole_model),
+        "qd8": bool(qd8),
+        "extra_env": dict(sorted((extra_env or {}).items())),
+    }
+    if reuse_existing:
+        cached = _read_export_cache(cache_path, cache_key)
+        if cached is not None:
+            return cached
+    # Run from the work dir (NOT this package dir): the sibling ``executorch.py`` would otherwise
+    # sit on sys.path[0] and shadow the installed ``executorch`` package in the ET venv.
+    proc = subprocess.run(
+        [str(c) for c in cmd], capture_output=True, text=True, timeout=timeout, env=env, cwd=str(work)
+    )
+    if proc.returncode != 0:
+        raise ExecuTorchError(f"AOT export failed: {_failure_summary(proc.stderr or proc.stdout)}")
+    summary = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("ET_EXPORT_JSON "):
+            summary = json.loads(line[len("ET_EXPORT_JSON ") :])
+    if not out.is_file():
+        raise ExecuTorchError(f"export produced no .pte at {out}: {proc.stdout[-400:]}")
+    s = dict(summary or {})
+    s["executorch_identity"] = identity.as_dict()
+    result = ExportResult(
+        pte=out,
+        ptd_files=[Path(p) for p in s.get("ptd_files", [])],
+        input_files=[Path(f["path"]) for f in s.get("input_files", [])],
+        golden=golden,
+        delegated_nodes=s.get("delegated_nodes"),
+        total_call_nodes=s.get("total_call_nodes"),
+        summary=s,
+    )
+    cache_path.write_text(
+        json.dumps(
+            {
+                "key": cache_key,
+                "pte": _file_identity(result.pte),
+                "ptd_files": [str(p) for p in result.ptd_files],
+                "input_files": [str(p) for p in result.input_files],
+                "golden": str(result.golden),
+                "delegated_nodes": result.delegated_nodes,
+                "total_call_nodes": result.total_call_nodes,
+                "summary": result.summary,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return result
+
+
+# --- which kernel libraries this .pte needs the runner to link ----------------------------------
+
+
+@dataclass
+class KernelPlan:
+    """Which ExecuTorch kernel libraries a given ``.pte`` needs, and what nothing provides.
+
+    ``Method::load`` refuses a program whose operators are not all registered, so this is the
+    difference between a runner that loads the model and one that aborts at load with
+    ``There are N instructions don't have corresponding operator registered``. Both fields are
+    DERIVED: ``operators`` from the exported program, ``libraries``/``missing`` by looking each
+    operator up in the kernel yamls of the pinned ExecuTorch source.
+    """
+
+    operators: dict[str, int] = field(default_factory=dict)
+    #: extra kernel libraries beyond the always-linked portable set, e.g. ``{"optimized"}``
+    libraries: set[str] = field(default_factory=set)
+    #: cmake options that link them, e.g. ``("EXECUTORCH_BUILD_KERNELS_OPTIMIZED",)``
+    cmake_options: tuple[str, ...] = ()
+    #: ``{operator: n_instructions}`` for operators NO ExecuTorch kernel library implements
+    missing: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def n_missing_instructions(self) -> int:
+        """Instructions the runtime will report as unregistered — its own unit, so the two match."""
+        return sum(self.missing.values())
+
+    def missing_reason(self) -> str:
+        """The gap_reason for a model no build configuration of stock ExecuTorch can load."""
+        named = ", ".join(f"{op} (x{n})" for op, n in sorted(self.missing.items()))
+        return (
+            f"ExecuTorch has no kernel for {len(self.missing)} operator(s) this model calls: "
+            f"{named}. Absent from every kernel library in the pinned source tree "
+            f"({', '.join(y for _, y, _ in _KERNEL_YAMLS)}), so no build configuration "
+            f"registers them and Method::load fails with OperatorMissing "
+            f"({self.n_missing_instructions} instructions). Not a merlin build gap."
+        )
+
+
+def _kernel_yaml_operators(path: Path) -> set[str]:
+    """Registry keys (``aten::mul.out``, ``quantized_decomposed::add.out``) one kernel yaml defines.
+
+    ExecuTorch spells an entry either as ``- op: <name>`` (implicitly the ``aten`` namespace) or as
+    ``- func: <ns>::<name>(<schema>)``; both forms appear in the same file. Parsed as YAML and split
+    structurally on ``(`` / ``::`` — the runtime's registry key is exactly this string, so the
+    comparison downstream is key-to-key, never a substring search.
+    """
+    import yaml
+
+    entries = yaml.safe_load(path.read_text()) or []
+    names: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if "op" in entry:
+            raw, namespaced = str(entry["op"]), False
+        elif "func" in entry:
+            raw, namespaced = str(entry["func"]).partition("(")[0], True
+        else:
+            continue
+        raw = raw.strip()
+        if not raw:
+            continue
+        names.add(raw if (namespaced and "::" in raw) else f"aten::{raw}")
+    return names
+
+
+def pte_operators(pte: Path, *, timeout: int = 900) -> dict[str, int]:
+    """``{registry key: n_instructions}`` for every kernel call in an exported ``.pte``.
+
+    Shelled out to ``_et_ops`` under the ExecuTorch venv for the same reason as ``_et_inspect``:
+    deserializing the program needs ``executorch.exir``, which lives in that venv and not merlin's.
+    """
+    out = Path(pte).with_name(Path(pte).stem + "_operators.json")
+    proc = subprocess.run(
+        [str(et_venv_python()), str(_ET_OPS_HELPER), "--pte", str(pte), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if proc.returncode != 0 or not out.is_file():
+        raise ExecuTorchError(f"_et_ops failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-700:]}")
+    payload = json.loads(out.read_text())
+    return {str(k): int(v) for k, v in payload.get("operators", {}).items()}
+
+
+def plan_kernels(pte: Path, *, timeout: int = 900) -> KernelPlan:
+    """Read a ``.pte`` and the pinned kernel yamls -> which libraries the runner must link.
+
+    The portable set is linked unconditionally by ``executor_runner``; anything an operator needs
+    beyond it (``optimized`` for the FFT ops, ``quantized`` for the ``quantized_decomposed`` ops) is
+    an OPTION the build has to be told about, and was previously left OFF — which is why a model
+    exporting those operators aborted on the board at load time with no host-side warning. Operators
+    that no library defines are returned in ``missing`` so the caller can name them instead of
+    spending a board slot to rediscover them.
+    """
+    operators = pte_operators(pte, timeout=timeout)
+    provided: dict[str, set[str]] = {}
+    for library, relative, _option in _KERNEL_YAMLS:
+        path = et_source_dir() / relative
+        provided[library] = _kernel_yaml_operators(path) if path.is_file() else set()
+
+    plan = KernelPlan(operators=operators)
+    for operator, count in operators.items():
+        homes = [lib for lib, names in provided.items() if operator in names]
+        if not homes:
+            plan.missing[operator] = count
+        elif "portable" not in homes:
+            # Available, but only from a library the default build does not link.
+            plan.libraries.add(homes[0])
+    plan.cmake_options = tuple(
+        option for library, _relative, option in _KERNEL_YAMLS if option is not None and library in plan.libraries
+    )
+    return plan
+
+
+# --- cross-compile the executor_runner for rv64gcv (SpacemiT clang) -----------------------------
+
+
+def _toolchain_root() -> Path | None:
+    return k1._toolchain_root()
+
+
+def cross_compile_runner(
+    work: Path, *, xnnpack: bool = True, etdump: bool = False, kernel_options: tuple[str, ...] = (), timeout: int = 5400
+) -> Path:
+    """Cross-compile ExecuTorch's ``executor_runner`` for rv64gcv with the SpacemiT clang.
+
+    Uses the pinned source tree's ``riscv64-linux`` cmake preset but overrides its toolchain file
+    with :data:`_TOOLCHAIN_CMAKE` (SpacemiT clang, ``-march=rv64gcv -mabi=lp64d`` on the whole
+    build) and enables ``EXECUTORCH_BUILD_XNNPACK`` so XNNPACK's RVV microkernels are linked in.
+    Enforces the vector march (``rvv_audit.enforce_rvv_march``) before configuring — no scalar-only
+    binary slips through. The build is cached under ``build/baselines/executorch/cmake-out``; a
+    stale/failed configure is wiped and retried once.
+
+    ``etdump=True`` flips ``EXECUTORCH_BUILD_RISCV_ETDUMP`` ON (→ devtools + event tracer in the
+    preset), so the runner accepts ``--etdump_path`` and emits per-op timing events the devtools
+    Inspector correlates back to layer fqns (the per-region ExecuTorch timing). It is a DISTINCT
+    build (cached under a separate dir) from the plain runner so the two do not clobber each other.
+
+    ``kernel_options`` are the ``EXECUTORCH_BUILD_KERNELS_*`` cmake options that link the kernel
+    libraries a particular model needs beyond the always-linked portable set — supply
+    :attr:`KernelPlan.cmake_options` from :func:`plan_kernels`, which derives them from the ``.pte``.
+    Leaving them off does not fail the build; it produces a runner that aborts at ``Method::load``
+    on the board with ``instructions don't have corresponding operator registered``, which is how
+    this was originally missed. Each distinct kernel set gets its OWN build dir so a runner is never
+    silently reused with the wrong kernel registry (the binaries differ; the paths must too).
+    """
+    try:
+        et_identity()
+    except ExecuTorchIdentityError as error:
+        raise ExecuTorchError(str(error)) from error
+    rvv_audit.enforce_rvv_march(k1.K1_MARCH)
+    root = _toolchain_root()
+    if root is None:
+        raise ExecuTorchError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
+
+    kernel_options = tuple(sorted(set(kernel_options)))
+    # The kernel set is part of the binary's identity, so it is part of the cache key. Suffixed
+    # rather than substituted so the existing portable-only caches stay valid and keep their meaning.
+    suffix = "".join("-" + option.rsplit("_", 1)[-1].lower() for option in kernel_options)
+    build_dir = work / (("cmake-out-etdump" if etdump else "cmake-out") + suffix)
+    env = dict(os.environ)
+    env["MERLIN_K1_TOOLCHAIN_ROOT"] = str(root)
+
+    # ExecuTorch's cmake runs host-side codegen (gen_oplist, flatc bindings) via PYTHON_EXECUTABLE;
+    # it must be the ET venv python (has executorch + the codegen module), NOT merlin's .venv.
+    py = et_venv_python()
+    cfg = [
+        "cmake",
+        "-S",
+        str(et_source_dir()),
+        "-B",
+        str(build_dir),
+        "--preset",
+        "riscv64-linux",
+        f"-DCMAKE_TOOLCHAIN_FILE={_TOOLCHAIN_CMAKE}",
+        f"-DPYTHON_EXECUTABLE={py}",
+        "-DCMAKE_BUILD_TYPE=Release",
+    ]
+    if xnnpack:
+        cfg.append("-DEXECUTORCH_BUILD_XNNPACK=ON")
+    if etdump:
+        cfg.append("-DEXECUTORCH_BUILD_RISCV_ETDUMP=ON")
+    cfg += [f"-D{option}=ON" for option in kernel_options]
+
+    def _configure_and_build() -> None:
+        subprocess.run([str(c) for c in cfg], capture_output=True, text=True, timeout=timeout, env=env, check=True)
+        subprocess.run(
+            ["cmake", "--build", str(build_dir), "-j", str(os.cpu_count() or 8), "--target", "executor_runner"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            check=True,
+        )
+
+    try:
+        _configure_and_build()
+    except subprocess.CalledProcessError as e:
+        # Wipe a possibly-stale configure and retry once with full logs on failure.
+        shutil.rmtree(build_dir, ignore_errors=True)
+        try:
+            _configure_and_build()
+        except subprocess.CalledProcessError as e2:
+            out = (e2.stdout or "") + (e2.stderr or "")
+            raise ExecuTorchError(f"executor_runner cross-compile failed: {out[-2000:]}") from e2
+
+    runner = build_dir / "executor_runner"
+    if not runner.is_file():
+        raise ExecuTorchError(f"cross-compile produced no executor_runner at {runner}")
+    # Sanity: it must be a RISC-V ELF, not a host binary.
+    fr = subprocess.run(["file", str(runner)], capture_output=True, text=True, timeout=30)
+    if "RISC-V" not in fr.stdout:
+        raise ExecuTorchError(f"executor_runner is not a RISC-V ELF: {fr.stdout.strip()}")
+    return runner
+
+
+# --- RVV audit (executor_runner + XNNPACK objects) ----------------------------------------------
+
+# Symbols that are harness/CRT/libc plumbing, not model-compute kernels — excluded from the
+# scalar-fallback list (we only label compute kernels that stayed scalar).
+_IGNORE_SYMS = (
+    "_start",
+    "__libc",
+    "abort",
+    "printf",
+    "puts",
+    "fwrite",
+    "memcpy",
+    "memset",
+    "memmove",
+    "malloc",
+    "free",
+    "pthread",
+    "clock_",
+    "frame_dummy",
+    "register_tm",
+    "gflags",
+    "std::",
+    "__cxx",
+    "operator",
+    "_GLOBAL__",
+    "et_pal",
+    "executorch::runtime",
+    "flatbuffers",
+)
+
+
+def _region_of_symbol(sym: str) -> str:
+    s = sym.lower()
+    if any(t in s for t in ("gemm", "matmul", "igemm", "spmm", "conv", "dwconv", "fully_connected")):
+        return "gemm"
+    if any(t in s for t in ("softmax", "attention", "attn", "sdpa")):
+        return "attention"
+    if any(t in s for t in ("norm", "rsqrt", "layernorm", "rmsnorm", "mean")):
+        return "norm"
+    if any(
+        t in s
+        for t in ("add", "mul", "gelu", "silu", "sigmoid", "vunary", "vbinary", "elementwise", "clamp", "relu", "exp")
+    ):
+        return "elementwise"
+    return "other"
+
+
+def _preferred_objdump() -> str | None:
+    """Prefer the toolchain's ``llvm-objdump`` for RVV decoding.
+
+    The SpacemiT GNU ``riscv64-unknown-linux-gnu-objdump`` silently mis-decodes rv64gcv vector
+    instructions in bulk ``-d`` mode (it decodes a forced address range correctly, but a whole-file
+    ``-d`` emits ~3 vector insns for a binary that actually has ~85k) — which would fabricate a
+    false 0% RVV coverage. ``llvm-objdump`` decodes them correctly, so we pin it for this arm. We do
+    NOT patch the shared ``rvv_audit._objdump`` (other arms depend on it); we pass ``objdump=`` here.
+    """
+    root = _toolchain_root()
+    if root is not None:
+        cand = root / "bin" / "llvm-objdump"
+        if cand.is_file():
+            return str(cand)
+    import shutil as _sh
+
+    return _sh.which("llvm-objdump")
+
+
+def audit_binary(runner: Path) -> tuple[float | None, list[ScalarFallback], dict]:
+    """RVV-audit the executor_runner ELF (statically links XNNPACK + portable kernels).
+
+    Returns (coverage_overall, fallbacks, per-symbol dict). Every compute-bearing symbol with zero
+    vector instructions is labeled a scalar fallback (reason 'no XNNPACK RVV ukernel (portable
+    kernel)') — this is where ExecuTorch's substantial scalar surface is recorded honestly.
+    """
+    report = rvv_audit.audit_binary(runner, objdump=_preferred_objdump())
+    fallbacks = [
+        ScalarFallback(
+            symbol=sym, reason="no XNNPACK RVV ukernel (portable/scalar kernel)", region=_region_of_symbol(sym)
+        )
+        for sym in report.scalar_fallback_symbols(ignore=_IGNORE_SYMS)
+    ]
+    by_symbol = {
+        n: {"vector": sc.vector, "scalar_compute": sc.scalar_compute, "coverage": sc.coverage}
+        for n, sc in report.by_symbol.items()
+    }
+    return report.coverage_overall, fallbacks, by_symbol
+
+
+# --- on-board run + parse -----------------------------------------------------------------------
+#
+# executor_runner has no --json mode, so its ET_LOG stdout/stderr IS the contract. The format
+# strings are fixed in the pinned source we build ourselves
+# (third_party/baselines/executorch/examples/portable/executor_runner/executor_runner.cpp):
+#
+#     ET_LOG(Info, "Model loaded in %f ms.", ...)
+#     ET_LOG(Info, "Iteration %" PRIu32 " of %" PRIu32 ": %f ms", ...)
+#     ET_LOG(Info, "Model executed successfully %" PRIu32 " time(s) in %f ms.", ...)
+#
+# ...and every line is prefixed by ET_LOG's own severity/timestamp/site banner. Real captured lines
+# from a K1 board run:
+#
+#   I 00:00:05.833558 executorch:executor_runner.cpp:564] Model loaded in 4463.268273 ms.
+#   I 00:00:06.075611 executorch:executor_runner.cpp:705] Iteration 1 of 1: 241.944288 ms
+#   I 00:00:06.075701 executorch:executor_runner.cpp:714] Model executed successfully 1 time(s) in 241.944288 ms.
+#
+# The retired patterns were, unanchored, over the whole console:
+#   _TIME_RE = r"Model executed successfully .* in ([\d.]+) ms"
+#   _LOAD_RE = r"Model loaded in ([\d.]+) ms"
+#   _ITER_RE = r"Iteration \d+ of \d+: ([\d.]+) ms"      (defined but never used; dropped)
+# `.` never crosses a newline, so each was confined to a single line and `re.search` returned the
+# FIRST line that matched. The replacements below preserve exactly that: scan lines in order, take
+# the first that yields a number.
+#
+# Three outcomes, never collapsed (see _ConsoleReading): PARSED, ABSENT (the marker line never
+# appeared — the run did not get that far), UNPARSEABLE (the marker line DID appear but its
+# millisecond field could not be read — a console-format change we must shout about). A reading that
+# is not PARSED stays None: an unmeasurable time is UNKNOWN and is reported as such, never 0.
+
+from merlin.baselines.executorch_console import (
+    _ABSENT,
+    _EXEC_JOINER,
+    _EXEC_MARKER,
+    _LOAD_MARKER,
+    _PARSED,
+    _UNPARSEABLE,
+    _ConsoleReading,
+    _leading_ms,
+    _read_console_ms,
+)  # noqa: F401 -- historical helper identities
+
+
+@dataclass
+class BoardRun:
+    ran: bool = False
+    wall_ns: int | None = None  # execution time (ms->ns) reported by executor_runner
+    load_ns: int | None = None  # model-load time (ms->ns)
+    cos: float | None = None
+    rel: float | None = None
+    console: str = ""
+    # Console lines that carried a marker we recognize but a millisecond field we could not read.
+    # Kept distinct from "the line never appeared" so a console-format change is reported, not
+    # silently turned into a missing (or worse, zero) timing.
+    parse_warnings: list[str] = field(default_factory=list)
+    #: Local path of the etdump pulled back from the board, when the run asked for one. None when
+    #: not requested, and None (with a parse warning) when requested but the runner emitted nothing --
+    #: the plain runner silently ignores --etdump_path, so "absent" must not read as "zero events".
+    etdump: Path | None = None
+
+
+def _board_free_bytes() -> int | None:
+    """Free bytes on the board's rootfs (K1_REMOTE_DIR lives there), or None if unreachable."""
+    try:
+        r = k1_exec.run(["df", "-k", k1_exec.K1_REMOTE_DIR])
+        for line in r.stdout.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 4:
+                return int(parts[3]) * 1024
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _board_available_memory_bytes() -> int | None:
+    """Kernel-estimated RAM available to a new board process, or None if unreachable."""
+    try:
+        r = k1_exec.run(["cat", "/proc/meminfo"])
+        for line in r.stdout.splitlines():
+            field, _, rest = line.partition(":")
+            if field.strip() != "MemAvailable":
+                continue
+            value, _, unit = rest.strip().partition(" ")
+            return int(value) * (1024 if unit.strip().lower() == "kb" else 1)
+    except Exception:  # noqa: BLE001 - an unreachable board makes this optional probe unknown
+        pass
+    return None
+
+
+def _estimated_resident_bytes(exp: "ExportResult", *, mmap_model: bool) -> int:
+    """Conservative artifact-derived resident-set estimate for a board execution.
+
+    Non-mmap execution reads the program into a fully resident buffer. External constants and
+    captured inputs are conservatively counted in both modes. The runtime memory-plan arena is
+    additive. With mmap, program pages are demand-loaded, so charging the full .pte would recreate
+    the very false rejection mmap exists to avoid.
+    """
+    resident = 0 if mmap_model else exp.pte.stat().st_size
+    resident += sum(p.stat().st_size for p in exp.ptd_files if p.is_file())
+    resident += sum(p.stat().st_size for p in exp.input_files if p.is_file())
+    profile_summary = exp.summary.get("aot_profile", {}) if exp.summary else {}
+    if isinstance(profile_summary, dict):
+        resident += int(profile_summary.get("memory_plan_total_bytes") or 0)
+    return resident
+
+
+def _run_on_board(
+    res: BaselineResult,
+    runner: Path,
+    exp: "ExportResult",
+    *,
+    num_executions: int = 1,
+    timeout: int = 1200,
+    mmap_model: bool = False,
+    etdump: bool = False,
+    cpu_threads: int | None = None,
+) -> BoardRun:
+    """Push runner + .pte + .ptd + input(s) to the K1, run under the board lock, dump the output.
+
+    Uses the stock executor_runner's ``--model_path`` / ``--data_path`` (external weights) /
+    ``--inputs`` (raw captured input bytes) / ``--output_file`` (dump to tmpfs) path. The runner
+    prints ``Model loaded in X ms`` and ``Model executed successfully N time(s) in Y ms`` — Y is the
+    honest E2E wall time (this foreign runner does NOT expose the K1 rdtime CSR, so wall_ns is the
+    truth and we do NOT fabricate a tick/cycle count). The output is scp'd back and compared to the
+    golden OFF-DEVICE (cos/rel) — never a fabricated correctness number. Fail-closed if board down.
+
+    Board is disk-constrained and SHARED with other agents: we check free space before pushing and
+    fail-closed (``not_run`` with a specific reason) if the model won't fit, rather than filling a
+    shared board's disk.
+    """
+    out = BoardRun()
+    total = runner.stat().st_size + exp.pte.stat().st_size
+    total += sum(p.stat().st_size for p in exp.ptd_files if p.is_file())
+    total += sum(p.stat().st_size for p in exp.input_files if p.is_file())
+
+    with k1_exec.board_lock():
+        free = _board_free_bytes()
+        if free is not None and free < total + 64 * 1024 * 1024:  # 64MB headroom
+            raise k1_exec.BoardUnavailable(
+                f"board rootfs has {free / 1e9:.2f} GB free but the model needs {total / 1e9:.2f} GB "
+                f"(shared board is disk-constrained; not filling it)"
+            )
+        available = _board_available_memory_bytes()
+        resident = _estimated_resident_bytes(exp, mmap_model=mmap_model)
+        if available is not None and available < resident + 256 * 1024 * 1024:
+            raise k1_exec.BoardUnavailable(
+                f"board has {available / 1e9:.2f} GB available RAM but this exported artifact "
+                f"needs about {resident / 1e9:.2f} GB resident plus 0.27 GB runtime headroom"
+            )
+
+        # A whole-model .pte can be multi-GB; the default 300 s scp timeout truncates it (which then
+        # fails on the board). Scale the timeout to the payload (~5 MB/s worst case over this link).
+        def _push(p: Path, remote: str) -> str:
+            secs = max(300, int(p.stat().st_size / (2 * 1024 * 1024)) + 120)
+            return k1_exec.push(p, remote, timeout=secs)
+
+        remote_runner = _push(runner, f"{k1_exec.K1_REMOTE_DIR}/executor_runner")
+        remote_pte = _push(exp.pte, f"{k1_exec.K1_REMOTE_DIR}/model.pte")
+        remote_ptds = [_push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}") for p in exp.ptd_files if p.is_file()]
+        remote_inputs = [_push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}") for p in exp.input_files if p.is_file()]
+        remote_out = "/tmp/et_out"  # tmpfs (RAM, 1.9G) — output is small (few MB), keeps flash free
+        local_out = exp.pte.parent / "et_out-0.bin"
+        argv = [
+            remote_runner,
+            f"--model_path={remote_pte}",
+            f"--num_executions={num_executions}",
+            f"--output_file={remote_out}",
+            "--print_output=none",
+        ]
+        # HOW MANY CORES THE REFERENCE MAY USE. Left unset, its threadpool takes every online CPU
+        # -- 8 on this board -- while our arm runs on one, so an unpinned ratio is a system
+        # comparison, not a compiler one. The count is NOT discoverable from the build flags:
+        # extension/threadpool/CMakeLists.txt takes the USE_PERFORMANCE_CORES branch regardless of
+        # how that option is set, cpuinfo_utils reads an ARM64-only sysfs node and returns 0 on
+        # RISC-V, and pthreadpool then falls back to sysconf(_SC_NPROCESSORS_ONLN). Measured on the
+        # board: 8 OS threads by default, 1 with --cpu_threads=1.
+        if cpu_threads is not None:
+            argv.append(f"--cpu_threads={int(cpu_threads)}")
+        if mmap_model:
+            # mmap the (multi-GB) program so its const weight pages demand-load and stay evictable
+            # under the board RAM ceiling instead of being read fully-resident by FileDataLoader.
+            argv.append("--mmap_model=true")
+        if remote_ptds:
+            argv.append(f"--data_path={remote_ptds[0]}")
+        if remote_inputs:
+            argv.append("--inputs=" + ",".join(remote_inputs))
+        remote_etdump = f"{k1_exec.K1_REMOTE_DIR}/model.etdump" if etdump else None
+        local_etdump = (exp.pte.parent / "model.etdump") if etdump else None
+        if remote_etdump:
+            # Only the EXECUTORCH_BUILD_RISCV_ETDUMP runner honours this; the plain one ignores the
+            # flag without error, which is why the pull below is checked rather than assumed.
+            argv.append(f"--etdump_path={remote_etdump}")
+        try:
+            k1_exec.run(["chmod", "+x", remote_runner])
+            proc = k1_exec.run(argv, timeout=timeout)
+            # pull the dumped output (output 0) for off-device cos/rel.
+            try:
+                _scp_from_board(f"{remote_out}-0.bin", local_out)
+            except Exception:  # noqa: BLE001
+                local_out = None  # type: ignore[assignment]
+            if remote_etdump and local_etdump is not None:
+                try:
+                    _scp_from_board(remote_etdump, local_etdump)
+                    out.etdump = local_etdump if local_etdump.is_file() else None
+                except Exception as e:  # noqa: BLE001
+                    # Requested and not produced is a REPORTED gap, never a silent zero: it means the
+                    # runner was built without devtools, and every per-op number would be missing.
+                    out.parse_warnings.append(
+                        f"--etdump_path was requested but no etdump came back ({type(e).__name__}); "
+                        f"the runner is probably built without EXECUTORCH_BUILD_RISCV_ETDUMP"
+                    )
+        finally:
+            try:
+                k1_exec.run(
+                    [
+                        "rm",
+                        "-f",
+                        remote_runner,
+                        remote_pte,
+                        *remote_ptds,
+                        *remote_inputs,
+                        f"{remote_out}-0.bin",
+                        *([remote_etdump] if remote_etdump else []),
+                    ]
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    console = proc.stdout + proc.stderr
+    out.console = console
+    executed = _read_console_ms(console, _EXEC_MARKER, joiner=_EXEC_JOINER)
+    if executed.state == _PARSED:
+        out.ran = True
+        out.wall_ns = executed.ns
+    elif executed.state == _UNPARSEABLE:
+        # The runner DID report a successful execution; only its time is unreadable. Say so —
+        # `ran` stays False and `wall_ns` stays None (unknown), never 0.
+        out.parse_warnings.append(
+            f"executor_runner reported success but its time field is unreadable: {executed.detail!r}"
+        )
+    loaded = _read_console_ms(console, _LOAD_MARKER)
+    if loaded.state == _PARSED:
+        out.load_ns = loaded.ns
+    elif loaded.state == _UNPARSEABLE:
+        out.parse_warnings.append(f"'Model loaded in' line present but its time field is unreadable: {loaded.detail!r}")
+    # correctness: compare the dumped output to the golden OFF-DEVICE.
+    if out.ran and local_out is not None and Path(local_out).is_file():
+        out.cos, out.rel = _cos_rel(Path(local_out), exp.golden)
+    return out
+
+
+def _scp_from_board(remote: str, local: Path) -> None:
+    """scp a file FROM the board (k1_exec only pushes)."""
+    opts = ["-i", k1_exec.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
+    r = subprocess.run(
+        ["scp", *opts, f"{k1_exec.K1_HOST}:{remote}", str(local)], capture_output=True, text=True, timeout=300
+    )
+    if r.returncode != 0:
+        raise ExecuTorchError(f"scp from board failed: {r.stderr[:200]}")
+
+
+def _cos_rel(out_bin: Path, golden: Path) -> tuple[float | None, float | None]:
+    """Cosine similarity + relative L2 error of a dumped fp32 output vs the golden .npy."""
+    try:
+        import numpy as np
+
+        gold = np.load(golden).astype(np.float64).ravel()
+        got = np.fromfile(out_bin, dtype=np.float32).astype(np.float64).ravel()
+        n = min(gold.size, got.size)
+        if n == 0:
+            return None, None
+        g, a = gold[:n], got[:n]
+        denom = (np.linalg.norm(a) * np.linalg.norm(g)) or 1.0
+        cos = float(np.dot(a, g) / denom)
+        rel = float(np.linalg.norm(a - g) / (np.linalg.norm(g) or 1.0))
+        return cos, rel
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+# --- the runner ---------------------------------------------------------------------------------
+
+# LLM subset first (cleanest torch.export + XNNPACK partition), then attempt the rest. Whole-model
+# is FORCED for every model — ExecuTorch has no per-op opt-out here.
+#
+# The trailing three are NON-LLM architectures (a spectral ViT, a CNN+MiT+LSTM controller, a Gemma
+# decoder) carried here so an int8 comparison is not a single-model claim: the project's bar is a
+# MAJORITY of a diverse int8 set, and a set of one llama cannot show that either way. Each is
+# attempted like any other model and each records what actually happened — export failure included.
+# Deliberately no known-blocked list: a static gap string goes stale the moment ExecuTorch is bumped,
+# so the reason a cell carries is always the reason THIS run produced.
+DEFAULT_MODELS = (
+    "tiny_llama",
+    "small_llama",
+    "bitvla",
+    "rdt2",
+    "rdt",
+    "openvla",
+    "molmoact",
+    "groot_n1d7",
+    "xr0",
+    "pi05",
+    "smolvla",
+    "spectformer",
+    "lstmnetvit",
+    "gemma2_2b",
+)
+
+
+def run_model(
+    model: str,
+    variant: str = "fp32",
+    *,
+    work_root: Path | None = None,
+    write: bool = True,
+    run_board: bool | None = None,
+    xnnpack: bool = True,
+    quantize: bool | None = None,
+    compute_golden: bool = False,
+    int8_subgraph: bool = False,
+    int8_whole_model: bool | None = None,
+    qd8: bool = False,
+    full_fidelity: bool = True,
+    replay_captured_weights: bool = False,
+    export_env: dict[str, str] | None = None,
+    num_executions: int = 1,
+    etdump: bool = False,
+    cpu_threads: int | None = None,
+    runner_override: Path | None = None,
+    reuse_export: bool = False,
+) -> BaselineResult:
+    """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
+
+    Re-runnable: with the board down it still produces a ``not_run`` result carrying the built
+    rv64gcv executor_runner, its RVV coverage, and the labeled scalar-fallback table; a later
+    invocation with the board up fills in timing + correctness with no code change.
+
+    ``compute_golden`` / ``export_env`` support a layer-reduced fit-on-board build (e.g.
+    ``export_env={'M2M_LLAMA_LAYERS': '1'}`` + ``compute_golden=True``): the whole fp32 LLM (~4 GB)
+    does not fit the shared 3.8 GB board, so a reduced config that DOES fit is run to prove the
+    ExecuTorch+XNNPACK-RVV path end-to-end on real silicon; the full-config attempt is recorded as a
+    board-fit gap. ``runner_override`` reuses an already-built executor_runner (it is model-agnostic).
+    """
+    # int8 variant defaults to ExecuTorch's OFFICIAL whole-model llama recipe (source-transform
+    # weight-only int8 per-channel) — the path that unblocks full-model int8 on HF Llama. Falls back
+    # to the decoder-linear subgraph only if explicitly requested.
+    # WHICH int8 recipe. `qd8` selects PT2E dynamic affine activation quant against per-channel
+    # weights and reaches XNNPACK's qd8 int8 ukernels. It is the same deployment class as Merlin's
+    # dynamic W8A8 path, but NOT the same arithmetic: Merlin's captured TorchAO recipe is symmetric
+    # per token (zero point 0), while XNNPACK selects a data-dependent affine zero point. The default
+    # below stays the weight-only module swap so existing cells keep their meaning.
+    #
+    # The distinction is not cosmetic. The weight-only recipe's dequant const-folds into an fp32
+    # const weight that XNNPACK partitions as a NORMAL FP32 GEMM (see _et_export's
+    # _int8_whole_model_bias_preserving docstring), so that cell measures fp32 compute with int8
+    # STORAGE and never touches an int8 ukernel. Dividing an ours-int8 wall by it compares two
+    # different arithmetics.
+    if qd8:
+        if int8_whole_model:
+            raise ValueError(
+                "qd8 and int8_whole_model are two different int8 recipes and cannot both apply: "
+                "int8_whole_model is an eager module swap that never runs PT2E (the --quantize flag "
+                "is ignored on that path), while qd8 IS the PT2E path. Pick one and let the result "
+                "say which ran."
+            )
+        int8_whole_model, quantize = False, True
+    if int8_whole_model is None:
+        int8_whole_model = (variant == "int8") and not int8_subgraph
+    if quantize is None:
+        quantize = variant == "int8"
+    if int8_subgraph or int8_whole_model:
+        quantize = True
+    # Full-fidelity: load the model with the exact loader env the golden was captured on (so we
+    # ingest the IDENTICAL architecture). Merged UNDER any explicit export_env override.
+    if full_fidelity:
+        ff = loader_env(model)
+        if ff:
+            export_env = {**ff, **(export_env or {})}
+    cos_thr, rel_thr = _bundle.tolerance(model)
+    # W8A8 quantization loses precision vs the fp32 golden — the fp32 gate (cos>=0.9999) is not the
+    # right bar for an int8 result. Use an int8-appropriate gate so a genuinely-correct int8 run is
+    # not spuriously marked fail (still honest: cos is the MEASURED int8-vs-fp32 cosine, not faked).
+    #
+    # And the int8 bar is DERIVED from this bundle's own quantization floor, not a constant. A flat
+    # rel <= 0.05 rejected ExecuTorch's tiny_llama qd8 arm at rel 0.106 — on a bundle whose own
+    # independent W8A8 reference sits at rel 0.958 from fp32 and flips the argmax. The arm was
+    # nearly ten times CLOSER to fp32 than quantizing the model at all is, and the constant called
+    # it broken. The rule is now the one our own gate already applies to us (deviate by at most
+    # QUANT_EXCESS_K times the model's own quantization noise), so both arms are judged the same
+    # way instead of by two absolute numbers that happened to differ. The derived bar never falls
+    # below the absolute one.
+    int8_bar = None
+    if quantize:
+        cos_thr, rel_thr = _bundle.FP32_TIER_MIN_COS, _bundle.ABSOLUTE_INT8_REL
+    # Random-init models ship no reproducible weights, so their CAPTURED golden is unreachable by a
+    # re-instantiated export: gating against it measures weight provenance, not the framework. Recompute
+    # the reference from THIS instance (as the int8 path already does) and LABEL the cell — the cos then
+    # means lowering-exactness, never a semantic match. Non-random-init models are untouched.
+    lowering_exact_only = _bundle.golden_unreproducible(model) and not compute_golden and not replay_captured_weights
+    if lowering_exact_only:
+        compute_golden = True
+    res = BaselineResult(
+        framework=FRAMEWORK,
+        model=model,
+        variant=variant,
+        substrate="k1_spacemit",
+        cos_threshold=cos_thr,
+        rel_threshold=rel_thr,
+        march=k1.K1_MARCH,
+        toolchain="spacemit-clang-19+executorch+xnnpack(rvv)",
+        framework_commit=et_commit(),
+        timestamp=artifacts.utc_stamp(),
+    )
+    if lowering_exact_only:
+        res.notes += _bundle.lowering_exactness_note(model)
+
+    b = resolve_bundle(model, variant)
+    # WHICH bundle this measurement is on. Part of the measurement, not metadata: resolve()
+    # prefers <model>_<variant>_full over the older TRUNCATED _consistent when both exist, so
+    # two runs of the "same" (model, variant) can be two different models. A ratio taken across
+    # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
+    # refuses one unless BOTH sides record this.
+    res.bundle_id = b.root.name
+    if quantize:
+        int8_bar = _bundle.int8_accuracy_bar(b.root)
+        res.cos_threshold, res.rel_threshold = int8_bar["cos_threshold"], int8_bar["rel_threshold"]
+        res.notes += f" int8 bar {int8_bar['basis']}."
+    # WHICH int8 arithmetic this cell ran. Recorded from the SELECTED recipe, not inferred from the
+    # variant string: `variant="int8"` alone has meant three different computations over this repo's
+    # history, and only one of them reaches an int8 ukernel.
+    if variant == "int8" or quantize:
+        res.quant_recipe = "pt2e_qd8" if qd8 else "weight_only" if int8_whole_model else "pt2e_qs8" if quantize else ""
+    res.num_executions = num_executions
+    if not b.golden.is_file():
+        res.gap_reason = f"golden missing: {b.root}/golden.npy absent (cannot gate correctness)"
+        return _finish(res, model, variant, write)
+    if not b.inputs.is_file():
+        res.gap_reason = f"inputs missing: {b.root}/inputs.npz absent (needed to match golden)"
+        return _finish(res, model, variant, write)
+    if not et_venv_available():
+        identity_error = et_identity_error()
+        res.gap_reason = (
+            identity_error
+            or "ExecuTorch export venv unavailable at "
+            f"{et_venv_python()} (build via third_party/baselines/executorch/"
+            "install_executorch.sh); cannot torch.export -> .pte"
+        )
+        return _finish(res, model, variant, write)
+
+    work = (work_root or (_BUILD_ROOT / "runs")) / f"{model}_{variant}"
+    work.mkdir(parents=True, exist_ok=True)
+
+    # 1. AOT export -> .pte (+ .ptd) via the XNNPACK partitioner. torch.export / unsupported-op
+    #    failures -> not_built with a specific reason.
+    try:
+        export_kwargs = dict(
+            xnnpack=xnnpack,
+            quantize=quantize,
+            compute_golden=compute_golden,
+            int8_subgraph=int8_subgraph,
+            int8_whole_model=int8_whole_model,
+            qd8=qd8,
+            extra_env=export_env,
+        )
+        if replay_captured_weights:
+            export_kwargs["replay_captured_weights"] = True
+        if reuse_export:
+            export_kwargs["reuse_existing"] = True
+        exp = export_pte(model, b, work, **export_kwargs)
+        if exp.summary and exp.summary.get("subgraph_note"):
+            res.notes += " " + exp.summary["subgraph_note"]
+        if exp.delegated_nodes is not None:
+            res.notes += f" xnnpack_delegated_nodes={exp.delegated_nodes}/{exp.total_call_nodes}"
+        if quantize:
+            res.notes += " pt2e_w8a8=True"
+        if compute_golden:
+            res.notes += " golden=eager-torch(this-config)"
+        if replay_captured_weights:
+            res.notes += " weights=capture-bundle(strict-state-dict)"
+        # WHICH reference the cos/rel below are against, derived from the golden path the scorer is
+        # actually handed rather than from the flags that were requested. `export_pte` forces a
+        # recompute on its own for the int8-subgraph / whole-model-int8 paths (executorch.py:282-285)
+        # WITHOUT telling its caller, and does NOT force one for qd8 -- so neither `compute_golden`
+        # as passed in nor the variant string can answer this. The path can.
+        res.accuracy_reference = (
+            "recomputed_fp32" if exp.golden.resolve() != b.golden.resolve() else "capture_golden_fp32"
+        )
+        if export_env:
+            res.notes += " export_env=" + ",".join(f"{k}={v}" for k, v in export_env.items())
+    except ExecuTorchError as e:
+        res.gap_reason = f"torch.export/.pte lowering failed: {str(e)[:400]}"
+        return _finish(res, model, variant, write)
+
+    # 1b. WHICH kernel libraries this .pte needs the runner to register. The runner is model-agnostic
+    #     only in its CODE; its kernel REGISTRY is a link-time set, and a program calling an operator
+    #     outside it aborts at Method::load. Derived from the exported program + the pinned kernel
+    #     yamls so the build is configured correctly BEFORE the board, and so an operator ExecuTorch
+    #     does not implement at all is named here rather than rediscovered as an opaque board abort.
+    plan: KernelPlan | None = None
+    try:
+        plan = plan_kernels(exp.pte)
+        if plan.libraries:
+            res.notes += " kernel_libs=portable+" + "+".join(sorted(plan.libraries))
+    except (ExecuTorchError, OSError, ValueError) as e:  # noqa: BLE001
+        # Fail OPEN on the analysis, closed on the result: without a plan we build the historical
+        # kernel set and say so, rather than blocking a model whose operators are all portable.
+        res.notes += f" kernel-plan unavailable: {str(e)[:150]}"
+
+    # 2. cross-compile executor_runner (rv64gcv, XNNPACK RVV). The runner is model-agnostic, so an
+    #    already-built one may be reused across models via runner_override.
+    if runner_override is not None and Path(runner_override).is_file():
+        runner = Path(runner_override)
+        res.built = True
+        res.notes += f" runner={runner} (reused)"
+        if plan is not None and plan.cmake_options:
+            # An overridden runner's kernel registry is whatever it was built with; we cannot make
+            # it register more. Say what this model needs so a load failure is not read as ours.
+            res.notes += (
+                " WARNING: reused runner may lack " + "+".join(sorted(plan.libraries)) + " kernels this model needs"
+            )
+    else:
+        try:
+            runner = cross_compile_runner(
+                work, xnnpack=xnnpack, kernel_options=plan.cmake_options if plan is not None else ()
+            )
+            res.built = True
+            res.notes += f" runner={runner}"
+        except ExecuTorchError as e:
+            res.gap_reason = f"executor_runner cross-compile failed: {str(e)[:400]}"
+            return _finish(res, model, variant, write)
+
+    # 3. RVV audit of the emitted binary — the mechanical honesty (do this before the board).
+    try:
+        cov, fallbacks, _by = audit_binary(runner)
+        res.rvv_coverage_overall = cov
+        res.scalar_fallbacks = fallbacks
+    except Exception as e:  # noqa: BLE001
+        res.notes += f" rvv-audit failed: {str(e)[:150]}"
+
+    # 3b. Operators NO ExecuTorch kernel library implements. Method::load would refuse the program,
+    #     so the board run can only produce the same OperatorMissing abort — spend the reason here,
+    #     naming the operators, instead of a board slot. Still `built`: the export and the binary are
+    #     real, and the RVV audit above is measured on them.
+    if plan is not None and plan.missing:
+        res.gap_reason = plan.missing_reason()
+        res.board_vlenb = k1_exec.board_vlenb()
+        return _finish(res, model, variant, write)
+
+    # 4. K1 on-board run — the ONLY board-gated step. Feasibility belongs to this exported artifact,
+    #    not its registry name: reduced captures of otherwise huge models can be small and runnable.
+    #    _run_on_board checks the concrete payload, memory plan, current board RAM, and disk headroom.
+    # Whole-model int8 is const-folded (dequant weights -> fp32 program constants), giving a
+    # multi-GB .pte whose weight pages must demand-load; mmap it so the board's RAM ceiling is not
+    # blown by a fully-resident read. The layer-reduced/subgraph paths have small .ptes -> no mmap.
+    mmap_model = bool(int8_whole_model)
+    do_board = k1_exec.board_available() if run_board is None else run_board
+    if do_board:
+        try:
+            _do_board(
+                res,
+                runner,
+                exp,
+                etdump=etdump,
+                mmap_model=mmap_model,
+                num_executions=num_executions,
+                cpu_threads=cpu_threads,
+            )
+        except k1_exec.BoardUnavailable as e:
+            res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:250]}"
+        except Exception as e:  # noqa: BLE001
+            res.gap_reason = res.gap_reason or f"K1 board run error: {str(e)[:250]}"
+    else:
+        res.gap_reason = "K1 board unavailable (MERLIN_K1_HOST unset / unreachable)"
+
+    res.board_vlenb = k1_exec.board_vlenb()
+    return _finish(res, model, variant, write)
+
+
+def _do_board(
+    res: BaselineResult,
+    runner: Path,
+    exp: "ExportResult",
+    *,
+    mmap_model: bool = False,
+    num_executions: int = 1,
+    etdump: bool = False,
+    cpu_threads: int | None = None,
+) -> None:
+    """Run on the board and fill correctness + E2E/region profile from the executor_runner run."""
+    # num_executions is threaded so a COMPARISON can match protocols. It defaults to 1, which is
+    # what every historical cell used -- but a single execution against an ours-side min-of-n is not
+    # apples-to-apples, and min-of-n favours whichever side gets it. Matching them is the only way the
+    # ratio means anything at the few-percent level this comparison now sits at.
+    br = _run_on_board(
+        res, runner, exp, mmap_model=mmap_model, num_executions=num_executions, etdump=etdump, cpu_threads=cpu_threads
+    )
+    res.etdump = br.etdump
+    # Load time is kept, not discarded: XNNPACK prepacks weights into its blocked layout at delegate
+    # init, so a framework's AOT work lands here while the ratio we quote is taken against execute.
+    res.load_ns = br.load_ns
+    res.ran = br.ran
+    if br.wall_ns is not None:
+        # PER-EXECUTION, always. executor_runner logs "Model executed successfully N time(s) in X ms"
+        # where X is the TOTAL across N, so with num_executions>1 the raw value is N inferences and
+        # comparing it to a per-inference number is a factor-of-N error. That error was made in this
+        # repo before this line existed: an ours-side per-iteration wall was divided by an ET total and
+        # came out looking like ours was 2.11x FASTER when it is 1.42x slower. Normalising here rather
+        # than at each consumer means the field means one thing everywhere; num_executions=1 (every
+        # historical cell) is unchanged.
+        res.e2e_wall_ns = int(br.wall_ns / max(1, num_executions))
+        if num_executions > 1:
+            res.notes += f" e2e_wall_ns is PER-EXECUTION: {br.wall_ns} ns reported for {num_executions} executions."
+        # This foreign runner does not expose the K1 rdtime CSR; the reported wall time is the
+        # honest E2E truth. We record ONE whole-model region on wall time (no fabricated
+        # tick/cycle count). A per-region split would need etdump per-op events.
+        res.regions = [
+            RegionProfile(
+                name="other",
+                wall_ns=br.wall_ns,
+                rvv_coverage=res.rvv_coverage_overall,
+                note="whole-model forward (executor_runner wall time; region split needs etdump per-op events)",
+            )
+        ]
+    # Correctness: compared OFF-DEVICE (cos/rel of the dumped output vs golden). Never fabricated.
+    if br.cos is not None:
+        res.cos = br.cos
+    if br.rel is not None:
+        res.rel = br.rel
+    # An unreadable-but-present timing line is a TOOLING defect, not a model result: record it on
+    # the row so a console-format drift is visible instead of looking like a model that never ran.
+    for warning in br.parse_warnings:
+        res.notes += f" console-parse: {warning}"
+    if not res.ran and not res.gap_reason:
+        if br.parse_warnings:
+            res.gap_reason = (
+                "K1 run console could not be parsed: "
+                + "; ".join(br.parse_warnings)
+                + f" (console tail): {br.console[-300:]}"
+            )
+        else:
+            res.gap_reason = (
+                f"K1 run produced no 'Model executed successfully' line (console tail): {br.console[-300:]}"
+            )
+
+
+def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:
+    res.validate()
+    if write:
+        m = artifacts.new_measurement("k1_spacemit", model, "cross_framework")
+        res.write(m.path)
+    return res
+
+
+def run_all(
+    models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True, xnnpack: bool = True, **kw
+) -> list[BaselineResult]:
+    out = []
+    for m in models:
+        try:
+            out.append(run_model(m, variant, write=write, xnnpack=xnnpack, **kw))
+        except Exception as e:  # noqa: BLE001 - one model must never sink the batch
+            r = BaselineResult(
+                framework=FRAMEWORK,
+                model=m,
+                variant=variant,
+                gap_reason=f"runner exception: {str(e)[:200]}",
+                timestamp=artifacts.utc_stamp(),
+            )
+            if write:
+                try:
+                    md = artifacts.new_measurement("k1_spacemit", m, "cross_framework")
+                    r.write(md.path)
+                except Exception:  # noqa: BLE001
+                    pass
+            out.append(r)
+    return out
+
+
+# All 11 m2m models: the 8 K1-runnable + the 3 RAM-infeasible VLAs (attempted, RAM-gapped).
+ALL_MODELS = tuple(sorted(_bundle.K1_RUNNABLE | _bundle.K1_RAM_INFEASIBLE))
+
+
+def run_all_int8(
+    models=ALL_MODELS, *, write: bool = True, runner_override: Path | None = None, run_board: bool | None = None
+) -> list[BaselineResult]:
+    """Whole-model int8 (ExecuTorch official llama recipe) across the full corpus.
+
+    Llama-family models use the source-transform whole-model int8 path; the RAM-infeasible VLAs
+    (openvla/molmoact/pi05) are attempted-and-RAM-gapped; non-llama archs that won't torch.export
+    (dynamic control flow) surface an honest ``not_built`` with the specific op. Full-fidelity
+    loader env is applied automatically (``bundle.full_env``).
+    """
+    return run_all(
+        models, "int8", write=write, int8_whole_model=True, runner_override=runner_override, run_board=run_board
+    )
+
+
+def _main(argv=None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="ExecuTorch + XNNPACK K1-RVV baseline arm")
+    ap.add_argument(
+        "models", nargs="*", default=list(DEFAULT_MODELS), help="models to run (default: full corpus, LLM subset first)"
+    )
+    ap.add_argument("--variant", default="fp32")
+    ap.add_argument("--no-xnnpack", action="store_true", help="portable-kernel-only baseline (no XNNPACK delegate)")
+    ap.add_argument("--no-write", action="store_true")
+    args = ap.parse_args(argv)
+    results = run_all(
+        tuple(args.models) if args.models else DEFAULT_MODELS,
+        args.variant,
+        write=not args.no_write,
+        xnnpack=not args.no_xnnpack,
+    )
+    for r in results:
+        cov = f"{100 * r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
+        print(f"{r.model}/{r.variant}: {r.status():10s} {cov} fallbacks={len(r.scalar_fallbacks)} {r.gap_reason}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(_main())

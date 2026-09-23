@@ -1,9 +1,10 @@
 """WS-C: the CCA-native fork proposer (action_catalog as the single source of truth for the beam)."""
+
 from __future__ import annotations
 
-from merlin.kernels.cca_compare import Divergence
-from merlin.rvvgen.fork_from_action import action_to_fork, propose_forks_from_cca
 from merlin.kernels.action_catalog import route
+from merlin.kernels.cca_compare import Divergence
+from merlin.mining.fork_from_action import action_to_fork, propose_forks_from_cca
 
 _KNOBS = {"op_match": [{"op": "matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}]}
 
@@ -27,12 +28,19 @@ def test_int8_widening_maps_to_dtype_strategy_knob():
     assert p.overrides == {"dtype_strategy": "int8_w8a8"}
 
 
-def test_lmul_maps_to_wider_n_knob():
+def test_lmul_maps_to_the_register_group_width_not_a_wider_n():
+    # This axis used to widen the N tile x2 and let the backend's group sizing follow. That route
+    # moves the tail transfer as well, which is a whole-model scalar-fallback cliff (MEASURED on
+    # small_llama_int8: mr1_nr32 -> mr1_nr64 went 5,180,908 ns -> 20,450,661 ns with
+    # `_mlir_ciface_forward` scalar). It now routes to the group width itself, requested as the
+    # `lmul_register_group` sentinel that prepare_for_lowering resolves from the prepared IR -- and
+    # touches no tile.
+    from merlin.llvmlower.impr_features import LMUL_GROUP_SENTINEL
+
     p = action_to_fork(route(_div("vector.lmul", 4.0, 2.0)), _KNOBS)
-    assert p.forkable is True and p.lever == "knob"
-    # N (the second-to-last tile dim) is widened x2; only KNOWN knob keys are emitted.
-    assert p.overrides["op_match"][0]["tile"] == [4, 16, 1]
-    assert set(p.overrides) <= {"op_match", "contraction_strategy", "lowering_patterns", "dtype_strategy"}
+    assert p.forkable is True and p.lever == "feature"
+    assert p.overrides == {"compiler_features": [LMUL_GROUP_SENTINEL]}
+    assert "op_match" not in p.overrides
 
 
 def test_register_block_routes_to_per_op_mr_feature():
@@ -54,11 +62,13 @@ def test_deferred_pass_is_honest_work_item_not_a_faked_knob():
 
 
 def test_propose_forks_from_cca_is_beam_compatible():
-    divs = [_div("compute.contraction_form", "fused_fma", "mul_add"),
-            _div("vector.vl_strategy", "vsetvl_loop", "vsetivli_fixed")]
+    divs = [
+        _div("compute.contraction_form", "fused_fma", "mul_add"),
+        _div("vector.vl_strategy", "vsetvl_loop", "vsetivli_fixed"),
+    ]
     props = propose_forks_from_cca(divs, _KNOBS)
     assert len(props) == 2
-    assert [p.forkable for p in props] == [True, False]   # one knob fork + one honest work-item
+    assert [p.forkable for p in props] == [True, False]  # one knob fork + one honest work-item
 
 
 def test_bb1a_previously_demoted_axes_now_fork():
@@ -82,6 +92,7 @@ def test_bb1b_operand_packing_orphan_is_now_a_forkable_lever():
     p = action_to_fork(route(_div("memory.access_pattern", "unit_stride", "strided")), _KNOBS)
     assert p.forkable is True and p.overrides == {"compiler_features": ["vfmacc_packed"]}
     # and it is no longer an orphan in the bijection ledger.
-    from merlin.kernels.cca_contract import check_bijection, KNOWN_OPEN
+    from merlin.kernels.cca_contract import KNOWN_OPEN, check_bijection
+
     assert "memory.access_pattern" not in check_bijection("rvv").orphan_fields
     assert "memory.access_pattern" not in KNOWN_OPEN["rvv"]["orphan_fields"]

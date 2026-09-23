@@ -3,13 +3,14 @@
 Each outlined kernel is compiled in isolation and gated against the analytic numpy
 reference. Auto-skips without the host toolchain (m2m venv / clang-23).
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -69,8 +70,10 @@ def test_each_kernel_compiles_and_matches_numpy(tmp_path):
     assert all(c.ok for c in checks), [(c.symbol, c.max_abs) for c in checks]
 
 
-@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
-                    reason="small_llama capture not present")
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
+    reason="small_llama capture not present",
+)
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 def test_real_small_llama_matmul_kernels_all_pass(tmp_path):
     """Every contraction dispatch of the real model compiles and is numerically correct."""

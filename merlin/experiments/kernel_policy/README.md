@@ -62,12 +62,12 @@ Fidelity caveat: Spike+libgemmini is a **functional** model — it yields event 
 in the slate; cycle-level claims (e.g. `double_buffering`, parked) need Chipyard
 Verilator/FireSim.
 
-**Instruction cost model (L2.5).** `merlin/python/merlin/cost_model/` turns the Spike event
+**Instruction cost model (L2.5).** `merlin/python/merlin/perf/linear_cost.py` turns the Spike event
 counts into *predicted cycles* without per-candidate RTL: a linear per-command model
-(`gemmini.py`) whose coefficients are fit against the Verilator sim by
+(vocabulary + coefficients in `merlin/targets/gemmini/cost_model/`) whose coefficients are fit against the Verilator sim by
 `calibrate.py` (isolation microbenchmarks in `calib/`) and validated against the Stage-F
-slate harnesses. Run `python -m merlin.cost_model.calibrate` (needs `MERLIN_CHIPYARD` + a
-built Gemmini Verilator sim); coefficients freeze in `cost_model/gemmini_cost_coeffs.json`
+slate harnesses. Run `python merlin/targets/gemmini/cost_model/calibrate.py` (needs `MERLIN_CHIPYARD` + a
+built Gemmini Verilator sim); coefficients freeze in `merlin/targets/gemmini/cost_model/coefficients.json`
 with their error band. This is the shared currency for ranking the full regime grid cheaply
 and for scoring Autocomp candidates.
 

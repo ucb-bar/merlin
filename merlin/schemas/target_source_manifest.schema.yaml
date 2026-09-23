@@ -22,11 +22,11 @@ validation_notes: >-
   provenance only and must not trigger network access. branch/commit/notes are optional.
 example: |
   target_name: toy_npu
-  source_dirs: [merlin/targets/toy_npu/docs]
+  source_dirs: [examples/toy_npu/target/docs]
   source_files: []
   source_urls: []
   scala_roots: []
-  examples_dirs: [merlin/targets/toy_npu/examples]
+  examples_dirs: [examples/toy_npu/target/examples]
   branch: null
   commit: null
   notes: "reference in-tree target used to validate the generator"

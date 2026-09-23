@@ -15,6 +15,7 @@ The invariants asserted are the ones that make a parallel loop equivalent to the
   * LASTITER   — exactly one thread is told it owns the final iteration
   * BALANCED   — block sizes differ by at most one (no hart left idle while another works)
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -47,17 +48,23 @@ def split_fn(tmp_path_factory):
     (d / "harness.c").write_text(_HARNESS)
     so = d / "libsched.so"
     proc = subprocess.run(
-        [CC, "-O2", "-fPIC", "-shared", "-I", str(runtime_dir() / "c"),
-         str(d / "harness.c"), "-o", str(so)],
-        capture_output=True, text=True, timeout=300)
+        [CC, "-O2", "-fPIC", "-shared", "-I", str(runtime_dir() / "c"), str(d / "harness.c"), "-o", str(so)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert proc.returncode == 0, f"harness build failed:\n{proc.stderr}"
     lib = ctypes.CDLL(str(so))
     lib.split.restype = ctypes.c_longlong
-    lib.split.argtypes = [ctypes.c_int, ctypes.c_int,
-                          ctypes.POINTER(ctypes.c_longlong),
-                          ctypes.POINTER(ctypes.c_longlong),
-                          ctypes.POINTER(ctypes.c_longlong),
-                          ctypes.c_longlong, ctypes.POINTER(ctypes.c_int)]
+    lib.split.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_longlong),
+        ctypes.POINTER(ctypes.c_longlong),
+        ctypes.POINTER(ctypes.c_longlong),
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_int),
+    ]
     return lib.split
 
 
@@ -69,8 +76,7 @@ def _partition(split, nth: int, lo: int, up: int, incr: int = 1):
         u = ctypes.c_longlong(up)
         s = ctypes.c_longlong(0)
         last = ctypes.c_int(0)
-        n = split(tid, nth, ctypes.byref(l), ctypes.byref(u), ctypes.byref(s),
-                  incr, ctypes.byref(last))
+        n = split(tid, nth, ctypes.byref(l), ctypes.byref(u), ctypes.byref(s), incr, ctypes.byref(last))
         # exactly the loop the generated code runs with these bounds
         iters = list(range(l.value, u.value + 1, incr)) if incr > 0 else []
         assert len(iters) == n, f"tid {tid}: reported {n} iters, bounds give {len(iters)}"
@@ -129,7 +135,7 @@ def test_more_threads_than_work_leaves_extra_threads_empty(split_fn):
 
 
 def test_nonunit_increment(split_fn):
-    ranges, _ = _partition(split_fn, 4, 0, 30, incr=3)      # 0,3,...,30 -> 11 iterations
+    ranges, _ = _partition(split_fn, 4, 0, 30, incr=3)  # 0,3,...,30 -> 11 iterations
     seen = [i for r in ranges for i in r]
     assert sorted(seen) == list(range(0, 31, 3))
     assert len(seen) == 11

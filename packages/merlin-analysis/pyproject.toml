@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin-analysis"
+version = "0.1.0"
+description = "Merlin baseline comparisons, measurement studies and reporting"
+requires-python = ">=3.12"
+dependencies = [
+    "merlin[xdsl,targetgen]",
+    "aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554",
+    "numpy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+plots = ["matplotlib"]
+experiments = ["merlin-experiments==0.1.0"]
+mining = ["merlin-mining==0.0.1"]
+# Historical replay constructs the real numeric evaluator and runs the core verification tests.
+replay = ["merlin[verify]", "merlin-experiments==0.1.0", "pytest"]
+
+[project.scripts]
+merlin-compare = "merlin.compare.cli:main"
+merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
+merlin-recovery = "merlin.perf.recovery:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["merlin.baselines*", "merlin.compare*", "merlin.plotting*", "merlin.agentreport*", "merlin.verify*", "merlin.perf*", "merlin.kernels.ceiling_drivers*"]
+namespaces = true
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+"merlin.baselines" = [
+    "executorch_spacemit_toolchain.cmake",
+    "exo_kernels/autosched_bench.c",
+    "exo_kernels/fgemm_nk.c",
+    "exo_kernels/igemm_bench.c",
+    "exo_kernels/igemm_nk.c",
+    "exo_kernels/igemm_nk_bench.c",
+    "exo_kernels/llama_glue.c",
+    "exo_kernels/llama_glue_autosched.c",
+    "exo_kernels/llama_glue_int8.c",
+    "tvm_board/board_kernel_timer.cc",
+    "tvm_board/board_runner.cc",
+    "tvm_board/build_board_runner.sh",
+]
+"merlin.compare" = ["paper_k1_board_probe.c", "paper_model_abi_runner.c"]

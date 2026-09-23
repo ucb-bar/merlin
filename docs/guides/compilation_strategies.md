@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-07
 related: [dse, lowering_pipeline]
-code_refs: [merlin/python/merlin/dse/pipelines]
+code_refs: [packages/merlin-dse/src/merlin/dse/pipelines]
 ---
 
 # Parallel compilation strategies
@@ -21,9 +21,9 @@ pipeline or exposed interface features are two comparable approaches you can run
 ## Substrate
 
 ```
-merlin/python/merlin/pipelines/   named xDSL passes + build_pipeline(spec)
-merlin/python/merlin/dse/strategy.py   Strategy + registry (loads compilation_strategy YAML)
-merlin/python/merlin/dse/harness.py    parallel runner over (workload x strategy) matrix
+src/merlin/pipelines/   named xDSL passes + build_pipeline(spec)
+packages/merlin-dse/src/merlin/dse/strategy.py   Strategy + registry (loads compilation_strategy YAML)
+packages/merlin-dse/src/merlin/dse/harness.py    parallel runner over (workload x strategy) matrix
 ```
 
 ## Flow

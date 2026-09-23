@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-07-22
 related: [getting_started, targetgen, generated_target_repos]
-code_refs: [merlin/python/merlin/targetgen]
+code_refs: [src/merlin/targetgen]
 ---
 
 # Adding a target
@@ -39,13 +39,37 @@ needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
    op/type classes from that plan — no per-target dialect module. The target registry
    (`merlin.targetgen.target_registry`) resolves name → contract/plan/facts/backend. Run the
    `merlin-targetgen` CLI to write the codegen package to `out/artifacts/targets/<name>/`.
-4. **What you still hand-write: the hardware backend.** The dialect + plan + lowering are generated,
-   but the runtime **backend** (`merlin/python/merlin/runtime/backends/<name>*.py` — the real
-   C/ISA codegen + execution) is not mechanizable and must be authored per target. This is the
-   remaining gap to a fully one-command target.
-5. Add conformance tests under `merlin/tests/conformance/` and per-target `tests/`.
+4. **Supply target support out of tree.** Declare the hardware backend through
+   `plugin.backend` in the provider's contract and select it with `MERLIN_TARGET_PATH`.
+   Target-specific codegen, ABI interpretation and execution do not belong in Merlin's
+   shared runtime. Support code is separate from the compiler candidate generated and
+   evaluated by the phase workflow; a discovered backend is not a certified compiler.
+5. Add target-specific conformance tests to the provider's `tests/`; shared interface
+   regressions belong in the relevant `merlin/tests/<subsystem>/` bucket.
+
+For a RoCC target, the backend exposes a `rocc_semantics` object with three methods:
+
+- `isa_constants(target)` returns current declared/derived facts, including
+  `CUSTOM_OPCODE`, `FUNCT3`, and `FUNCT_CLASS`.
+- `decode_instruction(funct, rs1, rs2, isa)` returns `(class_name, decoded_fields)`.
+  Each operand is a mapping containing `raw`, `kind`, `arg_index`, and `offset`;
+  unresolved values stay unknown, never guessed.
+- `instruction_funct(name, rs1, isa)` resolves an instruction class to its funct code
+  and raises `ValueError` for invalid operand selectors or unsupported classes.
+
+Merlin owns transport/SSA parsing and assembler round-trip checks, not accelerator
+operand layouts. Missing semantics refuse execution. The local Gemmini companion
+implements this interface; select its `merlin-support` root explicitly and supply
+the provider's required RTL facts. Legacy in-tree support is not a fallback.
+
+Capability manifest loading returns the declared `encoding` mapping unchanged: an
+`addr_len` does not imply readout flags or an accumulator layout. A RoCC provider may
+expose `encoding_fields(declared)` to complete target-specific derived fields for ISA
+emission; errors propagate rather than silently emitting an incomplete result. This
+hook must not mutate the declaration. Gemmini owns its `derived_readout_bits` helper
+in OOT support; the former core import is retired.
 
 ## Reference
 
-`merlin/targets/toy_npu/` is the canonical example: `toynpu.{res_pack,matmul,commit,evict}` and
+`examples/toy_npu/target/` is the canonical example: `toynpu.{res_pack,matmul,commit,evict}` and
 `!toynpu.{resident_tensor,accumulator}`.

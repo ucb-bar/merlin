@@ -11,10 +11,14 @@ Usage:
   gen_docs_index.py            # (re)write docs/README.md
   gen_docs_index.py --check    # exit 1 if docs/README.md is stale
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _front_matter  # noqa: E402  (sibling module, stdlib only)
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
@@ -22,9 +26,14 @@ OUT = DOCS / "README.md"
 
 # Generated references that carry no hand-authored front-matter.
 GENERATED = {
-    "reference/cli.md": "CLI reference", "cli.md": "CLI reference",
-    "reference/module_index.md": "Package module index", "module_index.md": "Package module index",
-    "reference/schemas.md": "Schema reference", "schemas.md": "Schema reference",
+    "reference/cli.md": "CLI reference",
+    "cli.md": "CLI reference",
+    "reference/module_index.md": "Package module index",
+    "module_index.md": "Package module index",
+    "reference/schemas.md": "Schema reference",
+    "schemas.md": "Schema reference",
+    "reference/repo_map.md": "Repository map",
+    "repo_map.md": "Repository map",
 }
 SKIP_NAMES = {"README.md", "AGENT.md"}
 KIND_ORDER = ["reference", "guide", "design"]
@@ -51,25 +60,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 """
 
 
-def parse_front_matter(text: str) -> dict | None:
-    """Minimal YAML front-matter parser (stdlib only): scalars + `[a, b]` lists."""
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---", 4)
-    if end == -1:
-        return None
-    fm: dict = {}
-    for line in text[4:end].splitlines():
-        line = line.rstrip()
-        if not line or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key, val = key.strip(), val.strip()
-        if val.startswith("[") and val.endswith("]"):
-            fm[key] = [x.strip() for x in val[1:-1].split(",") if x.strip()]
-        else:
-            fm[key] = val
-    return fm
+parse_front_matter = _front_matter.parse
 
 
 def discover() -> tuple[list[dict], dict[str, str]]:
@@ -83,24 +74,46 @@ def discover() -> tuple[list[dict], dict[str, str]]:
         slug = p.stem
         fm = parse_front_matter(p.read_text(encoding="utf-8"))
         if fm and fm.get("kind"):
-            entries.append({
-                "rel": rel, "slug": slug, "title": fm.get("title", slug),
-                "kind": fm.get("kind"), "status": fm.get("status", "current"),
-                "owner": fm.get("owner", "?"), "last_verified": fm.get("last_verified", "?"),
-                "related": fm.get("related", []) or [],
-            })
+            entries.append(
+                {
+                    "rel": rel,
+                    "slug": slug,
+                    "title": fm.get("title", slug),
+                    "kind": fm.get("kind"),
+                    "status": fm.get("status", "current"),
+                    "owner": fm.get("owner", "?"),
+                    "last_verified": fm.get("last_verified", "?"),
+                    "related": fm.get("related", []) or [],
+                }
+            )
             slug_to_rel[slug] = rel
         elif rel in GENERATED:
-            entries.append({
-                "rel": rel, "slug": slug, "title": GENERATED[rel], "kind": "reference",
-                "status": "generated", "owner": "tooling", "last_verified": "—", "related": [],
-            })
+            entries.append(
+                {
+                    "rel": rel,
+                    "slug": slug,
+                    "title": GENERATED[rel],
+                    "kind": "reference",
+                    "status": "generated",
+                    "owner": "tooling",
+                    "last_verified": "—",
+                    "related": [],
+                }
+            )
             slug_to_rel[slug] = rel
         else:
-            entries.append({
-                "rel": rel, "slug": slug, "title": slug, "kind": "uncategorized",
-                "status": "?", "owner": "?", "last_verified": "?", "related": [],
-            })
+            entries.append(
+                {
+                    "rel": rel,
+                    "slug": slug,
+                    "title": slug,
+                    "kind": "uncategorized",
+                    "status": "?",
+                    "owner": "?",
+                    "last_verified": "?",
+                    "related": [],
+                }
+            )
     return entries, slug_to_rel
 
 
@@ -118,7 +131,9 @@ def render() -> str:
             continue
         out.append(f"## {KIND_TITLE[kind]}\n")
         for e in rows:
-            meta = f"`{e['status']}`" + (f", verified {e['last_verified']}" if e["last_verified"] not in ("—", "?") else "")
+            meta = f"`{e['status']}`" + (
+                f", verified {e['last_verified']}" if e["last_verified"] not in ("—", "?") else ""
+            )
             out.append(f"- [{e['title']}]({e['rel']}) — {meta} · owner: {e['owner']}{links(e['related'])}")
         out.append("")
 
@@ -130,8 +145,9 @@ def render() -> str:
     if owners:
         out.append("## By area\n")
         for owner in sorted(owners):
-            titles = ", ".join(f"[{e['title']}]({e['rel']})"
-                               for e in sorted(owners[owner], key=lambda e: e["title"].lower()))
+            titles = ", ".join(
+                f"[{e['title']}]({e['rel']})" for e in sorted(owners[owner], key=lambda e: e["title"].lower())
+            )
             out.append(f"- **{owner}** — {titles}")
         out.append("")
 

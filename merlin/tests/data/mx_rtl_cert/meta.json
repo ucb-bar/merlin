@@ -1,0 +1,17 @@
+{
+  "M": 64,
+  "N": 64,
+  "K": 64,
+  "G": 32,
+  "fmt": "fp8",
+  "kernel": "radiance-kernels/kernels/gemm_mxgemmini/mxgemm.fp8.singletile.tm64tn64tk64.fullout",
+  "operands": "fp8 e4m3 device codes; E8M0 per-32-K-group block scales; bf16 output",
+  "sim_config": "RadianceTapeoutSimConfig (chipyard verilator; gemmini-mx MxPE/MxFPMul/MxRequantizer)",
+  "rtl_run": {
+    "live": true,
+    "cells_bit_exact": 3844,
+    "total": 4096,
+    "non_finite_cells": 84,
+    "note": "Live cycle-accurate run on the prebuilt RadianceTapeoutSimConfig verilator sim; both Muon cores reached 'finished execution' + Verilog $finish. Output reconstructed from SIMT storeWord requests to GMEM 0x40000000. The residual divergent cells are a kernel move-out memory-consistency hazard (mesh-write -> SIMT-read in the radiance-kernels moveout), not an mx datapath error: they are scattered across both cores and read as partial/overflowed accumulator values. merlin's mx_oracle reproduces the golden bit-exact (4096/4096) on these same operands."
+  }
+}

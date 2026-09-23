@@ -10,6 +10,7 @@ they can be fixed and re-batched.
 Writes <run>/firesim_arm_results.json: {kernel: {arm: {cycles, util_pct, correct, ...}}}.
 Usage: run_firesim_bundle.py [--kernels infeasible|all|id,..] [--arms golden,merlin_targetgen] [--timeout 300]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,9 +21,8 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
 import _pbcommon as PB
+import yaml
 
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
@@ -37,10 +37,17 @@ def locate_elf(run: Path, kernel: str, arm: str) -> Path | None:
     if arm == "golden":
         p = run / "_work" / kernel / f"golden_{kernel}.elf"
     elif arm == "iree_dialect":
-        p = run / "_iree_elfs" / f"{kernel}.elf"   # built by build_iree_elfs.py
+        p = run / "_iree_elfs" / f"{kernel}.elf"  # built by build_iree_elfs.py
     else:  # baseline / merlin_targetgen / merlin_native — capsule_runner package ELF
-        p = (run / "_capsule_runs" / "runs" / "gemmini-capsule-bench"
-             / f"{arm}_{kernel}" / "generated" / "package_kernel.elf")
+        p = (
+            run
+            / "_capsule_runs"
+            / "runs"
+            / "gemmini-capsule-bench"
+            / f"{arm}_{kernel}"
+            / "generated"
+            / "package_kernel.elf"
+        )
     return p if p.is_file() else None
 
 
@@ -51,8 +58,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kernels", default="infeasible")
     ap.add_argument("--timeout", type=int, default=600, help="per-ELF runworkload timeout (s)")
     ap.add_argument("--tag", default="bundle", help="outdir/label tag for this batch")
-    ap.add_argument("--skip-existing", action="store_true",
-                    help="skip (kernel,arm) cells that already have FireSim cycles (don't re-run them)")
+    ap.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="skip (kernel,arm) cells that already have FireSim cycles (don't re-run them)",
+    )
     a = ap.parse_args(argv)
     run = PB.RUNS / a.run_id
     arms = [s.strip() for s in a.arms.split(",") if s.strip()]
@@ -63,9 +73,11 @@ def main(argv: list[str] | None = None) -> int:
     doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
     corpus = {k["id"]: k for sec in doc if isinstance(doc[sec], list) for k in doc[sec]}
     pr = json.loads((run / "perf_results.json").read_text())
-    has_veri = {r["kernel"] for r in pr
-                if any((v.get("per_sim") or {}).get("verilator", {}).get("cycles")
-                       for v in r["approaches"].values())}
+    has_veri = {
+        r["kernel"]
+        for r in pr
+        if any((v.get("per_sim") or {}).get("verilator", {}).get("cycles") for v in r["approaches"].values())
+    }
     if a.kernels == "infeasible":
         kernels = [r["kernel"] for r in pr if r["kernel"] not in has_veri]
     elif a.kernels == "all":
@@ -89,17 +101,16 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             rows.append((f"{kid}__{arm}", str(elf), kid, arm))
     manifest.write_text("".join(f"{lbl}\t{elf}\n" for lbl, elf, _, _ in rows))
-    print(f"manifest: {len(rows)} ELFs, {len(skipped)} skipped (no ELF): {', '.join(skipped) or '-'}",
-          flush=True)
+    print(f"manifest: {len(rows)} ELFs, {len(skipped)} skipped (no ELF): {', '.join(skipped) or '-'}", flush=True)
     if not rows:
-        print("nothing to run"); return 1
+        print("nothing to run")
+        return 1
 
     # Per-bundle config_runtime.yaml: copy the shared one but point workload_name at merlin-perfbench
     # (bare `firesim runworkload` otherwise reads the shared config, which targets a different workload).
     shared_cfg = Path("/path/to/chipyard/sims/firesim/deploy/config_runtime.yaml")
     cfg = outdir / "config_runtime.yaml"
-    cfg_text = re.sub(r"workload_name:\s*\S+", "workload_name: merlin-perfbench.json",
-                      shared_cfg.read_text())
+    cfg_text = re.sub(r"workload_name:\s*\S+", "workload_name: merlin-perfbench.json", shared_cfg.read_text())
     cfg_text = re.sub(r"suffix_tag:\s*\S+", "suffix_tag: null", cfg_text)
     cfg.write_text(cfg_text)
 
@@ -107,12 +118,29 @@ def main(argv: list[str] | None = None) -> int:
     print(f"submitting bundle ({len(rows)} ELFs) to FPGA queue ...", flush=True)
     t0 = time.time()
     sub = subprocess.run(
-        [QUEUE, "submit", "--priority", "5", "--",
-         "bash", BUNDLE_SH, str(manifest), str(outdir), str(a.timeout), str(cfg)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        [
+            QUEUE,
+            "submit",
+            "--priority",
+            "5",
+            "--",
+            "bash",
+            BUNDLE_SH,
+            str(manifest),
+            str(outdir),
+            str(a.timeout),
+            str(cfg),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
     (outdir / "submit.log").write_text(sub.stdout)
-    print(f"bundle job finished in {round(time.time()-t0)}s (rc={sub.returncode}); "
-          f"submit log -> {outdir/'submit.log'}", flush=True)
+    print(
+        f"bundle job finished in {round(time.time() - t0)}s (rc={sub.returncode}); "
+        f"submit log -> {outdir / 'submit.log'}",
+        flush=True,
+    )
 
     # Parse each per-ELF uartlog: cycles + OUT vs shared capsule golden.
     res_path = run / "firesim_arm_results.json"
@@ -123,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         if kid not in gold_cache:
             try:
                 import numpy as np
+
                 cap = yaml.safe_load((PB.KERNELS / kid / "capsule.yaml").read_text())
                 g = CG.golden(cap).get("Y0")  # may be a nested list of rows or an ndarray
                 gold_cache[kid] = np.asarray(g).flatten().astype(int).tolist()
@@ -141,12 +170,13 @@ def main(argv: list[str] | None = None) -> int:
         if cyc is None:
             results[kid][arm] = {"error": "no METRIC cycles (run failed/hung — fix + re-batch)"}
         else:
-            results[kid][arm] = {"cycles": cyc,
-                                 "correct": bool(gold is not None and got == gold),
-                                 "util_pct": PB.utilization_pct(k["macs"], cyc)}
+            results[kid][arm] = {
+                "cycles": cyc,
+                "correct": bool(gold is not None and got == gold),
+                "util_pct": PB.utilization_pct(k["macs"], cyc),
+            }
     res_path.write_text(json.dumps(results, indent=2))
-    ok = sum(1 for kid in results for arm in results[kid]
-             if results[kid][arm].get("cycles") is not None)
+    ok = sum(1 for kid in results for arm in results[kid] if results[kid][arm].get("cycles") is not None)
     print(f"\nwrote {res_path} ({ok} cells with cycles)", flush=True)
     return 0
 

@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Python source root (the rapid-prototyping / research plane).
+Compatibility import root. The `merlin` symlink points to canonical `src/merlin`.
+Do not add another implementation here; new source belongs under `src/` or `packages/`.
 
 ## What belongs here
 

@@ -1,0 +1,586 @@
+# Every capability the scheduling IR must express, what an existing scheduling language gives us, and
+# which targets FORCE it — declared, countable, and re-measured against the live tree.
+#
+# WHY THIS FILE EXISTS. "Our IR is more general than X" is exactly the kind of claim this repo has found
+# it cannot check. Stated in prose it is an instrument that cannot fail: nobody re-reads it, nothing
+# contradicts it, and a capability that quietly stopped being expressible reads the same as one that
+# never was. So the claim is declared here, one row per axis, and a gate re-derives each row's STATUS
+# from the live tree on every run.
+#
+# STATUS IS NOT IN THIS FILE, ON PURPOSE. It is computed, never authored:
+#
+#   UNEXPRESSED  no primitive claims this axis
+#   EXPRESSED    a primitive claims it, exports the named symbol, declares a matching proof obligation,
+#                and has a live test
+#   EXERCISED    additionally, a resolvable expert corpus populates the axis' CCA fields and our own
+#                schedule agrees with it on them
+#   UNMEASURED   the corpus this row's evidence names does not resolve in this checkout — reporting
+#                only, charged to the DENOMINATOR and never to the numerator
+#
+# The register declares the row and its EVIDENCE POINTERS; the gate decides what state that evidence
+# supports. If the status cannot be written down, there is nothing to fabricate — the only way to be
+# wrong is to omit the pointer that makes the measurement possible, and that omission is visible.
+#
+# NO AXIS IS DELETED TO IMPROVE THE RATIO, and the gate checks both directions: a primitive with no row
+# fails (new vocabulary must be declared, not absorbed), and a row naming a primitive that no longer
+# exists fails too. A register that overstates coverage and one that understates it are equally useless.
+#
+# That rule used to read "the count of UNEXPRESSED axes may only fall", which said something stronger
+# than it meant and forbade the thing this file is for. ADDING an unexpressed row raises that count and
+# is the register working: on 2026-09-19 an audit of what Atlas and Radiance actually force added three
+# axes nothing tracked, and the headline went from 11/13 to 11/16. Nothing became less expressible; a
+# denominator that had been too narrow stopped being. What the rule forbids is the other move -- removing
+# a hard row, or narrowing one, so the fraction reads better.
+#
+# WHAT IS NOT GATED: the ratio. Gating "expressed / total >= x" makes the rational response to a hard
+# axis deleting its row, which is precisely the incentive this file exists to defeat. The gate checks
+# that the number is MEASURABLE and that its denominator is complete, and leaves what it says to the
+# reader — the same stance check_semantic_coverage.py takes, for the same reason.
+#
+# THE TWO-SLICE RULE. `generic: true` requires two or more independent SLICES. An axis exactly one
+# target needs is that target's extension, not core vocabulary; promoting it on one slice is how an IR
+# ends up with a primitive per kernel and a shape borrowed from whichever target was implemented first.
+#
+# SLICES ARE DEVICES, NOT NAMES, and the difference is not pedantry. `forced_by` names targets, and two
+# names can be one machine: `muon` and `radiance` are one RadianceMuonConfig cluster, and counting them
+# promoted an axis to core vocabulary on one piece of silicon until an audit caught it. So a row that
+# knows several of its names are one device says so in `slice_basis` -- a list of {slice, targets, why}
+# -- and the rule counts slices. A target no entry mentions is its own slice, which is the honest
+# default. Where two names PROVABLY resolve to one design (`facts_alias`, e.g. mx_gemmini -> gemmini)
+# the gate demands the grouping rather than trusting the count.
+#
+# Required of every row: id, axis, exo, forced_by, generic, owner.
+#   `exo` other than EXO_HAS also requires exo_evidence.
+#   Every prior-art system declared above and not blanketed requires a verdict here, under `prior_art`,
+#     with `prior_art_evidence` for anything short of HAS.
+#   A row the gate computes as UNEXPRESSED also requires surfaced_by, surfaced_on, blocks.
+#     Deliberately NOT removal_condition: for a missing primitive the honest removal condition is
+#     "write it", and demanding a sentence for that is the rationale-fabrication pressure the overfit
+#     register's own schema notes warn about. `blocks` — what does not work today — is the useful field.
+#   A row computed as EXPRESSED also requires primitive and test. NOT proof: an obligation is read
+#     from the primitive that carries it, never authored here, or a row could claim a stronger one than
+#     the code discharges -- the exact claim this register exists to stop being writable.
+#   A row computed as EXERCISED also requires evidence.corpus and evidence.cca_axes.
+#   A row computed as UNMEASURED also requires evidence.corpus and missing_input.
+#
+# WHO DECIDES BETWEEN EXERCISED AND UNMEASURED. `evidence.corpus` names a corpus declared in
+# merlin/contract/corpora.yaml (`sched_corpora`), which locates it through a hardware pin, and
+# `merlin.sched.expressiveness` measures the agreement: run
+# `build_tools/scripts/check_schedule_ir_coverage.py --measure --summary`. With `--measure` THE
+# MEASUREMENT decides each row and supplies its own `missing_input`, so neither has to be typed here.
+# Without it the gate falls back to reading `evidence.measured_on` off the row -- the one status in
+# this file a human could assert rather than compute -- which is why a `measured_on` the measurement
+# contradicts is reported as a problem rather than believed.
+#
+# The measurement's own number is a TRIPLE, `expressed / denominator / unexercised`, never a ratio: a
+# field the comparator could not decide (one side did not populate it, or its facet is outside what
+# `cca_agree` iterates) is charged to the DENOMINATOR, so a row resting on two comparable fields out of
+# nine reads as a wide interval instead of a high score. An UNMEASURED row still contributes every
+# field it names, because a measurement of nothing must not read like agreement on everything.
+version: 1
+
+# THE PRIOR SYSTEMS THIS REGISTER'S DENOMINATOR IS DRAWN FROM.
+#
+# The axis list was built by asking what one scheduling language cannot express, and the per-row verdict
+# lived in a field named after it. That is honest as a fact and misleading as a headline: "11 of 13 axes
+# expressed" reads as coverage of the field and means coverage of the axes ONE system's absence
+# suggested. Two systems a reader would assume were in the denominator were not in it at all.
+#
+# So the list is data. Adding a system here obliges a verdict from every row -- HAS / PARTIAL / ABSENT,
+# each non-HAS citing evidence -- and the gate refuses a row that leaves a declared system unscored,
+# because a system declared and unscored widens the denominator on paper while changing nothing.
+#
+# A system with no vendored or pinned copy in this checkout declares a BLANKET of UNASSESSED and a
+# reason instead. One admission, written once. Writing "unassessed" into thirteen rows would multiply a
+# single missing input into thirteen statements that each read as an independent judgement, and a
+# verdict recalled from memory is precisely the unfalsifiable claim this file exists to stop being
+# writable. Deleting a blanket is how the audit gets forced: the gate then demands all thirteen at once.
+prior_art:
+  - id: exo
+    what: >-
+      Exo 2's scheduling language, vendored at third_party/baselines/exo and exercised in-repo. Scored
+      per row by grammar inspection plus a zero-hit grep over its source, which is what makes those
+      verdicts checkable rather than remembered.
+  - id: halide
+    blanket: UNASSESSED
+    why: >-
+      No vendored copy and no pinned revision. The one in-repo mention is HTM, a Halide-to-MLIR
+      converter for image processing, dismissed in the design pass as "not a model of accelerator
+      resources" -- which evaluates the BRIDGE, not the scheduling language, so it grounds nothing here.
+      Scoring the axes below from recollection would produce a column that looks measured and is not.
+      To retire this blanket: vendor or pin Halide, then score every row the way the exo column was
+      scored. Expect new rows as well as verdicts -- its `compute_at`/`store_at` granularity, bounds
+      inference, update stages and storage folding are a PIPELINE-of-stages vocabulary, and `mk` is one
+      kernel, so those are structural gaps rather than missing primitives.
+  - id: tile_ir
+    blanket: UNASSESSED
+    why: >-
+      No vendored copy, no pinned revision, and no mention anywhere in this tree. The axes it would
+      plausibly force -- warp specialisation, layouts and swizzles as first-class, a tile as a nameable
+      value -- overlap what radiance already forces, so the rows may exist before the column does. To
+      retire this blanket: pin a specification or an implementation, then score every row against it.
+
+entries:
+
+  # ---------------------------------------------------------------- adopted, not exceeded
+  - id: loop_restructuring
+    axis: >-
+      Split, reorder, fuse, fission and unroll a counted loop nest without changing what it computes.
+    exo: EXO_HAS
+    forced_by: [gemmini, atlas, muon]
+    generic: true
+    owner: sched
+    primitive: [divide_loop, reorder, fuse, unroll]
+    test: merlin/tests/ir/test_sched_primitives.py::test_primitives_compose_and_each_step_preserves_the_instances
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [compute.contraction_form]
+
+  - id: loop_ends_differ_from_the_body
+    axis: >-
+      The first and last iteration of a loop can do something the others do not, so a prologue, an
+      epilogue, a pipeline's fill and drain, and a reduction's initialise and read-out are expressible
+      without abandoning the loop.
+    exo: EXO_HAS
+    forced_by: [gemmini, atlas, muon]
+    generic: true
+    owner: sched
+    primitive: [peel, specialize]
+    test: merlin/tests/ir/test_sched_primitives.py::test_peeling_both_ends_leaves_the_middle
+    note: >-
+      `peel` splits an iteration off either end and renumbers what is left; `specialize` then gives that
+      copy an operand the uniform body cannot carry, because an operand being PRESENT or ABSENT is not a
+      value any index expression can vary. Together they are what lets a recipe be written as ONE
+      uniform reduction and transformed into the shape that runs -- which is how the matmul recipe is
+      now built, byte-identically to the hand-written case analysis it replaced. Peeling is correct by
+      construction and says so by checking it: the peeled copy plus the remaining loop run exactly the
+      instances the original did. `specialize` cannot be, since changing what one instance computes is
+      its purpose, so it is bounded instead -- an operand the instruction does not take is refused
+      rather than appended. Two consequences of peeling that are not optional: a substitution that makes
+      a subtree constant must FOLD it, and a select the remaining loop can no longer reach must be
+      DECIDED, or the same schedule written two ways gets two digests, and the digest is the identity.
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [compute.contraction_form, dispatch.n_dispatches]
+
+  - id: memory_spaces
+    axis: >-
+      A buffer lives in a named memory space with a read/write capability lattice, and a transformation
+      may stage it into another.
+    exo: EXO_HAS
+    forced_by: [gemmini, atlas, muon]
+    generic: true
+    owner: sched
+    primitive: [stage_mem, bind_bank]
+    test: merlin/tests/ir/test_sched_placement.py::test_stage_mem_inserts_the_move_and_records_both_ends
+    note: >-
+      `stage_mem` brings data into a named on-chip memory ahead of the call that reads it, recording
+      that the move WRITES those rows and the consumer READS them -- which is what makes the capacity,
+      bank and write-over-a-live-operand checks possible at all. The MOVE INSTRUCTION is the caller's,
+      because choosing it would put a per-target table inside a generic vocabulary. What this does not
+      model, and says so: rewriting the consumer's operands to address the staged copy, since on these
+      targets the on-chip address is part of the instruction's own encoding and belongs to the
+      per-target speller.
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [memory.onchip_resident]
+
+  - id: configuration_as_state
+    axis: >-
+      Accelerator configuration is a value with a def-use chain, so hoisting or eliding a config is a
+      transformation on the payload rather than an edit to statement order.
+    exo: EXO_HAS
+    forced_by: [gemmini, atlas, muon]
+    generic: true
+    owner: sched
+    primitive: [hoist_config]
+    test: merlin/tests/ir/test_sched_config.py::test_a_call_that_assumes_a_different_value_than_is_live_is_caught
+    note: >-
+      A call declares the configuration it SETS and the configuration it ASSUMES, so the dependence is a
+      def-use chain on a value rather than a distance in statement order. `check_config` then asks one
+      question of every target -- is the value this call assumes the value that is live? -- where one
+      target's binding asks it by hand three times, once per field ("config_ld id 0 stride != the
+      loop's", "config_st stride does not match", "config_ex transposes differ from the loop's (or no
+      config_ex)"). Nothing here knows what a key MEANS; keys are opaque and compared for equality,
+      which is what keeps it target-free. Two findings, deliberately separate: a call reading a
+      configuration that is not live is a WRONG ANSWER on a device that is configured for something
+      else, while a configuration replaced before anything read it is a WASTED dispatch slot. Reported
+      in one list, a caller would have to choose between ignoring the first and ignoring the second.
+      `hoist_config` is the transformation this buys, and it is refused unless the value is
+      loop-invariant, the call configures and does nothing else, and no other call in the loop sets the
+      same key.
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [dispatch.config_fraction]
+
+  # ---------------------------------------------------------------- exceeded: core vocabulary
+  - id: memory_capacity_banks_ports
+    axis: >-
+      An on-chip store has a capacity, a bank count, ports and an arbiter, and placing a buffer in a
+      bank is a scheduling decision with a stall consequence and a correctness consequence.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      Its memory abstraction carries a space and a capability lattice and no capacity, bank count or
+      port count. Verified by grammar inspection plus a zero-hit search of its source.
+    forced_by: [gemmini]
+    generic: false
+    owner: sched
+    primitive: [bind_bank]
+    test: merlin/tests/ir/test_sched_placement.py::test_a_write_over_a_live_operand_is_caught
+    note: >-
+      A call records where its operands sit on chip, and `check_placement` catches both measured failures: a result written over an operand still being read (zero correct elements out of 16,384 on a shipped kernel, silently), and a bank two contending engines share under a declared arbiter. A bank named against a store whose bank count was never derived is refused rather than accepted -- that is a guess wearing a placement's clothes.
+    evidence:
+      corpus: simt_kernels
+      cca_axes: [memory.banks_used, dispatch.double_buffered_banks]
+
+  - id: async_completion_token
+    axis: >-
+      A launch returns a token a consumer awaits, so a dependence that must hold survives in the
+      payload rather than only as statement order.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      A call is unconditionally synchronous; its source contains no fence, barrier, await or semaphore.
+    forced_by: [atlas, muon, gemmini]
+    generic: true
+    owner: sched
+    primitive: [place, pipeline]
+    test: merlin/tests/ir/test_sched_sync.py::test_the_same_kernel_gets_opposite_verdicts_on_the_two_archetypes
+    note: >-
+      A launch names a token and a consumer awaits it, in the PAYLOAD rather than in statement order, so the dependence survives a reordering. Both ends are inserted by one move: a producer whose token nothing awaits is the state the explicit-machine check rejects.
+    evidence:
+      corpus: npu_baremetal_assembly
+      cca_axes: [dispatch.dma_overlap, communication.copy_compute_overlap]
+
+  - id: completion_kind
+    axis: >-
+      A wait is discharged either by elapsed cycles or by polling, and the two are not interchangeable:
+      bulk movement is data-dependent, so a counted wait in its place is a bug, not a conservatism.
+    exo: EXO_ABSENT
+    exo_evidence: No completion concept of any kind; a call returns when it returns.
+    forced_by: [atlas]
+    generic: false
+    forced_by_unknown:
+      - target: muon
+        missing: >-
+          a muon schedule_contract.yaml; atlas's is the only one in the tree, so no other target can supply a latency, a delay instruction or a completion kind
+   
+    owner: sched
+    primitive: [pipeline]
+    test: merlin/tests/ir/test_sched_sync.py::test_pipeline_refuses_an_instruction_with_nothing_to_wait_for
+    note: >-
+      The completion kind is read from the machine, never assumed: an instruction whose result is visible to the next one has no completion, and pipelining it would record a dependence the hardware never has.
+    evidence:
+      corpus: npu_baremetal_assembly
+      cca_axes: [dispatch.dma_issue_to_wait]
+
+  - id: latency_per_instruction_unit
+    axis: >-
+      Cost belongs to the (instruction, unit) PAIR, and issue occupancy is a different number from
+      result visibility.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      Its instruction node carries a C code string and a global; there is no cost, unit or cycle field
+      to attach a latency to.
+    forced_by: [atlas]
+    generic: false
+    forced_by_unknown:
+      - target: muon
+        missing: >-
+          a muon schedule_contract.yaml; atlas's is the only one in the tree, so no other target can supply a latency, a delay instruction or a completion kind
+   
+    owner: sched
+    primitive: [pipeline]
+    test: merlin/tests/ir/test_sched_cost.py::test_an_underived_cost_makes_the_whole_schedule_undecidable
+    note: >-
+      Cost is keyed by the (instruction, unit) pair with issue occupancy separate from result visibility, and a schedule containing one instruction whose cost was never derived prices as UNDECIDABLE rather than as the sum of the rest -- a partial sum is smaller than the truth by an unknown amount and would rank a schedule of unmeasured instructions as the cheapest available.
+      EXPRESSED BUT INERT, measured 2026-09-18: derive() takes schedule_contract as an injectable
+      parameter with no loader, so all seven targets derive ZERO latencies -- atlas included, whose
+      contract is the one this row is forced by. The vocabulary and its rules are exercised only by
+      tests that inject a contract. Wiring a loader is not a small edit: the only contract in the tree
+      lives under merlin/experiments/, which library code may not read, so the file has to move or the
+      caller has to supply it. Until then every machine reports Unknown("latency") rather than pricing
+      instructions at zero.
+    evidence:
+      corpus: npu_baremetal_assembly
+      cca_axes: [dispatch.n_dispatches]
+
+  - id: contended_resources
+    axis: >-
+      A declared latency floor assumes an idle machine, so a unit is a resource with occupancy rather
+      than a constant cost.
+    exo: EXO_ABSENT
+    exo_evidence: No unit model, therefore no contention model.
+    forced_by: [atlas]
+    generic: false
+    forced_by_unknown:
+      - target: muon
+        missing: >-
+          a muon schedule_contract.yaml; atlas's is the only one in the tree, so no other target can supply a latency, a delay instruction or a completion kind
+   
+    owner: sched
+    primitive: [pipeline]
+    test: merlin/tests/ir/test_sched_cost.py::test_a_floor_measured_on_an_idle_machine_can_only_bound_from_below
+    note: >-
+      A declared cost marked as a floor can only bound a schedule from below, and `sched.cost` reports the KIND of claim alongside the number so a lower bound is never read as a prediction. `pipeline` asks the machine whether two units can be in flight at once and refuses an edge between units that share a resource -- which buys no overlap and costs every later reordering a constraint.
+    evidence:
+      corpus: npu_baremetal_assembly
+      cca_axes: [dispatch.dma_overlap]
+
+  - id: distinct_sync_kinds
+    axis: >-
+      Synchronisation is not one thing: a global fence, a shared-memory fence, a full drain, a partial
+      drain, issue backpressure and a named multi-party barrier each order a different pair.
+    exo: EXO_ABSENT
+    exo_evidence: Zero occurrences of fence, barrier, await or semaphore in its source.
+    forced_by: [gemmini, muon, radiance]
+    generic: true
+    forced_by_unknown:
+      - target: atlas
+        missing: >-
+          its derived IsaModel role table. Atlas's endpoint sources roles from `isa_model.roles`
+          rather than declaring them inline, so whether it declares synchronisation instructions was
+          not resolved.
+   
+    owner: sched
+    primitive: [pipeline]
+    test: merlin/tests/ir/test_sched_sync.py::test_the_wrong_kind_of_wait_is_caught_on_both_archetypes
+    note: >-
+      CORRECTED 2026-09-18 by re-measuring forced_by: the authored [muon, atlas] matched neither kind
+      of evidence. `compute_endpoints.yaml` declares sync roles for gemmini (FLUSH_CMD), muon and
+      radiance (MISC_MEM, SYSTEM, vx_barrier) and not for atlas. And INERT TODAY, which the status
+      cannot show: `Machine.syncs` is populated by nothing in the tree -- `derive` never passes the
+      argument -- so no target's derived machine declares a single Sync and `_wrong_kind_of_wait`
+      returns immediately on every one of them. The vocabulary exists and the derivation does not
+      reach it yet. Since 2026-09-18 that silence is at least visible: `SyncReport.unchecked` names the
+      class of question the empty declaration left unasked, so an empty problem list can no longer be
+      read as a clean bill of health.
+      A target declares each synchronisation instruction and WHAT IT ORDERS -- completion, issue,
+      visibility or arrival -- and only completion discharges a dependence on a result. That is the
+      distinction a single `fence` concept cannot state and therefore cannot check: one target ships a
+      primitive that reads like a fence and orders only issue. Checked before the archetype split,
+      because using it where a result is needed is wrong on both. A target that declares no sync
+      instructions makes no claim rather than getting a default fence.
+    evidence:
+      corpus: simt_kernels
+      cca_axes: [communication.fences]
+
+  - id: hazard_resolution_trait
+    axis: >-
+      Whether hazards are resolved by hardware or by the compiler, which inverts the performance lever
+      and decides which gate is able to fail at all.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      No archetype concept. Its correctness criterion is uniform, which is sound only on the archetype
+      where a wrong schedule returns a wrong answer.
+    forced_by: [gemmini]
+    generic: false
+    forced_by_unknown:
+      - target: atlas
+        missing: >-
+          memory_model.hazard_resolution in atlas's target contract. Its delay instruction and issue
+          gaps are strong evidence for `explicit` and derive.py deliberately does not decide it from
+          them. Four targets declare `interlocked` and ZERO declare `explicit`, so the archetype this
+          axis exists to distinguish has no second slice until that one line is written.
+   
+    owner: sched
+    primitive: [pipeline]
+    test: merlin/tests/ir/test_sched_sync.py::test_a_machine_with_no_hazard_model_answers_neither
+    note: >-
+      `check_sync` asks the question the machine poses -- an absent wait is not a defect where hardware tracks dependencies and is a wrong answer where the compiler separates them -- and refuses both answers where no hazard model was derived.
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [spatial.dataflow]
+
+  # ---------------------------------------------------------------- exceeded: TARGET EXTENSIONS
+  # One slice each, so by the two-slice rule these are not core vocabulary. Recorded rather than
+  # promoted: a one-target need dressed as a general primitive is how an IR acquires the shape of
+  # whichever target was implemented first.
+  - id: time_occupying_statements
+    axis: >-
+      A statement that occupies time without doing work, plus mandatory branch delay slots — the
+      compiler emitting separation the hardware does not enforce.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      No statement can occupy time without doing work. Smuggled in as an instruction with an empty
+      body, its reordering pass sees no dependence and may move code across it — a transformation
+      correct by that language's criterion and wrong on the machine.
+    forced_by: [atlas]
+    generic: false
+    owner: sched
+    surfaced_by: PHASE2_V2_SCHEDULE_IR.md section 2.1
+    surfaced_on: 2026-09-15
+    blocks: >-
+      One target's kernel body is unrepresentable without it: its expert corpus is about 20% timing
+      instructions and 1% control flow. Kept a target extension until a SECOND slice needs it.
+    evidence:
+      cca_axes: [dispatch.n_dispatches]
+
+  - id: thread_identity_and_divergence
+    axis: >-
+      A thread hierarchy whose levels carry identity, so warp specialisation and divergence regions are
+      expressible.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      Its parallel loop mode carries no thread identity, so a body that branches on which warp is
+      executing cannot be written.
+    forced_by: [muon, radiance]
+    slice_basis:
+      - slice: radiance_muon_cluster
+        targets: [muon, radiance]
+        why: >-
+          ONE device under two names, so these two entries are one slice. Both resolve to the same
+          elaboration (`RadianceMuonConfig`) and `mach.derive` returns identical machines for them --
+          the same two units (`simt_cluster` kind simt, `mx_pe` kind systolic) and the same
+          core=1/warp=8/lane=16 hierarchy. Muon's own contract settles it: `simt_cluster` declares
+          `contains: [mx_pe]` with the note "The cluster EMBEDS the MX array below, so the target has
+          two engines and not one", and radiance's residual calls itself "a composite SoC whose Muon
+          SIMT cluster + embedded MX PE ... registers under the cluster name 'muon'".
+    generic: false
+    owner: sched
+    surfaced_by: PHASE2_V2_SCHEDULE_IR.md section 2.1
+    surfaced_on: 2026-09-15
+    blocks: >-
+      Warp specialisation — one warp driving the matrix engine while the others do vector work — is the
+      shape of the measured three-stage pipeline on that target. Adopted from an upstream GPU dialect
+      rather than invented here, so it costs no core vocabulary.
+      DEMOTED 2026-09-19, reversing the 2026-09-18 promotion, which counted one machine twice. That
+      promotion's evidence — a facts body stamped `"target": "radiance"`, a contract declaring
+      `capabilities.simt`, its own `radiance_simt` endpoint — establishes that the two are separately
+      DECLARED, not separately REALISED. Its own closing clause says why they are declared apart:
+      "precisely so one target's kernels are never attributed to the other." That is an argument for
+      keeping the CORPORA distinct, and it is not evidence of a second device; read as the latter it
+      satisfied the two-slice rule with one piece of silicon.
+      So this is a target extension until a SECOND SIMT device exists. Note that mx_gemmini cannot be
+      that device: it is systolic, and it shares gemmini's structural facts by declaration
+      (`facts_target: gemmini`).
+    evidence:
+      cca_axes: [simt.warps, simt.divergence, simt.barriers_in_loop]
+
+  # ------------------------------------------- surfaced by the 2026-09-19 target audit, not by prior art
+  #
+  # These three were found by asking what Atlas and Radiance actually force, rather than what another
+  # language lacks -- which is why none of them cites halide or tile_ir as its reason to exist. Both of
+  # those are blanket-UNASSESSED above, and a row justified by a system nobody has checked against would
+  # be exactly the unfalsifiable claim this register refuses. Each cites in-repo evidence instead.
+
+  - id: multi_buffering
+    axis: >-
+      A staged buffer has a DEPTH: n copies rotating so a producer fills one while a consumer reads
+      another, with each copy's bank placement part of the decision.
+    exo: EXO_PARTIAL
+    exo_evidence: >-
+      It stages a buffer into a named memory, but the memory carries no capacity, bank count or ports,
+      so there is nothing for a depth to be checked against and no way to say which bank a copy lands
+      in. Verified in the same pass that found its memory model has no banking.
+    forced_by: [radiance, atlas]
+    generic: true
+    owner: sched
+    primitive: [multi_buffer]
+    test: merlin/tests/ir/test_sched_primitives.py::test_multi_buffer_reserves_the_copies
+    surfaced_by: PHASE2_V2_SCHEDULE_IR.md section 3.2, re-measured against the register 2026-09-19
+    surfaced_on: 2026-09-19
+    note: >-
+      Surfaced as a gap on 2026-09-19 and expressed the same day. The design named
+      `stage(buffer, depth=n, bank=b)` as one of FOUR constructs the kernel IR must gain and this
+      register had no row for it -- a required construct that no axis tracked, so its absence was
+      invisible to the one instrument that reports absences.
+      Two independent slices force it. Radiance: the `odd_k` idiom, a K-tile-parity toggle selecting
+      between two scratchpad halves and two scale-memory offsets
+      (`out/artifacts/targets/radiance/kernel_library_pr1_v1/lib/mxgemm/mxgemm_lib.hpp:265-280`). Atlas:
+      the weight-slot ping-pong across `mxu0.acc0`/`acc1`. That is the two-slice rule satisfied, and it
+      is currently the ONLY unexpressed axis it admitted -- the other four are single-slice target
+      extensions -- which is why this was the next thing built rather than the thread hierarchy.
+      WHAT IS EXPRESSED. `Stage` gained a `depth`, the capacity and overlap checks price the copies,
+      `multi_buffer` reserves them, and as of 2026-09-20 `multi_buffer(rotate=, over=, advance=)` also
+      expresses WHICH COPY a given iteration lands on -- the operand becomes `base + phase*advance`,
+      written in the IR's own `Sum`/`Scaled`, and it reaches emitted C.
+      THE ARGUMENT THAT SAID IT COULD NOT BE, AND WHY IT WAS WRONG. This note previously held that the
+      rotation "is not always modulo -- one of the two slices spells it as a parity test on the tile
+      index -- so choosing a scheme here would bake one target's idiom into the vocabulary". That was a
+      false dichotomy: a parity test IS mod 2. No `Mod` node is needed, because `divide_loop(k, depth)`
+      already yields `k = ko*depth + ki`, so `ki` is exactly `k mod depth`. Radiance's `odd_k` toggle
+      and atlas's weight-slot ping-pong are therefore the same rule at `depth=2`, and requiring
+      `over`'s extent to equal the depth is not a restriction but the encoding.
+      WHAT IS STILL NOT EXPRESSED, and is required of the caller rather than defaulted: which operand
+      carries the on-chip address, and what unit it advances in. A `Stage` counts machine rows; the
+      operand counts whatever that instruction's encoding counts. Defaulting `advance` to `Stage.rows`
+      would emit a plausible address into the wrong copy -- silent wrong data -- so a partial argument
+      set is refused. A `Stage` with no `rotate=` remains a reservation only, which is the half that
+      silently returns wrong data when it is wrong, and it is the half that is checked.
+      The field prints only when it exceeds one, so every schedule written before it existed keeps its
+      text and its digest; this landed without re-pinning the twelve recipe digests or the C they emit.
+
+  - id: placement_order_hazard
+    axis: >-
+      An ordering constraint that is a property of a WRITE SET rather than of timing: two statements
+      must not be reordered even though no data flows between them and no delay makes it safe.
+    exo: EXO_ABSENT
+    exo_evidence: >-
+      Its reordering pass is justified by data dependence alone, so two statements it sees as
+      independent may be swapped. A constraint that no dependence expresses cannot be stated to it.
+    forced_by: [atlas]
+    generic: false
+    owner: sched
+    surfaced_by: the Atlas ISA green card's own errata, read 2026-09-19
+    surfaced_on: 2026-09-19
+    blocks: >-
+      MEASURED ON REAL SILICON, and the measurement is what makes this a separate axis rather than a
+      latency: injecting `vli.all` between a kernel's operand load and the arithmetic that consumed it
+      collapsed the output to a constant, and WIDENING THE SETTLE FROM 2 TO 256 CYCLES DID NOT CHANGE
+      IT. So it is a write-set fact, not a pipeline-timing one, and a vocabulary whose only hazard
+      primitive is a cycle-counted delay cannot express it -- no value of n in `DELAY n` is correct.
+      The rule the hardware actually wants is a placement order: emit the zero-fill ONCE, before any
+      operand is loaded. Held a target extension until a second slice needs it; kept as a row because
+      a legality checker that cannot represent the constraint will silently pass a wrong schedule.
+
+  - id: named_slot_residency
+    axis: >-
+      A buffer resident in a NAMED slot selected by an identifier, rather than at a row offset in an
+      addressed store.
+    exo: EXO_PARTIAL
+    exo_evidence: >-
+      Its memories are named annotations, which is the right shape, but a buffer placed in one is still
+      addressed within it; there is no notion of a fixed slot chosen by an operand field.
+    forced_by: [atlas]
+    generic: false
+    owner: sched
+    surfaced_by: the Atlas accumulator derivation, re-read 2026-09-19
+    surfaced_on: 2026-09-19
+    blocks: >-
+      `bind_bank` and `stage_mem` are written in ROWS -- a first row, a row count, a bank index -- and
+      Atlas's accumulators have none. They are `mxu0.acc0`/`acc1` and `mxu1.acc0`/`acc1`, chosen by a
+      SINGLE INDEX BIT inside an operand field (`vd[0]`, `vs2[0]`), and `address_space` already resolves
+      the accumulator as IN_DATAPATH with a named Unknown saying there are no accumulator rows to
+      schedule into. So the row-shaped primitives are not merely unavailable on that target, they are
+      the wrong shape, and the gap is invisible today only because its `Machine.memories` is empty for an
+      unrelated reason (its one extracted store is a write-port geometry, correctly refused).
+
+  - id: macro_instruction_substitution
+    axis: >-
+      A hardware macro -- one instruction that runs a whole tiled loop nest in the device's own state
+      machine -- is DEFINED as the nest it is equivalent to and substituted wherever that nest appears,
+      rather than being a primitive of the scheduling vocabulary.
+    exo: EXO_HAS
+    forced_by: [gemmini]
+    generic: false
+    owner: sched
+    primitive: [replace]
+    test: merlin/tests/ir/test_sched_primitives.py::test_replace_substitutes_the_declared_nest
+    note: >-
+      This is what reconciles two standing positions rather than choosing between them. The macro buys
+      offload completeness -- on the systolic target the host otherwise runs hundreds of millions of
+      im2col instructions -- while the fine-grained nest is the only level at which a schedule can beat
+      a vendor library. Making the macro a substitution keeps the vocabulary fine-grained and lets one
+      recipe serve a machine that has the macro and a machine that does not.
+      WHAT THE OBLIGATION IS, AND IS NOT. Whether the hardware macro computes what the nest computes is
+      a claim about SILICON, and this level cannot discharge it: the kernel IR gives an instruction its
+      operands and no semantics. So `replace` does not attempt that proof. It checks the weaker thing it
+      can -- that the nest actually present is the one the caller declared the macro equal to, up to a
+      bijective loop-variable renaming -- and the equivalence itself rides on the declared expansion,
+      which belongs with the target's own definition of the instruction where an RTL gate can eventually
+      check it. That division is deliberate: matching the WRONG nest is a compiler bug at this level, it
+      is the likelier of the two failures, and it is silent, because the kernel stays well-formed and
+      the digest simply becomes that of a different schedule.
+      A TARGET EXTENSION, and honestly so. One ISA in the roster has an FSM macro. The universal config
+      of the same generator has the same one because it is the same generator, which is not a second
+      independent need; promote this when a second ISA brings its own.

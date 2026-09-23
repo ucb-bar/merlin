@@ -6,6 +6,7 @@ Because no code loads them, they can silently drift from the code-enforced reali
 bundle, the mlir_oot_backend entrypoints, the command-buffer opcodes, the ABI VERSION). This test
 pins the machine-checkable cross-references so drift fails CI instead of misleading an agent.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,8 +16,7 @@ import yaml
 from merlin.targetgen.contract.schemas import contract_dir
 
 CONTRACT = contract_dir()
-DOC_ONLY = ["scoring.yaml", "target_dialect_contract.yaml",
-            "interface_dialect_contract.yaml", "telemetry_schema.yaml"]
+DOC_ONLY = ["scoring.yaml", "target_dialect_contract.yaml", "interface_dialect_contract.yaml", "telemetry_schema.yaml"]
 
 
 def _load(name: str) -> dict:
@@ -44,7 +44,7 @@ def test_interface_maps_to_valid_command_buffer_opcodes():
     ops = _load("interface_dialect_contract.yaml")["dialect"]["required_ops"]
     for op in ops:
         mt = op.get("maps_to")
-        if not mt or mt.startswith("leaf"):   # tensor decl maps to a description, not an opcode
+        if not mt or mt.startswith("leaf"):  # tensor decl maps to a description, not an opcode
             continue
         assert mt in valid, f"interface op {op['name']} maps_to {mt!r} not in command-buffer opcodes {sorted(valid)}"
 

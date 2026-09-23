@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-22
 related: [getting_started, search, compilation_strategies, design_pressure, dse_guidance]
-code_refs: [merlin/python/merlin/dse]
+code_refs: [packages/merlin-dse/src/merlin/dse]
 ---
 
 # Design-space exploration (Workstream 3, part B)
@@ -41,7 +41,7 @@ benefit a compiler can actually capture.
 
 ## Modules / tools
 
-`merlin/python/merlin/dse/`; `tools/dse/`, `tools/exploitability/`
+`packages/merlin-dse/src/merlin/dse/`; `tools/dse/`, `tools/exploitability/`
 (write to `out/artifacts/dse/<workload>/`).
 
 ## Must not

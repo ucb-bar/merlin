@@ -1,0 +1,135 @@
+{
+  "schema": "merlin_firesim_hardware_qualification_v1",
+  "status": "passed",
+  "qualification": "hardware_qualified_candidate",
+  "promoted": true,
+  "safe_to_resubmit_unchanged": false,
+  "queue_job": {
+    "id": 534,
+    "user": "agustin",
+    "priority": 10,
+    "project": "resnet50-merlin-phase2-native-scalar-epilogue-w8a8-warm-measured",
+    "state": "DONE",
+    "phase": "DONE",
+    "return_code": 0,
+    "terminal_wall_seconds": 340,
+    "timeout_seconds": 25200,
+    "workload": "merlin-resnet50-phase2-native-scalar-0b3284a815da3bd6",
+    "bootbinary": "merlin-resnet50-phase2-native-scalar-0b3284a815da3bd6.elf",
+    "hw_config": "resnet50_merlin_warm_measured_full_gemmini_u250_pinned"
+  },
+  "artifact_identity": {
+    "elf_sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5",
+    "staged_elf_sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5",
+    "executed_elf_sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5",
+    "elf_identity_passed": true,
+    "measured_kernel_object_sha256": "49be7abbca754a5770730a69f4b561aa238a054532b23794b2a06ff527ca3f73",
+    "hwdb_sha256": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "bitstream_archive_sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1",
+    "flashed_bitstream_sha256": "6bfb72e3d69d0bed14eaa8db9fd5faf53f82780ef9ecded6b2d49983dfcbc229",
+    "required_driver_sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade",
+    "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config"
+  },
+  "queue_lifecycle": {
+    "owner": "/scratch/firesim_queue/bin/firesim-queue",
+    "required_order": ["firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill"],
+    "observed_order": [
+      {"command": "firesim kill", "phase": "LEADING_KILL", "stdout_line": 9},
+      {"command": "firesim infrasetup", "phase": "INFRASETUP", "stdout_line": 28},
+      {"command": "firesim runworkload", "phase": "RUNNING", "stdout_line": 134},
+      {"command": "firesim kill", "phase": "TEARDOWN", "stdout_line": 666}
+    ],
+    "order_passed": true,
+    "hwdb_hash_before_leading_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_infrasetup": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_runworkload": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_trailing_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_after_trailing_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_immutable": true,
+    "trailing_kill_completed": true
+  },
+  "measurement_protocol": {
+    "warmup_invocations": 1,
+    "measured_invocations": 1,
+    "batch": 1,
+    "warmup_profile_begin": true,
+    "warmup_completed_task_markers": [12, 26, 39, 53, 67, 80, 94, 108],
+    "warmup_profile_end_return_code": 0,
+    "untimed_reset": {"kind": "zero_mutable_arena", "bytes": 90083520},
+    "measured_profile_begin": true,
+    "measured_profile_end_return_code": 0,
+    "measured_kernel_instrumentation": "none",
+    "accepted_primary_metric": "measured compute cycles"
+  },
+  "measured_metrics": {
+    "cycles": 1537416019,
+    "instret": 751827149,
+    "main_ld_cycles": 11976682,
+    "main_st_cycles": 2745877,
+    "main_ex_cycles": 3592907,
+    "exe_active_cycle": 31250652,
+    "loop_matmul_active_cycles": 53479788,
+    "rdma_bytes_rec": 1142808576,
+    "wdma_bytes_sent": 54136736,
+    "reservation_station_active_cycles": 53892695
+  },
+  "correctness": {
+    "status": "passed",
+    "logits_checked": 1000,
+    "bad": 0,
+    "nonfinite": 0,
+    "top1": 258,
+    "expected_top1": 258,
+    "checksum_fnv1a64": "c6e777c3fe0aae90",
+    "max_abs_bits": "00000000",
+    "max_rel_bits": "00000000",
+    "qdq_max_abs_bits": "3e31e2aa"
+  },
+  "comparison": {
+    "predecessor": "q530 slot-complete overlapping LOOP_WS",
+    "predecessor_cycles": 1704064223,
+    "candidate_cycles": 1537416019,
+    "cycles_saved": 166648204,
+    "cycle_reduction_percent": 9.7794555951,
+    "speedup": 1.1083949965,
+    "spike_predicted_cycles_saved": 224362975,
+    "spike_overprediction_factor_for_saved_cycles": 1.3463269907,
+    "accelerator_schedule_and_dma_unchanged": true
+  },
+  "simulation": {
+    "payload_status": "PASSED",
+    "target_cycles_total_including_warmup_and_harness": 4518740312,
+    "wallclock_seconds": 168.2,
+    "host_frequency_mhz": 30.0,
+    "effective_target_frequency_mhz": 26.858,
+    "fmr": 1.12
+  },
+  "source_evidence": {
+    "job_root": "/scratch/firesim_queue/jobs/534",
+    "runworkload_receipt": {"path": "/scratch/firesim_queue/jobs/534/runworkload-full.json", "sha256": "675a992cc074e7335ec08fd48d7e2b081d2fe3f3cffa2c8bd974364d2750912d"},
+    "runtime_config": {"path": "/scratch/firesim_queue/jobs/534/config_runtime.yaml", "sha256": "3820f8abb615ff0422f866a7553f15533d9911d7c8a3ea263bb5e5a792a97bf6"},
+    "queue_stdout": {"path": "/scratch/firesim_queue/jobs/534/stdout.log", "sha256": "b3c7e5a85c3784ba4e02ce67a5b31797bb2b7f07dca45a29ba4999d69deedd12"},
+    "queue_stderr": {"path": "/scratch/firesim_queue/jobs/534/stderr.log", "sha256": "2b63642ce74f1fc24972c90f95343c3ec4f394a44facf501e0e1953e4a354f55"},
+    "uart": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/uartlog", "sha256": "00ce02a2c19f7e1ae7e874ebc97be75d3020b52ad7befc1801c4b66fbe99141d"},
+    "heartbeat": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/heartbeat.csv", "sha256": "18f34ba4bae67b9ca268d9294ecbce53dfc848e94585a77184fa4efa90cf7256"},
+    "staged_elf": {"path": "/scratch/firesim_queue/jobs/534/deploy_overlay/workloads/merlin-resnet50-phase2-native-scalar-0b3284a815da3bd6/merlin-resnet50-phase2-native-scalar-0b3284a815da3bd6.elf", "sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5"},
+    "executed_elf": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/merlin-resnet50-phase2-native-scalar-0b3284a815da3bd60-merlin-resnet50-phase2-native-scalar-0b3284a815da3bd6.elf", "sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5"},
+    "bitstream_archive": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/firesim.tar.gz", "sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1"},
+    "flashed_bitstream": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/xilinx_alveo_u250/firesim.bit", "sha256": "6bfb72e3d69d0bed14eaa8db9fd5faf53f82780ef9ecded6b2d49983dfcbc229"},
+    "driver": {"path": "/scratch/firesim_queue/jobs/534/simulation/sim_slot_0/FireSim-xilinx_alveo_u250", "sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade"},
+    "lifecycle_logs": {
+      "leading_kill_sha256": "1a35d86436fcec9465578ed6dd672ce53c4e800aa9547264b5628ebe3b94bb50",
+      "infrasetup_sha256": "2745cd82e1ea03b9ee53cf079b932c2705fc1bf5820d90c2b64d73673d281ea2",
+      "runworkload_sha256": "3d425509b5dfe60b8244af5a50550a2430c318d548d182893be9536b4993cc02",
+      "trailing_kill_sha256": "12271ff89333b01e0cb8692714d2da91587714a2fca509ad215516cfd5027dc3"
+    }
+  },
+  "conclusion": {
+    "native_scalar_rounding_hardware_win": true,
+    "hardware_promoted": true,
+    "under_one_billion_cycle_goal": false,
+    "cycle_goal": 1000000000,
+    "cycles_over_goal": 537416019,
+    "next_action": "Retain native scalar lowering; next delete host epilogue boundaries and spatial im2col/data movement with target-neutral guarded passes before another hardware submission."
+  }
+}

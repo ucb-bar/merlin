@@ -53,3 +53,13 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+stimulus_range:
+- -4
+- 3
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map

@@ -1,0 +1,59 @@
+name: SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l3
+kind: layer
+source_role: model_derived
+source_reference: 'synthesized for the application axis: behavioural class contraction/f32/aligned/unknown/rank3/squareish_gemm,
+  representing 24 region(s) of smolvla_fp32_consistent. Sized by measured_cost_model
+  against a 300.0s certification budget'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 16
+  dtype: f32
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: f32
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: application
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 367.98614168167114
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

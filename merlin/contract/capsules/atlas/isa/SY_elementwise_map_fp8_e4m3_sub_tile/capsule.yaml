@@ -1,0 +1,58 @@
+name: SY_elementwise_map_fp8_e4m3_sub_tile
+kind: isa
+source_role: derived_sweep
+source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/sub_tile
+  (basis=observed, admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 4
+  - 8
+  dtype: fp8_e4m3
+- name: B
+  role: bias
+  shape:
+  - 8
+  dtype: fp8_e4m3
+operation:
+  op: bias_add
+  attributes:
+    src: X
+    bias: B
+    out: Y0
+    epilogue:
+    - bias_add
+    output_dtype: fp8_e4m3
+numeric_policy:
+  compare: tolerance_float
+  dtype: fp8_e4m3
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - TensorComputeBinary
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: elementwise_map
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 20.32
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

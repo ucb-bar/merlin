@@ -1,0 +1,123 @@
+# What phase each gradable gate is in — the one place a rollout is a reviewable diff.
+#
+# WHY THIS FILE EXISTS. `merlin.perf.gate_phase` made the phase a parameter rather than a comment,
+# which was the right half of the idea. The other half was missing: every caller passed
+# `PHASE_REPORT` as a LITERAL, so "turn this on later" still lived in source, and turning one on
+# meant editing Python in a file whose diff is mostly about something else. Two gates were pinned to
+# `report` that way for months — the cost plane and the offload verdict — and nothing in the repo
+# recorded that this was a decision rather than an oversight.
+#
+# A PHASE CHANGE IS A ONE-LINE DIFF HERE, and that is the point. A reviewer sees "cost_plane: report
+# -> fail" and nothing else, on a tracked file, with the commit message that argued for it.
+#
+# NO DEFAULT, AND NO ENVIRONMENT VARIABLE. A gate absent from this file raises rather than resolving
+# to `report`: a default phase is a phase nobody chose, and the failure mode it produces — a gate
+# that silently never blocks because someone forgot to list it — is exactly the one `gate_phase`'s
+# own docstring is written about. An env var is refused for a different reason: it would make two
+# runs of the same campaign incomparable while leaving nothing behind to review.
+#
+# THE TWO VALUES ARE THE ONLY TWO. `report` and `fail`; `incomplete` is a STATUS, orthogonal to
+# phase, and it is never a pass at either. Writing `incomplete` here is refused rather than
+# interpreted, because a three-valued phase is a different design and this is not it.
+#
+# THE ROLLOUT HAS A MIDDLE STEP THAT IS NOT A PHASE. Between landing at `report` and flipping to
+# `fail`, a gate should spend time where its ratchet is enforced in CI while its verdict still
+# moves no submission's status — so the population of expected failures is written down and can only
+# shrink before anyone's grade depends on it. That step is a property of the gate's own ratchet
+# check, not of this file; a gate in it still reads `report` here.
+version: 1
+
+gates:
+
+  # The cycle-count bound. It sat at `report` because no capsule could resolve a CEILING: the reader
+  # counted `performance.cost.projected_cycles` only when it was an int, and every capsule in the
+  # corpus writes the word `derived_at_preflight`, so `assess()` came back `incomplete` for all of
+  # them. That word is now HONOURED rather than read as silence -- `cost_plane.resolve_ceiling`
+  # derives the ceiling from the array the target's own facts declare, the work the capsule's own
+  # command buffer counted, and the slack declared under `policies.cost_plane` below -- so a ceiling
+  # exists and `fail` decides something.
+  #
+  # ⚠️ WHAT THIS FLIP REACHES, AND WHAT IT DOES NOT. `cost_plane.apply_gate` is the enforcement call
+  # site: it reads the verdict's own `blocking` and turns a decided failure into `status: fail` with
+  # a `failure` block, exactly as `epilogue_store_path.apply_gate` does. Any caller that goes through
+  # `apply_gate` blocks from here on. `targetgen.capsule_grade` still calls `cost_plane.assess`
+  # directly and only records the verdict under `cost_plane` in the score entry, so on that path this
+  # flip changes what the artifact SAYS (`enforced: true`, `blocking: true` on a decided failure) and
+  # not yet which rows fail. Moving that one call from `assess` to `apply_gate` is what makes the
+  # flip reach a submission's status, and it belongs in the same change as the expected-failure
+  # population it produces.
+  cost_plane: fail
+
+  # Did the target run what it demonstrably CAN run. Held at `report` because its decided failure
+  # (`zero_offload`) fires on a condition that also sets `eligible = 0`, so the population it would
+  # block on has not been measured against a corpus yet.
+  offload_verdict: report
+
+  # Is a host route's stated reason contradicted by the target's own derived capability. Held at
+  # `report` because its verdict depends on how much of a target's readout facet the local
+  # toolchain can derive: without CIRCT/mlc extraction the accumulator rung is silent, and the same
+  # package grades `contradicted` on one machine and `UNKNOWN` on another. A gate whose decided
+  # population moves with the toolchain cannot block until the derivation it reads is pinned.
+  route_declaration_quality: report
+
+  # Does a region routed ACCEPTED compute on tensor data on the host anyway. Held at `report`
+  # because the discriminator is data dependence through emitted LLVM, and the walk stops at an
+  # opaque call or inline assembly -- which is how device work is spelled. The population of
+  # `undecided` chains has not been measured across the corpus, and blocking on a rule whose
+  # coverage is unmeasured is how a rule gets routed around.
+  route_host_compute: report
+  # Does this directory provide the capability the loader is about to assume it has
+  # (`merlin.targetgen.package`). Held at `report` because `oot_runner.load_package` is the LIVE
+  # certification path: every capsule of every in-flight agent session goes through it, and a refusal
+  # that lands blocking on day one is indistinguishable from the packages having got worse. The
+  # verdict is computed in full and carried on the returned Package either way, so the population it
+  # would refuse is observable before anyone's grade depends on it.
+  package_capability: report
+  # Did the emission ask the store path for the readout the target is DERIVED to apply. Its decided
+  # failure (`gap`) is well founded -- the capability licenses the stage, the grouping admits it at
+  # that site, and the buffer did not ask -- but it lands at `report` for a reason that is about the
+  # CORPUS rather than the rule: every model capsule in the tracked corpus today is captured with
+  # run-time activation quantization, so no site admits anything and the gate returns `incomplete`
+  # for all of them. A gate flipped to `fail` over a population it has never decided once is a gate
+  # whose first real verdict arrives as a regression. It moves when a capture whose scales are
+  # compile-time constants is in the corpus and its expected-failure population is written down.
+  epilogue_store_path: report
+
+# ---------------------------------------------------------------------------------------------------
+# POLICIES: the numbers a gate DECIDES with, as opposed to the phase it decides in.
+#
+# A phase says whether a gate blocks. It does not say what "too slow" means, and for the cost plane
+# that second question has no measured answer -- which is why the plane spent months reporting a ratio
+# and saying it could not decide. `merlin.perf.cost_plane` derives a FLOOR with nothing invented (the
+# cycles the array must spend issuing this program's own tiles) and can refute a count below it; going
+# from a floor to a verdict needs one more number, and that number is a POLICY rather than a
+# measurement. A policy belongs in a tracked file where changing it is a one-line reviewable diff,
+# for exactly the reason the phases above do -- not in Python, where it would silently choose which
+# submissions pass.
+#
+# THERE IS NO DEFAULT. A gate whose policy this file does not state resolves to NO ceiling and the
+# plane reports `incomplete`; it never falls back to a permissive number. Deleting a line here makes
+# the plane stop deciding, loudly, rather than start admitting everything.
+policies:
+
+  cost_plane:
+
+    # How many times the derived issue floor a submission may spend and still be admitted.
+    #
+    # WHAT IT IS NOT: a measurement. No fitted slack exists and this does not pretend to be one.
+    # WHAT IT IS: a deliberately loose bar aimed at the failure the plane was built for -- the audit
+    # sentence "a submission that emitted a program a hundred times slower than the machine needs is
+    # graded exactly like one that did not".
+    #
+    # WHY 8, stated so a reviewer can argue with it. Two points in this repo's own measurements bracket
+    # the range (`merlin.perf.derived_bound`, module docstring): a hand-written schedule on one target
+    # and engine reached 96.2% of the structural peak (1.04x the floor), and the agentic loop's own
+    # observed ceiling sat at 31.3% of it (3.2x the floor). 8x therefore admits everything anyone in
+    # this repo has actually produced, including the loop at its worst, and refuses only programs that
+    # are slow by a different order of magnitude. It is a ceiling on gross waste, not a performance
+    # target; tightening it towards the measured 3.2x is a separate decision with its own expected-
+    # failure population, and must be taken as one.
+    #
+    # Target-agnostic by construction: every machine fact lives in the floor, so this multiple carries
+    # none and does not change when a target is added.
+    ceiling_slack_over_issue_floor: 8

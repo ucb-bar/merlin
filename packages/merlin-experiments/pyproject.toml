@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin-experiments"
+version = "0.1.0"
+description = "Explicit phase definitions and orchestration for Merlin experiments"
+requires-python = ">=3.12"
+dependencies = [
+    "merlin", "pyyaml", "jsonschema>=4",
+    "aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554",
+]
+
+[project.optional-dependencies]
+bedrock = ["boto3"]
+# Immutable source archive: the Python package does not need example submodules.
+# Official ucb-bar/chia main, verified 2026-09-23; AET remains independently pinned above.
+chia = ["chialoops @ https://github.com/ucb-bar/chia/archive/16c35e92aaaf9511c6453bf94cd5cf589698f4e3.tar.gz"]
+
+[project.scripts]
+merlin-experiment = "merlin_experiments.cli:main"
+merlin-evaluation-cohort = "merlin.targetgen.evaluation_cohort:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+merlin_experiments = ["resources/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

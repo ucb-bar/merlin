@@ -1,0 +1,41 @@
+{
+  "generated": "2026-09-08",
+  "title": "SpaceMiT K1 compiler performance overview",
+  "sources": {
+    "int8_comparison": "k1_model_runtime_comparison_20260907.json",
+    "vla_comparison": "k1_vla_profile_comparison_20260907.json",
+    "core_scaling": "k1_executorch_status_20260906.json"
+  },
+  "model_order": [
+    "LSTMNetVIT",
+    "SmallLLaMA",
+    "TinyLLaMA",
+    "SmolVLA",
+    "BitVLA",
+    "OpenVLA",
+    "RDT2"
+  ],
+  "panels": [
+    {
+      "id": "latency",
+      "heading": "Warm latency",
+      "subtitle": "one aligned row per model; logarithmic milliseconds"
+    },
+    {
+      "id": "peer_gap",
+      "heading": "Gap to available peer",
+      "subtitle": "ExecuTorch for INT8; XNNPACK GEMM swap for FP32"
+    },
+    {
+      "id": "profile",
+      "heading": "Operator mix",
+      "subtitle": "current, perturbation-gated profiles only"
+    },
+    {
+      "id": "scaling",
+      "heading": "CPU scaling",
+      "subtitle": "one-to-eight-core efficiency where measured"
+    }
+  ],
+  "footnote": "SpaceMiT K1. All latency rows are one-core warm inference; comparisons are within rows, never across model/datatype groups. Dagger: cross-run; double dagger: timeout lower bound / seeded-random reference.\nFP32 VLA rows are deterministic reduced-depth captures with generated parameters—not pretrained task-quality benchmarks. Each FP32 native arm uses its search-selected general schedule; immutable weight layouts are AOT-prepacked in both native and hybrid arms."
+}

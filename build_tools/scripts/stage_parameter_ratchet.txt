@@ -1,0 +1,2 @@
+# Public capsules that declare a parametric readout stage without its parameter.
+# May only shrink; see check_stage_parameters.py.

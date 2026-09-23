@@ -1,0 +1,62 @@
+name: SY_normalization_f32_sub_tile
+kind: isa
+source_role: derived_sweep
+source_reference: synthesized for conformance cell normalization/f32/sub_tile (basis=observed,
+  admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 2
+  - 4
+  dtype: f32
+- name: G
+  role: weight
+  shape:
+  - 1
+  - 4
+  dtype: f32
+operation:
+  op: rmsnorm
+  attributes:
+    src: X
+    gamma: G
+    out: Y0
+    eps: 1.52587890625e-05
+    semantic: rmsnorm
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 8.057247760007158e-05
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    rmsnorm: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: normalization
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.004706748484750278
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
+  applied_atol: 8.057247760007158e-05
+  golden_scale: 0.005156638566404581
+  rtol: 0.015625
+  why: the declared absolute tolerance reached the falsifiability ceiling, so the
+    profile's own relative tolerance was applied at the golden's scale instead

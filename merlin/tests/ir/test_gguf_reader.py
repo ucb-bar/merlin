@@ -3,6 +3,7 @@
 Synthesizes a tiny GGUF with GGUFWriter (no download) covering an F32 tensor and a Q8_0 tensor, then
 checks metadata parsing, quant-format classification, and the dequantization reference.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -73,7 +74,7 @@ def test_dequantize_reference_roundtrips(tmp_path):
     deq = q.dequantize()
     assert deq.shape == ref_q.shape
     cos = float((ref_q.reshape(-1) @ deq.reshape(-1)) / (np.linalg.norm(ref_q) * np.linalg.norm(deq)))
-    assert cos > 0.999   # Q8_0 round-trip fidelity
+    assert cos > 0.999  # Q8_0 round-trip fidelity
 
 
 def test_unsupported_types_reported_not_crashed(tmp_path):
@@ -84,7 +85,10 @@ def test_unsupported_types_reported_not_crashed(tmp_path):
     w = GGUFWriter(str(tmp_path / "f16.gguf"), "llama")
     w.add_string("general.architecture", "llama")
     w.add_tensor("output_norm.weight", np.ones(32, dtype=np.float16))
-    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_tensors_to_file(); w.close()
+    w.write_header_to_file()
+    w.write_kv_data_to_file()
+    w.write_tensors_to_file()
+    w.close()
     m = gr.read(tmp_path / "f16.gguf")
     t = m.tensor("output_norm.weight")
     assert t.ggml_type == "F16" and t.fmt.name == "fp16"

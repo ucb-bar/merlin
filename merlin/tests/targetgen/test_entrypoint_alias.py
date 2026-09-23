@@ -1,6 +1,7 @@
 """The 4th entrypoint is target-neutral: emit_target_artifact <-> lower_target_to_llvm resolve to
 whichever spelling a package declares, so old (LLVM/RoCC) and new (SIMT/other) packages both work.
 """
+
 from __future__ import annotations
 
 import types
@@ -28,6 +29,10 @@ def test_legacy_name_resolves_a_new_package():
 
 
 def test_exact_name_wins_over_alias():
-    pkg = _pkg({"emit_target_artifact": {"argv": ["{tool}", "--exact", "{input_mlir}"]},
-                "lower_target_to_llvm": {"argv": ["{tool}", "--other", "{input_mlir}"]}})
+    pkg = _pkg(
+        {
+            "emit_target_artifact": {"argv": ["{tool}", "--exact", "{input_mlir}"]},
+            "lower_target_to_llvm": {"argv": ["{tool}", "--other", "{input_mlir}"]},
+        }
+    )
     assert OR._resolve_argv(pkg, "emit_target_artifact", Path("i"), None)[1] == "--exact"

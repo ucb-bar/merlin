@@ -1,0 +1,22 @@
+# Public capsules that test a sign-sensitive epilogue stage on a non-negative stimulus.
+# May only shrink: declare `stimulus_range: [lo, hi]` with lo < 0 on the capsule and
+# regenerate its golden.
+# growth-accepted: the gate is new; this is debt it discovered, not debt added.
+AF10_bias_add_bf16_pt
+AT4_bf16_scale
+AT5_relu_epilogue
+BT1_linear_relu
+GC6_bias_add_bf16_pt
+OP13_requant_square
+OP14_requant_narrow_m
+OP15_requant_narrow_n
+OP16_requant_tail
+OP17_requant_saturating
+OP18_relu_epilogue
+OPL1_linear_requant
+RP16_bias_add_fp32_pt
+SY_elementwise_map_fp8_e4m3_aligned
+SY_elementwise_map_fp8_e4m3_partial
+SY_elementwise_map_fp8_e4m3_sub_tile
+SY_epilogue_bias_add
+SY_epilogue_relu

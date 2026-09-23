@@ -1,0 +1,3529 @@
+{
+ "cells": {
+  "gemmini_xdsl_rtl_v0": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16368,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2",
+    "sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16352,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "796e3ba4df99d79b716a37baff0828f4ce74832c8f6630a31e277195be146782",
+    "sha256": "796e3ba4df99d79b716a37baff0828f4ce74832c8f6630a31e277195be146782"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16128
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16128,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      16144
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 68,
+    "package_ops": 68,
+    "package_sha256": "bcef9bb1e807a3e130a81de941ec8794bf91afb003d55e12094d5cf479cfe63c",
+    "sha256": "bcef9bb1e807a3e130a81de941ec8794bf91afb003d55e12094d5cf479cfe63c"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16320
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16320,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16336
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "f0d827381153b591626e689ba27d768f9537ac4a8058849a2cf3fda17096f22f",
+    "sha256": "f0d827381153b591626e689ba27d768f9537ac4a8058849a2cf3fda17096f22f"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      10240
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      10240,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      10256
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "347d73735528c56b1de91455fc002d55b5a5a3f3e873803c3a257b5576cc49f9",
+    "sha256": "347d73735528c56b1de91455fc002d55b5a5a3f3e873803c3a257b5576cc49f9"
+   },
+   "GM1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      8176,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 2053,
+    "package_ops": 2053,
+    "package_sha256": "7e3ccf8ac87c30d317b4572d55ec5761ca839ed6ccb23926cf1460c04235545a",
+    "sha256": "7e3ccf8ac87c30d317b4572d55ec5761ca839ed6ccb23926cf1460c04235545a"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_grp": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "preload",
+      16368,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "7e3cef05fd2c3be88fb5ee40759b79c3ab836abd57346abe418e1d2683d6185f",
+    "sha256": "7e3cef05fd2c3be88fb5ee40759b79c3ab836abd57346abe418e1d2683d6185f"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "preload",
+      16352,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "1efa899390b9e8977ad0440ef8e202d02b3e00ac403c0bf706ef9c5d7eeab70c",
+    "sha256": "1efa899390b9e8977ad0440ef8e202d02b3e00ac403c0bf706ef9c5d7eeab70c"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      32,
+      16,
+      16,
+      32
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      48,
+      16,
+      16,
+      48
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16128
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      16144
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "fc10b360f8788da325729131e3b519afd9d2e70183ad66a0602b2cbd14c18954",
+    "sha256": "fc10b360f8788da325729131e3b519afd9d2e70183ad66a0602b2cbd14c18954"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      32,
+      16,
+      16,
+      32
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      48,
+      16,
+      16,
+      48
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16320
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16336
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "159abe3eb623e290d2fd1f627b0690084cf4261b1db4330d6d8f1bf66ded96df",
+    "sha256": "159abe3eb623e290d2fd1f627b0690084cf4261b1db4330d6d8f1bf66ded96df"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      32,
+      16,
+      16,
+      32
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      48,
+      16,
+      16,
+      48
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      64,
+      16,
+      16,
+      64
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      80,
+      16,
+      16,
+      80
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "22f34b261a77e2fa5be6039b28ac3467bbedb70be4832a46ce471e571677e2bd",
+    "sha256": "22f34b261a77e2fa5be6039b28ac3467bbedb70be4832a46ce471e571677e2bd"
+   },
+   "GM1": {
+    "hazard": {
+     "overwrite_index": 511,
+     "read_as_weights_index": 1026
+    },
+    "package_ops": 2053,
+    "package_sha256": "c33a0b1aad96129eeeb89b7f0903a6f0aff1266548cc5d0494cda7ba02b5f8ce",
+    "pass": "refused"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_hoist": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16368,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2",
+    "sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "preload",
+      16352,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "0aedce96ccd5ef051ca8b71e26589ebbac583c02de409bea3ddb8a0adf4f3bbc",
+    "sha256": "0aedce96ccd5ef051ca8b71e26589ebbac583c02de409bea3ddb8a0adf4f3bbc"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16128
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      16144
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      32,
+      16,
+      16,
+      16160
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      48,
+      16,
+      16,
+      16176
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16192
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "6c4f831c28b9348cfdec4245088ed95f7a0dc79ba0478e28f1772c098fc99135",
+    "sha256": "6c4f831c28b9348cfdec4245088ed95f7a0dc79ba0478e28f1772c098fc99135"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16320
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16336
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      32,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      32,
+      16,
+      16,
+      32
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "deabdb179b3456a867f85fef62b7ae252a0d868d070a73aeafba4acb042b2c48",
+    "sha256": "deabdb179b3456a867f85fef62b7ae252a0d868d070a73aeafba4acb042b2c48"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      10240
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      10256
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      32,
+      0,
+      16,
+      16,
+      10272
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      32,
+      16,
+      16,
+      32
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "445e970fadef1d8f4747a83c72c9b045df968d917c1b0560996765cee29f203d",
+    "sha256": "445e970fadef1d8f4747a83c72c9b045df968d917c1b0560996765cee29f203d"
+   },
+   "GM1": {
+    "hazard": {
+     "overwrite_index": 1023,
+     "read_as_weights_index": 1026
+    },
+    "package_ops": 2053,
+    "package_sha256": "02a7d07caea40997e9f2a2d2fe20d9243a04776e5a979a4a02799b8dc35e7266",
+    "pass": "refused"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_l1": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16368,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2",
+    "sha256": "e71f1250b9535a2e7c91037cd2d0c2c2163f5521df14d9290e107e2398d4f3e2"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16352,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "796e3ba4df99d79b716a37baff0828f4ce74832c8f6630a31e277195be146782",
+    "sha256": "796e3ba4df99d79b716a37baff0828f4ce74832c8f6630a31e277195be146782"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16128
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16128,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      16144
+     ],
+     [
+      "preload",
+      16144,
+      16,
+      false,
+      16,
+      16
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "9836d8a8ae25a4e13c27af0ff19c3adcca90d53c0552d561a62cbd1da56439f6",
+    "sha256": "9836d8a8ae25a4e13c27af0ff19c3adcca90d53c0552d561a62cbd1da56439f6"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16320
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      16320,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16336
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "f0d827381153b591626e689ba27d768f9537ac4a8058849a2cf3fda17096f22f",
+    "sha256": "f0d827381153b591626e689ba27d768f9537ac4a8058849a2cf3fda17096f22f"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      10240
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      10240,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      10256
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "347d73735528c56b1de91455fc002d55b5a5a3f3e873803c3a257b5576cc49f9",
+    "sha256": "347d73735528c56b1de91455fc002d55b5a5a3f3e873803c3a257b5576cc49f9"
+   },
+   "GM1": {
+    "head": [
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "preload",
+      8176,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 2053,
+    "package_ops": 2053,
+    "package_sha256": "7e3ccf8ac87c30d317b4572d55ec5761ca839ed6ccb23926cf1460c04235545a",
+    "sha256": "7e3ccf8ac87c30d317b4572d55ec5761ca839ed6ccb23926cf1460c04235545a"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_la1": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "preload",
+      16368,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "7e3cef05fd2c3be88fb5ee40759b79c3ab836abd57346abe418e1d2683d6185f",
+    "sha256": "7e3cef05fd2c3be88fb5ee40759b79c3ab836abd57346abe418e1d2683d6185f"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16352
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16368
+     ],
+     [
+      "preload",
+      16352,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "9d6fd9b13325f92cace9857bf578f811fd8da918347ead14a561870202aa8b96",
+    "sha256": "9d6fd9b13325f92cace9857bf578f811fd8da918347ead14a561870202aa8b96"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16128
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      16144
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      32,
+      16,
+      16,
+      16160
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      48,
+      16,
+      16,
+      16176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "ba01144728be0eb63b697a10108fbc41b3a2d3a43907ae0bcd0dad5d79dab0d9",
+    "sha256": "ba01144728be0eb63b697a10108fbc41b3a2d3a43907ae0bcd0dad5d79dab0d9"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16320
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      16336
+     ],
+     [
+      "preload",
+      16320,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "6180b8bb1cd097822b5a1ae1a9fae2da80830e487dd7e10d9f11d8eba4587bd6",
+    "sha256": "6180b8bb1cd097822b5a1ae1a9fae2da80830e487dd7e10d9f11d8eba4587bd6"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      10240
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      10256
+     ],
+     [
+      "preload",
+      10240,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "1b86262b0777c4f1bfc94de01a1df708a243915d264b1bbaaff5d325c297e10a",
+    "sha256": "1b86262b0777c4f1bfc94de01a1df708a243915d264b1bbaaff5d325c297e10a"
+   },
+   "GM1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "preload",
+      8176,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 2053,
+    "package_ops": 2053,
+    "package_sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc",
+    "sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_la1_pafter": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      16
+     ],
+     [
+      "preload",
+      16,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "55646e6262fec698fc7dafe508f9c6f64e018713305d7ce72928b3811df8346d",
+    "sha256": "55646e6262fec698fc7dafe508f9c6f64e018713305d7ce72928b3811df8346d"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      32
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      48
+     ],
+     [
+      "preload",
+      32,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "904b6e5893b91b9027d39cce4c9e23551393878ba0292c4ed5cc115868853bea",
+    "sha256": "904b6e5893b91b9027d39cce4c9e23551393878ba0292c4ed5cc115868853bea"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      64
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      80
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      32,
+      16,
+      16,
+      96
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      48,
+      16,
+      16,
+      112
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "583e2ac6af8540a2f657a4c44fbaacf38f0c033dbf8132d6d0785bdd9dca48f1",
+    "sha256": "583e2ac6af8540a2f657a4c44fbaacf38f0c033dbf8132d6d0785bdd9dca48f1"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      64
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      80
+     ],
+     [
+      "preload",
+      64,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "514eefe3e600a5e4a82f40135c842c37e4fb3ceba76bfe25ca08b7061a401ce8",
+    "sha256": "514eefe3e600a5e4a82f40135c842c37e4fb3ceba76bfe25ca08b7061a401ce8"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      6144
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      6160
+     ],
+     [
+      "preload",
+      6144,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "18f4b7da8e93dfbeeba6a4493d1a7131a60e7d861d60f833f84ff934b58331e1",
+    "sha256": "18f4b7da8e93dfbeeba6a4493d1a7131a60e7d861d60f833f84ff934b58331e1"
+   },
+   "GM1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "preload",
+      8176,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 2053,
+    "package_ops": 2053,
+    "package_sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc",
+    "sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc"
+   }
+  },
+  "gemmini_xdsl_rtl_v1_la1b": {
+   "A0/A2/A5/C5/C6/GS0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      4096
+     ],
+     [
+      "preload",
+      4096,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ],
+     [
+      "store",
+      0,
+      0,
+      16,
+      16,
+      0
+     ]
+    ],
+    "ops": 5,
+    "package_ops": 5,
+    "package_sha256": "59a01685a8357a0a853742bca4dd0861e9ed9c3adaa01a507c019c4ce80091a8",
+    "sha256": "59a01685a8357a0a853742bca4dd0861e9ed9c3adaa01a507c019c4ce80091a8"
+   },
+   "A3/B1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      4096
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      4112
+     ],
+     [
+      "preload",
+      4096,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 9,
+    "package_ops": 9,
+    "package_sha256": "0f02723ac7000128a09e521e7d03f8237203db7a76a4df907ccd3df87e96fbc5",
+    "sha256": "0f02723ac7000128a09e521e7d03f8237203db7a76a4df907ccd3df87e96fbc5"
+   },
+   "C0/C1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      4096
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      16,
+      16,
+      16,
+      4112
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      32,
+      16,
+      16,
+      4128
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      48,
+      16,
+      16,
+      4144
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ]
+    ],
+    "ops": 56,
+    "package_ops": 56,
+    "package_sha256": "8d22be6e7b31f741d2efa20e856f76e208bbe1023bbcd843dbb49a6d6967b6b6",
+    "sha256": "8d22be6e7b31f741d2efa20e856f76e208bbe1023bbcd843dbb49a6d6967b6b6"
+   },
+   "C2/C3/C4": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      4096
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      4112
+     ],
+     [
+      "preload",
+      4096,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 17,
+    "package_ops": 17,
+    "package_sha256": "0aaf24a06f34a5019a36104049f104f349b707ff19d55ec6461d604965a8d8d6",
+    "sha256": "0aaf24a06f34a5019a36104049f104f349b707ff19d55ec6461d604965a8d8d6"
+   },
+   "GM0": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8208
+     ],
+     [
+      "preload",
+      8192,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 1537,
+    "package_ops": 1537,
+    "package_sha256": "3d0928d247e5a92762db59a82a49d0d5c5d38ce1e3aecdcb1140fc8d85f6c262",
+    "sha256": "3d0928d247e5a92762db59a82a49d0d5c5d38ce1e3aecdcb1140fc8d85f6c262"
+   },
+   "GM1": {
+    "head": [
+     [
+      "load",
+      "lhs",
+      0,
+      0,
+      16,
+      16,
+      0
+     ],
+     [
+      "load",
+      "weight",
+      0,
+      0,
+      16,
+      16,
+      8176
+     ],
+     [
+      "load",
+      "lhs",
+      0,
+      16,
+      16,
+      16,
+      16
+     ],
+     [
+      "load",
+      "weight",
+      16,
+      0,
+      16,
+      16,
+      8192
+     ],
+     [
+      "preload",
+      8176,
+      0,
+      false,
+      16,
+      16
+     ],
+     [
+      "compute",
+      0,
+      16,
+      16,
+      true
+     ]
+    ],
+    "ops": 2053,
+    "package_ops": 2053,
+    "package_sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc",
+    "sha256": "201f78b15080314770f2c94924d9d510e69421ba10ca9cde2edfa739097f95bc"
+   }
+  }
+ },
+ "conv_cells": {
+  "GC0_k3": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     4,
+     8,
+     16240
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       8,
+       0
+      ],
+      [
+       9,
+       0
+      ],
+      [
+       10,
+       0
+      ],
+      [
+       11,
+       0
+      ],
+      [
+       12,
+       0
+      ],
+      [
+       13,
+       0
+      ],
+      [
+       16,
+       0
+      ],
+      [
+       17,
+       0
+      ],
+      [
+       18,
+       0
+      ],
+      [
+       19,
+       0
+      ]
+     ],
+     16,
+     4,
+     0
+    ],
+    [
+     "preload",
+     16240,
+     0,
+     false,
+     16,
+     8
+    ],
+    [
+     "compute",
+     0,
+     16,
+     4,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       20,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      [
+       24,
+       0
+      ],
+      [
+       25,
+       0
+      ],
+      [
+       26,
+       0
+      ],
+      [
+       27,
+       0
+      ],
+      [
+       28,
+       0
+      ],
+      [
+       29,
+       0
+      ],
+      [
+       32,
+       0
+      ],
+      [
+       33,
+       0
+      ],
+      [
+       34,
+       0
+      ],
+      [
+       35,
+       0
+      ],
+      [
+       36,
+       0
+      ],
+      [
+       37,
+       0
+      ],
+      [
+       40,
+       0
+      ],
+      [
+       41,
+       0
+      ]
+     ],
+     16,
+     4,
+     16
+    ],
+    [
+     "preload",
+     null,
+     16,
+     false,
+     16,
+     8
+    ]
+   ],
+   "ops": 93,
+   "package_ops": 93,
+   "package_sha256": "5397217d6e7e79c1eea24ca04ec89097fbbcd03f7a5c1dd9f13b9a9f5243b4e1",
+   "sha256": "5397217d6e7e79c1eea24ca04ec89097fbbcd03f7a5c1dd9f13b9a9f5243b4e1"
+  },
+  "GC7_k3_pad1": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     4,
+     8,
+     16240
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       6,
+       0
+      ]
+     ],
+     16,
+     4,
+     0
+    ],
+    [
+     "preload",
+     16240,
+     0,
+     false,
+     16,
+     8
+    ],
+    [
+     "compute",
+     0,
+     16,
+     4,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      [
+       8,
+       0
+      ],
+      [
+       9,
+       0
+      ],
+      [
+       10,
+       0
+      ],
+      [
+       11,
+       0
+      ],
+      [
+       12,
+       0
+      ],
+      [
+       13,
+       0
+      ],
+      [
+       14,
+       0
+      ],
+      null,
+      [
+       16,
+       0
+      ],
+      [
+       17,
+       0
+      ],
+      [
+       18,
+       0
+      ],
+      [
+       19,
+       0
+      ],
+      [
+       20,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      [
+       22,
+       0
+      ]
+     ],
+     16,
+     4,
+     16
+    ],
+    [
+     "preload",
+     null,
+     16,
+     false,
+     16,
+     8
+    ]
+   ],
+   "ops": 121,
+   "package_ops": 121,
+   "package_sha256": "411167c1149aceddcd17272fa3626479ae1242451040351f34f02fbe615a27eb",
+   "sha256": "411167c1149aceddcd17272fa3626479ae1242451040351f34f02fbe615a27eb"
+  },
+  "GC8_k3_stride2": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     4,
+     8,
+     16240
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       0,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       16,
+       0
+      ],
+      [
+       18,
+       0
+      ],
+      [
+       20,
+       0
+      ],
+      [
+       32,
+       0
+      ],
+      [
+       34,
+       0
+      ],
+      [
+       36,
+       0
+      ]
+     ],
+     9,
+     4,
+     0
+    ],
+    [
+     "preload",
+     16240,
+     0,
+     false,
+     9,
+     8
+    ],
+    [
+     "compute",
+     0,
+     9,
+     4,
+     true
+    ],
+    [
+     "load",
+     "weight",
+     [
+      4,
+      0
+     ],
+     4,
+     8,
+     16256
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       1,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       17,
+       0
+      ],
+      [
+       19,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      [
+       33,
+       0
+      ],
+      [
+       35,
+       0
+      ],
+      [
+       37,
+       0
+      ]
+     ],
+     9,
+     4,
+     16
+    ]
+   ],
+   "ops": 37,
+   "package_ops": 37,
+   "package_sha256": "7e7880076f931fda745f07d06dfaf9ce73aa2ceff6e7bf7ab10ee8124b2a0ea6",
+   "sha256": "7e7880076f931fda745f07d06dfaf9ce73aa2ceff6e7bf7ab10ee8124b2a0ea6"
+  },
+  "batch2": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     3,
+     16,
+     16096
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      null,
+      [
+       6,
+       0
+      ],
+      [
+       7,
+       0
+      ],
+      [
+       8,
+       0
+      ],
+      [
+       9,
+       0
+      ],
+      null,
+      [
+       12,
+       0
+      ],
+      [
+       13,
+       0
+      ],
+      [
+       14,
+       0
+      ],
+      [
+       15,
+       0
+      ],
+      null
+     ],
+     16,
+     3,
+     0
+    ],
+    [
+     "preload",
+     16096,
+     0,
+     false,
+     16,
+     16
+    ],
+    [
+     "compute",
+     0,
+     16,
+     3,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       18,
+       0
+      ],
+      [
+       19,
+       0
+      ],
+      [
+       20,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      null,
+      [
+       30,
+       0
+      ],
+      [
+       31,
+       0
+      ],
+      [
+       32,
+       0
+      ],
+      [
+       33,
+       0
+      ],
+      null,
+      [
+       36,
+       0
+      ],
+      [
+       37,
+       0
+      ],
+      [
+       38,
+       0
+      ],
+      [
+       39,
+       0
+      ],
+      null,
+      [
+       42,
+       0
+      ]
+     ],
+     16,
+     3,
+     16
+    ],
+    [
+     "preload",
+     null,
+     32,
+     false,
+     16,
+     16
+    ]
+   ],
+   "ops": 186,
+   "package_ops": 186,
+   "package_sha256": "ba6bc2c58f10f8f00fb898434241722fbc9a55234a3d0398390e6bea4017389a",
+   "sha256": "ba6bc2c58f10f8f00fb898434241722fbc9a55234a3d0398390e6bea4017389a"
+  },
+  "dilated_pad2": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     5,
+     16,
+     16096
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     16,
+     5,
+     0
+    ],
+    [
+     "preload",
+     16096,
+     0,
+     false,
+     16,
+     16
+    ],
+    [
+     "compute",
+     0,
+     16,
+     5,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      null,
+      null,
+      null,
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       6,
+       0
+      ],
+      null,
+      null,
+      [
+       9,
+       0
+      ],
+      [
+       10,
+       0
+      ],
+      [
+       11,
+       0
+      ]
+     ],
+     16,
+     5,
+     16
+    ],
+    [
+     "preload",
+     null,
+     32,
+     false,
+     16,
+     16
+    ]
+   ],
+   "ops": 354,
+   "package_ops": 354,
+   "package_sha256": "17d6e9a35fe487fc6abeef90d54485cc4bd5ce4d05b3432f8865e5e042f475c0",
+   "sha256": "17d6e9a35fe487fc6abeef90d54485cc4bd5ce4d05b3432f8865e5e042f475c0"
+  },
+  "one_by_one": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     16,
+     16,
+     16288
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       6,
+       0
+      ],
+      [
+       7,
+       0
+      ],
+      [
+       8,
+       0
+      ],
+      [
+       9,
+       0
+      ],
+      [
+       10,
+       0
+      ],
+      [
+       11,
+       0
+      ],
+      [
+       12,
+       0
+      ],
+      [
+       13,
+       0
+      ],
+      [
+       14,
+       0
+      ],
+      [
+       15,
+       0
+      ]
+     ],
+     16,
+     16,
+     0
+    ],
+    [
+     "preload",
+     16288,
+     0,
+     false,
+     16,
+     16
+    ],
+    [
+     "compute",
+     0,
+     16,
+     16,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      [
+       16,
+       0
+      ],
+      [
+       17,
+       0
+      ],
+      [
+       18,
+       0
+      ],
+      [
+       19,
+       0
+      ],
+      [
+       20,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      [
+       22,
+       0
+      ],
+      [
+       23,
+       0
+      ],
+      [
+       24,
+       0
+      ],
+      [
+       25,
+       0
+      ],
+      [
+       26,
+       0
+      ],
+      [
+       27,
+       0
+      ],
+      [
+       28,
+       0
+      ],
+      [
+       29,
+       0
+      ],
+      [
+       30,
+       0
+      ],
+      [
+       31,
+       0
+      ]
+     ],
+     16,
+     16,
+     16
+    ],
+    [
+     "preload",
+     null,
+     32,
+     false,
+     16,
+     16
+    ]
+   ],
+   "ops": 66,
+   "package_ops": 66,
+   "package_sha256": "3696cf91b0424f580657d7638444400123fbf10599496d1f19edaf10f7b63342",
+   "sha256": "3696cf91b0424f580657d7638444400123fbf10599496d1f19edaf10f7b63342"
+  },
+  "ragged_ci20_co40_pad1": {
+   "head": [
+    [
+     "load",
+     "weight",
+     [
+      0,
+      0
+     ],
+     16,
+     16,
+     15520
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       0
+      ],
+      [
+       3,
+       0
+      ],
+      [
+       4,
+       0
+      ],
+      [
+       5,
+       0
+      ],
+      [
+       6,
+       0
+      ]
+     ],
+     16,
+     16,
+     0
+    ],
+    [
+     "preload",
+     15520,
+     0,
+     false,
+     16,
+     16
+    ],
+    [
+     "compute",
+     0,
+     16,
+     16,
+     true
+    ],
+    [
+     "load",
+     "lhs",
+     [
+      null,
+      [
+       8,
+       0
+      ],
+      [
+       9,
+       0
+      ],
+      [
+       10,
+       0
+      ],
+      [
+       11,
+       0
+      ],
+      [
+       12,
+       0
+      ],
+      [
+       13,
+       0
+      ],
+      [
+       14,
+       0
+      ],
+      null,
+      [
+       16,
+       0
+      ],
+      [
+       17,
+       0
+      ],
+      [
+       18,
+       0
+      ],
+      [
+       19,
+       0
+      ],
+      [
+       20,
+       0
+      ],
+      [
+       21,
+       0
+      ],
+      [
+       22,
+       0
+      ]
+     ],
+     16,
+     16,
+     16
+    ],
+    [
+     "preload",
+     null,
+     48,
+     false,
+     16,
+     16
+    ]
+   ],
+   "ops": 714,
+   "package_ops": 714,
+   "package_sha256": "f8bf54040c0c149387a1d11552eb1f17946a5ce80e0c4ead9e1b6b5bbffe5454",
+   "sha256": "f8bf54040c0c149387a1d11552eb1f17946a5ce80e0c4ead9e1b6b5bbffe5454"
+  }
+ },
+ "conv_package": "gemmini_xdsl_rtl_v1_convzero",
+ "geometry": {
+  "accumulator_rows": 1024,
+  "block": 16,
+  "operand_bank_rows": 4096,
+  "operand_rows": 16384,
+  "separate_accumulator_space": true
+ },
+ "package_constants": {
+  "gemmini_xdsl_rtl_v0": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_convzero": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_grp": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_hoist": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_l1": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_la1": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_la1_pafter": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_BANK_ROWS": 4096,
+   "SPAD_ROWS": 16384
+  },
+  "gemmini_xdsl_rtl_v1_la1b": {
+   "ACC_ROWS": 1024,
+   "DIM": 16,
+   "SPAD_BANK_ROWS": 4096,
+   "SPAD_ROWS": 16384
+  }
+ },
+ "package_isa_sha256": {
+  "gemmini_xdsl_rtl_v0": "a5954568453d93a36994b4ad86e627fc7b96f05521dea975a227c5fcb348c494",
+  "gemmini_xdsl_rtl_v1_convzero": "b0504ad3c0d31a87f49747474b943598483390c4fa32f622327b36afd61d6f7e",
+  "gemmini_xdsl_rtl_v1_grp": "7ff80cc81a0ba3753999fd47aebcbd5f12fb46afd3c450e067b72efaa278a029",
+  "gemmini_xdsl_rtl_v1_hoist": "e7ed771bb28478d7df1045a9d969ca752f553926b12d7ade3aa2c07ed8c13918",
+  "gemmini_xdsl_rtl_v1_l1": "b96c6f9f0348870c4bb35ac80d56282ad2c37f4898b2016141352f69ad4a22b4",
+  "gemmini_xdsl_rtl_v1_la1": "133ae204dbac15093eb9cd7a3959a497f4e614166e25c75c3e615108674435dd",
+  "gemmini_xdsl_rtl_v1_la1_pafter": "d89ba795df7afc7af01611d51f6abe1a6f4ec125b5f7a76d0720e4f4902f6faf",
+  "gemmini_xdsl_rtl_v1_la1b": "00ff91e27f041cd29d7b48f298fd93898a929eb7e1441aa462136ffe4ad7fef4"
+ },
+ "schema": "block-schedule-golden/v2",
+ "target": "gemmini",
+ "what": "each measured package variant's matmul block-move stream, decoded by _package_blocks, per corpus shape; the pass is held to these digests"
+}

@@ -15,6 +15,88 @@ echo "[pre-commit] artifact layout (staged)…"
 echo "[pre-commit] no-regex (staged)…"
 "$PY" build_tools/scripts/check_no_regex.py --staged
 
+echo "[pre-commit] no-target-name (staged)…"
+"$PY" build_tools/scripts/check_no_target_name.py --staged
+
+echo "[pre-commit] no-assumed-constants (staged)…"
+"$PY" build_tools/scripts/check_no_assumed_constants.py --staged
+
+# Whatever you touch, you format: the staged bytes of every changed .py must be ruff-formatted.
+# The marker gates above judge the same staged bytes, so a reformat that moves a `# target-ok:`
+# off its line fails this very commit rather than the next one.
+echo "[pre-commit] ruff format (staged)…"
+"$PY" build_tools/scripts/check_format.py --staged
+# Whole-tree, not --staged: the register's claim is about the tree as a whole, and a commit that couples a
+# module to a target without declaring it must fail even when the coupling arrives from another file.
+echo "[pre-commit] overfit register (tree)…"
+"$PY" build_tools/scripts/check_overfit_register.py
+
+# Whole-tree: a module is unwired because of what OTHER files do not import, so the staged set cannot
+# answer it. An instrument with tests and no production caller reads exactly like a passing check.
+echo "[pre-commit] wiring: every instrument has a production caller (tree)…"
+"$PY" build_tools/scripts/check_wiring.py
+echo "[pre-commit] core dependency direction (tree)…"
+"$PY" build_tools/scripts/check_core_dependencies.py
+"$PY" build_tools/scripts/check_sign_coverage.py
+"$PY" build_tools/scripts/check_oracle_blind_spots.py
+"$PY" build_tools/scripts/check_stage_parameters.py
+
+echo "[pre-commit] schedule-IR coverage (declared axes vs the live tree)…"
+"$PY" build_tools/scripts/check_schedule_ir_coverage.py --staged
+
+echo "[pre-commit] rtl-facts schema (a staged facts artifact matches its family)…"
+"$PY" build_tools/scripts/check_rtl_facts_schema.py --staged
+
+echo "[pre-commit] target-package duplication (generic logic belongs in the core)…"
+"$PY" build_tools/scripts/check_target_package_duplication.py
+
+# Every *_ratchet.txt / *_allowlist.txt is a may-only-shrink ledger; compare the STAGED ledgers to HEAD.
+echo "[pre-commit] ratchets may only shrink (staged)…"
+"$PY" build_tools/scripts/check_ratchets_shrink.py --staged
+
+# Whole-tree: the claim is that ONE definition of the command-buffer epilogue vocabulary reaches the
+# validator, both ABI documents and the dialect verifiers. A commit that edits any one of them must fail
+# even when the drift arrives from a file it did not stage. ~0.2 s.
+echo "[pre-commit] epilogue vocabulary (tree)…"
+"$PY" build_tools/scripts/check_epilogue_vocabulary.py
+
+# Whole-tree static gate: prove every declared shape/token resolves against a probe. Dynamic
+# certification needs an explicitly selected OOT renderer and runs in provider-qualified release
+# checks; pre-commit must not silently select ignored local build products.
+echo "[pre-commit] kernel ABI contract/probe order (static; renderer not certified)…"
+"$PY" build_tools/scripts/check_kernel_abi_arg_order.py --static
+
+echo "[pre-commit] no-answer-keys (tracked)…"
+"$PY" build_tools/scripts/check_no_answer_keys.py
+
+# Whole-tree and pure data (~0.05 s): an exchange rate is only a rate if exactly one term moved
+# between its windows, and an edit that breaks that isolation is invisible until a campaign has been
+# spent measuring two things at once.
+echo "[pre-commit] exchange-rate windows (each arm isolates its own term)…"
+"$PY" build_tools/scripts/check_exchange_rate_windows.py
+
+# Staged only: this is a public repo, and an absolute path into someone's account is both a
+# disclosure and a default no other clone can follow.
+echo "[pre-commit] no personal paths (staged)…"
+"$PY" build_tools/scripts/check_no_local_paths.py --staged
+
+# Only when the commit stages a file under a bundled corpus (merlin/{schemas,prompts,benchmarks,
+# contract,targets,runtime}) — that is the moment the top-level tree and the wheel bundle part
+# company, and an installed merlin reads the bundle. The comparison itself is never narrowed; a
+# commit that stages none of those is told so and skipped, because the bundle is a build product a
+# concurrent session can leave stale for reasons this commit did not cause.
+echo "[pre-commit] bundled data vs source trees (staged)…"
+"$PY" build_tools/scripts/check_bundled_data.py --staged
+
+echo "[pre-commit] hardware provenance (staged)…"
+"$PY" build_tools/scripts/check_provenance.py --staged
+
+# Staged only: a container port published without a host IP binds every interface, including the
+# public one. This host reached the network for 4.5 days that way before anyone noticed, so the
+# default spelling is refused and loopback has to be written down.
+echo "[pre-commit] no world-published container ports (staged)…"
+"$PY" build_tools/scripts/check_no_public_port_bindings.py --staged
+
 echo "[pre-commit] docs freshness…"
 "$PY" build_tools/scripts/check_docs.py
 

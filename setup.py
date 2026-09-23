@@ -1,67 +1,119 @@
-"""Imperative build customization (project metadata lives in ``pyproject.toml``).
+"""Stage explicitly public resources in the build directory, never in the source package."""
 
-The read-only data the SDK loads at runtime — the ``*.schema.yaml`` schemas and the agent prompts —
-lives at the repo top level (``merlin/schemas``, ``merlin/prompts``) as curated input corpora with
-their own AGENT.md, OUTSIDE the importable package root (``merlin/python/merlin``). setuptools can
-only ship data that sits INSIDE a package dir, so at build time we copy those trees into a bundled,
-gitignored ``merlin/python/merlin/_data/`` which ``[tool.setuptools.package-data]`` then includes in
-the wheel. The canonical copies stay put (in-repo tooling + ``data_path()``'s checkout branch read
-them directly); the bundle is what ``pip install merlin`` resolves via ``importlib.resources`` when
-no checkout is present. Single source of truth, refreshed on every build — no committed duplicate.
-"""
 from __future__ import annotations
 
+import json
 import shutil
+import tempfile
 from pathlib import Path
 
 from setuptools import setup
+from setuptools.command.bdist_wheel import bdist_wheel
+from setuptools.command.build import build
 from setuptools.command.build_py import build_py
+from setuptools.command.egg_info import egg_info
+from setuptools.command.sdist import sdist
 
 _ROOT = Path(__file__).resolve().parent
-_PKG = _ROOT / "merlin" / "python" / "merlin"
-# canonical (top-level) -> bundled (inside the package)
-_BUNDLE = {kind: _PKG / "_data" / kind
-           for kind in ("schemas", "prompts", "benchmarks", "contract", "targets", "runtime")}
-
-# Per-tree exclusions from the bundle:
-#  - benchmarks: the heavy capture corpora (``recaptures*`` — model.mlir/safetensors, tens of MB and
-#    regenerable); a wheel user reaches them via MERLIN_BENCH_DIR at a checkout.
-#  - targets: ``rtl_facts`` (per-target RTL-cert data — regenerable via the RTL flow, needs a
-#    checkout); the wheel ships the target *contracts* (dialect_plan/target_contract), not cert data.
-# Plus build cruft everywhere.
-_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",)}
-# The bundle ships read-only DATA only — never code. The corpora carry dev/repro helper scripts
-# (e.g. benchmarks/dse_guidance/verify_implementation.py) the SDK never loads; keep them out of the
-# wheel (smaller, and no stray code under the importable package for the repo linters to scan).
-_CODE_SUFFIXES = (".py", ".pyc", ".pyo", ".sh")
 
 
-def _ignore_for(kind: str):
-    prefixes = _EXCLUDE.get(kind, ())
+def public_resources() -> list[str]:
+    """Reviewed inclusion manifest; untracked build-host files cannot enter a release."""
+    manifest = json.loads((_ROOT / "build_tools" / "package_resources.json").read_text())
+    if manifest.get("version") != 1:
+        raise ValueError("unsupported public-resource manifest version")
+    result = manifest["files"]
+    for name in result:
+        path = Path(name)
+        if path.is_absolute() or ".." in path.parts or path.parts[0] != "merlin":
+            raise ValueError(f"invalid public-resource path: {name}")
+        if any(p in {"golden", "hidden"} for p in path.parts) or name.endswith(".hidden.yaml"):
+            raise ValueError(f"private resource cannot be packaged: {name}")
+        if not (_ROOT / path).is_file():
+            raise FileNotFoundError(f"declared public resource is missing: {name}")
+    return result
 
-    def _ignore(_dir: str, names: list[str]) -> set[str]:
-        return {n for n in names
-                if n == "__pycache__"
-                or n.endswith(_CODE_SUFFIXES)
-                or any(n.startswith(p) for p in prefixes)}
 
-    return _ignore
+class BuildInOutput(build):
+    def initialize_options(self) -> None:
+        super().initialize_options()
+        self.build_base = "out/build/python"
 
 
-def _sync_bundled_data() -> None:
-    for kind, dst in _BUNDLE.items():
-        src = _ROOT / "merlin" / kind
-        if not src.is_dir():  # e.g. building from an sdist that already vendored _data
-            continue
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(src, dst, ignore=_ignore_for(kind))
+class MetadataInOutput(egg_info):
+    def initialize_options(self) -> None:
+        super().initialize_options()
+        self.egg_base = "out/build/python/metadata"
+        (_ROOT / self.egg_base).mkdir(parents=True, exist_ok=True)
 
 
 class BuildPyWithData(build_py):
-    def run(self) -> None:  # noqa: D102
-        _sync_bundled_data()
+    def run(self) -> None:
+        # An older build may have bundled private corpus files. Reusing its build
+        # directory must not silently carry them into a new release.
+        staged = Path(self.build_lib) / "merlin"
+        if staged.is_symlink() or not staged.resolve().is_relative_to((_ROOT / "out/build").resolve()):
+            raise ValueError(f"package staging must be under out/build: {staged}")
+        # Drop stale source as well as resources: moved extension modules must not
+        # survive in a reused core wheel build directory.
+        if staged.exists():
+            shutil.rmtree(staged)
+        super().run()
+        for name in public_resources():
+            destination = Path(self.build_lib) / "merlin" / "_data" / Path(name).relative_to("merlin")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_ROOT / name, destination)
+
+    def get_outputs(self, include_bytecode: bool = True) -> list[str]:
+        return super().get_outputs(include_bytecode) + [
+            str(Path(self.build_lib) / "merlin" / "_data" / Path(name).relative_to("merlin"))
+            for name in public_resources()
+        ]
+
+
+class WheelWithFreshStaging(bdist_wheel):
+    def run(self) -> None:
+        # An interrupted wheel build leaves install staging behind. Refreshing only build_lib does
+        # not remove those files: setuptools archives everything below bdist_dir on the next run.
+        staged = Path(self.bdist_dir)
+        base = Path(self.get_finalized_command("bdist").bdist_base)
+        allowed = (_ROOT / "out/build/python").resolve()
+        if (
+            staged.is_symlink()
+            or base.is_symlink()
+            or staged.resolve() != (base / "wheel").resolve()
+            or base.parent.resolve() != allowed
+            or not base.name.startswith("bdist.")
+        ):
+            raise ValueError(f"core wheel staging must be its dedicated directory below {allowed}: {staged}")
+        if staged.exists():
+            shutil.rmtree(staged)
         super().run()
 
 
-setup(cmdclass={"build_py": BuildPyWithData})
+class SourceDistributionInOutput(sdist):
+    def make_distribution(self) -> None:
+        output = _ROOT / "out/build/python"
+        output.mkdir(parents=True, exist_ok=True)
+        dist_dir = Path(self.dist_dir).resolve()
+        dist_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="sdist-", dir=output, delete=not self.keep_temp) as stage:
+            name = self.distribution.get_fullname()
+            self.make_release_tree(str(Path(stage) / name), self.filelist.files)
+            self.archive_files = [
+                self.make_archive(
+                    str(dist_dir / name), fmt, root_dir=stage, base_dir=name, owner=self.owner, group=self.group
+                )
+                for fmt in self.formats
+            ]
+
+
+setup(
+    cmdclass={
+        "build": BuildInOutput,
+        "build_py": BuildPyWithData,
+        "bdist_wheel": WheelWithFreshStaging,
+        "egg_info": MetadataInOutput,
+        "sdist": SourceDistributionInOutput,
+    }
+)

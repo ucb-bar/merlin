@@ -1,0 +1,5 @@
+# AF13_matmul_bf16_pt
+
+AF13_matmul_bf16_pt ports npu_model's `smolvla_matmul`: one 32x32 tile contraction C = A @ B. Execution reference: atlas-npu `baremetal/assembly/smolvla_matmul_mxu0.S` (and `_mxu1.S` for the second mesh). VTRPOSE: that assembly transposes B (`VTRPOSE.XLU 5, 4`) before `VMATPUSH.W.MXU0` because the MXU loads weights in transposed orientation; npu_model's own assembly has no VTRPOSE at all, so the program it ships computes A @ B^T on real hardware. This capsule's contract is A @ B. DTYPE -- option (b), the promoted form: npu_model builds both operands with `.to(torch.float8_e4m3fn)` and the MXU multiplies fp8_e4m3 into a bf16 accumulator, while this capsule is bf16 on both operands. A host torch-eager golden can only be authored in a float torch dtype, and the fp8 form of this same contraction is already carried by AT7/AT8 (one per mesh) and AS0_matmul_spec (specir refmodel); what this entry adds is the pytorch-sourced 32x32 shape.
+
+kind=model_slice label=public op=matmul modes={}

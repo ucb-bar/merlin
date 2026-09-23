@@ -1,0 +1,276 @@
+"""One-time Verilator qualification of the RTL pre-screen by mutation testing.
+
+The honest gap (from corroboration on 383 real runs): the corpus had no real RTL-tier codegen failures, so
+the pre-screen was proven *safe* (0 false-rejects) but never shown *catching* a real RTL failure cheaply.
+Here we inject realistic codegen-bug classes into a known-good kernel, and for each mutant run BOTH:
+  * the real RTL sim (verilator) — the ground-truth verdict + wall time it costs, and
+  * the RTL pre-screen — verdict + wall time (ms),
+showing the pre-screen rejects the genuine RTL failures in ms (saving the Verilator run), passes the
+unmutated original (0 false-positive), and HONESTLY misses a pure-numerical mutation (needs the oracle).
+
+This is a tooling-qualification demonstration, not campaign evidence and not a performance timing
+authority.  It requires an explicit opt-in flag and refuses to run inside an experiment pinned to a
+different RTL engine; in particular, its output can never be represented as GSIM-certified evidence.
+
+Both the ELF (for verilator) and the decoded trace (for the pre-screen) derive from one artifact —
+`generated/lowered.llvm.mlir` — so a single text mutation propagates consistently to both.
+
+Usage: demo_prescreen_mutation.py --one-time-verilator-qualification
+       [--pkg <dir with command_buffer.json+lowered.llvm.mlir>] [--timeout 400]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+
+REPO = C.REPO
+
+import yaml  # noqa: E402
+
+from merlin.targetgen import capsule_golden as CG  # noqa: E402
+from merlin.targetgen import rtl_check_compiler as CC  # noqa: E402
+from merlin.targetgen import rtl_check_runner as RUN  # noqa: E402
+from merlin.targetgen import rtl_checks as RC  # noqa: E402
+from merlin.targetgen.contract import compile as COMPILE  # noqa: E402
+from merlin.targetgen.rocc import decode as RD  # noqa: E402 (was targetgen.rocc_decode)
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
+
+_TE = load_target_experiment(C.DESCRIPTOR)
+DEFAULT_PKG = (
+    REPO / "out/runs/grade_subset_check/runs" / f"{C.TARGET}-capsule-bench" / "A2_single_tile_matmul" / "generated"
+)
+CAPSULE = REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul/capsule.yaml"
+# rtl_facts_pin = merlin/targets/<target>/contracts/rtl_facts/ (derived from the descriptor's target).
+FACTS = json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
+
+
+# ------------------------------------------------------------------------------------- mutators
+_INSN = ".insn r "
+
+
+def _insn_prefix(mlir: str) -> str:
+    """The ``.insn r <opcode>, <funct3>, `` prefix READ from the emitted code, never assumed.
+
+    The pinned facts for several targets carry no ``funct_decode_table``, so there is nothing to
+    derive an opcode from -- and baking one (this file used to carry ``0x7b, 0x3``) makes every
+    mutator below silently a no-op on any target that does not share gemmini's RoCC slot, which
+    reads as "the prescreen accepted the mutation". Taking the encoding from the code under test
+    is exact for whatever target emitted it. Returns "" when the input has no ``.insn`` at all;
+    callers must FAIL CLOSED on that rather than mutate.
+    """
+    for ln in mlir.splitlines():
+        i = ln.find(_INSN)
+        if i < 0:
+            continue
+        fields = [f.strip() for f in ln[i + len(_INSN) :].split(",")]
+        if len(fields) >= 3:
+            return f"{_INSN}{fields[0]}, {fields[1]}, "
+    return ""
+
+
+def m_original(mlir: str) -> str:
+    return mlir
+
+
+def m_illegal_funct(mlir: str) -> str:
+    # COMPUTE_PRELOADED (funct 4) -> funct 99 (outside the RTL legal set {0..25})
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot mutate an encoding that is not there")
+    old, new = f"{pre}4,", f"{pre}99,"
+    return mlir.replace(old, new, 1)
+
+
+def _drop_insn(mlir: str, funct: int) -> str:
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot drop an instruction")
+    needle = f"{pre}{funct},"
+    out, dropped = [], False
+    for ln in mlir.splitlines():
+        if not dropped and needle in ln:
+            dropped = True
+            continue
+        out.append(ln)
+    return "\n".join(out) + "\n"
+
+
+def m_drop_compute(mlir: str) -> str:
+    return _drop_insn(mlir, 4)  # remove the matrix COMPUTE
+
+
+def m_drop_mvout(mlir: str) -> str:
+    return _drop_insn(mlir, 3)  # remove the result store (MVOUT)
+
+
+def m_swap_compute_operands(mlir: str) -> str:
+    """Numerical-only: swap the COMPUTE ``.insn``'s two SSA operands -> valid structure, wrong math.
+
+    Parsed structurally (the operand list is what follows the closing quote of the constraint string
+    and precedes the ` :` type), so it does not depend on the constraint spelling -- a ``"r,r"``-only
+    pattern is exactly the brittleness that has mis-measured conformant backends before.
+    """
+    pre = _insn_prefix(mlir)
+    if not pre:
+        raise SystemExit("no `.insn r` in the submission: cannot swap operands")
+    needle, out, done = f"{pre}4,", [], False
+    for ln in mlir.splitlines():
+        if not done and needle in ln and '"' in ln and " :" in ln:
+            head, _, tail = ln.rpartition('"')
+            operands, sep, rest = tail.partition(" :")
+            names = [n.strip() for n in operands.split(",")]
+            if len(names) == 2 and all(n.startswith("%") for n in names):
+                ln = f'{head}" {names[1]}, {names[0]}{sep}{rest}'
+                done = True
+        out.append(ln)
+    return "\n".join(out) + "\n"
+
+
+MUTATORS = [
+    ("original", m_original, "ok", "pass"),
+    ("illegal_funct", m_illegal_funct, "reject", "fail"),
+    ("drop_compute", m_drop_compute, "reject", "fail"),
+    ("drop_mvout", m_drop_mvout, "reject", "fail"),
+    ("swap_compute_operands(numerical)", m_swap_compute_operands, "ok", "fail"),  # honest FN
+]
+
+
+def _authorize_verilator_qualification(explicit_opt_in: bool) -> dict:
+    """Fail closed unless this legacy Verilator-only probe is explicitly and compatibly requested."""
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required is not None and required != "verilator":
+        raise RuntimeError(
+            "this qualification-only Verilator probe is forbidden in a "
+            f"{required.upper()}-required experiment; it is not {required.upper()}-certified evidence"
+        )
+    if not explicit_opt_in:
+        raise RuntimeError(
+            "refusing implicit Verilator execution: pass explicit --one-time-verilator-qualification; "
+            "the resulting artifact qualifies only the pre-screen and is not campaign evidence"
+        )
+    return {
+        "engine": "verilator",
+        "evidence_scope": "one_time_prescreen_mutation_qualification_only",
+        "campaign_evidence": False,
+        "performance_timing_authority": False,
+        "gsim_certified_evidence": False,
+        "required_rtl_engine": required,
+    }
+
+
+# ------------------------------------------------------------------------------------- evaluators
+def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
+    t0 = time.perf_counter()
+    trace = RD.decode_text(mlir, source="mutant", target=C.TARGET)
+    cc = CC.compile_checks(FACTS, capsule)
+    tr_ok = True
+    if fc and cc["trace"]:
+        tr_ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, FACTS, target=C.TARGET), "TRACE")
+    rep = RC.screen(trace, capsule, CC._facts_to_rc(FACTS), target=C.TARGET)
+    verdict = "reject" if (tr_ok is False or rep.verdict == "reject") else ("warn" if rep.verdict == "warn" else "ok")
+    ms = (time.perf_counter() - t0) * 1e3
+    fails = [c.id for c in rep.checks if c.status == "fail"]
+    if tr_ok is False:
+        fails = ["TRACE.filecheck", *fails]
+    return verdict, ms, fails
+
+
+def verilator_verdict(cb: dict, mlir: str, gold_flat, timeout: int):
+    t0 = time.perf_counter()
+    try:
+        r = COMPILE.run_on_oracle(cb, mlir, simulator="verilator", target=C.TARGET, timeout=timeout)
+    except Exception as e:
+        return "fail", round(time.perf_counter() - t0, 1), f"sim error: {type(e).__name__}: {str(e)[:80]}"
+    sim_s = (r.get("timing") or {}).get("sim_active_s", round(time.perf_counter() - t0, 1))
+    got = r.get("outputs", {}).get("Y0")
+    if got is None:
+        return "fail", sim_s, "no Y0 output committed"
+    import numpy as np
+
+    got_flat = np.asarray(got).flatten().astype(int).tolist()
+    if got_flat == gold_flat:
+        return "pass", sim_s, f"Y0==golden (cycles={r.get('cycles')})"
+    return "fail", sim_s, f"Y0 != golden ({sum(1 for a, b in zip(got_flat, gold_flat) if a != b)} mismatches)"
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pkg", default=str(DEFAULT_PKG))
+    ap.add_argument("--timeout", type=int, default=400)
+    ap.add_argument(
+        "--one-time-verilator-qualification",
+        action="store_true",
+        help="explicitly authorize this qualification-only Verilator mutation probe",
+    )
+    a = ap.parse_args(argv)
+    try:
+        qualification = _authorize_verilator_qualification(a.one_time_verilator_qualification)
+    except RuntimeError as exc:
+        ap.error(str(exc))
+    pkg = Path(a.pkg)
+    cb = json.loads((pkg / "command_buffer.json").read_text())
+    base_mlir = (pkg / "lowered.llvm.mlir").read_text()
+    capsule = yaml.safe_load(CAPSULE.read_text())
+    import numpy as np
+
+    gold_flat = np.asarray(CG.golden(capsule)["Y0"]).flatten().astype(int).tolist()
+    fc = RUN.find_filecheck()
+
+    rows = []
+    print(f"{'mutant':34s} {'verilator':>10s} {'sim_s':>7s}   {'pre-screen':>10s} {'ms':>6s}  caught_first")
+    for name, fn, exp_ck, exp_v in MUTATORS:
+        mlir = fn(base_mlir)
+        ck_v, ck_ms, ck_fails = prescreen_verdict(mlir, capsule, fc)
+        v_v, v_s, v_note = verilator_verdict(cb, mlir, gold_flat, a.timeout)
+        caught_first = v_v == "fail" and ck_v != "ok"
+        rows.append(
+            {
+                "mutant": name,
+                "verilator": v_v,
+                "verilator_s": v_s,
+                "verilator_note": v_note,
+                "prescreen": ck_v,
+                "prescreen_ms": round(ck_ms, 1),
+                "prescreen_fails": ck_fails,
+                "caught_before_rtl": caught_first,
+            }
+        )
+        print(
+            f"{name:34s} {v_v:>10s} {v_s:>7} {ck_v:>12s} {ck_ms:6.1f}  "
+            f"{'YES' if caught_first else ('n/a(pass)' if v_v == 'pass' else 'MISS(numeric)')}"
+        )
+
+    # headline
+    structural = [r for r in rows if r["mutant"] not in ("original",) and r["caught_before_rtl"]]
+    saved = sum(float(r["verilator_s"]) for r in structural)
+    fp = [r for r in rows if r["mutant"] == "original" and r["prescreen"] != "ok"]
+    out = {
+        "package": str(pkg),
+        "qualification": qualification,
+        "rows": rows,
+        "summary": {
+            "structural_failures_caught_pre_RTL": len(structural),
+            "verilator_seconds_saved_est": round(saved, 1),
+            "false_positive_on_original": len(fp),
+            "numerical_miss_by_design": [
+                r["mutant"] for r in rows if r["verilator"] == "fail" and r["prescreen"] == "ok"
+            ],
+        },
+    }
+    rep = C.REPORTS / "prescreen_mutation_demo.json"
+    rep.parent.mkdir(parents=True, exist_ok=True)
+    rep.write_text(json.dumps(out, indent=2))
+    print(f"\nsummary: {out['summary']}\nwrote {rep}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

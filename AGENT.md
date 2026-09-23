@@ -1,39 +1,32 @@
-# AGENT.md — (root)
+# Merlin repository
 
-## Purpose
+Merlin generates target compilers through three phases: derive capsule tests (0), build and
+certify a functional compiler (1), and optimize target performance (2).
 
-Repository root for **merlin**, a compiler-centered framework for exploring which hardware/software abstractions are worth exposing to the compiler. The root follows an XLA-style layout: it stays small, and almost all project code lives under the internal `merlin/` directory.
+## Ownership
 
-## What belongs here
-
-- Top-level config: `README.md`, `pyproject.toml`, `CMakeLists.txt`, `.gitignore`.
-- `build_tools/`, `docs/`, `third_party/`, and the internal `merlin/` tree.
-- Generated output under a single `out/` root (`out/{runs,artifacts,build}`; gitignored except tracked skeletons + curated files — see CLAUDE.md "Generated-output convention") and local `tmp/` scratch.
-
-## What does not belong here
-
-- New top-level directories without strong justification — prefer adding under `merlin/`.
-- Source code, schemas, or experiments at the root.
-- Vendored external repositories.
-
-## Interfaces
-
-The CLI surface is the console-scripts declared in `pyproject.toml [project.scripts]` (each a thin entrypoint into `merlin/python/merlin/`), documented in the generated `docs/reference/cli.md`. `merlin/schemas/` is the cross-workstream contract. Start at the docs hub `docs/README.md`; see `docs/reference/repo_structure.md` and `docs/design/parallel_workstreams.md`.
+- `src/merlin/`: canonical Python source. Keep shared compiler, scheduling, capture,
+  target/toolchain and verification primitives independent of research orchestration.
+- `packages/`: optional research distributions. Do not duplicate core implementations.
+- `experiments/`: the experiment catalog and versioned definitions; start here to run a study.
+- `merlin/`: schemas, tests, native runtime, and legacy engines/resources during migration.
+  `merlin/python/merlin` is a compatibility symlink, not another source tree.
+- `build_tools/`, `docs/`, `third_party/`: build/gates, durable docs, and opt-in upstream dependencies.
+- `out/{runs,artifacts,build}/`: generated state. Required source/reference fixtures belong elsewhere.
 
 ## Invariants
 
-- Keep the root clean. New top-level directories require justification in the PR.
-- Default to placing new work under the internal `merlin/` tree.
-- `out/`, `output/`, and `tmp/` contents stay gitignored (except tracked `out/` skeletons + curated files).
+Read `CLAUDE.md`, local instructions, and `docs/reference/architecture.md` before changes.
+Target-specific facts and implementations belong in OOT support packages. Evaluated compiler
+candidates have stricter import/access rules than trusted support plugins.
+Preserve corpus identities, hidden answers, frozen compiler/certificate attribution, and native
+phase grading semantics. Register access identities before relocating graders or oracles.
+Never infer dead runs from age or a directory suffix; use leases and explicit retention pins.
+Do not modify historical evidence during migrations.
 
-## Testing expectations
+## Verification
 
-Run `python build_tools/scripts/check_structure.py` after structural changes.
-
-## Notes for future agents
-
-This is an active codebase with working end-to-end pipelines (kernel-mining → compiler, DSE,
-targetgen, capsule/perf benchmarks, whole-model board bring-up, baselines). Land real changes, keep
-the root clean, and default new work under the internal `merlin/` tree. Read `CLAUDE.md` (repo
-conventions), the directory's own `AGENT.md`, and `docs/` before working. See the three workstreams in
-`docs/design/parallel_workstreams.md`.
+Run the relevant behavior tests, source-layout/access checks, and
+`python build_tools/scripts/check_structure.py`. Regenerate code-derived docs after changes.
+Release checks must inspect actual wheels/sdists and install outside the checkout without optional
+research packages. Report unavailable hardware separately from passing tests.

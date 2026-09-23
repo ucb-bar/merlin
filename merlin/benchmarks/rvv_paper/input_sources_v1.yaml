@@ -1,0 +1,145 @@
+version: 1
+label: rvv_mlir_k1_paper_inputs
+target: k1
+holdout_models:
+  - gemma2_2b
+  - tinyllama_1_1b
+  - smolvla
+  - resnet50_v1_5
+  - lstmnetvit
+
+language_corpus:
+  policy: first_160_tokens_no_special_tokens
+  encoding: utf-8
+  prefill_tokens: 128
+  decode_tokens: 32
+  recommended_source:
+    dataset: Salesforce/wikitext
+    revision: b08601e04326c79dfdd32d625aee71d232d685c3
+    config: wikitext-2-raw-v1
+    split: test
+    file: wikitext-2-raw-v1/test-00000-of-00001.parquet
+    file_sha256: 5f1bea067869d04849c0f975a2b29c4ff47d867f484f5010ea5e861eab246d91
+    extraction: concatenate text rows in stored order with one newline separator
+  requirements:
+    - caller supplies an immutable attributed text file
+    - source bytes and generated token arrays are SHA-256 hashed
+    - each model uses its own pinned tokenizer
+
+checkpoints:
+  gemma2_2b:
+    kind: huggingface_snapshot
+    repo_id: google/gemma-2-2b-it
+    revision: 299a8560bedf22ed1c72a8a11e7dce4a7f9f51f8
+    required_files:
+      - config.json
+      - tokenizer.json
+      - tokenizer_config.json
+      - model.safetensors.index.json
+      - model-00001-of-00002.safetensors
+      - model-00002-of-00002.safetensors
+  tinyllama_1_1b:
+    kind: huggingface_snapshot
+    repo_id: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+    revision: fe8a4ea1ffedaf415f4da2f062534de366a451e6
+    required_files:
+      - config.json
+      - tokenizer.json
+      - tokenizer.model
+      - tokenizer_config.json
+      - model.safetensors
+  smolvla:
+    kind: huggingface_composite
+    components:
+      - repo_id: lerobot/smolvla_base
+        revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205
+        required_files: [config.json, model.safetensors]
+      - repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+        revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
+        required_files:
+          - config.json
+          - model.safetensors
+          - preprocessor_config.json
+          - processor_config.json
+          - tokenizer.json
+          - tokenizer_config.json
+  resnet50_v1_5:
+    kind: torch_hub_file
+    filename: resnet50-11ad3fa6.pth
+    url: https://download.pytorch.org/models/resnet50-11ad3fa6.pth
+    sha256: 11ad3fa62ca79e40addfd354a8ec4b7c75143b3038b8d2a807fbc68deab379ca
+    weights_enum: torchvision.models.ResNet50_Weights.IMAGENET1K_V2
+  lstmnetvit:
+    kind: external_file_and_git
+    source_repo: https://github.com/anish-bhattacharya/vitfly
+    source_revision: f11386f90d0265152f7776a2e89555456a5011dc
+    source_file: models/model.py
+    checkpoint_archive: pretrained_models.tar
+    checkpoint_url: https://upenn.app.box.com/v/ViT-quad-datashare
+    checkpoint_box_file_id: 1494016813999
+    checkpoint_archive_bytes: 51343360
+    checkpoint_archive_sha1: 2171dbb1ab943dd21aad186a40cadbae5554785c
+    checkpoint_archive_sha256: 9bfc8b1b25d1676a982844aaeeef3bc0a9b485c5ca6bc0f06e18d92e8b85b4dd
+    checkpoint_member: ViTLSTM_model.pth
+    checkpoint_member_sha256: 1027ddcfef9094c05d9ec40f4e0a012470d4ce7e8e13419719f6676194665b27
+    checkpoint_note: Password-gated 50 MB archive documented by the upstream README; select the published LSTMNetVIT state_dict after extraction.
+
+inputs:
+  gemma2_2b:
+    kind: token_ids
+    shape: [160]
+    dtype: int64
+  tinyllama_1_1b:
+    kind: token_ids
+    shape: [160]
+    dtype: int64
+  smolvla:
+    kind: attributed_preprocessed_npz
+    recommended_raw_source:
+      dataset: lerobot/aloha_sim_insertion_human
+      revision: cc571a3c661df81b566dbfde3d5c1e85fcdf7884
+      selection: episode_index_0_frame_index_0
+      note: Materialize through the pinned SmolVLA processor; record the resulting NPZ and raw episode hashes.
+    arrays:
+      image: {shape: [1, 3, 512, 512], dtype: float32}
+      image_mask: {shape: [1], dtype: bool}
+      language_tokens: {shape: [1, 48], dtype: int64}
+      language_mask: {shape: [1, 48], dtype: bool}
+      state: {shape: [1, 32], dtype: float32}
+      noise: {shape: [1, 50, 32], dtype: float32}
+  resnet50_v1_5:
+    kind: ordered_image_manifest
+    observations: 256
+    recommended_raw_source:
+      dataset: COCO_2017_validation_images
+      url: http://images.cocodataset.org/zips/val2017.zip
+      archive: val2017.zip
+      archive_bytes: 815585330
+      archive_sha256: 4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05
+      member_prefix: val2017/
+      selection: first_256_jpegs_in_lexicographic_member_order
+      note: Public real-image stream used only for fixed-shape latency and eager-output agreement; no ImageNet accuracy claim is made. The ordered TSV records every selected member SHA-256.
+    preprocessing:
+      name: IMAGENET1K_V2
+      resize: 232
+      center_crop: 224
+      interpolation: bilinear
+      antialias: true
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  lstmnetvit:
+    kind: attributed_trajectory_npz
+    observations: 256
+    recommended_raw_source:
+      archive: data.zip
+      url: https://upenn.app.box.com/v/ViT-quad-datashare
+      box_file_id: 1503253962839
+      archive_bytes: 2656185217
+      archive_sha1: 4b7cac5e3807286909b53245e9b360fe65304591
+      selection: lexicographically_first_upstream_valid_aligned_trajectory_with_at_least_256_frames_then_first_256_timestamps
+      preprocessing: use upstream depth-image and telemetry parsing; emit float32 depth, desired velocity, and unit quaternion arrays
+      note: The password-gated 2.5 GB archive is read by HTTP range; selection rejects directories whose PNG and telemetry counts fail the pinned upstream loader's alignment rule.
+    arrays:
+      frames: {shape: [256, 1, 1, 60, 90], dtype: float32}
+      desired_velocity: {shape: [256, 1, 1], dtype: float32}
+      quaternions: {shape: [256, 1, 4], dtype: float32, unit_norm: true}

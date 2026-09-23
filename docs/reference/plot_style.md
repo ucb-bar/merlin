@@ -5,7 +5,7 @@ status: current
 owner: plotting
 last_verified: 2026-07-14
 related: []
-code_refs: [merlin/python/merlin/plotting]
+code_refs: [packages/merlin-analysis/src/merlin/plotting]
 ---
 
 # Merlin plotting style — the house style for every figure in this repo

@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 _OP_PATTERNS = [
     re.compile(r"@irdl_op_definition"),
     re.compile(r"class \w+\(IRDLOperation\)"),
@@ -32,8 +31,7 @@ def run(run_dir: Path, manifest: dict) -> dict:
 
     if not xdsl_dir.exists():
         metrics["errors"].append(
-            f"xdsl/ directory does not exist under generated/{target}-mlir/; "
-            "no xDSL artifacts produced yet"
+            f"xdsl/ directory does not exist under generated/{target}-mlir/; no xDSL artifacts produced yet"
         )
         return metrics
 

@@ -4,47 +4,237 @@
   "title": "Merlin command buffer (experiment ABI v0.1)",
   "description": "Strict JSON Schema for the target-independent command buffer a package must emit. Mirrors merlin/schemas/command_buffer.schema.yaml but validated programmatically and fail-closed.",
   "type": "object",
-  "required": ["abi_version", "target", "commands"],
+  "required": [
+    "abi_version",
+    "target",
+    "commands"
+  ],
   "properties": {
-    "abi_version": {"type": "string"},
-    "target": {"type": "string"},
-    "backend": {"type": "string"},
+    "abi_version": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "kernel_abi": {
+      "type": "object",
+      "description": "Explicit pointer boundary for one submitted whole-program kernel. The runner only allocates these buffers, performs an unmeasured warm call, measures one call, and reads the named outputs; all computation remains in the submitted artifact.",
+      "required": [
+        "kind",
+        "args",
+        "outputs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "whole_program"
+        },
+        "args": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "tensor",
+              "access"
+            ],
+            "properties": {
+              "tensor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "access": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "write",
+                  "readwrite"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "launch": {
+          "type": "object",
+          "description": "Optional semantic launch contract. simt_single_warp activates every RTL-derived lane in the current warp; simt_all_warps activates every RTL-derived warp and lane on the one-core launch path. The evaluator-owned harness restores manager-only execution on return. The submission supplies no geometry or instruction encodings.",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "simt_single_warp",
+                "simt_all_warps"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "tensors": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["shape", "dtype"],
+        "required": [
+          "shape",
+          "dtype"
+        ],
         "properties": {
-          "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
-          "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]}
+          "shape": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 0,
+            "description": "Tensor extents, outermost first. The EMPTY list is a rank-0 (scalar) tensor holding exactly one element \u2014 it is legal and must stay legal: command_buffer_abi requires every kernel_abi argument to appear in `tensors`, and a whole-model entry point can take a scalar argument (a per-tensor scale broadcast, for instance). Size is prod(shape), which is 1 for []. Do NOT re-add a rank floor here and do NOT spell a scalar [1]: that is a false rank no cross-check catches, and it diverges from the interface MLIR type."
+          },
+          "dtype": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Tensor dtype \u2014 open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "input",
+              "weight",
+              "bias",
+              "output",
+              "scale",
+              "intermediate"
+            ],
+            "description": "Tensor role. 'scale' is a block-scale stream: a microscaling operand is a PAIR (quantized elements plus one shared exponent per fixed block of them), so the scales are operands in their own right, not hidden state. 'intermediate' is a runner-allocated buffer produced and consumed inside one submitted whole-program kernel; unlike 'output', it is not a benchmark result."
+          },
+          "base": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "DRAM byte address the kernel loads this input from / stores this output to. The program oracle preloads inputs and reads the output at these addresses, so they MUST match the emitted kernel's loads/stores. Optional: if omitted, the harness assigns a canonical layout (capsule_dram)."
+          },
+          "physical": {
+            "type": "object",
+            "description": "physical->logical readback layout the backend wrote (e.g. {\"unstack_row_halves\": 2}); optional"
+          },
+          "preload_b64": {
+            "type": "string",
+            "description": "harness-attached input bytes (base64); not emitted by the package"
+          },
+          "scale_of": {
+            "type": "string",
+            "minLength": 1,
+            "description": "For role=scale, the element tensor whose blocks this stream scales."
+          },
+          "block": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "For role=scale, the number of elements sharing one scale code."
+          }
         },
         "additionalProperties": false
       }
     },
     "commands": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["opcode"],
+        "required": [
+          "opcode"
+        ],
         "properties": {
           "opcode": {
             "type": "string",
-            "enum": ["RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "EVICT", "VECTOR_MAP", "VREDUCE"]
+            "enum": [
+              "RES_PACK",
+              "MATMUL_RESIDENT",
+              "MATMUL",
+              "COMMIT",
+              "EVICT",
+              "VECTOR_MAP",
+              "VREDUCE",
+              "RMSNORM",
+              "ATTENTION_QK",
+              "BATCHED_MATMUL",
+              "LAYERNORM",
+              "SOFTMAX",
+              "GELU",
+              "SOFTCAP",
+              "GEGLU",
+              "ATTENTION_FULL",
+              "ROPE",
+              "CONV",
+              "MATMUL_BATCHED",
+              "BIAS_ADD",
+              "RESIDUAL_ADD",
+              "CONV2D",
+              "MOVEMENT",
+              "ATTENTION_PV",
+              "K_CHAIN",
+              "DEPTHWISE_CONV2D"
+            ]
           },
-          "operands": {"type": "object", "additionalProperties": {"type": "string"}},
+          "operands": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "attributes": {
             "type": "object",
             "properties": {
-              "layout": {"type": "string"},
-              "epilogue": {"type": "array", "items": {"type": "string", "enum": ["bias_add", "bias", "requant", "acc_scale", "relu"]}},
-              "output_dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
-              "acc_scale": {"type": "number"},
-              "requant_shift": {"type": "integer"},
-              "combine": {"type": "string"},
-              "activation": {"type": "array", "items": {"type": "string"}},
-              "op": {"type": "string"}
+              "layout": {
+                "type": "string"
+              },
+              "epilogue": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "bias_add",
+                    "bias",
+                    "requant",
+                    "acc_scale",
+                    "relu",
+                    "maxpool"
+                  ]
+                }
+              },
+              "output_dtype": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Output dtype \u2014 open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
+              },
+              "acc_scale": {
+                "type": "number"
+              },
+              "requant_shift": {
+                "type": "integer"
+              },
+              "combine": {
+                "type": "string"
+              },
+              "activation": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "op": {
+                "type": "string"
+              }
             },
             "additionalProperties": true
           }
@@ -52,9 +242,100 @@
         "additionalProperties": false
       }
     },
-    "params": {"type": "object"},
-    "metrics_requested": {"type": "array", "items": {"type": "string"}},
-    "resources": {"type": "object"}
+    "params": {
+      "type": "object"
+    },
+    "metrics_requested": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "object"
+    },
+    "declined": {
+      "type": "object",
+      "description": "OPTIONAL. The backend declines to lower this capsule and says so, rather than emitting an empty/terminator-only program. `reason` is mandatory and must name what could not be lowered; `shape`/`op` let the grader and the round feedback quote it back. A decline is a legitimate answer -- it is scored as not-passed, never as wrong arithmetic. Emitting nothing and hoping is not.",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "op": {
+          "type": "string"
+        }
+      }
+    }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "$comment": "AN EMPTY COMMAND LIST HAS TWO LEGITIMATE MEANINGS, told apart by `declined`. (1) A DECLINE: the backend could not lower this capsule and says why; there is no program to run. (2) A HOST-LANE PROGRAM: every region was placed on the CPU lane, so this accelerator issues no instruction for it -- a routing decision and a complete answer, which the runner still harnesses, runs and grades. The second case must still declare its tensors, because those declarations ARE the pointer ABI the kernel is called with and the output is what gets read back; without that rule, requiring a non-empty list was the only thing standing between a correct host-lane program and a fabricated matmul emitted purely to look non-empty.",
+      "if": {
+        "required": [
+          "declined"
+        ]
+      },
+      "then": {
+        "properties": {
+          "commands": {
+            "minItems": 0
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "commands": {
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "commands"
+          ]
+        },
+        "then": {
+          "$comment": "host-lane program: no command, but a declared output to read back. Spelled as \"NOT (every declared tensor is a non-output)\" because JSON Schema has no `contains` for objects and the tensor names are arbitrary.",
+          "required": [
+            "tensors"
+          ],
+          "not": {
+            "properties": {
+              "tensors": {
+                "additionalProperties": {
+                  "not": {
+                    "required": [
+                      "role"
+                    ],
+                    "properties": {
+                      "role": {
+                        "const": "output"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "commands": {
+              "minItems": 1
+            }
+          }
+        }
+      }
+    }
+  ]
 }

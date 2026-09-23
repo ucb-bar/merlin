@@ -1,0 +1,21 @@
+schema_version: 1
+kind: template
+id: baseline-functional-template
+target: OPERATOR_TARGET
+description: Installed Phase 1 baseline with explicit authored operator inputs; configure before execution.
+phases:
+  1:
+    adapter: capsule_bench
+    config:
+      descriptor: ../operator-inputs/target_experiment.yaml
+      treatment: baseline
+      arm: raw_baseline
+      bundle: OPERATOR_BUNDLE_ID
+      bundle_manifest: ../operator-inputs/input_bundles/OPERATOR_BUNDLE_ID/input_bundle_manifest.yaml
+      oracle_timing: ../operator-inputs/oracle_timing.json
+      model: OPERATOR_MODEL
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 600
+      round_timeout: 600

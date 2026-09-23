@@ -1,0 +1,37 @@
+schema_version: 1
+kind: template
+id: measured-claims-template
+target: OPERATOR_TARGET
+description: Template only; supply managed deployment selections, a frozen functional run, exact certificates, and agent budget.
+phases:
+  2:
+    adapter: measured_claims
+    mode: measured_claims
+    config:
+      source_root: ../operator-inputs/source-root
+      contract_root: ../operator-inputs/contract
+      functional_runs_root: ../operator-inputs/functional-runs
+      stage_root: ../operator-output/stages
+      measurement_root: ../operator-output/measurements
+      holdout_catalog: ../operator-inputs/holdout-catalog.yaml
+      core_package_root: ../operator-install/core/merlin
+      experiments_package_root: ../operator-install/merlin_experiments
+      experiments_namespace_root: ../operator-install/experiments/merlin
+      managed_native_endpoint: ../operator-runtime/supervisor.sock
+      suite: OPERATOR_SUITE
+      functional_run_id: OPERATOR_FROZEN_FUNCTIONAL_RUN_ID
+      functional_submission_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      descriptor: ../operator-inputs/target_experiment.yaml
+      rtl_facts: ../operator-inputs/rtl-facts.json
+      perf_profile: ../operator-inputs/perf-profile.yaml
+      gsim_certificate: ../operator-inputs/gsim-certificate.json
+      gsim_certificate_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      functional_gsim_certificate: ../operator-inputs/functional-gsim-certificate.json
+      functional_gsim_certificate_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      model: OPERATOR_MODEL
+      effort: high
+      wall_budget_seconds: 600
+      rounds: 1
+      round_timeout_seconds: 600
+      max_tool_calls: 40
+      tool_timeout_seconds: 60

@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=none
+title: Deployment Profile
+purpose: >-
+  Pins the exact target contract, hardware configuration, runtime interface header, and deployable
+  image used for final deployment qualification, and declares only the physical result encodings and
+  widths that the selected readout path supports. The profile is target-neutral data consumed by the
+  deployment admissibility checker; no compiler candidate may supply or rewrite it.
+required_top_level_fields:
+  - schema
+  - artifacts
+  - supported_physical_egress
+producer: host deployment preparation
+consumers:
+  - merlin.perf.deployment_admissibility
+validation_notes: >-
+  schema must be deployment_profile_v1. artifacts contains contract, config, runtime_header, and
+  bitstream records with path and sha256. supported_physical_egress is a list of encoding and
+  positive width_bits pairs. The checker validates nested fields and exact file bytes fail-closed.
+example: |
+  schema: deployment_profile_v1
+  artifacts:
+    contract: {path: inputs/contract.json, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+    config: {path: inputs/config.txt, sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}
+    runtime_header: {path: inputs/runtime.h, sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc}
+    bitstream: {path: inputs/image.bin, sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}
+  supported_physical_egress:
+    - {encoding: signed_integer, width_bits: 8}

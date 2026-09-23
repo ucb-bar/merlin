@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/contract/performance_record.schema.json",
+  "title": "Performance record",
+  "description": "The canonical record for ONE measured kernel on ONE target: its terms (each with provenance and a validity domain), the diagnostics that may never source a term, and -- required from the first record ever written -- the digest triple that says which hardware revision, which built artifact and which exact bytes the numbers came from. A commit sha alone is not provenance: pins whose checkouts carry declared local edits report permanent drift by design, so the bytes actually read must be digested separately (merlin.common.provenance.source_digest). Terms are validated against performance_term.schema.json in a second pass by merlin.perf.record (the contract loader resolves no cross-document $ref).",
+  "type": "object",
+  "required": ["schema_version", "kernel", "target", "digest", "sources", "terms", "diagnostics"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "kernel": {"type": "string", "minLength": 1, "description": "The measured workload's name, as the measurement source itself spells it."},
+    "target": {"type": "string", "minLength": 1, "description": "The hardware target, threaded in as a parameter from the descriptor/manifest -- never a literal in library code."},
+    "digest": {
+      "type": "object",
+      "description": "The provenance triple. All three parts are REQUIRED and none may be the UNKNOWN token: a record that cannot say what it was measured against is uncitable, and every artifact produced before this field existed is uncitable retroactively.",
+      "required": ["sources", "artifacts", "pins"],
+      "properties": {
+        "sources": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "sha256 over the exact bytes the derivation READ (merlin.common.provenance.source_digest). Differs from the commit whenever the tree is dirty, which is precisely when a commit looks right and the numbers are not."
+        },
+        "artifacts": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Built artifact name -> its verified content sha256. A built thing (a compiled model, a packaged suite) has no commit of its own; its identity is its bytes.",
+          "additionalProperties": {"type": "string", "minLength": 64, "maxLength": 64}
+        },
+        "pins": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Pin name -> the full 40-character commit that pin declares, as verified against the live checkout at record time.",
+          "additionalProperties": {"type": "string", "minLength": 40, "maxLength": 40}
+        },
+        "notes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Verification remarks that are real but not drift -- chiefly declared local edits whose digests matched. Carried so a result citing 'that commit PLUS those bytes' says so."
+        }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Every input this record drew on, each declared citable or diagnostic. The role is what makes 'diagnostics can never source a term' checkable rather than a convention: a term whose provenance.evidence names a diagnostic source is rejected.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "role"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "role": {
+            "type": "string",
+            "enum": ["citable", "diagnostic"],
+            "description": "citable = may back a term. diagnostic = recorded for comparison only, never a term's evidence."
+          },
+          "description": {"type": "string"},
+          "digest": {"type": "string", "description": "Content digest of this source, or \"UNKNOWN\"."}
+        },
+        "additionalProperties": false
+      }
+    },
+    "terms": {
+      "type": "object",
+      "description": "name -> performance term. Each value is validated against performance_term.schema.json.",
+      "additionalProperties": {"type": "object"}
+    },
+    "diagnostics": {
+      "type": "object",
+      "description": "Numbers recorded for comparison that may NEVER source a term. A peer cycle model that disagrees with the hardware truth by up to ~3x is useful as a cross-check and disqualifying as evidence; keeping it here rather than dropping it preserves the disagreement instead of hiding it.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "value", "unit", "source"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "value": {"oneOf": [{"type": "number"}, {"const": "UNKNOWN"}]},
+          "unit": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1, "description": "Must name a source declared with role 'diagnostic'."},
+          "note": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "workload": {
+      "type": "object",
+      "description": "What was run, as the measurement source describes it (shapes, op counts, footprint). Inputs, not results.",
+      "additionalProperties": true
+    },
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": false
+}

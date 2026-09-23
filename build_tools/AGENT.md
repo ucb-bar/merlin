@@ -12,10 +12,10 @@ measurement & analysis harnesses, repo linters `check_structure.py` / `check_art
 
 ## What does not belong here
 
-- Generated build *output* (that is gitignored under `build/`).
-- Application/library source (lives under `merlin/`) or schemas (`merlin/schemas/`).
+- Generated build *output* (that is gitignored under `out/build/`).
+- Application/library source (`src/merlin/` or `packages/*/src/`) or schemas (`merlin/schemas/`).
 
 ## Invariants
 
 - Scripts/helpers here **ARE tracked in git** (committed automation, not generated output).
-- Generated build artifacts go under `build/` (gitignored), never here.
+- Generated build artifacts go under `out/build/` (gitignored), never here.

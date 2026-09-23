@@ -1,5 +1,11 @@
 # AGENT.md — merlin/experiments/gemmini_cert
 
-Gemmini certification experiment: drives `merlin.targetgen.eval` over the contract corpus and records
-findings (`run.py`, `experiment.yaml`, `FINDINGS.md`). Consumes merlin; generated agent output goes to
-`agent_generated/` (gitignored) and runs to `runs/`. See `FINDINGS.md`.
+Status: frozen
+
+Archive only. `FINDINGS.md` records historical conformance observations; do not rewrite it to
+describe current code or treat it as qualification of a relocated implementation.
+
+Executable owners, the example configuration and tests now live in the Gemmini OOT companion's
+`merlin-support/gemmini_conformance/`, `merlin-support/examples/conformance/` and
+`merlin-support/tests/`. Select that provider explicitly; no executable compatibility wrapper
+remains here. Consult its README for missing-facts/schema limitations and test prerequisites.

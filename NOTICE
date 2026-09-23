@@ -12,7 +12,7 @@ Third-party components
 Vendored in-tree:
 
 * gemmini-rocc-tests / rocc-software
-  (merlin/experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests/)
+  (merlin/experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests/)
   Licensed under the Apache License, Version 2.0; see the LICENSE file within that directory.
   (The bundled riscv-tests subset is BSD-licensed upstream.)
 

@@ -1,0 +1,8 @@
+{
+  // RTL-derived facts keep unresolved values explicit.
+  "array": {"rows": 16, "cols": 16},
+  "custom_opcode": "0x7b",
+  "scratchpad_bytes": 262144,
+  "cyclic_path_latency": null,
+  "source": "RTL & CIRCT"
+}

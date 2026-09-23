@@ -21,7 +21,7 @@ export OTEL_RESOURCE_ATTRIBUTES="run_id=<run_id>,target=gemmini,method=v0_naive_
 Start the collector (uses `otel-collector.yaml` in this directory):
 
 ```bash
-docker run --rm -p 4317:4317 -p 4318:4318 \
+docker run --rm -p 127.0.0.1:4317:4317 -p 127.0.0.1:4318:4318 \
   -v $(pwd)/observability/otel-collector.yaml:/etc/otel-collector-config.yaml \
   otel/opentelemetry-collector-contrib:latest \
   --config /etc/otel-collector-config.yaml

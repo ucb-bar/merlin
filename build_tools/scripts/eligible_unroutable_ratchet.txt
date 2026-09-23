@@ -1,0 +1,4 @@
+# <target> <family> <format> triples the eligibility oracle admits and the router refuses.
+# Each is a contradiction inside one target's contract, owned by that target's data. May only shrink.
+# growth-accepted: the agreement test is new; this is a disagreement it discovered, not one added.
+muon contraction bf16  # the array lists the format and declares no accumulate rule for it

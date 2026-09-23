@@ -1,7 +1,9 @@
 """WS-C C4: the improvement-category layer (the beam's 'what should we improve?' question)."""
+
 from __future__ import annotations
 
-from merlin.kernels import categories as C, cca_contract
+from merlin.kernels import categories as C
+from merlin.kernels import cca_contract
 from merlin.kernels.cca_compare import Divergence
 
 
@@ -23,9 +25,11 @@ def test_category_assignment_matches_the_named_buckets():
 
 
 def test_categorize_groups_divergences_by_what_to_improve():
-    divs = [Divergence("compute.accumulator_resident", True, False, "rvv"),
-            Divergence("compute.contraction_form", "fused_fma", "mul_add", "rvv"),
-            Divergence("vector.lmul", 4.0, 2.0, "rvv")]
+    divs = [
+        Divergence("compute.accumulator_resident", True, False, "rvv"),
+        Divergence("compute.contraction_form", "fused_fma", "mul_add", "rvv"),
+        Divergence("vector.lmul", 4.0, 2.0, "rvv"),
+    ]
     grouped = C.categorize(divs)
     assert set(grouped) == {"register-residency", "instruction-selection"}
     # both lmul + contraction_form are instruction-selection
@@ -33,6 +37,10 @@ def test_categorize_groups_divergences_by_what_to_improve():
 
 
 def test_uncategorized_axis_not_dropped():
-    # an axis with no category lands under None (surfaced, never silently dropped)
-    grouped = C.categorize([Divergence("compute.mr_adapts_to_m", True, False, "rvv")])
+    # an axis with no category lands under None (surfaced, never silently dropped).
+    # Deliberately a FICTITIOUS axis: this test used compute.mr_adapts_to_m as its example of an
+    # uncategorized axis, and then that axis got a category -- so the test began asserting the opposite
+    # of what it means. An invariant about "any uncategorized axis" must not be pinned to a real axis
+    # someone will eventually categorize.
+    grouped = C.categorize([Divergence("compute.no_such_axis", True, False, "rvv")])
     assert None in grouped

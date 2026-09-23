@@ -4,7 +4,10 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.20.0
     ports:
-      - "5000:5000"
+      # Loopback-only: the UI has no authentication, so publishing it on all
+      # interfaces would expose an unauthenticated server to the network.
+      # Reach a remote host with `ssh -L 5000:localhost:5000 <host>`.
+      - "127.0.0.1:5000:5000"
     volumes:
       - mlflow-data:/mlflow
     command: >
