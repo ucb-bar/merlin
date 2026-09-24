@@ -88,17 +88,24 @@ through `recaptures_dir()`.
 
 ## Quantization (torchAO) — what works, what's planned
 
-**Quantization is applied in the external model2MLIR repo, not in Merlin.** The m2m capture pipeline
-calls `m2m.capture.torchao_pipeline.apply_quantization` on the torch model before export; Merlin only
-*consumes* the already-quantized bundle. (Merlin invokes that same external function in exactly one
-place — its TVM baseline re-quantizes a live-loaded model to match the capture:
-`packages/merlin-analysis/src/merlin/baselines/tvm.py:282`.) You add a quantized model by capturing it there and
-ingesting the resulting bundle:
+There are two capture routes. For standalone model bundles, **model2MLIR owns quantization**: its
+capture pipeline calls `m2m.capture.torchao_pipeline.apply_quantization` before export, and Merlin
+consumes the resulting bundle. Merlin's TVM baseline also calls that external function to match a
+live-loaded model to its bundle. To add a standalone quantized model, capture it there and ingest the
+bundle:
 
 ```bash
 # in the model2MLIR capture venv (see build_tools/scripts/setup_model2mlir.sh for m2m setup)
 .venv/bin/python $MODEL2MLIR_DIR/workloads/capture.py <model> --formats fp32 int8 ...
 ```
+
+For **Phase 0 model capsules**, Merlin derives a target recipe from the capability/readout facts and
+uses TorchAO's public quantizer interface in its capture worker before handing the graph to
+model2MLIR for import. The [Gemmini Phase 0 example](../../examples/gemmini/phase0/README.md)
+identifies the derived-recipe M4 model and the separately authored already-integer M2/M3 models.
+Only supported, module-owned contractions with floating stored weights are annotated; unsupported
+layers such as LSTM stay floating/host. A declared additional format is a candidate, not a working
+mixed-format capture. Neither route modifies TorchAO source.
 
 **Working and tested today — int8 only.** The int8 path is **weight-only / W8A8**
 (`int8_dynamic_activation_int8_weight`) and is the one format with a *measured* accuracy gate:

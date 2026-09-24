@@ -66,13 +66,12 @@ REQUIRED_DIRS = [
     "merlin/tests/data",
 ]
 
-# Canonical per-target shape: contracts/ (the target definition) + generated/ (its output dir) are
-# REQUIRED for every DISCOVERED target; docs/ and examples/ are present only when there's content (no
-# empty stubs — see the WS4 de-pin cleanup). The set is derived from what is registered, so no target
-# name is hardcoded here.
+# Canonical per-target source shape: contracts/ is required for every discovered
+# in-tree target. Generated target packages belong under the configured out/
+# artifact root, not beside source contracts; docs/ and examples/ exist only
+# when they have content. The set remains derived from registration.
 for _t in _discovered_targets():
     REQUIRED_DIRS.append(f"merlin/targets/{_t}/contracts")
-    REQUIRED_DIRS.append(f"merlin/targets/{_t}/generated")
 
 REQUIRED_SCHEMAS = [
     "target_contract",
