@@ -93,6 +93,7 @@ descriptor admission-count changes; it never changes the canonical corpus.
 
 ```sh
 merlin experiment run gemmini-functional --phase 0 --run-dir /absolute/phase0-run
+merlin experiment corpus coverage /absolute/phase0-run --spec /absolute/selected-conformance.yaml
 merlin experiment corpus prepare /absolute/phase0-run --output /configured/out/artifacts/protocols/review-1
 merlin experiment corpus inspect /configured/out/artifacts/protocols/review-1
 # Only after an operator has inspected the prepared inputs and private diagnostics:
@@ -105,6 +106,10 @@ diagnostics, and review notes are owner-only under `private/`. The explicit seal
 records an attributed local acknowledgement, not a signature or numerical/hardware
 certificate. Native cohort admission is reused unchanged; oracle readiness and
 grading still happen in the native phase engine. No command approves data for you.
+`corpus coverage` verifies the completed run's input/output receipt and reports
+which public source-pool cells and other conformance axes its capsules present.
+Its explicit requirement is separately hashed. It does not establish numerical
+correctness, graded admission, or whole-model compilation.
 
 For Phase 1, the catalog examples require a reviewed release and a newly generated
 bundle. Keep the authored definition unchanged and select both inputs explicitly:

@@ -11,6 +11,33 @@ quantization belong to [model2MLIR](../../../docs/guides/model2mlir.md), not a
 second implementation in this example. Configure the required
 [LLVM/MLIR tools](../../../docs/guides/llvm_integration.md) before lowering.
 
+## Check model readiness
+
+For an explicit model2MLIR capture directory, first compare a *requested*
+deployment format with what the captured graph actually contains:
+
+```sh
+merlin-compile --target gemmini --model-preflight \
+  --capture-bundle /absolute/capture-directory \
+  --deployment-dtype int8 --json
+```
+
+The directory must contain `model.mlir`. The report also checks for
+`weights.safetensors`, its manifest, `inputs.npz`, `input_order.json`, and
+`golden.npy`. Read `contractions.captured_operand_dtypes`,
+`contractions.captured_accelerator_groups`, `contractions.capsule_form_groups`,
+and `blockers` together. The command exits nonzero when blocked. Even when
+static checks pass, `target_binary_emitted` remains false: this is an inventory,
+not a whole-model compiler or correctness test.
+
+The available ResNet-50 and SmolVLA denoise-step captures expose the current
+gap. Requested `int8` routing identifies Gemmini-capable contractions, but
+the standard captures retain FP32/BF16 operands; the W8A8 ResNet capture
+still has 53 FP32 contractions. No target-native quantization bridge or
+general whole-model Gemmini binary is established by those routes. A separate
+historical ResNet program from an alternate capture is useful evidence for a
+tracer bullet, not certification of this generated Phase 1 compiler.
+
 For a capture that has the two named sidecars, run:
 
 ```sh

@@ -46,6 +46,15 @@ def _binding(tile: int = 16):
     return SimpleNamespace(target="fixture", tile_dim=tile, operand_dtype="int8", accum_dtype="i32")
 
 
+def _derived_binding_or_skip(experiment, datapath):
+    try:
+        return GENERATION.CS.derive_binding(experiment, datapath)
+    except ValueError as exc:
+        if "no derived tile geometry" not in str(exc):
+            raise
+        pytest.skip(f"fixed-array sweep needs RTL geometry: {exc}")
+
+
 def _performance_block(*, family="PG", traits=None, emitter_status="existing"):
     """Small but complete performance contract for focused generator tests."""
     return {
@@ -622,7 +631,7 @@ def test_pb_materializes_from_generic_execution_capabilities_and_skips_without_t
     profile = yaml.safe_load((for_target("gemmini").performance_template).read_text(encoding="utf-8"))
     sweep = next(row for row in profile["sweeps"] if row["id"] == "PB")
     experiment = GENERATION.load_target_experiment(GENERATION._descriptor_for("gemmini"))
-    binding = GENERATION.CS.derive_binding(experiment, profile.get("datapath") or {})
+    binding = _derived_binding_or_skip(experiment, profile.get("datapath") or {})
     facts = SWEEPS._performance_facts("gemmini")
     entries = SWEEPS.expand_sweeps(
         {"sweeps": [sweep]}, binding, trait_facts=facts, skipped=[], blocked_unimplemented=[], errors=[]
@@ -755,7 +764,7 @@ def test_gemmini_admits_the_runnable_families_and_records_the_refuted_one():
     )
     skips, blocked, errors = [], [], []
     experiment = GENERATION.load_target_experiment(GENERATION._descriptor_for("gemmini"))
-    binding = GENERATION.CS.derive_binding(experiment, profile.get("datapath") or {})
+    binding = _derived_binding_or_skip(experiment, profile.get("datapath") or {})
     entries = SWEEPS.expand_sweeps(
         {"sweeps": shared_sweeps},
         binding,

@@ -15,18 +15,19 @@ derived probes it actually lowers (that is the recall the fuzzer and the grader 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from merlin.targetgen import semantic_families as _sf
 from merlin.targetgen.compute_units import SemanticCapability
 from merlin.targetgen.eligibility import RegionDescriptor
 
-# Fallback tile edge for a target whose geometry cannot be derived. NOT a hardware constant: it is the
-# same software-tiling default `corpus_spec._tile_dim` falls back to for a target with no fixed mesh.
+# Default only for an unspecified target (or a selected software-tiled unit). A named fixed array
+# whose geometry is unavailable must refuse instead of claiming this is its hardware edge.
 _FALLBACK_TILE = 16
 
 
-def tile_edge(target: str | None = None) -> int:
+def tile_edge(target: str | None = None, *, operand: str | None = None) -> int:
     """The target's tile edge, DERIVED — the number every shape corner below is measured against.
 
     This used to be the literal ``16``, defended by a comment claiming the corners were "structural,
@@ -43,13 +44,10 @@ def tile_edge(target: str | None = None) -> int:
     """
     if not target:
         return _FALLBACK_TILE
-    try:
-        from merlin.targetgen.corpus_spec import _tile_dim
-        from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen.corpus_spec import _tile_dim
+    from merlin.targetgen.target_experiment import load_capability_manifest
 
-        return int(_tile_dim(target, load_capability_manifest(target).contract or {}))
-    except Exception:  # noqa: BLE001 — underivable geometry -> the software-tiling default, never a guess
-        return _FALLBACK_TILE
+    return int(_tile_dim(target, load_capability_manifest(target).contract or {}, operand=operand))
 
 
 def shape_corners(tile: int) -> list[tuple[str, tuple[int, int, int], int]]:
@@ -93,7 +91,9 @@ def _primary_shape(fam: str, tile: int):
     return (tile, None, None)
 
 
-def probes_for_family(fam: str, cap: SemanticCapability, *, tile: int | None = None) -> list[Probe]:
+def probes_for_family(
+    fam: str, cap: SemanticCapability, *, tile: int | None = None, dtype_tiles: Mapping[str, int] | None = None
+) -> list[Probe]:
     """The derived probe set for one declared family capability.
 
     ``tile`` is the target's derived tile edge (see :func:`tile_edge`); omitted, the software-tiling
@@ -131,14 +131,15 @@ def probes_for_family(fam: str, cap: SemanticCapability, *, tile: int | None = N
     # one probe per additional declared dtype (dtype-generalization axis)
     m, k, n = _primary_shape(fam, tile)
     for dt in dtypes[1:]:
+        dm, dk, dn = _primary_shape(fam, (dtype_tiles or {}).get(dt, tile))
         d = RegionDescriptor(
             source=f"{fam}/dtype:{dt}",
             family=fam,
             in_dtype=dt,
             weight_dtype=(dt if contractionish else None),
-            m=m,
-            k=k,
-            n=n,
+            m=dm,
+            k=dk,
+            n=dn,
             rank=2,
         )
         probes.append(Probe(name=f"{fam}.dtype_{dt}", axis="dtype", descriptor=d))
@@ -180,9 +181,14 @@ def synthesize(cap_map: dict[str, SemanticCapability], *, target: str | None = N
     it the corners fall back to the software-tiling default, which on a wider mesh means every corner
     sits inside a single tile.
     """
-    tile = tile_edge(target)
     out: list[Probe] = []
     order = [f for f in (*_sf.PRIMITIVES, *sorted(_sf.COMPOSITES)) if f in cap_map]
     for fam in order:
-        out += probes_for_family(fam, cap_map[fam], tile=tile)
+        # A hybrid can have a software-tiled lane and a fixed array with different
+        # dtypes. Bind each family to the unit that admits its lead dtype; one
+        # target-wide fallback would make the fixed array appear 16-wide.
+        dtypes = list(cap_map[fam].dtypes)
+        dtype_tiles = {dt: tile_edge(target, operand=dt) for dt in dtypes}
+        tile = dtype_tiles[dtypes[0]] if dtypes else tile_edge(target)
+        out += probes_for_family(fam, cap_map[fam], tile=tile, dtype_tiles=dtype_tiles)
     return out

@@ -15,6 +15,7 @@ import pytest
 # `_mesh_verify` and `run_matmul_on_mesh` resolve `_default_oot_package` in merlin.compile.mesh, where it
 # is defined, so a stand-in package goes there; the name merlin.compile_cli re-exports is never read.
 from merlin.compile import mesh as MESH
+from merlin.compile.model_preflight import preflight_model
 from merlin.targetgen import capsule_source as CSrc
 from merlin.targetgen import routing as R
 
@@ -37,6 +38,20 @@ def test_model_op_demands_structural():
     assert "fill" not in by  # init op, not routable
     assert by["matmul"].weight_fmt == "int8"  # contraction -> weighted
     assert by["softmax"].weight_fmt is None  # normalization -> unary
+
+
+def test_preflight_does_not_call_requested_dtype_a_compiled_model(tmp_path):
+    from fake_quant_layer import module as fake_quant_layer
+
+    # A scale along K cannot move outside the reduction. Despite stored integer
+    # weights, the captured contraction is float; a requested int8 route does
+    # not make an integer target program appear.
+    (tmp_path / "model.mlir").write_text(fake_quant_layer(weight_axis=0), encoding="utf-8")
+    report = preflight_model(tmp_path, target="gemmini", deployment_dtype="int8")
+    assert report["target_binary_emitted"] is False
+    assert report["status"] == "blocked"
+    assert report["contractions"]["captured_operand_dtypes"] == {"fp32": 1}
+    assert "capture_dtype_needs_bridge" in {row["kind"] for row in report["blockers"]}
 
 
 def _gemmini_available():

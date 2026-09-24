@@ -215,6 +215,29 @@ def _phase1_definition(fixture, sealed):
     return definition
 
 
+def test_public_coverage_reads_the_completed_phase0_run(release_fixture, capsys):
+    fixture = release_fixture
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    spec = fixture["root"] / "conformance.yaml"
+    spec.write_text(
+        yaml.safe_dump(
+            {
+                "target": "fixture-device",
+                "cells": [{"cell": "contraction/i8/aligned"}],
+                "boundaries": {"tile_edge": 16},
+            }
+        )
+    )
+    assert main(["corpus", "coverage", str(fixture["run"]), "--spec", str(spec)]) == 0
+    report = capsys.readouterr()
+    result = json.loads(report.out)
+    assert result["scope"] == "generated public source pool; not admitted, graded, or certified"
+    assert result["coverage"]["n_required"] == 1
+    assert result["coverage"]["n_covered"] + len(result["coverage"]["uncovered"]) == 1
+    assert "private_member_identity" not in report.out + report.err
+
+
 def test_public_prepare_inspect_explicit_seal_and_native_phase1(release_fixture, capsys):
     fixture = release_fixture
     original = fingerprint(fixture["baseline"])

@@ -15,6 +15,43 @@ before verified execution. Preparation copies these inputs into the release and
 removes the live source pointers. New bundles grant the declared task directory;
 old bundles or frozen runs are not rewritten to adopt this layout.
 
+## What the functional finish line must prove
+
+Passing generated operation capsules is necessary but not sufficient to claim a
+network compiler. For each selected whole-network capture (including ResNet-50
+and a specified full SmolVLA graph, not only one denoise step), a functional
+Phase 1 result needs a complete
+operator inventory, an accounted route for every region (Gemmini or a declared
+host lane), a whole-model compile with no unsupported-op escape, executable
+artifacts, numerical comparison against an independent framework reference,
+and observed dispatch evidence that the admitted accelerator work actually ran.
+Keep the capture, quantization scheme, weights/manifest, compiler submission
+hash, intermediate MLIR and run receipts together; a storage dtype alone does
+not establish the arithmetic or accelerator placement. The
+[whole-model example](../whole-model/README.md) explains IR inspection, but its
+lowering smoke is not this functional certificate.
+
+The current example does **not** claim that finish line has been reached.
+The descriptor makes `M2_microvit_gemmini`, `M3_host_island_seam_gemmini`, and
+`SY_micro_model` mandatory admitted L3 representatives, while
+`SY_model_resnet50`, `SY_model_smolvla`, and the SmolVLA denoise-step capstone
+are resource-excluded from mandatory L3 simulation. Exclusion is a cost policy,
+not proof of a compile failure or a successful compile. Inspect a real
+whole-model compilation receipt before asserting either. The target's
+`workload_spec.models` also keeps ResNet-50 as a held-out generalization claim;
+do not use its capture to derive the tests against which it is evaluated.
+
+Before attempting that claim, inspect an explicit capture with the
+[whole-model preflight](../whole-model/README.md#check-model-readiness). It
+compares declared target routes with the operand formats and accelerator groups
+in the captured graph. It cannot produce a compiler certificate: a requested
+`int8` deployment format does not quantize an FP32 or BF16 model by itself.
+
+This is deliberately separate from [Phase 2](../phase2/README.md): Phase 1
+establishes functional compiler capability and a frozen submission; Phase 2
+holds that functional bar fixed while optimizing cycles, placement, and
+whole-model cost under its own measured or model-portfolio evidence.
+
 ## Run the installed Phase 1 controller
 
 The catalog ID `gemmini-functional` selects the single definition above. Its

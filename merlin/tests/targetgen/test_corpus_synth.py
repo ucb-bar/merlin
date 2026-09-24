@@ -608,6 +608,15 @@ def test_a_roster_whose_preference_names_nothing_admitted_reports_it_rather_than
         CS.synthesize(doc, workload_spec={"models": ["tiny_llama"], "precision_preference": ["mxfp4"]})
 
 
+def test_a_roster_without_a_derived_model_datapath_refuses_instead_of_disappearing():
+    """A non-contraction target may be valid, but its model format and lane obligation cannot be
+    inferred by a contraction-only roster synthesizer. It must name the unsupported target class,
+    not return a corpus whose model denominator vanished."""
+    doc = {"target": "generic_target", "cells": [], "boundaries": {}}
+    with pytest.raises(CS.SynthesisError, match="roster axis: declared models.*no contraction cell"):
+        CS.synthesize(doc, workload_spec={"models": ["network"], "precision_preference": ["fp32"]})
+
+
 def test_an_l2_application_capsule_with_no_certified_sibling_is_dropped():
     """The `extends` relation is only worth anything if it is enforced. A large capsule whose
     cycle-accurate sibling was never emitted rests on nothing — and an L2 pass on a shape nothing

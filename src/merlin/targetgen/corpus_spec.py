@@ -175,7 +175,7 @@ def _scale_block_elems(contract: dict) -> int | None:
     return _group(contract)
 
 
-def _tile_dim(target: str, contract: dict) -> int:
+def _tile_dim(target: str, contract: dict, *, operand: str | None = None) -> int:
     """Tile dim for sizing capsule shapes. When the target has a FIXED HARDWARE mesh, it is DERIVED
     (``capabilities.mesh.rows`` / ``.tile.rows`` from the manifest, else the CIRCT ``arrays[mesh].rows``
     fact) — so gemmini's 16 comes from its RTL facts, never a literal. A target with NO fixed hardware
@@ -189,6 +189,18 @@ def _tile_dim(target: str, contract: dict) -> int:
     # surface would bracket the wrong boundary — the tile-edge cases would sit mid-tile and prove nothing.
     # So a unit that declares which hardware CONFIG it is elaborated as gets its edge from that config's
     # own Scala, and a declared-but-underivable geometry raises instead of falling back to a mesh row.
+    from merlin.common.quant_formats import get as quant_format
+
+    units = contract.get("compute_units") or []
+    if operand is not None:
+        selected_format = quant_format(operand).name
+        selected = [u for u in units if any(quant_format(dt).name == selected_format for dt in (u.get("dtypes") or []))]
+        if units and not selected:
+            raise ValueError(f"{target}: operand dtype {operand!r} is admitted by no compute unit")
+    else:
+        selected = units[:1]
+    if selected and not any(u.get("kind") in {"systolic", "spatial"} for u in selected):
+        return _DEFAULT_SW_TILE
     unit, config = _declared_matrix_unit(contract), _declared_hardware_config(contract)
     if unit and config:
         from merlin.targetgen.plugins import load_declared
@@ -201,12 +213,24 @@ def _tile_dim(target: str, contract: dict) -> int:
     try:
         from merlin.targetgen.rtl.facts import load_facts
 
-        arrays = (load_facts(target).get("facts") or {}).get("arrays") or []
+        facts = load_facts(target).get("facts") or {}
+        arrays = facts.get("arrays") or []
         m = next((a for a in arrays if a.get("name") == "mesh"), {})
         if m.get("rows"):
             return int(m["rows"])
-    except Exception:  # noqa: BLE001 — no facts for this target -> software-tiling default (no hw mesh)
+        # Spatial tile extractors publish a field bundle, not a systolic
+        # arrays[] record. Keep the two fact shapes distinct.
+        spatial_rows = (((facts.get("fields") or {}).get("tile_dim") or {}).get("value") or {}).get("rows")
+        if spatial_rows:
+            return int(spatial_rows)
+    except Exception:  # noqa: BLE001 — handled below according to the declared compute-unit kind
         pass
+    # A software tile is legitimate only when no unit selected by the operand
+    # is fixed. A missing RTL array is missing evidence, not evidence for a
+    # 16-wide array. This also covers single-unit
+    # contracts whose geometry is intentionally absent from the authored contract.
+    if any(u.get("kind") in {"systolic", "spatial"} for u in selected):
+        raise ValueError(f"{target}: fixed compute unit has no derived tile geometry in its contract or RTL facts")
     return _DEFAULT_SW_TILE
 
 
@@ -384,14 +408,23 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
     # The profile may pin the DEFAULT operand/accumulate dtypes (a target with several compute units — e.g.
     # radiance's simt_cluster + contained mx_pe — needs the profile to say which regime a capsule set drives);
     # both fall back to the primary compute unit's declared datapath, never a target literal.
-    operand = datapath.get("operand_dtype") or (cu.get("dtypes") or ["int8"])[0]
+    declared_dtypes = [dt for unit in (c.get("compute_units") or []) for dt in (unit.get("dtypes") or [])]
+    if not declared_dtypes:
+        raise ValueError(f"{te.target}: no compute-unit operand dtypes declared; cannot derive a corpus binding")
+    operand = datapath.get("operand_dtype") or (cu.get("dtypes") or [None])[0]
+    if operand is None:
+        raise ValueError(f"{te.target}: primary compute unit has no operand dtype; select an admitted datapath")
+    from merlin.common.quant_formats import get as quant_format
+
+    if quant_format(operand).name not in {quant_format(dt).name for dt in declared_dtypes}:
+        raise ValueError(f"{te.target}: corpus operand dtype {operand!r} is not admitted by any compute unit")
     accum = datapath.get("accum_dtype") or _accum_dtype(c, operand)
     integer = dtype_info(accum)[3]
     scaling = datapath.get("scaling") or cu.get("scaling")
     tiers = datapath.get("required_oracle_tiers") or sorted(inferred_oracle_tiers(te.target, te.sim_via))
     return CorpusBinding(
         target=te.target,
-        tile_dim=_tile_dim(te.target, c),
+        tile_dim=_tile_dim(te.target, c, operand=operand),
         operand_dtype=operand,
         accum_dtype=accum,
         integer=integer,

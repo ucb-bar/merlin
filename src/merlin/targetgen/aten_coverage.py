@@ -84,8 +84,8 @@ def core_opset(*, refresh: bool = False) -> dict:
 def aten_ops_in(module_path: str | Path) -> Counter:
     """``prov.aten`` tags in one captured model, counted.
 
-    Structural read of the attribute the capture pipeline stamps; a region without the tag is counted
-    as ``untagged`` rather than guessed at, because an op we cannot name is not evidence either way.
+    Read the attribute the capture pipeline stamps. A region without the tag is not counted or
+    guessed at, so this is a lower bound on observed frontend calls, never a complete model inventory.
     """
     text = Path(module_path).read_text(encoding="utf-8")
     out: Counter = Counter()
@@ -103,7 +103,9 @@ def aten_ops_in(module_path: str | Path) -> Counter:
 
 def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dict:
     """Which core ops the captured models contain, and which observed ops are not core."""
-    core = set((opset or core_opset())["ops"])
+    resolved_opset = opset if opset is not None else core_opset()
+    core = set(resolved_opset["ops"])
+    decomposed = set(resolved_opset.get("decomposed") or ())
     per_model: dict[str, dict] = {}
     seen: Counter = Counter()
     for name, path in sorted(captures.items()):
@@ -113,11 +115,22 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
             per_model[name] = {"status": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
             continue
         seen.update(ops)
+        non_core = set(ops) - core
         per_model[name] = {
             "status": "ok",
+            # These are provenance-tag observations, not a complete account of all IR operations:
+            # a capture may contain untagged regions. Counts are needed to distinguish one rare
+            # operator from one repeated thousands of times, while a zero-tag capture must not
+            # read as a model requiring no operators.
             "n_ops": len(ops),
+            "n_tagged_calls": sum(ops.values()),
+            "op_counts": dict(sorted(ops.items())),
             "core": sorted(set(ops) & core),
-            "non_core": sorted(set(ops) - core),
+            "non_core": sorted(non_core),
+            "composite": sorted(non_core & decomposed),
+            "unclassified": sorted(non_core - decomposed),
+            "inventory_complete": False,
+            "inventory_scope": "prov.aten-tagged calls only; untagged IR and lowering support are not proven",
         }
     observed_core = sorted(set(seen) & core)
     non_core = set(seen) - core
@@ -127,7 +140,6 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
     # model. What the table does NOT cover (in-place and aliasing variants: `relu_`, `add_`,
     # `flatten.using_ints`) stays in its own bucket, because guessing that `relu_` is `relu` is exactly
     # the name-matching this repo avoids.
-    decomposed = set((opset or {}).get("decomposed") or ())
     composite = sorted(non_core & decomposed)
     unclassified = sorted(non_core - decomposed)
     return {
@@ -143,6 +155,7 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
         "unclassified_observed": unclassified,
         "per_model": per_model,
         "unreadable": sorted(n for n, d in per_model.items() if d.get("status") != "ok"),
+        "untagged_or_empty": sorted(n for n, d in per_model.items() if d.get("status") == "ok" and not d["op_counts"]),
     }
 
 

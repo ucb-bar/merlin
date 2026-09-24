@@ -1807,8 +1807,9 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
     # decide it anywhere: the manifest admits, the registry expresses, an accuracy gate certifies. The
     # admitted set is passed in rather than re-read, so this and the cells above cannot end up with two
     # answers to "what does this target support". A target whose preference names nothing it admits
-    # synthesizes NO roster capsule and says so -- compiling a roster model in a format the hardware
-    # lacks is not a weaker result, it is a different one.
+    # synthesizes NO roster capsule and refuses -- compiling a roster model in a format the hardware
+    # lacks is not a weaker result, it is a different one. Likewise, a roster with no contraction cell
+    # cannot be silently omitted just because this axis currently selects its format from contractions.
     roster = [str(m) for m in (ws.get("models") or ())]
     contraction_dtypes = {
         str(c.get("dtype")) for c in cells if c.get("dtype") and str(c.get("family")) == "contraction"
@@ -1886,6 +1887,13 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
                 f"(admitted: {policy.get('admitted')}), so no roster model can be compiled at a format "
                 f"the hardware has"
             )
+    elif roster:
+        unexpressable.append(
+            f"roster axis: declared models {roster} but the derived requirement has no contraction "
+            "cell. This synthesizer cannot select a whole-model compile format or an accelerator "
+            "obligation from that evidence; declare and derive an appropriate model datapath for "
+            "this target class rather than silently omitting its roster capsules"
+        )
 
     if unexpressable:
         raise SynthesisError(

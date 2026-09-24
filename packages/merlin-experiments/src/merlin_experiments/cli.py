@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     child.add_argument("run_dir", type=Path)
     child.add_argument("--checkpoint", type=Path, help="sealed native checkpoint for a new model_portfolio segment")
     corpus = commands.add_parser(
-        "corpus", help="derive capsule groups, or prepare, inspect and review a corpus release"
+        "corpus", help="derive capsule groups, inspect run coverage, or prepare and review a corpus release"
     )
     operations = corpus.add_subparsers(dest="operation", required=True)
     from merlin.targetgen import group_capsules
@@ -60,6 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     group_capsules.configure_parser(groups)
     compare = operations.add_parser("compare", help="compare public recipes from explicit definitions; prints JSON")
     compare.add_argument("definitions", nargs="+", help="definition paths or catalog ids")
+    coverage = operations.add_parser("coverage", help="inspect public coverage of one completed Phase 0 run")
+    coverage.add_argument("run_dir", type=Path)
+    coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument("--output", type=Path, required=True)
@@ -78,6 +81,12 @@ def main(argv: list[str] | None = None) -> int:
                 from .phase0.comparison import build
 
                 print(json.dumps(build([_source(value, args.catalog) for value in args.definitions]), indent=2))
+                return 0
+            if args.operation == "coverage":
+                from .corpus.coverage import inspect_run
+
+                result = inspect_run(args.run_dir, args.spec)
+                print(json.dumps(result, indent=2))
                 return 0
             from .corpus import release as corpus_release
 

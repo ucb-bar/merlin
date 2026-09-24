@@ -66,6 +66,29 @@ def test_the_census_separates_core_from_non_core(opset):
             assert not (set(d["non_core"]) & core), name
 
 
+def test_operator_inventory_counts_calls_without_claiming_compile_coverage(tmp_path):
+    capture = tmp_path / "model.mlir"
+    capture.write_text(
+        '"linalg.generic"() {prov.aten = "aten.add.Tensor"}\n'
+        '"linalg.generic"() {prov.aten = "aten.add.Tensor"}\n'
+        '"linalg.generic"() {prov.aten = "aten.relu.default"}\n',
+        encoding="utf-8",
+    )
+    empty = tmp_path / "untagged.mlir"
+    empty.write_text('"linalg.generic"()\n', encoding="utf-8")
+    report = AC.census(
+        {"tagged": capture, "untagged": empty},
+        opset={"ops": ["aten.add.Tensor"], "decomposed": ["aten.relu.default"]},
+    )
+    tagged = report["per_model"]["tagged"]
+    assert tagged["op_counts"] == {"aten.add.Tensor": 2, "aten.relu.default": 1}
+    assert tagged["n_tagged_calls"] == 3
+    assert tagged["composite"] == ["aten.relu.default"]
+    assert tagged["unclassified"] == []
+    assert tagged["inventory_complete"] is False
+    assert report["untagged_or_empty"] == ["untagged"]
+
+
 def test_unclassified_regions_are_never_folded_into_either_bucket(opset):
     """A region whose family could not be determined is evidence neither of coverage nor of a gap.
     The routing denominator is routed + fallback; unclassified sits beside it."""
@@ -214,14 +237,12 @@ def test_a_frontend_composite_tag_is_classified_not_dismissed(opset, tmp_path):
 def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_path):
     """`ParseError: <path>:17083:5` and "the capture is corrupt" license opposite actions.
 
-    One says re-capture the model; the other says teach the parser a form it does not read. Measured on
-    `smolvla_fp32_consistent`: valid MLIR that xDSL 0.68.0 refuses, because its `linalg.generic`
-    assembly accepts only the single-result `-> tensor<...>` form while a fused argmin yields two
-    results. One construct in a 4.3 MB module cost that model's entire routing evidence, and the report
-    said only "ParseError".
+    One says re-capture the model; the other says teach the parser a form it does not read. Keep a
+    deliberately malformed multi-result annotation here. Older parsers rejected the *valid* form as
+    well, but once that parser defect was fixed it stopped being a parse-failure fixture.
 
-    The reported line is the failure POINT and the line before it, because a parser that rejects an op
-    reports where it gave up -- which is the start of the next statement, not the offending one.
+    The report includes the failure point and its neighboring source line so an operator can distinguish
+    malformed capture input from a missing parser feature.
     """
     bad = tmp_path / "unreadable.mlir"
     bad.write_text(
@@ -234,7 +255,7 @@ def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_p
         "ins(%a : tensor<4xi64>) outs(%e, %f : tensor<i64>, tensor<i64>) {\n"
         "    ^bb0(%x: i64, %y: i64, %z: i64):\n"
         "      linalg.yield %x, %y : i64, i64\n"
-        "    } -> (tensor<i64>, tensor<i64>)\n"
+        "    } -> (tensor<i64>, tensor<>)\n"
         "    func.return %0 : tensor<i64>\n"
         "  }\n"
         "}\n",
@@ -245,10 +266,7 @@ def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_p
     d = rep["per_model"]["multi_result"]
     assert d["status"] == "unreadable"
     assert isinstance(d.get("line"), int) and d["line"] > 0, "the location must be structural"
-    # The construct the parser refused ends on the line BEFORE where it gave up.
-    assert "linalg.generic" in d.get("after", "") or "-> (tensor" in d.get("after", ""), (
-        f"the report must show the construct, got after={d.get('after')!r}"
-    )
+    assert "-> (tensor" in d.get("at", ""), f"the report must show the construct, got at={d.get('at')!r}"
     assert rep["routing"]["denominator"] == 0, "an unreadable model contributes no regions"
 
 

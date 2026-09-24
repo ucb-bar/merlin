@@ -956,20 +956,10 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
     (e.g. A2_single_tile_matmul) and ``--package`` the OOT backend. Accelerators run capsules/kernels,
     not whole VLA models."""
     from .common.paths import repo_root, runs_root
-    from .targetgen import capsule_common, oot_runner
+    from .targetgen import oot_runner
 
-    # Default to the resolved target's conventional OOT backend package
-    # (``out/artifacts/targets/<target>/agent_spec_v1_mlir_oot``, artifact_type mlir_oot_target_backend,
-    # which oot_runner.certify requires) when it exists on disk — so any target that ships one resolves
-    # its default. A target without that package (or with a bespoke layout) must name it via --package.
-    pkg_dir = package or _default_oot_package(target)
     corpus = repo_root() / "merlin/contract/capsules/isa"
-    out: dict = {"tool": "merlin-compile", "target": target, "workload": workload, "package": pkg_dir, "run": run}
-    if pkg_dir is None:
-        out["status"] = "not_run"
-        out["reason"] = f"--package required for target {target!r} (no default OOT package)"
-        return out
-    rr = runs_root(target, "compile")
+    out: dict = {"tool": "merlin-compile", "target": target, "workload": workload, "package": package, "run": run}
 
     # compile-only: build the OOT package (board-free, needs the OOT/clang toolchain).
     # VALIDATE THE WORKLOAD BEFORE ANYTHING REPORTS SUCCESS. This check used to live below the
@@ -984,10 +974,22 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
         out["status"] = "not_run"
         out["reason"] = (
             f"no capsule {workload!r} under {corpus} (use a capsule name). This target "
-            f"compiles CAPSULES, not whole models -- a whole-model bundle is built "
-            f"through the bundle-pack path, not here."
+            "command compiles capsules, not target-native whole models. "
+            "Use --model-preflight with an explicit capture bundle and deployment dtype "
+            "to inspect model readiness; preflight does not compile a target binary."
         )
         return out
+
+    # Resolve the backend only after checking that this interface can compile the
+    # requested workload. A missing package must not conceal a whole-model request
+    # behind a generic package error.
+    pkg_dir = package or _default_oot_package(target)
+    out["package"] = pkg_dir
+    if pkg_dir is None:
+        out["status"] = "not_run"
+        out["reason"] = f"--package required for target {target!r} (no default OOT package)"
+        return out
+    rr = runs_root(target, "compile")
 
     pkg = oot_runner.load_package(pkg_dir)
     oot_runner.build_package(pkg, timeout=timeout)
@@ -1008,14 +1010,14 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="merlin-compile",
-        description="Compile (and optionally build/run/verify) a workload with Merlin. One command; "
-        "everything else handled in the background.",
+        description="Compile RVV models or OOT capsules; inspect OOT model readiness without claiming a binary.",
     )
     ap.add_argument(
         "--workload",
-        required=True,
+        required=False,
         help="rvv: a captured model name (bitvla, openvla, rdt2, …); "
-        "an OOT target: a capsule name (A2_single_tile_matmul, …)",
+        "an OOT target: a capsule name (A2_single_tile_matmul, …); "
+        "not needed for --model-preflight (which selects an explicit bundle)",
     )
     # --target choices = rvv (whole-model) + every registered OOT target, auto-discovered via the
     # target registry (in-tree references + MERLIN_TARGET_PATH). Registering a dialect package makes
@@ -1074,13 +1076,35 @@ def main(argv: list[str] | None = None) -> int:
         help="rvv: do NOT auto-capture a missing bundle (fail with the capture command instead)",
     )
     ap.add_argument("--package", default=None, help="override the codegen/OOT package dir")
+    ap.add_argument(
+        "--model-preflight",
+        action="store_true",
+        help="read-only OOT model analysis: compare declared routes with groups in a captured program",
+    )
+    ap.add_argument("--capture-bundle", help="explicit model2MLIR capture directory for --model-preflight")
+    ap.add_argument(
+        "--deployment-dtype",
+        help="exact target operand format for --model-preflight (e.g. int8, bf16, fp8_e4m3)",
+    )
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--json", action="store_true", help="emit the result dict as JSON")
     a = ap.parse_args(argv)
 
+    if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
+        ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
+    if not a.model_preflight and not a.workload:
+        ap.error("--workload is required for compilation")
+    if a.model_preflight:
+        # The explicit bundle selects the model. An optional --workload supplied
+        # out of habit must not become a second, possibly conflicting selector.
+        a.workload = Path(a.capture_bundle).name
     run = a.run or ("k1" if a.target == "rvv" else "spike")
     try:
-        if a.target == "rvv":
+        if a.model_preflight:
+            from .compile.model_preflight import preflight_model
+
+            res = preflight_model(a.capture_bundle, target=a.target, deployment_dtype=a.deployment_dtype)
+        elif a.target == "rvv":
             res = compile_rvv(
                 a.workload,
                 a.dtype,

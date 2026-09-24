@@ -3,6 +3,10 @@
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
 run's candidate payload and may later be published to the target's OOT repository.
+Its workloads answer a different question from Phase 1's network-compile bar:
+they measure placement, cycles and model-level cost after functional capability
+has been established. A fast Phase 2 objective is not a substitute for a
+successful ResNet-50 or SmolVLA whole-model compile and correctness receipt.
 
 Start from the [Phase 1 workflow](../phase1/README.md). There are two distinct
 experiment modes, each with one shared definition template:
