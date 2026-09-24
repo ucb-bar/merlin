@@ -1,7 +1,11 @@
 """Authored target recipes have one example home; generated/private files do not."""
 
+from types import SimpleNamespace
+
 import yaml
 from merlin_experiments.phase0.declarations import all_declarations
+from merlin_experiments.phase0.profiles import load_profile
+from merlin_experiments.phase0.sweeps import _resolve_flat_extents
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.target_experiment import load_target_experiment
@@ -47,6 +51,24 @@ def test_catalog_functional_examples_require_a_new_reviewed_corpus():
     for declaration in all_declarations():
         document = yaml.safe_load(declaration.definition.read_text(encoding="utf-8"))
         assert document["phases"][1]["config"]["require_reviewed_corpus"] is True
+
+
+def test_gemmini_public_recipe_expands_to_the_existing_capsule_contract():
+    root = repo_root()
+    profile = load_profile(
+        "gemmini",
+        include_holdouts=False,
+        recipe=root / "examples/gemmini/phase0/recipe.yaml",
+        performance_template=root / "experiments/templates/phase0/performance.yaml",
+    )
+    entries = profile["capsules"]
+    assert len(entries) == 50
+    assert all(row["label"] == "public" for row in entries)
+    categories = {"isa": "isa", "layer": "layers", "model_slice": "model_slices", "model": "model"}
+    assert all(row["cat"] == categories[row["kind"]] for row in entries)
+    tail = next(row for row in entries if row["name"] == "GP1_matmul_maxpool_tail_i8")
+    assert tail["N"] == "tile+1"
+    assert _resolve_flat_extents(tail, SimpleNamespace(tile_dim=16))["N"] == 17
 
 
 def test_declared_authored_tasks_are_example_owned_with_navigation_only_aliases():

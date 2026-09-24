@@ -31,7 +31,6 @@ capsules:
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: CONFIG_EX/LD/ST smoke via a single 16x16 matmul
-  label: public
   comment: 'A0: CONFIG_EX/CONFIG_LD/CONFIG_ST smoke (trace must contain all three
     config classes).'
   M_tiles: 1
@@ -44,13 +43,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: isa
 - name: A2_single_tile_matmul
   kind: isa
   op: matmul
   source_role: uplifted_from_bareMetalC
   source_reference: bareMetalC/matmul_ws.c
-  label: public
   comment: 'A2: single 16x16 i8 matmul -> i32 (CONFIG, MVIN, PRELOAD, COMPUTE_PRELOADED,
     MVOUT).'
   M_tiles: 1
@@ -63,13 +60,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: isa
 - name: A3_k_accumulation
   kind: isa
   op: matmul
   source_role: uplifted_from_bareMetalC
   source_reference: bareMetalC/tiled_matmul_ws.c
-  label: public
   comment: 'A3: K=32 (> tile dim) forces K-accumulation (accumulate-onto PRELOAD across
     K tiles).'
   M_tiles: 1
@@ -80,14 +75,12 @@ capsules:
   out: Y0
   modes:
     k_accumulate: true
-  cat: isa
 - name: A4_acc_scale_i8
   stimulus_range: [-4, 3]
   kind: isa
   op: matmul
   source_role: uplifted_from_bareMetalC
   source_reference: bareMetalC/transpose_scale.c
-  label: public
   comment: 'A4: int32 accumulator -> f32 acc_scale (0.0625) -> saturating i8 readout.'
   M_tiles: 1
   K_tiles: 1
@@ -101,14 +94,12 @@ capsules:
   modes:
     i8: true
     acc_scale: true
-  cat: isa
 - name: A5_relu_epilogue
   stimulus_range: [-4, 3]
   kind: isa
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: relu activation
-  label: public
   comment: 'A5: relu activation (activation bits set in CONFIG_ST; exact relu numerics).'
   M_tiles: 1
   K_tiles: 1
@@ -120,14 +111,12 @@ capsules:
   - relu
   modes:
     relu: true
-  cat: isa
 - name: A6_resident_reuse
   stimulus_range: [-4, 3]
   kind: isa
   op: resident_reuse
   source_role: handauthored_compiler_test
   source_reference: resident weight reuse across two matmuls
-  label: public
   comment: 'A6 resident reuse: one resident weight reused across two matmuls (16x16
     tiles).'
   weight: W
@@ -143,13 +132,11 @@ capsules:
     epilogue:
     - relu
     M_tiles: 1
-  cat: isa
 - name: A7_edge_padding
   kind: isa
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: bareMetalC/padded.c
-  label: public
   comment: 'A7: non-16-multiple dims (20x24x12); backend zero-pads to tiles, valid
     window is exact.'
   M: 20
@@ -160,14 +147,12 @@ capsules:
   out: Y0
   modes:
     padded_edge: true
-  cat: isa
 - name: B0_quantized_linear_i8
   stimulus_range: [-4, 3]
   kind: layer
   op: matmul
   source_role: pytorch_model_slice
   source_reference: nn.Linear + per-tensor requant
-  label: public
   comment: 'B0: quantized linear (i8 x i8 -> i32 -> acc_scale -> i8).'
   M_tiles: 1
   K_tiles: 2
@@ -183,14 +168,12 @@ capsules:
     i8: true
     acc_scale: true
     k_accumulate: true
-  cat: layers
 - name: B1_linear_relu_i8
   stimulus_range: [-4, 3]
   kind: layer
   op: matmul
   source_role: pytorch_model_slice
   source_reference: nn.Linear + ReLU
-  label: public
   comment: 'B1: linear + relu (i32 readout).'
   M_tiles: 1
   K_tiles: 2
@@ -203,14 +186,12 @@ capsules:
   semantic: linear_relu
   modes:
     relu: true
-  cat: layers
 - name: B2_linear_acc_scale_relu_i8
   stimulus_range: [-4, 3]
   kind: layer
   op: matmul
   source_role: pytorch_model_slice
   source_reference: nn.Linear + requant + ReLU
-  label: public
   comment: 'B2: linear + acc_scale + relu -> i8.'
   M_tiles: 1
   K_tiles: 2
@@ -227,13 +208,11 @@ capsules:
     i8: true
     acc_scale: true
     relu: true
-  cat: layers
 - name: C0_mlp_linear1
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: mlp.fc1
-  label: public
   comment: C0_mlp_linear1
   M_tiles: 1
   K_tiles: 4
@@ -246,14 +225,12 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 - name: C1_mlp_activation_linear2
   stimulus_range: [-4, 3]
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: mlp.relu+fc2
-  label: public
   comment: C1_mlp_activation_linear2
   M_tiles: 1
   K_tiles: 4
@@ -268,13 +245,11 @@ capsules:
     i8: false
     relu: true
     acc_scale: false
-  cat: model_slices
 - name: C2_attention_q_projection
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: attn.q_proj
-  label: public
   comment: C2_attention_q_projection
   M_tiles: 1
   K_tiles: 4
@@ -287,13 +262,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 - name: C3_attention_k_projection
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: attn.k_proj
-  label: public
   comment: C3_attention_k_projection
   M_tiles: 1
   K_tiles: 4
@@ -306,13 +279,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 - name: C4_attention_v_projection
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: attn.v_proj
-  label: public
   comment: C4_attention_v_projection
   M_tiles: 1
   K_tiles: 4
@@ -325,13 +296,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 - name: C5_attention_qk_matmul
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: attn.q@k^T (Kt = K transposed leaf)
-  label: public
   comment: C5_attention_qk_matmul
   M_tiles: 1
   K_tiles: 1
@@ -344,13 +313,11 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 - name: C6_attention_pv_matmul
   kind: model_slice
   op: matmul
   source_role: pytorch_model_slice
   source_reference: attn.p@v
-  label: public
   comment: C6_attention_pv_matmul
   M_tiles: 1
   K_tiles: 1
@@ -363,20 +330,19 @@ capsules:
     i8: false
     relu: false
     acc_scale: false
-  cat: model_slices
 # --- Fused ops mined from gemmini-rocc-tests (tiled_matmul_ws_{layernorm,softmax,igelu}, attn_fp8_*).
 # These norm/activation/attention algorithms run in bf16 (the non-accelerator lanes compose with the int8
 # matmul mesh), so they are PyTorch-sourced (source: pytorch) with the m2m linalg as the interface.
-- {cat: model_slices, name: GF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
+- {name: GF1_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch softmax bf16 (tiled_matmul_ws_softmax family)', label: public, modes: {}}
-- {cat: model_slices, name: GF2_attn_full_bf16_pt, kind: model_slice, op: attention_full,
+   source_reference: 'PyTorch softmax bf16 (tiled_matmul_ws_softmax family)', modes: {}}
+- {name: GF2_attn_full_bf16_pt, kind: model_slice, op: attention_full,
    operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
    source_role: pytorch_model_slice,
-   source_reference: 'PyTorch causal attention bf16 (attn_fp8_full family)', label: public, modes: {}}
-- {cat: model_slices, name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
+   source_reference: 'PyTorch causal attention bf16 (attn_fp8_full family)', modes: {}}
+- {name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', label: public, modes: {}}
+   source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', modes: {}}
 # --- W8A8 CAPSULE: MECHANISM LANDED, CAPSULE NOT YET AUTHORED.
 # The plumbing is in place and verified (a capture requested at `quant_scheme: int8_dyn_act_int8_weight`
 # emits `aten._int_mm` accumulating in i32 instead of a float matmul over dequantized weights), and the
@@ -397,11 +363,11 @@ capsules:
 # `forbid` is the content of the assertion and is honoured ONLY against execution evidence -- "the router
 # planned no work here" is not "the compiler put no work here", and absence of a plan entry is the
 # default state, so a plan-only pass would make the claim vacuously true for free.
-- {cat: model_slices, name: GN0_layernorm_host_only_bf16_pt, kind: model_slice, op: layernorm,
+- {name: GN0_layernorm_host_only_bf16_pt, kind: model_slice, op: layernorm,
    operand_dtype: bf16, source: pytorch, M: 16, K: 32, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch LayerNorm bf16 — the negative lane: this target declares no normalization
      capability, so every region must land on the host and none may reach the mesh',
-   label: public, modes: {},
+   modes: {},
    # `require` REMOVED, deliberately. On this target routing.reachable_lanes is exactly
    # {on_mesh, scalar_rvv_lane}, so `forbid: [on_mesh]` already leaves the host lane as the only place
    # work can land -- the require added nothing here. What it DID add was an unjudgeable declaration:
@@ -419,32 +385,32 @@ capsules:
      no normalization family, so accelerating any region would be the defect. The demand is the inverted
      one -- lanes.forbid [on_mesh] -- checked against execution, never a routing plan.'}}
 # --- More int8 matmul-family (direct-MLIR int engine): Q@K^T attention scores.
-- {cat: model_slices, name: C7_attention_qk_i8, kind: model_slice, op: attention_qk, M_tiles: 1,
+- {name: C7_attention_qk_i8, kind: model_slice, op: attention_qk, M_tiles: 1,
    K_tiles: 2, q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'int8 Q@K^T attention scores (bareMetalC attention)', label: public, modes: {}}
+   source_reference: 'int8 Q@K^T attention scores (bareMetalC attention)', modes: {}}
 # --- Whole-model capstone (GATED): small_llama in int8 (torchAO int8_weight_only) end to end.
-- {cat: model, name: M0_small_llama_gemmini, kind: model, op: model, model: small_llama,
+- {name: M0_small_llama_gemmini, kind: model, op: model, model: small_llama,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama int8 — whole-model capstone (embed/RMSNorm/RoPE/attn/SwiGLU/lm_head)',
-   label: public, gate: {after_op_pass_fraction: 0.8}}
+   gate: {after_op_pass_fraction: 0.8}}
 # --- Elementwise/activation ops mined from gemmini-rocc-tests (resadd residual, igelu activation).
-- {cat: model_slices, name: GF4_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
+- {name: GF4_add_bf16_pt, kind: model_slice, op: add, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch residual add bf16 (gemmini-rocc-tests resadd)', label: public, modes: {}}
-- {cat: model_slices, name: GF5_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
+   source_reference: 'PyTorch residual add bf16 (gemmini-rocc-tests resadd)', modes: {}}
+- {name: GF5_gelu_bf16_pt, kind: model_slice, op: gelu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch GELU-tanh bf16 (gemmini-rocc-tests igelu)', label: public, modes: {}}
+   source_reference: 'PyTorch GELU-tanh bf16 (gemmini-rocc-tests igelu)', modes: {}}
 # --- Spec-sourced capsule: the PROGRAM + bit-exact golden come from the specir verification spec itself
 # (spec_ref), not a handauthored template — the spec's command buffer + coverage_goal ship as grounding.
-- {cat: isa, name: GS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'gemmini:op.matmul',
+- {name: GS0_matmul_spec, kind: isa, op: matmul, source: spec, spec_ref: 'gemmini:op.matmul',
    M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0, source_role: spec_derived,
    source_reference: 'specir spec-sourced int8 matmul (program + bit-exact refmodel golden + coverage)',
-   label: public}
+}
 # --- Conv family: native int8 conv2d (direct-MLIR merlin_iface.conv2d, mined from bareMetalC/conv.c) +
 # the vector-lane conv/pool ops (bf16 pytorch: depthwise MixFFN, pooling, global average).
-- {cat: layers, name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
+- {name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
    source_role: uplifted_from_bareMetalC, source_reference: 'im2col conv2d int8 (bareMetalC/conv.c)',
-   label: public}
+}
 # THE GEOMETRY AXES, WHICH EVERY CONV CAPSULE HELD AT ITS DEFAULT. Until these, all four convolution
 # capsules in the corpus declared padding [0,0,0,0], unit stride and unit dilation over an identical
 # 3x3 window -- the same geometry four times. The builder has accepted all three parameters all along
@@ -456,20 +422,20 @@ capsules:
 # whatever the on-chip staging buffer held from a previous tile computes a wrong result that is only
 # wrong in the border rows, which is why an unpadded corpus never sees it. Same-padding is chosen so
 # the output extent matches the input and the border is the majority of the difference.
-- {cat: layers, name: GC7_conv2d_pad_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
+- {name: GC7_conv2d_pad_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
    kh: 3, kw: 3, padding: [1, 1, 1, 1],
    source_role: derived_sweep,
    source_reference: 'im2col conv2d int8 at same-padding: the out-of-bounds taps must read as zero
      rather than as whatever the staging buffer last held',
-   label: public}
+}
 # Non-unit stride moves the window by more than one position, so consecutive output rows no longer
 # read overlapping input taps. A schedule that assumes the overlap is what makes a stale-row reuse
 # look correct at stride 1.
-- {cat: layers, name: GC8_conv2d_stride2_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
+- {name: GC8_conv2d_stride2_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
    kh: 3, kw: 3, stride: [2, 2],
    source_role: derived_sweep,
    source_reference: 'im2col conv2d int8 at stride 2: consecutive output positions share no input tap',
-   label: public}
+}
 # THE QUANTIZED CONVOLUTION EPILOGUE, WHICH EVERY CONV CAPSULE ABOVE LEAVES OFF.
 #
 # MEASURED, and the reason this family exists. On the ResNet-50 capture all 53 convolutions DO route
@@ -496,7 +462,7 @@ capsules:
 # The geometry is deliberately four different ResNet-shaped layers, not one shape four times -- the
 # defect GC7/GC8 were added for. Each carries a DIFFERENT `acc_scale`, so a backend that reads the
 # multiplier from one capsule and hardcodes it fails the other three.
-- {cat: layers, name: GQ0_conv2d_requant_relu_i8, kind: layer, op: conv2d,
+- {name: GQ0_conv2d_requant_relu_i8, kind: layer, op: conv2d,
    Himg: 8, Wimg: 8, ci: 4, N: 16, kh: 3, kw: 3,
    stimulus_range: [-4, 3], epilogue: [bias_add, acc_scale, relu], acc_scale: 0.0625,
    lanes: {require: [on_mesh]},
@@ -505,11 +471,11 @@ capsules:
    source_reference: 'int8 3x3 conv with the quantized CNN epilogue fused onto the store path
      (per-channel bias -> f32 acc_scale -> relu -> saturating i8 commit), asserted on_mesh',
    comment: 'GQ0: 3x3 int8 conv over 8x8x4 -> 6x6x16 with bias/acc_scale/relu fused on the store path.',
-   label: public}
+}
 # THE POINTWISE LAYER. Half of ResNet-50's convolutions are 1x1, and a 1x1 conv is where the epilogue
 # is the MAJORITY of the layer's non-contraction work -- the contraction is one tap deep, so a host
 # round trip per output element is the whole cost. No conv capsule in this corpus is 1x1.
-- {cat: layers, name: GQ1_conv2d_1x1_requant_relu_i8, kind: layer, op: conv2d,
+- {name: GQ1_conv2d_1x1_requant_relu_i8, kind: layer, op: conv2d,
    Himg: 6, Wimg: 6, ci: 16, N: 16, kh: 1, kw: 1,
    stimulus_range: [-4, 3], epilogue: [bias_add, acc_scale, relu], acc_scale: 0.125,
    lanes: {require: [on_mesh]},
@@ -518,11 +484,11 @@ capsules:
    source_reference: 'int8 1x1 pointwise conv with the quantized epilogue fused onto the store path --
      the shape where the epilogue dominates the layer',
    comment: 'GQ1: 1x1 int8 conv over 6x6x16 -> 6x6x16 with bias/acc_scale/relu fused on the store path.',
-   label: public}
+}
 # SAME-PADDING WITH THE EPILOGUE ON. GC7 proved the zero-pad taps alone; this pairs them with the
 # readout, because a border row that is requantized from a stale staging buffer is wrong only at the
 # edge AND only after the scale -- neither capsule alone can see it.
-- {cat: layers, name: GQ2_conv2d_pad_requant_relu_i8, kind: layer, op: conv2d,
+- {name: GQ2_conv2d_pad_requant_relu_i8, kind: layer, op: conv2d,
    Himg: 6, Wimg: 6, ci: 4, N: 16, kh: 3, kw: 3, padding: [1, 1, 1, 1],
    stimulus_range: [-4, 3], epilogue: [bias_add, acc_scale, relu], acc_scale: 0.03125,
    lanes: {require: [on_mesh]},
@@ -531,11 +497,11 @@ capsules:
    source_reference: 'int8 3x3 same-padded conv with the quantized epilogue fused onto the store path:
      the out-of-bounds taps must read as zero THROUGH the requantization',
    comment: 'GQ2: 3x3 same-padded int8 conv over 6x6x4 -> 6x6x16 with the quantized epilogue fused.',
-   label: public}
+}
 # THE DOWNSAMPLING LAYER. Every ResNet stage transition is a strided conv whose epilogue is the same
 # three stages; at stride 2 consecutive outputs share no input tap, so a schedule that reuses a staged
 # row survives GQ0 and fails here.
-- {cat: layers, name: GQ3_conv2d_stride2_requant_relu_i8, kind: layer, op: conv2d,
+- {name: GQ3_conv2d_stride2_requant_relu_i8, kind: layer, op: conv2d,
    Himg: 8, Wimg: 8, ci: 8, N: 16, kh: 3, kw: 3, stride: [2, 2],
    stimulus_range: [-4, 3], epilogue: [bias_add, acc_scale, relu], acc_scale: 0.25,
    lanes: {require: [on_mesh]},
@@ -544,7 +510,7 @@ capsules:
    source_reference: 'int8 3x3 stride-2 conv with the quantized epilogue fused onto the store path --
      the ResNet stage-transition shape',
    comment: 'GQ3: 3x3 stride-2 int8 conv over 8x8x8 -> 3x3x16 with the quantized epilogue fused.',
-   label: public}
+}
 # THE RANK-3 CONTRACTION, WHICH THE CONTRACT ADMITS AND NO CAPSULE EXERCISED. The target contract
 # declared `ranks: [2, 4]`, so a batched matmul -- output rank 3 -- was ruled ineligible before it
 # reached the device rewrite, even though the rewrite already supports the (B,M,N,K) signature, the
@@ -552,47 +518,47 @@ capsules:
 # calling that kernel once per independent slice. The machinery existed and the contract forbade its
 # use. The contract now reads [2, 3, 4]; this is the capsule that keeps it honest, because every
 # other operand in the corpus is rank-2 and a revert of that line would otherwise be invisible.
-- {cat: layers, name: GB0_batched_matmul_i8, kind: layer, op: gemv_batched, B: 2, M: 16, H: 32, N: 16,
+- {name: GB0_batched_matmul_i8, kind: layer, op: gemv_batched, B: 2, M: 16, H: 32, N: 16,
    source_role: derived_sweep,
    source_reference: 'batched int8 contraction: two independent (M,H)x(H,N) slices, the rank-3 shape
      the target contract admits and no other capsule declares',
-   label: public, modes: {}}
-- {cat: model_slices, name: GC1_depthwise_bf16_pt, kind: model_slice, op: depthwise_conv2d,
+   modes: {}}
+- {name: GC1_depthwise_bf16_pt, kind: model_slice, op: depthwise_conv2d,
    operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 3, out: Y0,
    source_role: pytorch_model_slice, source_reference: 'PyTorch depthwise conv bf16 (MixFFN depthwise)',
-   label: public, modes: {}}
-- {cat: model_slices, name: GC2_maxpool_bf16_pt, kind: model_slice, op: maxpool2d, operand_dtype: bf16,
-   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch 2x2 max-pool bf16', label: public, modes: {}}
-- {cat: model_slices, name: GC3_avgpool_bf16_pt, kind: model_slice, op: avgpool2d, operand_dtype: bf16,
-   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch 2x2 avg-pool bf16', label: public, modes: {}}
-- {cat: model_slices, name: GC4_global_avg_bf16_pt, kind: model_slice, op: global_average,
-   operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, out: Y0,
-   source_role: pytorch_model_slice, source_reference: 'PyTorch global average pool bf16', label: public,
    modes: {}}
-- {cat: model_slices, name: GC5_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
+- {name: GC2_maxpool_bf16_pt, kind: model_slice, op: maxpool2d, operand_dtype: bf16,
+   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch 2x2 max-pool bf16', modes: {}}
+- {name: GC3_avgpool_bf16_pt, kind: model_slice, op: avgpool2d, operand_dtype: bf16,
+   source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 2, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch 2x2 avg-pool bf16', modes: {}}
+- {name: GC4_global_avg_bf16_pt, kind: model_slice, op: global_average,
+   operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, out: Y0,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch global average pool bf16',
+   modes: {}}
+- {name: GC5_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
    operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
-   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16', label: public, modes: {}}
-- {cat: model_slices, name: GC6_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
+   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16', modes: {}}
+- {name: GC6_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
    source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch bias add bf16', label: public, modes: {}}
+   source_reference: 'PyTorch bias add bf16', modes: {}}
 # --- Second whole-model capstone (GATED): lstmnetvit int8 — broader layer types (conv patch-embed,
 # spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
-- {cat: model, name: M1_lstmnetvit_gemmini, kind: model, op: model, model: lstmnetvit,
+- {name: M1_lstmnetvit_gemmini, kind: model, op: model, model: lstmnetvit,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'lstmnetvit int8 — vision+LSTM control net (conv/spatial-attn/MixFFN/upsample/LSTM)',
-   label: public, gate: {after_op_pass_fraction: 0.8}}
+   gate: {after_op_pass_fraction: 0.8}}
 # INTEROP: the capstones above assert the accelerator ran the whole model; this one asserts the compiler
 # can SPLIT one across the mesh and the host scalar/RVV lane and still be numerically right. That is the
 # normal shape of a real network on a matmul-only mesh -- norms and activations have nowhere else to go --
 # so a bar that treats host-lane work as failure tests the wrong thing. `must_accelerate` is withheld for
 # a lane-declaring capsule for exactly that reason. This target declares one compute unit (systolic_mesh),
 # so `in_contract_vector_scalar` is unreachable here and is deliberately not required.
-- {cat: model, name: GX0_interop_rvv_lane, kind: model, op: model, model: small_llama,
+- {name: GX0_interop_rvv_lane, kind: model, op: model, model: small_llama,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'small_llama int8 composed across the systolic mesh and the host scalar/RVV lane — asserts both lanes carried work',
-   label: public, gate: {after_op_pass_fraction: 0.8},
+   gate: {after_op_pass_fraction: 0.8},
    lanes: {require: [on_mesh, scalar_rvv_lane]},
    generalization: {not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
      under test, so host/RVV-lane work is expected and required. The accelerator demand is expressed as
@@ -606,11 +572,11 @@ capsules:
 # does NOT admit -- normalization and reduction, which therefore have nowhere but the host lane to go --
 # interleaved so the host work sits BETWEEN accelerator work. Its network is defined in the capsule's
 # own capsule.pytorch.py: unlike M1 it needs no external model checkout, so a clean clone can rebuild it.
-- {cat: model, name: M2_microvit_gemmini, kind: model, op: model, model: microvit,
+- {name: M2_microvit_gemmini, kind: model, op: model, model: microvit,
    loader: merlin/contract/capsules/model/M2_microvit_gemmini/capsule.pytorch.py,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'microvit int8 — tile-sized vision+recurrent control net (overlapping patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool fusion, LSTM cell), composed across the systolic mesh and the host lane',
-   label: public, gate: {after_op_pass_fraction: 0.8},
+   gate: {after_op_pass_fraction: 0.8},
    lanes: {require: [on_mesh, scalar_rvv_lane]},
    pass_requirements: [model-boundary-capstone],
    generalization: {not_asserted_reason: 'The model deliberately contains required scalar/RVV host
@@ -636,7 +602,7 @@ capsules:
 #
 # Interop, not all-region: like M2, the model deliberately contains normalization/activation families
 # this target's manifest does not admit, so they have nowhere but the host lane to go.
-- {cat: model, name: M4_smolvla_denoise_gemmini, kind: model, op: model, model: smolvla_denoise_step,
+- {name: M4_smolvla_denoise_gemmini, kind: model, op: model, model: smolvla_denoise_step,
    loader: merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.pytorch.py,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'smolvla denoise step int8 — one flow-matching step of a vision-language-action
@@ -644,7 +610,7 @@ capsules:
      timestep-conditioned action expert cross-attending into the prefix, GELU FFN, action head), at the
      extents the cycle-accurate tier can afford; op inventory derived from the prov census of
      out/artifacts/recaptures/smolvla_denoise_step_fp32_app/model.mlir',
-   label: public, gate: {after_op_pass_fraction: 0.8},
+   gate: {after_op_pass_fraction: 0.8},
    lanes: {require: [on_mesh, scalar_rvv_lane]},
    pass_requirements: [model-boundary-capstone],
    generalization: {not_asserted_reason: 'The model deliberately contains required scalar/RVV host
@@ -671,11 +637,11 @@ capsules:
 # `A` or `A->A`, and the op-level pytorch path takes no custom loader and refuses an int8 dtype. The gate
 # is 0.0 rather than the model default 0.8 -- this capsule is three tiles of arithmetic, so deferring it
 # behind the op suite buys nothing and would leave the seam unproven whenever the suite is short.
-- {cat: model, name: M3_host_island_seam_gemmini, kind: model, op: model, model: host_island_seam,
+- {name: M3_host_island_seam_gemmini, kind: model, op: model, model: host_island_seam,
    loader: merlin/contract/capsules/model/M3_host_island_seam_gemmini/capsule.pytorch.py,
    operand_dtype: int8, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the subject of a capsule rather than a by-product of a whole model',
-   label: public, gate: {after_op_pass_fraction: 0.0},
+   gate: {after_op_pass_fraction: 0.0},
    pass_requirements: [model-boundary-capstone],
    lanes: {require: [on_mesh, scalar_rvv_lane]},
    # BOTH assertions, and the capsule is meaningless without either. `must_accelerate` demands the two
@@ -713,14 +679,12 @@ capsules:
 # instead of silently authoring a capsule in the wrong regime.
 - name: GM0_deep_k_fits_single_i8
   kind: layer
-  cat: layers
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: >-
     derived memory-mapping coverage: a contraction whose operands occupy 12288 of the operand store's
     16384 rows (75.0%) -- it fits ONCE and cannot be double-buffered, so serialising movement against
     compute is correct here and failing to stage is not a defect
-  label: public
   comment: 'GM0: deep-K int8 contraction sized to the fits_single regime (75.0% of the operand store).'
   M: 16
   K: 6144
@@ -735,14 +699,12 @@ capsules:
     k_accumulate: true
 - name: GM1_deep_k_spills_i8
   kind: layer
-  cat: layers
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: >-
     derived memory-mapping coverage: the SMALLEST tile-aligned contraction whose operands exceed the
     operand store (16416 of 16384 rows, 100.2%) -- no allocation makes it fit, so the compiler must
     choose a loop order and pay re-load traffic instead of holding everything resident
-  label: public
   comment: 'GM1: deep-K int8 contraction sized past the operand store (100.2%) -- the spills regime.'
   M: 16
   K: 8208
@@ -777,14 +739,12 @@ capsules:
 - name: GP0_matmul_maxpool_i8
   stimulus_range: [-4, 3]
   kind: layer
-  cat: layers
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: >-
     derived pooling coverage: an int8 contraction whose accumulator readout pools 2x2, the store-path
     fusion the capability manifest declares (has_max_pool) and which no capsule exercised -- every
     extent a whole tile, so this is the `reduction/i8/aligned` cell
-  label: public
   comment: 'GP0: 16x16x16 int8 matmul whose commit fuses a 2x2/2 max-pool over the 4x4 output plane.'
   M: 16
   K: 16
@@ -810,14 +770,12 @@ capsules:
 - name: GP1_matmul_maxpool_tail_i8
   stimulus_range: [-4, 3]
   kind: layer
-  cat: layers
   op: matmul
   source_role: handauthored_compiler_test
   source_reference: >-
     derived pooling coverage at the tail: a 5x5 output plane pooled by a 2x2/2 window (the fifth row and
     column fall outside every window and must be DROPPED, not folded in) with an output extent that does
     not divide the array edge -- the `reduction/i8/partial` cell
-  label: public
   comment: 'GP1: 25x16x17 int8 matmul; the commit pools a ragged 5x5 plane 2x2/2 down to 2x2.'
   # 25 = 5x5, and 5 is odd: the last row and the last column of the plane are covered by no window.
   # A pooling store that folded them in (or that rounded the output extent up) still returns a
@@ -826,7 +784,7 @@ capsules:
   K: 16
   # N = tile+1: the pooled result is ALSO a partial tile on the channel axis, so a backend cannot pass
   # by handling the ragged pool while still tiling the store to whole array edges.
-  N: 17
+  N: tile+1
   lhs: A0
   weight: W
   out: Y0
@@ -843,14 +801,12 @@ capsules:
 - name: GP2_conv2d_maxpool_i8
   stimulus_range: [-4, 3]
   kind: layer
-  cat: layers
   op: conv2d
   source_role: handauthored_compiler_test
   source_reference: >-
     derived pooling coverage in its NATIVE form: the fused conv loop takes the pooling window directly
     (pool_size/pool_stride/pool_padding) and stores the pooled result, so a conv+pool is the shape the
     hardware actually offers -- the conv-with-epilogue counterpart of GP0/GP1
-  label: public
   comment: 'GP2: 3x3 int8 conv over 8x8x4 -> 6x6x16, with a 2x2/2 max-pool fused onto the store.'
   Himg: 8
   Wimg: 8

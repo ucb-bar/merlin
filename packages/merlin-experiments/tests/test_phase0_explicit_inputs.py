@@ -41,6 +41,8 @@ def test_explicit_merge_order_and_template_identity(inputs, monkeypatch):
     result = profiles.load_profile("unrelated-selector", **inputs)
     assert observed == list(inputs.values())
     assert [row["name"] for row in result["capsules"]] == ["public", "synth", "smt", "hidden"]
+    assert result["capsules"][0]["label"] == "public"
+    assert all("label" not in row for row in result["capsules"][1:])
     assert result["sweeps"] == [{"id": "hidden_sweep"}]
     assert result["_performance_template"]["path"] == str(inputs["performance_template"])
     assert result["_performance_template"]["sha256"] == profiles._document_digest({"sweeps": []})

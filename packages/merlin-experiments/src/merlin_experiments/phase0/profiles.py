@@ -80,6 +80,38 @@ _PERFORMANCE_NESTED_FIELDS = {
     "cost": frozenset({"tier", "runs", "projected_cycles", "basis"}),
 }
 
+# Public recipes describe workload intent. These directory categories are a
+# presentation of the existing capsule kind, not target-authored facts.
+_PUBLIC_CATEGORY_BY_KIND = {
+    "isa": "isa",
+    "layer": "layers",
+    "model_slice": "model_slices",
+    "model": "model",
+}
+
+
+def _normalize_public_capsules(profile: dict, *, source: Path) -> None:
+    """Fill redundant metadata only for entries in the selected public recipe.
+
+    Sidecars (especially private holdouts) and the shared performance template
+    are merged later and retain their own explicit labels and categories.
+    Explicit values on a public entry also remain authoritative.
+    """
+    entries = profile.get("capsules") or []
+    if not isinstance(entries, list):
+        raise ValueError(f"{source}: capsules must be a list")
+    normalized = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{source}: capsule {index} must be a mapping")
+        row = dict(entry)
+        row.setdefault("label", "public")
+        category = _PUBLIC_CATEGORY_BY_KIND.get(row.get("kind"))
+        if category is not None:
+            row.setdefault("cat", category)
+        normalized.append(row)
+    profile["capsules"] = normalized
+
 
 def _validate_performance_block(block, *, owner: str) -> dict:
     """Validate the claim-bearing contract before a family can be admitted.
@@ -411,6 +443,7 @@ def load_profile(
             if optional is not None and (optional.exists() or optional.is_symlink()) and not optional.is_file():
                 raise ValueError(f"declared optional profile is not a file: {optional}")
     prof = yaml.safe_load(public.read_text(encoding="utf-8")) or {}
+    _normalize_public_capsules(prof, source=public)
     _merge_shared_perf(prof, source=public, performance_template=shared)
     # SYNTHESIZED ENTRIES, appended after the hand-authored ones. They come from the target's own
     # derived conformance requirement (build_tools/scripts/synth_capsule_corpus.py --write) and carry

@@ -6,6 +6,12 @@ Start with [the experiment definition](../experiment.yaml), catalog ID
 [`recipe.yaml`](recipe.yaml) is the authored public coverage recipe, not a generated
 corpus or evidence of hardware correctness. The definition explicitly names its shared
 `performance_template` and generated `synth_profile` / `smt_profile` inputs.
+Public capsule entries omit `label: public` and the output category when it follows
+`kind` (`isa`, `layer`, `model_slice`, or `model`); the Phase 0 loader restores both
+before generation. Tile-relative extents such as `tile+1` resolve from the selected
+target binding. Workload choices, software-visible numeric semantics (including the
+requantization shift), and independent oracle expectations remain explicit: CIRCT
+structure alone cannot establish them.
 Private `hidden_profile` stays outside examples; never copy holdouts, goldens, weights,
 or generated capsules here. Optional sidecars may be absent; frozen runs bind their
 presence as well as their bytes.
