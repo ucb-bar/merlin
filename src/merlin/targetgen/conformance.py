@@ -364,7 +364,9 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
     admitted dtype AT ALL, which is the narrow case: a target admitting ``contraction`` at int8 still
     cannot take an f32 contraction, and a real model is full of them. Every pair here is work the
     compiler must place on the host, and a corpus with no capsule for it cannot tell a compiler that
-    routes it correctly from one that does not.
+    routes it correctly from one that does not. Expressed tensor types outside the format registry
+    are separate host/support obligations: no typed capsule writer can represent them faithfully,
+    but they are never dropped or treated as accelerator-admissible.
 
     Derived by intersecting what the captures CONTAIN with what the manifest ADMITS, both as
     (family, dtype) pairs -- the same two sources the cells come from, read at the resolution the cells
@@ -396,6 +398,24 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
     for pair, n in from_corpus.items():  # distinguishable in what each pair says it rests on
         seen[pair] = max(int(seen.get(pair, 0)), int(n))
 
+    # A tensor with an MLIR element type outside the quant-format registry is still HOST work, but
+    # this capsule-pair axis cannot faithfully materialize it: the corpus schema has no format or
+    # golden policy for `unsupported_mlir:i64`/`i1`, for example. Keep the measured work as explicit
+    # support-lane debt rather than turning it into an impossible typed capsule or silently treating
+    # the previously missing dtype as accelerator-admissible.
+    unsupported_formats = [
+        {
+            "family": f,
+            "dtype": d,
+            "n_regions": n,
+            "reason": (
+                "the captured tensor element type is outside the quant-format registry; this is "
+                "host/support work, but no typed capsule writer can materialize this pair"
+            ),
+        }
+        for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
+        if str(d).startswith("unsupported_mlir:")
+    ]
     required = [
         {
             "family": f,
@@ -410,10 +430,11 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
             ),
         }
         for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
-        if (f, d) not in admitted_pairs
+        if (f, d) not in admitted_pairs and not str(d).startswith("unsupported_mlir:")
     ]
     return {
         "required": required,
+        "unsupported_format_host_obligations": unsupported_formats,
         "admitted_pairs": sorted(f"{f}/{d}" for f, d in admitted_pairs),
         "captures_unreadable": unreadable,
         "axis_basis": (
@@ -421,7 +442,9 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
             "The cells intersect admitted with observed and keep only what survives; this keeps what does "
             "NOT, which is precisely the work the compiler has to place on the host. Both sides come from "
             "the same two sources the cells do, read at the resolution the cells discard -- a region's "
-            "dtype decides whether the hardware may take it, so a family histogram cannot express it"
+            "dtype decides whether the hardware may take it, so a family histogram cannot express it. "
+            "Unsupported MLIR element types remain visible as unsupported_format_host_obligations, "
+            "not as impossible typed-capsule requirements"
         ),
     }
 

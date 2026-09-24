@@ -21,14 +21,17 @@ Geometric thresholds (fixed; documented so the verifier can re-derive them indep
 * ``SKINNY_RATIO = 4``   — M/N (or N/M) ≥ 4 ⇒ tall/wide skinny.
 * ``SQUARE_LO, SQUARE_HI = 0.5, 2.0`` — 0.5 ≤ M/N ≤ 2.0 ⇒ square-ish …
 * ``TINY_DIM = 32``      — … but only if both dims ≥ 32 (else it is just tiny).
+* Dense shapes between the square-ish and skinny ratios, with both output dimensions ≥ 32,
+  are moderately tall/wide rather than an uninformative ``unknown``.
 * ``TAIL_TILE = 32``     — reference tile used for the tail-heaviness flag.
 * ``TAIL_WASTE = 0.10``  — > 10% padding waste against a 32×32 tile ⇒ ``is_tail_heavy``.
 * ``SMALL_FRAG_MACS = 1 << 16`` — < 65 536 MACs ⇒ ``is_small_fragment`` (dispatch-bound).
 
 ``classify_geometry`` priority (first match wins) — rationale: the degenerate vector case and the
-two skinny cases dominate tile efficiency, so they are decided first; square-ish and K-dominant
-projection are the residual dense shapes; ``odd_tail_heavy`` / ``small_dispatch_fragment`` are the
-irregularity classes assigned only when no dense class matched.
+two skinny cases dominate tile efficiency, so they are decided first; square-ish, K-dominant
+projection are decided before the residual shapes; ``odd_tail_heavy`` takes precedence over
+moderate aspect so a large tile tail is not hidden by the ratio; ``small_dispatch_fragment``
+remains the last named irregularity class.
 """
 
 from __future__ import annotations
@@ -49,13 +52,26 @@ SMALL_FRAG_MACS = 1 << 16
 SQUAREISH = "squareish_gemm"
 TALL_SKINNY = "tall_skinny"
 WIDE_SKINNY = "wide_skinny"
+MODERATELY_TALL = "moderately_tall_gemm"
+MODERATELY_WIDE = "moderately_wide_gemm"
 GEMV = "gemv_like"
 PROJECTION = "projection_like"
 ODD_TAIL = "odd_tail_heavy"
 SMALL_FRAG = "small_dispatch_fragment"
 UNKNOWN = "unknown"
 
-GEOMETRY_CLASSES = (GEMV, TALL_SKINNY, WIDE_SKINNY, SQUAREISH, PROJECTION, ODD_TAIL, SMALL_FRAG, UNKNOWN)
+GEOMETRY_CLASSES = (
+    GEMV,
+    TALL_SKINNY,
+    WIDE_SKINNY,
+    SQUAREISH,
+    PROJECTION,
+    MODERATELY_TALL,
+    MODERATELY_WIDE,
+    ODD_TAIL,
+    SMALL_FRAG,
+    UNKNOWN,
+)
 
 # --- semantic roles (from prov.fqn) ---
 SEM_QKV = "attention_qkv_projection"
@@ -151,9 +167,17 @@ def classify_geometry(M: int, N: int, K: int) -> str:
     # 5) K-dominant reduction (dense projection without a clear aspect)
     if K >= hi:
         return PROJECTION
-    # 6/7) residual irregularity classes
+    # 6) A substantial tile tail matters even when the aspect is moderate; keep that existing class.
     if is_tail_heavy(M, N):
         return ODD_TAIL
+    # 7/8) A dense 2:1–4:1 aspect is neither square-ish nor skinny. Both orientations matter:
+    # tiling M and N differently can produce different compiler failures.
+    if lo >= TINY_DIM:
+        if mn > SQUARE_HI:
+            return MODERATELY_TALL
+        if (1.0 / mn) > SQUARE_HI:
+            return MODERATELY_WIDE
+    # 9) residual dispatch-bound class
     if is_small_fragment(M, N, K):
         return SMALL_FRAG
     return UNKNOWN

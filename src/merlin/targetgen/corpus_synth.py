@@ -27,29 +27,14 @@ reads downstream as a covered one.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 #: Emitted entries carry this prefix so a synthesized capsule can never collide with a hand-authored one
 #: or with a sweep expansion (``expand_sweeps`` already raises on a duplicate name), and so a reader of
 #: the corpus can tell at a glance which capsules a requirement produced.
 SYNTH_PREFIX = "SY"
-
-
-def _derived_recipe_for(target: str, dtype: str) -> dict | None:
-    """The quantization recipe a capture of ``dtype`` on ``target`` will actually run under, or None.
-
-    The SAME resolution the capture performs (:func:`merlin.targetgen.capsule_source.derived_recipe`),
-    asked here only so a capsule's prose describes the capture that will happen rather than the named
-    fallback it would have used. Imported lazily and fail-closed to ``None``: this module is otherwise
-    pure, and a derivation fault must leave the entry describing the named scheme rather than raising
-    in the middle of corpus synthesis.
-    """
-    try:
-        from merlin.targetgen.capsule_source import derived_recipe
-
-        return derived_recipe(target, dtype)
-    except Exception:  # noqa: BLE001 -- no recipe resolvable here is "the named scheme stands"
-        return None
 
 
 #: ``source_role`` for everything this module emits. Already in the capsule schema's closed enum, and
@@ -804,13 +789,81 @@ def _mark_source(entry: dict) -> None:
         entry["source"] = "pytorch"
 
 
-def _application_operation_plan(demands: dict | None) -> dict:
+def _exact_int_mm_group_candidates(group: dict, entries: list[dict], inventory_digest: str | None) -> list[str]:
+    """Name candidates only when every source occurrence has one digest-bound exact signature.
+
+    Compact operation groups lose the individual tensor ABI. The entries retain each full sidecar
+    signature hash and ordinal, so compare their complete occurrence multiset with the compact group.
+    Equal family/dtype or a partial geometry match is insufficient.
+    """
+    if not inventory_digest or not entries:
+        return []
+    raw_sources = group.get("sources") or {}
+    if isinstance(raw_sources, dict):
+        source_rows = [{"application": label, **record} for label, record in raw_sources.items()]
+    elif isinstance(raw_sources, list):
+        source_rows = raw_sources
+    else:
+        return []
+    expected: dict[tuple[str, str], int] = {}
+    for source in source_rows:
+        if not isinstance(source, dict):
+            return []
+        key = (str(source.get("application") or ""), str(source.get("capture_sha256") or ""))
+        count = source.get("count")
+        if not all(key) or type(count) is not int or count < 1 or key in expected:
+            return []
+        expected[key] = count
+    if not expected or sum(expected.values()) != group.get("count"):
+        return []
+
+    actual: dict[tuple[str, str], int] = {}
+    ordinals: dict[tuple[str, str], set[int]] = {}
+    names: list[str] = []
+    for entry in entries:
+        match = entry.get("application_signature_match") or {}
+        if (
+            entry.get("op") != "matmul"
+            or entry.get("capture_op") != "int_matmul"
+            or match.get("status") != "candidate_unverified"
+            or match.get("full_inventory_sha256") != inventory_digest
+            or match.get("source_quantization") != "int8_dyn_act_int8_weight"
+        ):
+            return []
+        if not match.get("expected_signature") or not match.get("sources"):
+            return []
+        names.append(str(entry["name"]))
+        for source in match["sources"]:
+            key = (str(source.get("application") or ""), str(source.get("capture_sha256") or ""))
+            count = source.get("count")
+            indexes = source.get("ordinals")
+            signature = source.get("signature_sha256")
+            if (
+                key not in expected
+                or type(count) is not int
+                or count < 1
+                or not isinstance(indexes, list)
+                or len(indexes) != count
+                or any(type(index) is not int or index < 0 for index in indexes)
+                or not isinstance(signature, str)
+                or len(signature) != 64
+            ):
+                return []
+            seen = ordinals.setdefault(key, set())
+            if seen.intersection(indexes) or len(set(indexes)) != len(indexes):
+                return []
+            seen.update(indexes)
+            actual[key] = actual.get(key, 0) + count
+    return sorted(names) if actual == expected and len(set(names)) == len(names) else []
+
+
+def _application_operation_plan(demands: dict | None, *, exact_entries: list[dict] | None = None) -> dict:
     """Plan operation obligations without equating family cells to frontend coverage.
 
     The selected spec carries a compact operation projection, not the complete capture inventory.
-    Its groups can identify missing writers and host seams, but cannot prove that a capsule exercises
-    one frontend signature with its exact shape, layout and quantization semantics. That mapping (and
-    executable compiler evidence) remains an explicit, unverified obligation.
+    Its groups identify missing writers and host seams. Exact integer-matmul candidates are admitted
+    only when digest-bound detailed signatures account for every source ordinal. Emission and compiler
+    execution remain explicit, unverified obligations.
     """
     if not isinstance(demands, dict):
         return {
@@ -838,6 +891,7 @@ def _application_operation_plan(demands: dict | None) -> dict:
     if not isinstance(groups, list):
         return {
             **base,
+            "status": "blocked",
             "reason": "compact spec has no operation groups; inspect the digest-checked full inventory sidecar",
             "missing_mapping": ["application signature -> generic writer", "application signature -> exact capsule"],
             "obligations": [],
@@ -847,6 +901,7 @@ def _application_operation_plan(demands: dict | None) -> dict:
 
     pool = available_ops()
     families = _op_family_map()
+    exact_entries = list(exact_entries or ())
     obligations: list[dict] = []
     for group in groups:
         if not isinstance(group, dict):
@@ -886,7 +941,33 @@ def _application_operation_plan(demands: dict | None) -> dict:
         }
         if disposition == "hardware_admitted":
             row["lane"] = "accelerator"
-            if writer:
+            exact_candidates = (
+                _exact_int_mm_group_candidates(group, exact_entries, demands.get("full_inventory_sha256"))
+                if (
+                    operation == "aten._int_mm.default"
+                    and mlir_operation == "linalg.generic"
+                    and family == "contraction"
+                    and fmt == "int8"
+                    and group.get("shape_class") == "contraction:rank_3"
+                )
+                else []
+            )
+            if exact_candidates:
+                row.update(
+                    {
+                        "status": "candidate_unverified",
+                        "obligation": "exact_signature_capsule_and_compile_route",
+                        "writer_candidate": {"op": "matmul", "source": "pytorch", "capture_op": "int_matmul"},
+                        "capsule_candidates": exact_candidates,
+                        "mapped_occurrences": row["count"],
+                        "missing_mapping": [
+                            "capture and emit every exact PyTorch integer-matmul capsule candidate",
+                            "verify each emitted linalg signature against its digest-bound source",
+                            "generated capsule -> executable whole-model compiler route",
+                        ],
+                    }
+                )
+            elif writer:
                 row.update(
                     {
                         "status": "unverified",
@@ -961,8 +1042,15 @@ def _application_operation_plan(demands: dict | None) -> dict:
     )
     planned = sum(row["count"] for row in obligations)
     expected = int(demands.get("n_operations") or 0) - excluded
+    blocked = [row for row in obligations if row["status"] in {"refused", "blocked_unclassified"}]
     return {
         **base,
+        "status": (
+            "blocked"
+            if demands.get("status") != "inventoried" or expected <= 0 or planned != expected or blocked
+            else "obligations_pending"
+        ),
+        "blocked_operations": sum(row["count"] for row in blocked),
         "obligations": obligations,
         "n_planned_operations": planned,
         "n_non_demand_operations": excluded,
@@ -981,7 +1069,144 @@ def _application_operation_plan(demands: dict | None) -> dict:
     }
 
 
-def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int | None = None) -> dict:
+def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[list[dict], list[dict]]:
+    """Return exact W8A8 integer-matmul slice candidates from a sealed application inventory.
+
+    This is a candidate mapping, not a claim that the generated capsule or a submitted compiler runs.
+    The writer must capture ``torch._int_mm`` and verify its linalg signature before it records a match.
+    Distinct model weights with the same integer ABI need one slice; all source signatures stay linked.
+    """
+    if inventory is None:
+        return [], []
+    if not isinstance(demands, dict) or not demands.get("full_inventory_sha256"):
+        raise SynthesisError("exact application slices require a compact digest-bound inventory")
+    digest = hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if digest != demands["full_inventory_sha256"]:
+        raise SynthesisError("exact application inventory digest differs from the selected conformance spec")
+    if inventory.get("schema_version") != 1 or not isinstance(inventory.get("applications"), dict):
+        raise SynthesisError("exact application inventory has an unsupported schema")
+    compact_apps = demands.get("applications") or {}
+    if set(inventory["applications"]) != set(compact_apps):
+        raise SynthesisError("exact application inventory roster differs from the selected conformance spec")
+
+    from merlin.targetgen.application_inventory import exact_int_mm_geometry
+
+    by_geometry: dict[tuple[int, int, int], list[dict]] = {}
+    refused: list[dict] = []
+    for label, app in sorted(inventory["applications"].items()):
+        declared = compact_apps[label]
+        if any(
+            app.get(key) != declared.get(key)
+            for key in ("capture_sha256", "capture_normalization", "capture_quantization")
+        ):
+            raise SynthesisError(f"exact application capture identity differs for {label!r}")
+        scheme = app.get("capture_quantization")
+        materialized = (app.get("capture_receipt") or {}).get("status") == "verified_materialized"
+        for row in app.get("signatures") or ():
+            if row.get("operation") != "aten._int_mm.default" or row.get("mlir_operation") != "linalg.generic":
+                continue
+            source = {
+                "application": label,
+                "capture_sha256": app["capture_sha256"],
+                "signature_sha256": hashlib.sha256(
+                    json.dumps(
+                        {k: v for k, v in row.items() if k not in {"count", "ordinals"}},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+                "count": int(row.get("count") or 0),
+                "ordinals": list(row.get("ordinals") or ()),
+            }
+            # A sealed model capture proves the operation's bytes and module-level quantization
+            # identity. Older captures can still serve diagnostics when m2m supplied the per-op
+            # quantized-weight origin; absence of both receipts is a refusal.
+            geometry = exact_int_mm_geometry(row, require_quant_origin=not materialized)
+            if (
+                scheme != "int8_dyn_act_int8_weight"
+                or row.get("disposition") != "hardware_admitted"
+                or geometry is None
+            ):
+                refused.append(
+                    {
+                        **source,
+                        "reason": (
+                            "requires admitted rank-2 signed i8×i8→i32 with exact matmul maps/body, "
+                            "TorchAO int8_dyn_act_int8_weight and a verified materialization receipt "
+                            "or per-op weight-origin evidence"
+                        ),
+                    }
+                )
+                continue
+            signature = {
+                key: row[key]
+                for key in (
+                    "operation",
+                    "mlir_operation",
+                    "frontend_op",
+                    "provenance_op",
+                    "semantic_family",
+                    "operand_format",
+                    "accumulator_dtypes",
+                    "ordered_operand_types",
+                    "ordered_result_types",
+                    "result_shapes",
+                    "contraction_shape",
+                    "indexing_maps",
+                    "iterator_types",
+                    "body_operations",
+                )
+            }
+            by_geometry.setdefault(geometry, []).append({**source, "signature": signature})
+
+    entries = []
+    for (m, k, n), sources in sorted(by_geometry.items()):
+        identity = hashlib.sha256(json.dumps(sources, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        entry = {
+            "cat": "layers",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_int_mm_m{m}_k{k}_n{n}_{identity[:10]}",
+            "op": "matmul",
+            "source": "pytorch",
+            "capture_op": "int_matmul",
+            # The isolated torch._int_mm body already takes quantized i8 operands; fp32 here only
+            # disables the worker's automatic weight-only quantizer. The emitted IR is verified below.
+            "capture_dtype": "fp32",
+            "operand_dtype": "i8",
+            "output_dtype": "i32",
+            "M": m,
+            "K": k,
+            "N": n,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "source_role": "model_derived",
+            "source_reference": (
+                f"exact normalized application aten._int_mm.default i8×i8→i32, {m}×{k}×{n}; "
+                f"{sum(s['count'] for s in sources)} occurrence(s) in "
+                + ", ".join(sorted({s["application"] for s in sources}))
+            ),
+            "label": "public",
+            "generalization": {"generalization_axis": "application_operation"},
+            "application_signature_match": {
+                "status": "candidate_unverified",
+                "full_inventory_sha256": digest,
+                "source_quantization": "int8_dyn_act_int8_weight",
+                "expected_signature": sources[0]["signature"],
+                "sources": [{key: value for key, value in source.items() if key != "signature"} for source in sources],
+            },
+        }
+        entries.append(entry)
+    return entries, refused
+
+
+def synthesize(
+    spec_doc: dict,
+    *,
+    workload_spec: dict | None = None,
+    budget: int | None = None,
+    application_inventory: dict | None = None,
+) -> dict:
     """``{"capsules": [entry...], "provenance": {...}}`` for one target's derived requirement.
 
     Pure: no I/O, no target name in the control flow. The spec is the derived conformance document, so
@@ -992,6 +1217,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
     probes = list((spec_doc.get("boundaries") or {}).get("extent_probes") or ())
     ws = dict(workload_spec or {})
     pool = available_ops()
+    exact_entries, exact_refused = exact_int_mm_entries(spec_doc.get("application_demands"), application_inventory)
 
     admitted_dtypes = {str(c.get("dtype")) for c in cells if c.get("dtype")}
     # A preference is declared in REGISTRY spelling ("int8"); a cell carries the CAPSULE spelling
@@ -1974,22 +2200,21 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
         if _tier == "L3":
             _certified_classes.add(_cls)
 
-    # ---- the ROSTER axis ----------------------------------------------------------------------------
-    # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
-    # above is a SLICE -- a cell, a regime, a lane, a derived micro model -- and the claim the whole
-    # experiment builds toward is about the roster's real networks: "compile this model, at the best
-    # format this target is certified for, and lower to the accelerator everything that can be".
-    #
-    # The format is DERIVED here, by `precision_policy.best_format`, from the same three things that
-    # decide it anywhere: the manifest admits, the registry expresses, an accuracy gate certifies. The
-    # admitted set is passed in rather than re-read, so this and the cells above cannot end up with two
-    # answers to "what does this target support". A target whose preference names nothing it admits
-    # synthesizes NO roster capsule and refuses -- compiling a roster model in a format the hardware
-    # lacks is not a weaker result, it is a different one. Likewise, a roster with no contraction cell
-    # cannot be silently omitted just because this axis currently selects its format from contractions.
+    # ---- the HELD-OUT CLAIM axis --------------------------------------------------------------------
+    # The descriptor's model roster is for owner-side evaluation AFTER Phase 1
+    # freezes. A public `model/*` capsule would enter the Phase-1 functional
+    # selection and disclose the very model the compiler is said to generalize
+    # to. Record the obligation, never synthesize a claim-model capsule here.
     roster = [str(m) for m in (ws.get("models") or ())]
     contraction_dtypes = {
         str(c.get("dtype")) for c in cells if c.get("dtype") and str(c.get("family")) == "contraction"
+    }
+    claim_model_evaluation: dict[str, Any] = {
+        "schema": "claim_model_evaluation_v1",
+        "source": "workload_spec.models",
+        "model_count": len(roster),
+        "visibility": "owner_only_after_phase1_freeze",
+        "public_capsules_emitted": 0,
     }
     if roster and contraction_dtypes:
         from merlin.targetgen.precision_policy import best_format
@@ -1997,80 +2222,27 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
         policy = best_format(target, preference=(ws.get("precision_preference") or None), admitted=contraction_dtypes)
         chosen = policy.get("chosen") or {}
         if chosen.get("capsule_dtype"):
-            # THE SCHEME, NOT THE DTYPE. A capture asked for "int8" quantizes WEIGHTS ONLY and emits a
-            # float matmul over dequantized weights -- the wrong program for a datapath that consumes the
-            # narrow format on both operands, and one no golden substitution can repair. The scheme is
-            # derived from the format rather than declared; a format whose activation-quantizing scheme
-            # is unknown raises there rather than silently capturing float arithmetic here.
-            from merlin.targetgen.capsule_source import activation_quantizing_scheme
-
-            scheme = activation_quantizing_scheme(chosen["capsule_dtype"])
-            for model in roster:
-                entry = {
-                    "cat": "model",
-                    "kind": "model",
-                    "op": "model",
-                    "name": f"{SYNTH_PREFIX}_model_{model}",
-                    "model": model,
-                    "out": "Y0",
-                    "operand_dtype": chosen["capsule_dtype"],
-                    **({"quant_scheme": scheme} if scheme else {}),
-                    "source_role": SOURCE_ROLE,
-                    "source_reference": (
-                        f"synthesized for the roster axis: whole model {model!r} at {chosen['format']}, "
-                        f"the highest-ranked precision this target's manifest admits for a contraction "
-                        f"out of the declared preference {policy.get('preference')}"
-                        + (
-                            # NAME WHAT THE CAPTURE WILL ACTUALLY USE. `activation_quantizing_scheme`
-                            # returns the NAMED fallback, and `capsule_source.derived_recipe` overrides
-                            # it whenever the target derives one -- so this sentence asserted
-                            # "captured with int8_dyn_act_int8_weight" on capsules whose
-                            # `quant_recipe_sha256` is the digest of a STATIC recipe. The capsule
-                            # carried both claims and they contradicted each other; the digest was the
-                            # true one, and the prose is what a reader meets first. It cost two wrong
-                            # conclusions about why the corpus looked the way it did.
-                            f", captured under this target's derived quantization recipe "
-                            f"({_capture_recipe['activation']['mode']} activation, "
-                            f"{_capture_recipe['activation']['granularity']} granularity), so the "
-                            f"program contains the target's own arithmetic rather than a float matmul "
-                            f"over dequantized weights"
-                            if (_capture_recipe := _derived_recipe_for(target, chosen["capsule_dtype"]))
-                            else (
-                                f", captured with {scheme} so the program contains the target's own "
-                                f"arithmetic rather than a float matmul over dequantized weights"
-                                if scheme
-                                else ""
-                            )
-                        )
-                        + f". Accuracy in that format is {policy['certified']['status']}"
-                    ),
-                    "label": "public",
-                    # Same deferral every whole-model capstone carries: a roster model is worth running
-                    # only once the op suite it is made of passes, or the failure says nothing.
-                    "gate": {"after_op_pass_fraction": 0.8},
-                    # The mesh is REQUIRED, not hoped for. A roster capsule that graded numerics alone
-                    # would pass a submission that ran the whole network on the host -- which is the
-                    # vacuity the op capsules had removed and the capstones did not.
-                    "lanes": {"require": ["on_mesh"]},
-                    "generalization": {"generalization_axis": "roster"},
-                }
-                _mark_source(entry)
-                entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
-                entries.append(entry)
+            claim_model_evaluation.update(
+                status="awaiting_phase1_freeze",
+                capsule_dtype=chosen["capsule_dtype"],
+                format=chosen["format"],
+                format_selection_status=policy.get("status"),
+            )
         else:
-            unexpressable.append(
-                f"roster axis: {policy.get('status')} -- the declared preference "
-                f"{policy.get('preference')} names no format this target admits for a contraction "
-                f"(admitted: {policy.get('admitted')}), so no roster model can be compiled at a format "
-                f"the hardware has"
+            claim_model_evaluation.update(
+                status="format_unavailable",
+                reason=(
+                    f"{policy.get('status')}: preference {policy.get('preference')} names no admitted "
+                    f"contraction format (admitted: {policy.get('admitted')})"
+                ),
             )
     elif roster:
-        unexpressable.append(
-            f"roster axis: declared models {roster} but the derived requirement has no contraction "
-            "cell. This synthesizer cannot select a whole-model compile format or an accelerator "
-            "obligation from that evidence; declare and derive an appropriate model datapath for "
-            "this target class rather than silently omitting its roster capsules"
+        claim_model_evaluation.update(
+            status="format_unavailable",
+            reason="derived requirement has no contraction cell for a whole-model accelerator claim",
         )
+    else:
+        claim_model_evaluation["status"] = "no_claim_models_declared"
 
     if unexpressable:
         raise SynthesisError(
@@ -2078,6 +2250,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
             "them uncovered: " + "; ".join(unexpressable) + ". Add a builder or a PyTorch body for the "
             "family, or establish that the requirement is wrong -- do not drop the cell"
         )
+
+    entries.extend(exact_entries)
 
     # ONE PASS OVER EVERY AXIS, so a new axis cannot forget it. A readout stage treats a negative
     # accumulator differently from a positive one (an activation clamps it, a requantization rounds
@@ -2100,7 +2274,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
     if len(entries) > cap:
         raise SynthesisError(
             f"synthesis would emit {len(entries)} capsules against a budget of {cap}. Raise "
-            f"workload_spec.max_synthesized_capsules deliberately, or narrow the roster -- never "
+            f"workload_spec.max_synthesized_capsules deliberately, or narrow the public axes -- never "
             f"truncate, because a silently dropped point reads downstream as a covered one"
         )
 
@@ -2114,6 +2288,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "claim_model_evaluation": claim_model_evaluation,
             "cells_no_writer_can_express": unwritable,
             # The rank/layout regions the manifest declares and nothing can build. Reported here rather
             # than raised: unlike a cell, a declared shape capability with no builder is a gap to argue
@@ -2153,7 +2328,15 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int
             # this field, regeneration would honestly emit no MX application capsule but erase why,
             # leaving the absence indistinguishable from an axis nobody asked for.
             "application_missing_capabilities": list(_app.get("missing_capabilities") or ()),
-            "application_operation_plan": _application_operation_plan(spec_doc.get("application_demands")),
+            "application_operation_plan": _application_operation_plan(
+                spec_doc.get("application_demands"), exact_entries=exact_entries
+            ),
+            "exact_application_slice_candidates": [entry["name"] for entry in exact_entries],
+            "exact_application_slice_refusals": exact_refused,
+            "exact_application_slice_note": (
+                "candidate entries require PyTorch capture and exact emitted-linalg verification; "
+                "neither these entries nor their capsule evidence proves whole-model compilation"
+            ),
             "accumulation_depth_unsizable": unsized_depth,
             "accumulation_depth_note": (
                 "a reduction depth this target could not size. Kept separate from "

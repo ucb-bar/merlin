@@ -160,13 +160,45 @@ def _attr_str(op, key: str) -> str | None:
 
 
 def _elem_dtype(op) -> str | None:
-    """Registry dtype name for the region's first tensor operand element type, or None when the type is
-    absent or has no registry entry. Never guesses."""
+    """First tensor operand's dtype; ``None`` only when no tensor element type was expressed.
+
+    An expressed but unregistered type must remain a distinct, ineligible token. Returning ``None``
+    for an i64/i1 tensor made the eligibility predicate's legitimate "not applicable" treatment of
+    ``None`` admit integer mask-building regions onto an i8 accelerator, fabricating host/mesh seams.
+    """
     for operand in getattr(op, "operands", ()):  # first ranked operand wins (the activation/lhs)
         elem = getattr(getattr(operand, "type", None), "element_type", None)
         if elem is None:
             continue
-        return _ELEM_DTYPE.get(str(elem))
+        spelling = str(elem)
+        return _ELEM_DTYPE.get(spelling, f"unsupported_mlir:{spelling}")
+    return None
+
+
+def region_family(op, short: str | None = None) -> str | None:
+    """Classify an emitted linalg region, checking structure before source-op provenance.
+
+    A framework op can decompose into multiple regions carrying the same provenance tag. For example,
+    ``aten.addmm`` emits a contraction followed by an all-parallel bias add, and model2MLIR stamps both
+    ``prov.family=contraction``. A generic with no reduction iterator cannot be credited as a second
+    contraction merely because its *source* op was one. We recognize an add-only body as elementwise;
+    an unrecognized all-parallel body is ambiguous and remains unclassified.
+    """
+    short = short or _short_op(op.name)
+    structural = sf.from_op(short)
+    if structural is not None:
+        return structural
+    tagged = sf.from_prov(_attr_str(op, "prov.family"), _attr_str(op, "prov.op"))
+    if short != "generic" or tagged != "contraction":
+        return tagged
+    iterator_types = str((getattr(op, "properties", {}) or {}).get("iterator_types") or "")
+    if "reduction" in iterator_types:
+        return tagged
+    if "parallel" not in iterator_types:
+        return None
+    body = tuple(child.name for child in op.walk() if child is not op and child.name != "linalg.yield")
+    if body in (("arith.addf",), ("arith.addi",)):
+        return "elementwise_map"
     return None
 
 
@@ -267,9 +299,7 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
         if not _is_region_op(op):
             continue
         short = _short_op(op.name)
-        family = sf.from_op(short)
-        if family is None:  # unnamed region: fall back to whatever provenance the capture stamped
-            family = sf.from_prov(_attr_str(op, "prov.family"), _attr_str(op, "prov.op"))
+        family = region_family(op, short)
         # Precision from the weights manifest when we have one, joined on the region's owning module.
         # Element type is the FALLBACK, not the authority: it under-reports quantization badly.
         precision = None

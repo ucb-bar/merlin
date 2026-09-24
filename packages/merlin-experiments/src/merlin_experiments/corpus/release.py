@@ -104,7 +104,13 @@ def inspect_release(path: Path) -> dict:
     }
 
 
-def prepare(run_dir: Path, output: Path) -> dict:
+def prepare(
+    run_dir: Path,
+    output: Path,
+    *,
+    private_baseline: Path | None = None,
+    retirements: Path | None = None,
+) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
     from merlin.common.storage_lifecycle import lease
@@ -122,7 +128,16 @@ def prepare(run_dir: Path, output: Path) -> dict:
         raise SpecError("corpus releases must live below the configured artifact root")
     plan, attempt, generated = source_run(source)
     te = load_target_experiment(plan["phases"]["0"]["inputs"]["descriptor"])
-    for existing in (source, te.capsule_corpus.parent):
+    if private_baseline is not None:
+        private_baseline = private_baseline.expanduser().absolute()
+        if private_baseline.is_symlink() or not private_baseline.is_dir():
+            raise SpecError("private baseline must be an ordinary existing directory")
+    if retirements is not None:
+        retirements = retirements.expanduser().absolute()
+        if not retirements.is_file() or retirements.is_symlink():
+            raise SpecError("retirements must be an ordinary existing file")
+        retirements = retirements.resolve(strict=True)
+    for existing in (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else [])):
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
             raise SpecError("corpus release output overlaps an immutable source")
     with lease(root, owner="corpus-release-preparation"):
@@ -131,7 +146,13 @@ def prepare(run_dir: Path, output: Path) -> dict:
         (root / "payload").mkdir(mode=0o700)
         payload = root / "payload"
         try:
-            assembly = assemble(te, generated, payload / "corpus")
+            assembly = assemble(
+                te,
+                generated,
+                payload / "corpus",
+                private_baseline=private_baseline,
+                retirements=retirements,
+            )
             scaffolding = scaffold(te, payload / "corpus", payload / "experiment", private=root / "private")
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor)

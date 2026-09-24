@@ -1002,29 +1002,13 @@ def test_real_corpus_prerequisite_check_does_not_skip_malformed_available_data(t
         _require_real_corpus_fixture(target)
 
 
-def test_real_functional_cohort_matches_canonical_descriptor_admission() -> None:
+def test_authored_phase0_input_requires_a_reviewed_functional_cohort() -> None:
     target = AD.load_target_experiment(
         merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     )
-
-    _require_real_corpus_fixture(target)
-    cohort = FC.functional_grade_cohort(target, contract_root=merlin_dir() / "contract")
-    full_identities = {capsule.workload_sha256 for capsule in (*cohort.public, *cohort.hidden)}
-    gsim_cases = FC.functional_gsim_cases(cohort)
-    certificate_identities = {capsule.workload_sha256 for capsule in gsim_cases}
-
-    # The descriptor was re-sealed after corpus expansion. Test its authoritative counts,
-    # not a historical denominator that predates the frozen functional submission.
-    assert cohort.public_source_count == target.graded_expected_source_capsules
-    assert len(cohort.public) == target.graded_expected_admitted_capsules
-    assert cohort.hidden_source_count == target.hidden_expected_source_capsules
-    assert len(cohort.hidden) == target.hidden_expected_admitted_capsules
-    assert len(full_identities) >= len(certificate_identities) > 0
-    models = [capsule for capsule in (*cohort.public, *cohort.hidden) if capsule.kind == "model"]
-    assert models
-    assert len(gsim_cases) + len(models) == len(cohort.public) + len(cohort.hidden)
-    assert not ({capsule.name for capsule in models} & {capsule.name for capsule in gsim_cases})
-    assert not ({capsule.name for capsule in cohort.public} & set(target.graded_exclude))
+    assert target.graded_release_admission
+    with pytest.raises(FC.ExperimentError, match="requires a reviewed corpus release"):
+        FC.functional_grade_cohort(target, contract_root=merlin_dir() / "contract")
 
 
 def test_frozen_functional_cohort_ignores_later_live_corpus_growth(

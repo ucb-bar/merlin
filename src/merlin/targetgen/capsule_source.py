@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -121,14 +122,16 @@ class M2MUnavailable(RuntimeError):
 
 
 def _require_integer_contraction(program: str, *, scheme: str | None, recipe: dict | None) -> None:
-    """A dynamic W8A8 declaration is not evidence of an integer datapath.
+    """A W8A8 declaration is not evidence of an integer datapath.
 
     TorchAO may leave an ineligible Linear unchanged (for example, tiny dimensions)
     while model2MLIR still labels the module with the requested scheme. Inspect the
     parsed arithmetic before admitting or caching that capture as an integer test.
     """
-    dynamic_recipe = recipe is not None and recipe.get("activation", {}).get("mode") == "dynamic"
-    if scheme != "int8_dyn_act_int8_weight" and not dynamic_recipe:
+    integer_recipe = recipe is not None and all(
+        (recipe.get(part) or {}).get("dtype") in {"int8", "i8"} for part in ("activation", "weight")
+    )
+    if scheme not in {"int8_dyn_act_int8_weight", "int8_static_act_int8_weight"} and not integer_recipe:
         return
     from merlin.common import mlir_query as query
 
@@ -154,10 +157,198 @@ def _require_integer_contraction(program: str, *, scheme: str | None, recipe: di
             if (lhs, rhs, result) == ("i8", "i8", "i32"):
                 return
     except Exception as exc:
-        raise M2MUnavailable(f"cannot verify dynamic W8A8 capture arithmetic: {exc}") from exc
+        raise M2MUnavailable(f"cannot verify W8A8 capture arithmetic: {exc}") from exc
     raise M2MUnavailable(
-        "dynamic W8A8 capture has no i8×i8→i32 integer contraction; "
+        "W8A8 capture has no i8×i8→i32 integer contraction; "
         "the requested torchao scheme may have skipped this model or shape"
+    )
+
+
+def _static_pt2e_model(op: str, *, scheme: str | None, recipe: dict | None, already_quantized: bool) -> bool:
+    """Only converted static PT2E models owe the full integerization receipt.
+
+    The dynamic TorchAO and already-materialized graph routes have different
+    transformations; in particular an authored integer graph must not be
+    described as a PT2E rewrite.
+    """
+    return (
+        op == "model"
+        and not already_quantized
+        and (
+            scheme == "int8_static_act_int8_weight"
+            or (
+                recipe is not None
+                and (recipe.get("activation") or {}).get("mode") == "static"
+                and all((recipe.get(part) or {}).get("dtype") in {"int8", "i8"} for part in ("activation", "weight"))
+            )
+        )
+    )
+
+
+def _require_pt2e_integerization_receipt(
+    program: str, meta: dict, *, agreement_tolerance: tuple[float, float] | None
+) -> None:
+    """Admit a static W8A8 model only if its whole PT2E region was integerized.
+
+    Finding *one* integer matmul in the MLIR proves only an existential fact.
+    This receipt additionally binds complete Q/DQ-fed linear/conv/matmul census,
+    safe accumulation and an original-versus-rewrite eager comparison to the
+    captured program. Missing fields are never treated as zero or as success.
+    """
+    receipt = meta.get("integerization_receipt")
+    if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
+        raise M2MUnavailable("static W8A8 model has no supported integerization receipt")
+
+    def count(value: object, name: str) -> int:
+        if type(value) is not int or value < 0:
+            raise M2MUnavailable(f"integerization receipt has invalid {name}")
+        return value
+
+    seen = count(receipt.get("quantized_contractions_seen"), "quantized contraction census")
+    rewritten = count(receipt.get("quantized_contractions_integerized"), "integerized contraction census")
+    remaining = count(receipt.get("quantized_contractions_remaining"), "remaining contraction census")
+    quantization_stats = meta.get("quantization_stats")
+    annotated = count(
+        quantization_stats.get("annotated_contractions") if isinstance(quantization_stats, dict) else None,
+        "PT2E annotated contraction census",
+    )
+    if annotated != seen:
+        raise M2MUnavailable(
+            f"integerization receipt census {seen} disagrees with PT2E's {annotated} annotated contractions"
+        )
+    if seen < 1 or seen != rewritten + remaining:
+        raise M2MUnavailable("integerization receipt has inconsistent quantized contraction census")
+    if remaining != 0 or rewritten != seen:
+        raise M2MUnavailable(f"integerization receipt has {remaining} quantized contractions remaining")
+    by_kind = receipt.get("quantized_by_kind")
+    if not isinstance(by_kind, dict) or set(by_kind) != {"linear", "conv2d", "matmul", "unsupported"}:
+        raise M2MUnavailable("integerization receipt lacks complete linear/conv2d/matmul/unsupported census")
+    kind_totals = [0, 0, 0]
+    for kind in ("linear", "conv2d", "matmul", "unsupported"):
+        row = by_kind[kind]
+        if not isinstance(row, dict):
+            raise M2MUnavailable(f"integerization receipt has invalid {kind} census")
+        values = [count(row.get(key), f"{kind} {key} census") for key in ("seen", "integerized", "remaining")]
+        if values[0] != values[1] + values[2]:
+            raise M2MUnavailable(f"integerization receipt has inconsistent {kind} census")
+        kind_totals = [total + value for total, value in zip(kind_totals, values)]
+    if kind_totals != [seen, rewritten, remaining]:
+        raise M2MUnavailable("integerization receipt per-kind census disagrees with its total")
+    if by_kind["unsupported"]["seen"]:
+        raise M2MUnavailable("integerization receipt contains unsupported quantized contractions")
+    refusals = receipt.get("refusals")
+    if not isinstance(refusals, list) or refusals:
+        raise M2MUnavailable(f"integerization receipt reports refusal(s): {refusals!r}")
+    # Worst case signed-int8 product bound; compare using the *same* arithmetic
+    # as the upstream integerizer, without assuming a particular accelerator.
+    max_k = count(receipt.get("max_reduction_k"), "accumulator reduction K")
+    if receipt.get("accumulator_bound_checked") is not True or max_k < 1 or max_k * 128 * 128 > (1 << 31) - 1:
+        raise M2MUnavailable("integerization receipt does not prove a safe i32 accumulator")
+
+    expected = agreement_tolerance or (_DEF_ATOL, _DEF_RTOL)
+    agreement = receipt.get("golden_agreement")
+    if not isinstance(agreement, dict) or agreement.get("status") != "passed":
+        raise M2MUnavailable("integerization receipt has no passed original-vs-rewrite golden agreement")
+    if any(agreement.get(name) != tolerance for name, tolerance in zip(("atol", "rtol"), expected)):
+        raise M2MUnavailable("integerization receipt golden agreement tolerance differs from the request")
+    if count(agreement.get("samples"), "golden agreement samples") < 1:
+        raise M2MUnavailable("integerization receipt has no golden agreement samples")
+    outputs = agreement.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        raise M2MUnavailable("integerization receipt has no golden agreement outputs")
+    for result in [agreement, *outputs]:
+        if not isinstance(result, dict):
+            raise M2MUnavailable("integerization receipt has invalid golden agreement output")
+        for metric in ("max_abs", "max_rel"):
+            value = result.get(metric)
+            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+                raise M2MUnavailable(f"integerization receipt has invalid golden agreement {metric}")
+    if any(row.get("within_tolerance") is not True for row in outputs):
+        raise M2MUnavailable("integerization receipt has a golden agreement output outside tolerance")
+    if any(row.get("atol") != expected[0] or row.get("rtol") != expected[1] for row in outputs):
+        raise M2MUnavailable("integerization receipt has a golden agreement output with different tolerance")
+
+    emitted = count(receipt.get("integer_mm_emitted"), "emitted integer matmul count")
+    if emitted < rewritten:
+        raise M2MUnavailable("integerization receipt emitted fewer integer matmuls than rewritten regions")
+    from merlin.common import mlir_query as query
+
+    try:
+        module = query.parse(program)
+        forward = next(
+            (
+                op
+                for op in query.walk(module, "func.func")
+                if getattr(getattr(op, "sym_name", None), "data", None) == "forward"
+            ),
+            None,
+        )
+        if forward is None:
+            raise ValueError("no @forward function")
+        structural = 0
+        for op in query.walk(forward, "linalg.matmul", "linalg.generic"):
+            if query.op_name(op) == "linalg.generic" and query.attr_str(op, "prov.op") != "int_matmul":
+                continue
+            if len(op.operands) < 2 or not op.results:
+                continue
+            lhs, rhs = (query.type_shape_dtype(value.type)[1] for value in op.operands[:2])
+            result = query.type_shape_dtype(op.results[0].type)[1]
+            structural += (lhs, rhs, result) == ("i8", "i8", "i32")
+    except Exception as exc:
+        raise M2MUnavailable(f"cannot verify integerized model export: {exc}") from exc
+    if structural < emitted:
+        raise M2MUnavailable(
+            f"integerization receipt claims {emitted} integer matmuls, but export contains only {structural}"
+        )
+    reported_export = count(receipt.get("exported_integer_mm_count"), "exported integer matmul count")
+    if reported_export != structural:
+        raise M2MUnavailable(
+            f"integerization receipt export count {reported_export} disagrees with parsed program {structural}"
+        )
+
+
+def _require_materialized_contraction(program: str, *, dtype: str) -> int:
+    """Prove a loader marked already materialized really carries its declared operands.
+
+    This mode skips framework quantization for graphs which already encode their
+    numeric operations. It must still fail when the importer drops those operations
+    or leaves only host float contractions. The element spelling comes from the
+    shared numeric format registry, not a target name.
+    """
+    from merlin.common import mlir_query as query
+    from merlin.targetgen.corpus_spec import dtype_info
+
+    try:
+        _, element, _, integer = dtype_info(dtype)
+        if not integer:
+            raise ValueError(f"{dtype!r} is not an integer operand format")
+        module = query.parse(program)
+        forward = next(
+            (
+                op
+                for op in query.walk(module, "func.func")
+                if getattr(getattr(op, "sym_name", None), "data", None) == "forward"
+            ),
+            None,
+        )
+        if forward is None:
+            raise ValueError("no @forward function")
+        count = 0
+        for op in query.walk(forward, "linalg.matmul", "linalg.generic"):
+            if query.op_name(op) == "linalg.generic" and query.attr_str(op, "prov.family") != "contraction":
+                continue
+            if len(op.operands) < 2 or not op.results:
+                continue
+            lhs, rhs = (query.type_shape_dtype(value.type)[1] for value in op.operands[:2])
+            if (lhs, rhs) == (element, element):
+                count += 1
+        if count:
+            return count
+    except Exception as exc:
+        raise M2MUnavailable(f"cannot verify already-materialized capture arithmetic: {exc}") from exc
+    raise M2MUnavailable(
+        f"already-materialized capture has no {element}×{element} contraction; "
+        "its declared operand format is absent from the captured program"
     )
 
 
@@ -414,13 +605,26 @@ def get_model_and_inputs():
     return Model().eval(), (_r({M}, {K}),)
 """
 
+# An isolated integer contraction from a W8A8 capture. The enclosing model owns activation and
+# weight quantization; this slice starts at its already-quantized i8 operands and ends at its i32
+# accumulator. Asking the worker to quantize this body again would change the computation under test.
+_INT_MATMUL = """
+class Model(nn.Module):
+    def forward(self, a, w):
+        return torch._int_mm(a, w)
+def get_model_and_inputs():
+    a = torch.randint(-8, 8, ({M}, {K}), dtype=torch.int8, generator=_G)
+    w = torch.randint(-8, 8, ({K}, {N}), dtype=torch.int8, generator=_G)
+    return Model().eval(), (a, w)
+"""
+
 
 def build_loader_src(spec: dict) -> str:
     """Render the PyTorch loader source for an op spec. ``spec`` carries ``op`` + the shape fields the op
     needs (M/K/N/Dv) + optional ``eps``/``causal``/``bias`` + ``seed``/``dtype``. Fail closed on an
     unknown op (never silently emit a wrong program)."""
     op = spec["op"]
-    if op not in _OP_BODIES:
+    if op != "int_matmul" and op not in _OP_BODIES:
         raise KeyError(f"capsule_source has no PyTorch template for op {op!r} (have {supported_ops()})")
     raw_shape = spec.get("shape")
     if raw_shape is None:
@@ -453,6 +657,10 @@ def build_loader_src(spec: dict) -> str:
         # MxK form; an application-derived probe may instead carry its exact static shape.
         "shape_args": ", ".join(str(int(d)) for d in raw_shape),
     }
+    if op == "int_matmul":
+        if spec.get("quant_scheme"):
+            raise ValueError("an isolated int_matmul has quantized operands; do not quantize it again")
+        return _PREAMBLE.format(**fields) + _INT_MATMUL.format(**fields)
     # A QUANTIZED capture needs a weight PARAMETER for the scheme to bind to (see _PARAMETRIC_LINEAR).
     # Only the contraction ops have a meaningful weight; asking for a quantized elementwise op is a
     # request that cannot be honoured, and saying so beats emitting an unquantized program under a
@@ -537,6 +745,8 @@ class PytorchRefSource:
         env: dict | None = None,
         python: str | Path | None = None,
         recipe: dict | None = None,
+        already_quantized: bool = False,
+        agreement_tolerance: tuple[float, float] | None = None,
     ) -> CapsuleArtifacts:
         """Capture an EXISTING loader file (a whole-model workload) rather than a generated op loader.
         Same worker path; ``op`` is ``model`` and ``pytorch_src`` is the loader's own source.
@@ -556,6 +766,8 @@ class PytorchRefSource:
         ``ModuleNotFoundError`` -- and BOTH were recorded as "this model could not be built", which reads
         as a limit of the compiler rather than of how it was invoked."""
         loader_py = Path(loader_py)
+        if already_quantized and (recipe is not None or scheme):
+            raise M2MUnavailable("already-materialized capture cannot also apply a recipe or a quantization scheme")
         # `available()` stays the predicate when nothing is pinned, so a caller that has established
         # availability some other way keeps saying so; a PINNED interpreter is checked on its own terms.
         interpreter = Path(python) if python else self.python
@@ -575,6 +787,8 @@ class PytorchRefSource:
             env=env,
             python=interpreter,
             recipe=recipe,
+            already_quantized=already_quantized,
+            agreement_tolerance=agreement_tolerance,
         )
 
     def _cache_slot(
@@ -586,6 +800,9 @@ class PytorchRefSource:
         env: dict | None = None,
         python: "Path | None" = None,
         recipe_sha256: str = "",
+        already_quantized: bool = False,
+        agreement_tolerance: tuple[float, float] | None = None,
+        static_pt2e: bool = False,
     ) -> "Path | None":
         """Where a capture of exactly this input already lives, or ``None`` if caching is unavailable.
 
@@ -608,6 +825,22 @@ class PytorchRefSource:
         """
         try:
             from merlin.common.artifacts import cache_dir
+            from merlin.common.digest import sha256_file
+
+            # The worker imports these upstream implementation owners from an
+            # out-of-tree model2MLIR checkout. A path alone is not a version:
+            # active development can replace their bytes in place. This is a
+            # deliberately named direct-owner set, not a claim that arbitrary
+            # framework/loader imports have a complete source closure.
+            upstream_files = [
+                "m2m/api.py",
+                "m2m/ir/import_fx.py",
+                "m2m/capture/torchao_pipeline.py",
+                "m2m/capture/torchao_schemes.py",
+            ]
+            if static_pt2e:
+                upstream_files.append("m2m/capture/pt2e_integerize.py")
+            upstream_identity = {relative: sha256_file(self.m2m_dir / relative) for relative in upstream_files}
 
             # Structured encoding preserves field boundaries even when loader source or
             # environment values contain delimiter characters. Historical ambiguous-key
@@ -623,8 +856,12 @@ class PytorchRefSource:
                 "interpreter": str(python or self.python),
                 "capture_abi": _MODEL_CAPTURE_ABI_VERSION,
                 "recipe_sha256": recipe_sha256,
+                "agreement_tolerance": list(agreement_tolerance) if agreement_tolerance else None,
                 "merlin_implementation": capture_cache.implementation_identity(),
+                "model2mlir_direct_owners": upstream_identity,
             }
+            if already_quantized:
+                request["capture_quantization"] = "already_materialized"
             key = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
             return cache_dir("model_capture") / f"{op}_{dtype}_{key}"
         except Exception:  # noqa: BLE001 -- an unavailable cache is not a failed capture
@@ -642,7 +879,23 @@ class PytorchRefSource:
         env: dict | None = None,
         python: "Path | None" = None,
         recipe: dict | None = None,
+        already_quantized: bool = False,
+        agreement_tolerance: tuple[float, float] | None = None,
     ) -> CapsuleArtifacts:
+        if agreement_tolerance is not None and (
+            not isinstance(agreement_tolerance, (tuple, list))
+            or len(agreement_tolerance) != 2
+            or any(
+                isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0
+                for v in agreement_tolerance
+            )
+        ):
+            raise M2MUnavailable("capture agreement tolerance must be a finite nonnegative (atol, rtol) pair")
+        if agreement_tolerance is None and _static_pt2e_model(
+            op, scheme=scheme, recipe=recipe, already_quantized=already_quantized
+        ):
+            agreement_tolerance = (_DEF_ATOL, _DEF_RTOL)
+        static_pt2e = _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized)
         recipe_sha256 = ""
         if recipe is not None:
             from merlin.targetgen import quant_recipe as _recipe
@@ -658,7 +911,18 @@ class PytorchRefSource:
         # interrupted run re-captures instead of serving a truncated module.
         declared_env = {str(k): str(v) for k, v in (env or {}).items()}
         interpreter = Path(python) if python else self.python
-        slot = self._cache_slot(op, dtype, src, scheme, declared_env, interpreter, recipe_sha256)
+        slot = self._cache_slot(
+            op,
+            dtype,
+            src,
+            scheme,
+            declared_env,
+            interpreter,
+            recipe_sha256,
+            already_quantized,
+            agreement_tolerance,
+            static_pt2e,
+        )
         with capture_cache.slot_lock(slot) as locked_slot:
             if slot is not None and locked_slot is None:
                 # Never run unlocked in the shared directory. Retain this private
@@ -679,10 +943,23 @@ class PytorchRefSource:
                 interpreter=interpreter,
                 recipe=recipe,
                 recipe_sha256=recipe_sha256,
+                already_quantized=already_quantized,
+                agreement_tolerance=agreement_tolerance,
                 slot=locked_slot,
             )
             if locked_slot is not None:
-                current = self._cache_slot(op, dtype, src, scheme, declared_env, interpreter, recipe_sha256)
+                current = self._cache_slot(
+                    op,
+                    dtype,
+                    src,
+                    scheme,
+                    declared_env,
+                    interpreter,
+                    recipe_sha256,
+                    already_quantized,
+                    agreement_tolerance,
+                    static_pt2e,
+                )
                 if current != locked_slot:
                     raise M2MUnavailable("capture implementation changed during cache transaction; retry capture")
                 if not capture_cache.observed_sources_match(artifact.meta):
@@ -703,6 +980,8 @@ class PytorchRefSource:
         interpreter: Path,
         recipe: dict | None,
         recipe_sha256: str,
+        already_quantized: bool = False,
+        agreement_tolerance: tuple[float, float] | None = None,
         slot: Path | None,
     ) -> tuple[CapsuleArtifacts, Path]:
         """Lookup/capture/normalize/read while holding the caller's entire slot transaction.
@@ -730,6 +1009,12 @@ class PytorchRefSource:
                 ):
                     cached_program = (cached_slot / "linalg.mlir").read_text(encoding="utf-8")
                     _require_integer_contraction(cached_program, scheme=scheme, recipe=recipe)
+                    if _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized):
+                        _require_pt2e_integerization_receipt(
+                            cached_program, cached, agreement_tolerance=agreement_tolerance
+                        )
+                    if already_quantized:
+                        _require_materialized_contraction(cached_program, dtype=dtype)
                     return CapsuleArtifacts(
                         op=op,
                         dtype=dtype,
@@ -777,6 +1062,10 @@ class PytorchRefSource:
             cmd += ["--recipe", str(recipe_path)]
         elif scheme:
             cmd += ["--scheme", str(scheme)]
+        if already_quantized:
+            cmd.append("--already-quantized")
+        if agreement_tolerance is not None:
+            cmd += ["--agreement-atol", str(agreement_tolerance[0]), "--agreement-rtol", str(agreement_tolerance[1])]
         # A rejected cache entry or reused caller directory may still hold the
         # previous attempt's verdict. Invalidate it before retrying so a crash
         # cannot inherit the previous attempt's success.
@@ -856,6 +1145,11 @@ class PytorchRefSource:
             )
         program = (workdir / "linalg.mlir").read_text(encoding="utf-8")
         _require_integer_contraction(program, scheme=scheme, recipe=recipe)
+        if _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized):
+            _require_pt2e_integerization_receipt(program, meta, agreement_tolerance=agreement_tolerance)
+        if already_quantized:
+            meta["materialized_contractions"] = _require_materialized_contraction(program, dtype=dtype)
+            meta_p.write_text(json.dumps(meta), encoding="utf-8")
         return CapsuleArtifacts(
             op=op,
             dtype=dtype,
@@ -927,6 +1221,54 @@ def _tol(binding) -> tuple[float, float]:
     return atol, rtol
 
 
+def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding) -> dict:
+    """Grade in the captured result's element type, not the target's operand type.
+
+    The capture worker serializes even integer tensors through float64 JSON. An
+    integer policy is sound only where every serialized golden remains finite,
+    integral and exactly representable; the ABI supplies the actual tensor dtype.
+    A capsule has one numeric policy, so heterogeneous result dtypes are refused.
+    """
+    if len(output_abi) != len(golden_values):
+        raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
+    dtypes = {str(result.get("dtype") or "") for result in output_abi}
+    if len(dtypes) != 1:
+        raise M2MUnavailable(
+            f"model results have different output dtypes {sorted(dtypes)}; one numeric policy cannot describe them"
+        )
+    (dtype,) = dtypes
+
+    def scalars(value):
+        if isinstance(value, (list, tuple)):
+            for child in value:
+                yield from scalars(child)
+        else:
+            yield value
+
+    if dtype.startswith("ui") and dtype[2:].isdigit():
+        bits = int(dtype[2:])
+        if bits < 1:
+            raise M2MUnavailable(f"captured model output dtype {dtype!r} has invalid bit width")
+        low, high = 0, (1 << bits) - 1
+    elif dtype.startswith("i") and dtype[1:].isdigit():
+        bits = int(dtype[1:])
+        if bits < 1:
+            raise M2MUnavailable(f"captured model output dtype {dtype!r} has invalid bit width")
+        low, high = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    else:
+        bits = None
+    if bits is not None:
+        for value in (v for result in golden_values for v in scalars(result)):
+            if (isinstance(value, bool) and bits != 1) or not isinstance(value, (int, float)):
+                raise M2MUnavailable(f"captured {dtype} result has a non-integer golden value {value!r}")
+            if not math.isfinite(value) or value != int(value) or not low <= value <= high or abs(value) > 1 << 53:
+                raise M2MUnavailable(f"captured {dtype} result has an inexact/out-of-range golden value {value!r}")
+        return {"compare": "exact_int", "dtype": dtype}
+    if dtype in {"f16", "bf16", "f32", "f64"} or dtype.startswith("f8"):
+        return {"compare": "tolerance_float", "dtype": dtype, "atol": _tol(binding)[0], "rtol": _tol(binding)[1]}
+    raise M2MUnavailable(f"captured model output dtype {dtype!r} has no supported numeric comparison policy")
+
+
 def _shape_of(nested) -> list[int]:
     s = []
     x = nested
@@ -955,7 +1297,14 @@ def _capture_spec(entry: dict, binding) -> dict:
     N = entry.get("N", entry.get("N_tiles", 1) * dim)
     if op == "attention_qk":
         N = M  # Q@K^T scores are [M,M]; K rows == M (matches the builder)
-    spec = {"op": op, "dtype": binding.operand_dtype, "seed": _entry_seed(entry["name"]), "M": M, "K": K, "N": N}
+    spec = {
+        "op": entry.get("capture_op", op),
+        "dtype": entry.get("capture_dtype", binding.operand_dtype),
+        "seed": _entry_seed(entry["name"]),
+        "M": M,
+        "K": K,
+        "N": N,
+    }
     if "shape" in entry:
         spec["shape"] = list(entry["shape"])
     # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
@@ -981,8 +1330,7 @@ def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_ord
     return {
         "golden_source": "host_torch_eager",
         "oracle_provenance": {
-            "engine": "model2MLIR fx_importer linalg-on-tensors + host torch-eager (frontend-faithful; "
-            "torchAO weight-only for int8/fp8)",
+            "engine": "PyTorch host eager reference; model2MLIR fx_importer produced the separately verified linalg",
             "operand_dtype": binding.cap_dtype(binding.operand_dtype),
             "output_dtype": binding.cap_dtype(binding.accum_dtype),
             "note": "INDEPENDENT of the target RTL; the PyTorch frontend + host eval are the reference.",
@@ -1645,6 +1993,79 @@ def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     return cap, mlir
 
 
+def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
+    """Require the emitted PyTorch slice to compute the selected application's exact integer op.
+
+    The source capture's full inventory digest binds the expected row. This check independently parses
+    the newly emitted slice and compares its ordered ABI, indexing maps, iterator kinds, arithmetic
+    body and geometry. It deliberately does not claim that a whole model compiles or executes.
+    """
+    from merlin.common import mlir_query as mq
+    from merlin.targetgen.application_inventory import exact_int_mm_geometry, operation_structure
+
+    if match.get("status") != "candidate_unverified" or match.get("source_quantization") != "int8_dyn_act_int8_weight":
+        raise M2MUnavailable("exact application slice lacks a digest-bound W8A8 source declaration")
+    if not isinstance(match.get("full_inventory_sha256"), str) or len(match["full_inventory_sha256"]) != 64:
+        raise M2MUnavailable("exact application slice lacks a full inventory digest")
+    expected = match.get("expected_signature")
+    if not isinstance(expected, dict) or exact_int_mm_geometry(expected, require_quant_origin=False) is None:
+        raise M2MUnavailable("selected application integer-matmul signature is incomplete or unsupported")
+    try:
+        module = mq.parse(linalg_mlir)
+        observed = []
+        for op in mq.walk(module, "linalg.generic"):
+            if mq.attr_str(op, "prov.aten") != "aten._int_mm.default":
+                continue
+            structure = operation_structure(op)
+            lhs, rhs, _out = (
+                structure["ordered_operand_types"] if len(structure["ordered_operand_types"]) == 3 else ({}, {}, {})
+            )
+            m, k = (lhs.get("shape") or [None, None])[:2]
+            n = (rhs.get("shape") or [None, None])[-1]
+            row = {
+                **structure,
+                "operation": "aten._int_mm.default",
+                "mlir_operation": mq.op_name(op),
+                "frontend_op": mq.attr_str(op, "prov.aten"),
+                "provenance_op": mq.attr_str(op, "prov.op"),
+                "semantic_family": "contraction",
+                "operand_format": "int8" if lhs.get("dtype") == "i8" else None,
+                "accumulator_dtypes": sorted(
+                    {
+                        mq.type_shape_dtype(value.type)[1]
+                        for child in mq.walk(op)
+                        if mq.op_name(child) == "arith.addi"
+                        for value in child.results
+                    }
+                ),
+                "result_shapes": [item["shape"] for item in structure["ordered_result_types"]],
+                "contraction_shape": {"M": m, "K": k, "N": n, "rank": len(structure["iterator_types"] or ())},
+            }
+            if exact_int_mm_geometry(row, require_quant_origin=False) is None:
+                raise M2MUnavailable("emitted aten._int_mm has unsupported rank, dtype, maps, body or shape")
+            observed.append(row)
+    except M2MUnavailable:
+        raise
+    except Exception as exc:
+        raise M2MUnavailable(f"cannot inspect emitted integer-matmul MLIR: {exc}") from exc
+    if len(observed) != 1 or observed[0] != expected:
+        raise M2MUnavailable(
+            "emitted integer-matmul MLIR does not match the selected application signature "
+            f"(found {len(observed)} candidates)"
+        )
+    return {
+        "status": "verified_capture_match",
+        "full_inventory_sha256": match["full_inventory_sha256"],
+        "source_quantization": match["source_quantization"],
+        "signature_sha256": hashlib.sha256(
+            json.dumps(observed[0], sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "emitted_mlir_sha256": hashlib.sha256(linalg_mlir.encode()).hexdigest(),
+        "sources": match.get("sources") or [],
+        "scope": "isolated PyTorch integer operation and emitted linalg; whole-model compile unverified",
+    }
+
+
 def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSource | None" = None):
     """Materialize a full capsule dir from a PyTorch-defined op. For a merlin_iface-mapped op (matmul/
     linear/attention_qk/rmsnorm) the agent-facing interface + expected coverage are DERIVED-AND-VERIFIED
@@ -1665,6 +2086,11 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
     src = source or PytorchRefSource()
     spec = _capture_spec(entry, binding)
     art = src.capture(spec)
+    exact_match = None
+    if entry.get("application_signature_match"):
+        if spec["op"] != "int_matmul" or spec["dtype"] != "fp32" or entry.get("op") != "matmul":
+            raise M2MUnavailable("exact application integer slice must capture torch._int_mm without requantization")
+        exact_match = verify_exact_application_int_mm(art.linalg_mlir, entry["application_signature_match"])
     out_name = entry.get("out", "Y0")
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
@@ -1672,7 +2098,9 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: "PytorchRef
     if op in _OP_INPUT_NAMES:  # merlin_iface interface
         names = _OP_INPUT_NAMES[op]
         cap, mlir = linalg_to_iface(art.linalg_mlir, entry, binding)  # derive-and-verify from the lowering
-        cap["source_role"] = "pytorch_model_slice"
+        if exact_match is not None:
+            cap["application_signature_match"] = exact_match
+        cap["source_role"] = entry.get("source_role", "pytorch_model_slice")
         cap["pytorch_ref"] = {
             "op": op,
             "dtype": binding.cap_dtype(binding.operand_dtype),
@@ -2292,6 +2720,12 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     # fact about the invocation, published as a fact about the compiler's reach.
     workload = resolve_model_workload(entry, src.m2m_dir)
     capture_env = model_capture_env(workload)
+    capture_quantization = entry.get("capture_quantization")
+    if capture_quantization not in (None, "already_materialized"):
+        raise ValueError(f"unknown model capture_quantization {capture_quantization!r}")
+    already_quantized = capture_quantization == "already_materialized"
+    if already_quantized and (entry.get("quant_scheme") or entry.get("quant_recipe")):
+        raise ValueError("already-materialized model capture cannot also declare a quant scheme or recipe")
     # The capsule's declared scheme, not the dtype default. `quant_scheme` is how an entry says which
     # arithmetic it means by "int8"; dropping it here silently substituted weight-only quantization.
     # A recipe derived from the TARGET outranks a scheme named for a dtype: the scheme's defaults are
@@ -2305,7 +2739,13 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         scheme=entry.get("quant_scheme"),
         env=capture_env,
         python=model_capture_python(workload),
-        recipe=entry.get("quant_recipe") or derived_recipe(getattr(binding, "target", None), dtype),
+        recipe=(
+            None
+            if already_quantized
+            else entry.get("quant_recipe") or derived_recipe(getattr(binding, "target", None), dtype)
+        ),
+        already_quantized=already_quantized,
+        agreement_tolerance=_tol(binding),
     )
     # WHERE THE INPUTS CAME FROM -- recorded unconditionally, tri-state, and never inferred here.
     provenance = input_provenance_record(workload, capture_env, art.meta)
@@ -2334,6 +2774,8 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     output_abi = list((art.meta or {}).get("output_abi") or [])
     if not output_abi:
         raise M2MUnavailable("model capture has no output_abi; refusing to guess result cardinality")
+    golden_values = list(art.golden) if len(output_abi) > 1 else [art.golden]
+    numeric_policy = _model_output_numeric_policy(output_abi, golden_values, binding)
     out_names = [str(x) for x in (entry.get("outs") or [])]
     if not out_names:
         out_names = [str(entry.get("out", "Y0"))] if len(output_abi) == 1 else [f"Y{i}" for i in range(len(output_abi))]
@@ -2375,10 +2817,23 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
                 "quant_scheme": (art.meta or {}).get("scheme"),
                 **(
                     {
+                        "capture_quantization": "already_materialized",
+                        "materialized_contractions": (art.meta or {}).get("materialized_contractions"),
+                    }
+                    if already_quantized
+                    else {}
+                ),
+                **(
+                    {
                         "quant_recipe_sha256": (art.meta or {}).get("recipe_sha256"),
                         "quant_recipe_agreement": (art.meta or {}).get("recipe_agreement"),
                     }
                     if (art.meta or {}).get("recipe_sha256")
+                    else {}
+                ),
+                **(
+                    {"integerization_receipt": (art.meta or {})["integerization_receipt"]}
+                    if (art.meta or {}).get("integerization_receipt")
                     else {}
                 ),
                 "torch_seed": int((art.meta or {}).get("torch_seed", 0)),
@@ -2389,14 +2844,8 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
                 "weights_manifest": "capsule.weights.safetensors.manifest.json",
             },
         },
-        # the whole-model golden is the host torch-eager float output, so it is graded with tolerance even
-        # on an integer-datapath target (whose op capsules grade exact_int).
-        "numeric_policy": {
-            "compare": "tolerance_float",
-            "dtype": "f32",
-            "atol": _tol(binding)[0],
-            "rtol": _tol(binding)[1],
-        },
+        # The output ABI, not the target operand, determines readback width and comparison regime.
+        "numeric_policy": numeric_policy,
         "expected": {"instruction_classes": _model_classes},
         "required_oracle_tiers": list(binding.tiers),
         "vcs": "optional",
@@ -2431,7 +2880,6 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "semantic": _model_semantic_block(entry, _model_family, _model_classes),
     }
     prov = {nm: {"shape": input_abi[i]["shape"], "decoded": _flatten(art.inputs[i])} for i, nm in enumerate(in_names)}
-    golden_values = list(art.golden) if len(output_abi) > 1 else [art.golden]
     golden = {
         "golden_source": "host_torch_eager",
         "oracle_provenance": {

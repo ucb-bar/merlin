@@ -1,0 +1,37 @@
+# Explicit public-source retirements for a fresh corpus release. These are not
+# Phase 0 output capsules and must never be counted as current conformance proof.
+# The release preparer validates this list against the old manifest and fresh run.
+schema_version: 1
+retired:
+  _model_layers/G_conv2d_c1024x14x14_k1x1s2_n2048_bias_add: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_conv2d_c1024x14x14_k1x1s2_n2048_raw: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_conv2d_c128x28x28_k3x3s1_n128_bias_add_acc_scale_relu: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_conv2d_c128x28x28_k3x3s1_n128_raw: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_conv2d_c3x224x224_k7x7s2_n64_bias_add_acc_scale_relu_maxpool: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_conv2d_c3x224x224_k7x7s2_n64_raw: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_matmul_m1k2048n1000_bias_add: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_matmul_m1k2048n1000_raw: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_matmul_m3136k64n64_bias_add_acc_scale_relu: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _model_layers/G_matmul_m3136k64n64_raw: Superseded historical model-shape sample; fresh layer evidence must be derived from the current workload inventory.
+  _perf/PB00_island_m16k32h16n16: Superseded performance sweep member; omitted by the current facts-gated performance template.
+  _perf/PB01_no_island_m16k32h16n16: Superseded performance sweep member; omitted by the current facts-gated performance template.
+  _perf/PB02_island_m16k64h16n16: Superseded performance sweep member; omitted by the current facts-gated performance template.
+  _perf/PB03_no_island_m16k64h16n16: Superseded performance sweep member; omitted by the current facts-gated performance template.
+  isa/GS0_matmul_spec: Historical specification probe; the current profile does not rederive it, so it cannot certify a current requirement.
+  isa/SY_geometry_gemv_like: Superseded generated geometry sample; current workload-derived geometry cells are the source of truth.
+  isa/SY_geometry_odd_tail_heavy: Superseded generated geometry sample; current workload-derived geometry cells are the source of truth.
+  layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3: Superseded application scope slice; current workload-derived scope cells are the source of truth.
+  model/SY_micro_model: Historical model capsule; it is not a current generated application-demand slice.
+  model/SY_model_resnet50: Claim model moved behind the owner-only post-Phase-1-freeze evaluation boundary; no public corpus copy is admitted.
+  model/SY_model_tiny_llama: Claim model moved behind the owner-only post-Phase-1-freeze evaluation boundary; no public corpus copy is admitted.

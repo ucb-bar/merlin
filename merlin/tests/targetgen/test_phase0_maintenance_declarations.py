@@ -136,6 +136,43 @@ def test_incomplete_application_inventory_is_diagnostic_not_a_selectable_corpus(
     assert result["provenance"]["application_operation_plan"]["status"] == "unverified"
 
 
+def test_unresolved_application_operation_blocks_generated_profile_selection(selected, monkeypatch, capsys):
+    synth, _, declaration, _ = selected
+    descriptor = yaml.safe_load(declaration.descriptor.read_text())
+    descriptor["workload_spec"] = {"applications": ["model_a"]}
+    declaration.descriptor.write_text(yaml.safe_dump(descriptor))
+    declaration.conformance_spec.write_text(
+        yaml.safe_dump(
+            {
+                "target": "device",
+                "cells": [],
+                "application_demands": {
+                    "status": "inventoried",
+                    "n_operations": 1,
+                    "operation_groups": [
+                        {
+                            "operation": "aten.unmapped.default",
+                            "mlir_operation": "linalg.generic",
+                            "semantic_family": "contraction",
+                            "operand_format": "int8",
+                            "disposition": "hardware_admitted",
+                            "count": 1,
+                        }
+                    ],
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(synth, "_ungradeable", lambda *_args: pytest.fail("blocked plan reached gradeability"))
+    assert synth.main(["--target", "device", "--json", "--write"]) == 2
+    result = json.loads(capsys.readouterr().out)[0]
+    assert result["status"] == "unresolved_application_operations"
+    plan = result["provenance"]["application_operation_plan"]
+    assert plan["status"] == "blocked" and plan["blocked_operations"] == 1
+    assert plan["obligations"][0]["obligation"] == "no_exact_generic_writer"
+    assert not declaration.synth_profile.exists()
+
+
 def test_binding_passes_exact_declared_inputs_and_never_enables_holdouts(selected, monkeypatch):
     from merlin_experiments.phase0 import profiles
 

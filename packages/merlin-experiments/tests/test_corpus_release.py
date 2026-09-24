@@ -14,7 +14,10 @@ import yaml
 from merlin_experiments.adapters import ADAPTERS
 from merlin_experiments.cli import main
 from merlin_experiments.corpus import release as corpus_release
+from merlin_experiments.corpus.coverage import _public_category_roots
+from merlin_experiments.corpus.preparation import assemble
 from merlin_experiments.runner import fingerprint
+from merlin_experiments.spec import SpecError
 
 
 def _member(root: Path, category: str, name: str, label: str) -> None:
@@ -146,6 +149,28 @@ def release_fixture(tmp_path, monkeypatch):
     }
 
 
+def test_release_derives_admission_from_staged_members(release_fixture, capsys, monkeypatch):
+    from merlin.targetgen import eligibility
+
+    descriptor = release_fixture["root"] / "source-experiment/target_experiment.yaml"
+    authored = yaml.safe_load(descriptor.read_text())
+    authored["grading"] = {
+        "release_admission": "derive_from_corpus_v1",
+        "resource_bound": {"policy": "fixture_review", "exclude_capsules": [], "required_admitted_models": []},
+    }
+    descriptor.write_text(yaml.safe_dump(authored))
+    monkeypatch.setattr(eligibility, "capability_map_for_target", lambda _target: {"fixture": object()})
+
+    report = _prepare(release_fixture, capsys)
+    promoted = yaml.safe_load(Path(report["descriptor"]).read_text())
+    assert "expected_cohort" not in authored["grading"]
+    assert "release_admission" not in promoted["grading"]
+    assert promoted["grading"]["expected_cohort"] == {"source_capsules": 2, "admitted_capsules": 2}
+    assert promoted["grading"]["hidden_capability_admission"] == {"source_capsules": 1, "admitted_capsules": 1}
+    assert report["counts"]["public_source"] == 2
+    assert report["counts"]["hidden_source"] == 1
+
+
 def _prepare(fixture, capsys):
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
@@ -156,6 +181,114 @@ def _prepare(fixture, capsys):
         pytest.fail(output.err + (diagnostic.read_text() if diagnostic.exists() else ""))
     assert "private_member_identity" not in output.out + output.err
     return json.loads(output.out)
+
+
+def test_external_private_baseline_is_explicit_and_receipted(release_fixture, capsys):
+    fixture = release_fixture
+    private_source = fixture["root"] / "operator-private-corpus"
+    (fixture["baseline"] / "hidden").rename(private_source)
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+
+    absent = fixture["root"] / "out/artifacts/protocols/missing-private"
+    assert main(["corpus", "prepare", str(fixture["run"]), "--output", str(absent)]) == 2
+    assert "private corpus" in (absent / "private/failure.json").read_text()
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "corpus",
+                "prepare",
+                str(fixture["run"]),
+                "--output",
+                str(fixture["release"]),
+                "--private-baseline",
+                str(private_source),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(capsys.readouterr().out)
+    preparation = json.loads((fixture["release"] / "private/preparation.json").read_text())
+    assert report["counts"]["hidden_source"] == 1
+    assert preparation["assembly"]["baseline"]["hidden"] == {
+        "path": str(private_source),
+        "sha256": fingerprint(private_source),
+    }
+    assert (fixture["release"] / "payload/corpus/hidden/private_member_identity/capsule.yaml").is_file()
+    assert private_source.is_dir()
+
+
+def test_retired_generated_member_requires_exact_review_and_is_removed_from_copy(release_fixture, tmp_path):
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    fixture = release_fixture
+    baseline = fixture["baseline"]
+    manifest = yaml.safe_load((baseline / "MANIFEST.yaml").read_text())
+    manifest["generated"] = ["layers/retained_member"]
+    manifest["hand_authored"] = ["isa/generated_member"]
+    (baseline / "MANIFEST.yaml").write_text(yaml.safe_dump(manifest))
+    generated = tmp_path / "generated"
+    _member(generated, "isa", "generated_member", "public")
+    (generated / "MANIFEST.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "generated": ["isa/generated_member"],
+                "held_out": {"n_generated": 0},
+            }
+        )
+    )
+    te = load_target_experiment(fixture["root"] / "source-experiment/target_experiment.yaml")
+    with pytest.raises(SpecError, match="retirement review must account exactly"):
+        assemble(te, generated, tmp_path / "unreviewed")
+    review = tmp_path / "retirements.yaml"
+    review.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "retired": {"layers/retained_member": "No longer derived by this profile"},
+            }
+        )
+    )
+    destination = tmp_path / "reviewed"
+    receipt = assemble(te, generated, destination, retirements=review)
+    assert not (destination / "layers/retained_member").exists()
+    assert (baseline / "layers/retained_member/capsule.yaml").exists()
+    assert receipt["retirements"]["sha256"] == fingerprint(review)
+    promoted = yaml.safe_load((destination / "MANIFEST.yaml").read_text())
+    assert promoted["retired_generated"]["count"] == 1
+    assert "retained_member" not in str(promoted["retired_generated"])
+
+
+@pytest.mark.parametrize("damage", ["missing_member", "public_generated_alias"])
+def test_external_private_baseline_rejects_incomplete_or_aliased_source(release_fixture, capsys, damage):
+    fixture = release_fixture
+    private_source = fixture["root"] / "operator-private-corpus"
+    (fixture["baseline"] / "hidden").rename(private_source)
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    private_member = private_source / "private_member_identity"
+    if damage == "missing_member":
+        (private_member / "capsule.yaml").unlink()
+    else:
+        (private_member / "golden.yaml").unlink()
+        os.link(fixture["run"] / "phase0/capsules/isa/generated_member/golden.yaml", private_member / "golden.yaml")
+    assert (
+        main(
+            [
+                "corpus",
+                "prepare",
+                str(fixture["run"]),
+                "--output",
+                str(fixture["release"]),
+                "--private-baseline",
+                str(private_source),
+            ]
+        )
+        == 2
+    )
+    assert not (fixture["release"] / "private/seal.json").exists()
 
 
 def _seal(fixture, report, capsys):
@@ -275,6 +408,11 @@ def _phase1_definition(fixture, sealed):
 
 def test_public_coverage_reads_the_completed_phase0_run(release_fixture, capsys):
     fixture = release_fixture
+    generated = fixture["baseline"] / "isa/generated_member/capsule.yaml"
+    capsule = yaml.safe_load(generated.read_text())
+    capsule["semantic"] = {"semantic_family": "contraction"}
+    capsule["inputs"] = [{"name": "A", "shape": [16, 16], "dtype": "i8"}]
+    generated.write_text(yaml.safe_dump(capsule))
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
     spec = fixture["root"] / "conformance.yaml"
@@ -292,8 +430,23 @@ def test_public_coverage_reads_the_completed_phase0_run(release_fixture, capsys)
     result = json.loads(report.out)
     assert result["scope"] == "generated public source pool; not admitted, graded, or certified"
     assert result["coverage"]["n_required"] == 1
-    assert result["coverage"]["n_covered"] + len(result["coverage"]["uncovered"]) == 1
+    assert result["coverage"]["n_covered"] == 1
+    assert result["coverage"]["uncovered"] == []
     assert "private_member_identity" not in report.out + report.err
+
+
+@pytest.mark.parametrize("damage", ["undeclared", "nested"])
+def test_public_coverage_rejects_silently_ignored_members(tmp_path, damage):
+    _member(tmp_path, "isa", "declared", "public")
+    (tmp_path / "MANIFEST.yaml").write_text(yaml.safe_dump({"generated": ["isa/declared"]}))
+    if damage == "undeclared":
+        _member(tmp_path, "layers", "extra", "public")
+    else:
+        nested = tmp_path / "isa/declared/extra"
+        nested.mkdir()
+        (nested / "capsule.yaml").write_text("name: extra\nlabel: public\n")
+    with pytest.raises(SpecError, match="does not account|outside category/member layout"):
+        _public_category_roots(tmp_path)
 
 
 def test_public_prepare_inspect_explicit_seal_and_native_phase1(release_fixture, capsys):

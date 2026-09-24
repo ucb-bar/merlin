@@ -139,6 +139,20 @@ def verify_selected_synthesis(
             detailed.get("status") != "inventoried" or detailed.get("coverage_status") != "unverified"
         ):
             raise ValueError(f"{sidecar}: detailed-demand inventory must be inventoried with coverage unverified")
+        if applications:
+            labels = {str(label) for label in applications}
+            selected = detailed.get("applications") or {}
+            if not isinstance(selected, dict) or set(selected) != labels:
+                raise ValueError(f"{sidecar}: selected capture roster differs from declared applications")
+            invalid = sorted(
+                label
+                for label, row in selected.items()
+                if not isinstance(row, dict)
+                or not isinstance(row.get("capture_receipt"), dict)
+                or row["capture_receipt"].get("status") != "verified_materialized"
+            )
+            if invalid:
+                raise ValueError(f"{sidecar}: declared applications lack verified materialization receipts: {invalid}")
     if applications and demands.get("status") != "inventoried":
         raise ValueError(
             f"{conformance_spec}: declared applications require an inventoried operation-demand requirement; "
@@ -605,6 +619,7 @@ def load_profile(
             document=doc,
         )
         extra = list(doc.get("capsules") or ())
+        prof["_claim_model_evaluation"] = (doc.get("provenance") or {}).get("claim_model_evaluation")
         if extra:
             prof["capsules"] = list(prof.get("capsules") or []) + extra
     else:
@@ -637,6 +652,15 @@ def load_profile(
         # holdouts that were public capsules under another name, scoring memorisation as transfer. A
         # sweep states the OBLIGATION and lets the tile edge compute the points.
         prof["sweeps"] = list(prof.get("sweeps") or []) + list(held.get("sweeps") or [])
+    if descriptor is not None:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        from .claim_boundary import assert_no_claim_capsules
+
+        declared = getattr(load_target_experiment(descriptor), "workload_spec", None) or {}
+        assert_no_claim_capsules(
+            list(prof.get("capsules") or ()), [str(model) for model in declared.get("models") or ()]
+        )
     return prof
 
 

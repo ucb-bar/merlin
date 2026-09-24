@@ -327,6 +327,8 @@ def test_application_operation_plan_keeps_writers_refusals_and_host_lane_separat
     made = CS.synthesize(doc)
     assert made["capsules"] == [], "operation planning must not fabricate a capsule or a green coverage claim"
     plan = made["provenance"]["application_operation_plan"]
+    assert plan["status"] == "blocked"
+    assert plan["blocked_operations"] == 5
     assert plan["coverage_status"] == "unverified"
     assert plan["full_inventory_sha256"] == "a" * 64
     by_op = {row["operation"]: row for row in plan["obligations"]}
@@ -345,6 +347,7 @@ def test_application_operation_plan_keeps_writers_refusals_and_host_lane_separat
 
     doc["application_demands"].pop("operation_groups")
     no_projection = CS.synthesize(doc)["provenance"]["application_operation_plan"]
+    assert no_projection["status"] == "blocked"
     assert no_projection["obligations"] == []
     assert no_projection["coverage_status"] == "unverified"
     assert "sidecar" in no_projection["reason"]
@@ -615,7 +618,7 @@ def test_an_unsized_depth_is_not_reported_as_a_missing_writer():
             )
 
 
-# --------------------------------------------------------------------- the roster axis
+# --------------------------------------------------------------------- held-out claim-model boundary
 
 
 def _ws(target: str) -> dict:
@@ -625,32 +628,32 @@ def _ws(target: str) -> dict:
     return dict(getattr(load_target_experiment(descriptor_path(target)), "workload_spec", None) or {})
 
 
-def _roster_entries(target: str) -> list[dict]:
-    res = CS.synthesize(_spec(target), workload_spec=_ws(target))
-    return [e for e in res["capsules"] if (e.get("generalization") or {}).get("generalization_axis") == "roster"]
-
-
 @pytest.mark.parametrize("target", ["gemmini", "atlas"])
-def test_every_declared_roster_model_gets_a_whole_model_capsule(target):
-    """The roster is the one thing the workload spec declares that nothing consumed. Every capsule the
-    other axes emit is a SLICE; the claim the experiment builds toward is about the roster's real
-    networks, and a roster nobody synthesizes a capsule for is a claim nobody can make."""
+def test_claim_models_become_owner_evaluation_obligations_not_public_capsules(target):
+    """Held-out claims must never be compiler-building Phase-1 input."""
     declared = [str(m) for m in (_ws(target).get("models") or ())]
     if not declared:
         pytest.skip(f"{target} declares no roster")
-    got = {e.get("model") for e in _roster_entries(target)}
-    assert got == set(declared), f"{target}: roster {declared} but capsules for {sorted(got)}"
+    res = CS.synthesize(_spec(target), workload_spec=_ws(target))
+    obligation = res["provenance"]["claim_model_evaluation"]
+    assert obligation["model_count"] == len(declared)
+    assert obligation["visibility"] == "owner_only_after_phase1_freeze"
+    assert obligation["public_capsules_emitted"] == 0
+    assert not any(e.get("model") in declared or e["name"].startswith("SY_model_") for e in res["capsules"])
+    from merlin_experiments.corpus.phase_selection import generate_phase_selections
+
+    selected = generate_phase_selections(
+        [f"{e['cat']}/{e['name']}" for e in res["capsules"]], performance_category="_perf"
+    )
+    assert not any("SY_model_" in path for path in selected["phase1"]["generated_members"])
 
 
 @pytest.mark.parametrize("target", ["gemmini", "atlas"])
-def test_the_roster_capsule_compiles_at_the_format_the_target_admits(target):
-    """Not at a format someone typed. `precision_policy.best_format` composes the declared preference
-    with what the manifest admits, and the capsule carries its answer -- so a target whose hardware has
-    no int8 datapath gets its models at the next format it does have, without anything being edited."""
+def test_claim_evaluation_obligation_records_admitted_format_without_model_names(target):
+    """Owner can plan the post-freeze evaluation without exposing its model names."""
     from merlin.targetgen.precision_policy import best_format
 
-    entries = _roster_entries(target)
-    if not entries:
+    if not (_ws(target).get("models") or []):
         pytest.skip(f"{target} declares no roster")
     admitted = {
         str(c["dtype"])
@@ -660,52 +663,28 @@ def test_the_roster_capsule_compiles_at_the_format_the_target_admits(target):
     want = best_format(target, preference=(_ws(target).get("precision_preference") or None), admitted=admitted)[
         "chosen"
     ]["capsule_dtype"]
-    assert {e["operand_dtype"] for e in entries} == {want}
+    res = CS.synthesize(_spec(target), workload_spec=_ws(target))
+    obligation = res["provenance"]["claim_model_evaluation"]
+    assert obligation["status"] == "awaiting_phase1_freeze"
+    assert obligation["capsule_dtype"] == want
+    assert not any(name in yaml.safe_dump(res["capsules"]) for name in _ws(target)["models"])
 
 
-@pytest.mark.parametrize("target", ["gemmini", "atlas"])
-def test_the_roster_capsule_declares_the_scheme_its_arithmetic_needs(target):
-    """A capture asked for a quantized format WEIGHT-ONLY emits a float matmul over dequantized weights
-    -- the wrong program for a datapath that consumes the narrow format on both operands, and one no
-    golden substitution can repair. The scheme is derived from the format, so the entry cannot declare a
-    precision without also declaring the arithmetic that produces it."""
-    from merlin.targetgen.capsule_source import activation_quantizing_scheme
-
-    entries = _roster_entries(target)
-    if not entries:
-        pytest.skip(f"{target} declares no roster")
-    for e in entries:
-        want = activation_quantizing_scheme(e["operand_dtype"])
-        assert e.get("quant_scheme") == want, (
-            f"{e['name']}: declares {e.get('quant_scheme')!r} for {e['operand_dtype']}, needs {want!r}"
-        )
-
-
-@pytest.mark.parametrize("target", ["gemmini", "atlas"])
-def test_the_roster_capsule_requires_the_mesh_rather_than_only_the_numbers(target):
-    """A whole-model capsule graded on numerics alone passes a submission that ran the entire network on
-    the host. That vacuity was removed from the op capsules and left in the capstones; a synthesized
-    roster capsule must not reintroduce it."""
-    for e in _roster_entries(target):
-        assert "on_mesh" in ((e.get("lanes") or {}).get("require") or ())
-
-
-def test_a_roster_whose_preference_names_nothing_admitted_reports_it_rather_than_synthesizing():
-    """Fail closed. Compiling a roster model in a format the hardware lacks is not a weaker result, it
-    is a different one -- so the axis raises naming the roster, instead of quietly picking whatever the
-    target happens to admit."""
+def test_a_claim_whose_preference_names_nothing_admitted_records_unavailable_format():
+    """A claim with no admitted model format is an explicit owner-side gap."""
     doc = _spec("gemmini")
-    with pytest.raises(CS.SynthesisError, match="roster axis"):
-        CS.synthesize(doc, workload_spec={"models": ["tiny_llama"], "precision_preference": ["mxfp4"]})
+    res = CS.synthesize(doc, workload_spec={"models": ["tiny_llama"], "precision_preference": ["mxfp4"]})
+    assert res["provenance"]["claim_model_evaluation"]["status"] == "format_unavailable"
+    assert not any(e["name"].startswith("SY_model_") for e in res["capsules"])
 
 
-def test_a_roster_without_a_derived_model_datapath_refuses_instead_of_disappearing():
-    """A non-contraction target may be valid, but its model format and lane obligation cannot be
-    inferred by a contraction-only roster synthesizer. It must name the unsupported target class,
-    not return a corpus whose model denominator vanished."""
+def test_a_claim_without_a_derived_model_datapath_records_unavailable_format():
+    """A non-contraction target retains an explicit evaluation gap, not a public claim-model capsule."""
     doc = {"target": "generic_target", "cells": [], "boundaries": {}}
-    with pytest.raises(CS.SynthesisError, match="roster axis: declared models.*no contraction cell"):
-        CS.synthesize(doc, workload_spec={"models": ["network"], "precision_preference": ["fp32"]})
+    res = CS.synthesize(doc, workload_spec={"models": ["network"], "precision_preference": ["fp32"]})
+    claim = res["provenance"]["claim_model_evaluation"]
+    assert claim["status"] == "format_unavailable"
+    assert "no contraction cell" in claim["reason"]
 
 
 def test_an_l2_application_capsule_with_no_certified_sibling_is_dropped():

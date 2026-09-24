@@ -269,6 +269,23 @@ def test_a_quantized_residual_is_an_integer_sum_on_a_unit_whose_load_multiplies(
     assert (host.placement, host.refusal, host.operand_sum) == (CG.HOST, "fused_only", None)
 
 
+def test_quantized_sum_closes_before_downstream_integer_layout() -> None:
+    text = _residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0)
+    text = text.replace("-> tensor<4x16xi8> {", "-> tensor<16x4xi8> {", 1)
+    text = text.replace(
+        "    func.return %out : tensor<4x16xi8>",
+        "    %e2 = tensor.empty() : tensor<16x4xi8>\n"
+        "    %moved = linalg.transpose ins(%out : tensor<4x16xi8>) "
+        "outs(%e2 : tensor<16x4xi8>) permutation = [1, 0]\n"
+        "    func.return %moved : tensor<16x4xi8>",
+    )
+    groups = _groups(text, _summing())
+    (summed,) = [group for group in groups if group.operand_sum is not None]
+    assert summed.placement == "unit0"
+    assert summed.stages == ["dequantize", "dequantize", "residual_add", "relu", "quantize"]
+    assert any("movement" in group.stages for group in groups if group is not summed)
+
+
 def test_a_multiplier_above_one_goes_to_the_readout_and_the_bound_says_what_that_costs() -> None:
     # 1.5 through a saturating load would clip an operand the other could have cancelled. The
     # common factor is divided out and the readout's scale carries it, at a wider bound.

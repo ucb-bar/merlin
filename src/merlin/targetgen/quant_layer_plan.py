@@ -67,7 +67,6 @@ MODULE_FAMILY: dict[str, str] = {
     "ConvTranspose1d": CONTRACTION,
     "ConvTranspose2d": CONTRACTION,
     "ConvTranspose3d": CONTRACTION,
-    "Embedding": CONTRACTION,
     "AvgPool1d": WINDOW_MEAN,
     "AvgPool2d": WINDOW_MEAN,
     "AvgPool3d": WINDOW_MEAN,
@@ -264,7 +263,7 @@ def plan(recipe: Mapping[str, Any], layers: Sequence[Mapping[str, Any]]) -> Laye
             # A module that stores no operand quantizes nothing of its own, whatever its kind; one
             # that stores an operand and names no family is a gap in the family vocabulary. The two
             # are different findings and only the second is something to go and fix.
-            stores = _shape(layer) is not None
+            stores = bool(layer.get("stores_operand")) or _shape(layer) is not None
             decisions.append(
                 LayerDecision(
                     fqn=fqn,

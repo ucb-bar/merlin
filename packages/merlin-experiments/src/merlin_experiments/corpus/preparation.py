@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import os
@@ -112,34 +113,80 @@ def _members(root: Path) -> dict[str, tuple[Path, dict]]:
     return result
 
 
-def assemble(te, generated: Path, destination: Path) -> dict:
+def _reviewed_retirements(path: Path | None) -> tuple[dict[str, str], str | None]:
+    """Read an explicit public-only retirement decision, bound by its source bytes."""
+    from ..runner import fingerprint
+
+    if path is None:
+        return {}, None
+    ordinary_tree(path)
+    if not path.is_file():
+        raise SpecError("retirement review input must be an ordinary file")
+    document = read_yaml(path)
+    if (
+        not isinstance(document, dict)
+        or document.get("schema_version") != 1
+        or not isinstance(document.get("retired"), dict)
+    ):
+        raise SpecError("retirement review input requires schema_version 1 and retired mapping")
+    retired = document["retired"]
+    for member, reason in retired.items():
+        if (
+            not isinstance(member, str)
+            or len(Path(member).parts) != 2
+            or Path(member).is_absolute()
+            or ".." in Path(member).parts
+            or member.startswith("hidden/")
+            or not isinstance(reason, str)
+            or not reason.strip()
+        ):
+            raise SpecError("retirement decisions require public category/member paths and nonempty reasons")
+    return retired, fingerprint(path)
+
+
+def assemble(
+    te,
+    generated: Path,
+    destination: Path,
+    *,
+    private_baseline: Path | None = None,
+    retirements: Path | None = None,
+) -> dict:
     """Copy one target's baseline and overlay only receipt-declared generated members."""
     from merlin.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
 
     source_parent = te.capsule_corpus.parent
-    roots = list(dict.fromkeys([*te.graded_roots(), *te.hidden_roots(), *te.perf_roots(), *te.model_layer_roots()]))
     private_roots = te.hidden_roots()
+    if private_baseline is not None:
+        if private_roots:
+            raise SpecError("private baseline is already present in the descriptor corpus; do not replace it")
+        ordinary_tree(private_baseline)
+        if not private_baseline.is_dir():
+            raise SpecError("private baseline must be a directory")
+        private_roots = [private_baseline]
+    roots = list(dict.fromkeys([*te.graded_roots(), *private_roots, *te.perf_roots(), *te.model_layer_roots()]))
     # Copying private files into independent inodes must not launder an existing
     # public alias. Reuse the native snapshot's authoritative privacy admission.
-    _validate_host_sources(
-        [(str(root), root) for root in roots if root not in private_roots],
-        [(str(root), root) for root in private_roots],
-    )
     generated_private = generated / "hidden"
-    if generated_private.exists():
-        _validate_host_sources(
-            [(str(root), root) for root in generated.iterdir() if root != generated_private],
-            [(str(generated_private), generated_private)],
-        )
+    # Check all source surfaces together. A private external baseline aliased to
+    # a generated public file is just as unsafe as an alias inside either tree.
+    _validate_host_sources(
+        [(str(root), root) for root in roots if root not in private_roots]
+        + [(str(root), root) for root in generated.iterdir() if root != generated_private],
+        [(str(root), root) for root in private_roots]
+        + ([(str(generated_private), generated_private)] if generated_private.exists() else []),
+    )
     baseline = {}
     for root in roots:
-        if root.parent != source_parent:
+        private_external = root == private_baseline
+        if root.parent != source_parent and not private_external:
             raise SpecError("descriptor corpus categories do not share one source root")
-        baseline[root.name] = {
+        category = "hidden" if private_external else root.name
+        baseline[category] = {
             "path": str(root),
-            "sha256": copy_input(root, destination / root.name, private=root in private_roots),
+            "sha256": copy_input(root, destination / category, private=root in private_roots),
         }
     before = _members(destination)
     emitted = _members(generated)
@@ -173,8 +220,19 @@ def assemble(te, generated: Path, destination: Path) -> dict:
         key.startswith("hidden/") for key in before
     ):
         raise SpecError("baseline provenance does not account for its private corpus")
-    if (prior_generated & set(before)) - set(emitted):
-        raise SpecError("baseline generated members are absent from derivation; removals require explicit provenance")
+    missing = (prior_generated & set(before)) - set(emitted)
+    retired, retirement_digest = _reviewed_retirements(retirements)
+    if set(retired) != missing:
+        raise SpecError(
+            "retirement review must account exactly for absent baseline generated members "
+            f"(missing={len(missing)}, declared={len(retired)})"
+        )
+    retired_receipts = []
+    for key in sorted(missing):
+        target = destination / key
+        retired_receipts.append({"member": key, "previous_sha256": fingerprint(target), "reason": retired[key]})
+        # Only the release-local copy is removed; source and frozen run stay untouched.
+        shutil.rmtree(target)
     existing_names = {value[1]["name"]: key for key, value in before.items()}
     replacements = []
     for key, (source, document) in emitted.items():
@@ -195,6 +253,15 @@ def assemble(te, generated: Path, destination: Path) -> dict:
     # same generated provenance as Phase 0, not a live checkout's MANIFEST.
     # Functional grading still discovers only non-underscore categories.
     merged = copy.deepcopy(provenance)
+    if retired_receipts:
+        # The public manifest needs an audit commitment, not a list of removed
+        # claim-model identities or reviewer prose. Detailed decisions stay in
+        # the release-private preparation record.
+        encoded = json.dumps(retired_receipts, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        merged["retired_generated"] = {
+            "count": len(retired_receipts),
+            "sha256": hashlib.sha256(encoded).hexdigest(),
+        }
     merged["hand_authored"] = sorted((set(original.get("hand_authored") or []) - declared) & set(final_members))
     previous_hidden = sum((original.get("held_out") or {}).get(key, 0) for key in ("n_generated", "n_hand_authored"))
     new_hidden = {key for key in emitted if key.startswith("hidden/")} - set(before)
@@ -207,8 +274,59 @@ def assemble(te, generated: Path, destination: Path) -> dict:
     (destination / "MANIFEST.yaml").write_text(yaml.safe_dump(merged, sort_keys=False), encoding="utf-8")
     return {
         "baseline": baseline,
+        "retirements": {
+            "source": str(retirements) if retirements else None,
+            "sha256": retirement_digest,
+            "members": retired_receipts,
+        },
         "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),
         "replacements": replacements,
+    }
+
+
+def derive_release_admission(staged) -> dict:
+    """Seal a staged corpus's capability and cardinality decisions for review.
+
+    Model resource decisions are authored policy until comparable cost evidence
+    exists. Require one explicit decision per model so corpus growth cannot
+    silently expand the expensive formal denominator.
+    """
+    from merlin.targetgen import capsule_runner, eligibility
+
+    if not eligibility.capability_map_for_target(staged.target):
+        raise SpecError("release admission requires a resolvable nonempty hardware capability contract")
+    public = capsule_runner.discover_capsules(staged.graded_roots(), labels={"public", "dev"})
+    public_names = [str(cap.get("name")) for cap in public]
+    if len(public_names) != len(set(public_names)):
+        raise SpecError("release public corpus has duplicate capsule names")
+    models = {str(cap["name"]) for cap in public if cap.get("kind") == "model"}
+    resource = set(staged.graded_resource_exclude)
+    required = set(staged.graded_required_models)
+    if resource & required or resource | required != models:
+        raise SpecError(
+            "release resource policy must classify every staged public model exactly once "
+            "as excluded or required admitted"
+        )
+    operations = [cap for cap in public if cap.get("kind") != "model"]
+    _, withheld = capsule_runner._split_ineligible(operations, staged.target)
+    capability = sorted({str(row["capsule"]) for row in withheld})
+    if set(capability) & models:
+        raise SpecError("model capability admission cannot be inferred from operation admission")
+    hidden = capsule_runner.discover_capsules(staged.hidden_roots(), labels={"hidden"})
+    hidden_ops = [cap for cap in hidden if cap.get("kind") != "model"]
+    _, hidden_withheld = capsule_runner._split_ineligible(hidden_ops, staged.target)
+    hidden_excluded = {str(row["capsule"]) for row in hidden_withheld}
+    return {
+        "capability_exclude_capsules": capability,
+        "expected_cohort": {
+            "source_capsules": len(public),
+            "admitted_capsules": len(public) - len(capability) - len(resource),
+        },
+        "hidden_capability_admission": {
+            "source_capsules": len(hidden),
+            "admitted_capsules": len(hidden) - len(hidden_excluded),
+        },
+        "resource_decisions": len(resource) + len(required),
     }
 
 
@@ -260,6 +378,21 @@ def scaffold(te, corpus: Path, experiment: Path, *, private: Path) -> dict:
         inputs[relative.as_posix()] = {"path": str(source), "sha256": copy_input(source, experiment / relative)}
     descriptor = experiment / "target_experiment.yaml"
     descriptor.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if te.graded_release_admission:
+        staged = load_target_experiment(descriptor)
+        derived = derive_release_admission(staged)
+        grading = document["grading"]
+        grading.pop("release_admission")
+        grading.update({key: value for key, value in derived.items() if key != "resource_decisions"})
+        descriptor.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        inputs["release_admission"] = {
+            "policy": "derive_from_corpus_v1",
+            "public_source": derived["expected_cohort"]["source_capsules"],
+            "public_admitted": derived["expected_cohort"]["admitted_capsules"],
+            "hidden_source": derived["hidden_capability_admission"]["source_capsules"],
+            "hidden_admitted": derived["hidden_capability_admission"]["admitted_capsules"],
+            "resource_decisions": derived["resource_decisions"],
+        }
     # Generate fresh declarations, not copies that might still point at the old corpus.
     from merlin.common.paths import python_source_dir
     from merlin.targetgen.generate_bundles import materialize_bundles

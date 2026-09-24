@@ -1,14 +1,176 @@
 """Answer-free, operation-complete Phase 0 application capture inventory.
 
-Every parsed MLIR operation is accounted for. Admission is not lowering or compile acceptance.
+Every operation in the normalized program handed to backends is accounted for. Admission is not
+lowering or compile acceptance; raw and normalized identities are retained separately.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
+
+_INT_MM_MAPS = [
+    "affine_map<(d0, d1, d2) -> (d0, d2)>",
+    "affine_map<(d0, d1, d2) -> (d2, d1)>",
+    "affine_map<(d0, d1, d2) -> (d0, d1)>",
+]
+_INT_MM_ITERATORS = [
+    "#linalg.iterator_type<parallel>",
+    "#linalg.iterator_type<parallel>",
+    "#linalg.iterator_type<reduction>",
+]
+_INT_MM_BODY = ["arith.extsi", "arith.extsi", "arith.muli", "arith.addi", "linalg.yield"]
+
+
+def verify_capture_receipt(path: str | Path) -> dict:
+    """Verify the capture's materialized artifact bytes against its adjacent receipt.
+
+    This says nothing about source closure: the receipt records that separately. Older diagnostic
+    captures remain inventoryable and explicitly report ``unverified``.
+    """
+    capture = Path(path)
+    receipt_path = capture.parent / "capture_receipt.json"
+    if not receipt_path.is_file():
+        return {
+            "status": "unverified",
+            "receipt_sha256": None,
+            "source_closure_verified": False,
+            "errors": ["capture_receipt.json is absent"],
+        }
+    raw = receipt_path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    try:
+        doc = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        return {
+            "status": "unverified",
+            "receipt_sha256": digest,
+            "source_closure_verified": False,
+            "errors": [f"capture receipt is unreadable: {exc}"],
+        }
+    errors = []
+    if doc.get("schema") != "m2m.capture-receipt.v1":
+        errors.append("unsupported capture receipt schema")
+    if (doc.get("materialized_abi") or {}).get("complete") is not True:
+        errors.append("capture receipt does not declare a complete materialized ABI")
+    artifacts = doc.get("artifacts")
+    required = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json"}
+    if not isinstance(artifacts, dict) or not required <= set(artifacts):
+        errors.append("capture receipt lacks required model and weight artifacts")
+        artifacts = artifacts if isinstance(artifacts, dict) else {}
+    for name, record in sorted(artifacts.items()):
+        if not isinstance(name, str) or Path(name).name != name or not isinstance(record, dict):
+            errors.append(f"invalid artifact record {name!r}")
+            continue
+        artifact = capture.parent / name
+        if not artifact.is_file() or artifact.is_symlink():
+            errors.append(f"receipt artifact missing or symlinked: {name}")
+            continue
+        size, expected = record.get("bytes"), record.get("sha256")
+        if (
+            type(size) is not int
+            or size < 0
+            or not isinstance(expected, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", expected)
+        ):
+            errors.append(f"invalid size/digest for receipt artifact {name}")
+            continue
+        if artifact.stat().st_size != size:
+            errors.append(f"receipt artifact size differs: {name}")
+            continue
+        hasher = hashlib.sha256()
+        with artifact.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        if hasher.hexdigest() != expected:
+            errors.append(f"receipt artifact digest differs: {name}")
+    return {
+        "status": "verified_materialized" if not errors else "unverified",
+        "receipt_sha256": digest,
+        "source_closure_verified": doc.get("source_closure_verified") is True,
+        "errors": errors,
+    }
+
+
+def exact_int_mm_geometry(row: dict, *, require_quant_origin: bool = True) -> tuple[int, int, int] | None:
+    """Recognize only a standard rank-2 signed i8×i8→i32 ``aten._int_mm``.
+
+    The linalg iteration space has three loops, but the tensor rank is two. Testing all operand
+    types, maps, iterators and body avoids treating a family label or a coincidentally sized generic
+    as this operator. A captured application must additionally prove its TorchAO weight origin.
+    """
+    if any(
+        row.get(key) != value
+        for key, value in {
+            "operation": "aten._int_mm.default",
+            "mlir_operation": "linalg.generic",
+            "frontend_op": "aten._int_mm.default",
+            "provenance_op": "int_matmul",
+            "semantic_family": "contraction",
+            "operand_format": "int8",
+            "accumulator_dtypes": ["i32"],
+            "indexing_maps": _INT_MM_MAPS,
+            "iterator_types": _INT_MM_ITERATORS,
+            "body_operations": _INT_MM_BODY,
+        }.items()
+    ):
+        return None
+    if require_quant_origin and not (row.get("quant_evidence") or {}).get("prov.quant_inner_1"):
+        return None
+    operands = row.get("ordered_operand_types")
+    results = row.get("ordered_result_types")
+    if not isinstance(operands, list) or len(operands) != 3 or not isinstance(results, list) or len(results) != 1:
+        return None
+    a, w, out = operands
+    ashape, wshape, oshape = a.get("shape"), w.get("shape"), out.get("shape")
+    if any(
+        not isinstance(s, list) or len(s) != 2 or any(type(d) is not int or d <= 0 for d in s)
+        for s in (ashape, wshape, oshape)
+    ):
+        return None
+    m, k = ashape
+    wk, n = wshape
+    if (a.get("dtype"), w.get("dtype"), out.get("dtype")) != ("i8", "i8", "i32"):
+        return None
+    if wk != k or oshape != [m, n] or results != [{"shape": [m, n], "dtype": "i32"}]:
+        return None
+    if row.get("result_shapes") != [[m, n]]:
+        return None
+    shape = row.get("contraction_shape") or {}
+    if any(shape.get(axis) != value for axis, value in (("M", m), ("K", k), ("N", n), ("rank", 3))):
+        return None
+    return m, k, n
+
+
+def operation_structure(op) -> dict:
+    """Ordered tensor ABI and linalg access pattern shared by inventory and slice verification."""
+    from merlin.common import mlir_query as mq
+
+    name = mq.op_name(op)
+    maps_attr = op.properties.get("indexing_maps") or op.attributes.get("indexing_maps")
+    kinds_attr = op.properties.get("iterator_types") or op.attributes.get("iterator_types")
+    return {
+        "ordered_operand_types": [
+            {"shape": shape, "dtype": dtype}
+            for value in op.operands
+            for shape, dtype in (mq.type_shape_dtype(value.type),)
+        ],
+        "ordered_result_types": [
+            {"shape": shape, "dtype": dtype}
+            for value in op.results
+            for shape, dtype in (mq.type_shape_dtype(value.type),)
+        ],
+        "indexing_maps": [str(item) for item in maps_attr] if name == "linalg.generic" and maps_attr else None,
+        "iterator_types": [str(item) for item in kinds_attr] if name == "linalg.generic" and kinds_attr else None,
+        "body_operations": (
+            [mq.op_name(child) for child in op.regions[0].blocks[0].ops]
+            if name == "linalg.generic" and op.regions and op.regions[0].blocks
+            else None
+        ),
+    }
 
 
 def _application_operation_inventory(path: str | Path, target: str, cap_map: dict) -> dict:
@@ -20,6 +182,7 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
     from merlin.common import mlir_query as mq
+    from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
     from merlin.targetgen import semantic_families as sf
     from merlin.targetgen.eligibility import RegionDescriptor, is_eligible
@@ -28,7 +191,8 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
     p = Path(path)
     try:
         data = p.read_bytes()
-        module = mq.parse(data.decode("utf-8"))
+        normalized, normalization = normalize_capture_mlir(data.decode("utf-8"))
+        module = mq.parse(normalized)
     except Exception as exc:
         raise ValueError(
             f"declared application capture {p}: cannot inventory MLIR: {type(exc).__name__}: {exc}"
@@ -99,6 +263,9 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
         result_types = [mq.type_shape_dtype(value.type) for value in op.results]
         operand_dtypes = sorted({dtype for _shape, dtype in operand_types if dtype})
         result_dtypes = sorted({dtype for _shape, dtype in result_types if dtype})
+        # Keep the ordered ABI and linalg access pattern in the digest-bound sidecar. A dtype set plus
+        # a family/shape class cannot distinguish this matmul from another generic of the same size.
+        structure = operation_structure(op)
         result_shapes = [shape for shape, _dtype in result_types if shape]
         operand_shapes = [shape for shape, _dtype in operand_types if shape]
         m, k, n, rank = extents.get(id(op), (None, None, None, None))
@@ -142,9 +309,14 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
             disposition, reason = "structural", "IR container or terminator; not an independent demand"
         elif nested:
             disposition, reason = "component", "inside a linalg region; accounted with its parent computation"
-        elif support:
+        elif support or (family == "movement" and name.startswith("linalg.")):
             disposition = "support_required"
-            reason = "constant, tensor/memory, or control-flow op requires lowering; not a separate compute capsule"
+            reason = (
+                "layout/data movement requires an explicit lowering; a movement-family capability "
+                "does not prove this operation executes on the accelerator"
+                if family == "movement" and name.startswith("linalg.")
+                else "constant, tensor/memory, or control-flow op requires lowering; not a separate compute capsule"
+            )
         elif name == "func.call":
             disposition = "unclassified"
             reason = "call requires a resolved callee/body or a declared external host lowering"
@@ -184,9 +356,14 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
             "semantic_family": family,
             "family_basis": family_basis,
             "operand_dtypes": operand_dtypes,
+            "ordered_operand_types": structure["ordered_operand_types"],
             "operand_format": input_format,
             "result_dtypes": result_dtypes,
+            "ordered_result_types": structure["ordered_result_types"],
             "result_shapes": result_shapes,
+            "indexing_maps": structure["indexing_maps"],
+            "iterator_types": structure["iterator_types"],
+            "body_operations": structure["body_operations"],
             "accumulator_dtypes": accumulator_dtypes,
             "contraction_shape": shape,
             "shape_confidence": shape_confidence,
@@ -212,13 +389,18 @@ def _application_operation_inventory(path: str | Path, target: str, cap_map: dic
     return {
         "capture": f"{p.parent.name}/{p.name}",
         "capture_sha256": hashlib.sha256(data).hexdigest(),
+        "capture_receipt": verify_capture_receipt(p),
+        "capture_normalization": normalization,
         "capture_quantization": module_quantization,
         "n_operations": n_operations,
         "n_signatures": len(rows),
         "counts": dict(sorted(counts.items())),
         "status": "incomplete" if counts["unclassified"] else "inventoried",
         "signatures": rows,
-        "scope": "parsed MLIR operations only; hardware admission is not compiler lowering or model execution",
+        "scope": (
+            "parsed operations in the canonically normalized capture only; hardware admission "
+            "is not compiler lowering or model execution"
+        ),
     }
 
 
@@ -266,6 +448,8 @@ def application_demand_inventory(applications: dict[str, str | Path], target: st
             for key in (
                 "capture",
                 "capture_sha256",
+                "capture_receipt",
+                "capture_normalization",
                 "capture_quantization",
                 "n_operations",
                 "n_signatures",

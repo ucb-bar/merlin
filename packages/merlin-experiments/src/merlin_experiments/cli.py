@@ -38,6 +38,17 @@ def main(argv: list[str] | None = None) -> int:
         child.add_argument("--run-dir", type=Path, help="explicit output; otherwise use the configured run root")
         child.add_argument("--corpus-seal", type=Path, help="reviewed Phase 0 release seal for Phase 1")
         child.add_argument("--bundle-manifest", type=Path, help="reviewed replacement Phase 1 input bundle")
+        child.add_argument(
+            "--phase0-conformance-spec", type=Path, help="new reviewed Phase 0 requirement (select with synth profile)"
+        )
+        child.add_argument(
+            "--phase0-synth-profile", type=Path, help="new synthesized Phase 0 profile (select with requirement)"
+        )
+        child.add_argument(
+            "--phase0-hidden-profile",
+            type=Path,
+            help="operator-owned private Phase 0 profile; never put it in examples",
+        )
     commands.add_parser("status").add_argument("run_dir", type=Path)
     commands.add_parser("lineage", help="read frozen phase inputs and handoffs without executing engines").add_argument(
         "run_dir", type=Path
@@ -66,6 +77,16 @@ def main(argv: list[str] | None = None) -> int:
     prepare = operations.add_parser("prepare")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument("--output", type=Path, required=True)
+    prepare.add_argument(
+        "--private-baseline",
+        type=Path,
+        help="operator-owned hidden capsule category when it is absent from the public source checkout",
+    )
+    prepare.add_argument(
+        "--retirements",
+        type=Path,
+        help="reviewed public baseline-generated members intentionally retired by this derivation",
+    )
     operations.add_parser("inspect").add_argument("release", type=Path)
     seal = operations.add_parser("seal")
     seal.add_argument("release", type=Path)
@@ -91,7 +112,12 @@ def main(argv: list[str] | None = None) -> int:
             from .corpus import release as corpus_release
 
             if args.operation == "prepare":
-                result = corpus_release.prepare(args.run_dir, args.output)
+                result = corpus_release.prepare(
+                    args.run_dir,
+                    args.output,
+                    private_baseline=args.private_baseline,
+                    retirements=args.retirements,
+                )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)
             else:
@@ -139,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
                 run_dir=args.run_dir,
                 corpus_seal=args.corpus_seal,
                 bundle_manifest=args.bundle_manifest,
+                phase0_conformance_spec=args.phase0_conformance_spec,
+                phase0_synth_profile=args.phase0_synth_profile,
+                phase0_hidden_profile=args.phase0_hidden_profile,
             )
             if args.verb == "inspect":
                 result = plan

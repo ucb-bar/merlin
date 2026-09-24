@@ -22,13 +22,16 @@ it needs no workload catalog or deployment configuration.
 ```sh
 merlin lower /path/to/capture/model.mlir \
   --out out/build/model-lowering/inspection-001 \
+  --textual \
   --ir-audit both \
   --audit-sidecar /path/to/capture/weights.safetensors \
-  --audit-sidecar /path/to/capture/manifest.json
+  --audit-sidecar /path/to/capture/weights.safetensors.manifest.json
 ```
 
 The output directory must not exist, including as a symlink. Use a fresh directory
 for every invocation; failures preserve any completed intermediate evidence.
+The example uses the text preprocessing route for a model2MLIR capture; other
+input formats may use the default xDSL route.
 Successful output is JSON with `ll_path`, optional native outputs, lowering statistics,
 and `audit_index`: the exact index for this invocation, not a guessed latest directory.
 Configure the upstream MLIR toolchain as described in [LLVM integration](llvm_integration.md).
@@ -59,6 +62,10 @@ Compact means readable text, not a disk-size guarantee: raw storage for expanded
 splat tensors can exceed their short MLIR spelling. `exact` does not export these blobs.
 The audit records completed preprocessing stages and upstream pass evidence available
 from the existing pipeline. It is not a promise of one complete module per upstream pass.
+For example, a fresh DeepJSCC capture completed with six named stages (input,
+upstream, upstream-scheduled, llvm-translated, llvm-normalized, llvm-final) and
+52 native pass views. This demonstrates inspectability of that shared lowering
+route, not accelerator offload or model-level numerical correctness.
 Without the flag, the lowering API's normal intermediate outputs still exist but no
 audit index is created. The Python API returns the same `LowerResult.audit_index` field.
 

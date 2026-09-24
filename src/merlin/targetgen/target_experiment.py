@@ -506,6 +506,9 @@ class TargetExperiment:
     graded_resource_exclude: tuple[str, ...] = ()
     graded_resource_policy: str | None = None
     graded_required_models: tuple[str, ...] = ()
+    # Authored Phase-0 input: the reviewed release resolves capability exclusions and
+    # cardinalities from its staged corpus. This input cannot itself be graded.
+    graded_release_admission: bool = False
     # OPTIONAL: the complete-model capsule Phase 2 treats as its fixed global objective when the
     # immutable Phase 1 snapshot predates capsule-level ``performance.global_objective`` metadata.
     # This is an experiment declaration, not a size/latency heuristic: choosing the smallest measured
@@ -833,6 +836,8 @@ class TargetExperiment:
 
     def effective_exclusions(self, source_names) -> tuple[str, ...]:
         """Resolve the descriptor's exclusion or inclusion policy against a concrete source set."""
+        if self.graded_release_admission:
+            raise ValueError("Phase-0 admission input is not a grading cohort; prepare and review a corpus release")
         source = {str(name) for name in source_names}
         if self.graded_include:
             include = set(self.graded_include)
@@ -930,6 +935,9 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     if not isinstance(grading, dict):
         raise ValueError(f"{p}: grading must be a mapping")
     resource_bound = grading.get("resource_bound") or {}
+    release_admission = grading.get("release_admission")
+    if release_admission not in (None, "derive_from_corpus_v1"):
+        raise ValueError(f"{p}: grading.release_admission must be derive_from_corpus_v1")
     phase_bound = grading.get("phase_bound") or {}
     expected_cohort = grading.get("expected_cohort") or {}
     hidden_admission = grading.get("hidden_capability_admission") or {}
@@ -1154,6 +1162,14 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         raise ValueError(f"{p}: grading.hidden_capability_admission must declare both source and admitted counts")
     if hidden_source is not None and hidden_admitted > hidden_source:
         raise ValueError(f"{p}: hidden admitted count exceeds its sealed source count")
+    if release_admission:
+        if expected_cohort or hidden_admission or capability_exclude or legacy_exclude or search_include or phase_bound:
+            raise ValueError(
+                f"{p}: release admission derives cohort counts and capability exclusions from the staged corpus; "
+                "phase partitions require a separate reviewed derivation"
+            )
+        if not resource_bound.get("policy"):
+            raise ValueError(f"{p}: release admission requires a named resource policy")
     return TargetExperiment(
         target=str(doc["target"]),
         isa_headers=tuple(hw.get("isa_headers") or []),
@@ -1190,6 +1206,7 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
         graded_required_models=required_models,
+        graded_release_admission=bool(release_admission),
         performance_global_objective=performance_global_objective,
         graded_phase2_only=phase2_only,
         graded_phase_exclude=phase_exclude,

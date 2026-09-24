@@ -86,89 +86,30 @@ def test_materializer_copies_whole_model_compile_inputs(tmp_path):
         assert (tmp_path / "materialized" / "M_model" / name).read_bytes() == payload
 
 
-def test_explicit_cohort_is_target_aware_and_gemmini_parity():
-    """The graded public set is DERIVED per-target from the descriptor's capsule_corpus (the target-aware
-    replacement for the committed gemmini set the loop used to hardcode). gemmini must reproduce exactly
-    the cohort ITS DESCRIPTOR declares; atlas must yield its OWN fp8/bf16 set (disjoint names) — proving
-    no gemmini leak into another target's grade.
+def test_gemmini_admission_is_derived_for_the_release():
+    from dataclasses import replace
 
-    THE EXPECTED CARDINALITIES ARE READ FROM THE DESCRIPTOR, never repeated here. They used to be the
-    literals 48 and 34, which went stale two pool changes ago and then failed as an arithmetic mismatch
-    that said nothing about which of the two numbers was wrong. The descriptor is the single frozen
-    declaration; this test's job is to prove the materializer AGREES with it, not to hold a second copy
-    that can drift independently."""
+    from merlin_experiments.corpus.preparation import derive_release_admission
+    from merlin_experiments.spec import SpecError
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.contract.materialize import materialize_public_cohort
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    root = repo_root()
+    te = load_target_experiment(repo_root() / "examples/gemmini/target/descriptor.yaml")
+    assert te.graded_release_admission
+    assert te.graded_expected_source_capsules is None
+    assert te.hidden_expected_source_capsules is None
+    with pytest.raises(ValueError, match="prepare and review a corpus release"):
+        materialize_public_cohort(te, tier_ceiling="L3")
 
-    te_g = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
-    gem_root = materialize_public_cohort(te_g, tier_ceiling="L3")
-    gem = sorted(p.name for p in gem_root.iterdir() if p.is_dir())
-    source = sorted(
-        cap["name"]
-        for cap in __import__("merlin.targetgen.capsule_runner", fromlist=["discover_capsules"]).discover_capsules(
-            te_g.graded_roots(), labels={"public", "dev"}, contract=str(root / "merlin/contract")
-        )
-    )
-    n_source = te_g.graded_expected_source_capsules
-    n_admitted = te_g.graded_expected_admitted_capsules
-    n_capability = len(te_g.graded_capability_exclude)
-    n_resource = len(te_g.graded_resource_exclude)
-    assert set(gem) == set(source) - set(te_g.graded_exclude)
-    assert len(source) == n_source and len(gem) == n_admitted
-    record = json.loads((gem_root / ".cohort_admission.json").read_text(encoding="utf-8"))
-    # The policy NAME tracks which classes the record accounts for, so it is derived from the descriptor
-    # rather than spelled out here: a descriptor that also declares a PHASE partition records a
-    # three-class policy, and pinning the two-class name would make adding the third read as corruption.
-    assert record["policy"] == (
-        "descriptor_capability_resource_and_phase_v1"
-        if te_g.graded_phase is not None
-        else "descriptor_capability_and_resource_v1"
-    )
-    assert (
-        record["n_source_capsules"],
-        record["n_admitted_capsules"],
-        record["n_capability_excluded"],
-        record["n_resource_excluded"],
-    ) == (n_source, n_admitted, n_capability, n_resource)
-    if te_g.graded_phase is not None:
-        # A phase partition is RECORDED and not subtracted, so it must leave the denominator alone --
-        # this is the assertion that would catch someone later "applying" it and shrinking the cohort.
-        assert record["n_phase_excluded"] == len(te_g.graded_phase_exclude) == 0
-        assert record["n_phase2_only"] == len(te_g.graded_phase2_only) > 0
-        assert set(te_g.graded_phase2_only) <= set(gem)
-        assert record["phase_budget_s"] == te_g.graded_phase_budget_s
-    assert record["required_admitted_models"] == sorted(te_g.graded_required_models)
-    assert record["descriptor_sha256"] == te_g.descriptor_sha256
-    assert record["excluded_name_set_sha256"] == _name_digest(te_g.graded_exclude)
-    assert record["admitted_name_set_sha256"] == _name_digest(gem)
-
-    te_a = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml")
-    atlas = sorted(p.name for p in materialize_public_cohort(te_a, tier_ceiling="L3").iterdir() if p.is_dir())
-    assert atlas and set(atlas) != set(gem)
-
-    # THE LEAK GUARD IS ABOUT PROVENANCE, NOT SPELLING. It used to assert the two name sets were
-    # disjoint, which stopped meaning "no leak" once the roster synthesizer began naming capsules by the
-    # ROLE they fill rather than by the target they were written for: two targets legitimately each own
-    # a capsule called after the same role, in their own corpus, with their own dtypes. A shared name is
-    # a leak only if it resolves to the SAME directory, so that is what is checked.
-    def _origin(te, name):
-        from pathlib import Path as _Path
-
-        for r in te.graded_roots():
-            cand = _Path(r) / name
-            if (cand / "capsule.yaml").is_file():
-                return cand.resolve()
-        raise AssertionError(f"{name} materialized but is under none of the declared roots")
-
-    for shared in sorted(set(atlas) & set(gem)):
-        a, g = _origin(te_a, shared), _origin(te_g, shared)
-        assert a != g, (
-            f"{shared} materialized into BOTH targets' grades from the same directory "
-            f"{g} — that is a leak, not a per-target synthesis"
-        )
+    derived = derive_release_admission(te)
+    assert derived["expected_cohort"]["source_capsules"] == 121
+    assert derived["expected_cohort"]["admitted_capsules"] == 103
+    assert len(derived["capability_exclude_capsules"]) == 11
+    assert derived["resource_decisions"] == 10
+    with pytest.raises(SpecError, match="classify every staged public model"):
+        derive_release_admission(replace(te, graded_required_models=te.graded_required_models[:-1]))
 
 
 def test_materialized_cohort_rejects_descriptor_drift(tmp_path):
@@ -211,7 +152,8 @@ def test_descriptor_rejects_cohort_count_arithmetic_drift(tmp_path):
 
     source = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     doc = yaml.safe_load(source.read_text(encoding="utf-8"))
-    doc["grading"]["expected_cohort"]["admitted_capsules"] = 33
+    doc["grading"].pop("release_admission")
+    doc["grading"]["expected_cohort"] = {"source_capsules": 121, "admitted_capsules": 33}
     descriptor = tmp_path / "target_experiment.yaml"
     descriptor.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     with pytest.raises(ValueError, match="arithmetic does not match"):
@@ -228,7 +170,7 @@ def test_explicit_cohort_is_concurrency_safe():
     from merlin.targetgen.contract.materialize import materialize_public_cohort
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    te = load_target_experiment(repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    te = load_target_experiment(repo_root() / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml")
     assert materialize_public_cohort(te, tier_ceiling="L3").is_symlink()
 
     def worker(_):

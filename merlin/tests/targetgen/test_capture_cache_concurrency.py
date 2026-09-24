@@ -18,6 +18,21 @@ import pytest
 from merlin.targetgen import capture_cache
 
 
+def _upstream_source_fixture(root: Path) -> Path:
+    """A cacheable fake checkout must provide the direct model2MLIR owners."""
+    for relative in (
+        "m2m/api.py",
+        "m2m/ir/import_fx.py",
+        "m2m/capture/torchao_pipeline.py",
+        "m2m/capture/torchao_schemes.py",
+        "m2m/capture/pt2e_integerize.py",
+    ):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("original source\n")
+    return root
+
+
 def test_cache_owner_import_does_not_load_capture_or_frameworks():
     result = subprocess.run(
         [
@@ -42,7 +57,9 @@ def test_cache_request_preserves_environment_boundaries_and_order(tmp_path, monk
     from merlin.targetgen import capsule_source as source
 
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
-    capture = source.PytorchRefSource(m2m_dir=tmp_path / "upstream", python=tmp_path / "python")
+    capture = source.PytorchRefSource(
+        m2m_dir=_upstream_source_fixture(tmp_path / "upstream"), python=tmp_path / "python"
+    )
     # These two requests collided in the previous delimiter-joined encoding.
     single = capture._cache_slot("model", "f32", "source", None, {"A": "one\x1fB=two"})
     split = capture._cache_slot("model", "f32", "source", None, {"A": "one", "B": "two"})
@@ -67,7 +84,9 @@ def test_local_implementation_bytes_change_cache_identity(tmp_path, monkeypatch)
         return owners[name]
 
     monkeypatch.setattr(paths, "module_source_path", owner_path)
-    capture = source.PytorchRefSource(m2m_dir=tmp_path / "upstream", python=tmp_path / "python")
+    capture = source.PytorchRefSource(
+        m2m_dir=_upstream_source_fixture(tmp_path / "upstream"), python=tmp_path / "python"
+    )
     original = capture._cache_slot("model", "f32", "source", None)
     assert original is not None
     assert "merlin.targetgen._m2m_capture_worker" in owners
@@ -82,13 +101,29 @@ def test_local_implementation_bytes_change_cache_identity(tmp_path, monkeypatch)
     assert capture._cache_slot("model", "f32", "source", None) is None
 
 
+def test_static_pt2e_cache_binds_upstream_integerizer_bytes(tmp_path, monkeypatch):
+    from merlin.targetgen import capsule_source as source
+
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    upstream = _upstream_source_fixture(tmp_path / "upstream")
+    capture = source.PytorchRefSource(m2m_dir=upstream, python=tmp_path / "python")
+    request = ("model", "int8", "loader", None)
+    before = capture._cache_slot(*request, recipe_sha256="recipe", static_pt2e=True)
+    assert before is not None
+    integerizer = upstream / "m2m/capture/pt2e_integerize.py"
+    integerizer.write_text("changed integerization\n")
+    assert capture._cache_slot(*request, recipe_sha256="recipe", static_pt2e=True) != before
+    integerizer.unlink()
+    assert capture._cache_slot(*request, recipe_sha256="recipe", static_pt2e=True) is None
+
+
 def test_implementation_drift_refuses_publication(tmp_path, monkeypatch):
     from merlin.targetgen import capsule_source as source
 
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     identity = {"revision": "before"}
     monkeypatch.setattr(capture_cache, "implementation_identity", lambda: dict(identity))
-    capture = source.PytorchRefSource(m2m_dir=tmp_path, python=tmp_path / "python")
+    capture = source.PytorchRefSource(m2m_dir=_upstream_source_fixture(tmp_path), python=tmp_path / "python")
     slot = capture._cache_slot("model", "f32", "source", None)
 
     def changed_capture(*args, **kwargs):

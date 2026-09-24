@@ -107,7 +107,16 @@ def _ungradeable(entries: list[dict], target: str) -> list[dict]:
         regime, _ = writer._entry_regime(entry, binding)
         source = entry.get("source")
         why = None
-        if source == "pytorch" and regime != "simt" and not entry.get("quant_scheme"):
+        if (
+            source == "pytorch"
+            and regime != "simt"
+            and not entry.get("quant_scheme")
+            and not (
+                entry.get("capture_op") == "int_matmul"
+                and (entry.get("application_signature_match") or {}).get("source_quantization")
+                == "int8_dyn_act_int8_weight"
+            )
+        ):
             why = (
                 f"a pytorch-sourced capsule needs a float dtype or a declared quant_scheme; this "
                 f"cell is {entry.get('operand_dtype')!r} (regime {regime!r})"
@@ -177,8 +186,26 @@ def synth_for(target: str, *, conformance_spec: Path | None = None) -> dict:
     applications = workload_spec.get("applications") or {}
     demands = doc.get("application_demands") or {}
     incomplete_applications = bool(applications and demands.get("status") != "inventoried")
+    inventory = None
+    if demands.get("sidecar"):
+        sidecar = str(demands["sidecar"])
+        if Path(sidecar).name != sidecar:
+            return {
+                "target": target,
+                "status": "invalid_synthesis_inputs",
+                "detail": "application sidecar must be adjacent to the selected conformance spec",
+            }
+        sidecar_path = spec_path.with_name(sidecar)
+        try:
+            inventory = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return {
+                "target": target,
+                "status": "invalid_synthesis_inputs",
+                "detail": f"cannot read application sidecar {sidecar_path}: {exc}",
+            }
     try:
-        out = synthesize(doc, workload_spec=workload_spec)
+        out = synthesize(doc, workload_spec=workload_spec, application_inventory=inventory)
     except SynthesisError as exc:
         return {"target": target, "status": "unsynthesizable", "detail": str(exc)}
     if incomplete_applications:
@@ -188,6 +215,17 @@ def synth_for(target: str, *, conformance_spec: Path | None = None) -> dict:
             "detail": (
                 "selected requirement does not inventory every declared application operation; "
                 "diagnostic plan only, not selectable for verified execution"
+            ),
+            **out,
+        }
+    plan = (out.get("provenance") or {}).get("application_operation_plan") or {}
+    if applications and plan.get("status") != "obligations_pending":
+        return {
+            "target": target,
+            "status": "unresolved_application_operations",
+            "detail": (
+                "application demand has unclassified operations, missing exact writers, or an incomplete "
+                "projection; diagnostic plan only, not a selectable Phase 0 corpus"
             ),
             **out,
         }
@@ -282,7 +320,7 @@ def main(argv=None) -> int:
             # impossible to ship silently.
             rc = rc or (
                 2
-                if res["status"] == "incomplete_application_inventory"
+                if res["status"] in {"incomplete_application_inventory", "unresolved_application_operations"}
                 else 1
                 if res["status"].startswith("invalid_") or (a.check and res["status"] == "unsynthesizable")
                 else 0

@@ -448,7 +448,11 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = ""):
         # the DEFAULT weight-only capture, which emits a float matmul over dequantized weights. A W8A8
         # scheme emits `aten._int_mm` accumulating in i32, which IS the mesh's arithmetic, and torch
         # eager then computes the same quantized math, so the golden is right by construction.
-        if entry.get("quant_scheme"):
+        if entry.get("quant_scheme") or (
+            entry.get("capture_op") == "int_matmul"
+            and (entry.get("application_signature_match") or {}).get("source_quantization")
+            == "int8_dyn_act_int8_weight"
+        ):
             pass
         elif regime != "simt":
             raise ValueError(

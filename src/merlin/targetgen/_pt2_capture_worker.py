@@ -96,7 +96,12 @@ def main(argv=None) -> int:
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    written = write_bundle(model, inputs, str(out), quant=quant)
+    # The capture producer binds the exported program's bytes into its provenance receipt.
+    # A path in ingest_meta.json alone is not enough: it may later point at different bytes.
+    # The already-loaded ExportedProgram is also the authoritative source of lifted
+    # constants. Re-exporting its module can lose non-contiguous views and produce
+    # an MLIR/manifest that names constants absent from extra.npz.
+    written = write_bundle(model, inputs, str(out), quant=quant, source_path=src, exported_program=exported)
 
     meta = {
         "ok": True,

@@ -25,6 +25,11 @@ it can be read without importing torch, and reading it is enough to pin the regr
 from __future__ import annotations
 
 import ast
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
 
 from merlin.common.paths import merlin_dir
 
@@ -136,3 +141,64 @@ class TestAModelAlreadyInTheRecipesIntegersIsNotQuantizedAgain:
         assert "_recipe_quantization_stats" in body and "'applied': False" in body.replace('"', "'"), (
             "the integer-input path must record that it applied nothing, and why"
         )
+
+
+def test_integral_token_ids_do_not_skip_floating_internal_contractions() -> None:
+    """Exercise the real quantizer in the torch interpreter at the capture boundary."""
+    python = os.environ.get("MERLIN_M2M_PYTHON")
+    if not python or not Path(python).is_file():
+        pytest.skip("the model2MLIR torch interpreter is not configured")
+    script = r"""
+import importlib.util
+import json
+import sys
+import torch
+from torch import nn
+
+spec = importlib.util.spec_from_file_location("recipe_quantizer", sys.argv[1])
+quantizer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(quantizer)
+recipe = {
+    "schema": "quant_recipe_v1",
+    "status": "derived",
+    "families": ["contraction"],
+    "weight": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+               "quant_min": -127, "quant_max": 127},
+    "activation": {"dtype": "int8", "granularity": "tensor", "symmetric": True,
+                   "quant_min": -128, "quant_max": 127, "mode": "static"},
+}
+
+class Tokens(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embedding = nn.Embedding(8, 16)
+        self.projection = nn.Linear(16, 8)
+
+    def forward(self, token_ids):
+        return self.projection(self.embedding(token_ids))
+
+class AlreadyInteger(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.register_buffer("weight", torch.ones((8, 8), dtype=torch.int8))
+
+    def forward(self, x):
+        return torch.matmul(x, self.weight)
+
+tokens = (torch.tensor([[1, 2, 3]], dtype=torch.int64),)
+torch.manual_seed(4)
+captured = quantizer.apply_recipe(Tokens().eval(), recipe, example_inputs=tokens)
+token_stats = captured._recipe_quantization_stats
+integers = (torch.ones((2, 8), dtype=torch.int8),)
+untouched = quantizer.apply_recipe(AlreadyInteger().eval(), recipe, example_inputs=integers)
+integer_stats = untouched._recipe_quantization_stats
+print(json.dumps({"token_api": token_stats.get("api"),
+                  "token_contractions": token_stats.get("annotated_contractions"),
+                  "integer_applied": integer_stats.get("applied")}))
+"""
+    completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=120)
+    assert completed.returncode == 0, completed.stderr[-3000:]
+    import json
+
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result == {"token_api": "pt2e", "token_contractions": 1, "integer_applied": False}

@@ -72,6 +72,48 @@ def test_unexpressed_precision_is_never_counted_as_accepted():
     assert rep.precision_fraction is None
 
 
+def test_expressed_unsupported_tensor_dtype_is_not_absent_precision():
+    """An i64 mask-building tensor is not dtype-less plumbing and cannot use an i8 movement path."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen.eligibility import capability_map_for_target, is_eligible
+
+    region_op = SimpleNamespace(operands=[SimpleNamespace(type=SimpleNamespace(element_type="i64"))])
+    dtype = MC._elem_dtype(region_op)
+    assert dtype == "unsupported_mlir:i64"
+    verdict = is_eligible(
+        RegionDescriptor(source="generic", family="movement", in_dtype=dtype),
+        capability_map_for_target("gemmini"),
+    )
+    assert not verdict.eligible and verdict.refusal == "input_dtype"
+
+
+def test_unsupported_host_tensor_type_is_visible_but_not_an_impossible_capsule_pair(monkeypatch):
+    from collections import Counter
+
+    from merlin.targetgen import conformance as C
+
+    monkeypatch.setattr(C, "admitted", lambda _target: {"movement": ["i8"]})
+    monkeypatch.setattr(
+        C,
+        "observed_pairs",
+        lambda _path, _target: Counter({("movement", "unsupported_mlir:i64"): 3, ("movement", "bf16"): 2}),
+    )
+    axis = C.host_lane_cells({"capture": "unused.mlir"}, "generic-target")
+    assert [(r["family"], r["dtype"]) for r in axis["required"]] == [("movement", "bf16")]
+    assert axis["unsupported_format_host_obligations"] == [
+        {
+            "family": "movement",
+            "dtype": "unsupported_mlir:i64",
+            "n_regions": 3,
+            "reason": (
+                "the captured tensor element type is outside the quant-format registry; this is "
+                "host/support work, but no typed capsule writer can materialize this pair"
+            ),
+        }
+    ]
+
+
 def test_manifest_precision_join_and_unknown_formats_are_dropped(tmp_path):
     """Precision comes from the weights manifest, joined on the region's OWNING module (the weight name
     minus its trailing component). A dtype the registry does not know is dropped, not mapped to a guess."""

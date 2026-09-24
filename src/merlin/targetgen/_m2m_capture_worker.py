@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -225,6 +226,80 @@ def _output_abi(outputs):
     return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
 
 
+def _integerized_agreement(before, after, *, atol: float, rtol: float) -> dict:
+    """Compare the portable PT2E graph with its integer rewrite on the capture input."""
+    import torch
+
+    left, left_abi = _output_abi(before)
+    right, right_abi = _output_abi(after)
+    rows = []
+    compatible = left_abi == right_abi and bool(left)
+    for original, rewritten in zip(left, right):
+        lhs = original.detach().to(torch.float64)
+        rhs = rewritten.detach().to(torch.float64)
+        same_shape = lhs.shape == rhs.shape
+        finite = bool(torch.isfinite(lhs).all() and torch.isfinite(rhs).all()) if same_shape else False
+        if same_shape and finite and lhs.numel():
+            delta = (lhs - rhs).abs()
+            max_abs = float(delta.max())
+            max_rel = float((delta / lhs.abs().clamp_min(1e-12)).max())
+            within = bool(torch.all(delta <= atol + rtol * lhs.abs()))
+        elif same_shape and finite:
+            max_abs = max_rel = 0.0
+            within = True
+        else:
+            max_abs = max_rel = 0.0
+            within = False
+        rows.append(
+            {
+                "max_abs": max_abs,
+                "max_rel": max_rel,
+                "within_tolerance": within,
+                "finite": finite,
+                "atol": atol,
+                "rtol": rtol,
+                "shape": list(original.shape),
+            }
+        )
+    passed = compatible and len(rows) == len(left) and all(row["within_tolerance"] for row in rows)
+    return {
+        "status": "passed" if passed else "failed",
+        "samples": 1,
+        "atol": atol,
+        "rtol": rtol,
+        "max_abs": max((row["max_abs"] for row in rows), default=0.0),
+        "max_rel": max((row["max_rel"] for row in rows), default=0.0),
+        "outputs": rows,
+        "finite": compatible and all(row["finite"] for row in rows),
+    }
+
+
+def _exported_integer_mm_count(module) -> int:
+    """Count proven i8×i8→i32 contractions in the emitted, unnormalized MLIR."""
+    from xdsl.dialects.builtin import IntegerType, TensorType
+
+    def width(value) -> int | None:
+        typ = getattr(value, "type", None)
+        if not isinstance(typ, TensorType) or not isinstance(typ.element_type, IntegerType):
+            return None
+        return int(typ.element_type.width.data)
+
+    if module is None:
+        return 0
+    count = 0
+    for op in module.walk():
+        if op.name != "linalg.generic" or len(op.operands) < 3 or len(op.results) != 1:
+            continue
+        prov = op.attributes.get("prov.op")
+        if (
+            str(getattr(prov, "data", "")) == "int_matmul"
+            and [width(value) for value in op.operands[:2]] == [8, 8]
+            and width(op.results[0]) == 32
+        ):
+            count += 1
+    return count
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="m2m capsule capture worker (runs in the m2m venv).")
     ap.add_argument("--loader", required=True, help="path to a .py exposing get_model_and_inputs()")
@@ -249,9 +324,20 @@ def main(argv=None) -> int:
         "model is quantized under it and --scheme / the dtype default are not used",
     )
     ap.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="capture the loader's own materialized numeric graph without applying a TorchAO recipe or scheme",
+    )
+    ap.add_argument(
         "--seed", type=int, default=0, help="torch RNG seed applied before the frozen loader constructs model/inputs"
     )
+    ap.add_argument("--agreement-atol", type=float, default=1e-3)
+    ap.add_argument("--agreement-rtol", type=float, default=1e-3)
     a = ap.parse_args(argv)
+    if not all(math.isfinite(value) and value >= 0 for value in (a.agreement_atol, a.agreement_rtol)):
+        ap.error("agreement tolerances must be finite and nonnegative")
+    if a.already_quantized and (a.recipe or a.scheme):
+        ap.error("--already-quantized cannot be combined with --recipe or --scheme")
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
         sys.path.insert(0, a.m2m_dir)
@@ -281,8 +367,12 @@ def main(argv=None) -> int:
 
     weights_path = str(out / "weights.safetensors")
     recipe = json.loads(Path(a.recipe).read_text(encoding="utf-8")) if a.recipe else None
-    q = None if recipe is not None else _quant_for(a.dtype, a.scheme or None)
-    quant_stats = None
+    q = None if (recipe is not None or a.already_quantized) else _quant_for(a.dtype, a.scheme or None)
+    quant_stats = (
+        {"applied": False, "why": "the loader declares its numeric graph already materialized"}
+        if a.already_quantized
+        else None
+    )
     agreement = None
     if recipe is not None:
         # THE TARGET'S OWN QUANTIZATION. The recipe was derived from what the hardware's readout
@@ -320,28 +410,28 @@ def main(argv=None) -> int:
         # the old ``mdl`` would compare compiled W8A8 against an fp32 reference.
         from m2m.capture.torchao_pipeline import apply_quantization
 
-        calibration_inputs = None
         if q.scheme == "int8_static_act_int8_weight":
-            # A loader may keep the benchmark input separate from calibration data.
-            # This is important for honest benchmark capture: calibrating on the one
-            # measured sample is accidental input specialization.  The hook is
-            # model/target agnostic and returns the same positional-input tuples
-            # accepted by m2m.convert/apply_quantization.  Older loaders retain the
-            # session-stream fallback.
-            calibration_hook = getattr(loader, "get_calibration_inputs", None)
-            if callable(calibration_hook):
-                calibration_inputs = calibration_hook(mdl, tuple(inputs))
-            else:
-                stream = getattr(mdl, "session_images", None)
-                if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
-                    calibration_inputs = ((stream[i],) for i in range(int(stream.shape[0])))
-        mdl = apply_quantization(
-            mdl,
-            q,
-            example_inputs=tuple(inputs),
-            calibration_inputs=calibration_inputs,
-        )
+            # This TorchAO config needs a calibrated activation scale, which the
+            # public model2MLIR apply_quantization(model, config) API does not
+            # derive.  The recipe path above performs calibrated PT2E instead.
+            raise RuntimeError("named static W8A8 requires a calibrated --recipe")
+        mdl = apply_quantization(mdl, q)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
+    integerization_receipt = None
+    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized:
+        # A static PT2E capture is a W8A8 claim only if every selected
+        # contraction becomes true integer arithmetic. Keep the portable graph's
+        # output as an independent semantic reference before rewriting it.
+        from m2m.capture.pt2e_integerize import integerize_pt2e
+
+        with torch.no_grad():
+            portable_output = mdl(*inputs)
+        mdl, integerization_receipt = integerize_pt2e(mdl, tuple(inputs))
+        with torch.no_grad():
+            integer_output = mdl(*inputs)
+        integerization_receipt["golden_agreement"] = _integerized_agreement(
+            portable_output, integer_output, atol=a.agreement_atol, rtol=a.agreement_rtol
+        )
     res = m2m.convert(
         mdl,
         inputs,
@@ -354,6 +444,8 @@ def main(argv=None) -> int:
     )
     opaque = opaque_report(res.mlir_text)
     n_opaque = sum(opaque.values())
+    if integerization_receipt is not None:
+        integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(res.module)
 
     (out / "linalg.mlir").write_text(res.mlir_text, encoding="utf-8")
 
@@ -376,13 +468,18 @@ def main(argv=None) -> int:
         "opaque_detail": opaque,
         # WHICH quantization actually produced this program. Without it a weight-only capture and a
         # W8A8 one are indistinguishable after the fact, and they are different arithmetic.
-        "scheme": (None if recipe is not None else a.scheme or _SCHEME.get(a.dtype, (None, None))[0]),
+        "scheme": (
+            None if (recipe is not None or a.already_quantized) else a.scheme or _SCHEME.get(a.dtype, (None, None))[0]
+        ),
+        **({"capture_quantization": "already_materialized"} if a.already_quantized else {}),
         # The recipe a capture ran under, by content digest, and how far its outputs sit from the
         # floating-point model's. Both absent on a scheme-named capture.
         "recipe_sha256": recipe.get("recipe_sha256") if recipe is not None else None,
         "recipe": recipe,
         "recipe_agreement": agreement,
         "quantization_stats": quant_stats,
+        **({"integerization_receipt": integerization_receipt} if integerization_receipt is not None else {}),
+        "capture_diagnostics": [str(item)[:2000] for item in (getattr(res, "diagnostics", None) or [])[:100]],
         "path_taken": getattr(res, "path_taken", None),
         "dtype": a.dtype,
         "linalg_ops": res.mlir_text.count("linalg."),
@@ -408,7 +505,14 @@ def main(argv=None) -> int:
     (out / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     # a machine-readable tail line the parent greps for, even if warnings precede it
     print("__M2M_CAPTURE__ " + json.dumps({"ok": meta["ok"], "opaque": meta["opaque"]}))
-    return 0 if (res.ok and n_opaque == 0) else 3
+    integerization_ok = integerization_receipt is None or (
+        integerization_receipt["quantized_contractions_seen"] > 0
+        and integerization_receipt["quantized_contractions_remaining"] == 0
+        and not integerization_receipt["refusals"]
+        and integerization_receipt["integer_mm_emitted"] <= integerization_receipt["exported_integer_mm_count"]
+        and integerization_receipt["golden_agreement"]["status"] == "passed"
+    )
+    return 0 if (res.ok and n_opaque == 0 and integerization_ok) else 3
 
 
 if __name__ == "__main__":

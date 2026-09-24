@@ -366,6 +366,9 @@ def resolve_plan(
     run_dir: Path | None = None,
     corpus_seal: Path | None = None,
     bundle_manifest: Path | None = None,
+    phase0_conformance_spec: Path | None = None,
+    phase0_synth_profile: Path | None = None,
+    phase0_hidden_profile: Path | None = None,
 ) -> dict:
     from merlin.common.paths import out_dir, repo_root
 
@@ -379,6 +382,25 @@ def resolve_plan(
         raise SpecError("a reviewed corpus and replacement bundle can only select Phase 1")
     if (corpus_seal is None) != (bundle_manifest is None):
         raise SpecError("select both --corpus-seal and --bundle-manifest for a new reviewed Phase 1 run")
+    if (phase0_conformance_spec is None) != (phase0_synth_profile is None):
+        raise SpecError("select both --phase0-conformance-spec and --phase0-synth-profile")
+    if (
+        any(path is not None for path in (phase0_conformance_spec, phase0_synth_profile, phase0_hidden_profile))
+        and phase != "0"
+    ):
+        raise SpecError("Phase 0 artifact selection requires --phase 0")
+    phase0_selection = {}
+    for name, path in (
+        ("conformance_spec", phase0_conformance_spec),
+        ("synth_profile", phase0_synth_profile),
+        ("hidden_profile", phase0_hidden_profile),
+    ):
+        if path is None:
+            continue
+        candidate = path.expanduser().absolute()
+        if candidate.is_symlink() or not candidate.is_file():
+            raise SpecError(f"selected Phase 0 {name} is not an existing ordinary file: {candidate}")
+        phase0_selection[name] = str(candidate)
     commands = {}
     corpus_closures = {}
     phase1_operator_inputs = None
@@ -389,6 +411,9 @@ def resolve_plan(
         entry = phases[number]
         adapter = ADAPTERS[entry["adapter"]]
         config = dict(entry["config"])
+        if number == "0" and phase0_selection:
+            config.update(phase0_selection)
+            adapter.validate(config)
         if number == "1" and corpus_seal is not None:
             selected_seal = corpus_seal.expanduser().absolute()
             if selected_seal.name != "seal.json" or selected_seal.parent.name != "private":
@@ -483,6 +508,7 @@ def resolve_plan(
         "target": spec.target,
         "definition": str(spec.path),
         "spec": spec.document,
+        **({"phase0_selected_artifacts": phase0_selection} if phase0_selection else {}),
         "run_dir": str(destination),
         "storage_root": str(out_dir().resolve()),
         "phases": commands,

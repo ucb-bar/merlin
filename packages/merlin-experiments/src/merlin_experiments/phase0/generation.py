@@ -12,6 +12,7 @@ import yaml
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
+from .claim_boundary import assert_no_claim_capsules
 from .profiles import load_profile, validate_profile_inputs
 from .provenance import _capture_failure_reason, _scrub_capsule_dir, update_provenance_manifest
 from .sweeps import _performance_facts, _resolve_flat_extents, expand_sweeps
@@ -81,6 +82,17 @@ def generate_target(
     profile = load_profile(
         target, descriptor=descriptor, **{key: value for key, value in profile_inputs.items() if value is not None}
     )
+    declared_claims = [str(model) for model in (getattr(te, "workload_spec", None) or {}).get("models") or ()]
+    claim_plan = profile.get("_claim_model_evaluation")
+    if profile.get("_synth_verification", {}).get("status") == "verified":
+        if (
+            not isinstance(claim_plan, dict)
+            or claim_plan.get("schema") != "claim_model_evaluation_v1"
+            or claim_plan.get("model_count") != len(declared_claims)
+            or claim_plan.get("visibility") != "owner_only_after_phase1_freeze"
+            or claim_plan.get("public_capsules_emitted") != 0
+        ):
+            raise ValueError("verified synthesis lacks an owner-only claim-model evaluation obligation")
     if profile.get("_synth_verification", {"status": "absent"})["status"] == "unverified_legacy":
         raise ValueError(
             "selected synthesized profile has no digest-bound conformance/recipe/workload inputs; "
@@ -103,6 +115,7 @@ def generate_target(
         blocked_unimplemented=_runtime_blocked,
         errors=_performance_errors,
     )
+    assert_no_claim_capsules(entries, declared_claims)
     entries = [_resolve_flat_extents(e, binding) for e in entries]
     for _s in _sweep_skips:
         _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
@@ -260,6 +273,7 @@ def generate_target(
         target=hardware_target,
         performance_record=performance_record,
         unbuilt_roster=unbuilt_roster,
+        claim_model_evaluation=claim_plan,
         unprovable_forbids=unprovable_forbids,
         superseded=superseded,
     )

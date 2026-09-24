@@ -5,23 +5,14 @@ from __future__ import annotations
 from merlin.targetgen import capsule_grade as CG
 
 
-def test_arm4_hidden_capability_admission_matches_sealed_cardinalities():
-    """Prove the held-out 11→10 boundary without publishing the excluded capsule's name."""
+def test_phase0_input_does_not_claim_a_hidden_cohort_before_release():
     from merlin.common.paths import repo_root
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    root = repo_root()
-    te = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
-    hidden = CR.discover_capsules(te.hidden_roots(), labels={"hidden"}, contract=str(root / "merlin/contract"))
-    hidden_ops = [cap for cap in hidden if cap.get("kind") != "model"]
-    _eligible, excluded = CR._split_ineligible(hidden_ops, te.target)
-    excluded_count = len(excluded)
-    admitted_count = len(hidden) - excluded_count
-
-    assert te.hidden_expected_source_capsules == len(hidden) == 15
-    assert te.hidden_expected_admitted_capsules == admitted_count == 14
-    assert excluded_count == 1
+    te = load_target_experiment(repo_root() / "examples/gemmini/target/descriptor.yaml")
+    assert te.graded_release_admission
+    assert te.hidden_expected_source_capsules is None
+    assert te.hidden_expected_admitted_capsules is None
 
 
 def test_capability_admission_filters_before_the_suite_and_seals_counts(monkeypatch):

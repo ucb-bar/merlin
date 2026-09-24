@@ -97,14 +97,8 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
     )
 
 
-def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
-    """The PT2E quantizer a static recipe describes."""
-    import torch
-    from torchao.quantization.pt2e.quantizer import QuantizationAnnotation, Quantizer
-
-    weight, activation = _require(recipe)
-    if activation.get("mode") != "static":
-        raise RecipeError("build_quantizer realises static recipes; a dynamic one goes through quantize_config")
+def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
+    """ATen spellings covered by each recipe family, shared by the skip check and PT2E."""
     #: The aten operators that ARE the recipe's families. A family the recipe does not list is not
     #: annotated and stays in floating point, which is what "the target cannot absorb it" means.
     operators = {
@@ -133,6 +127,38 @@ def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
             torch.ops.aten.mean.dim,
         ),
     }
+    return operators
+
+
+def _has_floating_recipe_work(exported: Any, recipe: Mapping[str, Any]) -> bool:
+    """Whether an integral-input graph still computes a floating recipe operation inside."""
+    import torch
+
+    operators = _recipe_operators(torch)
+    targets = {op for family in recipe.get("families") or () for op in operators.get(family, ())}
+    return any(
+        node.op == "call_function"
+        and node.target in targets
+        and isinstance((value := node.meta.get("val")), torch.Tensor)
+        and value.is_floating_point()
+        for node in exported.graph.nodes
+    )
+
+
+def build_quantizer(recipe: Mapping[str, Any], *, layer_plan: Mapping[str, Any], eps: float = 2**-12):
+    """The PT2E quantizer a static recipe describes, limited to placed operations.
+
+    ATen operator names alone cannot license quantization: an unsupported module may call
+    ``aten.linear`` internally. Export's ``nn_module_stack`` identifies the owning module;
+    an absent/unknown owner is refused rather than silently becoming device work.
+    """
+    import torch
+    from torchao.quantization.pt2e.quantizer import QuantizationAnnotation, Quantizer
+
+    weight, activation = _require(recipe)
+    if activation.get("mode") != "static":
+        raise RecipeError("build_quantizer realises static recipes; a dynamic one goes through quantize_config")
+    operators = _recipe_operators(torch)
     listed = tuple(recipe.get("families") or ())
     targets = {op for family in listed if family == "contraction" for op in operators.get(family, ())}
     sums = set(operators["operand_sum"]) if "operand_sum" in listed else set()
@@ -151,6 +177,80 @@ def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
         torch.ops.aten.contiguous.default,
         torch.ops.aten.dropout.default,
     }
+    # Shape-only views preserve a stored parameter's identity. An arbitrary producer does not:
+    # quantizing the second input of an activation x activation matmul as a weight would use the
+    # wrong observer and imply a constant operand that the model never supplied.
+    weight_views = {
+        torch.ops.aten.t.default,
+        torch.ops.aten.transpose.int,
+        torch.ops.aten.permute.default,
+        torch.ops.aten.view.default,
+        torch.ops.aten.reshape.default,
+        torch.ops.aten._unsafe_view.default,
+        torch.ops.aten.contiguous.default,
+    }
+
+    decisions = {str(d.get("fqn")): d for d in layer_plan.get("layers") or ()}
+
+    def owner(node: Any) -> str | None:
+        stack = node.meta.get("nn_module_stack")
+        if not isinstance(stack, Mapping) or not stack:
+            return None
+        paths = [entry[0] for entry in stack.values() if isinstance(entry, (tuple, list)) and entry]
+        return str(paths[-1]) if paths else None
+
+    def stored_floating_weight(value: Any) -> bool:
+        if not isinstance(value, torch.fx.Node):
+            return False
+        if value.op == "get_attr":
+            tensor = value.meta.get("val")
+            return isinstance(tensor, torch.Tensor) and tensor.is_floating_point()
+        return bool(
+            value.op == "call_function"
+            and value.target in weight_views
+            and value.args
+            and stored_floating_weight(value.args[0])
+        )
+
+    def eligible(node: Any, family: str) -> bool:
+        if family == "contraction":
+            if len(node.args) < 2 or not stored_floating_weight(node.args[1]):
+                return False
+            operand = node.args[0]
+            value = operand.meta.get("val") if isinstance(operand, torch.fx.Node) else None
+            if not isinstance(value, torch.Tensor) or not value.is_floating_point():
+                return False
+        path = owner(node)
+        if path is None:
+            return False
+        if path:
+            decision = decisions.get(path)
+            return bool(decision and decision.get("placement") == "device" and decision.get("family") == family)
+        # A functional operation in the root forward has no leaf module. Check the actual
+        # stored operand and its shape with the same rule as a module.
+        if family == "contraction":
+            kernel_node = node.args[1]
+            while kernel_node.op == "call_function":
+                kernel_node = kernel_node.args[0]
+            kernel = kernel_node.meta.get("val")
+            shape = list(kernel.shape) if kernel is not None and hasattr(kernel, "shape") else None
+        else:
+            shape = None
+        import quant_layer_plan as QLP
+
+        direct = QLP.plan(
+            recipe, [{"fqn": "<root>", "kind": "functional", "family": family, "weight_shape": shape}]
+        ).decisions[0]
+        return direct.placement == QLP.DEVICE
+
+    def family_of(node: Any) -> str | None:
+        if node.target in targets:
+            return "contraction"
+        if node.target in sums:
+            return "operand_sum"
+        if node.target in means:
+            return "window_mean"
+        return None
 
     def closable(nodes: Any) -> set[Any]:
         """The sums and means whose result only quantized readers ever see.
@@ -164,11 +264,16 @@ def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
         """
         candidates = set()
         for node in nodes:
-            if node.target in sums:
+            if node.target in sums and eligible(node, "operand_sum"):
                 operands = [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
                 if len(operands) == 2:
                     candidates.add(node)
-            elif node.target in means and node.args and isinstance(node.args[0], torch.fx.Node):
+            elif (
+                node.target in means
+                and eligible(node, "window_mean")
+                and node.args
+                and isinstance(node.args[0], torch.fx.Node)
+            ):
                 candidates.add(node)
 
         def readers(node: Any) -> list[Any]:
@@ -185,7 +290,10 @@ def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
             dropped = {
                 node
                 for node in candidates
-                if not (seen := readers(node)) or any(r.target not in targets and r not in candidates for r in seen)
+                if not (seen := readers(node))
+                or any(
+                    (r.target not in targets or not eligible(r, "contraction")) and r not in candidates for r in seen
+                )
             }
             if not dropped:
                 return candidates
@@ -199,12 +307,19 @@ def build_quantizer(recipe: Mapping[str, Any], *, eps: float = 2**-12):
             self.annotated_sums = 0
             self.annotated_means = 0
             self.left_in_float = 0
+            self.refused_by_placement: list[dict[str, str | None]] = []
 
         def annotate(self, graph_module: Any) -> Any:
             nodes = list(graph_module.graph.nodes)
             kept = closable(nodes)
             self.left_in_float = sum(1 for n in nodes if (n.target in sums or n.target in means) and n not in kept)
             for node in nodes:
+                family = family_of(node)
+                if family is not None and not eligible(node, family):
+                    self.refused_by_placement.append(
+                        {"node": node.name, "operator": str(node.target), "owner": owner(node), "family": family}
+                    )
+                    continue
                 if (node.target in sums or node.target in means) and node not in kept:
                     continue
                 if node.target in sums:
@@ -305,6 +420,8 @@ def layer_inventory(model: Any) -> list[dict[str, Any]]:
                 "fqn": fqn,
                 "kind": type(module).__name__,
                 "weight_shape": (list(weight.shape) if weight is not None and hasattr(weight, "shape") else None),
+                "stores_operand": any(True for _ in module.named_parameters(recurse=False))
+                or any(True for _ in module.named_buffers(recurse=False)),
             }
         )
     return layers
@@ -330,7 +447,7 @@ def build_fqn_config(recipe: Mapping[str, Any], layer_plan: Mapping[str, Any]):
         from torchao.quantization import ModuleFqnToConfig as _FqnToConfig
 
     shared = quantize_config(recipe)
-    mapping: "OrderedDict[str, Any]" = OrderedDict()
+    mapping: OrderedDict[str, Any] = OrderedDict()
     notes: list[dict[str, Any]] = []
     for layer in layer_plan.get("layers") or ():
         fqn, kind = str(layer.get("fqn") or ""), str(layer.get("kind") or "")
@@ -397,33 +514,33 @@ def apply_recipe(
     import torch
 
     _weight, activation = _require(recipe)
-    # A MODEL ALREADY IN THE RECIPE'S INTEGERS HAS NOTHING TO CALIBRATE. An observer watches a
-    # floating-point activation to decide the scale that maps it onto a grid; handed a tensor already
-    # on that grid there is no range to learn, and the question the recipe asks does not apply.
-    #
-    # This crashed rather than saying so. `HistogramObserver` calls `torch.histc`, which has no int8
-    # kernel, so the capture died with `NotImplementedError: "histogram_cpu" not implemented for
-    # 'Char'` -- an error about a missing torch kernel, several layers below the actual mistake.
-    # Measured on `M3_host_island_seam_gemmini`, whose loader hands out a single `torch.int8` input
-    # because the capsule's arithmetic IS integer: it is hand-written to be the integer seam, and the
-    # recipe path regressed a capsule that had generated before recipes existed.
-    #
-    # Skipped rather than refused, and recorded: the model is already the thing the recipe would have
-    # produced, so the capture should proceed and say that it did nothing, which is a fact a reader of
-    # the capsule's provenance needs. A refusal here would be correct about the category error and
-    # wrong about what to do next.
+    # Integral EXTERNAL inputs are not proof that a model is already quantized: a language model
+    # accepts integer token IDs, then performs floating contractions after an embedding. Inspect
+    # the operations covered by this recipe before skipping calibration. A graph with only integer
+    # contractions (such as an authored integer seam) still needs no observer.
     tensors = [t for t in (example_inputs or ()) if isinstance(t, torch.Tensor)]
-    if tensors and not any(torch.is_floating_point(t) for t in tensors):
+    integral_inputs = bool(tensors) and not any(torch.is_floating_point(t) for t in tensors)
+
+    def skip_already_integer() -> Any:
         model._recipe_quantization_stats = {  # type: ignore[attr-defined]
             "applied": False,
             "why": (
-                "every example input is already integral "
-                f"({sorted({str(t.dtype) for t in tensors})}), so there is no floating-point range for "
-                "an observer to learn; the model is already expressed on the recipe's grid"
+                f"example inputs are integral ({sorted({str(t.dtype) for t in tensors})}) and no "
+                "floating-point operation covered by the recipe needs quantization"
             ),
         }
         return model
+
     if activation.get("mode") == "dynamic":
+        # Dynamic TorchAO transforms floating Linear modules rather than observing the external
+        # input. Integer token IDs must not suppress those internal projections either.
+        if integral_inputs and not any(
+            isinstance(module, (torch.nn.Linear, torch.nn.LazyLinear))
+            and (weight := getattr(module, "weight", None)) is not None
+            and torch.is_floating_point(weight)
+            for module in model.modules()
+        ):
+            return skip_already_integer()
         from torchao.quantization import quantize_
 
         layer_plan = _plan_layers(recipe, model)
@@ -452,7 +569,10 @@ def apply_recipe(
     if not example_inputs:
         raise RecipeError("a static recipe needs example inputs to export the model")
     exported = torch.export.export(model.eval(), tuple(example_inputs)).module()
-    quantizer = build_quantizer(recipe)
+    if integral_inputs and not _has_floating_recipe_work(exported, recipe):
+        return skip_already_integer()
+    layer_plan = _plan_layers(recipe, model)
+    quantizer = build_quantizer(recipe, layer_plan=layer_plan)
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     calibrated = 0
@@ -481,6 +601,9 @@ def apply_recipe(
     quantized._recipe_quantization_stats = {  # type: ignore[attr-defined]
         "api": "pt2e",
         "recipe_sha256": recipe.get("recipe_sha256"),
+        "plan_sha256": layer_plan.get("plan_sha256"),
+        "layers_on_host": [d for d in layer_plan.get("layers") or () if d.get("placement") == "host"],
+        "operators_refused_by_placement": quantizer.refused_by_placement,
         "annotated_contractions": quantizer.annotated,
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,

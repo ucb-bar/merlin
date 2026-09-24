@@ -200,6 +200,37 @@ def test_a_member_inside_the_budget_is_not_capped():
     )
 
 
+def test_moderate_aspect_is_a_real_geometry_not_the_residual_bucket():
+    """A 3:1 dense GEMM from a real-model capture must have a class the existing writer can emit.
+
+    The mirrored tall case is equally structural; neither threshold names an accelerator.
+    """
+    from merlin.capture import shape_taxonomy as ST
+
+    assert ST.classify_geometry(M=256, K=192, N=768) == ST.MODERATELY_WIDE
+    assert ST.classify_geometry(M=768, K=192, N=256) == ST.MODERATELY_TALL
+    assert ST.classify_geometry(M=768, K=768, N=256) == ST.PROJECTION
+    assert ST.classify_geometry(M=256, K=192, N=1024) == ST.WIDE_SKINNY
+
+    out = _synthesize(
+        [
+            {
+                "class": ST.MODERATELY_WIDE,
+                "family": "contraction",
+                "M": 256,
+                "K": 192,
+                "N": 768,
+                "n_regions": 24,
+                "mac_fraction": 0.220351,
+            }
+        ]
+    )
+    members = [e for e in out["capsules"] if e.get("name") == "SY_geometry_moderately_wide_gemm"]
+    assert len(members) == 1
+    assert (members[0]["M"], members[0]["K"], members[0]["N"]) == (256, 192, 768)
+    assert not out["provenance"]["geometry_classes_unsynthesizable"]
+
+
 def test_the_residual_class_is_reported_rather_than_dropped():
     """⚠️ REGRESSION. `unknown` is the taxonomy's fall-through, so it gets no member -- but it used to
     get no MENTION either, and the list it belongs in documents itself as the thing that stops a

@@ -45,6 +45,28 @@ module {
 }
 """
 
+_ADDMM = """
+module {
+  func.func @f(%a: tensor<4x4xf32>, %w: tensor<4x4xf32>, %bias: tensor<4xf32>,
+               %t: tensor<4x4xf32>, %o: tensor<4x4xf32>) -> tensor<4x4xf32> {
+    %0 = linalg.transpose ins(%w : tensor<4x4xf32>) outs(%t : tensor<4x4xf32>) permutation = [1, 0]
+    %1 = linalg.matmul {prov.family = "contraction", prov.op = "addmm"}
+      ins(%a, %0 : tensor<4x4xf32>, tensor<4x4xf32>) outs(%o : tensor<4x4xf32>) -> tensor<4x4xf32>
+    %2 = linalg.generic {
+        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d1)>,
+                         affine_map<(d0, d1) -> (d0, d1)>],
+        iterator_types = ["parallel", "parallel"]}
+      ins(%1, %bias : tensor<4x4xf32>, tensor<4xf32>) outs(%o : tensor<4x4xf32>)
+      attrs = {prov.family = "contraction", prov.op = "addmm"} {
+      ^bb0(%x: f32, %b: f32, %out: f32):
+        %sum = arith.addf %x, %b : f32
+        linalg.yield %sum : f32
+      } -> tensor<4x4xf32>
+    return %2 : tensor<4x4xf32>
+  }
+}
+"""
+
 
 def _mod(text):
     return mq.parse(text)
@@ -92,6 +114,17 @@ def test_a_signature_speaks_the_family_vocabulary_not_the_op_spelling():
     sig = SC.chains(_mod(_CHAIN))[0].signature
     assert sig == "contraction -> contraction -> contraction"
     assert "matmul" not in sig
+
+
+def test_addmm_bias_epilogue_does_not_invent_a_second_contraction():
+    """The source ATen addmm tag covers two emitted regions, but only one reduces over K."""
+    from merlin.targetgen.model_coverage import regions_from_module
+
+    module = _mod(_ADDMM)
+    chains = SC.chains(module)
+    assert [c.signature for c in chains] == ["movement -> contraction -> elementwise_map"]
+    assert [c.family for c in SC.region_configs(module)] == ["movement", "contraction", "elementwise_map"]
+    assert [r.resolved_family() for r in regions_from_module(module)] == ["movement", "contraction", "elementwise_map"]
 
 
 # ----------------------------------------------------------------------------- op configuration
@@ -179,9 +212,9 @@ def test_a_capsule_with_no_program_covers_nothing_rather_than_covering_a_chain_o
     (root / "A").mkdir(parents=True)
     (root / "A" / "capsule.yaml").write_text("name: A\nlabel: public\n")
     gap = C._scope_gap([{"signature": "contraction -> contraction"}], [root])
-    assert gap["covered"] == 0
+    assert gap["n_covered"] == 0
     assert gap["capsules_without_a_program"] == 1
-    assert gap["missing"] == ["contraction -> contraction"]
+    assert gap["uncovered"] == ["contraction -> contraction"]
 
 
 def test_a_capsule_whose_program_contains_the_chain_witnesses_it(tmp_path):
@@ -192,5 +225,5 @@ def test_a_capsule_whose_program_contains_the_chain_witnesses_it(tmp_path):
     (root / "A" / "capsule.yaml").write_text("name: A\nlabel: public\n")
     (root / "A" / "capsule.linalg.mlir").write_text(_CHAIN)
     gap = C._scope_gap([{"signature": "contraction -> contraction -> contraction"}], [root])
-    assert gap["covered"] == 1 and gap["missing"] == []
+    assert gap["n_covered"] == 1 and gap["uncovered"] == []
     assert gap["witnessed_by"]["contraction -> contraction -> contraction"] == ["A"]

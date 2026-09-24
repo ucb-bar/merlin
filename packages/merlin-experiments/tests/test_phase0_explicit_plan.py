@@ -81,6 +81,60 @@ def freeze(plan):
     return {**plan, "inputs": report["inputs"]}
 
 
+def test_versioned_phase0_artifacts_can_be_selected_without_editing_definition(authored):
+    make, root, _ = authored
+    original = make()
+    definition = root / "experiment.yaml"
+    authored_bytes = definition.read_bytes()
+    selected_spec = root / "reviewed.conformance.yaml"
+    selected_synth = root / "reviewed.synth.yaml"
+    hidden = root / "owner.hidden.yaml"
+    hidden.write_text("capsules: []\n")
+    selected_spec.write_bytes((root / "conformance.yaml").read_bytes())
+    selected_synth.write_text(
+        yaml.safe_dump(
+            {
+                "provenance": {
+                    "selected_inputs": synthesis_input_identity(
+                        conformance_spec=selected_spec,
+                        recipe=root / "recipe.yaml",
+                        descriptor=root / "target.yaml",
+                    )
+                },
+                "capsules": [],
+            }
+        )
+    )
+    plan = runner.resolve_plan(
+        load_spec(definition),
+        phase="0",
+        run_dir=root.parent / "new-run",
+        phase0_conformance_spec=selected_spec,
+        phase0_synth_profile=selected_synth,
+        phase0_hidden_profile=hidden,
+    )
+    assert plan["phase0_selected_artifacts"] == {
+        "conformance_spec": str(selected_spec),
+        "synth_profile": str(selected_synth),
+        "hidden_profile": str(hidden),
+    }
+    assert plan["phases"]["0"]["inputs"]["conformance_spec"] == str(selected_spec)
+    assert plan["phases"]["0"]["inputs"]["synth_profile"] == str(selected_synth)
+    assert plan["phases"]["0"]["inputs"]["hidden_profile"] == str(hidden)
+    assert runner.preflight(plan)["configuration_ready"]
+    assert definition.read_bytes() == authored_bytes
+    assert original["phases"]["0"]["inputs"]["conformance_spec"] == str(root / "conformance.yaml")
+    with pytest.raises(SpecError, match="select both"):
+        runner.resolve_plan(load_spec(definition), phase="0", phase0_conformance_spec=selected_spec)
+    with pytest.raises(SpecError, match="requires --phase 0"):
+        runner.resolve_plan(
+            load_spec(definition),
+            phase="all",
+            phase0_conformance_spec=selected_spec,
+            phase0_synth_profile=selected_synth,
+        )
+
+
 @pytest.mark.parametrize("changed", ["recipe", "conformance", "descriptor"])
 def test_preflight_rejects_stale_selected_synthesis(authored, changed):
     make, root, _ = authored
@@ -100,6 +154,48 @@ def test_preflight_labels_digestless_selection_unverified(authored):
     report = runner.preflight(make())
     assert report["phase0_synthesis"]["0"]["status"] == "unverified_legacy"
     assert not report["configuration_ready"]
+
+
+def test_preflight_refuses_application_inventory_without_materialized_receipts(authored):
+    make, root, _ = authored
+    (root / "target.yaml").write_text("target: fixture\nworkload_spec: {applications: [model_a]}\n")
+    detailed = {
+        "status": "inventoried",
+        "coverage_status": "unverified",
+        "applications": {"model_a": {"capture_receipt": {"status": "unverified"}}},
+        "n_operations": 0,
+    }
+    digest = hashlib.sha256(json.dumps(detailed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    (root / "inventory.json").write_text(json.dumps(detailed))
+    (root / "conformance.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "application_demands": {
+                    "status": "inventoried",
+                    "coverage_status": "unverified",
+                    "sidecar": "inventory.json",
+                    "full_inventory_sha256": digest,
+                }
+            }
+        )
+    )
+    (root / "synth.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "provenance": {
+                    "selected_inputs": synthesis_input_identity(
+                        conformance_spec=root / "conformance.yaml",
+                        recipe=root / "recipe.yaml",
+                        descriptor=root / "target.yaml",
+                    )
+                },
+                "capsules": [],
+            }
+        )
+    )
+    report = runner.preflight(make())
+    assert not report["configuration_ready"]
+    assert any("lack verified materialization receipts" in error for error in report["errors"])
 
 
 def test_detailed_application_inventory_is_frozen_and_verified(authored):

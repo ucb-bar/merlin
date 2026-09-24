@@ -103,7 +103,6 @@ def _region_ops(module) -> list[Any]:
 def region_configs(module) -> tuple[RegionConfig, ...]:
     """Every region's declared configuration, in the same order the region census uses."""
     from merlin.common import mlir_query as mq
-    from merlin.targetgen import semantic_families as sf
     from merlin.targetgen.model_coverage import _short_op  # the one spelling of "short name"
 
     out: list[RegionConfig] = []
@@ -120,7 +119,7 @@ def region_configs(module) -> tuple[RegionConfig, ...]:
                 if key.startswith("prov."):
                     continue  # provenance is recorded elsewhere and is a hint, not configuration
                 attrs[key] = str(v)
-        out.append(RegionConfig(index=i, op=short, family=sf.from_op(short), attrs=attrs))
+        out.append(RegionConfig(index=i, op=short, family=_family_of(op, short), attrs=attrs))
     return tuple(out)
 
 
@@ -216,13 +215,9 @@ def _family_of(op, short: str) -> "str | None":
     provenance tags for the unnamed ``linalg.generic`` case, which is most of a real capture. Reading
     only the name reported "generic" for 90% of a model, which is a count of nothing.
     """
-    from merlin.common import mlir_query as mq
-    from merlin.targetgen import semantic_families as sf
+    from merlin.targetgen.model_coverage import region_family
 
-    fam = sf.from_op(short)
-    if fam is not None:
-        return fam
-    return sf.from_prov(mq.attr_str(op, "prov.family"), mq.attr_str(op, "prov.op"))
+    return region_family(op, short)
 
 
 def _operands(op) -> Iterator[Any]:

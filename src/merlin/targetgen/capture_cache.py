@@ -28,6 +28,8 @@ def implementation_identity() -> dict:
         "merlin.targetgen.capsule_source",
         "merlin.targetgen.capture_cache",
         "merlin.targetgen._m2m_capture_worker",
+        "merlin.targetgen._recipe_quantizer",
+        "merlin.targetgen.quant_layer_plan",
         "merlin.frontends.capture_normalization",
         "merlin.frontends.linalg_mlir",
         "merlin.llvmlower.torchao_affine",

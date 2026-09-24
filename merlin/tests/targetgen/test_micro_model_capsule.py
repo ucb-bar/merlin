@@ -286,17 +286,19 @@ def test_the_weight_footprint_fits_the_tier_it_asks_for():
 # ---------------------------------------------------------------------------------------------------
 # self-contained, and not degenerate
 # ---------------------------------------------------------------------------------------------------
-def test_the_network_is_defined_in_the_capsule_itself():
+def test_the_network_is_defined_in_the_example_input():
     """The reference capsule imports its network from an external checkout named by an env var, so a
     clean clone cannot rebuild it (and its capture is currently broken for an unrelated reason nobody
     can reach). This one must depend on nothing but torch."""
     entry = _profile_entry()
     loader = entry.get("loader")
     assert loader, f"{CAPSULE.name} must name its own loader rather than an out-of-tree workload"
-    assert (repo_root() / loader).resolve() == (CAPSULE / "capsule.pytorch.py").resolve(), (
-        f"the profile's loader {loader!r} must be the capsule's own capsule.pytorch.py"
+    input_path = repo_root() / "examples/gemmini/phase0/inputs/microvit.py"
+    assert (repo_root() / loader).resolve() == input_path.resolve(), (
+        f"the profile's loader {loader!r} must name the example's authored input"
     )
-    src = (CAPSULE / "capsule.pytorch.py").read_text(encoding="utf-8")
+    src = input_path.read_text(encoding="utf-8")
+    assert (CAPSULE / "capsule.pytorch.py").is_file(), "keep the historical capsule source for inspection"
     assert "def get_model_and_inputs" in src
     for forbidden in ("os.environ", "sys.path.insert", "nn.LSTM("):
         assert forbidden not in src, (

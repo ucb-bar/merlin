@@ -413,18 +413,19 @@ def is_independent_float_golden(capsule: dict, capsule_dir: str | Path | None = 
 def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, list]:
     """Return the capsule's expected outputs (name -> nested list).
 
-    For an INDEPENDENT float golden (float compare policy + ``golden.yaml`` ``golden_source`` !=
-    ``merlin_tensor_int``, e.g. atlas fp8-e4m3 -> bf16) the golden is READ from ``golden.yaml`` — the
-    integer Tensor engine cannot reproduce the float datapath, and ``golden.yaml`` is the answer key the
-    independent oracle already produced. For every other capsule (gemmini / ``exact_int``) the golden is
-    RECOMPUTED on the Tensor engine exactly as before (byte-identical integer path)."""
+    A whole model with a declared independent golden reads that captured oracle
+    regardless of whether its output is integer or floating point: the scalar
+    Tensor engine cannot recompute an arbitrary ``op: model`` graph. Non-model
+    integer capsules still recompute their golden on that engine.
+    """
     if capsule_dir is None:
         capsule_dir = capsule.get("__dir__")
-    if is_independent_float_golden(capsule, capsule_dir):
+    independent_model = capsule.get("kind") == "model" and golden_source(capsule, capsule_dir) != "merlin_tensor_int"
+    if independent_model or is_independent_float_golden(capsule, capsule_dir):
         outs = (_load_golden_yaml(capsule_dir) or {}).get("outputs")
         if not outs:
             raise ValueError(
-                f"independent float golden declared (golden_source="
+                f"independent golden declared (golden_source="
                 f"{golden_source(capsule, capsule_dir)!r}) but golden.yaml has no 'outputs' "
                 f"({Path(capsule_dir) / 'golden.yaml' if capsule_dir else '<no dir>'})"
             )

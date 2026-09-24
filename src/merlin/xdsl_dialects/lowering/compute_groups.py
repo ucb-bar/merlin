@@ -756,10 +756,11 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
         users = _users(op.results[0])
         if len(users) != 1 or id(users[0]) not in loose_ids or stage_of[id(users[0])].kind == CONTRACTION:
             continue
-        if stage_of[id(op)].kind == QUANTIZE and stage_of[id(users[0])].kind == DEQUANTIZE:
-            # A quantized tensor handed from one integer region to the next. Joining across it
-            # would make one region of two that a unit can each take whole, and it is the one edge
-            # where the value between them is already the integers a unit reads.
+        if stage_of[id(op)].kind == QUANTIZE:
+            # Quantize closes its producer region.  Its integer result may feed
+            # another Q/DQ region, or integer layout/movement on the way to a
+            # contraction.  Joining across either edge lets downstream glue
+            # obscure a complete quantized sum/mean on the producer side.
             continue
         parent[find(id(op))] = find(id(users[0]))
 

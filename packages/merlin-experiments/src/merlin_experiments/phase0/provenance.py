@@ -116,6 +116,7 @@ def update_provenance_manifest(
     target: str | None = None,
     performance_record: dict | None = None,
     unbuilt_roster: list | None = None,
+    claim_model_evaluation: dict | None = None,
     unprovable_forbids: list | None = None,
     superseded: list | None = None,
 ) -> Path:
@@ -202,6 +203,10 @@ def update_provenance_manifest(
             per_roster = dict(man.get("roster_generation") or {})
             per_roster[target] = {"not_built": copy.deepcopy(unbuilt_roster)}
             man["roster_generation"] = per_roster
+        if claim_model_evaluation is not None:
+            per_claim = dict(man.get("claim_model_evaluation") or {})
+            per_claim[target] = copy.deepcopy(claim_model_evaluation)
+            man["claim_model_evaluation"] = per_claim
         # WHICH SYNTHESIZED NEGATIVE-LANE CAPSULES THIS TARGET HAS NONE OF, and why. Same two-absence
         # rule as the roster above: an empty list is the result "every forbid this axis derived is
         # provable", while `None` means nobody looked. Without this the family simply vanishes between

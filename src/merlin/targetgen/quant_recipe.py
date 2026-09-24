@@ -33,6 +33,7 @@ from typing import Any
 from merlin.common import quant_formats as qf
 
 SCHEMA = "quant_recipe_v1"
+CANDIDATE_SCHEMA = "quant_recipe_candidate_v1"
 DERIVED = "derived"
 UNDERIVABLE = "underivable"
 
@@ -110,6 +111,41 @@ class QuantRecipe:
         }
         body["recipe_sha256"] = digest(body)
         return body
+
+
+@dataclass(frozen=True)
+class QuantCandidate:
+    """One *declared* operand format, with the facts that do or do not license a recipe.
+
+    This is an inventory of hardware-side candidates, not a promise that TorchAO can produce the
+    format or that a compiler can lower it. In particular an alternative format on a multi-format
+    unit must not borrow the readout facts derived for the unit's first/RTL-visible format.
+    """
+
+    target: str
+    unit: str
+    format: str
+    recipe: QuantRecipe | None
+    evidence: tuple[dict[str, str], ...]
+    underivable: dict[str, str]
+
+    @property
+    def status(self) -> str:
+        return DERIVED if self.recipe is not None else UNDERIVABLE
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CANDIDATE_SCHEMA,
+            "target": self.target,
+            "unit": self.unit,
+            "format": self.format,
+            "status": self.status,
+            "recipe": self.recipe.to_dict() if self.recipe is not None else None,
+            "evidence": [dict(item) for item in self.evidence],
+            "underivable": dict(sorted(self.underivable.items())),
+            "framework_route": "not_evaluated",
+            "compiler_route": "not_evaluated",
+        }
 
 
 def digest(body: Mapping[str, Any]) -> str:
@@ -302,6 +338,155 @@ def for_target(
         derive(facet, prefer_activation_mode=prefer_activation_mode)
         for facet in readout_facet.for_target(target, facts=facts)
     ]
+
+
+def derive_candidates(
+    contract: Mapping[str, Any],
+    facets: Sequence[Any],
+    *,
+    prefer_activation_mode: str | None = None,
+) -> list[QuantCandidate]:
+    """Inventory every declared unit format without promoting a declaration to a proven recipe.
+
+    The existing readout derivation produces one facet per unit, not one per format. A candidate
+    therefore derives only when that facet's observed element format matches this candidate and
+    its format-dependent evidence agrees. Other declared formats are present, but explicitly
+    underivable until format-specific readout evidence exists. No candidate is selected for a
+    whole-model capture here; :func:`select` retains its existing behavior.
+    """
+    from merlin.targetgen.compute_units import compute_units
+
+    by_unit: dict[str, list[Any]] = {}
+    for facet in facets:
+        if facet.unit is not None:
+            by_unit.setdefault(str(facet.unit), []).append(facet)
+
+    candidates: list[QuantCandidate] = []
+    for unit in compute_units(dict(contract)):
+        for name in dict.fromkeys(unit.dtypes):
+            fmt = qf.get(name)
+            matches = by_unit.get(unit.name, [])
+            facet = matches[0] if len(matches) == 1 else None
+            target = (
+                str(facet.target)
+                if facet is not None
+                else (str(facets[0].target) if facets else str(contract.get("target") or ""))
+            )
+            evidence: list[dict[str, str]] = [
+                {
+                    "field": "operand_format",
+                    "rung": "contract",
+                    "observed": f"compute unit {unit.name!r} declares {fmt.name!r}",
+                }
+            ]
+            if facet is not None:
+                evidence.extend(
+                    {"field": item.field, "rung": item.rung, "observed": item.observed} for item in facet.evidence
+                )
+            reasons: dict[str, str] = {}
+            if not matches:
+                reasons["readout"] = f"no readout facet was derived for compute unit {unit.name!r}"
+            elif len(matches) != 1:
+                reasons["readout"] = f"{len(matches)} readout facets exist for compute unit {unit.name!r}"
+
+            # A quantization recipe is about a contraction. A unit that declares only movement or
+            # standalone elementwise work cannot license one merely by declaring a storage dtype.
+            if not any(
+                cap.family == CONTRACTION
+                and not cap.composed_with
+                and (not cap.dtypes or any(_format_of(dtype) == fmt for dtype in cap.dtypes))
+                for cap in unit.semantic_capabilities
+            ):
+                reasons["contraction"] = (
+                    f"the compute unit declares no standalone contraction capability for {fmt.name!r}"
+                )
+
+            if unit.accumulate:
+                same_format_rules = [
+                    rule for rule in unit.accumulate if _format_of(rule.inp) == fmt and _format_of(rule.weight) == fmt
+                ]
+                if not same_format_rules:
+                    reasons["accumulate"] = (
+                        f"the declared accumulate matrix has no {fmt.name} x {fmt.name} pairing; "
+                        "mixed-operand quantization is not derivable by this recipe"
+                    )
+                elif (
+                    facet is not None
+                    and facet.accumulator_dtype is not None
+                    and not any(rule.acc in (None, facet.accumulator_dtype) for rule in same_format_rules)
+                ):
+                    reasons["accumulate"] = (
+                        f"the {fmt.name} x {fmt.name} pairing does not accumulate to the readout's "
+                        f"observed {facet.accumulator_dtype!r}"
+                    )
+
+            if facet is not None:
+                observed = _format_of(facet.element_dtype)
+                if observed != fmt:
+                    reasons["element_dtype"] = (
+                        f"readout element {facet.element_dtype!r} is not declared format {fmt.name!r}; "
+                        "a format-specific datapath/readout fact is required"
+                    )
+                abi = facet.scalar_abi or {}
+                abi_output = _format_of(abi.get("output_dtype"))
+                if abi.get("output_dtype") and abi_output != fmt:
+                    reasons["scalar_abi"] = (
+                        f"scalar readout ABI output {abi['output_dtype']!r} does not prove {fmt.name!r}"
+                    )
+                format_rung = "format" in facet.rungs_for("scale_granularities")
+                if format_rung:
+                    if not fmt.scale.is_block:
+                        reasons["scale_granularities"] = (
+                            "the facet's block-scale granularity was derived from a different "
+                            "declared format, not this format's readout"
+                        )
+                    elif (facet.scale_block, facet.scale_dtype) != (fmt.scale.block, fmt.scale.dtype):
+                        reasons["scale_granularities"] = (
+                            f"the facet's block scale {(facet.scale_block, facet.scale_dtype)!r} "
+                            f"does not match {fmt.name!r} scale {(fmt.scale.block, fmt.scale.dtype)!r}"
+                        )
+                if facet.operand_sum and _format_of(facet.operand_sum.get("operand_dtype")) != fmt:
+                    reasons["operand_sum"] = (
+                        "the load-scale operand format does not match this candidate; its "
+                        "integer-sum family cannot be reused"
+                    )
+
+            recipe = None
+            if not reasons and facet is not None:
+                derived = derive(facet, prefer_activation_mode=prefer_activation_mode)
+                if derived.status == DERIVED:
+                    recipe = derived
+                else:
+                    reasons.update(derived.underivable)
+            candidates.append(
+                QuantCandidate(
+                    target=target,
+                    unit=unit.name,
+                    format=fmt.name,
+                    recipe=recipe,
+                    evidence=tuple(evidence),
+                    underivable=reasons,
+                )
+            )
+    return candidates
+
+
+def candidates_for_target(
+    target: str,
+    *,
+    contract: Mapping[str, Any] | None = None,
+    facts: Mapping[str, Any] | None = None,
+    prefer_activation_mode: str | None = None,
+) -> list[QuantCandidate]:
+    """Target-facing candidate inventory; it does not change capture recipe selection."""
+    from merlin.targetgen import readout_facet
+
+    if contract is None:
+        from merlin.targetgen.target_experiment import load_capability_manifest
+
+        contract = load_capability_manifest(target).contract
+    facets = readout_facet.for_target(target, contract=contract, facts=facts)
+    return derive_candidates(contract, facets, prefer_activation_mode=prefer_activation_mode)
 
 
 def select(recipes: Sequence[QuantRecipe]) -> QuantRecipe | None:

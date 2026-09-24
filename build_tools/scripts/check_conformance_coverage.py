@@ -16,6 +16,7 @@ Modes, mirroring the other gates in this directory:
   --target NAME        audit one target (repeatable); default: every target with a conformance spec
   --spec PATH          compare against a tracked spec instead of re-deriving (drift check)
   --write PATH         regenerate the spec (this is how the tracked spec is produced)
+  --application-capture LABEL=PATH  select every declared application from versioned capture artifacts
   --json               machine-readable
   --ratchet PATH       pre-existing debt that MAY ONLY SHRINK; unlisted new gaps fail
   --fail-on-uncovered  exit non-zero when any non-ratcheted cell is uncovered (default: report only)
@@ -121,6 +122,38 @@ def _applications(te) -> dict:
             f"the model it is then said to generalize to. Claim models: {list(CM.claim_models())}"
         )
     return found
+
+
+def _selected_application_captures(te, selections: list[str]) -> dict[str, Path]:
+    """Resolve a complete, explicit versioned capture selection for requirement generation.
+
+    Diagnostic inventories may examine arbitrary subsets, but a written conformance requirement
+    must derive from exactly the descriptor's declared roster. Capture locations are operator
+    selections; raw bytes and normalization receipts are recorded in the generated sidecar.
+    """
+    declared = (dict(getattr(te, "workload_spec", None) or {})).get("applications")
+    if not isinstance(declared, (list, tuple)) or not declared:
+        raise ValueError("explicit --application-capture requires a nonempty declared application list")
+    expected = [str(label) for label in declared]
+    if len(expected) != len(set(expected)):
+        raise ValueError("workload_spec.applications contains duplicate labels")
+    paths: dict[str, Path] = {}
+    for item in selections:
+        label, separator, path = item.partition("=")
+        if not separator or not label or not path or label in paths:
+            raise ValueError(f"invalid or duplicate --application-capture {item!r}; expected LABEL=PATH")
+        candidate = Path(path).expanduser().resolve()
+        if candidate.name != "model.mlir" or not candidate.is_file():
+            raise ValueError(f"application {label!r} must select an existing model.mlir: {candidate}")
+        paths[label] = candidate
+    if set(paths) != set(expected):
+        raise ValueError(
+            "explicit application capture labels must match workload_spec.applications exactly; "
+            f"missing={sorted(set(expected) - set(paths))}, extra={sorted(set(paths) - set(expected))}"
+        )
+    if len({path.resolve() for path in paths.values()}) != len(paths):
+        raise ValueError("distinct application labels cannot select the same capture bytes by path")
+    return paths
 
 
 def _certifying_members(te) -> int:
@@ -291,6 +324,19 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
     contract_target = _contract_target(target)
     roots = list(te.graded_roots())
     exclude = set(getattr(te, "graded_exclude", ()) or ())
+    derived_capability_exclusions: list[str] = []
+    if getattr(te, "graded_release_admission", False):
+        # This source descriptor declares intent, not a frozen grading cohort. The
+        # reviewed release derives the capability boundary from staged bytes; for a
+        # source-pool diagnostic, use the same generic hardware predicate rather
+        # than silently treating the now-absent literal list as an empty boundary.
+        from merlin.targetgen import capsule_runner
+
+        public = capsule_runner.discover_capsules(roots, labels={"public", "dev"})
+        operations = [capsule for capsule in public if capsule.get("kind") != "model"]
+        _, withheld = capsule_runner._split_ineligible(operations, te.target)
+        derived_capability_exclusions = sorted({str(row["capsule"]) for row in withheld})
+        exclude.update(derived_capability_exclusions)
 
     caps = _captures()
     if spec_path and spec_path.is_file():
@@ -362,6 +408,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         "spec_origin": origin,
         "graded_roots": [str(Path(r).name) for r in roots],
         "graded_exclude": sorted(exclude),
+        "derived_capability_exclusions": derived_capability_exclusions,
         "captures_used": (doc.get("diagnostics") or {}).get("captures_read", sorted(caps)),
         "tile_edge": tile,
         "n_required": gap["n_required"],
@@ -556,7 +603,7 @@ def main(argv=None) -> int:
         action="append",
         default=[],
         metavar="LABEL=PATH",
-        help="explicit capture for --inventory-out only; repeatable, diagnostic and never a conformance spec",
+        help="explicit capture; --write requires the full declared roster; --inventory-out is diagnostic",
     )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=None)
@@ -615,8 +662,8 @@ def main(argv=None) -> int:
             f"status={full['status']} (not a conformance spec)"
         )
         return 2 if full["status"] != "inventoried" else 0
-    if a.application_capture:
-        print("--application-capture requires --inventory-out", file=sys.stderr)
+    if a.application_capture and not a.write:
+        print("--application-capture requires --inventory-out or --write", file=sys.stderr)
         return 2
 
     if a.write:
@@ -642,10 +689,18 @@ def main(argv=None) -> int:
         from merlin_experiments.corpus.admission import conformance_spec
 
         try:
-            _app_paths = _applications(_te)
+            _app_paths = (
+                _selected_application_captures(_te, a.application_capture)
+                if a.application_capture
+                else _applications(_te)
+            )
             doc = conformance_spec(
                 _contract_target(targets[0]),
-                _captures(),
+                # The explicit declared application roster is the derivation cohort for *all*
+                # axes, not only the operation inventory. The legacy direct-child recapture
+                # scan can be empty while versioned captures are selected, yielding a
+                # misleading, technically writable requirement with zero required cells.
+                _app_paths,
                 applications=_app_paths,
                 corpus_roots=list(_te.graded_roots()),
                 cert_budget_s=_cert_budget_s(_te),
@@ -656,6 +711,21 @@ def main(argv=None) -> int:
         if (doc.get("application_demands") or {}).get("status") == "incomplete":
             print("cannot write a derived requirement: declared application inventory is incomplete", file=sys.stderr)
             return 2
+        if a.application_capture:
+            application_rows = (doc.get("application_demands") or {}).get("applications") or {}
+            invalid_receipts = sorted(
+                label
+                for label in _app_paths
+                if (application_rows.get(label, {}).get("capture_receipt") or {}).get("status")
+                != "verified_materialized"
+            )
+            if invalid_receipts:
+                print(
+                    "cannot write a derived requirement: selected application bundles lack verified "
+                    f"materialization receipts: {invalid_receipts}; use --inventory-out for diagnostics",
+                    file=sys.stderr,
+                )
+                return 2
         sidecar_path = None
         full_inventory = None
         if _app_paths:

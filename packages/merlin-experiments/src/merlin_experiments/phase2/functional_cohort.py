@@ -86,6 +86,8 @@ def functional_grade_cohort(target: object, *, contract_root: Path) -> Functiona
     admission, whose selector is ``capsule_runner._split_ineligible`` over non-model capsules.  Derive
     those same decisions here without materializing a cache, so preflight remains read-only.
     """
+    if getattr(target, "graded_release_admission", False):
+        raise ExperimentError("Phase-0 admission input requires a reviewed corpus release before grading")
     contract = contract_root
     public_source = discover_capsules(target.graded_roots(), labels={"public", "dev"}, contract=contract)
     public_names = [str(cap.get("name")) for cap in public_source]
