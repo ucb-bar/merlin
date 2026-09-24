@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from pathlib import Path
 
 import yaml
@@ -12,6 +14,141 @@ from merlin.perf.profile import TRAITS  # noqa: E402
 from merlin.runtime.backends.base import EXECUTION_CAPABILITIES  # noqa: E402
 
 from .provenance import _document_digest
+
+_SYNTHESIS_INPUT_KEYS = frozenset({"conformance_spec_sha256", "recipe_sha256", "workload_spec_sha256"})
+
+
+def application_inventory_path(conformance_spec: str | Path) -> Path | None:
+    """Resolve only the requirement's adjacent generated sidecar, never an arbitrary path."""
+    spec = Path(conformance_spec)
+    document = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    if not isinstance(document, dict):
+        raise ValueError(f"{spec}: conformance spec must be a mapping")
+    demands = document.get("application_demands") or {}
+    if not isinstance(demands, dict):
+        raise ValueError(f"{spec}: application_demands must be a mapping")
+    name = demands.get("sidecar")
+    if name is None:
+        return None
+    if (
+        not isinstance(name, str)
+        or not name
+        or name in (".", "..")
+        or Path(name).name != name
+        or "\\" in name
+        or any(ord(char) < 32 for char in name)
+    ):
+        raise ValueError(f"{spec}: application-demand sidecar must be one adjacent basename")
+    path = spec.parent / name
+    if path.is_symlink():
+        raise ValueError(f"{spec}: application-demand sidecar may not be a symlink")
+    return path
+
+
+def synthesis_input_identity(*, conformance_spec: str | Path, recipe: str | Path, descriptor: str | Path) -> dict:
+    """The exact requirement and authored software inputs a synthesis used.
+
+    The requirement and recipe are byte identities. ``workload_spec`` is a parsed
+    declaration inside the descriptor, so its canonical document digest avoids
+    invalidating synthesis for unrelated descriptor comments or hardware setup.
+    """
+    source = yaml.safe_load(Path(descriptor).read_text(encoding="utf-8")) or {}
+    if not isinstance(source, dict) or not isinstance(source.get("workload_spec") or {}, dict):
+        raise ValueError(f"{descriptor}: workload_spec must be a mapping")
+    return {
+        "conformance_spec_sha256": hashlib.sha256(Path(conformance_spec).read_bytes()).hexdigest(),
+        "recipe_sha256": hashlib.sha256(Path(recipe).read_bytes()).hexdigest(),
+        "workload_spec_sha256": _document_digest(source.get("workload_spec") or {}),
+    }
+
+
+def verify_selected_synthesis(
+    synth_profile: str | Path | None,
+    *,
+    conformance_spec: str | Path | None = None,
+    recipe: str | Path | None = None,
+    descriptor: str | Path | None = None,
+    document: dict | None = None,
+) -> dict:
+    """Verify a reviewed synth sidecar against its selected, frozen inputs.
+
+    Historical profiles predate the identity block. They remain inspectable as
+    diagnostics, but are explicitly *unverified*, never upgraded by an ambient
+    checkout reference. Verified execution needs newly frozen selected inputs.
+    """
+    if synth_profile is None or not Path(synth_profile).is_file():
+        return {"status": "absent"}
+    selected = document if document is not None else yaml.safe_load(Path(synth_profile).read_text(encoding="utf-8"))
+    if not isinstance(selected, dict):
+        raise ValueError(f"{synth_profile}: synthesized profile must be a mapping")
+    provenance = selected.get("provenance") or {}
+    if not isinstance(provenance, dict):
+        raise ValueError(f"{synth_profile}: provenance must be a mapping")
+    identity = provenance.get("selected_inputs")
+    if identity is None:
+        return {
+            "status": "unverified_legacy",
+            "reason": "selected synthesis predates conformance/recipe/workload input digests; regenerate and review it",
+        }
+    if (
+        not isinstance(identity, dict)
+        or set(identity) != _SYNTHESIS_INPUT_KEYS
+        or any(
+            not isinstance(value, str) or len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value)
+            for value in identity.values()
+        )
+    ):
+        raise ValueError(f"{synth_profile}: selected_inputs must contain three SHA-256 digests")
+    if conformance_spec is None or recipe is None or descriptor is None:
+        raise ValueError(
+            f"{synth_profile}: verified synthesis requires explicit conformance_spec, recipe, and descriptor inputs"
+        )
+    expected = synthesis_input_identity(conformance_spec=conformance_spec, recipe=recipe, descriptor=descriptor)
+    changed = sorted(key for key in _SYNTHESIS_INPUT_KEYS if identity[key] != expected[key])
+    if changed:
+        raise ValueError(
+            f"{synth_profile}: stale selected synthesis ({', '.join(changed)} changed); "
+            "regenerate a versioned sidecar and review/select it explicitly"
+        )
+    descriptor_doc = yaml.safe_load(Path(descriptor).read_text(encoding="utf-8")) or {}
+    if not isinstance(descriptor_doc, dict):
+        raise ValueError(f"{descriptor}: descriptor must be a mapping")
+    applications = (descriptor_doc.get("workload_spec") or {}).get("applications") or {}
+    spec_doc = yaml.safe_load(Path(conformance_spec).read_text(encoding="utf-8")) or {}
+    if not isinstance(spec_doc, dict):
+        raise ValueError(f"{conformance_spec}: conformance spec must be a mapping")
+    demands = spec_doc.get("application_demands") or {}
+    if not isinstance(demands, dict):
+        raise ValueError(f"{conformance_spec}: application_demands must be a mapping")
+    sidecar = application_inventory_path(conformance_spec)
+    if applications and sidecar is None:
+        raise ValueError(f"{conformance_spec}: declared applications require a selected detailed-demand sidecar")
+    if sidecar is not None:
+        if not sidecar.is_file():
+            raise ValueError(f"{sidecar}: selected detailed-demand sidecar is missing")
+        try:
+            detailed = json.loads(sidecar.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{sidecar}: invalid detailed-demand JSON: {exc}") from exc
+        if not isinstance(detailed, dict):
+            raise ValueError(f"{sidecar}: detailed-demand inventory must be a mapping")
+        actual = hashlib.sha256(json.dumps(detailed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if actual != demands.get("full_inventory_sha256"):
+            raise ValueError(f"{sidecar}: detailed-demand content differs from selected conformance spec")
+        if applications and (
+            detailed.get("status") != "inventoried" or detailed.get("coverage_status") != "unverified"
+        ):
+            raise ValueError(f"{sidecar}: detailed-demand inventory must be inventoried with coverage unverified")
+    if applications and demands.get("status") != "inventoried":
+        raise ValueError(
+            f"{conformance_spec}: declared applications require an inventoried operation-demand requirement; "
+            "regenerate and review the conformance spec and selected synthesis"
+        )
+    coverage_status = demands.get("coverage_status", "unverified")
+    if applications and coverage_status != "unverified":
+        raise ValueError(f"{conformance_spec}: application-demand coverage must remain explicitly unverified")
+    return {"status": "verified", "selected_inputs": dict(identity), "application_coverage_status": coverage_status}
+
 
 _PERFORMANCE_FIELDS = frozenset(
     {
@@ -377,6 +514,7 @@ def validate_profile_inputs(
     profiles_root=None,
     recipe=None,
     performance_template=None,
+    conformance_spec=None,
     synth_profile=None,
     smt_profile=None,
     hidden_profile=None,
@@ -387,7 +525,10 @@ def validate_profile_inputs(
             raise ValueError("recipe and profiles_root are mutually exclusive")
         if performance_template is None:
             raise ValueError("explicit recipe requires performance_template")
-    elif any(value is not None for value in (performance_template, synth_profile, smt_profile, hidden_profile)):
+    elif any(
+        value is not None
+        for value in (performance_template, conformance_spec, synth_profile, smt_profile, hidden_profile)
+    ):
         raise ValueError("explicit performance_template and sidecar paths require recipe")
 
 
@@ -398,9 +539,11 @@ def load_profile(
     profiles_root: str | Path | None = None,
     recipe: str | Path | None = None,
     performance_template: str | Path | None = None,
+    conformance_spec: str | Path | None = None,
     synth_profile: str | Path | None = None,
     smt_profile: str | Path | None = None,
     hidden_profile: str | Path | None = None,
+    descriptor: str | Path | None = None,
 ) -> dict:
     """The target's functional profile plus shared perf and the private holdout sidecar.
 
@@ -422,6 +565,7 @@ def load_profile(
         profiles_root=profiles_root,
         recipe=recipe,
         performance_template=performance_template,
+        conformance_spec=conformance_spec,
         synth_profile=synth_profile,
         smt_profile=smt_profile,
         hidden_profile=hidden_profile,
@@ -453,9 +597,18 @@ def load_profile(
     # hand-authored capsule is impossible rather than merely unlikely.
     if synth is not None and synth.is_file():
         doc = yaml.safe_load(synth.read_text(encoding="utf-8")) or {}
+        prof["_synth_verification"] = verify_selected_synthesis(
+            synth,
+            conformance_spec=conformance_spec,
+            recipe=public,
+            descriptor=descriptor,
+            document=doc,
+        )
         extra = list(doc.get("capsules") or ())
         if extra:
             prof["capsules"] = list(prof.get("capsules") or []) + extra
+    else:
+        prof["_synth_verification"] = {"status": "absent"}
     # SOLVER-DERIVED ENTRIES. `verify.counterexamples` writes `<target>.smt.yaml` -- a counterexample
     # the deterministic fill cannot reach, found by the SMT layer at a shape it can still decide. It
     # was written to a filename nothing read: this chain was three hardcoded names, and

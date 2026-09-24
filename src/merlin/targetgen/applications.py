@@ -91,7 +91,7 @@ class ClassEvidence:
         }
 
 
-def _mkn(shape) -> "tuple[int, int, int, int] | None":
+def _mkn(shape) -> tuple[int, int, int, int] | None:
     """``(M, K, N, batch)`` for a contraction, or ``None`` when its iteration space is unreadable.
 
     ``parallel`` is ``(batch..., M, N)`` and ``reduction[0]`` is K, which is the convention
@@ -138,15 +138,18 @@ def _regime(target: str, m: int, k: int, n: int, dtype: str | None, cache: dict)
     return MR.classify(rows, rows, capacity)
 
 
-def _dtype_of(shape, fallback: str | None) -> str:
-    """The operand dtype this contraction carries, or the capture's dominant one.
+def _dtype_of(shape, fallback: str | None = None) -> str:
+    """The operand dtype this contraction itself carries, or ``unknown``.
 
-    ``ContractionShape.dtypes`` is positionally ``(lhs, rhs, out)`` in MLIR spelling and is empty
-    when the observer could not read it; the capture-level fallback keeps a region in its class
-    rather than dropping it into an ``unknown`` bucket that would then look like its own behaviour.
+    ``ContractionShape.dtypes`` is positionally ``(lhs, rhs, out)`` in MLIR spelling. A capture-level
+    hint cannot establish an individual operation's operand type: substituting it when the observer
+    missed the type can turn a host contraction into a false accelerator requirement. ``fallback``
+    remains accepted for older callers, but it is deliberately not used as evidence.
     """
     dtypes = tuple(getattr(shape, "dtypes", ()) or ())
-    token = str(dtypes[0]) if dtypes else (fallback or "unknown")
+    if not dtypes:
+        return "unknown"
+    token = str(dtypes[0])
     try:
         from merlin.targetgen.conformance import capsule_dtype
 
@@ -155,7 +158,7 @@ def _dtype_of(shape, fallback: str | None) -> str:
         return token
 
 
-def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None = None) -> "list[ClassEvidence]":
+def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None = None) -> list[ClassEvidence]:
     """Group one capture's contractions into behavioural classes, heaviest representative each.
 
     Returns ``[]`` for a capture with no readable contraction -- an unreadable model is evidence
@@ -164,9 +167,10 @@ def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None
     from merlin.capture.shape_taxonomy import classify_geometry
     from merlin.kernels.shapes import observe_contractions
     from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701 -- one tile-edge derivation
+    from merlin.targetgen.model_coverage import load_module
 
     try:
-        observed = observe_contractions(Path(capture))
+        observed = observe_contractions(load_module(Path(capture)))
     except Exception:  # noqa: BLE001 -- an unreadable capture yields none
         return []
     if not observed:
@@ -186,7 +190,7 @@ def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None
         if sized is None:
             continue
         m, k, n, batch = sized
-        dtype = _dtype_of(shape, dtype_hint)
+        dtype = _dtype_of(shape)
         rank = len(tuple(getattr(shape, "parallel", ()) or ()))
         cls = RegionClass(
             family="contraction",
@@ -220,6 +224,55 @@ def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None
         )
     out.sort(key=lambda e: (-e.work, e.region_class.key()))
     return out
+
+
+def _capture_audit(capture: str | Path) -> dict:
+    """Count all parsed linalg regions beside the contraction shapes this axis can represent.
+
+    Region counts are not MACs. Noncontractions and unobserved contractions stay in the report rather
+    than being assigned zero work, so no represented-MAC subtotal can be called whole-model coverage.
+    """
+    from merlin.kernels.shapes import observe_contractions
+    from merlin.targetgen import model_coverage as mc
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+
+    module = mc.load_module(capture)
+    ops = mc.region_ops(module)
+    regions = mc.regions_from_module(module)
+    if len(ops) != len(regions):
+        raise ValueError("linalg region and descriptor inventories disagree")
+    observed = observe_contractions(module)
+    observed_ids = {id(op) for op, _shape in observed}
+    region_ids = {id(op) for op in ops}
+    if len(observed_ids) != len(observed) or not observed_ids <= region_ids:
+        raise ValueError("contraction observation does not match parsed linalg regions")
+    # Provenance describes the source region, not necessarily THIS operation. A gather feeding a
+    # convolution may inherit `prov.family=contraction` while structurally it is movement. Let the
+    # shared grouping classifier decide whether each operation itself contracts; retain tag
+    # disagreements as a diagnostic, never as phantom omitted contractions.
+    stages = {id(op): CG.classify(op) for op in ops}
+    contraction_ids = {key for key, stage in stages.items() if stage is not None and stage.kind == CG.CONTRACTION}
+    all_contractions = observed_ids | contraction_ids
+    unclassified = sum(id(op) not in all_contractions and stages[id(op)] is None for op in ops)
+    noncontractions = len(ops) - len(all_contractions) - unclassified
+    tag_disagreements = sum(
+        id(op) not in all_contractions and region.resolved_family() == "contraction"
+        for op, region in zip(ops, regions, strict=True)
+    )
+    sized = [(op, shape) for op, shape in observed if _mkn(shape) is not None]
+    unknown_dtype = sum(_dtype_of(shape) == "unknown" for _op, shape in sized)
+    return {
+        "compute_regions": len(ops),
+        "identified_contractions": len(all_contractions),
+        "observed_contractions": len(observed),
+        "sized_contractions": len(sized),
+        "omitted_contractions": len(contraction_ids - observed_ids),
+        "unsized_contractions": len(observed) - len(sized),
+        "unknown_dtype_contractions": unknown_dtype,
+        "noncontraction_regions": noncontractions,
+        "unclassified_regions": unclassified,
+        "provenance_contraction_tag_disagreements": tag_disagreements,
+    }
 
 
 def _capture_quantization_summary(
@@ -332,26 +385,42 @@ def _missing_block_scaled_capability(
 def classify_captures(
     captures: dict, target: str, *, required_block_scaled_formats: set[str] | frozenset[str] = frozenset()
 ) -> dict:
-    """Every application's classes, merged, with the work coverage the representatives account for.
+    """Every application's contraction classes, with explicit whole-graph omissions.
 
     ``captures`` is ``{label: path}`` -- the same shape the conformance axes already take, so an
     application store and the roster store are interchangeable here.
 
-    The returned ``work_coverage`` is the point of the whole exercise: it is the fraction of
-    multiply-accumulate work that lives in classes a capsule was emitted for. It is REPORTED rather
-    than assumed, because a corpus that covers every class of a model it has mostly not looked at is
-    a different claim from one that covers the work.
+    ``total_work`` is only the MACs of sized contractions in these classes. There is no independent
+    whole-model work denominator here, so ``work_coverage`` is unknown, not the tautological 1.0 that
+    dividing this subtotal by itself produced. Region counts show the work this axis cannot size.
     """
     merged: dict[RegionClass, ClassEvidence] = {}
     unreadable: dict[str, str] = {}
     capture_evidence: dict[str, list[ClassEvidence]] = {}
+    capture_audit: dict[str, dict] = {}
     for label, path in sorted((captures or {}).items()):
         try:
             evidence = classify_capture(path, target)
         except Exception as exc:  # noqa: BLE001 -- reported, never skipped silently
             unreadable[str(label)] = f"{type(exc).__name__}: {str(exc)[-160:]}"
             continue
+        try:
+            audit = _capture_audit(path)
+        except Exception as exc:  # noqa: BLE001 -- an unaudited capture cannot prove coverage
+            unreadable[str(label)] = f"audit {type(exc).__name__}: {str(exc)[-160:]}"
+            continue
+        # `classify_capture` keeps its historical [] result for unreadable input. The independent
+        # parse above must succeed before an empty list is trusted; it must also account for every
+        # sized contraction the audit found, or a partial observer would silently narrow the axis.
+        represented = sum(ev.multiplicity for ev in evidence)
+        if represented != audit["sized_contractions"]:
+            unreadable[str(label)] = (
+                f"classification mismatch: {represented} represented vs "
+                f"{audit['sized_contractions']} sized contractions"
+            )
+            continue
         capture_evidence[str(label)] = evidence
+        capture_audit[str(label)] = audit
         for ev in evidence:
             prior = merged.get(ev.region_class)
             if prior is None:
@@ -373,12 +442,32 @@ def classify_captures(
 
     classes = sorted(merged.values(), key=lambda e: (-e.work, e.region_class.key()))
     total = sum(e.work for e in classes)
+    audit_keys = (
+        "compute_regions",
+        "identified_contractions",
+        "observed_contractions",
+        "sized_contractions",
+        "omitted_contractions",
+        "unsized_contractions",
+        "unknown_dtype_contractions",
+        "noncontraction_regions",
+        "unclassified_regions",
+        "provenance_contraction_tag_disagreements",
+    )
+    totals = {key: sum(row[key] for row in capture_audit.values()) for key in audit_keys}
     result = {
         "classes": [e.to_dict() for e in classes],
         "n_classes": len(classes),
         "n_regions": sum(e.multiplicity for e in classes),
         "total_work": total,
-        "work_coverage": 1.0 if total else None,
+        "work_coverage": None,
+        "work_coverage_basis": (
+            "unknown: total_work counts only represented contraction MACs; noncontraction regions, "
+            "unobserved or unsized contractions, and unknown operand types have no comparable "
+            "whole-model work denominator here"
+        ),
+        "capture_audit": capture_audit,
+        "region_audit": totals,
         "captures_unreadable": unreadable,
         "axis_basis": (
             "the contraction shapes the declared applications actually contain, grouped by what the "
@@ -411,7 +500,7 @@ class SizedCapsule:
     n: int
     batch: int
     tier: str  # the deepest tier this size can afford
-    extends: "str | None"  # the sibling this one rests on, when L2-only
+    extends: str | None  # the sibling this one rests on, when L2-only
     basis: dict
 
     def to_dict(self) -> dict:
@@ -435,8 +524,8 @@ def _round_down_to_tile(value: int, tile: int) -> int:
 
 
 def size_class(
-    evidence: "ClassEvidence", *, target: str, budget_s: float, tile: int | None = None, fit=None
-) -> "tuple[list[SizedCapsule], str | None]":
+    evidence: ClassEvidence, *, target: str, budget_s: float, tile: int | None = None, fit=None
+) -> tuple[list[SizedCapsule], str | None]:
     """``([capsules], refusal)`` for one behavioural class.
 
     THE CONSTRAINT THAT DECIDES WHETHER ANY OF THIS IS USABLE. A capsule at an application's real

@@ -15,6 +15,7 @@ to discard them.
 Modes, mirroring the sibling gates in this directory:
 
   --target NAME   synthesize one target (repeatable); default: every target with a conformance spec
+  --conformance-spec PATH  explicit newly derived requirement (one target only)
   --write         create a versioned synthesis artifact under out/artifacts/verification/<target>/
   --check         re-derive and diff against the tracked file; non-zero on drift
   --json          machine-readable
@@ -41,7 +42,7 @@ from merlin.targetgen.corpus_synth import SynthesisError, synthesize  # noqa: E4
 
 _HEADER = (
     "# DERIVED — regenerate with:\n"
-    "#   build_tools/scripts/synth_capsule_corpus.py --target {target} --write\n"
+    "#   build_tools/scripts/synth_capsule_corpus.py --target {target}{spec_arg} --write\n"
     "# Do not hand-edit. These entries exist because the target's own conformance requirement asks for\n"
     "# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a\n"
     "# claim the requirement does not make, and the next regeneration discards it.\n"
@@ -148,16 +149,22 @@ def _binding(target: str):
     from merlin.targetgen.target_experiment import load_target_experiment
 
     declaration = for_target(target)
-    prof = profiles.load_profile(declaration.profile, include_holdouts=False, **declaration.profile_inputs())
+    inputs = declaration.profile_inputs()
+    # The output being regenerated cannot depend on a previously selected sidecar.
+    inputs["synth_profile"] = None
+    prof = profiles.load_profile(
+        declaration.profile, include_holdouts=False, descriptor=declaration.descriptor, **inputs
+    )
     te = load_target_experiment(declaration.descriptor)
     return CSPEC.derive_binding(te, prof.get("datapath") or {})
 
 
-def synth_for(target: str) -> dict:
+def synth_for(target: str, *, conformance_spec: Path | None = None) -> dict:
     import yaml
+    from merlin_experiments.phase0.profiles import synthesis_input_identity
 
     declaration = for_target(target)
-    spec_path = conformance_reference(declaration.target)
+    spec_path = conformance_spec or declaration.conformance_spec or conformance_reference(declaration.target)
     if not spec_path.is_file():
         return {
             "target": target,
@@ -166,10 +173,24 @@ def synth_for(target: str) -> dict:
             f"check_conformance_coverage.py --target {target} --write",
         }
     doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
+    workload_spec = _workload_spec(target) or {}
+    applications = workload_spec.get("applications") or {}
+    demands = doc.get("application_demands") or {}
+    incomplete_applications = bool(applications and demands.get("status") != "inventoried")
     try:
-        out = synthesize(doc, workload_spec=_workload_spec(target))
+        out = synthesize(doc, workload_spec=workload_spec)
     except SynthesisError as exc:
         return {"target": target, "status": "unsynthesizable", "detail": str(exc)}
+    if incomplete_applications:
+        return {
+            "target": target,
+            "status": "incomplete_application_inventory",
+            "detail": (
+                "selected requirement does not inventory every declared application operation; "
+                "diagnostic plan only, not selectable for verified execution"
+            ),
+            **out,
+        }
 
     try:
         bad = _ungradeable(_gradeable_candidates(list(out.get("capsules") or ())), target)
@@ -203,13 +224,20 @@ def synth_for(target: str) -> dict:
         out = apply_model_gates(out, declaration.recipe)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         return {"target": target, "status": "invalid_synthesis_policy", "detail": str(exc)}
-    return {"target": target, "status": "ok", **out}
+    try:
+        out["provenance"]["selected_inputs"] = synthesis_input_identity(
+            conformance_spec=spec_path, recipe=declaration.recipe, descriptor=declaration.descriptor
+        )
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return {"target": target, "status": "invalid_synthesis_inputs", "detail": str(exc)}
+    return {"target": target, "status": "ok", "source_conformance_spec": str(spec_path), **out}
 
 
 def _render(target: str, res: dict) -> str:
     import yaml
 
-    return _HEADER.format(target=target) + yaml.safe_dump(
+    spec_arg = f" --conformance-spec {res['source_conformance_spec']}" if res.get("source_conformance_spec") else ""
+    return _HEADER.format(target=target, spec_arg=spec_arg) + yaml.safe_dump(
         {"provenance": res["provenance"], "capsules": res["capsules"]}, sort_keys=False, width=100
     )
 
@@ -217,6 +245,11 @@ def _render(target: str, res: dict) -> str:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
+    ap.add_argument(
+        "--conformance-spec",
+        type=Path,
+        help="explicit generated requirement to synthesize; required for a new verified selection",
+    )
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
@@ -224,6 +257,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     targets = _targets(a.target)
+    if a.conformance_spec and len(targets) != 1:
+        ap.error("--conformance-spec requires exactly one --target")
     if not targets:
         print(
             "no --target given and no tracked conformance spec found; write one with "
@@ -232,7 +267,9 @@ def main(argv=None) -> int:
         )
         return 2
 
-    results = [synth_for(t) for t in targets]
+    results = [
+        synth_for(t, conformance_spec=a.conformance_spec) if a.conformance_spec else synth_for(t) for t in targets
+    ]
 
     rc = 0
     for res in results:
@@ -244,8 +281,10 @@ def main(argv=None) -> int:
             # for something no capsule can express, which is the state this whole loop exists to make
             # impossible to ship silently.
             rc = rc or (
-                1
-                if res["status"] == "invalid_synthesis_policy" or (a.check and res["status"] == "unsynthesizable")
+                2
+                if res["status"] == "incomplete_application_inventory"
+                else 1
+                if res["status"].startswith("invalid_") or (a.check and res["status"] == "unsynthesizable")
                 else 0
             )
             continue
@@ -264,7 +303,14 @@ def main(argv=None) -> int:
                 version=1,
                 target=declaration.target,
                 update_latest=False,
-                sources=[str(declaration.definition), str(declaration.recipe)],
+                sources=[
+                    str(declaration.definition),
+                    str(declaration.descriptor),
+                    str(declaration.recipe),
+                    str(
+                        a.conformance_spec or declaration.conformance_spec or conformance_reference(declaration.target)
+                    ),
+                ],
                 notes="Phase 0 synthesized capsule entries; review before selecting as an experiment input",
             )
             out_path = product.add_artifact("synth.yaml")

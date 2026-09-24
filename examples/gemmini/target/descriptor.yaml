@@ -342,8 +342,10 @@ oracle_resources:
 host:
   board: chipyard_kodiak
 
-# THE ONLY INPUT CAPSULE SYNTHESIS CANNOT DERIVE. Everything else about this target's corpus comes
-# from its own conformance requirement (admitted x observed, at the boundaries its RTL declares).
+# AUTHORED WORKLOAD INTENT. Hardware facts cannot say which application families matter, which
+# captures may derive public tests, or which models are reserved for evaluation. The recipe still
+# owns software-visible semantics and oracle policy; the derived requirement and synthesis plan
+# must record exactly which of these authored inputs and hardware facts they used.
 #
 # `models` names which workloads this target is FOR -- the requirement's `observed` half is a census of
 # real captures, and without a declared roster the denominator of a tracked requirement is an untracked

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin_experiments.corpus.phase_selection import generate_phase_selections
+
 
 def _document_digest(document) -> str:
     """Stable digest for a parsed declaration/fact document."""
@@ -184,6 +186,12 @@ def update_provenance_manifest(
         per_target = dict(man.get("performance_generation") or {})
         per_target[target] = copy.deepcopy(performance_record or {})
         man["performance_generation"] = per_target
+        performance_phase = (performance_record or {}).get("phase") or {}
+        category = performance_phase.get("category") or "_perf"
+        selected = [relative for directory in (written or []) if (relative := _rel(directory)) and not _held(relative)]
+        phase_corpora = dict(man.get("phase_corpora") or {})
+        phase_corpora[target] = generate_phase_selections(selected, performance_category=category)
+        man["phase_corpora"] = phase_corpora
         # WHICH DECLARED ROSTER MODELS THIS TARGET HAS NO WHOLE-MODEL CAPSULE FOR, and why. Recorded
         # per target and rewritten on every full run, so a model that starts capturing stops being
         # listed rather than lingering as stale debt. An EMPTY list is written -- "no roster model is

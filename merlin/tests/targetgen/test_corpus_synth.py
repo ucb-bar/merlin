@@ -259,6 +259,97 @@ def test_an_application_quantization_gap_survives_as_corpus_provenance():
     ]
 
 
+def test_application_operation_plan_keeps_writers_refusals_and_host_lane_separate():
+    """A family/dtype cell is not a proof that a frontend op or whole network compiles."""
+    doc = {
+        "target": "t",
+        "application_demands": {
+            "status": "inventoried",
+            "coverage_status": "unverified",
+            "n_operations": 10,
+            "full_inventory_sha256": "a" * 64,
+            "sidecar": "t.application-demands.json",
+            "operation_groups": [
+                {
+                    "operation": "matmul",
+                    "mlir_operation": "linalg.matmul",
+                    "semantic_family": "contraction",
+                    "operand_format": "fp32",
+                    "shape_class": "rank2/squareish_gemm",
+                    "disposition": "hardware_admitted",
+                    "count": 2,
+                    "sources": [{"application": "a", "capture_sha256": "b" * 64, "count": 2}],
+                },
+                {
+                    "operation": "aten.some_unmapped_contraction.default",
+                    "mlir_operation": "linalg.generic",
+                    "semantic_family": "contraction",
+                    "operand_format": "fp32",
+                    "shape_class": "rank2/squareish_gemm",
+                    "disposition": "hardware_admitted",
+                    "count": 3,
+                    "sources": [{"application": "a", "capture_sha256": "b" * 64, "count": 3}],
+                },
+                {
+                    "operation": "linalg.reduce",
+                    "mlir_operation": "linalg.reduce",
+                    "semantic_family": "reduction",
+                    "operand_format": "fp32",
+                    "shape_class": "rank2",
+                    "disposition": "host_required",
+                    "count": 1,
+                    "sources": [{"application": "a", "capture_sha256": "b" * 64, "count": 1}],
+                },
+                {
+                    "operation": "tensor.empty",
+                    "mlir_operation": "tensor.empty",
+                    "semantic_family": "movement",
+                    "operand_format": None,
+                    "shape_class": "rank2",
+                    "disposition": "support_required",
+                    "count": 2,
+                    "sources": [{"application": "a", "capture_sha256": "b" * 64, "count": 2}],
+                },
+                {
+                    "operation": "func.call",
+                    "mlir_operation": "func.call",
+                    "semantic_family": None,
+                    "operand_format": "fp32",
+                    "shape_class": "unknown",
+                    "disposition": "unclassified",
+                    "count": 2,
+                    "sources": [{"application": "a", "capture_sha256": "b" * 64, "count": 2}],
+                },
+            ],
+        },
+    }
+
+    made = CS.synthesize(doc)
+    assert made["capsules"] == [], "operation planning must not fabricate a capsule or a green coverage claim"
+    plan = made["provenance"]["application_operation_plan"]
+    assert plan["coverage_status"] == "unverified"
+    assert plan["full_inventory_sha256"] == "a" * 64
+    by_op = {row["operation"]: row for row in plan["obligations"]}
+    assert by_op["matmul"]["writer_candidate"] == {"op": "matmul", "source": "builder"}
+    assert "generated capsule" in " ".join(by_op["matmul"]["missing_mapping"])
+    missing = by_op["aten.some_unmapped_contraction.default"]
+    assert missing["status"] == "refused"
+    assert missing["obligation"] == "no_exact_generic_writer"
+    assert "matmul" in missing["family_writer_candidates_not_equivalent"]
+    assert by_op["linalg.reduce"]["obligation"] == "host_lowering_and_boundary"
+    assert by_op["linalg.reduce"]["lane"] == "host"
+    assert by_op["tensor.empty"]["obligation"] == "graph_support_lowering"
+    assert by_op["func.call"]["obligation"] == "resolve_operation_semantics"
+    assert sum(plan["counts"].values()) == 10
+    assert plan["projection_status"] == "complete"
+
+    doc["application_demands"].pop("operation_groups")
+    no_projection = CS.synthesize(doc)["provenance"]["application_operation_plan"]
+    assert no_projection["obligations"] == []
+    assert no_projection["coverage_status"] == "unverified"
+    assert "sidecar" in no_projection["reason"]
+
+
 def test_an_l2_only_application_capsule_names_the_sibling_it_extends():
     """A large capsule resting on nothing is the failure this axis exists to avoid. The cap and the
     sibling travel together on the entry so the generator can enforce both."""

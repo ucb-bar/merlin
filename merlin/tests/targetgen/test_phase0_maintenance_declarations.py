@@ -1,5 +1,6 @@
 """Maintenance tools follow selected declarations without reading hidden sidecars."""
 
+import hashlib
 import importlib.util
 import json
 from dataclasses import replace
@@ -30,6 +31,9 @@ def selected(tmp_path, monkeypatch):
     recipe = tmp_path / "custom-recipe.yaml"
     recipe.write_text("datapath: {}\ncapsules: []\n")
     (tmp_path / "performance.yaml").write_text("sweeps: []\n")
+    requirement = tmp_path / "contract/capsules/conformance/device.yaml"
+    requirement.parent.mkdir(parents=True)
+    requirement.write_text("cells: []\n")
     definition = tmp_path / "experiment.yaml"
     definition.write_text(
         yaml.safe_dump(
@@ -45,6 +49,7 @@ def selected(tmp_path, monkeypatch):
                             "profile": "recipe-alias",
                             "recipe": recipe.name,
                             "performance_template": "performance.yaml",
+                            "conformance_spec": str(requirement),
                             "synth_profile": "derived/custom.yaml",
                             "hidden_profile": "private-do-not-read.yaml",
                         },
@@ -57,6 +62,7 @@ def selected(tmp_path, monkeypatch):
     for tool in (synth, retire):
         monkeypatch.setattr(tool, "for_target", lambda selector: declaration)
         monkeypatch.setattr(tool, "all_declarations", lambda: (declaration,))
+    monkeypatch.setattr(synth, "conformance_reference_dir", lambda: requirement.parent)
     monkeypatch.setattr(retire.CS, "derive_binding", lambda *_: object())
     return synth, retire, declaration, corpus
 
@@ -64,9 +70,7 @@ def selected(tmp_path, monkeypatch):
 def test_synthesis_writes_artifact_and_checks_reference_without_overwriting(selected, tmp_path, monkeypatch, capsys):
     synth, _, declaration, _ = selected
     requirement = tmp_path / "contract/capsules/conformance/device.yaml"
-    requirement.parent.mkdir(parents=True)
     requirement.write_text("cells: []\n")
-    monkeypatch.setattr(synth, "merlin_dir", lambda: tmp_path)
     monkeypatch.setattr(
         synth, "synthesize", lambda doc, **kwargs: {"capsules": [], "provenance": {"n_required_cells": 0}}
     )
@@ -90,6 +94,48 @@ def test_synthesis_writes_artifact_and_checks_reference_without_overwriting(sele
     assert not (tmp_path / "contract/capsules/profiles").exists()
 
 
+def test_synthesis_can_select_new_generated_requirement_without_editing_example(
+    selected, tmp_path, monkeypatch, capsys
+):
+    synth, _, declaration, _ = selected
+    new_requirement = tmp_path / "out/artifacts/verification/device/new.yaml"
+    new_requirement.parent.mkdir(parents=True)
+    new_requirement.write_text("cells: []\napplication_demands: {status: not_declared}\n")
+    monkeypatch.setattr(
+        synth, "synthesize", lambda doc, **kwargs: {"capsules": [], "provenance": {"n_required_cells": 0}}
+    )
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    assert synth.main(["--target", "device", "--conformance-spec", str(new_requirement), "--write", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)[0]
+    generated = yaml.safe_load(Path(result["output"]).read_text())
+    assert (
+        generated["provenance"]["selected_inputs"]["conformance_spec_sha256"]
+        == hashlib.sha256(new_requirement.read_bytes()).hexdigest()
+    )
+    assert declaration.conformance_spec != new_requirement
+
+
+def test_incomplete_application_inventory_is_diagnostic_not_a_selectable_corpus(selected, monkeypatch, capsys):
+    synth, _, declaration, _ = selected
+    descriptor = yaml.safe_load(declaration.descriptor.read_text())
+    descriptor["workload_spec"] = {"applications": ["model_a"]}
+    declaration.descriptor.write_text(yaml.safe_dump(descriptor))
+    declaration.conformance_spec.write_text("cells: []\napplication_demands: {status: incomplete}\n")
+    monkeypatch.setattr(
+        synth,
+        "synthesize",
+        lambda *_args, **_kwargs: {
+            "capsules": [],
+            "provenance": {"application_operation_plan": {"status": "unverified"}},
+        },
+    )
+    monkeypatch.setattr(synth, "_ungradeable", lambda *_args: pytest.fail("diagnostic reached gradeability"))
+    assert synth.main(["--target", "device", "--json"]) == 2
+    result = json.loads(capsys.readouterr().out)[0]
+    assert result["status"] == "incomplete_application_inventory"
+    assert result["provenance"]["application_operation_plan"]["status"] == "unverified"
+
+
 def test_binding_passes_exact_declared_inputs_and_never_enables_holdouts(selected, monkeypatch):
     from merlin_experiments.phase0 import profiles
 
@@ -99,7 +145,16 @@ def test_binding_passes_exact_declared_inputs_and_never_enables_holdouts(selecte
         profiles, "load_profile", lambda target, **kwargs: calls.append((target, kwargs)) or {"datapath": {}}
     )
     synth._binding("device")
-    assert calls == [(declaration.profile, {"include_holdouts": False, **declaration.profile_inputs()})]
+    assert calls == [
+        (
+            declaration.profile,
+            {
+                "include_holdouts": False,
+                "descriptor": declaration.descriptor,
+                **{**declaration.profile_inputs(), "synth_profile": None},
+            },
+        )
+    ]
 
 
 def test_synthesis_applies_authored_policy_before_writing_and_refuses_stale_names(
@@ -107,9 +162,7 @@ def test_synthesis_applies_authored_policy_before_writing_and_refuses_stale_name
 ):
     synth, _, declaration, _ = selected
     requirement = tmp_path / "contract/capsules/conformance/device.yaml"
-    requirement.parent.mkdir(parents=True)
     requirement.write_text("cells: []\n")
-    monkeypatch.setattr(synth, "merlin_dir", lambda: tmp_path)
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     derived = {"capsules": [{"name": "composition", "kind": "model"}], "provenance": {"n_required_cells": 0}}
     monkeypatch.setattr(synth, "synthesize", lambda *a, **kw: derived)

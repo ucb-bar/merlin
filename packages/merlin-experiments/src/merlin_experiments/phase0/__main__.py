@@ -22,6 +22,9 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--performance-template", type=Path, help="sole shared performance template; required with --recipe"
     )
+    ap.add_argument(
+        "--conformance-spec", type=Path, help="explicit reviewed conformance requirement for synthesized entries"
+    )
     ap.add_argument("--synth-profile", type=Path, help="explicit optional generated synthesis sidecar")
     ap.add_argument("--smt-profile", type=Path, help="explicit optional solver-generated sidecar")
     ap.add_argument("--hidden-profile", type=Path, help="explicit optional private holdout sidecar (host only)")
@@ -52,6 +55,7 @@ def main(argv=None) -> int:
             "profiles_root",
             "recipe",
             "performance_template",
+            "conformance_spec",
             "synth_profile",
             "smt_profile",
             "hidden_profile",

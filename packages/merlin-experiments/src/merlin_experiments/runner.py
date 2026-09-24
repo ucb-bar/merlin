@@ -117,8 +117,8 @@ def _phase0_source_inputs() -> tuple[Path, dict[str, str]]:
 def _verify_phase0_sources(plan: dict) -> None:
     """Bind module resolution and complete source membership before execution/resume."""
     for command in plan["phases"].values():
-        if command["adapter"] != "capsule_derivation" or not command.get("module"):
-            continue  # Historical script receipts keep their original validation.
+        if command["adapter"] != "capsule_derivation":
+            continue
         if "recipe" in command["inputs"] or "phase0_operator_inputs" in plan:
             observed = _phase0_operator_inputs(command)
             if plan.get("phase0_operator_inputs") != observed:
@@ -131,6 +131,8 @@ def _verify_phase0_sources(plan: dict) -> None:
                 plan["inputs"].get(name, {}).get("path") != path for name, path in expected_paths.items()
             ):
                 raise SpecError("phase-0 operator inputs lack their frozen fingerprints")
+        if not command.get("module"):
+            continue  # Historical script receipts keep their original source validation.
         if command["module"] != PHASE0_MODULE or command["argv"][1:3] != ["-m", PHASE0_MODULE]:
             raise SpecError("phase-0 module binding is not the supported derivation implementation")
         entrypoint, expected = _phase0_source_inputs()
@@ -151,7 +153,7 @@ def _verify_phase0_sources(plan: dict) -> None:
                     raise SpecError("phase-0 implementation lacks its frozen source closure")
 
 
-_PHASE0_OPTIONAL_INPUTS = frozenset({"synth_profile", "smt_profile", "hidden_profile"})
+_PHASE0_OPTIONAL_INPUTS = frozenset({"conformance_spec", "synth_profile", "smt_profile", "hidden_profile"})
 
 
 def _phase0_input_paths(membership: dict) -> dict[str, str]:
@@ -165,6 +167,8 @@ def _phase0_input_paths(membership: dict) -> dict[str, str]:
 
 def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
     """Bind explicit file membership, including deliberately absent sidecars."""
+    from .phase0.profiles import application_inventory_path
+
     inputs = command["inputs"]
     argv = command["argv"]
     if "profiles_root" in inputs or any(arg.split("=", 1)[0] == "--profiles-root" for arg in argv):
@@ -190,7 +194,37 @@ def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
             "path": str(source.resolve()),
             "present": source.exists() or source.is_symlink(),
         }
+    conformance_spec = inputs.get("conformance_spec")
+    if conformance_spec and Path(conformance_spec).is_file():
+        try:
+            sidecar = application_inventory_path(conformance_spec)
+        except (OSError, ValueError, YAMLError) as exc:
+            raise SpecError(f"invalid selected application-demand sidecar: {exc}") from exc
+        observed["phase0:operator:application_demands_sidecar"] = (
+            {"path": str(sidecar.resolve()), "present": sidecar.is_file()} if sidecar is not None else None
+        )
     return observed
+
+
+def _phase0_synthesis_status(plan: dict) -> dict:
+    """Evaluate selected synthesis from the plan's explicit inputs, never a checkout default."""
+    from .phase0.profiles import verify_selected_synthesis
+
+    results = {}
+    for number, command in plan["phases"].items():
+        if command["adapter"] != "capsule_derivation":
+            continue
+        selected = command["inputs"]
+        try:
+            results[number] = verify_selected_synthesis(
+                selected.get("synth_profile"),
+                conformance_spec=selected.get("conformance_spec"),
+                recipe=selected.get("recipe"),
+                descriptor=selected.get("descriptor"),
+            )
+        except (OSError, ValueError, YAMLError) as exc:
+            raise SpecError(f"phase-0 selected synthesis is invalid: {exc}") from exc
+    return results
 
 
 def _phase1_source_inputs(command: dict) -> dict[str, str]:
@@ -466,6 +500,7 @@ def preflight(plan: dict) -> dict:
     """
     errors = []
     pins = {}
+    synthesis = {}
     try:
         _verify_corpus_closures(plan)
         _verify_phase0_sources(plan)
@@ -476,6 +511,13 @@ def preflight(plan: dict) -> dict:
         from .portfolio_catalog import verify_plan as verify_portfolio_plan
 
         verify_portfolio_plan(plan)
+        synthesis = _phase0_synthesis_status(plan)
+        for number, result in synthesis.items():
+            if result["status"] == "unverified_legacy":
+                errors.append(
+                    f"phase {number} selected synthesis is unverified_legacy; "
+                    "regenerate and review a digest-bound profile, then freeze a new run"
+                )
     except SpecError as exc:
         errors.append(str(exc))
     adapters = {command["adapter"] for command in plan["phases"].values()}
@@ -498,7 +540,13 @@ def preflight(plan: dict) -> dict:
         for workspace in command.get("workspaces", []):
             if not Path(workspace).is_dir():
                 errors.append(f"candidate workspace missing: {workspace}")
-    return {"configuration_ready": not errors, "engine_readiness": "not_executed", "errors": errors, "inputs": pins}
+    return {
+        "configuration_ready": not errors,
+        "engine_readiness": "not_executed",
+        "errors": errors,
+        "inputs": pins,
+        "phase0_synthesis": synthesis,
+    }
 
 
 def _write_json(path: Path, value: dict) -> None:

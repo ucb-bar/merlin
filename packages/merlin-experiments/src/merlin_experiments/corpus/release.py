@@ -181,6 +181,30 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         if report["review_digest"] != expected_digest:
             raise SpecError("review digest does not match the prepared release")
         prepared = _read(root / "private" / "preparation.json")
+        # Preparation remains available for historical/diagnostic runs, but an
+        # operator review must not upgrade them to verified corpus provenance.
+        # source_run rechecks the frozen plan, source/output receipts and every
+        # input fingerprint before these selected bytes are interpreted.
+        from ..runner import _phase0_synthesis_status
+
+        plan, _, _ = source_run(Path(prepared["source_run"]))
+        phase = plan["phases"]["0"]
+        if phase.get("module") or phase["inputs"].get("synth_profile"):
+            required = {f"phase0:operator:{name}" for name in ("recipe", "conformance_spec", "synth_profile")}
+            frozen = plan.get("phase0_operator_inputs") or {}
+            if not required <= set(frozen) or any(
+                frozen[name] is None or not frozen[name]["present"] for name in required
+            ):
+                raise SpecError(
+                    "corpus seal requires a newly frozen explicit Phase-0 run with recipe, "
+                    "conformance spec, and digest-bound selected synthesis"
+                )
+            synthesis = _phase0_synthesis_status(plan).get("0", {})
+            if synthesis.get("status") != "verified":
+                raise SpecError(
+                    "corpus seal requires verified selected synthesis; regenerate and review a "
+                    "digest-bound profile, then freeze a new Phase-0 run"
+                )
         try:
             current = admission(Path(report["descriptor"]))
         except Exception:

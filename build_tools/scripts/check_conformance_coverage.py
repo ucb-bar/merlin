@@ -36,6 +36,7 @@ into a hard failure on day one would only teach everyone to pass `--no-verify`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -96,18 +97,23 @@ def _applications(te) -> dict:
             else:
                 missing.append(str(name))
         if missing:
-            # Not silently skipped: a declared application whose bundle is absent means the axis is
-            # deriving from less than the descriptor claims, and that difference has to be visible.
-            print(f"[note] applications declared but not in the recapture store: {missing}", file=sys.stderr)
+            raise FileNotFoundError(
+                f"declared application capture(s) missing model.mlir in the recapture store: {missing}; "
+                "fresh Phase 0 derivation cannot use a smaller application set than the descriptor declares"
+            )
     else:
         root = Path(declared)
         if not root.is_absolute():
             root = repo_root() / root
         if not root.is_dir():
-            return {}
+            raise FileNotFoundError(f"declared application capture directory is missing: {root}")
         found = {d.name: d / "model.mlir" for d in sorted(root.iterdir()) if (d / "model.mlir").is_file()}
+        if not found:
+            raise FileNotFoundError(f"declared application capture directory has no model.mlir bundles: {root}")
 
-    offending = sorted(n for n in found if CM.is_claim_bundle(n))
+    offending = sorted(
+        n for n, path in found.items() if CM.is_claim_bundle(n) or CM.is_claim_bundle(path.resolve().parent.name)
+    )
     if offending:
         raise ClaimModelInApplications(
             f"{offending} named as application(s), but they are CLAIM models. The application axis "
@@ -292,15 +298,45 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
 
         doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
         origin = f"tracked spec {spec_path}"
+        app_demands = doc.get("application_demands") or {}
+        sidecar = app_demands.get("sidecar")
+        if sidecar:
+            from merlin_experiments.phase0.profiles import application_inventory_path
+
+            try:
+                inventory_path = application_inventory_path(spec_path)
+                if inventory_path is None:
+                    raise ValueError("declared application sidecar is absent")
+                full = json.loads(inventory_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                return {"target": target, "status": "unverifiable_application_inventory", "detail": str(exc)}
+            digest = hashlib.sha256(json.dumps(full, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if digest != app_demands.get("full_inventory_sha256"):
+                return {
+                    "target": target,
+                    "status": "unverifiable_application_inventory",
+                    "detail": f"generated application sidecar digest mismatch: {inventory_path}",
+                }
     else:
         # The corpus is handed in as a SECOND evidence source for the negative lane: it is what the
         # grader will run, and it can present work the captures never do (a bf16 contraction on an
         # int8-only array). See `conformance.corpus_presented_pairs`.
         from merlin_experiments.corpus.admission import conformance_spec
 
-        doc = conformance_spec(
-            contract_target, caps, applications=_applications(te), corpus_roots=roots, cert_budget_s=_cert_budget_s(te)
-        )
+        try:
+            doc = conformance_spec(
+                contract_target,
+                caps,
+                applications=_applications(te),
+                corpus_roots=roots,
+                cert_budget_s=_cert_budget_s(te),
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            return {
+                "target": target,
+                "status": "unverifiable_application_capture",
+                "detail": str(exc),
+            }
         origin = (
             "derived now" if contract_target == target else f"derived now against contract target {contract_target!r}"
         )
@@ -322,6 +358,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
     return {
         "target": target,
         "status": "ok",
+        "applications_declared": bool((dict(getattr(te, "workload_spec", None) or {})).get("applications")),
         "spec_origin": origin,
         "graded_roots": [str(Path(r).name) for r in roots],
         "graded_exclude": sorted(exclude),
@@ -338,6 +375,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
             for c in gap["uncovered"]
         ],
         "corpus_cells_not_required": gap["extra_cells"],
+        "application_demands": gap.get("application_demands") or {"coverage_status": "unverified"},
         "composition": gap.get("composition") or {"status": "not_measured"},
         "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
         "shape_geometry": gap.get("shape_geometry") or {"status": "not_measured"},
@@ -507,6 +545,19 @@ def main(argv=None) -> int:
     ap.add_argument("--target", action="append", default=[])
     ap.add_argument("--spec", type=Path, default=None)
     ap.add_argument("--write", type=Path, default=None)
+    ap.add_argument(
+        "--inventory-out",
+        type=Path,
+        default=None,
+        help="write an exact diagnostic application inventory even when derivation is incomplete",
+    )
+    ap.add_argument(
+        "--application-capture",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="explicit capture for --inventory-out only; repeatable, diagnostic and never a conformance spec",
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=None)
     ap.add_argument("--fail-on-uncovered", action="store_true")
@@ -528,6 +579,44 @@ def main(argv=None) -> int:
             "(with --write to create a reviewed reference)",
             file=sys.stderr,
         )
+        return 2
+
+    if a.inventory_out:
+        if len(targets) != 1 or a.write or a.spec:
+            print(
+                "--inventory-out takes exactly one --target and cannot be combined with --write or --spec",
+                file=sys.stderr,
+            )
+            return 2
+        from merlin.targetgen.application_inventory import application_demand_inventory
+        from merlin.targetgen.corpora import descriptor_path
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        try:
+            if a.application_capture:
+                paths = {}
+                for item in a.application_capture:
+                    label, separator, path = item.partition("=")
+                    if not separator or not label or not path or label in paths:
+                        raise ValueError(f"invalid or duplicate --application-capture {item!r}; expected LABEL=PATH")
+                    paths[label] = Path(path)
+            else:
+                paths = _applications(load_target_experiment(descriptor_path(targets[0])))
+            if not paths:
+                raise ValueError("no declared application captures to inventory")
+            full = application_demand_inventory(paths, _contract_target(targets[0]), detailed=True)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"cannot inventory declared applications: {exc}", file=sys.stderr)
+            return 2
+        a.inventory_out.parent.mkdir(parents=True, exist_ok=True)
+        a.inventory_out.write_text(json.dumps(full, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(
+            f"wrote diagnostic inventory {a.inventory_out}: {full['n_operations']} parsed op(s), "
+            f"status={full['status']} (not a conformance spec)"
+        )
+        return 2 if full["status"] != "inventoried" else 0
+    if a.application_capture:
+        print("--application-capture requires --inventory-out", file=sys.stderr)
         return 2
 
     if a.write:
@@ -552,23 +641,57 @@ def main(argv=None) -> int:
         # requirement is worse than either being wrong.
         from merlin_experiments.corpus.admission import conformance_spec
 
-        doc = conformance_spec(
-            _contract_target(targets[0]),
-            _captures(),
-            applications=_applications(_te),
-            corpus_roots=list(_te.graded_roots()),
-            cert_budget_s=_cert_budget_s(_te),
-        )
+        try:
+            _app_paths = _applications(_te)
+            doc = conformance_spec(
+                _contract_target(targets[0]),
+                _captures(),
+                applications=_app_paths,
+                corpus_roots=list(_te.graded_roots()),
+                cert_budget_s=_cert_budget_s(_te),
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"cannot write a derived requirement: {exc}", file=sys.stderr)
+            return 2
+        if (doc.get("application_demands") or {}).get("status") == "incomplete":
+            print("cannot write a derived requirement: declared application inventory is incomplete", file=sys.stderr)
+            return 2
+        sidecar_path = None
+        full_inventory = None
+        if _app_paths:
+            from merlin.targetgen.application_inventory import application_demand_inventory
+
+            full_inventory = application_demand_inventory(_app_paths, _contract_target(targets[0]), detailed=True)
+            digest = hashlib.sha256(
+                json.dumps(full_inventory, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            if digest != doc["application_demands"]["full_inventory_sha256"]:
+                print(
+                    "cannot write a derived requirement: application inventory changed during derivation",
+                    file=sys.stderr,
+                )
+                return 2
+            sidecar_path = a.write.with_name(f"{a.write.stem}.application-demands.json")
+            doc["application_demands"]["sidecar"] = sidecar_path.name
         a.write.parent.mkdir(parents=True, exist_ok=True)
+        if sidecar_path is not None:
+            sidecar_path.write_text(json.dumps(full_inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_label = str(a.write)
+        try:
+            write_label = str(a.write.resolve().relative_to(repo_root()))
+        except ValueError:
+            pass
         a.write.write_text(
             "# DERIVED — regenerate with:\n"
             f"#   build_tools/scripts/check_conformance_coverage.py --target {targets[0]} "
-            f"--write {a.write.relative_to(repo_root()) if a.write.is_absolute() else a.write}\n"
+            f"--write {write_label}\n"
             "# Do not hand-edit: the point of this file is that it is evidence, not authorship.\n"
             + yaml.safe_dump(doc, sort_keys=False, width=100),
             encoding="utf-8",
         )
         print(f"wrote {a.write} — {len(doc['cells'])} required cell(s)")
+        if sidecar_path is not None:
+            print(f"wrote generated application inventory {sidecar_path}")
         return 0
 
     ratchet = _load_ratchet(a.ratchet)
@@ -584,6 +707,13 @@ def main(argv=None) -> int:
             print(f"   captures used : {r['captures_used']}")
             print(f"   tile edge     : {r['tile_edge']}")
             print(f"   covered       : {r['n_covered']} / {r['n_required']} required cell(s)")
+            app = r.get("application_demands") or {}
+            if r.get("applications_declared"):
+                print(
+                    f"   applications  : {app.get('status', 'not_measured')} inventory, "
+                    f"{app.get('n_operations', 0)} parsed op(s); "
+                    f"operation/capsule coverage {app.get('coverage_status', 'unverified')}"
+                )
             new = [u for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
             if r["uncovered"]:
                 print(
@@ -747,6 +877,24 @@ def main(argv=None) -> int:
     # exited 0 for BOTH; with the descriptor found by its declared name they owe 5 uncovered items.
     # This repo has now paid for that shape five times, so it is spelled 2 ("cannot decide"), never 0.
     unrunnable = [r for r in reports if r["status"] != "ok"]
+    incomplete_applications = [
+        r for r in reports if r["status"] == "ok" and (r.get("application_demands") or {}).get("status") == "incomplete"
+    ]
+    unverified_applications = [
+        r
+        for r in reports
+        if r["status"] == "ok"
+        and r.get("applications_declared")
+        and (r.get("application_demands") or {}).get("status") in {None, "not_measured", "incomplete"}
+    ]
+    if incomplete_applications:
+        print(
+            f"\n  INCOMPLETE APPLICATION INVENTORY ({len(incomplete_applications)}) "
+            "— cell coverage does not close this debt:",
+            file=sys.stderr,
+        )
+        for r in incomplete_applications:
+            print(f"    ? {r['target']:28s} application operations remain unclassified", file=sys.stderr)
     if unrunnable:
         print(
             f"\n  COULD NOT AUDIT ({len(unrunnable)}) — these establish NOTHING, they are not clean:", file=sys.stderr
@@ -757,8 +905,15 @@ def main(argv=None) -> int:
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1
-    if unrunnable and (a.fail_on_uncovered or a.fail_on_unverifiable):
-        print(f"\nCANNOT DECIDE: {len(unrunnable)} target(s) could not be audited at all.", file=sys.stderr)
+    if (unrunnable or incomplete_applications or (a.fail_on_unverifiable and unverified_applications)) and (
+        a.fail_on_uncovered or a.fail_on_unverifiable
+    ):
+        print(
+            f"\nCANNOT DECIDE: {len(unrunnable)} target(s) could not be audited and "
+            f"{len(incomplete_applications)} application inventory/inventories were incomplete; "
+            f"{len(unverified_applications)} declared application inventory/inventories are missing or incomplete.",
+            file=sys.stderr,
+        )
         return 2
     return 0
 

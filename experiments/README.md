@@ -38,9 +38,14 @@ selecting a replacement. Historical runs keep their original inputs and receipts
 
 ## Derive capsules
 
-Phase 0 writes a run-owned corpus under `phase0/capsules/`, never the checked-in
-corpus. Production phase 0 and phase 1 currently require separate `--phase 0`
-and `--phase 1` invocations: the generated corpus must be explicitly reviewed and
+Phase 0 writes a run-owned corpus under `phase0/capsules/`; capsules are generated
+artifacts, never committed inputs. Regenerate them from reviewed inputs when
+needed. A Phase 1 definition selects the reviewed, sealed *functional* corpus;
+Phase 2 selects its own performance workloads plus the frozen functional compiler.
+Those selections have separate identities and must not be inferred from a target
+name or from whichever run happened most recently. Production phase 0 and phase 1
+currently require separate `--phase 0` and `--phase 1` invocations: the generated
+corpus must be explicitly reviewed and
 sealed before a descriptor may promote it into the functional grading corpus.
 Combined selection fails preflight rather than silently grading an older corpus.
 The standalone generator also requires an explicit `--output-root`; omitting it
@@ -49,7 +54,11 @@ and holdout rules are unchanged.
 
 Phase 0 also runs from installed distributions. An external definition supplies
 `config.descriptor`, `config.recipe` and `config.performance_template`, with optional
-`config.synth_profile`, `config.smt_profile` and `config.hidden_profile` declarations.
+`config.conformance_spec`, `config.synth_profile`, `config.smt_profile` and
+`config.hidden_profile` declarations. Selecting synthesis for verified execution
+requires a newly generated, reviewed conformance artifact and adjacent application
+inventory, and a synthesis artifact bound to their exact inputs. Historical
+references without those identities remain inspectable but unverified.
 Recipe mode never discovers adjacent sidecars. A declared optional sidecar may be
 absent; run/resume binds both its presence and its bytes. The legacy explicit
 `config.profiles_root` mode instead selects a complete profile directory, including

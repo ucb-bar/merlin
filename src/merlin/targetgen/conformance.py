@@ -42,6 +42,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.targetgen.application_inventory import application_demand_inventory
+
 #: How a cell's origin was established. ``observed`` = a real capture contains the family;
 #: ``declared`` = asserted from an external source because no capture exists. Kept as data on every cell
 #: so a reader can tell evidence from assertion without consulting this docstring.
@@ -879,6 +881,10 @@ def _application_axis(target: str, *, captures: dict | None = None, budget_s: fl
         "n_classes": grouped.get("n_classes", 0),
         "n_regions": grouped.get("n_regions", 0),
         "total_work": grouped.get("total_work", 0),
+        "work_coverage": grouped.get("work_coverage"),
+        "work_coverage_basis": grouped.get("work_coverage_basis"),
+        "capture_audit": grouped.get("capture_audit") or {},
+        "region_audit": grouped.get("region_audit") or {},
         "captures_unreadable": grouped.get("captures_unreadable") or {},
         "missing_capabilities": grouped.get("missing_capabilities") or [],
         "cost_model": fit.to_dict() if fit is not None else None,
@@ -1823,6 +1829,10 @@ def derive_spec(
         # the only axis whose capsules carry a shape a real model contains rather than a tile
         # multiple, and the only one whose sizing is bounded by what a certification costs.
         "application_shapes": _application_axis(target, captures=applications, budget_s=cert_budget_s),
+        # All operations in each DECLARED derivation application, including host and unknown work.
+        # Grouping identical signatures keeps the tracked requirement reviewable; `ordinals` still
+        # accounts for every parsed operation. Claim/held-out models never enter this input mapping.
+        "application_demands": application_demand_inventory(applications or {}, target),
         # WHAT A CERTIFICATION COSTS HERE, so an axis can size against it instead of assuming every
         # capsule it derives is affordable at the deepest tier.
         "cert_affordability": _cert_affordability(target, budget_s=cert_budget_s),
@@ -2399,6 +2409,33 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
             "alignment the hardware admits and a real target-model uses"
         ),
     }
+    app_demands = spec_doc.get("application_demands")
+    out["application_demands"] = (
+        {
+            "status": app_demands.get("status"),
+            "coverage_status": app_demands.get("coverage_status", "unverified"),
+            "n_operations": app_demands.get("n_operations", 0),
+            "n_signatures": app_demands.get("n_signatures", 0),
+            "n_operation_groups": len(app_demands.get("operation_groups") or ()),
+            "full_inventory_sha256": app_demands.get("full_inventory_sha256"),
+            "sidecar": app_demands.get("sidecar"),
+            "applications": {
+                label: {
+                    "n_operations": row.get("n_operations"),
+                    "counts": row.get("counts"),
+                    "status": row.get("status"),
+                }
+                for label, row in sorted((app_demands.get("applications") or {}).items())
+            },
+            "note": "cell coverage does not establish per-operation application or whole-model coverage",
+        }
+        if isinstance(app_demands, dict)
+        else {
+            "status": "not_measured",
+            "coverage_status": "unverified",
+            "note": "this spec predates application operation inventory; cell coverage cannot stand in for it",
+        }
+    )
     # THE COMPOSITION AXIS, measured on the same corpus and reported beside the cells rather than folded
     # into them. A spec written before this axis existed carries no `composition` block; that is reported
     # as "not measured", never as "nothing required" -- an axis a stale spec cannot express must not read

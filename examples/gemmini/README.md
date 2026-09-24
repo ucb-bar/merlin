@@ -12,6 +12,7 @@ This example is not a prequalified compiler or a self-contained hardware setup.
 | Phase 1: functional compiler generation | [`phase1/`](phase1/README.md): prompts and public runtime harness | Frozen compiler submission and separately attributed certification |
 | Phase 2: performance optimization | [`phase2/`](phase2/README.md): selecting frozen inputs and the shared templates | Optimization runs and evidence tied to the exact functional compiler |
 | Whole-model inspection | [`whole-model/`](whole-model/README.md): lowering an existing capture and inspecting IR | Lowering stages and tensor inspection payloads; not accelerator certification |
+| Artifact navigation | [`artifacts/`](artifacts/README.md): map each generated file to its input and next phase | Nothing generated is stored or committed in the example |
 | Published compiler smoke | This page, below: run the pinned OOT compiler away from the Merlin checkout | Parsed interface, Gemmini lowering, command buffer and LLVM-dialect artifact; not simulator or whole-model qualification |
 
 Install Merlin and `merlin-experiments`, then provision the explicit OOT provider,

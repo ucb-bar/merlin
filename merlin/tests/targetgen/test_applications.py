@@ -112,11 +112,53 @@ def test_an_unreadable_capture_is_reported_not_skipped(tmp_path):
     d.mkdir()
     (d / "model.mlir").write_text("nonsense", encoding="utf-8")
     out = APP.classify_captures({"broken2": d / "model.mlir"}, _TARGET)
-    # An unparseable module yields no contraction rather than raising, so it lands as zero classes;
-    # what must never happen is a silent claim of coverage over it.
+    # classify_capture keeps its historical [] result for unparseable input; the audit must still
+    # name the failed parse rather than treating it like a valid graph with zero contractions.
     assert out["n_classes"] == 0
     assert out["total_work"] == 0
     assert out["work_coverage"] is None, "no work observed is not full coverage"
+    assert "broken2" in out["captures_unreadable"]
+    assert "broken2" not in out["capture_audit"]
+
+
+def test_application_audit_counts_work_the_shape_axis_does_not_cover(monkeypatch, tmp_path):
+    """A partial observer and unreadable operand type cannot become whole-model coverage."""
+    from dataclasses import replace
+
+    from merlin.kernels import shapes as KS
+
+    original = KS.observe_contractions
+
+    def partial_observer(module):
+        pairs = original(module)
+        return [(pairs[0][0], replace(pairs[0][1], dtypes=()))] if pairs else []
+
+    monkeypatch.setattr(KS, "observe_contractions", partial_observer)
+    bundle = tmp_path / "partial"
+    bundle.mkdir()
+    path = bundle / "model.mlir"
+    path.write_text(_module((16, 16, 16), (32, 16, 16)), encoding="utf-8")
+
+    assert APP.classify_capture(path, _TARGET, dtype_hint="int8")[0].region_class.dtype == "unknown"
+    report = APP.classify_captures({"partial": path}, _TARGET)
+    audit = report["region_audit"]
+    assert (audit["identified_contractions"], audit["observed_contractions"], audit["omitted_contractions"]) == (
+        2,
+        1,
+        1,
+    )
+    assert audit["unknown_dtype_contractions"] == 1
+    assert audit["noncontraction_regions"] + audit["unclassified_regions"] >= 2
+    assert report["total_work"] == 16 * 16 * 16  # represented contraction MACs only
+    assert report["work_coverage"] is None
+
+    def failed_audit(_path):
+        raise ValueError("independent region inventory unavailable")
+
+    monkeypatch.setattr(APP, "_capture_audit", failed_audit)
+    refused = APP.classify_captures({"partial": path}, _TARGET)
+    assert refused["n_classes"] == refused["n_regions"] == refused["total_work"] == 0
+    assert "partial" in refused["captures_unreadable"]
 
 
 def test_weight_only_e4m3_f32_is_refused_as_block_scaled_application_evidence(tmp_path):
@@ -177,9 +219,10 @@ def test_explicit_block_scaled_compute_suppresses_the_missing_capability(monkeyp
         source="mx_bundle",
     )
     monkeypatch.setattr(APP, "classify_capture", lambda *_args, **_kwargs: [evidence])
-    out = APP.classify_captures(
-        {"mx_bundle": tmp_path / "mx_bundle" / "model.mlir"}, _TARGET, required_block_scaled_formats={"mxfp8"}
-    )
+    bundle = tmp_path / "mx_bundle"
+    bundle.mkdir()
+    (bundle / "model.mlir").write_text(_module((16, 32, 16)), encoding="utf-8")
+    out = APP.classify_captures({"mx_bundle": bundle / "model.mlir"}, _TARGET, required_block_scaled_formats={"mxfp8"})
     assert "missing_capabilities" not in out
 
 

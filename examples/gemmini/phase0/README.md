@@ -5,7 +5,9 @@ Start with [the experiment definition](../experiment.yaml), catalog ID
 
 [`recipe.yaml`](recipe.yaml) is the authored public coverage recipe, not a generated
 corpus or evidence of hardware correctness. The definition explicitly names its shared
-`performance_template` and generated `synth_profile` / `smt_profile` inputs.
+`performance_template` and generated `conformance_spec`, `synth_profile` /
+`smt_profile` inputs. The paths in the example currently select historical
+references for inspection; they are not a verified Phase 0 execution set.
 Public capsule entries omit `label: public` and the output category when it follows
 `kind` (`isa`, `layer`, `model_slice`, or `model`); the Phase 0 loader restores both
 before generation. Tile-relative extents such as `tile+1` resolve from the selected
@@ -45,11 +47,12 @@ cases. CIRCT cannot infer a rounding rule or an independent golden result.
    remain unavailable. Do not copy either output into this example as an authored
    input. A different elaboration requires a new extraction and review.
 
-2. **Derive the requirement from capability and workload evidence.** The generic
+2. **Inventory all application operations, then derive the requirement.** The generic
    conformance code intersects semantic family/dtype pairs admitted by the reviewed
-   compute-unit contract with regions actually found in captured applications. It
-   then adds boundary classes from the extracted facts. To audit the selected
-   requirement against the descriptor-selected corpus, run:
+   compute-unit contract with captured applications and adds boundary classes from
+   extracted facts. It also inventories *every* operation in each application,
+   including host work and unresolved external calls. To audit the historical
+   selected reference, run:
 
    ```sh
    python build_tools/scripts/check_conformance_coverage.py --target gemmini \
@@ -59,38 +62,54 @@ cases. CIRCT cannot infer a rounding rule or an independent golden result.
 
    The selected [conformance reference](../../../experiments/reference-data/phase0/conformance/gemmini.yaml)
    records the derivation formula, inputs read, refusals, and boundary provenance.
-   Its reviewed snapshot reports `tile_edge: 16`, sourced from RTL
-   `arrays[].rows`, and 12 required family/dtype/alignment cells. This is a
-   reviewed snapshot, not a claim that every fresh elaboration still has that edge.
-   Omit `--spec` only when the declared application captures and derivation tools
-   are available and a *fresh* requirement is wanted; an unavailable capture must
-   not be mistaken for an empty workload.
-   A fresh derivation can be written to a new path under `out/artifacts/verification/`
-   using `check_conformance_coverage.py --target gemmini --write PATH`; review it
-   before changing the selected reference. The command does not alter the reference
-   unless that file is explicitly chosen as `PATH`.
+   Its snapshot reports `tile_edge: 16`, sourced from RTL `arrays[].rows`, and
+   12 required family/dtype/alignment cells. That is **not** application-op
+   coverage: the historical reference predates the detailed inventory and the
+   strict audit now exits 2. An unavailable declared capture is an error, never
+   an empty workload. When all captures and the required lowering/support
+   semantics are available, write a *new* requirement under your configured
+   `out/artifacts/verification/` with `--write PATH`. This also generates an
+   adjacent `*.application-demands.json` inventory; review both files, then
+   select the new requirement explicitly in your experiment definition. Neither
+   generated file belongs in `examples/` or in Git.
 
-3. **Synthesize proposed cases.** `synth_capsule_corpus.py` reads the selected
-   conformance reference plus the descriptor's workload preferences. Its `--json`
-   mode shows proposed entries and refusals without selecting them; `--write`
-   creates a versioned review artifact without overwriting the experiment's
-   selected [synthesis reference](../../../experiments/reference-data/phase0/gemmini.synth.yaml):
+   Until then, use `--inventory-out PATH` for a diagnostic inventory. It can
+   report unresolved calls without publishing a requirement. The current seven
+   declared captures contain 245 unresolved declaration-only calls: 201 ATen
+   calls in SmolVLA and 44 TorchAO calls in LSTMNetViT. These need real generic
+   lowering or support semantics and recapture; naming an opaque call as covered
+   would not repair Phase 0.
+
+3. **Synthesize proposed cases.** `synth_capsule_corpus.py` reads the *explicitly
+   selected* conformance artifact plus the descriptor's workload preferences.
+   Its `--json` mode shows proposed entries, application-op obligations and
+   refusals without selecting them. With the historical incomplete reference it
+   exits 2 after showing a diagnostic plan; `--write` requires a complete
+   inventory and creates a review artifact under `out`, not committed source:
 
    ```sh
    python build_tools/scripts/synth_capsule_corpus.py --target gemmini --json
-   python build_tools/scripts/synth_capsule_corpus.py --target gemmini --write
+   python build_tools/scripts/synth_capsule_corpus.py --target gemmini \
+     --conformance-spec /configured/out/artifacts/verification/gemmini/REVIEWED.yaml \
+     --write
    ```
 
-   The selected synthesis reference currently records 62 entries, its input cell
-   count, precision preferences that survived admission, and cases it could not
-   express. An unresolved case stays visible as a refusal; it is not silently
-   counted as coverage. The explicit recipe still carries distinctive software
-   tests until equivalence with synthesized cases is demonstrated.
+   The historical synthesis reference records 62 entries but lacks the new exact
+   input digests; it is diagnostic and must be regenerated, reviewed and selected
+   with a newly frozen run before verified execution. An unresolved case stays
+   visible as a refusal, never silently counted as coverage. The authored recipe
+   still carries software-visible semantics and corner cases that hardware facts
+   cannot derive.
 
-4. **Generate and review the corpus.** The [experiment definition](../experiment.yaml)
-   selects the recipe, shared performance template, and reviewed synthesis
-   reference. `merlin experiment run ... --phase 0` resolves tile-relative extents,
-   writes capsules and independent goldens into that run, and records its inputs.
+4. **Generate and review the corpus.** A [definition](../experiment.yaml) selects
+   the recipe, shared performance template, conformance artifact and synthesis
+   artifact. `merlin experiment run ... --phase 0` resolves tile-relative extents,
+   writes capsules and independent goldens into that run, and records the exact
+   input identities. Capsules are *only* run artifacts: regenerate them from
+   reviewed inputs rather than committing or hand-editing them. Review/seal a
+   functional corpus for Phase 1; Phase 2 selects its separate performance
+   workloads and the frozen functional compiler. Never silently reuse a
+   functional-corpus identity as a performance-corpus identity.
    The review/seal commands below bind a fresh run; changing any selected source
    means freezing a new run, not resuming an old one as verified.
 
@@ -109,7 +128,12 @@ For the run command below, generated capsules live at
 `/configured/out/runs/gemmini/phase0/example-1/phase0/capsules/`. The path is
 run-owned, not an authored directory. Its `MANIFEST.yaml` records generated and
 authored members, performance-generation decisions, and any model-roster cases
-that could not be built. Each member has a generated `README.md`,
+that could not be built. `phase_corpora` names three disjoint selections:
+`phase1` functional conformance, `phase2` performance optimization and
+`diagnostic` Phase 0-only members. Each selection has a purpose, member list and
+selection digest for generated public members; private holdouts have separate
+owner-side provenance. The frozen run/release binds the actual bytes. Each member
+has a generated `README.md`,
 `capsule.yaml` (operation, numeric policy, expectations and source reference),
 `capsule.interface.mlir` (compiler input),
 `expected_instruction_coverage.yaml`, and an owner-side `golden.yaml` when its

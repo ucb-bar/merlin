@@ -48,6 +48,7 @@ def generate_target(
     profiles_root: str | Path | None = None,
     recipe: str | Path | None = None,
     performance_template: str | Path | None = None,
+    conformance_spec: str | Path | None = None,
     synth_profile: str | Path | None = None,
     smt_profile: str | Path | None = None,
     hidden_profile: str | Path | None = None,
@@ -60,6 +61,7 @@ def generate_target(
         profiles_root=profiles_root,
         recipe=recipe,
         performance_template=performance_template,
+        conformance_spec=conformance_spec,
         synth_profile=synth_profile,
         smt_profile=smt_profile,
         hidden_profile=hidden_profile,
@@ -76,7 +78,14 @@ def generate_target(
     _ensure_contract_on_path(descriptor)
     te = load_target_experiment(descriptor)
     hardware_target = te.target if explicit_descriptor else target
-    profile = load_profile(target, **{key: value for key, value in profile_inputs.items() if value is not None})
+    profile = load_profile(
+        target, descriptor=descriptor, **{key: value for key, value in profile_inputs.items() if value is not None}
+    )
+    if profile.get("_synth_verification", {"status": "absent"})["status"] == "unverified_legacy":
+        raise ValueError(
+            "selected synthesized profile has no digest-bound conformance/recipe/workload inputs; "
+            "regenerate, review, and select a new sidecar before verified Phase 0 execution"
+        )
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out_root = Path(output_root).expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
@@ -304,5 +313,5 @@ def _is_roster_capsule(entry: dict) -> bool:
     """
     return (
         str(entry.get("kind")) == "model"
-        and str((entry.get("semantic") or {}).get("generalization_axis") or "") == "roster"
+        and str((entry.get("generalization") or {}).get("generalization_axis") or "") == "roster"
     )

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from merlin_experiments.corpus.phase_selection import generate_phase_selections
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2 import corpus as P
 
@@ -109,6 +110,26 @@ def test_selection_is_intersection_after_complete_phase_admission(generated):
     descriptor.write_text(yaml.safe_dump(row))
     with pytest.raises(C.StageGateError, match="not a generated dev member"):
         P.discover_performance_corpus(generated, capsules="b")
+
+
+def test_phase0_records_distinct_functional_and_performance_selections(generated):
+    manifest_path = generated.capsule_corpus.parent / "MANIFEST.yaml"
+    manifest = yaml.safe_load(manifest_path.read_text())
+    manifest["generated"].append("public/functional")
+    manifest["phase_corpora"] = {
+        "fixture": generate_phase_selections(
+            ["public/functional", "_tuning/a", "_tuning/b"], performance_category="_tuning"
+        )
+    }
+    manifest_path.write_text(yaml.safe_dump(manifest))
+    assert [member.capsule for member in P.discover_performance_corpus(generated).capsules] == ["a", "b"]
+    roles = manifest["phase_corpora"]["fixture"]
+    assert roles["phase1"]["generated_members"] == ["public/functional"]
+    assert roles["phase2"]["generated_members"] == ["_tuning/a", "_tuning/b"]
+    roles["phase2"]["generated_members"] = ["public/functional"]
+    manifest_path.write_text(yaml.safe_dump(manifest))
+    with pytest.raises(C.StageGateError, match="phase selections are invalid"):
+        P.discover_performance_corpus(generated)
 
 
 @pytest.mark.parametrize("selection", ["missing", "a,a", "../a", ","])

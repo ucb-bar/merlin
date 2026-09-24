@@ -8,6 +8,18 @@ import yaml
 from merlin_experiments.phase0 import __main__ as cli
 from merlin_experiments.phase0 import generation, profiles
 
+from merlin.common.paths import repo_root
+
+
+def test_synthesized_roster_failure_uses_its_declared_axis():
+    roster = {
+        "kind": "model",
+        "generalization": {"generalization_axis": "roster"},
+        "semantic": {"semantic_family": "contraction"},
+    }
+    assert generation._is_roster_capsule(roster)
+    assert not generation._is_roster_capsule({"kind": "model", "semantic": roster["semantic"]})
+
 
 def _write(path, document):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +56,7 @@ def test_explicit_merge_order_and_template_identity(inputs, monkeypatch):
     assert result["capsules"][0]["label"] == "public"
     assert all("label" not in row for row in result["capsules"][1:])
     assert result["sweeps"] == [{"id": "hidden_sweep"}]
-    assert result["_performance_template"]["path"] == str(inputs["performance_template"])
+    assert (repo_root() / result["_performance_template"]["path"]).resolve() == inputs["performance_template"]
     assert result["_performance_template"]["sha256"] == profiles._document_digest({"sweeps": []})
 
 
@@ -151,7 +163,7 @@ def test_generation_forwards_paths_before_numerical_work(inputs, tmp_path, monke
 
     def load(target, **kwargs):
         assert target == "profile-id"
-        assert kwargs == inputs
+        assert kwargs == {**inputs, "descriptor": tmp_path / "target.yaml"}
         raise InputsReached
 
     monkeypatch.setattr(generation, "load_profile", load)

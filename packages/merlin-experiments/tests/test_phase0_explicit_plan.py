@@ -4,11 +4,14 @@ No generator is launched. A synthetic installed source identity isolates these
 input-boundary checks from concurrent source edits and optional hardware tools.
 """
 
+import hashlib
+import json
 from copy import deepcopy
 
 import pytest
 import yaml
 from merlin_experiments import SpecError, adapters, load_spec, runner
+from merlin_experiments.phase0.profiles import synthesis_input_identity
 
 
 @pytest.fixture
@@ -27,11 +30,28 @@ def authored(tmp_path, monkeypatch):
     (definitions / "target.yaml").write_text("target: fixture\n")
     (definitions / "recipe.yaml").write_text("capsules: []\n")
     (definitions / "performance.yaml").write_text("sweeps: []\n")
-    (definitions / "synth.yaml").write_text("synthesis: {}\n")
+    (definitions / "conformance.yaml").write_text(
+        "application_demands:\n  status: not_declared\n  coverage_status: not_applicable\n"
+    )
+    (definitions / "synth.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "provenance": {
+                    "selected_inputs": synthesis_input_identity(
+                        conformance_spec=definitions / "conformance.yaml",
+                        recipe=definitions / "recipe.yaml",
+                        descriptor=definitions / "target.yaml",
+                    )
+                },
+                "capsules": [],
+            }
+        )
+    )
     config = {
         "descriptor": "target.yaml",
         "recipe": "recipe.yaml",
         "performance_template": "performance.yaml",
+        "conformance_spec": "conformance.yaml",
         "synth_profile": "synth.yaml",
         "smt_profile": "absent-smt.yaml",
         "hidden_profile": "absent-hidden.yaml",
@@ -59,6 +79,58 @@ def freeze(plan):
     report = runner.preflight(plan)
     assert report["configuration_ready"], report
     return {**plan, "inputs": report["inputs"]}
+
+
+@pytest.mark.parametrize("changed", ["recipe", "conformance", "descriptor"])
+def test_preflight_rejects_stale_selected_synthesis(authored, changed):
+    make, root, _ = authored
+    name = {"recipe": "recipe.yaml", "conformance": "conformance.yaml", "descriptor": "target.yaml"}[changed]
+    with (root / name).open("a") as stream:
+        stream.write(
+            "\nworkload_spec: {operators: [matmul]}\n" if changed == "descriptor" else "\n# reviewed input changed\n"
+        )
+    report = runner.preflight(make())
+    assert not report["configuration_ready"]
+    assert any("stale selected synthesis" in error for error in report["errors"])
+
+
+def test_preflight_labels_digestless_selection_unverified(authored):
+    make, root, _ = authored
+    (root / "synth.yaml").write_text("provenance: {}\ncapsules: []\n")
+    report = runner.preflight(make())
+    assert report["phase0_synthesis"]["0"]["status"] == "unverified_legacy"
+    assert not report["configuration_ready"]
+
+
+def test_detailed_application_inventory_is_frozen_and_verified(authored):
+    make, root, _ = authored
+    detailed = {"status": "not_declared", "coverage_status": "not_applicable", "applications": {}, "n_operations": 0}
+    digest = hashlib.sha256(json.dumps(detailed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    (root / "inventory.json").write_text(json.dumps(detailed, indent=2) + "\n")
+    (root / "conformance.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "application_demands": {
+                    "status": "not_declared",
+                    "coverage_status": "not_applicable",
+                    "sidecar": "inventory.json",
+                    "full_inventory_sha256": digest,
+                }
+            }
+        )
+    )
+    profile = yaml.safe_load((root / "synth.yaml").read_text())
+    profile["provenance"]["selected_inputs"] = synthesis_input_identity(
+        conformance_spec=root / "conformance.yaml", recipe=root / "recipe.yaml", descriptor=root / "target.yaml"
+    )
+    (root / "synth.yaml").write_text(yaml.safe_dump(profile))
+    frozen = freeze(make())
+    assert frozen["phase0_operator_inputs"]["phase0:operator:application_demands_sidecar"]["present"]
+    (root / "inventory.json").write_text(json.dumps(detailed, sort_keys=True) + "\n")
+    with pytest.raises(SpecError, match="frozen input changed"):
+        runner._verify_inputs(frozen)
+    (root / "inventory.json").write_text(json.dumps({**detailed, "status": "incomplete"}) + "\n")
+    assert not runner.preflight(make())["configuration_ready"]
 
 
 def test_explicit_plan_preserves_absent_flags_and_no_directory_discovery(authored):
@@ -94,7 +166,9 @@ def test_frozen_plan_refuses_membership_and_byte_changes(authored, change):
         runner._verify_inputs(frozen)
 
 
-@pytest.mark.parametrize("name", ["recipe", "performance_template", "synth_profile", "smt_profile", "hidden_profile"])
+@pytest.mark.parametrize(
+    "name", ["recipe", "performance_template", "conformance_spec", "synth_profile", "smt_profile", "hidden_profile"]
+)
 def test_command_cannot_redirect_or_duplicate_declared_input(authored, name):
     make, _, _ = authored
     frozen = freeze(make())
@@ -118,7 +192,16 @@ def test_missing_membership_metadata_cannot_upgrade_new_explicit_plan(authored):
 
 
 @pytest.mark.parametrize(
-    "flag", ["recipe", "performance-template", "synth-profile", "smt-profile", "hidden-profile", "profiles-root"]
+    "flag",
+    [
+        "recipe",
+        "performance-template",
+        "conformance-spec",
+        "synth-profile",
+        "smt-profile",
+        "hidden-profile",
+        "profiles-root",
+    ],
 )
 def test_equals_form_cannot_override_frozen_explicit_argument(authored, flag):
     make, _, _ = authored

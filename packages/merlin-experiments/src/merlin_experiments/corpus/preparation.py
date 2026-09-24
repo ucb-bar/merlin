@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from ..spec import SpecError, read_yaml
+from .phase_selection import validate_phase_selections
 
 
 def private_json(path: Path, document: dict) -> None:
@@ -148,6 +149,19 @@ def assemble(te, generated: Path, destination: Path) -> dict:
     hidden_emitted = len(emitted) - len(public_emitted)
     if declared != public_emitted or (provenance.get("held_out") or {}).get("n_generated", 0) != hidden_emitted:
         raise SpecError("phase-0 provenance does not account for every generated capsule")
+    phase_corpora = provenance.get("phase_corpora")
+    if phase_corpora is not None:
+        record = (provenance.get("performance_generation") or {}).get(te.target) or {}
+        category = (record.get("phase") or {}).get("category") or "_perf"
+        try:
+            validate_phase_selections(
+                phase_corpora.get(te.target) if isinstance(phase_corpora, dict) else None,
+                performance_category=category,
+                generated_members=declared,
+                complete=True,
+            )
+        except ValueError as exc:
+            raise SpecError(f"phase-0 corpus selections do not match emitted capsules: {exc}") from exc
     original_manifest = source_parent / "MANIFEST.yaml"
     original = read_yaml(original_manifest)
     prior_generated = set(original.get("generated") or [])
@@ -176,7 +190,21 @@ def assemble(te, generated: Path, destination: Path) -> dict:
             shutil.rmtree(target)
         digest = copy_input(source, target, private=key.startswith("hidden/"))
         replacements.append({"member": key, "previous_sha256": previous_sha, "sha256": digest})
-    _members(destination)
+    final_members = _members(destination)
+    # The promoted descriptor points at this release, so Phase 2 must see the
+    # same generated provenance as Phase 0, not a live checkout's MANIFEST.
+    # Functional grading still discovers only non-underscore categories.
+    merged = copy.deepcopy(provenance)
+    merged["hand_authored"] = sorted((set(original.get("hand_authored") or []) - declared) & set(final_members))
+    previous_hidden = sum((original.get("held_out") or {}).get(key, 0) for key in ("n_generated", "n_hand_authored"))
+    new_hidden = {key for key in emitted if key.startswith("hidden/")} - set(before)
+    merged["held_out"] = {
+        "n_generated": (original.get("held_out") or {}).get("n_generated", 0) + len(new_hidden),
+        "n_hand_authored": (original.get("held_out") or {}).get("n_hand_authored", 0),
+    }
+    if previous_hidden + len(new_hidden) != sum(key.startswith("hidden/") for key in final_members):
+        raise SpecError("promoted hidden corpus count disagrees with provenance")
+    (destination / "MANIFEST.yaml").write_text(yaml.safe_dump(merged, sort_keys=False), encoding="utf-8")
     return {
         "baseline": baseline,
         "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),

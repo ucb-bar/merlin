@@ -180,6 +180,64 @@ def _seal(fixture, report, capsys):
     return json.loads(output.out)
 
 
+def test_prepared_release_carries_generated_manifest_not_live_checkout(release_fixture, capsys):
+    fixture = release_fixture
+    _prepare(fixture, capsys)
+    promoted = fixture["release"] / "payload/corpus/MANIFEST.yaml"
+    manifest = yaml.safe_load(promoted.read_text())
+    assert manifest["generated"] == ["isa/generated_member"]
+    assert manifest["hand_authored"] == ["layers/retained_member"]
+    assert manifest["generated_by"] == "derive.py"
+    assert promoted.stat().st_ino != (fixture["baseline"] / "MANIFEST.yaml").stat().st_ino
+
+
+def test_legacy_selected_synthesis_can_prepare_but_cannot_seal(release_fixture, capsys, monkeypatch):
+    """A pre-gate run stays inspectable; review cannot upgrade missing lineage."""
+    from merlin_experiments import runner
+
+    fixture = release_fixture
+    root = fixture["root"]
+    script = root / "derive.py"
+    script.write_text(script.read_text().replace("a=p.parse_args()", "a=p.parse_known_args()[0]"))
+    (root / "recipe.yaml").write_text("capsules: []\n")
+    (root / "performance.yaml").write_text("sweeps: []\n")
+    (root / "old.synth.yaml").write_text("provenance: {}\ncapsules: []\n")
+    definition = yaml.safe_load(fixture["definition"].read_text())
+    definition["phases"]["0"]["config"].update(
+        recipe="recipe.yaml", performance_template="performance.yaml", synth_profile="old.synth.yaml"
+    )
+    fixture["definition"].write_text(yaml.safe_dump(definition))
+    original = runner.preflight
+
+    def old_preflight(plan):
+        report = original(plan)
+        report["errors"] = [error for error in report["errors"] if "unverified_legacy" not in error]
+        report["configuration_ready"] = not report["errors"]
+        return report
+
+    with monkeypatch.context() as previous_runner:
+        previous_runner.setattr(runner, "preflight", old_preflight)
+        report = _prepare(fixture, capsys)
+    assert report["review_digest"]
+    assert (
+        main(
+            [
+                "corpus",
+                "seal",
+                str(fixture["release"]),
+                "--expected-digest",
+                report["review_digest"],
+                "--reviewed-by",
+                "synthetic-test-operator",
+                "--review-note",
+                "historical diagnostic only",
+            ]
+        )
+        != 0
+    )
+    assert not (fixture["release"] / "private/seal.json").exists()
+
+
 def _phase1_definition(fixture, sealed):
     definition = fixture["root"] / "phase1.yaml"
     timing = fixture["root"] / "oracle-timing.yaml"

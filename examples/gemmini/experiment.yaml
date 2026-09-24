@@ -9,6 +9,7 @@ phases:
     adapter: capsule_derivation
     config:
       recipe: phase0/recipe.yaml
+      conformance_spec: ../../experiments/reference-data/phase0/conformance/gemmini.yaml
       performance_template: ../../experiments/templates/phase0/performance.yaml
       synth_profile: ../../experiments/reference-data/phase0/gemmini.synth.yaml
       smt_profile: ../../merlin/contract/capsules/profiles/gemmini.smt.yaml

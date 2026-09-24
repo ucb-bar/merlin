@@ -55,6 +55,7 @@ def test_paths_and_optional_absence_without_private_reads(tmp_path, monkeypatch)
     assert set(declaration.profile_inputs()) == {
         "recipe",
         "performance_template",
+        "conformance_spec",
         "synth_profile",
         "smt_profile",
         "hidden_profile",

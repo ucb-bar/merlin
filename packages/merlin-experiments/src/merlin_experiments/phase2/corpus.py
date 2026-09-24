@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.targetgen.target_experiment import TargetExperiment
+from merlin_experiments.corpus.phase_selection import validate_phase_selections
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import prompt as PP
 from merlin_experiments.phase2.contracts import StageGateError
@@ -107,6 +108,17 @@ def discover_performance_corpus(
     phase_generated = {path for path in generated_paths if Path(path).parts and Path(path).parts[0] == category}
     if any(Path(path).parts and Path(path).parts[0] == category for path in manual_paths):
         raise StageGateError("performance phase contains manually classified capsules")
+    selections = manifest.get("phase_corpora")
+    if selections is not None:
+        selected_roles = selections.get(target) if isinstance(selections, Mapping) else None
+        try:
+            roles = validate_phase_selections(
+                selected_roles, performance_category=category, generated_members=generated_paths
+            )
+        except ValueError as exc:
+            raise StageGateError(f"performance phase selections are invalid: {exc}") from exc
+        if set(roles["phase2"]) != phase_generated:
+            raise StageGateError("performance phase differs from Phase 0's explicit Phase 2 selection")
 
     found: list[PerformanceCapsule] = []
     for descriptor_path in sorted(phase_root.glob("*/capsule.yaml")):

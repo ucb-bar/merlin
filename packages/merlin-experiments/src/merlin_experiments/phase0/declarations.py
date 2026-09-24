@@ -18,6 +18,7 @@ class DerivationDeclaration:
     descriptor: Path
     recipe: Path
     performance_template: Path
+    conformance_spec: Path | None
     synth_profile: Path | None
     smt_profile: Path | None
     hidden_profile: Path | None
@@ -25,7 +26,14 @@ class DerivationDeclaration:
     def profile_inputs(self) -> dict[str, Path | None]:
         return {
             name: getattr(self, name)
-            for name in ("recipe", "performance_template", "synth_profile", "smt_profile", "hidden_profile")
+            for name in (
+                "recipe",
+                "performance_template",
+                "conformance_spec",
+                "synth_profile",
+                "smt_profile",
+                "hidden_profile",
+            )
         }
 
 
@@ -42,7 +50,15 @@ def _declaration(spec: ExperimentSpec) -> DerivationDeclaration:
     # The consuming loader/verifier checks the inputs it is authorized to open.
     paths = {
         name: Path(os.path.abspath(spec.path.parent / Path(config[name]).expanduser())) if config.get(name) else None
-        for name in ("descriptor", "recipe", "performance_template", "synth_profile", "smt_profile", "hidden_profile")
+        for name in (
+            "descriptor",
+            "recipe",
+            "performance_template",
+            "conformance_spec",
+            "synth_profile",
+            "smt_profile",
+            "hidden_profile",
+        )
     }
     return DerivationDeclaration(spec.path, spec.id, spec.target, config.get("profile", spec.target), **paths)
 

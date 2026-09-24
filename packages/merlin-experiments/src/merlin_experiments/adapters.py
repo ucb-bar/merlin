@@ -185,7 +185,14 @@ class Adapter:
             if Path(profile).name != profile or profile in (".", ".."):
                 raise SpecError("profile must be one profile name, without a path")
         if self.name == "capsule_derivation":
-            explicit = {"recipe", "performance_template", "synth_profile", "smt_profile", "hidden_profile"}
+            explicit = {
+                "recipe",
+                "performance_template",
+                "conformance_spec",
+                "synth_profile",
+                "smt_profile",
+                "hidden_profile",
+            }
             if explicit & config.keys():
                 if not {"recipe", "performance_template"} <= config.keys():
                     raise SpecError("explicit phase-0 inputs require recipe and performance_template together")
@@ -316,6 +323,7 @@ ADAPTERS = {
             "profiles_root": Option("input"),
             "recipe": Option("input"),
             "performance_template": Option("input"),
+            "conformance_spec": Option("input"),
             "synth_profile": Option("input"),
             "smt_profile": Option("input"),
             "hidden_profile": Option("input"),
