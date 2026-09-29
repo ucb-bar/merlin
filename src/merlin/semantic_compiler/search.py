@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 
 from .allocate import (
     AllocationResult,
@@ -20,8 +21,8 @@ from .allocate import (
     may_prune_interference,
     topological_orders,
 )
-from .egg_bridge import EGraphUnavailable, Exploration, explore
-from .extract import Candidate, enumerate_candidates
+from .egg_bridge import EGraphTimeout, EGraphUnavailable, Exploration, explore
+from .extract import Candidate, ExtractionTimeout, enumerate_candidates
 from .model import KernelRequest
 from .rules import InstructionDescriptor, RuleProgram, generate_rules
 from .verify import check_selection
@@ -73,16 +74,34 @@ def select_and_allocate(
     reservations: tuple[Reservation, ...] = (),
     limits: SearchLimits = SearchLimits(),
 ) -> SearchResult:
+    deadline = monotonic() + limits.wall_timeout_s
     program = generate_rules(request, descriptors)
     identity = request.digest()
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        return SearchResult(
+            "search_timeout",
+            identity,
+            None,
+            None,
+            None,
+            0,
+            0,
+            0,
+            None,
+            program,
+            "native search deadline expired during rule generation",
+        )
     try:
         graph = explore(
             program,
             bridge=bridge,
             iterations=limits.iterations,
             node_limit=limits.egraph_nodes,
-            wall_timeout_s=limits.wall_timeout_s,
+            wall_timeout_s=remaining,
         )
+    except EGraphTimeout as exc:
+        return SearchResult("search_timeout", identity, None, None, None, 0, 0, 0, None, program, str(exc))
     except EGraphUnavailable as exc:
         return SearchResult("tool_unavailable", identity, None, None, None, 0, 0, 0, None, program, str(exc))
     candidate_attempts = 0
@@ -91,14 +110,47 @@ def select_and_allocate(
     pruned_orders = 0
     seen: set[str] = set()
     inconclusive = False
-    for budget in range(1, limits.candidate_nodes + 1):
-        for candidate in enumerate_candidates(
+    unqualified = False
+    unqualified_reason = ""
+
+    def timed_out(reason: str) -> SearchResult:
+        return SearchResult(
+            "search_timeout",
+            identity,
+            None,
+            None,
+            None,
+            candidate_attempts,
+            ordering_attempts,
+            rejected_allocation,
             graph,
-            request,
             program,
-            node_budget=budget,
-            max_candidates=limits.candidates,
-        ):
+            reason,
+            pruned_orders,
+        )
+
+    if monotonic() >= deadline:
+        return timed_out("native search deadline expired during e-graph exploration")
+    for budget in range(1, limits.candidate_nodes + 1):
+        iterator = iter(
+            enumerate_candidates(
+                graph,
+                request,
+                program,
+                node_budget=budget,
+                max_candidates=limits.candidates,
+                deadline=deadline,
+            )
+        )
+        while True:
+            try:
+                candidate = next(iterator)
+            except StopIteration:
+                break
+            except ExtractionTimeout as exc:
+                return timed_out(str(exc))
+            if monotonic() >= deadline:
+                return timed_out("native search deadline expired during candidate extraction")
             digest = candidate.digest()
             if digest in seen:
                 continue
@@ -111,11 +163,15 @@ def select_and_allocate(
             candidate_base = candidate.digest()
             failed_edges: list[frozenset[tuple[int, int]]] = []
             for order in topological_orders(candidate_graph, limit=limits.orders_per_candidate):
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    return timed_out("native search deadline expired during ordering")
                 ordering_attempts += 1
                 edges = interference_edges(candidate_graph, order, banks)
                 if any(
-                    may_prune_interference(candidate_base, candidate_base, prior, edges,
-                                           failed_status="infeasible_candidate")
+                    may_prune_interference(
+                        candidate_base, candidate_base, prior, edges, failed_status="infeasible_candidate"
+                    )
                     for prior in failed_edges
                 ):
                     pruned_orders += 1
@@ -126,19 +182,39 @@ def select_and_allocate(
                     banks,
                     fixed_inputs=fixed_inputs,
                     reservations=reservations,
-                    timeout_ms=limits.solver_timeout_ms,
+                    timeout_ms=min(limits.solver_timeout_ms, max(1, int(remaining * 1000))),
                 )
+                if monotonic() >= deadline:
+                    return timed_out("native search deadline expired during allocation")
                 if result.status == "feasible":
                     checked = check_selection(
-                        request, descriptors, program, graph, candidate, candidate_graph, result, banks,
+                        request,
+                        descriptors,
+                        program,
+                        graph,
+                        candidate,
+                        candidate_graph,
+                        result,
+                        banks,
                         fixed_inputs=fixed_inputs,
                     )
                     if not checked.valid:
                         return SearchResult(
-                            "modeling_failure", identity, candidate, candidate_graph, result,
-                            candidate_attempts, ordering_attempts, rejected_allocation, graph, program,
-                            checked.reason, pruned_orders,
+                            "modeling_failure",
+                            identity,
+                            candidate,
+                            candidate_graph,
+                            result,
+                            candidate_attempts,
+                            ordering_attempts,
+                            rejected_allocation,
+                            graph,
+                            program,
+                            checked.reason,
+                            pruned_orders,
                         )
+                    if monotonic() >= deadline:
+                        return timed_out("native search deadline expired during final selection replay")
                     return SearchResult(
                         "selected",
                         identity,
@@ -158,7 +234,10 @@ def select_and_allocate(
                     failed_edges.append(edges)
                 if result.status == "search_timeout":
                     inconclusive = True
-                if result.status in {"tool_unavailable", "modeling_failure", "unqualified_target"}:
+                if result.status == "unqualified_target":
+                    unqualified = True
+                    unqualified_reason = unqualified_reason or result.reason
+                if result.status in {"tool_unavailable", "modeling_failure"}:
                     return SearchResult(
                         result.status,
                         identity,
@@ -177,7 +256,9 @@ def select_and_allocate(
                 break
         if candidate_attempts >= limits.candidates:
             break
-    if inconclusive:
+    if unqualified:
+        status = "unqualified_target"
+    elif inconclusive or graph.stop_reason == "time_limit":
         status = "search_timeout"
     elif candidate_attempts >= limits.candidates or graph.stop_reason != "saturated":
         status = "resource_limit"
@@ -196,6 +277,6 @@ def select_and_allocate(
         rejected_allocation,
         graph,
         program,
-        "bounded native search found no checked placement",
+        unqualified_reason if status == "unqualified_target" else "bounded native search found no checked placement",
         pruned_orders,
     )

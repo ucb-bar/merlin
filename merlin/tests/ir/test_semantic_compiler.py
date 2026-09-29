@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
+from merlin.semantic_compiler import extract as native_extract
+from merlin.semantic_compiler import search as native_search
 from merlin.semantic_compiler.allocate import (
+    AllocationResult,
     CandidateGraph,
     Reservation,
     StorageBank,
@@ -26,8 +29,8 @@ from merlin.semantic_compiler.allocate import (
     may_prune_interference,
     topological_orders,
 )
-from merlin.semantic_compiler.egg_bridge import explore
-from merlin.semantic_compiler.extract import enumerate_candidates
+from merlin.semantic_compiler.egg_bridge import EGraphTimeout, explore
+from merlin.semantic_compiler.extract import ExtractionTimeout, enumerate_candidates
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
@@ -794,6 +797,81 @@ def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) 
     assert result.status == "selected", result.reason
     assert result.candidate_attempts == 2
     assert result.rejected_allocation == 1
+
+
+def test_search_deadlines_preserve_timeout_status(bridge: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    request = _request()
+    rules = generate_rules(request, _descriptors())
+    exploration = explore(rules, bridge=bridge)
+    with pytest.raises(ExtractionTimeout):
+        list(
+            enumerate_candidates(
+                exploration,
+                request,
+                rules,
+                node_budget=4,
+                max_candidates=4,
+                deadline=0,
+            )
+        )
+
+    clock = [0.0]
+    monkeypatch.setattr(native_search, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(native_extract, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(native_search, "explore", lambda *args, **kwargs: exploration)
+
+    def timed_allocation(graph, order, banks, **kwargs):
+        clock[0] = 2.0
+        return AllocationResult("infeasible_candidate", order, {})
+
+    monkeypatch.setattr(native_search, "allocate", timed_allocation)
+    result = select_and_allocate(
+        request,
+        _descriptors(),
+        _banks(),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+        limits=SearchLimits(wall_timeout_s=1),
+    )
+    assert result.status == "search_timeout"
+    assert result.ordering_attempts == 1 and result.candidate is None
+
+    def unavailable(*args, **kwargs):
+        raise EGraphTimeout("watchdog elapsed")
+
+    clock[0] = 0.0
+    monkeypatch.setattr(native_search, "explore", unavailable)
+    expired = select_and_allocate(request, _descriptors(), _banks(), bridge=bridge)
+    assert expired.status == "search_timeout" and "watchdog" in expired.reason
+
+
+def test_egraph_bridge_watchdog_has_a_distinct_timeout_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = tmp_path / "bridge"
+    bridge.write_text("placeholder")
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="merlin-egg-bridge", timeout=0.01)
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(EGraphTimeout, match="timed out"):
+        explore(generate_rules(_request(), _descriptors()), bridge=bridge, wall_timeout_s=0.01)
+
+
+def test_search_keeps_unqualified_target_distinct_from_solver_timeout(
+    bridge: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unqualified(graph, order, banks, **kwargs):
+        return AllocationResult("unqualified_target", order, {}, "address units disagree")
+
+    monkeypatch.setattr(native_search, "allocate", unqualified)
+    result = select_and_allocate(_request(), _descriptors(), _banks(), bridge=bridge)
+    assert result.status == "unqualified_target"
+    assert "address units disagree" in result.reason
+    assert result.rejected_allocation > 0
 
 
 def test_generated_address_validity_and_independent_checker(bridge: Path) -> None:
