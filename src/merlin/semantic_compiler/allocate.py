@@ -70,6 +70,7 @@ class Value:
     validity: tuple[AddressConstraint, ...] = ()
     input_read_offsets: tuple[int, ...] = ()
     completion_offset: int = 0
+    in_place_inputs: tuple[int, ...] = ()
 
     def read_offset(self, index: int) -> int:
         return self.input_read_offsets[index] if self.input_read_offsets else 0
@@ -115,6 +116,7 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 validity=validity,
                 input_read_offsets=tuple(metadata["descriptor"]["input_read_offsets"]) if kind == "instruction" else (),
                 completion_offset=int(metadata["descriptor"]["completion_offset"]) if kind == "instruction" else 0,
+                in_place_inputs=tuple(metadata["descriptor"]["in_place_inputs"]) if kind == "instruction" else (),
             )
         )
         return value_id
@@ -201,6 +203,22 @@ def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tupl
     return ranges
 
 
+def _qualified_in_place_pair(graph: CandidateGraph, left: Value, right: Value) -> bool:
+    """Permit exact reuse only for a declared, last-use produced operand."""
+    for child, parent in ((left, right), (right, left)):
+        if child.kind != "instruction" or parent.kind != "instruction" or child.id in graph.outputs:
+            continue
+        if child.extent != parent.extent or parent.children.count(child.id) != 1:
+            continue
+        port = parent.children.index(child.id)
+        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+            continue
+        if sum(value.children.count(child.id) for value in graph.values) != 1:
+            continue
+        return True
+    return False
+
+
 def interference_edges(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -216,7 +234,7 @@ def interference_edges(
                 continue
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1:
+            if lo1 <= hi2 and lo2 <= hi1 and not _qualified_in_place_pair(graph, left, right):
                 edges.add((left.id, right.id))
     return frozenset(edges)
 
@@ -348,7 +366,24 @@ def check_assignment(
                 a = addresses[left.id]
                 b = addresses[right.id]
                 if a < b + right.extent and b < a + left.extent:
-                    return False, "simultaneously live physical views overlap"
+                    # Independent replay of the exact-reuse exception. A
+                    # boundary input or value with another user stays live.
+                    allowed = False
+                    for child, parent in ((left, right), (right, left)):
+                        if child.kind != "instruction" or parent.kind != "instruction":
+                            continue
+                        if child.id in graph.outputs or child.extent != parent.extent:
+                            continue
+                        if parent.children.count(child.id) != 1:
+                            continue
+                        port = parent.children.index(child.id)
+                        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+                            continue
+                        if sum(value.children.count(child.id) for value in graph.values) != 1:
+                            continue
+                        allowed = a == b
+                    if not allowed:
+                        return False, "simultaneously live physical views overlap"
     return True, ""
 
 
@@ -416,12 +451,13 @@ def allocate(
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
             if lo1 <= hi2 and lo2 <= hi1:
-                solver.add(
-                    z3.Or(
-                        variables[left.id] + left.extent <= variables[right.id],
-                        variables[right.id] + right.extent <= variables[left.id],
-                    )
-                )
+                alternatives = [
+                    variables[left.id] + left.extent <= variables[right.id],
+                    variables[right.id] + right.extent <= variables[left.id],
+                ]
+                if _qualified_in_place_pair(graph, left, right):
+                    alternatives.append(variables[left.id] == variables[right.id])
+                solver.add(z3.Or(*alternatives))
     status = solver.check()
     if status == z3.unsat:
         return AllocationResult("infeasible_candidate", order, {}, "bounded placement formula is UNSAT")

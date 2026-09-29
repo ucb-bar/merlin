@@ -565,6 +565,73 @@ def test_ordered_output_abi_is_solved_and_checked_independently(bridge: Path) ->
     )
 
 
+def test_in_place_reuse_requires_declared_last_use_and_later_write(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "load", ("x",), tensor),
+            SemanticNode("b", "transform", ("a",), tensor),
+            SemanticNode("y", "store", ("b",), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-in-place-1",
+    )
+    load = _descriptor("load", "load", ("external",), "register", "i8", "exact", (2,))
+    transform = _descriptor(
+        "transform",
+        "transform",
+        ("register",),
+        "register",
+        "i8",
+        "exact",
+        (2,),
+        input_read_offsets=(0,),
+        completion_offset=1,
+        in_place_inputs=(0,),
+    )
+    store = _descriptor("store", "store", ("register",), "external", "i8", "exact", (2,))
+    assert InstructionDescriptor.from_record(transform.record()) == transform
+    banks = (StorageBank("external", "dram", 2, "word"), StorageBank("register", "mrf", 1, "word"))
+    result = select_and_allocate(
+        request, (load, transform, store), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(1,)
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    produced = {value.source_node: value.id for value in result.graph.values if value.kind == "instruction"}
+    assert result.allocation.addresses[produced["a"]] == result.allocation.addresses[produced["b"]] == 0
+    retained_source = CandidateGraph(result.graph.values, (*result.graph.outputs, produced["a"]))
+    retained = allocate(retained_source, result.allocation.order, banks, fixed_inputs={"x": 0}, fixed_outputs=(1, 0))
+    assert retained.status == "infeasible_candidate"
+    wide_values = tuple(
+        replace(value, extent=2) if value.id in (produced["a"], produced["b"]) else value
+        for value in result.graph.values
+    )
+    wide_graph = CandidateGraph(wide_values, result.graph.outputs)
+    partial = dict(result.allocation.addresses)
+    partial[produced["b"]] = 1
+    wide_banks = (banks[0], StorageBank("register", "mrf", 3, "word"))
+    checked, reason = check_assignment(
+        wide_graph, result.allocation.order, partial, wide_banks, fixed_inputs={"x": 0}, fixed_outputs=(1,)
+    )
+    assert not checked and "overlap" in reason
+    refused = select_and_allocate(
+        request,
+        (load, replace(transform, in_place_inputs=()), store),
+        banks,
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+        fixed_outputs=(1,),
+    )
+    assert refused.status == "compile_error"
+    with pytest.raises(ValueError, match="later completion"):
+        replace(transform, completion_offset=0)
+    with pytest.raises(ValueError, match="read before"):
+        replace(transform, input_read_offsets=(1,))
+
+
 def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
@@ -631,8 +698,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v3"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v2")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v4"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v3")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(
