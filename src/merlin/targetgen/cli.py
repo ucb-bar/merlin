@@ -15,6 +15,7 @@ Deterministic, no LLM calls.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import tempfile
@@ -158,6 +159,9 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
         request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
         if request.lowering_policy != args.mode:
             raise ValueError("explicit compile mode differs from typed request")
+        output = Path(args.out)
+        if args.status_file and Path(args.status_file).resolve().is_relative_to(output.resolve()):
+            raise ValueError("native compile status file must be outside the artifact directory")
         abi = json.loads(Path(args.abi).read_text())
         if set(abi) != {"fixed_inputs", "fixed_outputs"} or not isinstance(abi["fixed_inputs"], dict) or (
             not isinstance(abi["fixed_outputs"], list)
@@ -167,7 +171,6 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
             not all(type(value) is int for value in abi["fixed_outputs"])
         ):
             raise ValueError("native compile ABI addresses must be integers")
-        output = Path(args.out)
         if output.exists():
             raise FileExistsError(f"fresh native compilation output required: {output}")
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -178,8 +181,16 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
                 fixed_outputs=tuple(abi["fixed_outputs"]), target_source=Path(args.target_source),
                 destination=staged, limits=SearchLimits(),
             )
-            if manifest.get("engine") != args.engine or not (staged / "program.bin").is_file():
-                raise ValueError("selected target did not emit a native binary with matching engine identity")
+            binary = staged / "program.bin"
+            if not binary.is_file() or not (staged / "manifest.json").is_file():
+                raise ValueError("selected target did not emit a native binary and manifest")
+            persisted = json.loads((staged / "manifest.json").read_text())
+            if persisted != json.loads(json.dumps(manifest)) or manifest.get("engine") != args.engine or (
+                manifest.get("request_digest") != request.digest()
+                or manifest.get("target_identity") != snapshot.profile.target_identity
+                or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
+            ):
+                raise ValueError("native emitted artifact identity differs from checked request, target, or binary")
             staged.rename(output)
         report = {"schema": "merlin.native_compilation_status.v1", "status": "emitted",
                   "engine": args.engine, "support": args.support, "out": str(args.out),
@@ -188,7 +199,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError) as error:
         report = {"schema": "merlin.native_compilation_status.v1", "status": "compile_error",
                   "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}
-    if args.status_file:
+    if args.status_file and not Path(args.status_file).resolve().is_relative_to(Path(args.out).resolve()):
         _write_status(Path(args.status_file), report)
     print(json.dumps(report, sort_keys=True))
     return 0 if report["status"] == "emitted" else 2
