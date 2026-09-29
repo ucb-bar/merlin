@@ -104,6 +104,31 @@ def _write_status(path: Path, report: dict[str, object]) -> None:
     temporary.replace(path)
 
 
+def _cmd_stage_capture(args: argparse.Namespace) -> int:
+    """Publish only declared source and weight inputs for later compilation."""
+    from merlin.frontends.compile_inputs import stage_compile_inputs
+
+    safe_status = bool(args.status_file) and not (
+        Path(args.status_file).resolve().is_relative_to(Path(args.out).resolve())
+        or Path(args.status_file).resolve().is_relative_to(Path(args.capture).resolve())
+    )
+    try:
+        if args.status_file and not safe_status:
+            raise ValueError("capture staging status file must be outside capture and compiler inputs")
+        result = stage_compile_inputs(args.capture, args.out)
+        report = {"schema": "merlin.capture_staging_status.v1", "status": "staged",
+                  "out": str(Path(args.out).absolute()), "manifest": result}
+        status = 0
+    except (OSError, ValueError, UnicodeError) as exc:
+        report = {"schema": "merlin.capture_staging_status.v1", "status": "compile_input_error",
+                  "out": str(Path(args.out).absolute()), "error": f"{type(exc).__name__}: {exc}"}
+        status = 2
+    if safe_status:
+        _write_status(Path(args.status_file), report)
+    print(json.dumps(report, sort_keys=True))
+    return status
+
+
 def _cmd_native_build(args: argparse.Namespace) -> int:
     from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot
     from merlin.semantic_compiler.target_binding import load_native_target_binding
@@ -251,6 +276,12 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--rtl-revision", required=True, help="exact selected RTL commit")
     a.add_argument("--out", required=True, help="census JSON artifact")
     a.set_defaults(func=_cmd_audit_isa)
+
+    stage = sub.add_parser("stage-capture", help="stage IR, weights and signature without evaluator inputs")
+    stage.add_argument("--capture", required=True, help="materialized model capture directory")
+    stage.add_argument("--out", required=True, help="fresh compiler-only directory")
+    stage.add_argument("--status-file", help="invocation-owned machine-readable status JSON")
+    stage.set_defaults(func=_cmd_stage_capture)
 
     native_build = sub.add_parser("native-build", help="build an offline Merlin-native selection snapshot")
     native_build.add_argument("--engine", choices=("merlin_native",), required=True)
