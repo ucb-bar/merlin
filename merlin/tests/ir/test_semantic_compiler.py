@@ -1161,8 +1161,23 @@ def _reference_feasible(
                 left_addr, right_addr = assignment[left.id], assignment[right.id]
                 overlap = left_addr < right_addr + right.extent and right_addr < left_addr + left.extent
                 if both_live and overlap:
-                    legal = False
-                    break
+                    exact_reuse = False
+                    for child, parent in ((left, right), (right, left)):
+                        if child.kind != "instruction" or parent.kind != "instruction":
+                            continue
+                        if child.id in graph.outputs or child.extent != parent.extent:
+                            continue
+                        if parent.children.count(child.id) != 1:
+                            continue
+                        port = parent.children.index(child.id)
+                        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+                            continue
+                        if sum(value.children.count(child.id) for value in graph.values) != 1:
+                            continue
+                        exact_reuse = left_addr == right_addr
+                    if not exact_reuse:
+                        legal = False
+                        break
             if not legal:
                 break
         if legal:
@@ -1174,6 +1189,7 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
     """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2, fixed I/O."""
     rng = random.Random(1907)
     outcomes = {"feasible": 0, "infeasible_candidate": 0}
+    in_place_only = 0
     for index in range(200):
         two_stores = index % 2 == 0
         aliases = two_stores and index % 3 == 0
@@ -1186,17 +1202,34 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         values = [Value(0, "source", "a", rng.randint(1, 2), (), "input", "input")]
         values.append(Value(1, "compute", storage, rng.randint(1, 2), (0,), None, "instruction"))
         if index % 5:
-            values.append(Value(2, "consume", "a", rng.randint(1, 2), (1,), None, "instruction"))
+            values.append(
+                Value(
+                    2,
+                    "consume",
+                    "a",
+                    rng.randint(1, 2),
+                    (1,),
+                    None,
+                    "instruction",
+                    completion_offset=1 if index % 7 == 0 else 0,
+                    in_place_inputs=(0,) if index % 7 == 0 else (),
+                )
+            )
         graph = CandidateGraph(tuple(values), (values[-1].id,))
         order = tuple(value.id for value in values if value.kind == "instruction")
         fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
         fixed_outputs = (rng.randint(0, 2),) if index % 4 == 0 else None
         expected = _reference_feasible(graph, order, banks, fixed, fixed_outputs)
+        if len(values) == 3 and values[-1].in_place_inputs and expected:
+            ordinary = CandidateGraph((*values[:2], replace(values[-1], in_place_inputs=())), graph.outputs)
+            if not _reference_feasible(ordinary, order, banks, fixed, fixed_outputs):
+                in_place_only += 1
         result = allocate(graph, order, banks, fixed_inputs=fixed, fixed_outputs=fixed_outputs, timeout_ms=5000)
         assert result.status in outcomes, (index, result)
         outcomes[result.status] += 1
         assert (result.status == "feasible") == expected, (index, graph, banks, fixed, fixed_outputs, result)
     assert all(outcomes.values()), outcomes
+    assert in_place_only > 0
 
 
 def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:
