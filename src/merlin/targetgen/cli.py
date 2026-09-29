@@ -15,9 +15,12 @@ Deterministic, no LLM calls.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from . import pipeline
+from .isa_census import derive_source_census
 from .validate import check_generated_target
 
 
@@ -56,6 +59,41 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit_isa(args: argparse.Namespace) -> int:
+    """Write a source crosswalk without treating decode as legality evidence."""
+    output = Path(args.out)
+    temporary = output.with_name(output.name + ".tmp")
+    try:
+        census = derive_source_census(
+            pattern_file=Path(args.patterns),
+            decoder_file=Path(args.decoder),
+            model_isa_file=Path(args.model_isa),
+            rtl_revision=args.rtl_revision,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(census, indent=2, sort_keys=True) + "\n")
+        temporary.replace(output)
+    except (OSError, SyntaxError, ValueError) as error:
+        output.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
+        print(json.dumps({"status": "FAIL", "error": str(error), "out": str(output)}))
+        return 2
+    summary = census["summary"]
+    problems = sum(
+        len(summary[key])
+        for key in (
+            "patterns_not_decoded",
+            "decoder_rows_without_pattern",
+            "model_classes_without_compatible_pattern",
+            "overlapping_patterns",
+            "dma_kind_conflicts",
+        )
+    )
+    status = "SOURCE_DISCREPANCIES" if problems else "SOURCE_CROSSWALK_ONLY"
+    print(json.dumps({"status": status, "discrepancies": problems, "out": str(output)}))
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="merlin-targetgen", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -76,6 +114,14 @@ def build_parser() -> argparse.ArgumentParser:
     i = sub.add_parser("inspect", help="validate a generated target repo")
     i.add_argument("--target", required=True, help="path to a generated target repo")
     i.set_defaults(func=_cmd_inspect)
+
+    a = sub.add_parser("audit-isa", help="crosswalk pinned decoder, patterns, and model ISA sources")
+    a.add_argument("--patterns", required=True, help="selected RTL Instructions.scala")
+    a.add_argument("--decoder", required=True, help="selected RTL IDecode.scala")
+    a.add_argument("--model-isa", required=True, help="selected Python ISA definition")
+    a.add_argument("--rtl-revision", required=True, help="exact selected RTL commit")
+    a.add_argument("--out", required=True, help="census JSON artifact")
+    a.set_defaults(func=_cmd_audit_isa)
 
     return parser
 
