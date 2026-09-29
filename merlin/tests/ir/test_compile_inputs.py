@@ -51,6 +51,8 @@ def _write_capture(path: Path) -> None:
         json.dumps(
             {
                 "schema": "m2m.capture-receipt.v1",
+                "materialized_abi": {"complete": True, "inputs": 1, "lifted_constants": []},
+                "lifted_constants": {},
                 "artifacts": {
                     name: {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
                     for name, raw in members.items()
@@ -91,6 +93,17 @@ def test_missing_weight_attribute_or_symlink_refuses(tmp_path):
     (capture / "weights.safetensors").unlink()
     (capture / "weights.safetensors").symlink_to("golden.npy")
     with pytest.raises(ValueError, match="symlink"):
+        stage_compile_inputs(capture, staged)
+    assert not staged.exists()
+
+
+def test_unbound_lifted_constant_refuses(tmp_path):
+    capture, staged = tmp_path / "capture", tmp_path / "compiler"
+    _write_capture(capture)
+    receipt = json.loads((capture / "capture_receipt.json").read_text())
+    receipt["lifted_constants"] = {"missing": "not copied into compiler inputs"}
+    (capture / "capture_receipt.json").write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="unbound lifted constants"):
         stage_compile_inputs(capture, staged)
     assert not staged.exists()
 

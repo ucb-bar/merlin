@@ -55,7 +55,12 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
     """
     source = Path(capture_dir).absolute()
     target = Path(destination).absolute()
-    if source.is_symlink() or target.exists() or target.is_symlink():
+    if (
+        source.is_symlink()
+        or any(parent.is_symlink() for parent in source.parents)
+        or target.exists()
+        or target.is_symlink()
+    ):
         raise ValueError("capture must be a real directory and destination must be absent")
     if not source.is_dir():
         raise ValueError("capture directory is absent")
@@ -63,6 +68,9 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
     receipt = json.loads(receipt_raw)
     if receipt.get("schema") != "m2m.capture-receipt.v1":
         raise ValueError("unsupported capture receipt")
+    materialized_abi = receipt.get("materialized_abi") or {}
+    if materialized_abi.get("complete") is not True or receipt.get("lifted_constants"):
+        raise ValueError("capture has incomplete ABI or unbound lifted constants")
     raw = _checked_member(source, receipt, _SOURCE)
     copied = {name: _checked_member(source, receipt, name) for name in _COPIED}
     metadata = json.loads(_checked_member(source, receipt, "meta.json"))
@@ -97,6 +105,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
         not isinstance(signature["entry"], str)
         or not isinstance(signature["inputs"], list)
         or not isinstance(signature["outputs"], list)
+        or materialized_abi.get("inputs") != len(signature["inputs"])
     ):
         raise ValueError("capture has an incomplete invocation signature")
     signature_raw = (json.dumps(signature, sort_keys=True, indent=2) + "\n").encode()
