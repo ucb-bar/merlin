@@ -106,46 +106,69 @@ def check_selection(
             descriptor = by_name.get(recorded["name"])
             if descriptor is None or descriptor.record() != recorded:
                 return "selected instruction differs from the target descriptor"
-            if source.effect != "pure" or source.op != descriptor.computation:
-                return "selected instruction does not implement the source operation"
-            if source.type.dtype != descriptor.output_dtype or (
-                source.type.numerical_policy != descriptor.numerical_policy
-            ):
-                return "selected instruction changes output numerical policy"
-            if len(source.type.shape) not in descriptor.ranks or source.index_maps != descriptor.index_maps:
-                return "selected instruction has incompatible rank or index maps"
-            operand_shapes = tuple(request.node(child_id).type.shape for child_id in source.inputs)
-            if descriptor.shape_contract == "equal":
-                if any(shape != source.type.shape for shape in operand_shapes):
-                    return "selected instruction violates equal-shape contract"
+            realization = metadata.get("realization")
+            if realization == "value_preserving_copy_v1":
+                if not descriptor.value_preserving_copy or descriptor.computation != "identity":
+                    return "selected physical copy lacks a value-preserving descriptor"
+                if len(choice.children) != 1 or choice.children[0].eclass != choice.eclass:
+                    return "selected physical copy changed its semantic value"
+                if choice.storage != descriptor.output_storage or (
+                    choice.children[0].storage != descriptor.input_storages[0]
+                ):
+                    return "selected physical copy uses an undeclared storage transition"
+                if source.type.dtype != descriptor.output_dtype or (
+                    source.type.dtype != descriptor.input_dtypes[0]
+                ) or source.type.numerical_policy != descriptor.numerical_policy or (
+                    source.type.numerical_policy != descriptor.input_numerical_policies[0]
+                ):
+                    return "selected physical copy changes tensor type or numerical policy"
+                if len(source.type.shape) not in descriptor.ranks or (
+                    descriptor.input_ranks and len(source.type.shape) != descriptor.input_ranks[0]
+                ) or not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
+                    return "selected physical copy violates its shape precondition"
+            elif realization is not None:
+                return "selected instruction has an unknown realization rule"
             else:
-                shapes = {
-                    "out": source.type.shape,
-                    **{f"in{index}": shape for index, shape in enumerate(operand_shapes)},
-                }
-                if any(
-                    shapes[item.lhs_port][item.lhs_axis] != shapes[item.rhs_port][item.rhs_axis]
-                    for item in descriptor.shape_equalities
+                if source.effect != "pure" or source.op != descriptor.computation:
+                    return "selected instruction does not implement the source operation"
+                if source.type.dtype != descriptor.output_dtype or (
+                    source.type.numerical_policy != descriptor.numerical_policy
                 ):
-                    return "selected instruction violates a dimension relation"
-            if not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
-                return "selected instruction violates a shape precondition"
-            if dict(source.attrs) != dict(descriptor.required_attrs):
-                return "selected instruction differs in semantic attributes"
-            if len(choice.children) != len(source.inputs) or choice.storage != descriptor.output_storage:
-                return "selected instruction has wrong operands or output storage"
-            for index, (child, child_id) in enumerate(zip(choice.children, source.inputs)):
-                typed = request.node(child_id).type
-                if child.eclass != exploration.class_by_node[source_index[child_id]]:
-                    return "selected instruction operand changed semantic value"
-                if child.storage != descriptor.input_storages[index]:
-                    return "selected instruction operand is in the wrong storage"
-                if typed.dtype != descriptor.input_dtypes[index] or (
-                    typed.numerical_policy != descriptor.input_numerical_policies[index]
-                ):
-                    return "selected instruction changes operand numerical policy"
-                if descriptor.input_ranks and len(typed.shape) != descriptor.input_ranks[index]:
-                    return "selected instruction operand rank differs"
+                    return "selected instruction changes output numerical policy"
+                if len(source.type.shape) not in descriptor.ranks or source.index_maps != descriptor.index_maps:
+                    return "selected instruction has incompatible rank or index maps"
+                operand_shapes = tuple(request.node(child_id).type.shape for child_id in source.inputs)
+                if descriptor.shape_contract == "equal":
+                    if any(shape != source.type.shape for shape in operand_shapes):
+                        return "selected instruction violates equal-shape contract"
+                else:
+                    shapes = {
+                        "out": source.type.shape,
+                        **{f"in{index}": shape for index, shape in enumerate(operand_shapes)},
+                    }
+                    if any(
+                        shapes[item.lhs_port][item.lhs_axis] != shapes[item.rhs_port][item.rhs_axis]
+                        for item in descriptor.shape_equalities
+                    ):
+                        return "selected instruction violates a dimension relation"
+                if not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
+                    return "selected instruction violates a shape precondition"
+                if dict(source.attrs) != dict(descriptor.required_attrs):
+                    return "selected instruction differs in semantic attributes"
+                if len(choice.children) != len(source.inputs) or choice.storage != descriptor.output_storage:
+                    return "selected instruction has wrong operands or output storage"
+                for index, (child, child_id) in enumerate(zip(choice.children, source.inputs)):
+                    typed = request.node(child_id).type
+                    if child.eclass != exploration.class_by_node[source_index[child_id]]:
+                        return "selected instruction operand changed semantic value"
+                    if child.storage != descriptor.input_storages[index]:
+                        return "selected instruction operand is in the wrong storage"
+                    if typed.dtype != descriptor.input_dtypes[index] or (
+                        typed.numerical_policy != descriptor.input_numerical_policies[index]
+                    ):
+                        return "selected instruction changes operand numerical policy"
+                    if descriptor.input_ranks and len(typed.shape) != descriptor.input_ranks[index]:
+                        return "selected instruction operand rank differs"
         elif kind == "input":
             if choice.children or choice.storage != boundaries.get(source_id):
                 return "selected input lacks its declared boundary representation"

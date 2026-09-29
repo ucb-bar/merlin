@@ -143,6 +143,9 @@ class InstructionDescriptor:
     # An explicitly qualified instruction may overwrite one produced input
     # only after its read and at completion. Boundary inputs are never mutable.
     in_place_inputs: tuple[int, ...] = ()
+    # A physical copy of any already computed value. This may introduce a
+    # storage realization without requiring a copy node in semantic source IR.
+    value_preserving_copy: bool = False
 
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
@@ -185,6 +188,15 @@ class InstructionDescriptor:
             raise ValueError("in-place operand index is invalid")
         if self.in_place_inputs and self.completion_offset == 0:
             raise ValueError("in-place writes need a later completion event")
+        if type(self.value_preserving_copy) is not bool:
+            raise ValueError("value-preserving copy flag must be boolean")
+        if self.value_preserving_copy and (
+            self.computation != "identity" or arity != 1 or self.required_attrs or self.index_maps
+            or self.shape_contract != "equal" or self.shape_equalities
+            or self.output_dtype != self.input_dtypes[0]
+            or self.numerical_policy != self.input_numerical_policies[0]
+        ):
+            raise ValueError("value-preserving copy must preserve one complete tensor type")
         if any(
             self.input_read_offsets and self.input_read_offsets[index] >= self.completion_offset
             for index in self.in_place_inputs
@@ -255,6 +267,7 @@ class InstructionDescriptor:
             "shape_contract": self.shape_contract,
             "shape_equalities": [condition.record() for condition in self.shape_equalities],
             "in_place_inputs": list(self.in_place_inputs),
+            "value_preserving_copy": self.value_preserving_copy,
         }
 
     @classmethod
@@ -280,6 +293,7 @@ class InstructionDescriptor:
             "shape_contract",
             "shape_equalities",
             "in_place_inputs",
+            "value_preserving_copy",
         }
         if set(row) != expected:
             raise ValueError("instruction descriptor has missing or unknown fields")
@@ -304,6 +318,7 @@ class InstructionDescriptor:
             shape_contract=row["shape_contract"],
             shape_equalities=tuple(AxisEquality.from_record(item) for item in row["shape_equalities"]),
             in_place_inputs=tuple(row["in_place_inputs"]),
+            value_preserving_copy=row["value_preserving_copy"],
         )
 
 
@@ -363,9 +378,32 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
         source_symbol[node.id] = symbol
         index[node.id] = len(nodes)
         nodes.append({"symbol": symbol, "children": [index[child] for child in node.inputs]})
+        lhs = f"({symbol} {' '.join(f'?a{i}' for i in range(len(node.inputs)))})" if node.inputs else symbol
+        for descriptor in descriptors:
+            if not descriptor.value_preserving_copy:
+                continue
+            copy_value = SemanticNode("copy_value", "identity", (node.id,), node.type)
+            if not descriptor.accepts(copy_value, (node,)):
+                continue
+            descriptor_digest = _digest(descriptor.record())
+            instruction_symbol = "i_" + _digest(("value_preserving_copy_v1", descriptor_digest, symbol))
+            symbols.setdefault(instruction_symbol, {
+                "kind": "instruction",
+                "descriptor": descriptor.record(),
+                "source_node": node.id,
+                "type": node.type.record(),
+                "realization": "value_preserving_copy_v1",
+            })
+            rules.append(Rule(
+                name=f"materialize_{descriptor.name}_{node.id}_{descriptor_digest}",
+                lhs=lhs,
+                rhs=f"({instruction_symbol} {lhs})",
+                source_node=node.id,
+                descriptor_name=descriptor.name,
+                descriptor_digest=descriptor_digest,
+            ))
         if node.effect != "pure":
             continue
-        lhs = f"({symbol} {' '.join(f'?a{i}' for i in range(len(node.inputs)))})" if node.inputs else symbol
         # This is a bit-preserving semantic identity, including the numerical
         # policy and every static dimension. Its realization can still require
         # a physical copy; extraction decides that from the requested storage.
@@ -383,6 +421,10 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
                     )
                 )
         for descriptor in descriptors:
+            if descriptor.value_preserving_copy:
+                # The source-independent rule above already realizes this
+                # instruction, including when the source operation is identity.
+                continue
             if not descriptor.accepts(node, tuple(request.node(child) for child in node.inputs)):
                 continue
             descriptor_digest = _digest(descriptor.record())

@@ -488,6 +488,94 @@ def test_bit_preserving_rewrite_exposes_instruction_without_copy(bridge: Path) -
     assert any(rule.name.startswith("structural_identity_v1") for rule in result.rules.rewrites)
 
 
+def test_generated_value_copy_materializes_direct_operand_without_source_copy(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("y", "consume", ("x",), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-value-copy-1",
+    )
+    copy = _descriptor("load", "identity", ("external",), "register", "i8", "exact", (2,),
+                       value_preserving_copy=True)
+    consume = _descriptor("consume", "consume", ("register",), "external", "i8", "exact", (2,))
+    with pytest.raises(ValueError, match="value-preserving copy"):
+        replace(consume, value_preserving_copy=True)
+    no_copy = generate_rules(request, (replace(copy, value_preserving_copy=False), consume))
+    assert not any(rule.name.startswith("materialize_") for rule in no_copy.rewrites)
+    wrong_policy = replace(copy, numerical_policy="other", input_numerical_policies=("other",))
+    assert not any(rule.name.startswith("materialize_") for rule in generate_rules(request, (wrong_policy,)).rewrites)
+
+    program = generate_rules(request, (copy, consume))
+    assert len([rule for rule in program.rewrites if rule.name.startswith("materialize_")]) == 2
+    result = select_and_allocate(
+        request, (copy, consume),
+        (StorageBank("external", "dram", 4, "tile"),
+         StorageBank("register", "registers", 1, "tile")),
+        bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(3,),
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.rules is not None and result.allocation is not None
+    selected = [result.rules.symbols[value.symbol]["descriptor"]["name"]
+                for value in result.graph.values if value.kind == "instruction"]
+    assert selected == ["load", "consume"]
+    assert result.allocation.addresses[result.graph.outputs[0]] == 3
+    assert result.check_fingerprint
+    assert result.candidate is not None and result.exploration is not None
+    changed_symbols = dict(result.rules.symbols)
+    copy_symbol = next(symbol for symbol, metadata in changed_symbols.items()
+                       if metadata.get("realization") == "value_preserving_copy_v1")
+    changed_symbols[copy_symbol] = dict(changed_symbols[copy_symbol], realization="unknown_copy")
+    replay = check_selection(
+        request, (copy, consume), replace(result.rules, symbols=changed_symbols),
+        result.exploration, result.candidate, result.graph, result.allocation,
+        (StorageBank("external", "dram", 4, "tile"),
+         StorageBank("register", "registers", 1, "tile")),
+        fixed_inputs={"x": 0}, fixed_outputs=(3,),
+    )
+    assert not replay.valid and "unknown realization" in replay.reason
+
+
+def test_one_semantic_value_gets_two_declared_storage_realizations(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "consume_a", ("x",), tensor),
+            SemanticNode("b", "consume_b", ("x",), tensor),
+        ),
+        outputs=("a", "b"), output_storages=("external", "external"),
+        input_storages=(("x", "external"),), target_identity="synthetic-dual-storage-copy-1",
+    )
+    descriptors = (
+        _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,),
+                    value_preserving_copy=True),
+        _descriptor("load_b", "identity", ("external",), "b", "i8", "exact", (2,),
+                    value_preserving_copy=True),
+        _descriptor("consume_a", "consume_a", ("a",), "external", "i8", "exact", (2,)),
+        _descriptor("consume_b", "consume_b", ("b",), "external", "i8", "exact", (2,)),
+    )
+    result = select_and_allocate(
+        request, descriptors,
+        (StorageBank("external", "dram", 4, "tile"),
+         StorageBank("a", "reg_a", 1, "tile"),
+         StorageBank("b", "reg_b", 1, "tile")),
+        bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2, 3),
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.rules is not None and result.allocation is not None
+    names = [result.rules.symbols[value.symbol]["descriptor"]["name"]
+             for value in result.graph.values if value.kind == "instruction"]
+    assert set(names) == {"load_a", "load_b", "consume_a", "consume_b"}
+    assert len(result.graph.values) == 5
+    assert tuple(result.allocation.addresses[value] for value in result.graph.outputs) == (2, 3)
+    assert result.check_fingerprint
+
+
 def test_two_outputs_share_one_instruction_under_one_node_budget(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
@@ -804,8 +892,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v4"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v3")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v5"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v4")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(
