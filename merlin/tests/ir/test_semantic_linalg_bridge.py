@@ -105,6 +105,7 @@ def test_parsed_fill_materializes_declared_constant_and_rejects_uninitialized_in
     )
     assert len(translated.constants) == 1
     assert translated.constants["op2r0"].elements == (7, 7, 7, 7)
+    assert translated.request.constants[0].data_hex == "07000000" * 4
     inputs = {key: value for key, value in _inputs().items() if key != "arg2"}
     assert evaluate_graph(translated.request, inputs, constants=translated.constants)[0].elements == (
         29,

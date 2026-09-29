@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from math import prod
 
-from .model import IndexMap, KernelRequest, SemanticNode, TensorType
+from .model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType
 from .reference import TensorValue
 
 
@@ -112,6 +112,7 @@ def translate_linalg_text(
     env: dict[object, str | None] = {}
     scalars: dict[object, int] = {}
     constants: dict[str, TensorValue] = {}
+    constant_bindings: list[ConstantBinding] = []
     boundaries: list[tuple[str, str]] = []
     source_operations: list[str] = []
     for index, arg in enumerate(block.args):
@@ -145,6 +146,9 @@ def translate_linalg_text(
             value = scalars[scalar]
             nodes.append(SemanticNode(node_id, "constant", (), type_, attrs=(("value", value),), effect="constant"))
             constants[node_id] = TensorValue(type_, (value,) * prod(type_.shape))
+            constant_bindings.append(ConstantBinding(
+                node_id, "i32-le", (value.to_bytes(4, "little", signed=True) * prod(type_.shape)).hex(),
+            ))
             env[op.results[0]] = node_id
         elif op.name in {"linalg.generic", "linalg.matmul"}:
             if op.name == "linalg.generic":
@@ -192,6 +196,7 @@ def translate_linalg_text(
                 nodes=tuple(nodes), outputs=outputs, output_storages=(boundary_storage,) * len(outputs),
                 input_storages=tuple(boundaries), target_identity=target_identity,
                 lowering_policy=lowering_policy, source_identity=sha256(source.encode()).hexdigest(),
+                constants=tuple(constant_bindings),
             )
             return LinalgTranslation(request, constants, tuple(source_operations))
         else:

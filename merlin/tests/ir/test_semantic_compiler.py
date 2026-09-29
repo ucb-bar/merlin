@@ -30,7 +30,7 @@ from merlin.semantic_compiler.allocate import (
 )
 from merlin.semantic_compiler.egg_bridge import EGraphTimeout, explore
 from merlin.semantic_compiler.extract import ExtractionTimeout, enumerate_candidates
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.semantic_compiler.model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.rules import (
     AddressConstraint,
@@ -157,6 +157,11 @@ def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_se
         output_storages=("external", "external"),
         input_storages=(("x", "external"),),
         target_identity="synthetic-exact-i32-reference-1",
+        constants=(ConstantBinding(
+            "c", "i32-le", b"".join(
+                element.to_bytes(4, "little", signed=True) for element in (2, -3, 4, 0)
+            ).hex(),
+        ),),
     )
     constant = TensorValue(tensor, (2, -3, 4, 0))
     first = evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))}, constants={"c": constant})
@@ -165,8 +170,29 @@ def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_se
     assert [value.elements for value in second] == [(35, 18, 77, 64), (7, 3, 11, 8)]
     with pytest.raises(ValueError, match="declared constants"):
         evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))})
+    with pytest.raises(ValueError, match="compiler bytes"):
+        evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))},
+                       constants={"c": TensorValue(tensor, (2, -3, 4, 1))})
     with pytest.raises(ValueError, match="outside its admitted domain"):
         TensorValue(tensor, (1 << 31, 0, 0, 0))
+
+
+def test_constant_bytes_are_exact_compiler_inputs_and_change_request_identity() -> None:
+    tensor = TensorType((2,), "i32", "exact-i32")
+    nodes = (SemanticNode("c", "constant", (), tensor, effect="constant"),)
+    with pytest.raises(ValueError, match="exactly one declared byte binding"):
+        KernelRequest(nodes, ("c",), ("external",), (), "synthetic")
+    first = KernelRequest(
+        nodes, ("c",), ("external",), (), "synthetic",
+        constants=(ConstantBinding("c", "i32-le", "01000000feffffff"),),
+    )
+    second = replace(first, constants=(ConstantBinding("c", "i32-le", "02000000feffffff"),))
+    assert first.digest() != second.digest()
+    assert KernelRequest.from_record(first.record()).record() == first.record()
+    with pytest.raises(ValueError, match="tensor type"):
+        replace(first, constants=(ConstantBinding("c", "i32-le", "01000000"),))
+    with pytest.raises(ValueError, match="canonical lowercase hex"):
+        ConstantBinding("c", "i32-le", "AB000000")
 
 
 def test_exact_i32_reference_rejects_unknown_arithmetic_and_shape_errors() -> None:
