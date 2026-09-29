@@ -128,9 +128,12 @@ each of the three formats, uses its real uint8 element codes and E8M0 scale
 bytes, and packs them with caller-selected exact FP6 codebooks. Its emitted C
 source hashes exactly match three programs executed on the source-bound RTL
 simulator. Those programs each exited zero with no BF16 mismatches across four
-distinct output quadrants. This demonstrates one-site capture-to-RTL
-compatibility; it does not establish functional-attention packing, arbitrary
-shapes, full-model execution, or an admitted Phase 0 capsule.
+distinct output quadrants. A second test set starts from all-zero TorchAO
+blocks, checks zero element codes and E8M0 scale byte 104, and reproduces
+three more RTL-tested programs with exact BF16 zero output. This demonstrates
+bounded capture-to-RTL compatibility; it does not establish functional
+attention packing, arbitrary shapes, full-model execution, or an admitted
+Phase 0 capsule.
 The pinned software header's residency
 comment calls rs1 bit 62, but its macro emits bit 63, matching
 `ExecuteController.scala`; the compiler must use bit 63.
@@ -165,7 +168,8 @@ BF16 blocks use a scale exponent of
 [BF16-to-MX rounding logic](https://github.com/ucb-bar/gemmini/blob/f0167390b56fb315deea90ac1fc3983772e92d82/src/main/scala/gemmini/BF16ScalaRoundToTiny.scala)
 uses round-to-nearest-even for the declared element modes and preserves
 representable MX element subnormals. BF16 source subnormals flush to zero
-before element conversion; a zero block gets E8M0 code 104. A nonfinite block
+before element conversion; a zero block gets E8M0 code 104, as also checked
+by the three 32×32×32 all-zero diagnostics above. A nonfinite block
 gets E8M0 code 255 and follows the RTL poison path. The FP4 path rounds through
 E3M1 before E2M1 and canonicalizes underflow zero to positive zero. The array
 has a format-specific product path and a 16-lane accumulator schedule;
