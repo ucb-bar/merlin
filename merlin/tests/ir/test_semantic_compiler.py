@@ -196,6 +196,38 @@ def test_constant_bytes_are_exact_compiler_inputs_and_change_request_identity() 
         ConstantBinding("c", "i32-le", "AB000000")
 
 
+def test_native_selection_retains_declared_constant_identity_and_placement(bridge: Path) -> None:
+    tensor = TensorType((1,), "i32", "exact-i32")
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("c", "constant", (), tensor, effect="constant"),
+            SemanticNode("y", "add", ("x", "c"), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-constant-1",
+        constants=(ConstantBinding("c", "i32-le", "feffffff"),),
+    )
+    descriptor = _descriptor("add", "add", ("external", "external"), "external", "i32", "exact-i32", (1,))
+    bank = (StorageBank("external", "dram", 3, "word"),)
+    result = select_and_allocate(
+        request, (descriptor,), bank, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,),
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    placed = [value for value in result.graph.values if value.kind == "constant"]
+    assert len(placed) == 1 and placed[0].source_node == "c"
+    assert result.allocation.addresses[placed[0].id] == 1
+    altered = replace(request, constants=(ConstantBinding("c", "i32-le", "fdffffff"),))
+    again = select_and_allocate(
+        altered, (descriptor,), bank, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,),
+    )
+    assert again.status == "selected" and again.request_digest != result.request_digest
+    assert again.check_fingerprint != result.check_fingerprint
+
+
 def test_exact_i32_reference_rejects_unknown_arithmetic_and_shape_errors() -> None:
     left_type = TensorType((1, 2), "i32", "exact-i32")
     right_type = TensorType((2, 1), "i32", "exact-i32")
