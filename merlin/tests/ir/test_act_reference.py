@@ -45,6 +45,15 @@ def test_restricted_reader_never_executes_generated_python() -> None:
         assert "out of range" in str(exc)
     else:
         raise AssertionError("out-of-range output was accepted")
+    import_time_call = ASSEMBLY.replace(
+        "def qkv(kernel, api):", "def qkv(kernel, api=__import__('os').system('false')):",
+    )
+    try:
+        parse_act_assembly(import_time_call)
+    except ValueError as exc:
+        assert "wrapper" in str(exc)
+    else:
+        raise AssertionError("import-time executable default was accepted")
 
 
 def test_reference_runner_requires_exact_binary_and_fresh_parseable_output(tmp_path: Path) -> None:
