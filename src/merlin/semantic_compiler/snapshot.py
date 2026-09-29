@@ -87,6 +87,7 @@ class NativeSnapshot:
         request: KernelRequest,
         *,
         fixed_inputs: dict[str, int] | None = None,
+        fixed_outputs: tuple[int | None, ...] | None = None,
         limits: SearchLimits = SearchLimits(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
@@ -101,6 +102,7 @@ class NativeSnapshot:
             self.profile.banks,
             bridge=self.bridge,
             fixed_inputs=fixed_inputs,
+            fixed_outputs=fixed_outputs,
             limits=limits,
         )
 

@@ -71,6 +71,7 @@ def check_selection(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    fixed_outputs: tuple[int | None, ...] | None = None,
 ) -> SelectionCheck:
     def fail(reason: str) -> SelectionCheck:
         return SelectionCheck(False, "", reason)
@@ -165,7 +166,14 @@ def check_selection(
         problem = visit(choice)
         if problem:
             return fail(problem)
-    checked, reason = check_assignment(graph, allocation.order, allocation.addresses, banks, fixed_inputs=fixed_inputs)
+    checked, reason = check_assignment(
+        graph,
+        allocation.order,
+        allocation.addresses,
+        banks,
+        fixed_inputs=fixed_inputs,
+        fixed_outputs=fixed_outputs,
+    )
     if not checked:
         return fail(f"selected physical assignment failed independent replay: {reason}")
     expected_schedule = instruction_schedule(graph, allocation.order)
@@ -182,6 +190,8 @@ def check_selection(
         "order": list(allocation.order),
         "issue_times": list(allocation.issue_times),
         "addresses": sorted(allocation.addresses.items()),
+        "fixed_inputs": sorted((fixed_inputs or {}).items()),
+        "fixed_outputs": list(fixed_outputs) if fixed_outputs is not None else None,
     }
     fingerprint = hashlib.sha256(json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return SelectionCheck(True, fingerprint)

@@ -70,6 +70,7 @@ def select_and_allocate(
     *,
     bridge: Path,
     fixed_inputs: dict[str, int] | None = None,
+    fixed_outputs: tuple[int | None, ...] | None = None,
     limits: SearchLimits = SearchLimits(),
 ) -> SearchResult:
     deadline = monotonic() + limits.wall_timeout_s
@@ -179,6 +180,7 @@ def select_and_allocate(
                     order,
                     banks,
                     fixed_inputs=fixed_inputs,
+                    fixed_outputs=fixed_outputs,
                     timeout_ms=min(limits.solver_timeout_ms, max(1, int(remaining * 1000))),
                 )
                 if monotonic() >= deadline:
@@ -194,6 +196,7 @@ def select_and_allocate(
                         result,
                         banks,
                         fixed_inputs=fixed_inputs,
+                        fixed_outputs=fixed_outputs,
                     )
                     if not checked.valid:
                         return SearchResult(

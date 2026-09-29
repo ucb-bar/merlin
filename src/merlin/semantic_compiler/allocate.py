@@ -243,6 +243,7 @@ def check_assignment(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    fixed_outputs: tuple[int | None, ...] | None = None,
 ) -> tuple[bool, str]:
     """Recompute original geometry/lifetimes without consulting Z3 expressions."""
     bank_map = _geometry(banks)
@@ -250,12 +251,21 @@ def check_assignment(
     if unit_problem:
         return False, unit_problem
     fixed_inputs = fixed_inputs or {}
+    if fixed_outputs is not None and len(fixed_outputs) != len(graph.outputs):
+        return False, "fixed output ABI differs from ordered roots"
+    if fixed_outputs is not None and any(address is not None and type(address) is not int for address in fixed_outputs):
+        return False, "fixed output ABI has a non-integer address"
     try:
         ranges = live_ranges(graph, order)
     except ValueError as exc:
         return False, str(exc)
     if set(addresses) != {value.id for value in graph.values}:
         return False, "assignment omits a value"
+    if fixed_outputs is not None and any(
+        address is not None and addresses[value_id] != address
+        for value_id, address in zip(graph.outputs, fixed_outputs)
+    ):
+        return False, "output moved from fixed external address"
     for value in graph.values:
         bank = bank_map.get(value.storage)
         if bank is None:
@@ -298,6 +308,7 @@ def allocate(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    fixed_outputs: tuple[int | None, ...] | None = None,
     timeout_ms: int = 5000,
 ) -> AllocationResult:
     if timeout_ms <= 0:
@@ -311,10 +322,19 @@ def allocate(
     if unit_problem:
         return AllocationResult("unqualified_target", order, {}, unit_problem)
     fixed_inputs = fixed_inputs or {}
+    if fixed_outputs is not None and (
+        len(fixed_outputs) != len(graph.outputs)
+        or any(address is not None and type(address) is not int for address in fixed_outputs)
+    ):
+        return AllocationResult("modeling_failure", order, {}, "fixed output ABI is malformed")
     ranges = live_ranges(graph, order)
     solver = z3.Solver()
     solver.set(timeout=timeout_ms)
     variables = {value.id: z3.Int(f"address_{value.id}") for value in graph.values}
+    if fixed_outputs is not None:
+        for value_id, address in zip(graph.outputs, fixed_outputs):
+            if address is not None:
+                solver.add(variables[value_id] == address)
     for value in graph.values:
         bank = bank_map.get(value.storage)
         if bank is None:
@@ -349,7 +369,9 @@ def allocate(
         return AllocationResult("search_timeout", order, {}, f"solver returned {status}: {solver.reason_unknown()}")
     model = solver.model()
     addresses = {value_id: model[variable].as_long() for value_id, variable in variables.items()}
-    checked, reason = check_assignment(graph, order, addresses, banks, fixed_inputs=fixed_inputs)
+    checked, reason = check_assignment(
+        graph, order, addresses, banks, fixed_inputs=fixed_inputs, fixed_outputs=fixed_outputs
+    )
     if not checked:
         return AllocationResult("modeling_failure", order, addresses, reason)
     schedule = instruction_schedule(graph, order)
