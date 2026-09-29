@@ -60,6 +60,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.sched.isa` | A target's schedule instruction set: the calls a kernel schedule may make, and how each is checked. |
 | `merlin.sched.mach` | The machine a schedule is written against. |
 | `merlin.sched.primitives` | The scheduling language: semantics-preserving rewrites of a kernel, each with a proof obligation. |
+| `merlin.semantic_compiler` | Typed, target-independent native semantic compiler components. |
 | `merlin.system` | Host+device system model: what we compile for, and how the pieces are reached. |
 | `merlin.targetgen` | TargetGen pipeline: ingest -> extract -> plan -> generate -> validate. |
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |
