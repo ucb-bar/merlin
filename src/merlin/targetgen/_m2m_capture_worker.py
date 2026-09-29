@@ -654,11 +654,14 @@ def main(argv=None) -> int:
             # public model2MLIR apply_quantization(model, config) API does not
             # derive.  The recipe path above performs calibrated PT2E instead.
             raise RuntimeError("named static W8A8 requires a calibrated --recipe")
-        quant_trace_options = (
-            {"original_frontend_snapshot": original_snapshot}
-            if "original_frontend_snapshot" in inspect.signature(apply_quantization).parameters
-            else {}
-        )
+        quant_parameters = inspect.signature(apply_quantization).parameters
+        quant_trace_options = {}
+        if "original_frontend_snapshot" in quant_parameters:
+            quant_trace_options["original_frontend_snapshot"] = original_snapshot
+        if "example_inputs" in quant_parameters:
+            # Whole-graph transforms need the same concrete inputs as conversion
+            # to discover functional contractions and their tensor shapes.
+            quant_trace_options["example_inputs"] = tuple(inputs)
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None

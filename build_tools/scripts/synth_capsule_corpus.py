@@ -82,6 +82,28 @@ def _gradeable_candidates(entries: list[dict]) -> list[dict]:
     return [e for e in entries if e.get("op")]
 
 
+def _software_cell_conflicts(requirement: dict, software_spec: dict) -> list[str]:
+    """Reject accelerator cells the selected software contract explicitly refuses.
+
+    A retained conformance requirement may have been derived against a different
+    capability declaration. Missing shape evidence remains unknown here; the
+    check only blocks a family/dtype pair that the selected spec says is unsupported.
+    """
+    from merlin.targetgen.software_spec import admit_operation
+
+    conflicts = []
+    for cell in requirement.get("cells") or []:
+        family, dtype = cell.get("family"), cell.get("dtype")
+        if not isinstance(family, str) or not isinstance(dtype, str):
+            continue
+        decision = admit_operation(
+            software_spec, family, {"family": family, "operand_dtype": dtype}, "accelerator"
+        )
+        if decision["status"] == "unsupported":
+            conflicts.append(str(cell.get("cell") or f"{family}/{dtype}"))
+    return sorted(set(conflicts))
+
+
 def _ungradeable(entries: list[dict], target: str, *, binding=None) -> list[dict]:
     """Entries whose (op, dtype) pair no golden engine can grade -- reported, never written.
 
@@ -224,6 +246,19 @@ def synth_for(
             f"check_conformance_coverage.py --target {target} --write",
         }
     doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
+    if selected_spec is not None:
+        from merlin.targetgen.software_spec import load_software_spec
+
+        conflicts = _software_cell_conflicts(
+            doc, evidence.software_spec if evidence is not None else load_software_spec(selected_spec, target=target)
+        )
+        if conflicts:
+            return {
+                "target": target,
+                "status": "invalid_synthesis_inputs",
+                "detail": "conformance accelerator cells conflict with the selected software spec: "
+                + ", ".join(conflicts),
+            }
     workload_spec = _workload_spec(target) or {}
     applications = workload_spec.get("applications") or {}
     demands = doc.get("application_demands") or {}

@@ -68,7 +68,9 @@ def validate_numerical_semantics(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("numerical_semantics must be a mapping")
     model = document.get("model")
-    if not isinstance(model, dict) or model.get("engine") not in {"specir_fp_reduce", "integer_reference"}:
+    if not isinstance(model, dict) or model.get("engine") not in {
+        "specir_fp_reduce", "integer_reference", "mx_block_reference"
+    }:
         raise ValueError("numerical_semantics.model.engine must select a supported independent model")
     for field in ("operand_dtype", "accumulator_dtype", "readout_dtype"):
         if not isinstance(document.get(field), str) or not document[field].strip():
@@ -86,6 +88,25 @@ def validate_numerical_semantics(document: dict) -> dict:
             raise ValueError("the selected float model currently requires product_rounding: accumulator_format")
         if document["accumulator_dtype"] != document["readout_dtype"]:
             raise ValueError("the selected float model does not implement a distinct readout conversion")
+    if model["engine"] == "mx_block_reference":
+        from merlin.common.quant_formats import get as quant_format
+
+        operand = quant_format(document["operand_dtype"])
+        if operand.kind != "mx_block" or operand.scale.kind != "block_e8m0" or operand.scale.block is None:
+            raise ValueError("mx_block_reference requires a registered block-scaled MX operand")
+        if document.get("block_size") != operand.scale.block:
+            raise ValueError("mx_block_reference block_size differs from the registered format")
+        if document.get("scale_encoding") != "e8m0":
+            raise ValueError("mx_block_reference requires E8M0 scale encoding")
+        if document["accumulator_dtype"] != document["readout_dtype"]:
+            raise ValueError("mx_block_reference requires the selected readout dtype")
+        if document.get("operand_rounding") not in _IEEE_ROUNDING:
+            raise ValueError("mx_block_reference requires an explicit operand rounding mode")
+        for field in ("scale_rule", "product_rounding", "reduction_order", "reduction_cadence"):
+            if not isinstance(document.get(field), str) or not document[field].strip():
+                raise ValueError(f"mx_block_reference requires explicit {field}")
+        if not isinstance(document.get("internal_arithmetic"), dict) or not document["internal_arithmetic"]:
+            raise ValueError("mx_block_reference requires explicit internal arithmetic")
     if "source_root_env" in model and "source_root_path" in model:
         raise ValueError("model source_root_env and source_root_path are mutually exclusive")
     for field in ("source_root_env", "source_root_path"):
