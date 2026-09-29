@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -105,9 +106,13 @@ def _write_status(path: Path, report: dict[str, object]) -> None:
 
 def _cmd_native_build(args: argparse.Namespace) -> int:
     from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot
+    from merlin.semantic_compiler.target_binding import load_native_target_binding
 
     try:
-        profile = NativeTargetProfile.from_record(json.loads(Path(args.profile).read_text()))
+        if bool(args.profile) == bool(args.support):
+            raise ValueError("select exactly one native target profile or installed support provider")
+        profile = (NativeTargetProfile.from_record(json.loads(Path(args.profile).read_text()))
+                   if args.profile else load_native_target_binding(args.support).profile())
         snapshot = build_native_snapshot(
             profile,
             destination=Path(args.out),
@@ -163,6 +168,57 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "selected" else 2
 
 
+def _cmd_native_compile(args: argparse.Namespace) -> int:
+    """Invoke a selected target binding with typed source and an explicit ABI."""
+    from merlin.semantic_compiler.model import KernelRequest
+    from merlin.semantic_compiler.search import SearchLimits
+    from merlin.semantic_compiler.snapshot import open_native_snapshot
+    from merlin.semantic_compiler.target_binding import load_native_target_binding
+
+    try:
+        binding = load_native_target_binding(args.support)
+        snapshot = open_native_snapshot(Path(args.snapshot))
+        if snapshot.profile.digest() != binding.profile().digest():
+            raise ValueError("native snapshot differs from selected support profile")
+        request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+        if request.lowering_policy != args.mode:
+            raise ValueError("explicit compile mode differs from typed request")
+        abi = json.loads(Path(args.abi).read_text())
+        if set(abi) != {"fixed_inputs", "fixed_outputs"} or not isinstance(abi["fixed_inputs"], dict) or (
+            not isinstance(abi["fixed_outputs"], list)
+        ):
+            raise ValueError("native compile ABI needs fixed_inputs and fixed_outputs")
+        if not all(type(value) is int for value in abi["fixed_inputs"].values()) or (
+            not all(type(value) is int for value in abi["fixed_outputs"])
+        ):
+            raise ValueError("native compile ABI addresses must be integers")
+        output = Path(args.out)
+        if output.exists():
+            raise FileExistsError(f"fresh native compilation output required: {output}")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="native-compile-", dir=output.parent) as temporary:
+            staged = Path(temporary) / "compilation"
+            manifest = binding.compile(
+                snapshot, request, fixed_inputs=abi["fixed_inputs"],
+                fixed_outputs=tuple(abi["fixed_outputs"]), target_source=Path(args.target_source),
+                destination=staged, limits=SearchLimits(),
+            )
+            if manifest.get("engine") != args.engine or not (staged / "program.bin").is_file():
+                raise ValueError("selected target did not emit a native binary with matching engine identity")
+            staged.rename(output)
+        report = {"schema": "merlin.native_compilation_status.v1", "status": "emitted",
+                  "engine": args.engine, "support": args.support, "out": str(args.out),
+                  "request_digest": request.digest(), "target_identity": snapshot.profile.target_identity,
+                  "binary_sha256": manifest.get("binary_sha256")}
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError) as error:
+        report = {"schema": "merlin.native_compilation_status.v1", "status": "compile_error",
+                  "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}
+    if args.status_file:
+        _write_status(Path(args.status_file), report)
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report["status"] == "emitted" else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="merlin-targetgen", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -194,7 +250,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     native_build = sub.add_parser("native-build", help="build an offline Merlin-native selection snapshot")
     native_build.add_argument("--engine", choices=("merlin_native",), required=True)
-    native_build.add_argument("--profile", required=True, help="versioned native target profile JSON")
+    native_build.add_argument("--profile", help="versioned native target profile JSON")
+    native_build.add_argument("--support", help="explicit installed native target support provider")
     native_build.add_argument("--crate", required=True, help="pinned Merlin egg bridge source directory")
     native_build.add_argument("--cargo-target-dir", required=True)
     native_build.add_argument("--source-revision", required=True)
@@ -208,6 +265,18 @@ def build_parser() -> argparse.ArgumentParser:
     native_select.add_argument("--abi", help="optional fixed_inputs/fixed_outputs JSON; no runtime samples")
     native_select.add_argument("--out", required=True, help="selection result JSON")
     native_select.set_defaults(func=_cmd_native_select)
+
+    native_compile = sub.add_parser("native-compile", help="compile one typed native region with selected OOT support")
+    native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
+    native_compile.add_argument("--support", required=True, help="installed target support entry point")
+    native_compile.add_argument("--snapshot", required=True)
+    native_compile.add_argument("--request", required=True, help="typed semantic kernel JSON")
+    native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON")
+    native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
+    native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
+    native_compile.add_argument("--out", required=True, help="fresh compilation output directory")
+    native_compile.add_argument("--status-file", help="invocation-owned machine-readable status JSON")
+    native_compile.set_defaults(func=_cmd_native_compile)
 
     return parser
 
