@@ -158,7 +158,9 @@ class InstructionDescriptor:
             and len(node.type.shape) in self.ranks
             and all(bound.accepts(node.type.shape) for bound in self.output_axis_bounds)
             and node.index_maps == self.index_maps
-            and all(dict(node.attrs).get(key) == value for key, value in self.required_attrs)
+            # Semantic attributes are part of the computation. An undeclared
+            # attribute cannot silently become a hardware don't-care.
+            and dict(node.attrs) == dict(self.required_attrs)
             and all(n.type.dtype == dtype for n, dtype in zip(inputs, self.input_dtypes))
             and all(n.type.numerical_policy == policy for n, policy in zip(inputs, self.input_numerical_policies))
             and (not self.input_ranks or all(len(n.type.shape) == rank for n, rank in zip(inputs, self.input_ranks)))

@@ -115,8 +115,8 @@ def check_selection(
                 return "selected instruction has incompatible rank or index maps"
             if not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
                 return "selected instruction violates a shape precondition"
-            if any(dict(source.attrs).get(key) != value for key, value in descriptor.required_attrs):
-                return "selected instruction violates an attribute precondition"
+            if dict(source.attrs) != dict(descriptor.required_attrs):
+                return "selected instruction differs in semantic attributes"
             if len(choice.children) != len(source.inputs) or choice.storage != descriptor.output_storage:
                 return "selected instruction has wrong operands or output storage"
             for index, (child, child_id) in enumerate(zip(choice.children, source.inputs)):

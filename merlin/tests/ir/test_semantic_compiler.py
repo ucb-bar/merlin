@@ -251,6 +251,11 @@ def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
     assert len(rules.rewrites) == 5
     changed = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), (("missing", 1),))
     assert len(generate_rules(request, (changed,)).rewrites) == 1
+    altered_source = replace(
+        request,
+        nodes=(*request.nodes[:2], replace(request.nodes[2], attrs=(("rounding", "different"),)), request.nodes[3]),
+    )
+    assert len(generate_rules(altered_source, _descriptors()).rewrites) == 4
     wrong_policy = _descriptor("load_a", "identity", ("external",), "a", "i8", "rounded", (2,))
     assert len(generate_rules(request, (wrong_policy,)).rewrites) == 1
     wrong_input = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), input_dtypes=("bf16",))
