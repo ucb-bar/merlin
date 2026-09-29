@@ -68,6 +68,10 @@ def explore(
             for row in result["classes"]
         }
         roots = tuple(int(root) for root in result["roots"])
+        if result["stop_reason"] not in {
+            "saturated", "iteration_limit", "node_limit", "time_limit", "other", "unknown",
+        }:
+            raise ValueError("e-graph result has unknown stop reason")
         if any(root not in classes for root in roots):
             raise ValueError("e-graph result has missing roots")
         return Exploration(

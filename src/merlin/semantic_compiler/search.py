@@ -131,8 +131,10 @@ def select_and_allocate(
             break
     if inconclusive:
         status = "search_timeout"
-    elif candidate_attempts >= limits.candidates:
+    elif candidate_attempts >= limits.candidates or graph.stop_reason != "saturated":
         status = "resource_limit"
+    elif not any(info["kind"] == "instruction" for info in program.symbols.values()):
+        status = "unsupported_semantics"
     else:
         status = "compile_error"
     return SearchResult(

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
 
-from .model import KernelRequest, SemanticNode
+from .model import IndexMap, KernelRequest, SemanticNode
 
 
 def _digest(value: object) -> str:
@@ -46,6 +46,37 @@ class AddressConstraint:
 
 
 @dataclass(frozen=True)
+class AxisBound:
+    """A decidable per-axis computational precondition for a static tensor."""
+
+    axis: int
+    minimum: int = 1
+    maximum: int | None = None
+    multiple: int = 1
+
+    def __post_init__(self) -> None:
+        if any(type(value) is not int for value in (self.axis, self.minimum, self.multiple)):
+            raise ValueError("axis bound fields must be integers")
+        if self.maximum is not None and type(self.maximum) is not int:
+            raise ValueError("axis bound maximum must be an integer")
+        if self.axis < 0 or self.minimum <= 0 or self.multiple <= 0:
+            raise ValueError("axis bound needs nonnegative axis and positive dimensions")
+        if self.maximum is not None and self.maximum < self.minimum:
+            raise ValueError("axis bound maximum is below minimum")
+
+    def accepts(self, shape: tuple[int, ...]) -> bool:
+        if self.axis >= len(shape):
+            return False
+        dimension = shape[self.axis]
+        return dimension >= self.minimum and (self.maximum is None or dimension <= self.maximum) and (
+            dimension % self.multiple == 0
+        )
+
+    def record(self) -> dict[str, int | None]:
+        return {"axis": self.axis, "minimum": self.minimum, "maximum": self.maximum, "multiple": self.multiple}
+
+
+@dataclass(frozen=True)
 class InstructionDescriptor:
     name: str
     computation: str
@@ -61,6 +92,8 @@ class InstructionDescriptor:
     input_dtypes: tuple[str, ...] = ()
     input_numerical_policies: tuple[str, ...] = ()
     input_ranks: tuple[int, ...] = ()
+    output_axis_bounds: tuple[AxisBound, ...] = ()
+    index_maps: tuple[IndexMap, ...] = ()
 
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
@@ -70,12 +103,18 @@ class InstructionDescriptor:
         if len({key for key, _ in self.required_attrs}) != len(self.required_attrs):
             raise ValueError("duplicate required attribute")
         arity = len(self.input_storages)
-        if any(len(signature) not in {0, arity} for signature in (
-            self.input_dtypes, self.input_numerical_policies, self.input_ranks,
-        )):
+        if len(self.input_dtypes) != arity or len(self.input_numerical_policies) != arity:
+            raise ValueError("each instruction operand needs an explicit dtype and numerical policy")
+        if len(self.input_ranks) not in {0, arity}:
             raise ValueError("input signature must match instruction arity")
+        if any(not dtype or not policy for dtype, policy in zip(self.input_dtypes, self.input_numerical_policies)):
+            raise ValueError("input dtype and numerical policy must be nonempty")
         if any(rank <= 0 for rank in self.input_ranks):
             raise ValueError("input ranks must be positive")
+        if len({bound.axis for bound in self.output_axis_bounds}) != len(self.output_axis_bounds):
+            raise ValueError("duplicate output axis bound")
+        if self.index_maps and len(self.index_maps) != arity + 1:
+            raise ValueError("instruction index maps need one map per operand and result")
         ports = {"out", *(f"in{index}" for index in range(len(self.input_storages)))}
         for condition in self.validity:
             if condition.lhs not in ports or (condition.rhs and condition.rhs not in ports):
@@ -89,12 +128,11 @@ class InstructionDescriptor:
             and node.type.dtype == self.output_dtype
             and node.type.numerical_policy == self.numerical_policy
             and len(node.type.shape) in self.ranks
+            and all(bound.accepts(node.type.shape) for bound in self.output_axis_bounds)
+            and node.index_maps == self.index_maps
             and all(dict(node.attrs).get(key) == value for key, value in self.required_attrs)
-            and (not self.input_dtypes or all(n.type.dtype == dtype for n, dtype in zip(inputs, self.input_dtypes)))
-            and (
-                not self.input_numerical_policies
-                or all(n.type.numerical_policy == policy for n, policy in zip(inputs, self.input_numerical_policies))
-            )
+            and all(n.type.dtype == dtype for n, dtype in zip(inputs, self.input_dtypes))
+            and all(n.type.numerical_policy == policy for n, policy in zip(inputs, self.input_numerical_policies))
             and (not self.input_ranks or all(len(n.type.shape) == rank for n, rank in zip(inputs, self.input_ranks)))
         )
 
@@ -113,6 +151,8 @@ class InstructionDescriptor:
             "input_dtypes": list(self.input_dtypes),
             "input_numerical_policies": list(self.input_numerical_policies),
             "input_ranks": list(self.input_ranks),
+            "output_axis_bounds": [bound.record() for bound in self.output_axis_bounds],
+            "index_maps": [index_map.record() for index_map in self.index_maps],
         }
 
 
@@ -172,6 +212,22 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
         if node.effect != "pure":
             continue
         lhs = f"({symbol} {' '.join(f'?a{i}' for i in range(len(node.inputs)))})" if node.inputs else symbol
+        # This is a bit-preserving semantic identity, including the numerical
+        # policy and every static dimension. Its realization can still require
+        # a physical copy; extraction decides that from the requested storage.
+        if node.op == "identity" and not node.attrs and not node.index_maps and len(node.inputs) == 1:
+            child = request.node(node.inputs[0])
+            if child.type == node.type:
+                rules.append(
+                    Rule(
+                        name=f"structural_identity_v1_{node.id}",
+                        lhs=lhs,
+                        rhs="?a0",
+                        source_node=node.id,
+                        descriptor_name="<structural>",
+                        descriptor_digest=_digest(("structural_identity_v1", node.type.record())),
+                    )
+                )
         for descriptor in descriptors:
             if not descriptor.accepts(node, tuple(request.node(child) for child in node.inputs)):
                 continue
