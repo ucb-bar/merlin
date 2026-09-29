@@ -176,6 +176,12 @@ has a format-specific product path and a 16-lane accumulator schedule;
 ordinary PyTorch matmul of dequantized operands does not reproduce that
 schedule. Nonfinite blocks, negative zero, and underflow edges require
 explicit RTL comparison.
+One source-bound 32×32×32 vector per format puts the smallest positive
+representable MX element subnormal in each output's contraction. The
+model2MLIR functional operand handoff, out-of-tree packer, selected RTL
+simulator, and source-built Spike path all produced the expected BF16 result
+with zero mismatches. These three vectors check this element-subnormal path;
+they do not settle the other numerical edges above.
 
 The first shape contract is deliberately bounded: K must be a multiple of 32;
 M and N must be multiples of 16 for MXFP8 and 32 for MXFP6/MXFP4. Rank 2 to
@@ -302,6 +308,10 @@ including the pinned format tests, generated payloads, zero blocks, and
 two-wave cases, exited zero with no BF16 mismatches on both this Spike path
 and the selected RTL simulator. This is a cross-simulator diagnostic, not a
 Merlin L2/L3 capsule or a complete toolchain-closure certificate.
+Three further exact ELFs checked the element-subnormal vectors described
+above, with zero BF16 mismatches on both simulators. Their C source hashes
+are pinned by the out-of-tree integration test; the local diagnostic receipt
+records the ELF and simulator-output hashes. They remain diagnostics.
 The spec remains `unreviewed` because L0–L3 capsule results,
 reviewed host semantics, and whole-model accuracy remain pending. The retained Phase 1
 `hwbringup_mx_v0` ABI describes an older

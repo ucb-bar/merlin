@@ -12,8 +12,8 @@ The software specification selects `GemminiMxFPConfigs.standaloneMxFPConfig` at
 MXFP6, and MXFP4 contraction contracts. Source-bound elaboration and a local
 Verilator simulator now pass the pinned format tests and bounded compiler
 payload diagnostics at 32³, 64³, and one two-wave 32×32×64 split. A selected
-Spike extension also matched the RTL goldens for 15 exact ELFs, including
-zero-block and two-wave cases. The spec remains **unreviewed**: full numerical
+Spike extension also matched the RTL goldens for 18 exact ELFs, including
+zero-block, two-wave, and one element-subnormal vector per format. The spec remains **unreviewed**: full numerical
 edge cases, a complete toolchain-closure receipt, Phase 0 L0–L3 capsules,
 and whole-model/host semantics still need admission.
 The selected independent MX numerical model is loaded through `MERLIN_MLC_DIR`; its frozen
