@@ -152,66 +152,15 @@ def _add_init(enc: Encoder, acc: Tensor, init) -> Tensor:
 
 
 def _generic_matmul(op, acc_width: int) -> tuple:
-    """Recognize the *computed* i8 matmul, including its region, without reading tags.
-
-    This deliberately accepts one small semantic subset. Other generic bodies may compute
-    convolution, transposed matmul, different integer arithmetic, or arbitrary maps; treating any
-    of those as ``A @ B`` would turn a translation receipt into a false proof. In particular the
-    ``prov.*`` and ``library_call`` labels are ignored here.
-    """
-    from xdsl.dialects.linalg.attrs import IteratorType
-    from xdsl.ir.affine import AffineDimExpr, AffineMap
+    """Use the shared parsed-body recognizer before constructing the SMT reading."""
+    from merlin.frontends.linalg_patterns import InvalidLinalgPattern, recognize_signed_i8_i32_matmul
 
     if acc_width != 32:
         raise UnsupportedSemantics("linalg.generic signed i8 matmul is encoded only with i32 accumulation")
-    if len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
-        raise UnsupportedSemantics("linalg.generic is not a two-input, one-init, one-result contraction")
-    lhs, rhs = op.inputs
-    init = op.outputs[0]
-    if [_elem_width(v.type) for v in (lhs, rhs, init, op.results[0])] != [8, 8, acc_width, acc_width]:
-        raise UnsupportedSemantics("linalg.generic is not signed i8 x i8 -> accumulator-width integer matmul")
-    if op.results[0].type != init.type:
-        raise UnsupportedSemantics("linalg.generic result type differs from its initialized output")
-
-    maps = tuple(x.data for x in op.indexing_maps)
-    d0, d1, d2 = (AffineDimExpr(i) for i in range(3))
-    expected = (
-        AffineMap(3, 0, (d0, d2)),
-        AffineMap(3, 0, (d2, d1)),
-        AffineMap(3, 0, (d0, d1)),
-    )
-    if maps != expected:
-        raise UnsupportedSemantics("linalg.generic indexing maps are not rank-2 matmul maps")
-    if tuple(x.data for x in op.iterator_types) != (
-        IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION
-    ):
-        raise UnsupportedSemantics("linalg.generic iterators are not two parallel and one reduction")
-    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
-        raise UnsupportedSemantics("linalg.generic requires a single scalar body block")
-    block = op.regions[0].block
-    args = list(block.args)
-    if len(args) != 3 or [str(arg.type) for arg in args] != ["i8", "i8", f"i{acc_width}"]:
-        raise UnsupportedSemantics("linalg.generic body argument types do not match signed matmul")
-    body_ops = list(block.ops)
-    if [x.name for x in body_ops] != [
-        "arith.extsi", "arith.extsi", "arith.muli", "arith.addi", "linalg.yield"
-    ]:
-        raise UnsupportedSemantics("linalg.generic body is not signed widen, multiply, add, yield")
-    ex_lhs, ex_rhs, mul, add, yld = body_ops
-    if (list(ex_lhs.operands), list(ex_rhs.operands)) != ([args[0]], [args[1]]):
-        raise UnsupportedSemantics("linalg.generic body does not widen both input elements")
-    if [str(ex_lhs.results[0].type), str(ex_rhs.results[0].type)] != [f"i{acc_width}"] * 2:
-        raise UnsupportedSemantics("linalg.generic body widens to a different integer width")
-    if set(mul.operands) != {ex_lhs.results[0], ex_rhs.results[0]} or len(mul.operands) != 2:
-        raise UnsupportedSemantics("linalg.generic body product does not use both widened inputs")
-    if set(add.operands) != {mul.results[0], args[2]} or len(add.operands) != 2:
-        raise UnsupportedSemantics("linalg.generic body sum does not use product and accumulator")
-    if list(yld.operands) != [add.results[0]]:
-        raise UnsupportedSemantics("linalg.generic body yields a different value")
-    for arith_op in (mul, add):
-        if str(arith_op.results[0].type) != f"i{acc_width}" or arith_op.overflow_flags.data:
-            raise UnsupportedSemantics("linalg.generic body has an unsupported arithmetic width or overflow flag")
-    return lhs, rhs, init
+    try:
+        return recognize_signed_i8_i32_matmul(op)
+    except InvalidLinalgPattern as exc:
+        raise UnsupportedSemantics(str(exc)) from exc
 
 
 def encode_linalg(enc: Encoder, module, *, acc_width: int = 32) -> Encoded:

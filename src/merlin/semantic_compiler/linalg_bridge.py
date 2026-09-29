@@ -89,12 +89,12 @@ def translate_linalg_text(
 ) -> LinalgTranslation:
     """Translate one admitted function, preserving its init and ordered returns.
 
-    The source is parsed by Merlin's established xDSL frontend. The existing
-    verifier's generic-matmul recognizer checks maps, iterators, scalar body,
+    The source is parsed by Merlin's established xDSL frontend. The shared
+    generic-matmul recognizer checks maps, iterators, scalar body,
     signed extension, widths, and operand connections before translation.
     """
     from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.verify.linalg_semantics import UnsupportedSemantics, _generic_matmul
+    from merlin.frontends.linalg_patterns import InvalidLinalgPattern, recognize_signed_i8_i32_matmul
 
     module = parse_mlir_text(source)
     functions = [op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry]
@@ -149,8 +149,8 @@ def translate_linalg_text(
         elif op.name in {"linalg.generic", "linalg.matmul"}:
             if op.name == "linalg.generic":
                 try:
-                    lhs, rhs, init = _generic_matmul(op, 32)
-                except UnsupportedSemantics as exc:
+                    lhs, rhs, init = recognize_signed_i8_i32_matmul(op)
+                except InvalidLinalgPattern as exc:
                     raise LinalgBridgeError(str(exc)) from exc
             else:
                 if len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
