@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import itertools
 import os
 import random
@@ -24,8 +25,8 @@ from merlin.semantic_compiler.allocate import (
 )
 from merlin.semantic_compiler.egg_bridge import explore
 from merlin.semantic_compiler.extract import enumerate_candidates
-from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
-from merlin.semantic_compiler.rules import AddressConstraint, InstructionDescriptor, generate_rules
+from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
 
 
@@ -43,6 +44,25 @@ def bridge(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def _type(policy: str = "exact") -> TensorType:
     return TensorType((2, 2), "i8", policy)
+
+
+def _descriptor(
+    name: str,
+    computation: str,
+    input_storages: tuple[str, ...],
+    output_storage: str,
+    output_dtype: str,
+    numerical_policy: str,
+    ranks: tuple[int, ...],
+    required_attrs: tuple[tuple[str, str | int | float | bool], ...] = (),
+    **kwargs: object,
+) -> InstructionDescriptor:
+    kwargs.setdefault("input_dtypes", (output_dtype,) * len(input_storages))
+    kwargs.setdefault("input_numerical_policies", (numerical_policy,) * len(input_storages))
+    return InstructionDescriptor(
+        name, computation, input_storages, output_storage, output_dtype, numerical_policy, ranks,
+        required_attrs, **kwargs,
+    )
 
 
 def _request() -> KernelRequest:
@@ -63,10 +83,10 @@ def _request() -> KernelRequest:
 
 def _descriptors() -> tuple[InstructionDescriptor, ...]:
     return (
-        InstructionDescriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,)),
-        InstructionDescriptor("load_b", "identity", ("external",), "b", "i8", "exact", (2,)),
-        InstructionDescriptor("finish_a", "use_a", ("a",), "external", "i8", "exact", (2,)),
-        InstructionDescriptor("finish_b", "use_b", ("b",), "external", "i8", "exact", (2,)),
+        _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,)),
+        _descriptor("load_b", "identity", ("external",), "b", "i8", "exact", (2,)),
+        _descriptor("finish_a", "use_a", ("a",), "external", "i8", "exact", (2,)),
+        _descriptor("finish_b", "use_b", ("b",), "external", "i8", "exact", (2,)),
     )
 
 
@@ -102,20 +122,66 @@ def test_semantic_kernel_round_trip_preserves_outputs_policies_and_rejects_unkno
         KernelRequest.from_record(altered)
 
 
+def test_logical_index_maps_are_typed_and_part_of_semantic_identity() -> None:
+    tensor = _type()
+    identity = IndexMap(2, ((1, 0), (0, 1)), (0, 0))
+    transposed = IndexMap(2, ((0, 1), (1, 0)), (0, 0))
+    assert identity.apply((1, 0)) == (1, 0)
+    assert transposed.apply((1, 0)) == (0, 1)
+    a = SemanticNode("a", "copy", ("x",), tensor, index_maps=(identity, identity))
+    b = SemanticNode("b", "copy", ("x",), tensor, index_maps=(transposed, identity))
+    assert a.semantic_key() != b.semantic_key()
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), tensor, effect="input"), a),
+        outputs=("a",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-index-map-1",
+    )
+    assert KernelRequest.from_record(request.record()).record() == request.record()
+    absent_map = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    assert not absent_map.accepts(a, (request.node("x"),))
+    bound_map = _descriptor(
+        "copy", "copy", ("external",), "external", "i8", "exact", (2,), index_maps=(identity, identity),
+    )
+    assert bound_map.accepts(a, (request.node("x"),))
+    assert not bound_map.accepts(b, (request.node("x"),))
+    bad_rank = IndexMap(2, ((1, 0),), (0,))
+    with pytest.raises(ValueError, match="result rank"):
+        KernelRequest(
+            nodes=(SemanticNode("x", "input", (), tensor, effect="input"),
+                   SemanticNode("a", "copy", ("x",), tensor, index_maps=(bad_rank, identity))),
+            outputs=("a",), output_storages=("external",), input_storages=(("x", "external"),),
+            target_identity="synthetic-index-map-1",
+        )
+
+
 def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
     request = _request()
+    with pytest.raises(ValueError, match="explicit dtype and numerical policy"):
+        InstructionDescriptor("missing_input_contract", "identity", ("external",), "a", "i8", "exact", (2,))
     rules = generate_rules(request, _descriptors())
-    assert len(rules.rewrites) == 4
-    changed = InstructionDescriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), (("missing", 1),))
-    assert len(generate_rules(request, (changed,)).rewrites) == 0
-    wrong_policy = InstructionDescriptor("load_a", "identity", ("external",), "a", "i8", "rounded", (2,))
-    assert len(generate_rules(request, (wrong_policy,)).rewrites) == 0
-    wrong_input = InstructionDescriptor(
+    assert len(rules.rewrites) == 5
+    changed = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), (("missing", 1),))
+    assert len(generate_rules(request, (changed,)).rewrites) == 1
+    wrong_policy = _descriptor("load_a", "identity", ("external",), "a", "i8", "rounded", (2,))
+    assert len(generate_rules(request, (wrong_policy,)).rewrites) == 1
+    wrong_input = _descriptor(
         "load_a", "identity", ("external",), "a", "i8", "exact", (2,), input_dtypes=("bf16",)
     )
-    assert len(generate_rules(request, (wrong_input,)).rewrites) == 0
+    assert len(generate_rules(request, (wrong_input,)).rewrites) == 1
+    bounded = _descriptor(
+        "load_a", "identity", ("external",), "a", "i8", "exact", (2,),
+        output_axis_bounds=(AxisBound(0, minimum=2, maximum=16, multiple=2),),
+    )
+    assert len(generate_rules(request, (bounded,)).rewrites) == 2
+    changed_geometry = _descriptor(
+        "load_a", "identity", ("external",), "a", "i8", "exact", (2,),
+        output_axis_bounds=(AxisBound(0, minimum=4, maximum=16, multiple=2),),
+    )
+    assert len(generate_rules(request, (changed_geometry,)).rewrites) == 1
     with pytest.raises(ValueError, match="duplicate required attribute"):
-        InstructionDescriptor(
+        _descriptor(
             "invalid", "identity", ("external",), "a", "i8", "exact", (2,),
             required_attrs=(("axis", 0), ("axis", 1)),
         )
@@ -132,6 +198,96 @@ def test_two_consumers_extract_same_value_into_different_banks(bridge: Path) -> 
     assert result.graph is not None and result.allocation is not None
     assert {value.storage for value in result.graph.values if value.kind == "instruction"} == {"a", "b", "external"}
     assert result.allocation.addresses
+
+
+def test_bit_preserving_rewrite_exposes_instruction_without_copy(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("view", "identity", ("x",), tensor),
+            SemanticNode("y", "consume", ("view",), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-rewrite-1",
+    )
+    consume = _descriptor("consume", "consume", ("external",), "external", "i8", "exact", (2,))
+    result = select_and_allocate(
+        request,
+        (consume,),
+        (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None
+    assert [value.kind for value in result.graph.values] == ["input", "instruction"]
+    assert result.rules is not None
+    assert any(rule.name.startswith("structural_identity_v1") for rule in result.rules.rewrites)
+
+
+def test_two_outputs_share_one_instruction_under_one_node_budget(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), tensor, effect="input"), SemanticNode("y", "copy", ("x",), tensor)),
+        outputs=("y", "y"),
+        output_storages=("external", "external"),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-shared-output-1",
+    )
+    descriptor = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    program = generate_rules(request, (descriptor,))
+    exploration = explore(program, bridge=bridge)
+    candidates = list(enumerate_candidates(exploration, request, program, node_budget=1, max_candidates=2))
+    assert len(candidates) == 1 and candidates[0].instruction_count() == 1
+    selected = lower_candidate(candidates[0], program)
+    assert selected.outputs == (1, 1) and len(selected.values) == 2
+
+
+def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), tensor, effect="input"), SemanticNode("y", "opaque", ("x",), tensor)),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-status-1",
+    )
+    bank = (StorageBank("external", "dram", 2, "word"),)
+    missing = select_and_allocate(request, (), bank, bridge=bridge)
+    assert missing.status == "unsupported_semantics"
+    bounded = select_and_allocate(request, (), bank, bridge=bridge, limits=SearchLimits(egraph_nodes=1))
+    assert bounded.status == "resource_limit"
+
+
+def test_native_selection_runs_when_act_imports_and_executables_are_blocked(
+    bridge: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+    original_run = subprocess.run
+
+    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+        if name.split(".")[0] in {"act", "act_backend", "taidl", "taidl_to"}:
+            raise AssertionError("native selection attempted an ACT import")
+        return original_import(name, *args, **kwargs)
+
+    def guarded_run(command: object, *args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if isinstance(command, (list, tuple)) and any("act" in str(part).lower() for part in command):
+            raise AssertionError("native selection attempted an ACT subprocess")
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    monkeypatch.setattr(subprocess, "run", guarded_run)
+    result = select_and_allocate(
+        _request(),
+        _descriptors(),
+        (StorageBank("external", "dram", 7, "word"), *_banks()[1:]),
+        bridge=bridge,
+        fixed_inputs={"x": 5},
+    )
+    assert result.status == "selected", result.reason
 
 
 def test_alias_overlap_is_rejected_independently(bridge: Path) -> None:
@@ -151,6 +307,28 @@ def test_alias_overlap_is_rejected_independently(bridge: Path) -> None:
     )
     addresses = {value.id: 0 for value in lowered.values}
     valid, reason = check_assignment(lowered, order, addresses, aliased, fixed_inputs={"x": 0})
+    assert not valid and "overlap" in reason
+
+
+def test_pair_registers_and_typed_aliases_share_backing_slots() -> None:
+    graph = CandidateGraph(
+        (
+            Value(0, "fp8_input", "fp8_view", 1, (), "x", "input"),
+            Value(1, "bf16_pair", "bf16_view", 2, (0,), None, "instruction", (
+                AddressConstraint("aligned", "out", value=2),
+            )),
+        ),
+        (1,),
+    )
+    banks = (
+        StorageBank("fp8_view", "tensor_registers", 4, "slot"),
+        StorageBank("bf16_view", "tensor_registers", 4, "slot"),
+    )
+    solved = allocate(graph, (1,), banks, fixed_inputs={"x": 3})
+    assert solved.status == "feasible" and solved.addresses[1] == 0
+    valid, reason = check_assignment(graph, (1,), {0: 3, 1: 3}, banks, fixed_inputs={"x": 3})
+    assert not valid and "range" in reason
+    valid, reason = check_assignment(graph, (1,), {0: 3, 1: 2}, banks, fixed_inputs={"x": 3})
     assert not valid and "overlap" in reason
 
 
@@ -195,12 +373,12 @@ def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) 
         input_storages=(("x", "external"),),
         target_identity="synthetic-variant-1",
     )
-    good = InstructionDescriptor("good", "mix", ("external",), "external", "i8", "exact", (2,))
+    good = _descriptor("good", "mix", ("external",), "external", "i8", "exact", (2,))
     good_program = generate_rules(request, (good,))
     good_symbol = next(symbol for symbol, info in good_program.symbols.items() if info["kind"] == "instruction")
     bad = None
     for number in range(100):
-        trial = InstructionDescriptor(
+        trial = _descriptor(
             f"oversized_{number}", "mix", ("external",), "external", "i8", "exact", (2,), extent=3
         )
         trial_program = generate_rules(request, (trial,))
@@ -234,7 +412,7 @@ def test_generated_address_validity_and_independent_checker(bridge: Path) -> Non
         input_storages=(("x", "external"),),
         target_identity="synthetic-address-map-1",
     )
-    descriptor = InstructionDescriptor(
+    descriptor = _descriptor(
         "offset_move",
         "move",
         ("external",),
@@ -254,7 +432,7 @@ def test_generated_address_validity_and_independent_checker(bridge: Path) -> Non
     tampered[output_id] = 0
     checked, reason = check_assignment(result.graph, result.allocation.order, tampered, bank, fixed_inputs={"x": 1})
     assert not checked and "address map" in reason
-    impossible = InstructionDescriptor(
+    impossible = _descriptor(
         "offset_move",
         "move",
         ("external",),
@@ -402,3 +580,57 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         outcomes[result.status] += 1
         assert (result.status == "feasible") == expected, (index, graph, banks, fixed, result)
     assert all(outcomes.values()), outcomes
+
+
+def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:
+    """30 graphs; two unary steps, up to two instruction choices per step, two storage classes."""
+    for case in range(30):
+        dimension = 2 + case % 3
+        tensor = TensorType((dimension, 2), "i8", "exact")
+        request = KernelRequest(
+            nodes=(
+                SemanticNode("x", "input", (), tensor, effect="input"),
+                SemanticNode("a", "stage_a", ("x",), tensor),
+                SemanticNode("y", "stage_b", ("a",), tensor),
+            ),
+            outputs=("y",),
+            output_storages=("external",),
+            input_storages=(("x", "external"),),
+            target_identity=f"synthetic-choice-{case}",
+        )
+        first: list[str] = []
+        second: list[str] = []
+        descriptors: list[InstructionDescriptor] = []
+        if case % 2 == 0:
+            first.append("register")
+            descriptors.append(_descriptor(
+                "a_register", "stage_a", ("external",), "register", "i8", "exact", (2,),
+                output_axis_bounds=(AxisBound(0, maximum=3),),
+            ))
+        if case % 3 != 0:
+            first.append("external")
+            descriptors.append(_descriptor(
+                "a_external", "stage_a", ("external",), "external", "i8", "exact", (2,),
+            ))
+        if case % 5 != 0:
+            second.append("register")
+            descriptors.append(_descriptor(
+                "b_register", "stage_b", ("register",), "external", "i8", "exact", (2,),
+            ))
+        if case % 7 != 0:
+            second.append("external")
+            descriptors.append(_descriptor(
+                "b_external", "stage_b", ("external",), "external", "i8", "exact", (2,),
+            ))
+        # Independent finite path oracle. No native matcher, extractor or solver is used.
+        legal_first = {storage for storage in first if storage != "register" or dimension <= 3}
+        expected = any(storage in second for storage in legal_first)
+        result = select_and_allocate(
+            request,
+            tuple(descriptors),
+            (StorageBank("external", "dram", 5, "word"), StorageBank("register", "regs", 2, "word")),
+            bridge=bridge,
+            fixed_inputs={"x": 0},
+            limits=SearchLimits(candidate_nodes=2, candidates=8),
+        )
+        assert (result.status == "selected") == expected, (case, result.status, result.reason)

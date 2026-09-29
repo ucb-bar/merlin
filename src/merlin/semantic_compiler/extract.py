@@ -39,6 +39,19 @@ class Candidate:
         data = json.dumps([choice.key() for choice in self.outputs], separators=(",", ":"), sort_keys=True)
         return sha256(data.encode()).hexdigest()
 
+    def instruction_count(self) -> int:
+        """Charge one shared instruction once across all ordered roots."""
+        seen: set[tuple] = set()
+
+        def visit(choice: Choice) -> int:
+            key = choice.key()
+            if key in seen:
+                return 0
+            seen.add(key)
+            return (1 if choice.symbol.startswith("i_") else 0) + sum(visit(child) for child in choice.children)
+
+        return sum(visit(output) for output in self.outputs)
+
 
 def _choices(
     exploration: Exploration,
@@ -135,7 +148,7 @@ def enumerate_candidates(
         for choice in _choices(exploration, request, program, root, storage, node_budget, frozenset()):
             if emitted >= max_candidates:
                 return
-            if sum(item.instruction_count() for item in (*chosen, choice)) <= node_budget:
+            if Candidate((*chosen, choice)).instruction_count() <= node_budget:
                 yield from combine(index + 1, (*chosen, choice))
 
     yield from combine(0, ())
