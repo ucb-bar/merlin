@@ -20,6 +20,8 @@ from merlin.semantic_compiler.allocate import (
     Value,
     allocate,
     check_assignment,
+    instruction_schedule,
+    live_ranges,
     lower_candidate,
     may_prune_interference,
     topological_orders,
@@ -31,7 +33,7 @@ from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
 from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
-from merlin.semantic_compiler.verify import check_selection
+from merlin.semantic_compiler.verify import check_selection, check_timing
 
 
 @pytest.fixture(scope="session")
@@ -64,8 +66,15 @@ def _descriptor(
     kwargs.setdefault("input_dtypes", (output_dtype,) * len(input_storages))
     kwargs.setdefault("input_numerical_policies", (numerical_policy,) * len(input_storages))
     return InstructionDescriptor(
-        name, computation, input_storages, output_storage, output_dtype, numerical_policy, ranks,
-        required_attrs, **kwargs,
+        name,
+        computation,
+        input_storages,
+        output_storage,
+        output_dtype,
+        numerical_policy,
+        ranks,
+        required_attrs,
+        **kwargs,
     )
 
 
@@ -107,9 +116,10 @@ def test_typed_graph_rejects_unknown_initialization_and_policy_merges() -> None:
         TensorType((0, 2), "i8", "exact")
     with pytest.raises(ValueError, match="stateful computation"):
         SemanticNode("bad", "dma_launch", (), _type(), effect="state")
-    assert SemanticNode("v", "sum", (), _type("ordered"), attrs=(("axis", 1),)).semantic_key() != SemanticNode(
-        "other", "sum", (), _type("reassociated"), attrs=(("axis", 1),)
-    ).semantic_key()
+    assert (
+        SemanticNode("v", "sum", (), _type("ordered"), attrs=(("axis", 1),)).semantic_key()
+        != SemanticNode("other", "sum", (), _type("reassociated"), attrs=(("axis", 1),)).semantic_key()
+    )
 
 
 def test_semantic_kernel_round_trip_preserves_outputs_policies_and_rejects_unknown_fields() -> None:
@@ -161,16 +171,29 @@ def test_exact_i32_reference_rejects_unknown_arithmetic_and_shape_errors() -> No
             SemanticNode("y", "input", (), right_type, effect="input"),
             SemanticNode("z", "matmul", ("x", "y"), output_type),
         ),
-        outputs=("z",), output_storages=("external",),
+        outputs=("z",),
+        output_storages=("external",),
         input_storages=(("x", "external"), ("y", "external")),
         target_identity="synthetic-matmul-reference-1",
     )
     values = {"x": TensorValue(left_type, (2, -3)), "y": TensorValue(right_type, (4, 5))}
     assert evaluate_graph(request, values)[0].elements == (-7,)
-    unknown = replace(request, nodes=(*request.nodes[:-1], replace(request.nodes[-1], op="unknown"),))
+    unknown = replace(
+        request,
+        nodes=(
+            *request.nodes[:-1],
+            replace(request.nodes[-1], op="unknown"),
+        ),
+    )
     with pytest.raises(ValueError, match="no semantics"):
         evaluate_graph(unknown, values)
-    bad_shape = replace(request, nodes=(*request.nodes[:-1], replace(request.nodes[-1], type=left_type),))
+    bad_shape = replace(
+        request,
+        nodes=(
+            *request.nodes[:-1],
+            replace(request.nodes[-1], type=left_type),
+        ),
+    )
     with pytest.raises(ValueError, match="shape mismatch"):
         evaluate_graph(bad_shape, values)
 
@@ -195,16 +218,27 @@ def test_logical_index_maps_are_typed_and_part_of_semantic_identity() -> None:
     absent_map = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
     assert not absent_map.accepts(a, (request.node("x"),))
     bound_map = _descriptor(
-        "copy", "copy", ("external",), "external", "i8", "exact", (2,), index_maps=(identity, identity),
+        "copy",
+        "copy",
+        ("external",),
+        "external",
+        "i8",
+        "exact",
+        (2,),
+        index_maps=(identity, identity),
     )
     assert bound_map.accepts(a, (request.node("x"),))
     assert not bound_map.accepts(b, (request.node("x"),))
     bad_rank = IndexMap(2, ((1, 0),), (0,))
     with pytest.raises(ValueError, match="result rank"):
         KernelRequest(
-            nodes=(SemanticNode("x", "input", (), tensor, effect="input"),
-                   SemanticNode("a", "copy", ("x",), tensor, index_maps=(bad_rank, identity))),
-            outputs=("a",), output_storages=("external",), input_storages=(("x", "external"),),
+            nodes=(
+                SemanticNode("x", "input", (), tensor, effect="input"),
+                SemanticNode("a", "copy", ("x",), tensor, index_maps=(bad_rank, identity)),
+            ),
+            outputs=("a",),
+            output_storages=("external",),
+            input_storages=(("x", "external"),),
             target_identity="synthetic-index-map-1",
         )
 
@@ -219,23 +253,46 @@ def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
     assert len(generate_rules(request, (changed,)).rewrites) == 1
     wrong_policy = _descriptor("load_a", "identity", ("external",), "a", "i8", "rounded", (2,))
     assert len(generate_rules(request, (wrong_policy,)).rewrites) == 1
-    wrong_input = _descriptor(
-        "load_a", "identity", ("external",), "a", "i8", "exact", (2,), input_dtypes=("bf16",)
-    )
+    wrong_input = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), input_dtypes=("bf16",))
     assert len(generate_rules(request, (wrong_input,)).rewrites) == 1
     bounded = _descriptor(
-        "load_a", "identity", ("external",), "a", "i8", "exact", (2,),
+        "load_a",
+        "identity",
+        ("external",),
+        "a",
+        "i8",
+        "exact",
+        (2,),
         output_axis_bounds=(AxisBound(0, minimum=2, maximum=16, multiple=2),),
     )
     assert len(generate_rules(request, (bounded,)).rewrites) == 2
     changed_geometry = _descriptor(
-        "load_a", "identity", ("external",), "a", "i8", "exact", (2,),
+        "load_a",
+        "identity",
+        ("external",),
+        "a",
+        "i8",
+        "exact",
+        (2,),
         output_axis_bounds=(AxisBound(0, minimum=4, maximum=16, multiple=2),),
     )
     assert len(generate_rules(request, (changed_geometry,)).rewrites) == 1
+    delayed = replace(_descriptors()[0], input_read_offsets=(3,), completion_offset=4)
+    assert InstructionDescriptor.from_record(delayed.record()) == delayed
+    ordinary_rule = next(rule for rule in rules.rewrites if rule.descriptor_name == "load_a")
+    delayed_rule = next(
+        rule for rule in generate_rules(request, (delayed,)).rewrites if rule.descriptor_name == "load_a"
+    )
+    assert delayed_rule.descriptor_digest != ordinary_rule.descriptor_digest
     with pytest.raises(ValueError, match="duplicate required attribute"):
         _descriptor(
-            "invalid", "identity", ("external",), "a", "i8", "exact", (2,),
+            "invalid",
+            "identity",
+            ("external",),
+            "a",
+            "i8",
+            "exact",
+            (2,),
             required_attrs=(("axis", 0), ("axis", 1)),
         )
 
@@ -255,16 +312,43 @@ def test_two_consumers_extract_same_value_into_different_banks(bridge: Path) -> 
     assert result.check_fingerprint
     assert result.candidate is not None and result.rules is not None and result.exploration is not None
     checked = check_selection(
-        request, _descriptors(), result.rules, result.exploration, result.candidate,
-        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+        request,
+        _descriptors(),
+        result.rules,
+        result.exploration,
+        result.candidate,
+        result.graph,
+        result.allocation,
+        _banks(),
+        fixed_inputs={"x": 0},
     )
     assert checked.valid and checked.fingerprint == result.check_fingerprint
     changed = (replace(_descriptors()[0], extent=2), *_descriptors()[1:])
     tampered = check_selection(
-        request, changed, result.rules, result.exploration, result.candidate,
-        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+        request,
+        changed,
+        result.rules,
+        result.exploration,
+        result.candidate,
+        result.graph,
+        result.allocation,
+        _banks(),
+        fixed_inputs={"x": 0},
     )
     assert not tampered.valid and "differs from the target descriptor" in tampered.reason
+    moved_issue = replace(result.allocation, issue_times=((result.allocation.order[0], 99),))
+    invalid_schedule = check_selection(
+        request,
+        _descriptors(),
+        result.rules,
+        result.exploration,
+        result.candidate,
+        result.graph,
+        moved_issue,
+        _banks(),
+        fixed_inputs={"x": 0},
+    )
+    assert not invalid_schedule.valid and "schedule differs" in invalid_schedule.reason
 
 
 def test_bit_preserving_rewrite_exposes_instruction_without_copy(bridge: Path) -> None:
@@ -336,8 +420,11 @@ def test_repeated_instruction_signature_keeps_each_source_correspondence(bridge:
     }
     assert len(selected_symbols) == 2 and set(selected_symbols.values()) == {"a", "b"}
     result = select_and_allocate(
-        request, (descriptor,), (StorageBank("external", "dram", 4, "word"),),
-        bridge=bridge, fixed_inputs={"x": 0, "y": 1},
+        request,
+        (descriptor,),
+        (StorageBank("external", "dram", 4, "word"),),
+        bridge=bridge,
+        fixed_inputs={"x": 0, "y": 1},
     )
     assert result.status == "selected", result.reason
     assert result.check_fingerprint
@@ -361,8 +448,11 @@ def test_identical_pure_expressions_share_an_instruction(bridge: Path) -> None:
     exploration = explore(program, bridge=bridge)
     assert exploration.roots[0] == exploration.roots[1]
     selected = select_and_allocate(
-        request, (descriptor,), (StorageBank("external", "dram", 2, "word"),),
-        bridge=bridge, fixed_inputs={"x": 0},
+        request,
+        (descriptor,),
+        (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
     )
     assert selected.status == "selected", selected.reason
     assert selected.graph is not None and selected.graph.outputs == (1, 1)
@@ -385,7 +475,8 @@ def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path)
 
 
 def test_native_selection_runs_when_act_imports_and_executables_are_blocked(
-    bridge: Path, monkeypatch: pytest.MonkeyPatch,
+    bridge: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original_import = builtins.__import__
     original_run = subprocess.run
@@ -413,7 +504,8 @@ def test_native_selection_runs_when_act_imports_and_executables_are_blocked(
 
 
 def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original_import = builtins.__import__
     original_run = subprocess.run
@@ -432,17 +524,28 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
+    assert profile.record()["schema"] == "merlin.native_target_profile.v2"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v1")
+    with pytest.raises(ValueError, match="schema"):
+        NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(
-        profile, destination=tmp_path / "target-a", crate=crate, cargo_target_dir=tmp_path / "cargo",
+        profile,
+        destination=tmp_path / "target-a",
+        crate=crate,
+        cargo_target_dir=tmp_path / "cargo",
         source_revision="public-test-revision",
     )
     assert original.select(_request(), fixed_inputs={"x": 0}).status == "selected"
     smaller = NativeTargetProfile(
-        "synthetic-revision-2", _descriptors(),
+        "synthetic-revision-2",
+        _descriptors(),
         (StorageBank("external", "dram", 1, "word"), *_banks()[1:]),
     )
     second = build_native_snapshot(
-        smaller, destination=tmp_path / "target-b", crate=crate, cargo_target_dir=tmp_path / "cargo",
+        smaller,
+        destination=tmp_path / "target-b",
+        crate=crate,
+        cargo_target_dir=tmp_path / "cargo",
         source_revision="public-test-revision",
     )
     assert second.profile.digest() != original.profile.digest()
@@ -482,9 +585,16 @@ def test_pair_registers_and_typed_aliases_share_backing_slots() -> None:
     graph = CandidateGraph(
         (
             Value(0, "fp8_input", "fp8_view", 1, (), "x", "input"),
-            Value(1, "bf16_pair", "bf16_view", 2, (0,), None, "instruction", (
-                AddressConstraint("aligned", "out", value=2),
-            )),
+            Value(
+                1,
+                "bf16_pair",
+                "bf16_view",
+                2,
+                (0,),
+                None,
+                "instruction",
+                (AddressConstraint("aligned", "out", value=2),),
+            ),
         ),
         (1,),
     )
@@ -527,8 +637,11 @@ def test_native_controller_prunes_only_later_same_base_interference_supersets(br
         _descriptor("b", "branch_b", ("external",), "external", "i8", "exact", (2,)),
     )
     result = select_and_allocate(
-        request, descriptors, (StorageBank("external", "dram", 2, "word"),),
-        bridge=bridge, fixed_inputs={"x": 0},
+        request,
+        descriptors,
+        (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
     )
     assert result.status == "compile_error"
     assert result.rejected_allocation == 1 and result.pruned_orders == 1
@@ -554,6 +667,93 @@ def test_order_fallback_recovers_a_feasible_schedule() -> None:
     assert any(result.status == "feasible" for result in results[1:])
 
 
+def test_assignment_rejects_duplicate_and_reversed_instruction_orders() -> None:
+    graph = CandidateGraph(
+        (
+            Value(0, "input", "external", 1, (), "x", "input"),
+            Value(1, "first", "register", 1, (0,), None, "instruction"),
+            Value(2, "second", "external", 1, (1,), None, "instruction"),
+        ),
+        (2,),
+    )
+    banks = (StorageBank("external", "dram", 2, "word"), StorageBank("register", "regs", 1, "word"))
+    addresses = {0: 0, 1: 0, 2: 1}
+    valid, reason = check_assignment(graph, (1, 1, 2), addresses, banks)
+    assert not valid and "duplicates" in reason
+    valid, reason = check_assignment(graph, (2, 1), addresses, banks)
+    assert not valid and "before its instruction producer" in reason
+
+
+def test_delayed_operand_read_extends_lifetime_and_forces_serial_issue() -> None:
+    graph = CandidateGraph(
+        (
+            Value(0, "pointer", "scalar", 1, (), "pointer", "input"),
+            Value(
+                1, "delayed_read", "command", 1, (0,), None, "instruction", input_read_offsets=(3,), completion_offset=4
+            ),
+            Value(2, "reuse_scalar", "scalar", 1, (), None, "instruction"),
+        ),
+        (2,),
+    )
+    banks = (StorageBank("scalar", "registers", 1, "word"), StorageBank("command", "cmd", 1, "word"))
+    order = (1, 2)
+    assert instruction_schedule(graph, order) == {1: (1, 5), 2: (6, 6)}
+    assert live_ranges(graph, order)[0] == (0, 4)
+    result = allocate(graph, order, banks, fixed_inputs={"pointer": 0})
+    assert result.status == "feasible" and result.issue_times == ((1, 1), (2, 6))
+    assert check_timing(graph, order, result.issue_times) == (True, "")
+    timed, reason = check_timing(graph, order, ((1, 1), (2, 2)))
+    assert not timed and "prior completion" in reason
+    with pytest.raises(ValueError, match="precede instruction completion"):
+        _descriptor(
+            "bad_timing",
+            "move",
+            ("scalar",),
+            "command",
+            "i8",
+            "exact",
+            (2,),
+            input_read_offsets=(5,),
+            completion_offset=4,
+        )
+
+
+def test_generated_timing_reaches_native_selection_and_checked_allocation(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("y", "move", ("x",), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-delayed-read-1",
+    )
+    descriptor = _descriptor(
+        "delayed_move",
+        "move",
+        ("external",),
+        "external",
+        "i8",
+        "exact",
+        (2,),
+        input_read_offsets=(3,),
+        completion_offset=4,
+    )
+    result = select_and_allocate(
+        request,
+        (descriptor,),
+        (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+    )
+    assert result.status == "selected" and result.graph is not None and result.allocation is not None
+    assert result.allocation.issue_times == ((result.graph.outputs[0], 1),)
+    assert live_ranges(result.graph, result.allocation.order)[0] == (0, 4)
+    assert result.allocation.addresses[result.graph.outputs[0]] == 1
+
+
 def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
@@ -571,9 +771,7 @@ def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) 
     good_symbol = next(symbol for symbol, info in good_program.symbols.items() if info["kind"] == "instruction")
     bad = None
     for number in range(100):
-        trial = _descriptor(
-            f"oversized_{number}", "mix", ("external",), "external", "i8", "exact", (2,), extent=3
-        )
+        trial = _descriptor(f"oversized_{number}", "mix", ("external",), "external", "i8", "exact", (2,), extent=3)
         trial_program = generate_rules(request, (trial,))
         trial_symbol = next(symbol for symbol, info in trial_program.symbols.items() if info["kind"] == "instruction")
         if trial_symbol < good_symbol:
@@ -643,9 +841,16 @@ def test_address_relations_require_explicit_common_units() -> None:
     graph = CandidateGraph(
         (
             Value(0, "input", "bytes", 1, (), "x", "input"),
-            Value(1, "instruction", "rows", 1, (0,), None, "instruction", (
-                AddressConstraint("eq_offset", "out", "in0", 1),
-            )),
+            Value(
+                1,
+                "instruction",
+                "rows",
+                1,
+                (0,),
+                None,
+                "instruction",
+                (AddressConstraint("eq_offset", "out", "in0", 1),),
+            ),
         ),
         (1,),
     )
@@ -796,25 +1001,57 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
         descriptors: list[InstructionDescriptor] = []
         if case % 2 == 0:
             first.append("register")
-            descriptors.append(_descriptor(
-                "a_register", "stage_a", ("external",), "register", "i8", "exact", (2,),
-                output_axis_bounds=(AxisBound(0, maximum=3),),
-            ))
+            descriptors.append(
+                _descriptor(
+                    "a_register",
+                    "stage_a",
+                    ("external",),
+                    "register",
+                    "i8",
+                    "exact",
+                    (2,),
+                    output_axis_bounds=(AxisBound(0, maximum=3),),
+                )
+            )
         if case % 3 != 0:
             first.append("external")
-            descriptors.append(_descriptor(
-                "a_external", "stage_a", ("external",), "external", "i8", "exact", (2,),
-            ))
+            descriptors.append(
+                _descriptor(
+                    "a_external",
+                    "stage_a",
+                    ("external",),
+                    "external",
+                    "i8",
+                    "exact",
+                    (2,),
+                )
+            )
         if case % 5 != 0:
             second.append("register")
-            descriptors.append(_descriptor(
-                "b_register", "stage_b", ("register",), "external", "i8", "exact", (2,),
-            ))
+            descriptors.append(
+                _descriptor(
+                    "b_register",
+                    "stage_b",
+                    ("register",),
+                    "external",
+                    "i8",
+                    "exact",
+                    (2,),
+                )
+            )
         if case % 7 != 0:
             second.append("external")
-            descriptors.append(_descriptor(
-                "b_external", "stage_b", ("external",), "external", "i8", "exact", (2,),
-            ))
+            descriptors.append(
+                _descriptor(
+                    "b_external",
+                    "stage_b",
+                    ("external",),
+                    "external",
+                    "i8",
+                    "exact",
+                    (2,),
+                )
+            )
         # Independent finite path oracle. No native matcher, extractor or solver is used.
         legal_first = {storage for storage in first if storage != "register" or dimension <= 3}
         expected = any(storage in second for storage in legal_first)
