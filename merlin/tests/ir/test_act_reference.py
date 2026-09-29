@@ -38,6 +38,13 @@ def test_restricted_reader_never_executes_generated_python() -> None:
         assert "non-API call" in str(exc)
     else:
         raise AssertionError("executable Python was accepted")
+    invalid_address = ASSEMBLY.replace("'addr': 16", "'addr': 64")
+    try:
+        parse_act_assembly(invalid_address)
+    except ValueError as exc:
+        assert "out of range" in str(exc)
+    else:
+        raise AssertionError("out-of-range output was accepted")
 
 
 def test_reference_runner_requires_exact_binary_and_fresh_parseable_output(tmp_path: Path) -> None:
@@ -47,6 +54,7 @@ def test_reference_runner_requires_exact_binary_and_fresh_parseable_output(tmp_p
     root = tmp_path / "jobs"
     ready = run_act_reference(backend=backend, expected_backend_sha256=digest, hlo=b"HLO source A", artifact_root=root)
     assert ready.status == "candidate_imported" and ready.assembly is not None
+    assert ready.engine == "act_reference"
     assert ready.input_sha256 == hashlib.sha256(b"HLO source A").hexdigest()
     assert ready.artifact_root is not None and (ready.artifact_root / "identity.json").is_file()
     changed = run_act_reference(

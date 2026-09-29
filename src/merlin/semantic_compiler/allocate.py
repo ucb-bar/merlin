@@ -26,6 +26,15 @@ class StorageBank:
         if not self.name or not self.backing or not self.unit or self.capacity <= 0 or self.alignment <= 0:
             raise ValueError("storage bank needs positive geometry and explicit units")
 
+    def record(self) -> dict[str, str | int]:
+        return vars(self).copy()
+
+    @classmethod
+    def from_record(cls, row: dict[str, str | int]) -> StorageBank:
+        if set(row) != {"name", "backing", "capacity", "unit", "alignment"}:
+            raise ValueError("storage bank has missing or unknown fields")
+        return cls(**row)
+
 
 @dataclass(frozen=True)
 class Value:
@@ -127,6 +136,24 @@ def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tupl
             end = len(order) + 1
         ranges[value.id] = (start, end)
     return ranges
+
+
+def interference_edges(
+    graph: CandidateGraph, order: tuple[int, ...], banks: tuple[StorageBank, ...],
+) -> frozenset[tuple[int, int]]:
+    """Canonical storage-conflict edges; order affects only this part of our formula."""
+    bank_map = _geometry(banks)
+    ranges = live_ranges(graph, order)
+    edges = set()
+    for left_index, left in enumerate(graph.values):
+        for right in graph.values[left_index + 1 :]:
+            if bank_map[left.storage].backing != bank_map[right.storage].backing:
+                continue
+            lo1, hi1 = ranges[left.id]
+            lo2, hi2 = ranges[right.id]
+            if lo1 <= hi2 and lo2 <= hi1:
+                edges.add((left.id, right.id))
+    return frozenset(edges)
 
 
 @dataclass(frozen=True)

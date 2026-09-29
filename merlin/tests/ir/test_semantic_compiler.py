@@ -7,6 +7,7 @@ import itertools
 import os
 import random
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from merlin.semantic_compiler.extract import enumerate_candidates
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
+from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
 
 
 @pytest.fixture(scope="session")
@@ -194,6 +196,7 @@ def test_two_consumers_extract_same_value_into_different_banks(bridge: Path) -> 
     assert candidates
     result = select_and_allocate(request, _descriptors(), _banks(), bridge=bridge, fixed_inputs={"x": 0})
     assert result.status == "selected", result.reason
+    assert result.engine == "merlin_native"
     assert result.graph is not None and result.allocation is not None
     assert {value.storage for value in result.graph.values if value.kind == "instruction"} == {"a", "b", "external"}
     assert result.allocation.addresses
@@ -289,6 +292,52 @@ def test_native_selection_runs_when_act_imports_and_executables_are_blocked(
     assert result.status == "selected", result.reason
 
 
+def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+    original_run = subprocess.run
+
+    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+        if name.split(".")[0] in {"act", "act_backend", "taidl", "taidl_to"}:
+            raise AssertionError("native snapshot generation attempted an ACT import")
+        return original_import(name, *args, **kwargs)
+
+    def guarded_run(command: object, *args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if isinstance(command, (list, tuple)) and any("act" in str(part).lower() for part in command):
+            raise AssertionError("native snapshot generation attempted an ACT subprocess")
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    monkeypatch.setattr(subprocess, "run", guarded_run)
+    crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
+    profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
+    original = build_native_snapshot(
+        profile, destination=tmp_path / "target-a", crate=crate, cargo_target_dir=tmp_path / "cargo",
+        source_revision="public-test-revision",
+    )
+    assert original.select(_request(), fixed_inputs={"x": 0}).status == "selected"
+    smaller = NativeTargetProfile(
+        "synthetic-revision-2", _descriptors(),
+        (StorageBank("external", "dram", 1, "word"), *_banks()[1:]),
+    )
+    second = build_native_snapshot(
+        smaller, destination=tmp_path / "target-b", crate=crate, cargo_target_dir=tmp_path / "cargo",
+        source_revision="public-test-revision",
+    )
+    assert second.profile.digest() != original.profile.digest()
+    with pytest.raises(ValueError, match="target identity"):
+        second.select(_request())
+    revised_request = replace(_request(), target_identity="synthetic-revision-2")
+    assert second.select(revised_request, fixed_inputs={"x": 0}).status == "compile_error"
+    profile_path = second.root / "profile.json"
+    profile_path.write_text(profile_path.read_text().replace("synthetic-revision-2", "tampered"))
+    with pytest.raises(ValueError, match="differs from manifest"):
+        open_native_snapshot(second.root)
+    with pytest.raises(ValueError, match="changed after"):
+        second.select(revised_request)
+
+
 def test_alias_overlap_is_rejected_independently(bridge: Path) -> None:
     request = _request()
     rules = generate_rules(request, _descriptors())
@@ -338,6 +387,31 @@ def test_unsat_pruning_direction_and_base_identity() -> None:
     assert not may_prune_interference("same", "same", large, small, failed_status="infeasible_candidate")
     assert not may_prune_interference("old", "new", small, large, failed_status="infeasible_candidate")
     assert not may_prune_interference("same", "same", small, large, failed_status="search_timeout")
+
+
+def test_native_controller_prunes_only_later_same_base_interference_supersets(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "branch_a", ("x",), tensor),
+            SemanticNode("b", "branch_b", ("x",), tensor),
+        ),
+        outputs=("a", "b"),
+        output_storages=("external", "external"),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-prune-1",
+    )
+    descriptors = (
+        _descriptor("a", "branch_a", ("external",), "external", "i8", "exact", (2,)),
+        _descriptor("b", "branch_b", ("external",), "external", "i8", "exact", (2,)),
+    )
+    result = select_and_allocate(
+        request, descriptors, (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge, fixed_inputs={"x": 0},
+    )
+    assert result.status == "compile_error"
+    assert result.rejected_allocation == 1 and result.pruned_orders == 1
 
 
 def test_order_fallback_recovers_a_feasible_schedule() -> None:

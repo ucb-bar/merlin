@@ -44,6 +44,12 @@ class AddressConstraint:
     def record(self) -> dict[str, Any]:
         return {"kind": self.kind, "lhs": self.lhs, "rhs": self.rhs, "value": self.value}
 
+    @classmethod
+    def from_record(cls, row: dict[str, Any]) -> AddressConstraint:
+        if set(row) != {"kind", "lhs", "rhs", "value"}:
+            raise ValueError("address constraint has missing or unknown fields")
+        return cls(**row)
+
 
 @dataclass(frozen=True)
 class AxisBound:
@@ -74,6 +80,12 @@ class AxisBound:
 
     def record(self) -> dict[str, int | None]:
         return {"axis": self.axis, "minimum": self.minimum, "maximum": self.maximum, "multiple": self.multiple}
+
+    @classmethod
+    def from_record(cls, row: dict[str, Any]) -> AxisBound:
+        if set(row) != {"axis", "minimum", "maximum", "multiple"}:
+            raise ValueError("axis bound has missing or unknown fields")
+        return cls(**row)
 
 
 @dataclass(frozen=True)
@@ -154,6 +166,33 @@ class InstructionDescriptor:
             "output_axis_bounds": [bound.record() for bound in self.output_axis_bounds],
             "index_maps": [index_map.record() for index_map in self.index_maps],
         }
+
+    @classmethod
+    def from_record(cls, row: dict[str, Any]) -> InstructionDescriptor:
+        expected = {
+            "name", "computation", "input_storages", "output_storage", "output_dtype", "numerical_policy",
+            "ranks", "required_attrs", "extent", "validity", "input_dtypes", "input_numerical_policies",
+            "input_ranks", "output_axis_bounds", "index_maps",
+        }
+        if set(row) != expected:
+            raise ValueError("instruction descriptor has missing or unknown fields")
+        return cls(
+            name=row["name"],
+            computation=row["computation"],
+            input_storages=tuple(row["input_storages"]),
+            output_storage=row["output_storage"],
+            output_dtype=row["output_dtype"],
+            numerical_policy=row["numerical_policy"],
+            ranks=tuple(row["ranks"]),
+            required_attrs=tuple(sorted(row["required_attrs"].items())),
+            extent=row["extent"],
+            validity=tuple(AddressConstraint.from_record(item) for item in row["validity"]),
+            input_dtypes=tuple(row["input_dtypes"]),
+            input_numerical_policies=tuple(row["input_numerical_policies"]),
+            input_ranks=tuple(row["input_ranks"]),
+            output_axis_bounds=tuple(AxisBound.from_record(item) for item in row["output_axis_bounds"]),
+            index_maps=tuple(IndexMap.from_record(item) for item in row["index_maps"]),
+        )
 
 
 @dataclass(frozen=True)

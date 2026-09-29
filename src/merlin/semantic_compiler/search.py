@@ -9,7 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .allocate import AllocationResult, CandidateGraph, StorageBank, allocate, lower_candidate, topological_orders
+from .allocate import (
+    AllocationResult,
+    CandidateGraph,
+    StorageBank,
+    allocate,
+    interference_edges,
+    lower_candidate,
+    may_prune_interference,
+    topological_orders,
+)
 from .egg_bridge import EGraphUnavailable, Exploration, explore
 from .extract import Candidate, enumerate_candidates
 from .model import KernelRequest
@@ -44,6 +53,11 @@ class SearchResult:
     exploration: Exploration | None
     rules: RuleProgram | None
     reason: str = ""
+    pruned_orders: int = 0
+
+    @property
+    def engine(self) -> str:
+        return "merlin_native"
 
 
 def select_and_allocate(
@@ -70,6 +84,7 @@ def select_and_allocate(
     candidate_attempts = 0
     ordering_attempts = 0
     rejected_allocation = 0
+    pruned_orders = 0
     seen: set[str] = set()
     inconclusive = False
     for budget in range(1, limits.candidate_nodes + 1):
@@ -86,8 +101,21 @@ def select_and_allocate(
             seen.add(digest)
             candidate_attempts += 1
             candidate_graph = lower_candidate(candidate, program)
+            # Each candidate owns one fixed base formula: domains, validity,
+            # def-use, fixed I/O and geometry. Orders change only its
+            # interference edge set in this finite allocation model.
+            candidate_base = candidate.digest()
+            failed_edges: list[frozenset[tuple[int, int]]] = []
             for order in topological_orders(candidate_graph, limit=limits.orders_per_candidate):
                 ordering_attempts += 1
+                edges = interference_edges(candidate_graph, order, banks)
+                if any(
+                    may_prune_interference(candidate_base, candidate_base, prior, edges,
+                                           failed_status="infeasible_candidate")
+                    for prior in failed_edges
+                ):
+                    pruned_orders += 1
+                    continue
                 result = allocate(
                     candidate_graph,
                     order,
@@ -107,8 +135,11 @@ def select_and_allocate(
                         rejected_allocation,
                         graph,
                         program,
+                        pruned_orders=pruned_orders,
                     )
                 rejected_allocation += 1
+                if result.status == "infeasible_candidate":
+                    failed_edges.append(edges)
                 if result.status in {"search_timeout", "tool_unavailable", "modeling_failure", "unqualified_target"}:
                     inconclusive = True
                 if result.status == "tool_unavailable":
@@ -124,6 +155,7 @@ def select_and_allocate(
                         graph,
                         program,
                         result.reason,
+                        pruned_orders,
                     )
             if candidate_attempts >= limits.candidates:
                 break
@@ -149,4 +181,5 @@ def select_and_allocate(
         graph,
         program,
         "bounded native search found no checked placement",
+        pruned_orders,
     )

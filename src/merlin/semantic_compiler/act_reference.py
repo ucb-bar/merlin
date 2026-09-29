@@ -40,6 +40,10 @@ class ActRun:
     assembly: ActAssembly | None
     reason: str = ""
 
+    @property
+    def engine(self) -> str:
+        return "act_reference"
+
 
 def _literal(node: ast.AST) -> Any:
     if isinstance(node, ast.Constant) and type(node.value) in {int, str, bool, type(None)}:
@@ -58,6 +62,27 @@ def _literal(node: ast.AST) -> Any:
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "jnp":
         return f"jnp.{node.attr}"
     raise ValueError("ACT output contains unsupported executable metadata")
+
+
+def _validate_metadata(metadata: dict[str, Any]) -> None:
+    capacity = metadata["hbm"]
+    if type(capacity) is not int or capacity <= 0:
+        raise ValueError("ACT HBM capacity is invalid")
+    if not isinstance(metadata["input"], list) or not isinstance(metadata["output"], list):
+        raise ValueError("ACT input/output metadata is invalid")
+    if not isinstance(metadata["constant"], list) or not metadata["output"]:
+        raise ValueError("ACT constant/output metadata is invalid")
+    for role in ("input", "constant", "output"):
+        for tensor in metadata[role]:
+            if not isinstance(tensor, dict) or set(tensor) != {"addr", "shape", "dtype"}:
+                raise ValueError(f"ACT {role} tensor metadata is invalid")
+            address, shape, dtype = tensor["addr"], tensor["shape"], tensor["dtype"]
+            if type(address) is not int or address < 0 or address >= capacity:
+                raise ValueError(f"ACT {role} address is out of range")
+            if not isinstance(shape, list) or not shape or any(type(dim) is not int or dim <= 0 for dim in shape):
+                raise ValueError(f"ACT {role} shape is invalid")
+            if not isinstance(dtype, str) or not dtype.startswith("jnp."):
+                raise ValueError(f"ACT {role} dtype is invalid")
 
 
 def parse_act_assembly(source: str) -> ActAssembly:
@@ -89,8 +114,7 @@ def parse_act_assembly(source: str) -> ActAssembly:
     metadata = {keyword.arg: _literal(keyword.value) for keyword in decorator.keywords}
     if set(metadata) != {"hbm", "input", "constant", "output"}:
         raise ValueError("ACT kernel metadata is incomplete")
-    if not isinstance(metadata["input"], list) or not isinstance(metadata["output"], list):
-        raise ValueError("ACT input/output metadata is invalid")
+    _validate_metadata(metadata)
     instructions: list[ActInstruction] = []
     for statement in inner.body:
         if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
