@@ -53,14 +53,17 @@ evidence:
       - {format: mxfp6, shape: [32, 32, 32], generated_program_sha256: 6b286f83bceca567eb917897173adc709c6890e96d29bc355ca911215acc08a0, mismatches: 0, simulator_exit_code: 0}
       - {format: mxfp4, shape: [32, 32, 32], generated_program_sha256: 3f51a08956995159f731ff26172cc4559fb3730937e3ad64ad54888d4d454f3a, mismatches: 0, simulator_exit_code: 0}
   bounded_command_emitter_smoke:
-    status: three_single_shape_diagnostic_exact_bf16_matches
+    status: six_two_shape_diagnostic_exact_bf16_matches
     emitter: mx_gemmini_support.diagnostic_program.emit_single_window_baremetal_c
-    support_package_commit: 3500d8e30434bc467b5d9994c6a3c146af2c42ae
-    scope: one_32x32x32_scale_window_no_k_waves
+    support_package_commit: dcc4b4a6e9270573cd45a29ab9450096d3b552a8
+    scope: square_32_and_64_single_scale_window_no_k_waves
     cases:
-      - {format: mxfp8, generated_program_sha256: 41bf9f3f08811893ed226b50a9ac758de8dc764de1aaa97ad6589cb036a53b33, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, generated_program_sha256: de344f829466fd4ca356e12d60e3c3eabf8a46d9095dfb27ad8120183a76deba, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, generated_program_sha256: 64aebb46463c0bc4ed11c9af283bdf85b1b22bd4b259cb6b2046ed86b8718056, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp8, shape: [32, 32, 32], generated_program_sha256: 41bf9f3f08811893ed226b50a9ac758de8dc764de1aaa97ad6589cb036a53b33, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp6, shape: [32, 32, 32], generated_program_sha256: de344f829466fd4ca356e12d60e3c3eabf8a46d9095dfb27ad8120183a76deba, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp4, shape: [32, 32, 32], generated_program_sha256: 64aebb46463c0bc4ed11c9af283bdf85b1b22bd4b259cb6b2046ed86b8718056, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp8, shape: [64, 64, 64], generated_program_sha256: 264fc99e0238f525fbd9054ef2b2709a0c344492a8e3c5fb228c8d7705294bc4, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp6, shape: [64, 64, 64], generated_program_sha256: 526d4c213ae5ea639b7f489b30358f6929aefae98f9944e910acc64a1140b4e5, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp4, shape: [64, 64, 64], generated_program_sha256: e07649ff636f0b3e03d7bdb3ea4df783f8d0bda603b46e478d681dcae4e65ad3, mismatches: 0, simulator_exit_code: 0}
   qualification: pending_phase0_capsules_host_and_full_model
 
 # The top-level format is the recipe's default; each additional MX format has

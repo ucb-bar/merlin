@@ -100,9 +100,10 @@ The FP6 case also used the packer's exact code-to-index mapping and packed
 those bytes on the selected RTL simulator. Each format matched all four BF16
 output quadrants with zero mismatches and exited zero. These validate one
 packed payload path per format. A bounded out-of-tree emitter then generated
-the same 32×32×32 configuration, LUT and scale uploads, operand transfers,
-loop, and BF16 readout from each coherent payload. All three emitted programs
-also matched the four quadrants exactly on that simulator. It refuses other
+the configuration, LUT and scale uploads, operand transfers, loop, and BF16
+readout from coherent payloads at 32×32×32 and 64×64×64. All six emitted
+programs matched their four BF16 quadrants exactly on that simulator. The 64³
+FP6 program uploaded 32 LUT lines per operand. The emitter refuses other
 shapes and K waves. The provider still has no Merlin executable backend or
 general command scheduler.
 An isolated check passed model2MLIR's quantized Torch tensors through it for
