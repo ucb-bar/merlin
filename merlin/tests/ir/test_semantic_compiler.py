@@ -407,6 +407,30 @@ def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
         )
 
 
+def test_input_axis_precondition_rejects_a_different_reduction_length() -> None:
+    source_type = TensorType((2, 3), "i8", "exact")
+    output_type = TensorType((2, 2), "i8", "exact")
+    nodes = (SemanticNode("x", "input", (), source_type, effect="input"),
+             SemanticNode("y", "reduce", ("x",), output_type))
+    request = KernelRequest(nodes, ("y",), ("external",), (("x", "external"),),
+                            "synthetic-input-bound-1")
+    descriptor = _descriptor(
+        "reduce_k3", "reduce", ("external",), "external", "i8", "exact", (2,),
+        input_ranks=(2,), input_axis_bounds=((AxisBound(1, 3, 3),),),
+        shape_contract="relations", shape_equalities=(AxisEquality("in0", 0, "out", 0),),
+    )
+    assert InstructionDescriptor.from_record(descriptor.record()) == descriptor
+    assert descriptor.accepts(nodes[1], (nodes[0],))
+    changed = replace(request, nodes=(replace(nodes[0], type=TensorType((2, 4), "i8", "exact")), nodes[1]))
+    assert not any(rule.descriptor_name == "reduce_k3" for rule in generate_rules(changed, (descriptor,)).rewrites)
+    k4 = replace(descriptor, input_axis_bounds=((AxisBound(1, 4, 4),),))
+    assert any(rule.descriptor_name == "reduce_k3" for rule in generate_rules(changed, (k4,)).rewrites)
+    with pytest.raises(ValueError, match="explicit rank"):
+        replace(descriptor, input_ranks=())
+    with pytest.raises(ValueError, match="duplicated"):
+        replace(descriptor, input_axis_bounds=((AxisBound(1, 3, 3), AxisBound(1, 3, 3)),))
+
+
 def test_two_consumers_extract_same_value_into_different_banks(bridge: Path) -> None:
     request = _request()
     rules = generate_rules(request, _descriptors())
@@ -893,8 +917,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v5"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v4")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v6"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v5")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(

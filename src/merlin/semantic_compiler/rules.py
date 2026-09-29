@@ -132,6 +132,7 @@ class InstructionDescriptor:
     input_numerical_policies: tuple[str, ...] = ()
     input_ranks: tuple[int, ...] = ()
     output_axis_bounds: tuple[AxisBound, ...] = ()
+    input_axis_bounds: tuple[tuple[AxisBound, ...], ...] = ()
     index_maps: tuple[IndexMap, ...] = ()
     # Offsets use issued instruction cycles. A delayed operand read keeps its
     # physical source live; completion is also the conservative result-ready
@@ -165,6 +166,13 @@ class InstructionDescriptor:
             raise ValueError("input ranks must be positive")
         if len({bound.axis for bound in self.output_axis_bounds}) != len(self.output_axis_bounds):
             raise ValueError("duplicate output axis bound")
+        if self.input_axis_bounds and (len(self.input_axis_bounds) != arity or len(self.input_ranks) != arity):
+            raise ValueError("input axis bounds need an explicit rank for every operand")
+        for index, bounds in enumerate(self.input_axis_bounds):
+            if len({bound.axis for bound in bounds}) != len(bounds) or any(
+                bound.axis >= self.input_ranks[index] for bound in bounds
+            ):
+                raise ValueError("input axis bound is duplicated or exceeds operand rank")
         if self.index_maps and len(self.index_maps) != arity + 1:
             raise ValueError("instruction index maps need one map per operand and result")
         if self.shape_contract not in {"equal", "relations"}:
@@ -224,6 +232,10 @@ class InstructionDescriptor:
             and node.type.numerical_policy == self.numerical_policy
             and len(node.type.shape) in self.ranks
             and all(bound.accepts(node.type.shape) for bound in self.output_axis_bounds)
+            and (not self.input_axis_bounds or all(
+                all(bound.accepts(value.type.shape) for bound in bounds)
+                for value, bounds in zip(inputs, self.input_axis_bounds)
+            ))
             and node.index_maps == self.index_maps
             # Semantic attributes are part of the computation. An undeclared
             # attribute cannot silently become a hardware don't-care.
@@ -261,6 +273,7 @@ class InstructionDescriptor:
             "input_numerical_policies": list(self.input_numerical_policies),
             "input_ranks": list(self.input_ranks),
             "output_axis_bounds": [bound.record() for bound in self.output_axis_bounds],
+            "input_axis_bounds": [[bound.record() for bound in bounds] for bounds in self.input_axis_bounds],
             "index_maps": [index_map.record() for index_map in self.index_maps],
             "input_read_offsets": list(self.input_read_offsets),
             "completion_offset": self.completion_offset,
@@ -287,6 +300,7 @@ class InstructionDescriptor:
             "input_numerical_policies",
             "input_ranks",
             "output_axis_bounds",
+            "input_axis_bounds",
             "index_maps",
             "input_read_offsets",
             "completion_offset",
@@ -312,6 +326,9 @@ class InstructionDescriptor:
             input_numerical_policies=tuple(row["input_numerical_policies"]),
             input_ranks=tuple(row["input_ranks"]),
             output_axis_bounds=tuple(AxisBound.from_record(item) for item in row["output_axis_bounds"]),
+            input_axis_bounds=tuple(
+                tuple(AxisBound.from_record(item) for item in bounds) for bounds in row["input_axis_bounds"]
+            ),
             index_maps=tuple(IndexMap.from_record(item) for item in row["index_maps"]),
             input_read_offsets=tuple(row["input_read_offsets"]),
             completion_offset=row["completion_offset"],

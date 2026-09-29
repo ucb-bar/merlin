@@ -126,7 +126,11 @@ def check_selection(
                     return "selected physical copy changes tensor type or numerical policy"
                 if len(source.type.shape) not in descriptor.ranks or (
                     descriptor.input_ranks and len(source.type.shape) != descriptor.input_ranks[0]
-                ) or not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
+                ) or not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds) or (
+                    descriptor.input_axis_bounds and not all(
+                        bound.accepts(source.type.shape) for bound in descriptor.input_axis_bounds[0]
+                    )
+                ):
                     return "selected physical copy violates its shape precondition"
             elif realization is not None:
                 return "selected instruction has an unknown realization rule"
@@ -171,6 +175,10 @@ def check_selection(
                         return "selected instruction changes operand numerical policy"
                     if descriptor.input_ranks and len(typed.shape) != descriptor.input_ranks[index]:
                         return "selected instruction operand rank differs"
+                    if descriptor.input_axis_bounds and not all(
+                        bound.accepts(typed.shape) for bound in descriptor.input_axis_bounds[index]
+                    ):
+                        return "selected instruction violates an input axis precondition"
         elif kind == "input":
             if choice.children or choice.storage != boundaries.get(source_id):
                 return "selected input lacks its declared boundary representation"
