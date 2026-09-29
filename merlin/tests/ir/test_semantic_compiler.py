@@ -682,6 +682,7 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
 ) -> None:
     original_import = builtins.__import__
     original_run = subprocess.run
+    cargo_calls = 0
 
     def guarded_import(name: str, *args: object, **kwargs: object) -> object:
         if name.split(".")[0] in {"act", "act_backend", "taidl", "taidl_to"}:
@@ -689,8 +690,12 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         return original_import(name, *args, **kwargs)
 
     def guarded_run(command: object, *args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        nonlocal cargo_calls
         if isinstance(command, (list, tuple)) and any("act" in str(part).lower() for part in command):
             raise AssertionError("native snapshot generation attempted an ACT subprocess")
+        if isinstance(command, (list, tuple)) and command[:2] == ["cargo", "build"]:
+            assert "--offline" in command and "--locked" in command
+            cargo_calls += 1
         return original_run(command, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
@@ -722,6 +727,7 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         source_revision="public-test-revision",
     )
     assert second.profile.digest() != original.profile.digest()
+    assert cargo_calls == 2
     with pytest.raises(ValueError, match="target identity"):
         second.select(_request())
     revised_request = replace(_request(), target_identity="synthetic-revision-2")
