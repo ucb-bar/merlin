@@ -240,7 +240,10 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
     for node in request.nodes:
         operand_types = [request.node(child).type.record() for child in node.inputs]
         if node.effect == "pure":
-            symbol = "s_" + _digest((node.semantic_key(), operand_types))
+            # The symbol identifies the full pure expression, including its
+            # operands. A signature-only symbol lets a rule generated for one
+            # source use fire on an unrelated use with different inputs.
+            symbol = "s_" + _digest((node.semantic_key(), tuple(source_symbol[child] for child in node.inputs)))
             symbols[symbol] = {"kind": "semantic", "op": node.op, "type": node.type.record()}
         else:
             symbol = "b_" + _digest(node.record())
@@ -271,13 +274,15 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
             if not descriptor.accepts(node, tuple(request.node(child) for child in node.inputs)):
                 continue
             descriptor_digest = _digest(descriptor.record())
-            instruction_symbol = "i_" + _digest((descriptor_digest, node.type.record(), operand_types))
-            symbols[instruction_symbol] = {
+            # Identical pure source expressions may share one realization.
+            # Distinct operand graphs have distinct semantic symbols above.
+            instruction_symbol = "i_" + _digest((descriptor_digest, symbol, node.type.record(), operand_types))
+            symbols.setdefault(instruction_symbol, {
                 "kind": "instruction",
                 "descriptor": descriptor.record(),
                 "source_node": node.id,
                 "type": node.type.record(),
-            }
+            })
             rhs = (
                 f"({instruction_symbol} {' '.join(f'?a{i}' for i in range(len(node.inputs)))})"
                 if node.inputs
