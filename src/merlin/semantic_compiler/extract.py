@@ -123,7 +123,9 @@ def _choices(
                 next_ancestors,
                 deadline,
             ):
-                if 1 + sum(item.instruction_count() for item in (*chosen, child)) > budget:
+                # The same selected producer can satisfy two input ports.
+                # Charge the prospective DAG, not the unfolded child trees.
+                if 1 + Candidate((*chosen, child)).instruction_count() > budget:
                     continue
                 yield from combinations(index + 1, (*chosen, child))
 

@@ -426,6 +426,33 @@ def test_two_outputs_share_one_instruction_under_one_node_budget(bridge: Path) -
     assert selected.outputs == (1, 1) and len(selected.values) == 2
 
 
+def test_diamond_charges_shared_producer_once_within_one_root(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("prepared", "prepare", ("x",), tensor),
+            SemanticNode("y", "combine", ("prepared", "prepared"), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-shared-diamond-1",
+    )
+    descriptors = (
+        _descriptor("prepare", "prepare", ("external",), "register", "i8", "exact", (2,)),
+        _descriptor("combine", "combine", ("register", "register"), "external", "i8", "exact", (2,)),
+    )
+    program = generate_rules(request, descriptors)
+    exploration = explore(program, bridge=bridge)
+    assert not list(enumerate_candidates(exploration, request, program, node_budget=1, max_candidates=2))
+    candidates = list(enumerate_candidates(exploration, request, program, node_budget=2, max_candidates=2))
+    assert len(candidates) == 1 and candidates[0].instruction_count() == 2
+    graph = lower_candidate(candidates[0], program)
+    assert len(graph.values) == 3
+    assert graph.values[-1].children == (1, 1)
+
+
 def test_repeated_instruction_signature_keeps_each_source_correspondence(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
