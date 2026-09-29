@@ -11,10 +11,20 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from hashlib import sha256
+from time import monotonic
 
 from .egg_bridge import Exploration
 from .model import KernelRequest
 from .rules import RuleProgram
+
+
+class ExtractionTimeout(RuntimeError):
+    pass
+
+
+def _check_deadline(deadline: float | None) -> None:
+    if deadline is not None and monotonic() >= deadline:
+        raise ExtractionTimeout("native candidate extraction exceeded its deadline")
 
 
 @dataclass(frozen=True)
@@ -61,12 +71,15 @@ def _choices(
     storage: str,
     budget: int,
     ancestors: frozenset[tuple[int, str]],
+    deadline: float | None,
 ) -> Iterator[Choice]:
+    _check_deadline(deadline)
     if budget < 0 or (eclass, storage) in ancestors:
         return
     next_ancestors = ancestors | {(eclass, storage)}
     inputs = dict(request.input_storages)
     for node in exploration.classes.get(eclass, ()):
+        _check_deadline(deadline)
         metadata = program.symbols.get(node.symbol)
         if metadata is None:
             continue
@@ -96,6 +109,7 @@ def _choices(
             continue
 
         def combinations(index: int, chosen: tuple[Choice, ...]) -> Iterator[tuple[Choice, ...]]:
+            _check_deadline(deadline)
             if index == len(node.children):
                 yield chosen
                 return
@@ -107,6 +121,7 @@ def _choices(
                 required[index],
                 budget - 1,
                 next_ancestors,
+                deadline,
             ):
                 if 1 + sum(item.instruction_count() for item in (*chosen, child)) > budget:
                     continue
@@ -123,6 +138,7 @@ def enumerate_candidates(
     *,
     node_budget: int,
     max_candidates: int,
+    deadline: float | None = None,
 ) -> Iterator[Candidate]:
     if node_budget <= 0 or max_candidates <= 0:
         raise ValueError("candidate work bounds must be positive")
@@ -133,6 +149,7 @@ def enumerate_candidates(
 
     def combine(index: int, chosen: tuple[Choice, ...]) -> Iterator[Candidate]:
         nonlocal emitted
+        _check_deadline(deadline)
         if emitted >= max_candidates:
             return
         if index == len(exploration.roots):
@@ -145,7 +162,7 @@ def enumerate_candidates(
             return
         root = exploration.roots[index]
         storage = request.output_storages[index]
-        for choice in _choices(exploration, request, program, root, storage, node_budget, frozenset()):
+        for choice in _choices(exploration, request, program, root, storage, node_budget, frozenset(), deadline):
             if emitted >= max_candidates:
                 return
             if Candidate((*chosen, choice)).instruction_count() <= node_budget:
