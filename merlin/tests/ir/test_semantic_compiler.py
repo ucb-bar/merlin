@@ -1047,6 +1047,7 @@ def _reference_feasible(
     order: tuple[int, ...],
     banks: tuple[StorageBank, ...],
     fixed: dict[str, int],
+    fixed_outputs: tuple[int | None, ...] | None = None,
 ) -> bool:
     """Tiny independent enumerator: at most three values and 4^3 assignments."""
     bank_by_name = {bank.name: bank for bank in banks}
@@ -1071,6 +1072,11 @@ def _reference_feasible(
             for value in graph.values
         ):
             continue
+        if fixed_outputs is not None and any(
+            address is not None and assignment[value_id] != address
+            for value_id, address in zip(graph.outputs, fixed_outputs)
+        ):
+            continue
         legal = True
         for left in graph.values:
             for right in graph.values[left.id + 1 :]:
@@ -1092,7 +1098,7 @@ def _reference_feasible(
 
 
 def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
-    """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2."""
+    """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2, fixed I/O."""
     rng = random.Random(1907)
     outcomes = {"feasible": 0, "infeasible_candidate": 0}
     for index in range(200):
@@ -1111,11 +1117,12 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         graph = CandidateGraph(tuple(values), (values[-1].id,))
         order = tuple(value.id for value in values if value.kind == "instruction")
         fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
-        expected = _reference_feasible(graph, order, banks, fixed)
-        result = allocate(graph, order, banks, fixed_inputs=fixed, timeout_ms=5000)
+        fixed_outputs = (rng.randint(0, 2),) if index % 4 == 0 else None
+        expected = _reference_feasible(graph, order, banks, fixed, fixed_outputs)
+        result = allocate(graph, order, banks, fixed_inputs=fixed, fixed_outputs=fixed_outputs, timeout_ms=5000)
         assert result.status in outcomes, (index, result)
         outcomes[result.status] += 1
-        assert (result.status == "feasible") == expected, (index, graph, banks, fixed, result)
+        assert (result.status == "feasible") == expected, (index, graph, banks, fixed, fixed_outputs, result)
     assert all(outcomes.values()), outcomes
 
 
