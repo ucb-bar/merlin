@@ -100,6 +100,8 @@ operations:
     # This is software policy; host lowering and numerical behavior are unreviewed.
     dtypes: [bf16, f32]
   host_only:
+    # Fused attention stays on the host; exposed QK/PV contractions use the
+    # accelerator contraction contracts above.
     families: [reduction, normalization, attention, softmax, pooling]
     placement: host
     dtypes: [bf16, f32]
