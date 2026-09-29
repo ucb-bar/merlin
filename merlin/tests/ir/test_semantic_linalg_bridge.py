@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from merlin.semantic_compiler.allocate import StorageBank
 from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError, translate_linalg_text
 from merlin.semantic_compiler.model import KernelRequest, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
-from merlin.semantic_compiler.rules import InstructionDescriptor
+from merlin.semantic_compiler.rules import AxisEquality, InstructionDescriptor, generate_rules
 from merlin.semantic_compiler.search import select_and_allocate
 
 
@@ -24,13 +25,15 @@ def bridge(tmp_path_factory: pytest.TempPathFactory) -> Path:
     target = tmp_path_factory.mktemp("linalg-native-egg")
     environment = os.environ.copy()
     environment["CARGO_TARGET_DIR"] = str(target)
-    subprocess.run(["cargo", "build", "--locked", "--release", "--manifest-path", str(manifest)],
-                   check=True, env=environment)
+    subprocess.run(
+        ["cargo", "build", "--locked", "--release", "--manifest-path", str(manifest)], check=True, env=environment
+    )
     return target / "release/merlin-egg-bridge"
 
 
-def _generic_source(*, init: str = "argument", body: str = "signed", swapped_map: bool = False,
-                    two_outputs: bool = False) -> str:
+def _generic_source(
+    *, init: str = "argument", body: str = "signed", swapped_map: bool = False, two_outputs: bool = False
+) -> str:
     function_args = "%a: tensor<2x3xi8>, %b: tensor<3x2xi8>"
     prefix = ""
     if init == "argument":
@@ -94,13 +97,20 @@ def test_parsed_generic_preserves_init_multiple_outputs_and_source_identity() ->
 def test_parsed_fill_materializes_declared_constant_and_rejects_uninitialized_init() -> None:
     translated = translate_linalg_text(_generic_source(init="filled"), entry="work", target_identity="synthetic")
     assert translated.source_operations == (
-        "tensor.empty", "arith.constant", "linalg.fill", "linalg.generic", "func.return",
+        "tensor.empty",
+        "arith.constant",
+        "linalg.fill",
+        "linalg.generic",
+        "func.return",
     )
     assert len(translated.constants) == 1
     assert translated.constants["op2r0"].elements == (7, 7, 7, 7)
     inputs = {key: value for key, value in _inputs().items() if key != "arg2"}
     assert evaluate_graph(translated.request, inputs, constants=translated.constants)[0].elements == (
-        29, 35, 56, 71,
+        29,
+        35,
+        56,
+        71,
     )
     with pytest.raises(LinalgBridgeError, match="uninitialized"):
         translate_linalg_text(_generic_source(init="empty"), entry="work", target_identity="synthetic")
@@ -147,14 +157,44 @@ def test_parsed_region_reaches_native_rule_extraction_and_allocation(bridge: Pat
     translated = translate_linalg_text(_generic_source(), entry="work", target_identity="synthetic")
     maps = translated.request.nodes[-1].index_maps
     descriptor = InstructionDescriptor(
-        "synthetic_contract", "matmul_accumulate", ("external",) * 3, "external",
-        "i32", "i32-wrap-k-ascending", (2,), input_dtypes=("i8", "i8", "i32"),
+        "synthetic_contract",
+        "matmul_accumulate",
+        ("external",) * 3,
+        "external",
+        "i32",
+        "i32-wrap-k-ascending",
+        (2,),
+        input_dtypes=("i8", "i8", "i32"),
         input_numerical_policies=("signed-i8", "signed-i8", "i32-wrap-k-ascending"),
-        input_ranks=(2, 2, 2), index_maps=maps,
+        input_ranks=(2, 2, 2),
+        index_maps=maps,
+        shape_contract="relations",
+        shape_equalities=(
+            AxisEquality("in0", 0, "out", 0),
+            AxisEquality("in0", 1, "in1", 0),
+            AxisEquality("in1", 1, "out", 1),
+            AxisEquality("in2", 0, "out", 0),
+            AxisEquality("in2", 1, "out", 1),
+        ),
     )
+    source = translated.request.nodes[-1]
+    inputs = tuple(translated.request.node(child) for child in source.inputs)
+    assert descriptor.accepts(source, inputs)
+    assert not descriptor.accepts(
+        source,
+        (inputs[0], replace(inputs[1], type=TensorType((4, 2), "i8", "signed-i8")), inputs[2]),
+    )
+    altered_nodes = tuple(
+        replace(node, type=TensorType((4, 2), "i8", "signed-i8")) if node.id == "arg1" else node
+        for node in translated.request.nodes
+    )
+    assert not generate_rules(replace(translated.request, nodes=altered_nodes), (descriptor,)).rewrites
     selected = select_and_allocate(
-        translated.request, (descriptor,), (StorageBank("external", "dram", 4, "word"),),
-        bridge=bridge, fixed_inputs={"arg0": 0, "arg1": 1, "arg2": 2},
+        translated.request,
+        (descriptor,),
+        (StorageBank("external", "dram", 4, "word"),),
+        bridge=bridge,
+        fixed_inputs={"arg0": 0, "arg1": 1, "arg2": 2},
     )
     assert selected.status == "selected", selected.reason
     assert selected.engine == "merlin_native" and selected.check_fingerprint

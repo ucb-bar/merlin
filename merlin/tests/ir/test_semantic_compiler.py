@@ -32,7 +32,13 @@ from merlin.semantic_compiler.egg_bridge import EGraphTimeout, explore
 from merlin.semantic_compiler.extract import ExtractionTimeout, enumerate_candidates
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
-from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
+from merlin.semantic_compiler.rules import (
+    AddressConstraint,
+    AxisBound,
+    AxisEquality,
+    InstructionDescriptor,
+    generate_rules,
+)
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
 from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
 from merlin.semantic_compiler.verify import check_selection, check_timing
@@ -251,6 +257,21 @@ def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
         InstructionDescriptor("missing_input_contract", "identity", ("external",), "a", "i8", "exact", (2,))
     rules = generate_rules(request, _descriptors())
     assert len(rules.rewrites) == 5
+    wrong_shape = replace(request.node("v"), type=TensorType((2, 3), "i8", "exact"))
+    assert not _descriptors()[0].accepts(wrong_shape, (request.node("x"),))
+    with pytest.raises(ValueError, match="axis exceeds"):
+        _descriptor(
+            "invalid_shape",
+            "identity",
+            ("external",),
+            "a",
+            "i8",
+            "exact",
+            (2,),
+            input_ranks=(2,),
+            shape_contract="relations",
+            shape_equalities=(AxisEquality("in0", 2, "out", 0),),
+        )
     changed = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), (("missing", 1),))
     assert len(generate_rules(request, (changed,)).rewrites) == 1
     altered_source = replace(
@@ -531,8 +552,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v2"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v1")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v3"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v2")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(

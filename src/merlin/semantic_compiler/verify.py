@@ -113,6 +113,20 @@ def check_selection(
                 return "selected instruction changes output numerical policy"
             if len(source.type.shape) not in descriptor.ranks or source.index_maps != descriptor.index_maps:
                 return "selected instruction has incompatible rank or index maps"
+            operand_shapes = tuple(request.node(child_id).type.shape for child_id in source.inputs)
+            if descriptor.shape_contract == "equal":
+                if any(shape != source.type.shape for shape in operand_shapes):
+                    return "selected instruction violates equal-shape contract"
+            else:
+                shapes = {
+                    "out": source.type.shape,
+                    **{f"in{index}": shape for index, shape in enumerate(operand_shapes)},
+                }
+                if any(
+                    shapes[item.lhs_port][item.lhs_axis] != shapes[item.rhs_port][item.rhs_axis]
+                    for item in descriptor.shape_equalities
+                ):
+                    return "selected instruction violates a dimension relation"
             if not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
                 return "selected instruction violates a shape precondition"
             if dict(source.attrs) != dict(descriptor.required_attrs):

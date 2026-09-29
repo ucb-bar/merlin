@@ -91,6 +91,31 @@ class AxisBound:
 
 
 @dataclass(frozen=True)
+class AxisEquality:
+    """A declared equality between dimensions of instruction ports."""
+
+    lhs_port: str
+    lhs_axis: int
+    rhs_port: str
+    rhs_axis: int
+
+    def __post_init__(self) -> None:
+        if any(not isinstance(port, str) or not port for port in (self.lhs_port, self.rhs_port)):
+            raise ValueError("shape equality needs named instruction ports")
+        if any(type(axis) is not int or axis < 0 for axis in (self.lhs_axis, self.rhs_axis)):
+            raise ValueError("shape equality axes must be nonnegative integers")
+
+    def record(self) -> dict[str, str | int]:
+        return vars(self).copy()
+
+    @classmethod
+    def from_record(cls, row: dict[str, Any]) -> AxisEquality:
+        if set(row) != {"lhs_port", "lhs_axis", "rhs_port", "rhs_axis"}:
+            raise ValueError("shape equality has missing or unknown fields")
+        return cls(**row)
+
+
+@dataclass(frozen=True)
 class InstructionDescriptor:
     name: str
     computation: str
@@ -113,6 +138,8 @@ class InstructionDescriptor:
     # event. Zero defaults are only suitable for synchronous descriptions.
     input_read_offsets: tuple[int, ...] = ()
     completion_offset: int = 0
+    shape_contract: str = "equal"
+    shape_equalities: tuple[AxisEquality, ...] = ()
 
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
@@ -134,6 +161,12 @@ class InstructionDescriptor:
             raise ValueError("duplicate output axis bound")
         if self.index_maps and len(self.index_maps) != arity + 1:
             raise ValueError("instruction index maps need one map per operand and result")
+        if self.shape_contract not in {"equal", "relations"}:
+            raise ValueError("unknown instruction shape contract")
+        if self.shape_contract == "equal" and self.shape_equalities:
+            raise ValueError("equal-shape contract cannot add independent shape relations")
+        if self.shape_contract == "relations" and (not self.shape_equalities or len(self.input_ranks) != arity):
+            raise ValueError("relational shape contract needs equalities and explicit input ranks")
         if self.input_read_offsets and len(self.input_read_offsets) != arity:
             raise ValueError("input read offsets must match instruction arity")
         if type(self.completion_offset) is not int or self.completion_offset < 0:
@@ -147,6 +180,14 @@ class InstructionDescriptor:
         for condition in self.validity:
             if condition.lhs not in ports or (condition.rhs and condition.rhs not in ports):
                 raise ValueError("address constraint refers to an undeclared instruction port")
+        port_ranks = {"out": min(self.ranks), **{f"in{index}": rank for index, rank in enumerate(self.input_ranks)}}
+        for condition in self.shape_equalities:
+            if condition.lhs_port not in port_ranks or condition.rhs_port not in port_ranks:
+                raise ValueError("shape equality refers to an undeclared instruction port")
+            if condition.lhs_axis >= port_ranks[condition.lhs_port] or (
+                condition.rhs_axis >= port_ranks[condition.rhs_port]
+            ):
+                raise ValueError("shape equality axis exceeds instruction port rank")
 
     def accepts(self, node: SemanticNode, inputs: tuple[SemanticNode, ...]) -> bool:
         return (
@@ -164,6 +205,18 @@ class InstructionDescriptor:
             and all(n.type.dtype == dtype for n, dtype in zip(inputs, self.input_dtypes))
             and all(n.type.numerical_policy == policy for n, policy in zip(inputs, self.input_numerical_policies))
             and (not self.input_ranks or all(len(n.type.shape) == rank for n, rank in zip(inputs, self.input_ranks)))
+            and (
+                all(n.type.shape == node.type.shape for n in inputs)
+                if self.shape_contract == "equal"
+                else self._relations_accept(node, inputs)
+            )
+        )
+
+    def _relations_accept(self, node: SemanticNode, inputs: tuple[SemanticNode, ...]) -> bool:
+        shapes = {"out": node.type.shape, **{f"in{index}": value.type.shape for index, value in enumerate(inputs)}}
+        return all(
+            shapes[item.lhs_port][item.lhs_axis] == shapes[item.rhs_port][item.rhs_axis]
+            for item in self.shape_equalities
         )
 
     def record(self) -> dict[str, Any]:
@@ -185,6 +238,8 @@ class InstructionDescriptor:
             "index_maps": [index_map.record() for index_map in self.index_maps],
             "input_read_offsets": list(self.input_read_offsets),
             "completion_offset": self.completion_offset,
+            "shape_contract": self.shape_contract,
+            "shape_equalities": [condition.record() for condition in self.shape_equalities],
         }
 
     @classmethod
@@ -207,6 +262,8 @@ class InstructionDescriptor:
             "index_maps",
             "input_read_offsets",
             "completion_offset",
+            "shape_contract",
+            "shape_equalities",
         }
         if set(row) != expected:
             raise ValueError("instruction descriptor has missing or unknown fields")
@@ -228,6 +285,8 @@ class InstructionDescriptor:
             index_maps=tuple(IndexMap.from_record(item) for item in row["index_maps"]),
             input_read_offsets=tuple(row["input_read_offsets"]),
             completion_offset=row["completion_offset"],
+            shape_contract=row["shape_contract"],
+            shape_equalities=tuple(AxisEquality.from_record(item) for item in row["shape_equalities"]),
         )
 
 
