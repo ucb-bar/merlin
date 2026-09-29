@@ -64,6 +64,16 @@ evidence:
       - {format: mxfp8, shape: [64, 64, 64], generated_program_sha256: 264fc99e0238f525fbd9054ef2b2709a0c344492a8e3c5fb228c8d7705294bc4, mismatches: 0, simulator_exit_code: 0}
       - {format: mxfp6, shape: [64, 64, 64], generated_program_sha256: 526d4c213ae5ea639b7f489b30358f6929aefae98f9944e910acc64a1140b4e5, mismatches: 0, simulator_exit_code: 0}
       - {format: mxfp4, shape: [64, 64, 64], generated_program_sha256: e07649ff636f0b3e03d7bdb3ea4df783f8d0bda603b46e478d681dcae4e65ad3, mismatches: 0, simulator_exit_code: 0}
+  two_wave_command_emitter_smoke:
+    status: three_single_split_diagnostic_exact_bf16_matches
+    emitter: mx_gemmini_support.diagnostic_program.emit_two_wave_baremetal_c
+    support_package_commit: 5aac60a52109b741946c697cd8297f8411470aa7
+    scope: one_32x32x64_contraction_split_at_k32
+    command_semantics: {scale_and_operand_reload_per_wave: true, fp6_lut_resident: true, second_loop_ex_accumulate: true}
+    cases:
+      - {format: mxfp8, emitted_load_image_sha256: 8993de7471efdeb74487be5fe697c8b301ee0eac428f1d2f0a5274279ecd5d82, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp6, emitted_load_image_sha256: c2e327165627d9b50a8230fea8ded7d8b201cb7953c84e097b449194cb9dad50, mismatches: 0, simulator_exit_code: 0}
+      - {format: mxfp4, emitted_load_image_sha256: 538a3135b497f68a7e1422304dfe19b4a1dd3575b221d88d5e24ee7754f6a74f, mismatches: 0, simulator_exit_code: 0}
   qualification: pending_phase0_capsules_host_and_full_model
 
 # The top-level format is the recipe's default; each additional MX format has

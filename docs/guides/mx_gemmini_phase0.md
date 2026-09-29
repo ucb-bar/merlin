@@ -104,8 +104,14 @@ the configuration, LUT and scale uploads, operand transfers, loop, and BF16
 readout from coherent payloads at 32×32×32 and 64×64×64. All six emitted
 programs matched their four BF16 quadrants exactly on that simulator. The 64³
 FP6 program uploaded 32 LUT lines per operand. The emitter refuses other
-shapes and K waves. The provider still has no Merlin executable backend or
-general command scheduler.
+single-window shapes. A separate 32×32×64 diagnostic split K into two
+32-element waves, with different activation values in each wave. Its emitted
+programs reloaded both scale banks and operand tiles, retained the FP6 LUT,
+and set `ex_accumulate` on the second loop. All three formats matched the
+BF16 quadrants with zero mismatches. The emitted programs' load images were
+byte-identical to the source-bound RTL programs that produced those results.
+Other K-wave shapes and a general schedule remain unqualified. The provider
+still has no Merlin executable backend.
 An isolated check passed model2MLIR's quantized Torch tensors through it for
 all three formats; the FP6 check used exact zero-valued codebooks. This
 checks representation compatibility, not the resulting hardware output.
@@ -118,9 +124,10 @@ cycle. Bit 62 does not directly reset the `ScaleFactorMem` read counters; it
 reaches `MxRequantizer` instead. An out-of-tree layout prototype partitions K
 at 32-element block boundaries, limits each wave by both 4 KiB operand
 windows and the 9-bit K field, and packs each wave from local byte offset
-zero. This establishes payload capacity only. Ordering the uploads and loops,
-preserving the BF16 accumulator between waves, and comparing the result with
-the selected RTL simulator remain open compiler qualifications.
+zero. The bounded 32×32×64 two-wave diagnostic above checks one accumulation
+sequence. Ordering larger capacity-driven uploads and loops, preserving BF16
+state across them, and comparing their results with the selected RTL simulator
+remain open compiler qualifications.
 
 The [software spec](../../examples/mx_gemmini/target/software-spec.yaml) is the
 authored software-facing proposal. Its `unreviewed` status is intentional.
