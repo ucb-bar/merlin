@@ -22,6 +22,16 @@ def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():
     assert spec["status"] == "unreviewed"
     declarations = validate_quantization_declarations(spec)
     assert {row["operand_dtype"] for row in declarations} == {"mxfp8", "mxfp6", "mxfp4"}
+    expected_site_modes = {
+        "linear": {"lhs": "dynamic", "rhs": "static"},
+        "functional_matmul": {"lhs": "dynamic", "rhs": "dynamic"},
+    }
+    assert all(row["site_modes"] == expected_site_modes for row in declarations)
+    contract = build_quantization_contract(spec, {"target": "mx_gemmini"})
+    assert all(
+        row["unselected_parameters"]["site_modes"]["value"] == expected_site_modes
+        for row in contract["formats"]
+    )
     missing_scale_rule = deepcopy(spec["numerical_semantics"])
     del missing_scale_rule["scale_rule"]
     with pytest.raises(ValueError, match="scale_rule"):
@@ -59,6 +69,23 @@ def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():
     )
     assert host_norm["constraints_status"] == "matched"
     assert host_norm["status"] == "unknown"
+
+
+def test_site_quantization_modes_refuse_ambiguous_global_or_malformed_policy():
+    spec = _spec()
+    row = spec["quantization"]["formats"][0]
+    row["site_modes"] = {"linear": {"lhs": "dynamic", "rhs": "static"}}
+    row["weight_mode"] = "static"
+    with pytest.raises(ValueError, match="cannot coexist"):
+        validate_quantization_declarations(spec)
+    row.pop("weight_mode", None)
+    row.pop("activation_mode", None)
+    row["site_modes"] = {"linear": {"lhs": "dynamic"}}
+    with pytest.raises(ValueError, match="declare lhs and rhs"):
+        validate_quantization_declarations(spec)
+    row["site_modes"] = {"linear": {"lhs": "dynamic", "rhs": "automatic"}}
+    with pytest.raises(ValueError, match="static, dynamic, or unknown"):
+        validate_quantization_declarations(spec)
 
 
 def _spec():

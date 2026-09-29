@@ -111,15 +111,15 @@ quantization:
       eligible_operations: [contraction_mxfp8]
       block_size: 32
       scale_encoding: e8m0
-      activation_mode: dynamic
-      weight_mode: static
+      site_modes: &mx_site_modes
+        linear: {lhs: dynamic, rhs: static}
+        functional_matmul: {lhs: dynamic, rhs: dynamic}
     - operand_dtype: mxfp6
       accumulator_dtype: bf16
       eligible_operations: [contraction_mxfp6]
       block_size: 32
       scale_encoding: e8m0
-      activation_mode: dynamic
-      weight_mode: static
+      site_modes: *mx_site_modes
       numerical_semantics:
         <<: *mx_numerics
         operand_dtype: mxfp6
@@ -128,8 +128,7 @@ quantization:
       eligible_operations: [contraction_mxfp4]
       block_size: 32
       scale_encoding: e8m0
-      activation_mode: dynamic
-      weight_mode: static
+      site_modes: *mx_site_modes
       numerical_semantics:
         <<: *mx_numerics
         operand_dtype: mxfp4

@@ -106,6 +106,19 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         for field in ("activation_mode", "weight_mode"):
             if field in row and not _unknown(row[field]) and row[field] not in {"static", "dynamic"}:
                 raise ValueError(f"{label}.{field} must be static, dynamic, or unknown")
+        if "site_modes" in row:
+            if "activation_mode" in row or "weight_mode" in row:
+                raise ValueError(f"{label}.site_modes cannot coexist with global activation/weight modes")
+            sites = row["site_modes"]
+            if not isinstance(sites, Mapping) or not sites:
+                raise ValueError(f"{label}.site_modes must name at least one operation site")
+            for site, modes in sites.items():
+                if not isinstance(site, str) or not site.strip():
+                    raise ValueError(f"{label}.site_modes requires nonempty site names")
+                if not isinstance(modes, Mapping) or set(modes) != {"lhs", "rhs"}:
+                    raise ValueError(f"{label}.site_modes[{site!r}] must declare lhs and rhs modes")
+                if any(mode not in {"static", "dynamic", "unknown"} for mode in modes.values()):
+                    raise ValueError(f"{label}.site_modes[{site!r}] modes must be static, dynamic, or unknown")
         if "numerical_semantics" in row:
             from merlin.targetgen.software_spec import validate_numerical_semantics
 

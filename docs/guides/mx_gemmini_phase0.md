@@ -192,6 +192,10 @@ scaled-dot-product-attention node hides its two contractions; capture must
 expose them or refuse the MX coverage claim. Report module count, functional
 contraction count, and every skipped site. A module-only TorchAO transform
 cannot establish whole-model coverage.
+The software spec declares quantization mode by site for each format:
+`Linear` uses dynamic activations and static weights, while visible functional
+matmuls quantize both operands dynamically. A single global static-weight
+declaration would misstate the attention path.
 BF16 accelerator readout may be widened to FP32 for host operations. The
 software spec declares both BF16 and FP32 host dtypes as an unreviewed policy;
 the TorchAO capture currently returns FP32 at that seam for FP32 inputs. A
