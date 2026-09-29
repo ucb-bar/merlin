@@ -135,7 +135,7 @@ def build_native_snapshot(
     try:
         started = time.monotonic()
         result = subprocess.run(
-            ["cargo", "build", "--locked", "--release", "--manifest-path", str(manifest_path)],
+            ["cargo", "build", "--locked", "--offline", "--release", "--manifest-path", str(manifest_path)],
             capture_output=True,
             check=False,
             timeout=build_timeout_s,
