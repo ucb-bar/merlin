@@ -15,7 +15,6 @@ Deterministic, no LLM calls.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 import tempfile
@@ -174,7 +173,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
     from merlin.semantic_compiler.model import KernelRequest
     from merlin.semantic_compiler.search import SearchLimits
     from merlin.semantic_compiler.snapshot import open_native_snapshot
-    from merlin.semantic_compiler.target_binding import load_native_target_binding
+    from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
 
     try:
         binding = load_native_target_binding(args.support)
@@ -206,16 +205,10 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
                 fixed_outputs=tuple(abi["fixed_outputs"]), target_source=Path(args.target_source),
                 destination=staged, limits=SearchLimits(),
             )
-            binary = staged / "program.bin"
-            if not binary.is_file() or not (staged / "manifest.json").is_file():
-                raise ValueError("selected target did not emit a native binary and manifest")
-            persisted = json.loads((staged / "manifest.json").read_text())
-            if persisted != json.loads(json.dumps(manifest)) or manifest.get("engine") != args.engine or (
-                manifest.get("request_digest") != request.digest()
-                or manifest.get("target_identity") != snapshot.profile.target_identity
-                or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
-            ):
-                raise ValueError("native emitted artifact identity differs from checked request, target, or binary")
+            verify_native_publication(
+                staged, manifest, engine=args.engine, request_digest=request.digest(),
+                target_identity=snapshot.profile.target_identity,
+            )
             staged.rename(output)
         report = {"schema": "merlin.native_compilation_status.v1", "status": "emitted",
                   "engine": args.engine, "support": args.support, "out": str(args.out),
