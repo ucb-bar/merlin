@@ -178,6 +178,29 @@ def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_se
         TensorValue(tensor, (1 << 31, 0, 0, 0))
 
 
+def test_raw_byte_movement_reference_preserves_all_outputs_and_rejects_arithmetic() -> None:
+    raw = TensorType((4,), "i8", "raw-byte-copy")
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), raw, effect="input"),
+               SemanticNode("a", "identity", ("x",), raw),
+               SemanticNode("b", "identity", ("a",), raw)),
+        outputs=("a", "b"), output_storages=("external", "external"),
+        input_storages=(("x", "external"),), target_identity="movement-reference",
+    )
+    values = (0, 127, 128, 255)
+    evaluated = evaluate_graph(request, {"x": TensorValue(raw, values)})
+    assert [item.elements for item in evaluated] == [values, values]
+    with pytest.raises(ValueError, match="outside its admitted domain"):
+        TensorValue(raw, (0, 1, 2, 256))
+    arithmetic = KernelRequest(
+        nodes=(request.nodes[0], SemanticNode("a", "add", ("x", "x"), raw)),
+        outputs=("a",), output_storages=("external",),
+        input_storages=(("x", "external"),), target_identity="movement-reference",
+    )
+    with pytest.raises(ValueError, match="raw-byte reference admits only"):
+        evaluate_graph(arithmetic, {"x": TensorValue(raw, values)})
+
+
 def test_constant_bytes_are_exact_compiler_inputs_and_change_request_identity() -> None:
     tensor = TensorType((2,), "i32", "exact-i32")
     nodes = (SemanticNode("c", "constant", (), tensor, effect="constant"),)
