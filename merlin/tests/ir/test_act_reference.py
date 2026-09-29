@@ -38,6 +38,17 @@ def test_restricted_reader_never_executes_generated_python() -> None:
         assert "non-API call" in str(exc)
     else:
         raise AssertionError("executable Python was accepted")
+    hardcoded_constant = ASSEMBLY.replace(
+        "constant=[]",
+        "constant=[{'addr': 16, 'shape': (8192), 'dtype': jnp.uint8, "
+        "'value': jnp.reshape(jnp.eye(16, dtype=jnp.int8).astype(jnp.uint8), (256,))}]",
+    )
+    try:
+        parse_act_assembly(hardcoded_constant)
+    except ValueError as exc:
+        assert "unsupported executable metadata" in str(exc)
+    else:
+        raise AssertionError("unvalidated ACT constant expression was accepted")
     invalid_address = ASSEMBLY.replace("'addr': 16", "'addr': 64")
     try:
         parse_act_assembly(invalid_address)
