@@ -74,8 +74,12 @@ def _choices(
     deadline: float | None,
 ) -> Iterator[Choice]:
     _check_deadline(deadline)
-    if budget < 0 or (eclass, storage) in ancestors:
+    if budget < 0:
         return
+    # A no-op semantic rewrite can put a copy instruction and its source in
+    # one e-class. Revisited classes may still terminate at an input/constant
+    # leaf; only further instruction expansion would make a recursive cycle.
+    recursive = (eclass, storage) in ancestors
     next_ancestors = ancestors | {(eclass, storage)}
     inputs = dict(request.input_storages)
     for node in exploration.classes.get(eclass, ()):
@@ -95,6 +99,8 @@ def _choices(
                 yield Choice(eclass, node.symbol, storage)
             continue
         if kind != "instruction":
+            continue
+        if recursive:
             continue
         if budget == 0:
             continue
