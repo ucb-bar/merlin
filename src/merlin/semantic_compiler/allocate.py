@@ -295,6 +295,38 @@ def _reservation_problem(
     return ""
 
 
+def _boundary_problem(
+    graph: CandidateGraph,
+    banks: dict[str, StorageBank],
+    fixed_inputs: dict[str, int],
+    fixed_outputs: tuple[int | None, ...] | None,
+) -> str:
+    inputs = {value.source_node: value for value in graph.values if value.kind == "input"}
+    for name, address in fixed_inputs.items():
+        if name not in inputs:
+            return "fixed input ABI names an unknown source"
+        if type(address) is not int or address < 0:
+            return "fixed input ABI has an invalid address"
+        value = inputs[name]
+        bank = banks.get(value.storage)
+        if bank is not None and (address + value.extent > bank.capacity or address % bank.alignment):
+            return "fixed input ABI exceeds physical storage"
+    if fixed_outputs is None:
+        return ""
+    if len(fixed_outputs) != len(graph.outputs):
+        return "fixed output ABI differs from ordered roots"
+    for value_id, address in zip(graph.outputs, fixed_outputs):
+        if address is None:
+            continue
+        if type(address) is not int or address < 0:
+            return "fixed output ABI has an invalid address"
+        value = graph.value(value_id)
+        bank = banks.get(value.storage)
+        if bank is not None and (address + value.extent > bank.capacity or address % bank.alignment):
+            return "fixed output ABI exceeds physical storage"
+    return ""
+
+
 def check_assignment(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -314,10 +346,9 @@ def check_assignment(
     if reservation_problem:
         return False, reservation_problem
     fixed_inputs = fixed_inputs or {}
-    if fixed_outputs is not None and len(fixed_outputs) != len(graph.outputs):
-        return False, "fixed output ABI differs from ordered roots"
-    if fixed_outputs is not None and any(address is not None and type(address) is not int for address in fixed_outputs):
-        return False, "fixed output ABI has a non-integer address"
+    boundary_problem = _boundary_problem(graph, bank_map, fixed_inputs, fixed_outputs)
+    if boundary_problem:
+        return False, boundary_problem
     try:
         ranges = live_ranges(graph, order)
     except ValueError as exc:
@@ -411,11 +442,9 @@ def allocate(
     if reservation_problem:
         return AllocationResult("unqualified_target", order, {}, reservation_problem)
     fixed_inputs = fixed_inputs or {}
-    if fixed_outputs is not None and (
-        len(fixed_outputs) != len(graph.outputs)
-        or any(address is not None and type(address) is not int for address in fixed_outputs)
-    ):
-        return AllocationResult("modeling_failure", order, {}, "fixed output ABI is malformed")
+    boundary_problem = _boundary_problem(graph, bank_map, fixed_inputs, fixed_outputs)
+    if boundary_problem:
+        return AllocationResult("modeling_failure", order, {}, boundary_problem)
     ranges = live_ranges(graph, order)
     solver = z3.Solver()
     solver.set(timeout=timeout_ms)

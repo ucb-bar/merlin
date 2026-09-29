@@ -563,6 +563,27 @@ def test_ordered_output_abi_is_solved_and_checked_independently(bridge: Path) ->
         ).status
         == "modeling_failure"
     )
+    for inputs, outputs in (
+        ({"ghost": 0}, (2,)),
+        ({"x": True}, (2,)),
+        ({"x": 3}, (2,)),
+        ({"x": 0}, (-1,)),
+        ({"x": 0}, (True,)),
+        ({"x": 0}, (3,)),
+    ):
+        malformed = select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs=inputs, fixed_outputs=outputs
+        )
+        assert malformed.status == "modeling_failure", (inputs, outputs, malformed)
+        valid, reason = check_assignment(
+            result.graph,
+            result.allocation.order,
+            result.allocation.addresses,
+            banks,
+            fixed_inputs=inputs,
+            fixed_outputs=outputs,
+        )
+        assert not valid and "ABI" in reason
 
 
 def test_in_place_reuse_requires_declared_last_use_and_later_write(bridge: Path) -> None:
@@ -1300,9 +1321,19 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
             )
         graph = CandidateGraph(tuple(values), (values[-1].id,))
         order = tuple(value.id for value in values if value.kind == "instruction")
-        fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
+        fixed = (
+            {"input": rng.randint(0, min(1, capacity_a - values[0].extent))}
+            if index % 3 and capacity_a >= values[0].extent
+            else {}
+        )
+        output = values[-1]
+        output_capacity = next(bank.capacity for bank in banks if bank.name == output.storage)
+        fixed_outputs = (
+            (rng.randint(0, min(2, output_capacity - output.extent)),)
+            if index % 4 == 0 and output_capacity >= output.extent
+            else None
+        )
         reservations = (Reservation("a", capacity_a - 1, 1),) if index % 4 == 0 else ()
-        fixed_outputs = (rng.randint(0, 2),) if index % 4 == 0 else None
         expected = _reference_feasible(graph, order, banks, fixed, reservations, fixed_outputs)
         if len(values) == 3 and values[-1].in_place_inputs and expected:
             ordinary = CandidateGraph((*values[:2], replace(values[-1], in_place_inputs=())), graph.outputs)
