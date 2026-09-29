@@ -157,10 +157,12 @@ sequence. Ordering larger capacity-driven uploads and loops, preserving BF16
 state across them, and comparing their results with the selected RTL simulator
 remain open compiler qualifications.
 
-The [software spec](../../examples/mx_gemmini/target/software-spec.yaml) is the
-authored software-facing proposal. Its `unreviewed` status is intentional.
-The [Phase 0 recipe](../../examples/mx_gemmini/phase0/recipe.yaml) derives
-capsule membership from that spec, hardware facts, and exact capture inputs.
+The active software spec is `contracts/software-spec.yaml` in the explicitly
+selected out-of-tree MX support provider. Its `unreviewed` status is intentional.
+The [in-tree snapshot](../../examples/mx_gemmini/target/software-spec.yaml)
+remains for historical tests and reproduction. The
+[Phase 0 recipe](../../examples/mx_gemmini/phase0/recipe.yaml) derives capsule
+membership from the selected provider spec, hardware facts, and exact capture inputs.
 The retained hand-authored recipe and historical corpus are reproduction
 inputs only.
 

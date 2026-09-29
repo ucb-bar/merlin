@@ -56,6 +56,27 @@ def test_gemmini_software_spec_does_not_admit_integer_shift_as_fused_readout():
     assert any(row["role"] == "epilogue" and row["status"] == "unsupported" for row in decision["decisions"])
 
 
+def test_recipe_selects_only_contained_oot_software_spec(tmp_path, monkeypatch):
+    provider = tmp_path / "provider"
+    (provider / "contracts").mkdir(parents=True)
+    (provider / "provider.yaml").write_text(
+        "schema: merlin.provider.v1\nid: selected\ntarget: test_device\nrole: support\n"
+        "contract: contracts/target_contract.yaml\n"
+    )
+    (provider / "contracts/target_contract.yaml").write_text("name: test_device\n")
+    selected = provider / "contracts/software-spec.yaml"
+    selected.write_text("schema: merlin.software_spec.v1\ntarget: test_device\n")
+    recipe = tmp_path / "recipe.yaml"
+    recipe.write_text(
+        "software_spec: {provider: test_device, resource: contracts/software-spec.yaml}\n"
+    )
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(provider))
+    assert SS.software_spec_path_for_recipe(recipe) == selected
+    recipe.write_text("software_spec: {provider: test_device, resource: ../outside.yaml}\n")
+    with pytest.raises(ValueError, match="escapes provider root"):
+        SS.software_spec_path_for_recipe(recipe)
+
+
 def test_versioned_selection_preserves_bytes_and_rejects_incoherent_semantics(tmp_path):
     path = tmp_path / "software-spec.yaml"
     doc = _spec()

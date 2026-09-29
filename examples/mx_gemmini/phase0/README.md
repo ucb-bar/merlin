@@ -1,7 +1,7 @@
 # MX Gemmini Phase 0
 
 The [`mx-gemmini-functional`](../experiment.yaml) experiment derives capsules from the
-selected RTL facts, [software specification](../target/software-spec.yaml), and
+selected RTL facts, the selected out-of-tree provider's `contracts/software-spec.yaml`, and
 observed application captures. The [recipe](recipe.yaml) uses `derived_only` membership.
 The former hand-authored recipe is retained verbatim as
 [`recipe-legacy.yaml`](recipe-legacy.yaml) for reproduction; it is not a current

@@ -1,3 +1,6 @@
+# Retained in-tree MX snapshot for historical tests and reproduction.
+# The active Phase 0 recipe selects contracts/software-spec.yaml from an
+# explicitly selected out-of-tree support provider.
 # Software-visible MX declarations for the selected GemminiMxFPConfigs.standaloneMxFPConfig.
 # The RTL source closure is authoritative. A source-bound elaboration and
 # structural lint and narrow RTL simulator checks exist; broader numerical

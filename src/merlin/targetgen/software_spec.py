@@ -56,8 +56,24 @@ def software_spec_path_for_recipe(recipe: str | Path, document: dict | None = No
     declaration = selected.get("software_spec")
     if declaration is None:
         return None
+    if isinstance(declaration, dict):
+        if set(declaration) != {"provider", "resource"}:
+            raise ValueError(f"{source}: provider software_spec needs provider and resource")
+        provider_name, member = declaration["provider"], declaration["resource"]
+        if not isinstance(provider_name, str) or not provider_name.strip() or not isinstance(member, str):
+            raise ValueError(f"{source}: invalid software_spec provider selection")
+        from merlin.targetgen.providers import ProviderRole, contained_resource
+        from merlin.targetgen.target_registry import resolve
+
+        selected_provider = resolve(provider_name)
+        provider = selected_provider.provider
+        if selected_provider.kind != "external" or provider is None or provider.role != ProviderRole.SUPPORT:
+            raise ValueError(f"{source}: software_spec requires an explicitly selected OOT support provider")
+        if provider.target != provider_name:
+            raise ValueError(f"{source}: software_spec provider target differs from selection")
+        return contained_resource(provider.root, member)
     if not isinstance(declaration, str) or not declaration.strip():
-        raise ValueError(f"{source}: software_spec must be an explicit path")
+        raise ValueError(f"{source}: software_spec must be an explicit path or provider resource")
     member = Path(declaration).expanduser()
     selected_path = member if member.is_absolute() else source.parent / member
     return Path(os.path.abspath(selected_path))

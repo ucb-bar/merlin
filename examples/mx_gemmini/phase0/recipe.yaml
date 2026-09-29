@@ -1,7 +1,7 @@
 # Deterministic MX Phase 0 inputs. Capsule membership comes from the selected
 # RTL, software specification and exact application captures. The previous
 # hand-authored recipe is retained as recipe-legacy.yaml for reproduction.
-software_spec: ../target/software-spec.yaml
+software_spec: {provider: mx_gemmini, resource: contracts/software-spec.yaml}
 capsule_policy: derived_only
 performance_oracles: {L2: spike, L3: verilator}
 datapath:
