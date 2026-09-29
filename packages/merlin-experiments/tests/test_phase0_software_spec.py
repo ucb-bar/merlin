@@ -292,3 +292,28 @@ def test_synthesis_producer_binds_explicit_software_and_hardware_selection(tmp_p
     assert provenance["selected_inputs"]["software_spec_sha256"] == SS.software_spec_identity(spec)["sha256"]
     assert provenance["hardware_evidence"]["status"] == "diagnostic"
     assert provenance["software_spec"]["status"] == "unreviewed"
+    requirement.write_text("cells: [{cell: contraction/bf16/aligned, family: contraction, dtype: bf16}]\n")
+    conflict = producer.synth_for("test_device", software_spec=spec, rtl_facts=tmp_path / "facts.json")
+    assert conflict["status"] == "invalid_synthesis_inputs"
+    assert "contraction/bf16/aligned" in conflict["detail"]
+
+
+def test_mx_conformance_rejects_legacy_accelerator_formats():
+    import importlib.util
+
+    from merlin.common.paths import repo_root
+
+    root = repo_root()
+    module_spec = importlib.util.spec_from_file_location(
+        "mx_software_spec_synthesis", root / "build_tools/scripts/synth_capsule_corpus.py"
+    )
+    producer = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(producer)
+    software = SS.load_software_spec(root / "examples/mx_gemmini/target/software-spec.yaml", target="mx_gemmini")
+    old_requirement = yaml.safe_load(
+        (root / "experiments/reference-data/phase0/conformance/mx_gemmini.yaml").read_text()
+    )
+    conflicts = producer._software_cell_conflicts(old_requirement, software)
+    assert "contraction/bf16/aligned" in conflicts
+    assert "contraction/i8/aligned" in conflicts
+    assert "contraction/mxfp4/aligned" not in conflicts

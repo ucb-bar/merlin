@@ -13,6 +13,54 @@ from merlin.targetgen.quantization_spec import (
 )
 
 
+def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():
+    from merlin.common.paths import repo_root
+
+    spec = software_spec.load_software_spec(
+        repo_root() / "examples/mx_gemmini/target/software-spec.yaml", target="mx_gemmini"
+    )
+    assert spec["status"] == "unreviewed"
+    declarations = validate_quantization_declarations(spec)
+    assert {row["operand_dtype"] for row in declarations} == {"mxfp8", "mxfp6", "mxfp4"}
+    missing_scale_rule = deepcopy(spec["numerical_semantics"])
+    del missing_scale_rule["scale_rule"]
+    with pytest.raises(ValueError, match="scale_rule"):
+        software_spec.validate_numerical_semantics(missing_scale_rule)
+    for dtype, tile in (("mxfp8", 16), ("mxfp6", 32), ("mxfp4", 32)):
+        signature = {
+            "operand_dtype": dtype,
+            "accum_dtype": "bf16",
+            "rank": 2,
+            "layout": "row_major_contiguous",
+            "tails": "none",
+            "broadcasting": "none",
+            "aliasing": "disjoint_inputs_outputs",
+            "dimensions": {"M": tile, "N": tile, "K": 32},
+        }
+        selected = software_spec.admit_operation(spec, "matmul", signature, "accelerator")
+        assert selected["declaration"] == f"contraction_{dtype}"
+        assert selected["status"] == "unknown"  # authored, not yet RTL-reviewed
+        assert selected["constraints_status"] == "matched"
+        bad = software_spec.admit_operation(
+            spec, "matmul", {**signature, "dimensions": {"M": tile, "N": tile, "K": 31}}, "accelerator"
+        )
+        assert bad["status"] == "unsupported"
+    relu = software_spec.admit_operation(
+        spec, "relu", {"operand_dtype": "bf16"}, "accelerator"
+    )
+    assert relu["status"] == "unsupported"
+    host_relu = software_spec.admit_operation(
+        spec, "relu", {"operand_dtype": "f32"}, "host"
+    )
+    assert host_relu["constraints_status"] == "matched"
+    assert host_relu["status"] == "unknown"  # host policy still needs review
+    host_norm = software_spec.admit_operation(
+        spec, "layernorm", {"operand_dtype": "f32"}, "host"
+    )
+    assert host_norm["constraints_status"] == "matched"
+    assert host_norm["status"] == "unknown"
+
+
 def _spec():
     return {
         "schema": software_spec.SCHEMA,

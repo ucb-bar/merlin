@@ -1,24 +1,12 @@
-# Declarative per-target experiment SETUP for MX-GEMMINI (GemminiMxFPConfigs.defaultMxFPConfig) — a 4th
-# target that is a CONFIG VARIANT of gemmini: the same generator, the same RoCC ISA (OpcodeSet.custom3),
-# the same 16x16 weight-stationary systolic mesh (DIM=16) and accumulator — only the numeric datapath
-# differs. Instead of int8/fp32, its PEs are microscaling block-scaled FP (MxFloat: inputType(3,3,2),
-# accType(8,8,4); block_e8m0 scaling via MxRequantizer). This is the very systolic MX PE that radiance
-# embeds as its low-bit unit ("these are overwritten by radiance" in ConfigsFP.scala), so standing it up
-# as its own target closes the loop with radiance's compute_units.
-#
-# Authoritative RTL source (facts DERIVED, not fitted): the chipyard gemmini generator config
-#   generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala :: GemminiMxFPConfigs.defaultMxFPConfig
-# (meshRows=meshColumns=16, dataflow=WS, sp_capacity=256KB, acc_capacity=64KB, opcodes=custom3) plus the
-# MX datapath modules (MxFPMul.scala, MxRequantizer.scala). Because mx-gemmini is a systolic MXU sharing
-# gemmini's structure and ISA, its STRUCTURAL profile (DIM, mesh dataflow, accumulator residency, the
-# RoCC opcode set) is exactly gemmini's; the MX block-scaling + requant is the added capability.
-#
-# Oracle: mx-gemmini elaborates through chipyard just like gemmini, so its RTL oracle is the chipyard
-# sim (spike/verilator) — sim_via=chipyard, the same bespoke sim gemmini declares. An mlc arc model is
-# not yet registered for the MX config (arc_available("mx_gemmini")=False), so arc-matmul discovery is
-# unavailable until mlc registers it; that is honest, not a gap — the chipyard sim is the RTL tier and
-# the target-agnostic math oracle is the L0/L1 floor. MX numerics (block-scaled FP) are what make the
-# stock-gemmini arc model insufficient here, which is exactly why the sim is the authority.
+# Declarative MX-Gemmini setup. The Phase 0 software contract selects
+# GemminiMxFPConfigs.standaloneMxFPConfig / GemminiMxFPStandaloneConfig at pinned
+# gemmini-mx-cleanup revision f0167390b56fb315deea90ac1fc3983772e92d82.
+# That is the 16x16 standalone, weight-stationary, three-selected-format path
+# with a LUT and requantizer. The older defaultMxFPConfig has no LUT and does
+# not support this standalone transfer contract. The structural mlc selection
+# and retained hwbringup_mx_v0 ABI below have not been bound to an elaborated
+# standaloneMxFPConfig or matching simulator binary; they are not qualification.
+# Spike/Verilator remain required L2/L3 oracles for Phase 0 admission.
 target: mx_gemmini
 resources_root: merlin/experiments/capsule_bench/targets/mx_gemmini
 numeric_profile: examples/mx_gemmini/phase0/recipe.yaml
@@ -27,21 +15,17 @@ rtl:
   via: mlc            # structural facts shared with gemmini; MX datapath from the chipyard config
 
 hardware_spec:
-  # NOTE: the structural facts (RoCC opcode set, mesh DIM=16, the ConfigsFP.scala source) are DERIVED
-  # from the RTL, not declared here — they are documented in the header comment above for the reader.
+  # Structural facts must be derived from the selected elaborated RTL. The
+  # source-level values in the header are observations, not an mlc binding.
   # Do NOT re-add `isa`/`dim`/`rtl_config` as descriptor fields: the loader never reads them (a baked
   # `dim: 16` reads as authoritative but is ignored, which is exactly the overfit smell).
-  # Shipped ISA doc for the derived assembler/disassembler/linter — the MX-Gemmini MMIO/RoCC command word
-  # (derived from mxgemmini_mmio.h:66). Self-contained (no model venv). The MMIO map + microscaling dtypes +
-  # E8M0 block scale + bf16 accumulate are carried as derived ABI data in the sibling mmio_abi.py.
+  # Retained Phase 1 bringup inputs describe the older default/GPU-local path.
+  # They require review or replacement before use with standaloneMxFPConfig.
   isa_headers:
     - examples/mx_gemmini/phase1/contracts/hwbringup_mx_v0/isa_include/isa_definition.py
   hwbringup_set: examples/mx_gemmini/phase1/contracts/hwbringup_mx_v0
 
-# MX-Gemmini's OWN corpus root (mirrors atlas's per-target subtree) — per-format microscaling GEMM
-# (mxfp8/mxfp6/mxfp4 operands, E8M0 block scales, bf16 accumulate) generated from profiles/mx_gemmini.yaml
-# with hardware-semantics goldens from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless
-# for the MX PE) — that reuse was the wrong bit this closes.
+# Retained corpus path is historical input, not a derived or qualified Phase 0 run.
 capsule_corpus: merlin/contract/capsules/mx_gemmini/isa
 
 # mx-gemmini elaborates through chipyard like gemmini; its RTL oracle is the chipyard sim.
