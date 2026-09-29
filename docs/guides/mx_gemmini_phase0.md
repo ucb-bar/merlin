@@ -121,6 +121,13 @@ python -m mx_gemmini_support.bringup --format mxfp6 --case split32x64 --output /
 The other formats and `square32`/`square64` cases use the same command. It
 prints a source hash and refuses to overwrite existing output; the package
 tests pin all nine source hashes.
+The layout bridge also partitions rank-2 to rank-4 logical operands into
+bounded spatial windows and independent batches. A 64×32 by 32×64 functional
+contraction produced four 32×32 tiles with distinct BF16 expectations; all
+four tiles passed on source-built Spike for each format. Two independent
+rank-3 batch members likewise passed per format on Spike. These are serial
+bare-metal diagnostics, with no assembled output, RTL verdict, or Merlin
+capsule for the spatial and batch cases.
 An out-of-tree bridge now accepts model2MLIR's rank-2 Linear operand handoff
 without changing TorchAO or introducing target packing into model2MLIR. A
 reproducible integration test transforms one 32×32×32 Linear with TorchAO in
@@ -224,8 +231,9 @@ For an architecture smoke test, use the one-layer, random-weight TinyLlama
 loader with sequence length 32 and eager attention. Full-checkpoint accuracy,
 nonlinear-host semantics, and placement require their own evidence. The
 [upstream model2MLIR MX branch](https://github.com/ucb-bar/model2MLIR/tree/feat/mx-gemmini-torchao)
-at `ce31865` supports a prequantized capture handoff and exposes
-`linear_contraction_operands` for one rank-2 Linear site. That helper presents
+at `d953417` supports a prequantized capture handoff and exposes
+`linear_contraction_operands` for one rank-2 Linear site and
+`functional_contraction_operands` for visible matmul sites. The Linear helper presents
 A codes as [M][K], B codes as [K][N], activation scales as [M][K/32], and
 weight scales as [N][K/32] to an out-of-tree packer. It does not provide FP6
 codebook selection or an executable command schedule. In an isolated
@@ -233,9 +241,13 @@ diagnostic run, Merlin captured this one-layer model in each of MXFP8,
 MXFP6, and MXFP4: all eight eligible Linear modules and both visible
 attention matmuls were quantized, no sites were skipped, and the MLIR had
 zero opaque calls with an explicit MX capture contract. The three captures
-used random weights and token inputs. Their frontend trace is unavailable
-and their loader provenance is undeclared, so they are not admitted
-application captures or hardware arithmetic evidence.
+used random weights and token inputs. A separate one-layer MXFP8 capture on the
+[capture-integration branch](https://github.com/ucb-bar/model2MLIR/tree/feat/mx-phase0-capture-integration)
+produced zero-opaque MLIR and a byte-bound frontend receipt, but the receipt
+is diagnostic: original-to-quantized call-site correspondence remains
+incomplete after TorchAO's external module rewrite. No reviewed checkpoint,
+input roster, or complete original-to-quantized lineage is established, so
+these runs are not admitted application captures or hardware arithmetic evidence.
 
 The [Pi0](https://github.com/chloe-wong/pi0-quant),
 [SmolVLA](https://github.com/chloe-wong/smolVLA-quant), and
