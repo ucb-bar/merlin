@@ -44,8 +44,7 @@ class NativeTargetProfile:
         if len(names) != len(self.banks):
             raise ValueError("native target profile has duplicate storage banks")
         if any(
-            descriptor.output_storage not in names
-            or any(storage not in names for storage in descriptor.input_storages)
+            descriptor.output_storage not in names or any(storage not in names for storage in descriptor.input_storages)
             for descriptor in self.descriptors
         ):
             raise ValueError("instruction refers to an undeclared storage bank")
@@ -54,7 +53,7 @@ class NativeTargetProfile:
 
     def record(self) -> dict[str, Any]:
         return {
-            "schema": "merlin.native_target_profile.v1",
+            "schema": "merlin.native_target_profile.v2",
             "target_identity": self.target_identity,
             "descriptors": [descriptor.record() for descriptor in self.descriptors],
             "banks": [bank.record() for bank in self.banks],
@@ -66,7 +65,7 @@ class NativeTargetProfile:
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> NativeTargetProfile:
         if set(row) != {"schema", "target_identity", "descriptors", "banks"} or row["schema"] != (
-            "merlin.native_target_profile.v1"
+            "merlin.native_target_profile.v2"
         ):
             raise ValueError("unexpected native target profile schema or fields")
         return cls(
@@ -84,7 +83,10 @@ class NativeSnapshot:
     manifest: dict[str, Any]
 
     def select(
-        self, request: KernelRequest, *, fixed_inputs: dict[str, int] | None = None,
+        self,
+        request: KernelRequest,
+        *,
+        fixed_inputs: dict[str, int] | None = None,
         limits: SearchLimits = SearchLimits(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
@@ -94,8 +96,12 @@ class NativeSnapshot:
         if request.target_identity != self.profile.target_identity:
             raise ValueError("kernel target identity differs from native snapshot")
         return select_and_allocate(
-            request, self.profile.descriptors, self.profile.banks,
-            bridge=self.bridge, fixed_inputs=fixed_inputs, limits=limits,
+            request,
+            self.profile.descriptors,
+            self.profile.banks,
+            bridge=self.bridge,
+            fixed_inputs=fixed_inputs,
+            limits=limits,
         )
 
 
@@ -126,7 +132,10 @@ def build_native_snapshot(
         started = time.monotonic()
         result = subprocess.run(
             ["cargo", "build", "--locked", "--release", "--manifest-path", str(manifest_path)],
-            capture_output=True, check=False, timeout=build_timeout_s, env=env,
+            capture_output=True,
+            check=False,
+            timeout=build_timeout_s,
+            env=env,
         )
         (temporary / "cargo.stdout.log").write_bytes(result.stdout)
         (temporary / "cargo.stderr.log").write_bytes(result.stderr)
@@ -140,7 +149,7 @@ def build_native_snapshot(
         shutil.copy2(binary, copied)
         (temporary / "profile.json").write_bytes(_encoded(profile.record()) + b"\n")
         manifest = {
-            "schema": "merlin.native_target_snapshot.v1",
+            "schema": "merlin.native_target_snapshot.v2",
             "status": "selection_only",
             "source_revision": source_revision,
             "target_identity": profile.target_identity,
@@ -159,7 +168,7 @@ def build_native_snapshot(
 
 def open_native_snapshot(root: Path) -> NativeSnapshot:
     manifest = json.loads((root / "manifest.json").read_text())
-    if manifest.get("schema") != "merlin.native_target_snapshot.v1" or manifest.get("status") != "selection_only":
+    if manifest.get("schema") != "merlin.native_target_snapshot.v2" or manifest.get("status") != "selection_only":
         raise ValueError("native snapshot has invalid manifest")
     profile_path, bridge = root / "profile.json", root / "bin/merlin-egg-bridge"
     if _hash_file(profile_path) != manifest["profile_sha256"] or _hash_file(bridge) != manifest["bridge_sha256"]:

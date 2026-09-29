@@ -74,8 +74,10 @@ class AxisBound:
         if self.axis >= len(shape):
             return False
         dimension = shape[self.axis]
-        return dimension >= self.minimum and (self.maximum is None or dimension <= self.maximum) and (
-            dimension % self.multiple == 0
+        return (
+            dimension >= self.minimum
+            and (self.maximum is None or dimension <= self.maximum)
+            and (dimension % self.multiple == 0)
         )
 
     def record(self) -> dict[str, int | None]:
@@ -106,6 +108,11 @@ class InstructionDescriptor:
     input_ranks: tuple[int, ...] = ()
     output_axis_bounds: tuple[AxisBound, ...] = ()
     index_maps: tuple[IndexMap, ...] = ()
+    # Offsets use issued instruction cycles. A delayed operand read keeps its
+    # physical source live; completion is also the conservative result-ready
+    # event. Zero defaults are only suitable for synchronous descriptions.
+    input_read_offsets: tuple[int, ...] = ()
+    completion_offset: int = 0
 
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
@@ -127,6 +134,15 @@ class InstructionDescriptor:
             raise ValueError("duplicate output axis bound")
         if self.index_maps and len(self.index_maps) != arity + 1:
             raise ValueError("instruction index maps need one map per operand and result")
+        if self.input_read_offsets and len(self.input_read_offsets) != arity:
+            raise ValueError("input read offsets must match instruction arity")
+        if type(self.completion_offset) is not int or self.completion_offset < 0:
+            raise ValueError("instruction completion offset must be nonnegative")
+        if any(
+            type(offset) is not int or offset < 0 or offset > self.completion_offset
+            for offset in self.input_read_offsets
+        ):
+            raise ValueError("input read offset must precede instruction completion")
         ports = {"out", *(f"in{index}" for index in range(len(self.input_storages)))}
         for condition in self.validity:
             if condition.lhs not in ports or (condition.rhs and condition.rhs not in ports):
@@ -165,14 +181,30 @@ class InstructionDescriptor:
             "input_ranks": list(self.input_ranks),
             "output_axis_bounds": [bound.record() for bound in self.output_axis_bounds],
             "index_maps": [index_map.record() for index_map in self.index_maps],
+            "input_read_offsets": list(self.input_read_offsets),
+            "completion_offset": self.completion_offset,
         }
 
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> InstructionDescriptor:
         expected = {
-            "name", "computation", "input_storages", "output_storage", "output_dtype", "numerical_policy",
-            "ranks", "required_attrs", "extent", "validity", "input_dtypes", "input_numerical_policies",
-            "input_ranks", "output_axis_bounds", "index_maps",
+            "name",
+            "computation",
+            "input_storages",
+            "output_storage",
+            "output_dtype",
+            "numerical_policy",
+            "ranks",
+            "required_attrs",
+            "extent",
+            "validity",
+            "input_dtypes",
+            "input_numerical_policies",
+            "input_ranks",
+            "output_axis_bounds",
+            "index_maps",
+            "input_read_offsets",
+            "completion_offset",
         }
         if set(row) != expected:
             raise ValueError("instruction descriptor has missing or unknown fields")
@@ -192,6 +224,8 @@ class InstructionDescriptor:
             input_ranks=tuple(row["input_ranks"]),
             output_axis_bounds=tuple(AxisBound.from_record(item) for item in row["output_axis_bounds"]),
             index_maps=tuple(IndexMap.from_record(item) for item in row["index_maps"]),
+            input_read_offsets=tuple(row["input_read_offsets"]),
+            completion_offset=row["completion_offset"],
         )
 
 
@@ -277,12 +311,15 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
             # Identical pure source expressions may share one realization.
             # Distinct operand graphs have distinct semantic symbols above.
             instruction_symbol = "i_" + _digest((descriptor_digest, symbol, node.type.record(), operand_types))
-            symbols.setdefault(instruction_symbol, {
-                "kind": "instruction",
-                "descriptor": descriptor.record(),
-                "source_node": node.id,
-                "type": node.type.record(),
-            })
+            symbols.setdefault(
+                instruction_symbol,
+                {
+                    "kind": "instruction",
+                    "descriptor": descriptor.record(),
+                    "source_node": node.id,
+                    "type": node.type.record(),
+                },
+            )
             rhs = (
                 f"({instruction_symbol} {' '.join(f'?a{i}' for i in range(len(node.inputs)))})"
                 if node.inputs
