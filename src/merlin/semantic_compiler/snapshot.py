@@ -88,6 +88,7 @@ class NativeSnapshot:
         *,
         fixed_inputs: dict[str, int] | None = None,
         reservations: tuple[Reservation, ...] = (),
+        fixed_outputs: tuple[int | None, ...] | None = None,
         limits: SearchLimits = SearchLimits(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
@@ -103,6 +104,7 @@ class NativeSnapshot:
             bridge=self.bridge,
             fixed_inputs=fixed_inputs,
             reservations=reservations,
+            fixed_outputs=fixed_outputs,
             limits=limits,
         )
 

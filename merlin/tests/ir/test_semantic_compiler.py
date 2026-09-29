@@ -514,6 +514,57 @@ def test_identical_pure_expressions_share_an_instruction(bridge: Path) -> None:
     assert selected.graph is not None and selected.graph.outputs == (1, 1)
 
 
+def test_ordered_output_abi_is_solved_and_checked_independently(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), tensor, effect="input"), SemanticNode("y", "copy", ("x",), tensor)),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-fixed-output-1",
+    )
+    descriptor = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    banks = (StorageBank("external", "dram", 3, "word"),)
+    result = select_and_allocate(
+        request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,)
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    output_id = result.graph.outputs[0]
+    assert result.allocation.addresses[output_id] == 2
+    assert result.rules is not None and result.exploration is not None and result.candidate is not None
+    changed_abi = check_selection(
+        request,
+        (descriptor,),
+        result.rules,
+        result.exploration,
+        result.candidate,
+        result.graph,
+        result.allocation,
+        banks,
+        fixed_inputs={"x": 0},
+    )
+    assert changed_abi.valid and changed_abi.fingerprint != result.check_fingerprint
+    moved = dict(result.allocation.addresses)
+    moved[output_id] = 1
+    checked, reason = check_assignment(
+        result.graph, result.allocation.order, moved, banks, fixed_inputs={"x": 0}, fixed_outputs=(2,)
+    )
+    assert not checked and "fixed external address" in reason
+    assert (
+        select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(0,)
+        ).status
+        == "compile_error"
+    )
+    assert (
+        select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(0, 1)
+        ).status
+        == "modeling_failure"
+    )
+
+
 def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
