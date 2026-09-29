@@ -14,72 +14,9 @@ evidence:
   npu_exploration_commit: 155edd60b2c39892f086d12f1d8d853e87cc367c
   software_crosscheck_commit: df49519cda76867da5f01864c600ca7946dfb95d
   libgemmini_commit: 643f4941e6a09d949dac1554b4c36f4914f7a33a
-  source_review:
-    status: checked_at_pinned_revision
-    configuration: src/main/scala/gemmini/ConfigsFP.scala
-    pe_selection: src/main/scala/gemmini/Arithmetic.scala
-    pe_modes: mxgen/src/main/scala/mxgen/MxParameters.scala
-    lut_configuration: src/main/scala/gemmini/MxConfigFragments.scala
-    lut_read_mapping: src/main/scala/gemmini/QuantLut.scala
-    requantizer: src/main/scala/gemmini/MxRequantizer.scala
-    rounding: src/main/scala/gemmini/BF16ScalaRoundToTiny.scala
-    scale_memory: src/main/scala/gemmini/ScaleFactorMem.scala
-    controller: src/main/scala/gemmini/Controller.scala
-  structural_elaboration:
-    status: source_bound_diagnostic
-    chipyard_commit: e02074414158c85059c1dcb231ff2f8941254b9a
-    source_selection: explicit_sbt_override_of_committed_gemmini_gitlink
-    compiled_gemmini_mxgen_source_count: 99
-    compiled_source_manifest_sha256: 21407e21f53e9e1276c444890d112388055c3f58502a0369c224c83832566172
+  source_bound_diagnostic:
     firrtl_sha256: 15fbf36a96d69f1b7cd379338e760188aa14f6d69378826ec1ca372316e8f352
-    core_hw_sha256: 30fd404bef4a17bebf3dcbaa129bf3ff3e301f877ec64a756f80ef4dcaf265ae
-    verilog_lint: passed_with_inline_memories
-    verilator_version: '5.022'
-    simulator_binary_sha256: a72c7314defed09d8281fab6bfeffcd2eaab7ae851a6c1034f8b06f4eaea9fd9
-    simulator_status: source_bound_local_diagnostic
-  diagnostic_rtl_tests:
-    status: pinned_baremetal_tests_only
-    numerical_compare: exact_bf16_golden
-    cases:
-      - {format: mxfp8, source: software/gemmini-rocc-tests/bareMetalC/matmul_tiled_fp8_64x64.c, shape: [64, 64, 64], mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, source: software/gemmini-rocc-tests/bareMetalC/matmul_tiled_fp6_128x128.c, shape: [128, 128, 128], mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, source: software/gemmini-rocc-tests/bareMetalC/matmul_tiled_fp4_64x64.c, shape: [64, 64, 64], mismatches: 0, simulator_exit_code: 0}
-  compiler_payload_smoke:
-    status: three_single_shape_diagnostic_exact_bf16_matches
-    payload_source: mx_gemmini_support.contraction.plan_mx_contraction_payload
-    command_schedule: hand_written_diagnostic
-    cases:
-      - {format: mxfp8, shape: [32, 32, 32], generated_program_sha256: 8a1cf8a23fe987f60f08cf2501f2f26a23c7027a282d0958acc3dad0a2e82bed, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, shape: [32, 32, 32], generated_program_sha256: 6b286f83bceca567eb917897173adc709c6890e96d29bc355ca911215acc08a0, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, shape: [32, 32, 32], generated_program_sha256: 3f51a08956995159f731ff26172cc4559fb3730937e3ad64ad54888d4d454f3a, mismatches: 0, simulator_exit_code: 0}
-  bounded_command_emitter_smoke:
-    status: six_two_shape_diagnostic_exact_bf16_matches
-    emitter: mx_gemmini_support.diagnostic_program.emit_single_window_baremetal_c
-    support_package_commit: dcc4b4a6e9270573cd45a29ab9450096d3b552a8
-    scope: square_32_and_64_single_scale_window_no_k_waves
-    cases:
-      - {format: mxfp8, shape: [32, 32, 32], generated_program_sha256: 41bf9f3f08811893ed226b50a9ac758de8dc764de1aaa97ad6589cb036a53b33, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, shape: [32, 32, 32], generated_program_sha256: de344f829466fd4ca356e12d60e3c3eabf8a46d9095dfb27ad8120183a76deba, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, shape: [32, 32, 32], generated_program_sha256: 64aebb46463c0bc4ed11c9af283bdf85b1b22bd4b259cb6b2046ed86b8718056, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp8, shape: [64, 64, 64], generated_program_sha256: 264fc99e0238f525fbd9054ef2b2709a0c344492a8e3c5fb228c8d7705294bc4, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, shape: [64, 64, 64], generated_program_sha256: 526d4c213ae5ea639b7f489b30358f6929aefae98f9944e910acc64a1140b4e5, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, shape: [64, 64, 64], generated_program_sha256: e07649ff636f0b3e03d7bdb3ea4df783f8d0bda603b46e478d681dcae4e65ad3, mismatches: 0, simulator_exit_code: 0}
-  two_wave_command_emitter_smoke:
-    status: three_single_split_diagnostic_exact_bf16_matches
-    emitter: mx_gemmini_support.diagnostic_program.emit_two_wave_baremetal_c
-    support_package_commit: 5aac60a52109b741946c697cd8297f8411470aa7
-    scope: one_32x32x64_contraction_split_at_k32
-    command_semantics: {scale_and_operand_reload_per_wave: true, fp6_lut_resident: true, second_loop_ex_accumulate: true}
-    cases:
-      - {format: mxfp8, emitted_load_image_sha256: 8993de7471efdeb74487be5fe697c8b301ee0eac428f1d2f0a5274279ecd5d82, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp6, emitted_load_image_sha256: c2e327165627d9b50a8230fea8ded7d8b201cb7953c84e097b449194cb9dad50, mismatches: 0, simulator_exit_code: 0}
-      - {format: mxfp4, emitted_load_image_sha256: 538a3135b497f68a7e1422304dfe19b4a1dd3575b221d88d5e24ee7754f6a74f, mismatches: 0, simulator_exit_code: 0}
-  bringup_source_reproducer:
-    package_commit: 0b7df2a619ac057bec6d0c613e81fe10b0fb525d
-    module: mx_gemmini_support.bringup
-    formats: [mxfp8, mxfp6, mxfp4]
-    cases: [square32, square64, split32x64]
-    source_hash_regression_tests: 9
+    simulator_sha256: a72c7314defed09d8281fab6bfeffcd2eaab7ae851a6c1034f8b06f4eaea9fd9
   qualification: pending_phase0_capsules_host_and_full_model
 
 # The top-level format is the recipe's default; each additional MX format has
