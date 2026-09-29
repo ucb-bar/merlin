@@ -121,9 +121,16 @@ python -m mx_gemmini_support.bringup --format mxfp6 --case split32x64 --output /
 The other formats and `square32`/`square64` cases use the same command. It
 prints a source hash and refuses to overwrite existing output; the package
 tests pin all nine source hashes.
-An isolated check passed model2MLIR's quantized Torch tensors through it for
-all three formats; the FP6 check used exact zero-valued codebooks. This
-checks representation compatibility, not the resulting hardware output.
+An out-of-tree bridge now accepts model2MLIR's rank-2 Linear operand handoff
+without changing TorchAO or introducing target packing into model2MLIR. A
+reproducible integration test transforms one 32×32×32 Linear with TorchAO in
+each of the three formats, uses its real uint8 element codes and E8M0 scale
+bytes, and packs them with caller-selected exact FP6 codebooks. Its emitted C
+source hashes exactly match three programs executed on the source-bound RTL
+simulator. Those programs each exited zero with no BF16 mismatches across four
+distinct output quadrants. This demonstrates one-site capture-to-RTL
+compatibility; it does not establish functional-attention packing, arbitrary
+shapes, full-model execution, or an admitted Phase 0 capsule.
 The pinned software header's residency
 comment calls rs1 bit 62, but its macro emits bit 63, matching
 `ExecuteController.scala`; the compiler must use bit 63.
