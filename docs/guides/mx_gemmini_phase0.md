@@ -111,7 +111,16 @@ and set `ex_accumulate` on the second loop. All three formats matched the
 BF16 quadrants with zero mismatches. The emitted programs' load images were
 byte-identical to the source-bound RTL programs that produced those results.
 Other K-wave shapes and a general schedule remain unqualified. The provider
-still has no Merlin executable backend.
+still has no Merlin executable backend. The out-of-tree package reproduces all
+nine emitted C sources with:
+
+```sh
+python -m mx_gemmini_support.bringup --format mxfp6 --case split32x64 --output /configured/artifact-root/mxfp6.c
+```
+
+The other formats and `square32`/`square64` cases use the same command. It
+prints a source hash and refuses to overwrite existing output; the package
+tests pin all nine source hashes.
 An isolated check passed model2MLIR's quantized Torch tensors through it for
 all three formats; the FP6 check used exact zero-valued codebooks. This
 checks representation compatibility, not the resulting hardware output.

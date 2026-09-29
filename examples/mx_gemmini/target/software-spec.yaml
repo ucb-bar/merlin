@@ -74,6 +74,12 @@ evidence:
       - {format: mxfp8, emitted_load_image_sha256: 8993de7471efdeb74487be5fe697c8b301ee0eac428f1d2f0a5274279ecd5d82, mismatches: 0, simulator_exit_code: 0}
       - {format: mxfp6, emitted_load_image_sha256: c2e327165627d9b50a8230fea8ded7d8b201cb7953c84e097b449194cb9dad50, mismatches: 0, simulator_exit_code: 0}
       - {format: mxfp4, emitted_load_image_sha256: 538a3135b497f68a7e1422304dfe19b4a1dd3575b221d88d5e24ee7754f6a74f, mismatches: 0, simulator_exit_code: 0}
+  bringup_source_reproducer:
+    package_commit: 0b7df2a619ac057bec6d0c613e81fe10b0fb525d
+    module: mx_gemmini_support.bringup
+    formats: [mxfp8, mxfp6, mxfp4]
+    cases: [square32, square64, split32x64]
+    source_hash_regression_tests: 9
   qualification: pending_phase0_capsules_host_and_full_model
 
 # The top-level format is the recipe's default; each additional MX format has
