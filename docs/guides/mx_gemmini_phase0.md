@@ -228,6 +228,22 @@ nonlinear activations, normalization and max pooling. The microscaling study
 offers independent MX operand codes and a systolic arithmetic model for L0
 cross-checks; neither can replace the selected RTL simulator at L2/L3.
 
+## Numerical policy to review
+
+The RTL fixes the element modes and transfer encoding. The following software
+choices still need one reviewed answer before a Phase 0 corpus or full-model
+accuracy claim is admitted:
+
+| Decision | Evidence required |
+| --- | --- |
+| FP6 codebook selection | Specify the 16 E3M2 entries for each activation-row and weight-column LUT line, the update granularity, and the behavior when a value is absent. Compare the selected projection with the RTL LUT path. |
+| Exceptional inputs | Decide whether zero blocks, BF16 subnormals, signed zero, overflow and nonfinite blocks are in scope. Check each admitted case against the selected RTL and an independent numerical model. |
+| Host seam | Fix BF16 or FP32 transfer/readout policy for each retained host operation and verify the resulting mixed execution numerically. |
+| Whole-model acceptance | Declare per-site coverage and error measures, model-level thresholds, and the reference checkpoint/input set before interpreting TinyLlama or VLA results. |
+
+The TorchAO extension supplies operand codes and a contraction census. Its
+PyTorch matmul is not an oracle for the selected PE reduction schedule.
+
 ## Admission sequence
 
 1. Pin and inventory the RTL commit, configuration, submodules, elaboration
