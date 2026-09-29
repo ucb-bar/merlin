@@ -53,7 +53,7 @@ class NativeTargetProfile:
 
     def record(self) -> dict[str, Any]:
         return {
-            "schema": "merlin.native_target_profile.v4",
+            "schema": "merlin.native_target_profile.v5",
             "target_identity": self.target_identity,
             "descriptors": [descriptor.record() for descriptor in self.descriptors],
             "banks": [bank.record() for bank in self.banks],
@@ -65,7 +65,7 @@ class NativeTargetProfile:
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> NativeTargetProfile:
         if set(row) != {"schema", "target_identity", "descriptors", "banks"} or row["schema"] != (
-            "merlin.native_target_profile.v4"
+            "merlin.native_target_profile.v5"
         ):
             raise ValueError("unexpected native target profile schema or fields")
         return cls(
