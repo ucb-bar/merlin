@@ -289,7 +289,20 @@ The pinned FP8 and FP4 64×64×64 bare-metal tests, and the FP6 128×128×128
 LUT-indexed E3M2 test, each exited zero and matched every BF16 golden value.
 The FP4 source has a copied success label that says “fp8”; its `CONFIG_EX`
 operands select FP4 code 2. These diagnostic tests do not replace Merlin Phase 0
-capsules. The spec remains `unreviewed` because L0–L3 capsule results,
+capsules. The selected `libgemmini` Spike extension at
+`643f4941e6a09d949dac1554b4c36f4914f7a33a` was built outside the source
+checkout. Its SHA-256 is
+`99d158025038d999b837999af082550d130ff392a47d7d2ee6d96fb89e5e96db`.
+The Spike core was freshly built outside its clean RISC-V ISA simulator
+checkout at `9c190a07c6838f6392bafa4ad83acea462c7f759`; its binary
+SHA-256 is
+`5dd6c24a5b601dfdd5594a79ec71a226162c88d6006f1925eef84b99e64ef01c`.
+Fifteen exact ELFs,
+including the pinned format tests, generated payloads, zero blocks, and
+two-wave cases, exited zero with no BF16 mismatches on both this Spike path
+and the selected RTL simulator. This is a cross-simulator diagnostic, not a
+Merlin L2/L3 capsule or a complete toolchain-closure certificate.
+The spec remains `unreviewed` because L0–L3 capsule results,
 reviewed host semantics, and whole-model accuracy remain pending. The retained Phase 1
 `hwbringup_mx_v0` ABI describes an older
 default/GPU-local mapping and cannot certify this standalone configuration.
