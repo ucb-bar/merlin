@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from hashlib import sha256
+from math import prod
 from typing import Any
 
 JsonScalar = str | int | float | bool | None
@@ -151,6 +152,35 @@ class SemanticNode:
 
 
 @dataclass(frozen=True)
+class ConstantBinding:
+    """Declared exact tensor bytes; target packing remains a separate obligation."""
+
+    node_id: str
+    encoding: str
+    data_hex: str
+
+    def __post_init__(self) -> None:
+        if not self.node_id or self.encoding not in {"i8", "i32-le"}:
+            raise ValueError("constant needs a named, admitted byte encoding")
+        if len(self.data_hex) % 2 or any(char not in "0123456789abcdef" for char in self.data_hex):
+            raise ValueError("constant bytes must be canonical lowercase hex")
+
+    def validate_type(self, type_: TensorType) -> None:
+        expected = {"i8": ("i8", 1), "i32-le": ("i32", 4)}[self.encoding]
+        if type_.dtype != expected[0] or len(self.data_hex) // 2 != prod(type_.shape) * expected[1]:
+            raise ValueError("constant bytes differ from declared tensor type")
+
+    def record(self) -> dict[str, str]:
+        return {"node_id": self.node_id, "encoding": self.encoding, "data_hex": self.data_hex}
+
+    @classmethod
+    def from_record(cls, row: dict[str, str]) -> ConstantBinding:
+        if set(row) != {"node_id", "encoding", "data_hex"}:
+            raise ValueError("constant binding has missing or unknown fields")
+        return cls(**row)
+
+
+@dataclass(frozen=True)
 class KernelRequest:
     nodes: tuple[SemanticNode, ...]
     outputs: tuple[str, ...]
@@ -159,6 +189,7 @@ class KernelRequest:
     target_identity: str
     lowering_policy: str = "strict-native"
     source_identity: str = ""
+    constants: tuple[ConstantBinding, ...] = ()
     _by_id: dict[str, SemanticNode] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -196,6 +227,13 @@ class KernelRequest:
             raise ValueError("target identity and valid lowering policy are required")
         if not isinstance(self.source_identity, str):
             raise ValueError("source identity must be a string")
+        bindings = {binding.node_id: binding for binding in self.constants}
+        if len(bindings) != len(self.constants) or set(bindings) != {
+            node.id for node in self.nodes if node.effect == "constant"
+        }:
+            raise ValueError("each semantic constant needs exactly one declared byte binding")
+        for node_id, binding in bindings.items():
+            binding.validate_type(seen[node_id].type)
         object.__setattr__(self, "_by_id", seen)
 
     def node(self, node_id: str) -> SemanticNode:
@@ -203,7 +241,7 @@ class KernelRequest:
 
     def record(self) -> dict[str, Any]:
         return {
-            "schema": "merlin.semantic_kernel.v1",
+            "schema": "merlin.semantic_kernel.v2",
             "nodes": [node.record() for node in self.nodes],
             "outputs": list(self.outputs),
             "output_storages": list(self.output_storages),
@@ -211,6 +249,7 @@ class KernelRequest:
             "target_identity": self.target_identity,
             "lowering_policy": self.lowering_policy,
             "source_identity": self.source_identity,
+            "constants": [binding.record() for binding in sorted(self.constants, key=lambda item: item.node_id)],
         }
 
     def digest(self) -> str:
@@ -221,8 +260,9 @@ class KernelRequest:
         expected = {
             "schema", "nodes", "outputs", "output_storages", "input_storages",
             "target_identity", "lowering_policy", "source_identity",
+            "constants",
         }
-        if set(row) != expected or row["schema"] != "merlin.semantic_kernel.v1":
+        if set(row) != expected or row["schema"] != "merlin.semantic_kernel.v2":
             raise ValueError("unexpected semantic kernel schema or fields")
         if not isinstance(row["nodes"], list) or not isinstance(row["input_storages"], dict):
             raise ValueError("semantic kernel graph or boundary has invalid structure")
@@ -234,4 +274,5 @@ class KernelRequest:
             target_identity=row["target_identity"],
             lowering_policy=row["lowering_policy"],
             source_identity=row["source_identity"],
+            constants=tuple(ConstantBinding.from_record(item) for item in row["constants"]),
         )
