@@ -9,10 +9,12 @@ qualification claim.
 
 The software specification selects `GemminiMxFPConfigs.standaloneMxFPConfig` at
 `f0167390b56fb315deea90ac1fc3983772e92d82`. It declares separate MXFP8,
-MXFP6, and MXFP4 contraction contracts. The spec is **unreviewed**: these
-contracts must be reconciled with elaborated RTL and the matching Spike and
-Verilator binaries before any capsule or compiler is admitted. The selected
-independent MX numerical model is loaded through `MERLIN_MLC_DIR`; its frozen
+MXFP6, and MXFP4 contraction contracts. Source-bound elaboration and a local
+Verilator simulator now pass the pinned format tests and bounded compiler
+payload diagnostics at 32³, 64³, and one two-wave 32×32×64 split. The spec
+remains **unreviewed**: full numerical edge cases, a matching Spike L2 oracle,
+Phase 0 L0–L3 capsules, and whole-model/host semantics still need admission.
+The selected independent MX numerical model is loaded through `MERLIN_MLC_DIR`; its frozen
 source identity and the selected RTL identity must agree. A TorchAO fake-quant
 capture is only an operand-conversion and coverage diagnostic, not an L2/L3
 oracle. The source-level config audit is recorded in the guide; the retained
