@@ -1,7 +1,7 @@
 //! General-purpose e-graph execution for Merlin's typed semantic rules.
 //! Algorithmic rule generation, extraction and allocation live in Merlin Python.
 
-use egg::{EGraph, Id, Language, Pattern, Rewrite, Runner, SymbolLang};
+use egg::{EGraph, Id, Language, Pattern, Rewrite, Runner, StopReason, SymbolLang};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 
@@ -130,7 +130,15 @@ fn run(request: Request) -> Result<Response, String> {
         roots,
         class_by_node,
         classes,
-        stop_reason: format!("{:?}", runner.stop_reason),
+        stop_reason: match runner.stop_reason {
+            Some(StopReason::Saturated) => "saturated",
+            Some(StopReason::IterationLimit(_)) => "iteration_limit",
+            Some(StopReason::NodeLimit(_)) => "node_limit",
+            Some(StopReason::TimeLimit(_)) => "time_limit",
+            Some(StopReason::Other(_)) => "other",
+            None => "unknown",
+        }
+        .into(),
         iterations: runner.iterations.len(),
         egraph_nodes: graph.total_size(),
     })

@@ -43,6 +43,44 @@ class TensorType:
 
 
 @dataclass(frozen=True)
+class IndexMap:
+    """Restricted integer-affine map from logical loop indices to one tensor."""
+
+    loop_rank: int
+    coefficients: tuple[tuple[int, ...], ...]
+    offsets: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.loop_rank) is not int or self.loop_rank <= 0:
+            raise ValueError("index map needs a positive logical loop rank")
+        if not self.coefficients or len(self.coefficients) != len(self.offsets):
+            raise ValueError("index map needs one offset per result dimension")
+        if any(len(row) != self.loop_rank or any(type(value) is not int for value in row) for row in self.coefficients):
+            raise ValueError("index map coefficients have invalid rank or type")
+        if any(type(value) is not int for value in self.offsets):
+            raise ValueError("index map offsets must be integers")
+
+    def apply(self, indices: tuple[int, ...]) -> tuple[int, ...]:
+        if len(indices) != self.loop_rank or any(type(value) is not int for value in indices):
+            raise ValueError("logical index has wrong rank or type")
+        return tuple(sum(coefficient * index for coefficient, index in zip(row, indices)) + offset
+                     for row, offset in zip(self.coefficients, self.offsets))
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "loop_rank": self.loop_rank,
+            "coefficients": [list(row) for row in self.coefficients],
+            "offsets": list(self.offsets),
+        }
+
+    @classmethod
+    def from_record(cls, row: dict[str, Any]) -> IndexMap:
+        if set(row) != {"loop_rank", "coefficients", "offsets"}:
+            raise ValueError("index map has missing or unknown fields")
+        return cls(row["loop_rank"], tuple(tuple(result) for result in row["coefficients"]), tuple(row["offsets"]))
+
+
+@dataclass(frozen=True)
 class SemanticNode:
     id: str
     op: str
@@ -50,6 +88,7 @@ class SemanticNode:
     type: TensorType
     attrs: tuple[tuple[str, JsonScalar], ...] = ()
     effect: str = "pure"
+    index_maps: tuple[IndexMap, ...] = ()
 
     def __post_init__(self) -> None:
         if any(not isinstance(value, str) or not value for value in (self.id, self.op)):
@@ -72,10 +111,16 @@ class SemanticNode:
             raise ValueError("constant nodes must have constant effect and no operands")
         if self.effect != "pure" and self.op not in {"input", "constant"}:
             raise ValueError("stateful computation requires an explicit state/token interface")
+        if self.index_maps and len(self.index_maps) != len(self.inputs) + 1:
+            raise ValueError("index maps need one entry per operand and one result")
+        if self.index_maps and len({index_map.loop_rank for index_map in self.index_maps}) != 1:
+            raise ValueError("all index maps must share one logical loop domain")
 
     def semantic_key(self) -> str:
         """Exclude source id and provenance, which do not change pure semantics."""
-        return sha256(_json_bytes((self.op, self.type.record(), sorted(self.attrs)))).hexdigest()
+        return sha256(_json_bytes((
+            self.op, self.type.record(), sorted(self.attrs), [index_map.record() for index_map in self.index_maps],
+        ))).hexdigest()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -85,11 +130,12 @@ class SemanticNode:
             "type": self.type.record(),
             "attrs": dict(self.attrs),
             "effect": self.effect,
+            "index_maps": [index_map.record() for index_map in self.index_maps],
         }
 
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> SemanticNode:
-        if set(row) != {"id", "op", "inputs", "type", "attrs", "effect"}:
+        if set(row) != {"id", "op", "inputs", "type", "attrs", "effect", "index_maps"}:
             raise ValueError("semantic node has missing or unknown fields")
         if not isinstance(row["inputs"], list) or not isinstance(row["attrs"], dict):
             raise ValueError("semantic operands and attributes have invalid structure")
@@ -100,6 +146,7 @@ class SemanticNode:
             TensorType.from_record(row["type"]),
             tuple(sorted(row["attrs"].items())),
             row["effect"],
+            tuple(IndexMap.from_record(index_map) for index_map in row["index_maps"]),
         )
 
 
@@ -121,6 +168,11 @@ class KernelRequest:
                 raise ValueError(f"duplicate node id: {node.id}")
             if any(child not in seen for child in node.inputs):
                 raise ValueError(f"node {node.id} is not in topological order")
+            if node.index_maps:
+                tensor_ranks = [len(seen[child].type.shape) for child in node.inputs]
+                tensor_ranks.append(len(node.type.shape))
+                if any(len(index_map.coefficients) != rank for index_map, rank in zip(node.index_maps, tensor_ranks)):
+                    raise ValueError(f"node {node.id} index-map result rank differs from tensor rank")
             seen[node.id] = node
         if not self.outputs or len(self.outputs) != len(self.output_storages):
             raise ValueError("all ordered outputs need a required storage")
