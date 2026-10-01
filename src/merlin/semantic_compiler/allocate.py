@@ -68,6 +68,11 @@ class Value:
     source_node: str | None
     kind: str
     validity: tuple[AddressConstraint, ...] = ()
+    input_read_offsets: tuple[int, ...] = ()
+    completion_offset: int = 0
+
+    def read_offset(self, index: int) -> int:
+        return self.input_read_offsets[index] if self.input_read_offsets else 0
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,8 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 source_node=metadata.get("source_node"),
                 kind=kind,
                 validity=validity,
+                input_read_offsets=tuple(metadata["descriptor"]["input_read_offsets"]) if kind == "instruction" else (),
+                completion_offset=int(metadata["descriptor"]["completion_offset"]) if kind == "instruction" else 0,
             )
         )
         return value_id
@@ -131,10 +138,7 @@ def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[i
             emitted += 1
             yield done
             return
-        ready = [
-            item for item in pending
-            if not any(child in pending for child in graph.value(item).children)
-        ]
+        ready = [item for item in pending if not any(child in pending for child in graph.value(item).children)]
         # Prefer consuming larger inputs, reducing the expected live set.
         ready.sort(key=lambda item: (-sum(graph.value(c).extent for c in graph.value(item).children), item))
         for item in ready:
@@ -145,23 +149,62 @@ def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[i
     yield from walk((), frozenset(instructions))
 
 
-def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
-    if set(order) != {value.id for value in graph.values if value.kind == "instruction"}:
+def instruction_schedule(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
+    """Issue serially until target timing has a reviewed overlap contract."""
+    instructions = {value.id for value in graph.values if value.kind == "instruction"}
+    if len(order) != len(instructions) or set(order) != instructions:
         raise ValueError("order omits or duplicates an instruction")
-    position = {value_id: index + 1 for index, value_id in enumerate(order)}
+    position = {value_id: index for index, value_id in enumerate(order)}
+    if any(
+        child in position and position[child] >= position[value.id]
+        for value in graph.values
+        if value.kind == "instruction"
+        for child in value.children
+    ):
+        raise ValueError("order executes a consumer before its instruction producer")
+    schedule: dict[int, tuple[int, int]] = {}
+    last_completion = 0
+    for value_id in order:
+        value = graph.value(value_id)
+        if value.completion_offset < 0 or (
+            value.input_read_offsets and len(value.input_read_offsets) != len(value.children)
+        ):
+            raise ValueError("instruction has malformed execution timing")
+        if any(
+            value.read_offset(index) < 0 or value.read_offset(index) > value.completion_offset
+            for index in range(len(value.children))
+        ):
+            raise ValueError("instruction reads an input outside its execution interval")
+        issue = last_completion + 1
+        last_completion = issue + value.completion_offset
+        schedule[value_id] = (issue, last_completion)
+    return schedule
+
+
+def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
+    schedule = instruction_schedule(graph, order)
     ranges: dict[int, tuple[int, int]] = {}
     for value in graph.values:
-        start = position[value.id] if value.kind == "instruction" else 0
-        uses = [position[parent.id] for parent in graph.values if value.id in parent.children and parent.id in position]
-        end = max(uses, default=start)
+        start = schedule[value.id][0] if value.kind == "instruction" else 0
+        uses = [
+            schedule[parent.id][0] + parent.read_offset(index)
+            for parent in graph.values
+            if parent.id in schedule
+            for index, child in enumerate(parent.children)
+            if child == value.id
+        ]
+        own_completion = schedule[value.id][1] if value.kind == "instruction" else start
+        end = max((*uses, own_completion))
         if value.id in graph.outputs:
-            end = len(order) + 1
+            end = max((completion for _, completion in schedule.values()), default=0) + 1
         ranges[value.id] = (start, end)
     return ranges
 
 
 def interference_edges(
-    graph: CandidateGraph, order: tuple[int, ...], banks: tuple[StorageBank, ...],
+    graph: CandidateGraph,
+    order: tuple[int, ...],
+    banks: tuple[StorageBank, ...],
 ) -> frozenset[tuple[int, int]]:
     """Canonical storage-conflict edges; order affects only this part of our formula."""
     bank_map = _geometry(banks)
@@ -184,6 +227,7 @@ class AllocationResult:
     order: tuple[int, ...]
     addresses: dict[int, int]
     reason: str = ""
+    issue_times: tuple[tuple[int, int], ...] = ()
 
 
 def _geometry(banks: tuple[StorageBank, ...]) -> dict[str, StorageBank]:
@@ -202,9 +246,10 @@ def _address_unit_problem(graph: CandidateGraph, bank_map: dict[str, StorageBank
     for value in graph.values:
         if value.storage not in bank_map:
             return "unknown storage bank"
-        ports = {"out": value.storage, **{
-            f"in{index}": graph.value(child).storage for index, child in enumerate(value.children)
-        }}
+        ports = {
+            "out": value.storage,
+            **{f"in{index}": graph.value(child).storage for index, child in enumerate(value.children)},
+        }
         for condition in value.validity:
             if condition.kind == "eq_offset" and (
                 bank_map[ports[condition.lhs]].unit != bank_map[ports[condition.rhs]].unit
@@ -369,7 +414,9 @@ def allocate(
     )
     if not checked:
         return AllocationResult("modeling_failure", order, addresses, reason)
-    return AllocationResult("feasible", order, addresses)
+    schedule = instruction_schedule(graph, order)
+    issue_times = tuple((value_id, schedule[value_id][0]) for value_id in order)
+    return AllocationResult("feasible", order, addresses, issue_times=issue_times)
 
 
 def may_prune_interference(

@@ -11,7 +11,14 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from .allocate import AllocationResult, CandidateGraph, StorageBank, check_assignment, lower_candidate
+from .allocate import (
+    AllocationResult,
+    CandidateGraph,
+    StorageBank,
+    check_assignment,
+    instruction_schedule,
+    lower_candidate,
+)
 from .egg_bridge import Exploration
 from .extract import Candidate, Choice
 from .model import KernelRequest
@@ -23,6 +30,34 @@ class SelectionCheck:
     valid: bool
     fingerprint: str
     reason: str = ""
+
+
+def check_timing(
+    graph: CandidateGraph, order: tuple[int, ...], issue_times: tuple[tuple[int, int], ...]
+) -> tuple[bool, str]:
+    """Replay each read and completion event from the selected instruction graph."""
+    if len(issue_times) != len(order) or tuple(value_id for value_id, _ in issue_times) != order:
+        return False, "physical schedule omits, duplicates or reorders an instruction"
+    completed: dict[int, int] = {}
+    previous_completion = 0
+    for value_id, issue in issue_times:
+        value = graph.value(value_id)
+        if value.kind != "instruction" or type(issue) is not int or issue <= previous_completion:
+            return False, "physical schedule issues before prior completion"
+        if value.completion_offset < 0 or (
+            value.input_read_offsets and len(value.input_read_offsets) != len(value.children)
+        ):
+            return False, "physical schedule has malformed execution timing"
+        for index, child_id in enumerate(value.children):
+            read_offset = value.read_offset(index)
+            if read_offset < 0 or read_offset > value.completion_offset:
+                return False, "input read occurs outside the instruction execution interval"
+            child = graph.value(child_id)
+            if child.kind == "instruction" and (child_id not in completed or completed[child_id] > issue + read_offset):
+                return False, "input read precedes producer completion"
+        previous_completion = issue + value.completion_offset
+        completed[value_id] = previous_completion
+    return True, ""
 
 
 def check_selection(
@@ -119,12 +154,19 @@ def check_selection(
     checked, reason = check_assignment(graph, allocation.order, allocation.addresses, banks, fixed_inputs=fixed_inputs)
     if not checked:
         return fail(f"selected physical assignment failed independent replay: {reason}")
+    expected_schedule = instruction_schedule(graph, allocation.order)
+    if allocation.issue_times != tuple((value_id, expected_schedule[value_id][0]) for value_id in allocation.order):
+        return fail("selected physical schedule differs from the allocated live ranges")
+    timed, reason = check_timing(graph, allocation.order, allocation.issue_times)
+    if not timed:
+        return fail(f"selected physical schedule failed independent replay: {reason}")
     evidence = {
         "source": request.digest(),
         "candidate": candidate.digest(),
         "target": [descriptor.record() for descriptor in descriptors],
         "banks": [bank.record() for bank in banks],
         "order": list(allocation.order),
+        "issue_times": list(allocation.issue_times),
         "addresses": sorted(allocation.addresses.items()),
     }
     fingerprint = hashlib.sha256(json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
