@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .allocate import AllocationResult, CandidateGraph, StorageBank, allocate, lower_candidate, topological_orders
+from .allocate import AllocationResult, CandidateGraph, Reservation, StorageBank, allocate, lower_candidate, topological_orders
 from .egg_bridge import EGraphUnavailable, Exploration, explore
 from .extract import Candidate, enumerate_candidates
 from .model import KernelRequest
@@ -53,6 +53,7 @@ def select_and_allocate(
     *,
     bridge: Path,
     fixed_inputs: dict[str, int] | None = None,
+    reservations: tuple[Reservation, ...] = (),
     limits: SearchLimits = SearchLimits(),
 ) -> SearchResult:
     program = generate_rules(request, descriptors)
@@ -93,6 +94,7 @@ def select_and_allocate(
                     order,
                     banks,
                     fixed_inputs=fixed_inputs,
+                    reservations=reservations,
                     timeout_ms=limits.solver_timeout_ms,
                 )
                 if result.status == "feasible":
@@ -109,9 +111,9 @@ def select_and_allocate(
                         program,
                     )
                 rejected_allocation += 1
-                if result.status in {"search_timeout", "tool_unavailable", "modeling_failure", "unqualified_target"}:
+                if result.status == "search_timeout":
                     inconclusive = True
-                if result.status == "tool_unavailable":
+                if result.status in {"tool_unavailable", "modeling_failure", "unqualified_target"}:
                     return SearchResult(
                         result.status,
                         identity,
