@@ -989,6 +989,38 @@ def test_reserved_scratch_and_register_aliases_are_checked() -> None:
         Reservation("fp8_view", True, 1)
 
 
+def test_final_replay_checks_reservations_and_binds_them_to_fingerprint(bridge: Path) -> None:
+    request = _request()
+    reserved = (Reservation("a", 0, 1),)
+    result = select_and_allocate(
+        request, _descriptors(), _banks(), bridge=bridge,
+        fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    assert result.rules is not None and result.exploration is not None and result.candidate is not None
+    value_id = next(value.id for value in result.graph.values if value.storage == "a")
+    assert result.allocation.addresses[value_id] == 1
+    checked = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert checked.valid and checked.fingerprint == result.check_fingerprint
+    without_reservation = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+    )
+    assert without_reservation.valid and without_reservation.fingerprint != checked.fingerprint
+    tampered_addresses = dict(result.allocation.addresses)
+    tampered_addresses[value_id] = 0
+    tampered = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, replace(result.allocation, addresses=tampered_addresses), _banks(),
+        fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert not tampered.valid and "reserved" in tampered.reason
+
+
 def test_search_preserves_invalid_resource_contract_status(bridge: Path) -> None:
     result = select_and_allocate(
         _request(), _descriptors(), _banks(), bridge=bridge,

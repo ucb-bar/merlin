@@ -197,6 +197,7 @@ def select_and_allocate(
                         result,
                         banks,
                         fixed_inputs=fixed_inputs,
+                        reservations=reservations,
                     )
                     if not checked.valid:
                         return SearchResult(
