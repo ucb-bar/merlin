@@ -31,7 +31,7 @@ from merlin.semantic_compiler.allocate import (
 )
 from merlin.semantic_compiler.egg_bridge import EGraphTimeout, explore
 from merlin.semantic_compiler.extract import ExtractionTimeout, enumerate_candidates
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.semantic_compiler.model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.rules import (
     AddressConstraint,
@@ -158,6 +158,11 @@ def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_se
         output_storages=("external", "external"),
         input_storages=(("x", "external"),),
         target_identity="synthetic-exact-i32-reference-1",
+        constants=(ConstantBinding(
+            "c", "i32-le", b"".join(
+                element.to_bytes(4, "little", signed=True) for element in (2, -3, 4, 0)
+            ).hex(),
+        ),),
     )
     constant = TensorValue(tensor, (2, -3, 4, 0))
     first = evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))}, constants={"c": constant})
@@ -166,8 +171,61 @@ def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_se
     assert [value.elements for value in second] == [(35, 18, 77, 64), (7, 3, 11, 8)]
     with pytest.raises(ValueError, match="declared constants"):
         evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))})
+    with pytest.raises(ValueError, match="compiler bytes"):
+        evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))},
+                       constants={"c": TensorValue(tensor, (2, -3, 4, 1))})
     with pytest.raises(ValueError, match="outside its admitted domain"):
         TensorValue(tensor, (1 << 31, 0, 0, 0))
+
+
+def test_constant_bytes_are_exact_compiler_inputs_and_change_request_identity() -> None:
+    tensor = TensorType((2,), "i32", "exact-i32")
+    nodes = (SemanticNode("c", "constant", (), tensor, effect="constant"),)
+    with pytest.raises(ValueError, match="exactly one declared byte binding"):
+        KernelRequest(nodes, ("c",), ("external",), (), "synthetic")
+    first = KernelRequest(
+        nodes, ("c",), ("external",), (), "synthetic",
+        constants=(ConstantBinding("c", "i32-le", "01000000feffffff"),),
+    )
+    second = replace(first, constants=(ConstantBinding("c", "i32-le", "02000000feffffff"),))
+    assert first.digest() != second.digest()
+    assert KernelRequest.from_record(first.record()).record() == first.record()
+    with pytest.raises(ValueError, match="tensor type"):
+        replace(first, constants=(ConstantBinding("c", "i32-le", "01000000"),))
+    with pytest.raises(ValueError, match="canonical lowercase hex"):
+        ConstantBinding("c", "i32-le", "AB000000")
+
+
+def test_native_selection_retains_declared_constant_identity_and_placement(bridge: Path) -> None:
+    tensor = TensorType((1,), "i32", "exact-i32")
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("c", "constant", (), tensor, effect="constant"),
+            SemanticNode("y", "add", ("x", "c"), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-constant-1",
+        constants=(ConstantBinding("c", "i32-le", "feffffff"),),
+    )
+    descriptor = _descriptor("add", "add", ("external", "external"), "external", "i32", "exact-i32", (1,))
+    bank = (StorageBank("external", "dram", 3, "word"),)
+    result = select_and_allocate(
+        request, (descriptor,), bank, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,),
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    placed = [value for value in result.graph.values if value.kind == "constant"]
+    assert len(placed) == 1 and placed[0].source_node == "c"
+    assert result.allocation.addresses[placed[0].id] == 1
+    altered = replace(request, constants=(ConstantBinding("c", "i32-le", "fdffffff"),))
+    again = select_and_allocate(
+        altered, (descriptor,), bank, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,),
+    )
+    assert again.status == "selected" and again.request_digest != result.request_digest
+    assert again.check_fingerprint != result.check_fingerprint
 
 
 def test_exact_i32_reference_rejects_unknown_arithmetic_and_shape_errors() -> None:
@@ -563,6 +621,27 @@ def test_ordered_output_abi_is_solved_and_checked_independently(bridge: Path) ->
         ).status
         == "modeling_failure"
     )
+    for inputs, outputs in (
+        ({"ghost": 0}, (2,)),
+        ({"x": True}, (2,)),
+        ({"x": 3}, (2,)),
+        ({"x": 0}, (-1,)),
+        ({"x": 0}, (True,)),
+        ({"x": 0}, (3,)),
+    ):
+        malformed = select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs=inputs, fixed_outputs=outputs
+        )
+        assert malformed.status == "modeling_failure", (inputs, outputs, malformed)
+        valid, reason = check_assignment(
+            result.graph,
+            result.allocation.order,
+            result.allocation.addresses,
+            banks,
+            fixed_inputs=inputs,
+            fixed_outputs=outputs,
+        )
+        assert not valid and "ABI" in reason
 
 
 def test_in_place_reuse_requires_declared_last_use_and_later_write(bridge: Path) -> None:
@@ -683,6 +762,7 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
 ) -> None:
     original_import = builtins.__import__
     original_run = subprocess.run
+    cargo_calls = 0
 
     def guarded_import(name: str, *args: object, **kwargs: object) -> object:
         if name.split(".")[0] in {"act", "act_backend", "taidl", "taidl_to"}:
@@ -690,8 +770,12 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         return original_import(name, *args, **kwargs)
 
     def guarded_run(command: object, *args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        nonlocal cargo_calls
         if isinstance(command, (list, tuple)) and any("act" in str(part).lower() for part in command):
             raise AssertionError("native snapshot generation attempted an ACT subprocess")
+        if isinstance(command, (list, tuple)) and command[:2] == ["cargo", "build"]:
+            assert "--offline" in command and "--locked" in command
+            cargo_calls += 1
         return original_run(command, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
@@ -732,6 +816,7 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         source_revision="public-test-revision",
     )
     assert second.profile.digest() != original.profile.digest()
+    assert cargo_calls == 2
     with pytest.raises(ValueError, match="target identity"):
         second.select(_request())
     revised_request = replace(_request(), target_identity="synthetic-revision-2")
@@ -1238,8 +1323,23 @@ def _reference_feasible(
                 left_addr, right_addr = assignment[left.id], assignment[right.id]
                 overlap = left_addr < right_addr + right.extent and right_addr < left_addr + left.extent
                 if both_live and overlap:
-                    legal = False
-                    break
+                    exact_reuse = False
+                    for child, parent in ((left, right), (right, left)):
+                        if child.kind != "instruction" or parent.kind != "instruction":
+                            continue
+                        if child.id in graph.outputs or child.extent != parent.extent:
+                            continue
+                        if parent.children.count(child.id) != 1:
+                            continue
+                        port = parent.children.index(child.id)
+                        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+                            continue
+                        if sum(value.children.count(child.id) for value in graph.values) != 1:
+                            continue
+                        exact_reuse = left_addr == right_addr
+                    if not exact_reuse:
+                        legal = False
+                        break
             if not legal:
                 break
         if legal:
@@ -1251,6 +1351,7 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
     """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2, fixed I/O."""
     rng = random.Random(1907)
     outcomes = {"feasible": 0, "infeasible_candidate": 0}
+    in_place_only = 0
     for index in range(200):
         two_stores = index % 2 == 0
         aliases = two_stores and index % 3 == 0
@@ -1263,13 +1364,39 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         values = [Value(0, "source", "a", rng.randint(1, 2), (), "input", "input")]
         values.append(Value(1, "compute", storage, rng.randint(1, 2), (0,), None, "instruction"))
         if index % 5:
-            values.append(Value(2, "consume", "a", rng.randint(1, 2), (1,), None, "instruction"))
+            values.append(
+                Value(
+                    2,
+                    "consume",
+                    "a",
+                    rng.randint(1, 2),
+                    (1,),
+                    None,
+                    "instruction",
+                    completion_offset=1 if index % 7 == 0 else 0,
+                    in_place_inputs=(0,) if index % 7 == 0 else (),
+                )
+            )
         graph = CandidateGraph(tuple(values), (values[-1].id,))
         order = tuple(value.id for value in values if value.kind == "instruction")
-        fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
+        fixed = (
+            {"input": rng.randint(0, min(1, capacity_a - values[0].extent))}
+            if index % 3 and capacity_a >= values[0].extent
+            else {}
+        )
+        output = values[-1]
+        output_capacity = next(bank.capacity for bank in banks if bank.name == output.storage)
+        fixed_outputs = (
+            (rng.randint(0, min(2, output_capacity - output.extent)),)
+            if index % 4 == 0 and output_capacity >= output.extent
+            else None
+        )
         reservations = (Reservation("a", capacity_a - 1, 1),) if index % 4 == 0 else ()
-        fixed_outputs = (rng.randint(0, 2),) if index % 4 == 0 else None
         expected = _reference_feasible(graph, order, banks, fixed, reservations, fixed_outputs)
+        if len(values) == 3 and values[-1].in_place_inputs and expected:
+            ordinary = CandidateGraph((*values[:2], replace(values[-1], in_place_inputs=())), graph.outputs)
+            if not _reference_feasible(ordinary, order, banks, fixed, reservations, fixed_outputs):
+                in_place_only += 1
         result = allocate(
             graph, order, banks, fixed_inputs=fixed, reservations=reservations,
             fixed_outputs=fixed_outputs, timeout_ms=5000,
@@ -1278,6 +1405,7 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         outcomes[result.status] += 1
         assert (result.status == "feasible") == expected, (index, graph, banks, fixed, fixed_outputs, result)
     assert all(outcomes.values()), outcomes
+    assert in_place_only > 0
 
 
 def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:

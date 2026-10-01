@@ -65,12 +65,19 @@ def evaluate_graph(
     expected_constants = {node.id for node in request.nodes if node.effect == "constant"}
     if set(inputs) != expected_inputs or set(constants) != expected_constants:
         raise ValueError("reference inputs or declared constants differ from the graph boundary")
+    bindings = {binding.node_id: binding for binding in request.constants}
     values: dict[str, TensorValue] = {}
     for node in request.nodes:
         if node.effect in {"input", "constant"}:
             value = inputs[node.id] if node.effect == "input" else constants[node.id]
             if value.type != node.type:
                 raise ValueError(f"reference boundary type differs for {node.id}")
+            if node.effect == "constant":
+                binding = bindings[node.id]
+                width = 1 if binding.encoding == "i8" else 4
+                expected = b"".join(element.to_bytes(width, "little", signed=True) for element in value.elements)
+                if expected.hex() != binding.data_hex:
+                    raise ValueError(f"reference constant differs from declared compiler bytes for {node.id}")
             values[node.id] = value
             continue
         if node.effect != "pure":
