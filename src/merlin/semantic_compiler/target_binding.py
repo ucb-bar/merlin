@@ -17,6 +17,22 @@ from .search import SearchLimits
 from .snapshot import NativeSnapshot, NativeTargetProfile
 
 
+class NativeCompilationFailure(RuntimeError):
+    """A target handoff failure whose earliest boundary must survive the CLI."""
+
+    STATUSES = frozenset({
+        "compile_error", "unsupported_semantics", "unqualified_target",
+        "infeasible_candidate", "search_timeout", "resource_limit",
+        "tool_unavailable", "numerical_mismatch", "execution_failure",
+    })
+
+    def __init__(self, status: str, reason: str) -> None:
+        if status not in self.STATUSES or not reason:
+            raise ValueError("native compilation failure needs a known status and reason")
+        self.status = status
+        super().__init__(reason)
+
+
 class NativeTargetBinding(Protocol):
     @staticmethod
     def profile() -> NativeTargetProfile: ...

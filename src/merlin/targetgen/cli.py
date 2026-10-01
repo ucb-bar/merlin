@@ -148,7 +148,9 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
     from merlin.semantic_compiler.model import KernelRequest
     from merlin.semantic_compiler.search import SearchLimits
     from merlin.semantic_compiler.snapshot import open_native_snapshot
-    from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
+    from merlin.semantic_compiler.target_binding import (
+        NativeCompilationFailure, load_native_target_binding, verify_native_publication,
+    )
 
     try:
         binding = load_native_target_binding(args.support)
@@ -189,6 +191,9 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
                   "engine": args.engine, "support": args.support, "out": str(args.out),
                   "request_digest": request.digest(), "target_identity": snapshot.profile.target_identity,
                   "binary_sha256": manifest.get("binary_sha256")}
+    except NativeCompilationFailure as error:
+        report = {"schema": "merlin.native_compilation_status.v1", "status": error.status,
+                  "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError) as error:
         report = {"schema": "merlin.native_compilation_status.v1", "status": "compile_error",
                   "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}

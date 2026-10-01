@@ -15,7 +15,7 @@ from merlin.semantic_compiler.allocate import StorageBank
 from merlin.semantic_compiler.model import ConstantBinding, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.rules import InstructionDescriptor
 from merlin.semantic_compiler.snapshot import NativeTargetProfile
-from merlin.semantic_compiler.target_binding import verify_native_publication
+from merlin.semantic_compiler.target_binding import NativeCompilationFailure, verify_native_publication
 
 
 def _invoke(*arguments: object) -> subprocess.CompletedProcess[str]:
@@ -23,6 +23,16 @@ def _invoke(*arguments: object) -> subprocess.CompletedProcess[str]:
     assert script.is_file(), "install the Merlin CLI entrypoint before this integration test"
     return subprocess.run([str(script), *(str(item) for item in arguments)], text=True,
                           capture_output=True, timeout=180, check=False)
+
+
+def test_native_target_failure_keeps_earliest_boundary() -> None:
+    failure = NativeCompilationFailure("tool_unavailable", "generated target parser absent")
+    assert failure.status == "tool_unavailable"
+    assert str(failure) == "generated target parser absent"
+    with pytest.raises(ValueError, match="known status"):
+        NativeCompilationFailure("selected", "invalid success")
+    with pytest.raises(ValueError, match="known status"):
+        NativeCompilationFailure("tool_unavailable", "")
 
 
 def test_native_publication_refuses_changed_execution_plan(tmp_path: Path) -> None:
