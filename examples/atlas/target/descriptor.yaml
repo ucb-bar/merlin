@@ -7,9 +7,12 @@ numeric_profile: examples/atlas/phase0/recipe.yaml
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
   elaboration:
-    ext_root: chipyard_atlas
-    config: AtlasRocketConfig
-    generator: atlas
+    ext_root: bringup_chipyard
+    config: EE290SimConfig
+    generator: atlas-npu
+    source_revision: "426a862f97f98938660772bd8a5d8f41316d15c3"
+    gitlinks:
+      generators/atlas-npu: "0079c0541111197741a231c002e3843fa6f545b2"
 
 hardware_spec:
   isa_headers:

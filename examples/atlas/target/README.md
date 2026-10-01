@@ -6,6 +6,16 @@
 Neither an ISA name nor the host package's FP32 strategy certifies FP8/BF16
 operation support.
 
+The selected integrated source is `EE290SimConfig` in `bringup-chipyard` at
+`426a862f97f98938660772bd8a5d8f41316d15c3`. Its recorded
+`generators/atlas-npu` gitlink is
+`0079c0541111197741a231c002e3843fa6f545b2`. The target descriptor
+checks both revisions when resolving that source; set
+`MERLIN_EXT_BRINGUP_CHIPYARD` to the pinned checkout. Earlier standalone
+AtlasCore observations retain their own execution tier and are not an
+integrated EE290SimConfig qualification. A new elaboration, source audit,
+and integrated execution are still required.
+
 The separate [hand-authored Atlas MLIR dialect](https://github.com/ucb-bar/atlas-mlir/tree/handwritten-implementation)
 shows typed machine operations and an LLVM/assembly handoff for fixed diagnostic
 tiles. Its [dialect reference](https://github.com/ucb-bar/atlas-mlir/blob/5485aa0aaeca222e1c158507460db06a621eeba4/docs/dialect-reference.md)
@@ -101,7 +111,7 @@ spec-generated hardware and Chipyard memory/hierarchy sources:
 
 ```sh
 python -m merlin.targetgen.rtl.source_selection \
-  --target atlas --generator atlas --config AtlasRocketConfig \
+  --target atlas --generator atlas-npu --config EE290SimConfig \
   --core-root AtlasTile --firrtl /selected/elaboration/design.fir \
   --hierarchy /selected/elaboration/top_module_hierarchy.json \
   --firtool /selected/circt/bin/firtool --output /generated/atlas/source-1

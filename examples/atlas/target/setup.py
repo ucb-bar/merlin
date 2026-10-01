@@ -40,19 +40,14 @@ ROOT = repo_root()
 # Both external checkouts are resolved as SIBLINGS of this repo, the same way pyproject.toml reaches
 # `aet`. They used to be spelled as one developer's absolute paths, which made the fallback useless
 # to everyone else and put that developer's directory layout in a public repo. $MERLIN_MLC_DIR /
-# $MERLIN_EXT_ATLAS_NPU / $MERLIN_EXT_CHIPYARD_ATLAS and the CLI flags still win over these.
+# $MERLIN_EXT_ATLAS_NPU / $MERLIN_EXT_BRINGUP_CHIPYARD and CLI flags still win over these.
 _SIBLINGS = ROOT.parent
 # The mlc sibling checkout pins atlas-npu as a submodule; that is the canonical dev location.
 _MLC_DEFAULT = Path(os.environ.get("MERLIN_MLC_DIR") or _SIBLINGS / "mvp-lhwir" / "modeling")
 _ATLAS_NPU_DEFAULT = _MLC_DEFAULT / "third_party" / "atlas-npu"
-# chipyard checkout with atlas wired in + a prebuilt whole-program Verilator sim (the L4 RTL tier).
-_CHIPYARD_ATLAS_DEFAULT = _SIBLINGS / "chipyard-atlas"
-_VERILATOR_SIM_REL = "sims/verilator/simulator-chipyard.harness-AtlasRocketConfig"
-# Pinned shas we onboarded against (informational — a newer master is fine, we just record drift).
-_PIN_ATLAS_NPU = "569b7c3"
-_PIN_NPU_MODEL = "11598ec"
-
-
+# Selected Chipyard source; the whole-program simulator is a separate L4 prerequisite.
+_BRINGUP_CHIPYARD_DEFAULT = _SIBLINGS / "bringup-chipyard"
+_VERILATOR_SIM_REL = "sims/verilator/simulator-chipyard.harness-EE290SimConfig"
 def _sha(repo: Path) -> str | None:
     try:
         return subprocess.run(
@@ -75,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--atlas-npu", help="atlas-npu checkout (else $MERLIN_EXT_ATLAS_NPU / mlc sibling default)")
     ap.add_argument("--npu-model", help="npu-model checkout (else $MERLIN_EXT_NPU_MODEL / <atlas-npu>/npu-model)")
-    ap.add_argument("--chipyard-atlas", help="chipyard-atlas checkout w/ the prebuilt Verilator sim (L4 RTL)")
+    ap.add_argument(
+        "--bringup-chipyard", "--chipyard-atlas", dest="bringup_chipyard",
+        help="selected EE290SimConfig checkout (the Verilator sim is an optional L4 artifact)",
+    )
     ap.add_argument("--write-env", action="store_true", help="append MERLIN_EXT_* to this clone's .env")
     ap.add_argument("--sync-npu-model", action="store_true", help="run `uv sync` in the npu-model dir")
     ap.add_argument(
@@ -102,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("atlas-npu checkout not found — pass --atlas-npu or set MERLIN_EXT_ATLAS_NPU.\n")
         return 2
     npu_model = Path(a.npu_model) if a.npu_model else atlas_npu / "npu-model"
-    print(f"atlas-npu   : {atlas_npu}  (sha {_sha(atlas_npu) or '?'}; onboarded @{_PIN_ATLAS_NPU})")
-    print(f"npu-model   : {npu_model}  (sha {_sha(npu_model) or '?'}; onboarded @{_PIN_NPU_MODEL})")
+    print(f"atlas-npu [separate] : {atlas_npu} (sha {_sha(atlas_npu) or '?'})")
+    print(f"npu-model [diagnostic]: {npu_model} (sha {_sha(npu_model) or '?'})")
     if not npu_model.is_dir():
         sys.stderr.write(f"npu-model dir missing under {atlas_npu} — pass --npu-model.\n")
         ok = False
@@ -133,7 +131,19 @@ def main(argv: list[str] | None = None) -> int:
     # can grade on arcilator L3 without it; verilator is the 2nd RTL tier + cross-check).
     from merlin.common.paths import env as _env
 
-    chip = Path(a.chipyard_atlas or _env("MERLIN_EXT_CHIPYARD_ATLAS") or _CHIPYARD_ATLAS_DEFAULT)
+    chip = Path(a.bringup_chipyard or _env("MERLIN_EXT_BRINGUP_CHIPYARD") or _BRINGUP_CHIPYARD_DEFAULT)
+    from merlin.targetgen.rtl.introspect import RtlSourceInvalid, verify_declared_revision
+    import yaml
+
+    selected = yaml.safe_load((ROOT / "examples/atlas/target/descriptor.yaml").read_text())["rtl"]["elaboration"]
+    try:
+        verify_declared_revision(
+            chip, selected["source_revision"], tuple(sorted(selected["gitlinks"].items()))
+        )
+        print(f"EE290 source [selected]        : pinned ({chip})")
+    except RtlSourceInvalid as exc:
+        print(f"EE290 source [selected]        : UNAVAILABLE ({exc})")
+        ok = False
     sim = chip / _VERILATOR_SIM_REL
     print(f"chipyard Verilator [L4 RTL]   : {'built' if sim.is_file() else 'not built'} ({sim})")
 
@@ -163,8 +173,8 @@ def main(argv: list[str] | None = None) -> int:
             add.append(f"MERLIN_EXT_ATLAS_NPU={atlas_npu}")
         if "MERLIN_EXT_NPU_MODEL" not in have:
             add.append(f"MERLIN_EXT_NPU_MODEL={npu_model}")
-        if "MERLIN_EXT_CHIPYARD_ATLAS" not in have and chip.is_dir():
-            add.append(f"MERLIN_EXT_CHIPYARD_ATLAS={chip}")
+        if "MERLIN_EXT_BRINGUP_CHIPYARD" not in have and chip.is_dir():
+            add.append(f"MERLIN_EXT_BRINGUP_CHIPYARD={chip}")
         if add:
             with envf.open("a") as f:
                 f.write("\n# atlas-npu + npu_model (examples/atlas/target/setup.py)\n" + "\n".join(add) + "\n")
