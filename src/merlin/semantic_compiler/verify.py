@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .allocate import (
     AllocationResult,
     CandidateGraph,
+    Reservation,
     StorageBank,
     check_assignment,
     instruction_schedule,
@@ -71,6 +72,7 @@ def check_selection(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    reservations: tuple[Reservation, ...] = (),
 ) -> SelectionCheck:
     def fail(reason: str) -> SelectionCheck:
         return SelectionCheck(False, "", reason)
@@ -113,10 +115,24 @@ def check_selection(
                 return "selected instruction changes output numerical policy"
             if len(source.type.shape) not in descriptor.ranks or source.index_maps != descriptor.index_maps:
                 return "selected instruction has incompatible rank or index maps"
+            operand_shapes = tuple(request.node(child_id).type.shape for child_id in source.inputs)
+            if descriptor.shape_contract == "equal":
+                if any(shape != source.type.shape for shape in operand_shapes):
+                    return "selected instruction violates equal-shape contract"
+            else:
+                shapes = {
+                    "out": source.type.shape,
+                    **{f"in{index}": shape for index, shape in enumerate(operand_shapes)},
+                }
+                if any(
+                    shapes[item.lhs_port][item.lhs_axis] != shapes[item.rhs_port][item.rhs_axis]
+                    for item in descriptor.shape_equalities
+                ):
+                    return "selected instruction violates a dimension relation"
             if not all(bound.accepts(source.type.shape) for bound in descriptor.output_axis_bounds):
                 return "selected instruction violates a shape precondition"
-            if any(dict(source.attrs).get(key) != value for key, value in descriptor.required_attrs):
-                return "selected instruction violates an attribute precondition"
+            if dict(source.attrs) != dict(descriptor.required_attrs):
+                return "selected instruction differs in semantic attributes"
             if len(choice.children) != len(source.inputs) or choice.storage != descriptor.output_storage:
                 return "selected instruction has wrong operands or output storage"
             for index, (child, child_id) in enumerate(zip(choice.children, source.inputs)):
@@ -151,7 +167,10 @@ def check_selection(
         problem = visit(choice)
         if problem:
             return fail(problem)
-    checked, reason = check_assignment(graph, allocation.order, allocation.addresses, banks, fixed_inputs=fixed_inputs)
+    checked, reason = check_assignment(
+        graph, allocation.order, allocation.addresses, banks,
+        fixed_inputs=fixed_inputs, reservations=reservations,
+    )
     if not checked:
         return fail(f"selected physical assignment failed independent replay: {reason}")
     expected_schedule = instruction_schedule(graph, allocation.order)
@@ -165,6 +184,7 @@ def check_selection(
         "candidate": candidate.digest(),
         "target": [descriptor.record() for descriptor in descriptors],
         "banks": [bank.record() for bank in banks],
+        "reservations": [vars(reservation) for reservation in reservations],
         "order": list(allocation.order),
         "issue_times": list(allocation.issue_times),
         "addresses": sorted(allocation.addresses.items()),

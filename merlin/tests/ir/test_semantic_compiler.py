@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
+from merlin.semantic_compiler import extract as native_extract
+from merlin.semantic_compiler import search as native_search
 from merlin.semantic_compiler.allocate import (
+    AllocationResult,
     CandidateGraph,
     Reservation,
     StorageBank,
@@ -26,11 +29,17 @@ from merlin.semantic_compiler.allocate import (
     may_prune_interference,
     topological_orders,
 )
-from merlin.semantic_compiler.egg_bridge import explore
-from merlin.semantic_compiler.extract import enumerate_candidates
+from merlin.semantic_compiler.egg_bridge import EGraphTimeout, explore
+from merlin.semantic_compiler.extract import ExtractionTimeout, enumerate_candidates
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
-from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
+from merlin.semantic_compiler.rules import (
+    AddressConstraint,
+    AxisBound,
+    AxisEquality,
+    InstructionDescriptor,
+    generate_rules,
+)
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
 from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
 from merlin.semantic_compiler.verify import check_selection, check_timing
@@ -249,8 +258,28 @@ def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
         InstructionDescriptor("missing_input_contract", "identity", ("external",), "a", "i8", "exact", (2,))
     rules = generate_rules(request, _descriptors())
     assert len(rules.rewrites) == 5
+    wrong_shape = replace(request.node("v"), type=TensorType((2, 3), "i8", "exact"))
+    assert not _descriptors()[0].accepts(wrong_shape, (request.node("x"),))
+    with pytest.raises(ValueError, match="axis exceeds"):
+        _descriptor(
+            "invalid_shape",
+            "identity",
+            ("external",),
+            "a",
+            "i8",
+            "exact",
+            (2,),
+            input_ranks=(2,),
+            shape_contract="relations",
+            shape_equalities=(AxisEquality("in0", 2, "out", 0),),
+        )
     changed = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), (("missing", 1),))
     assert len(generate_rules(request, (changed,)).rewrites) == 1
+    altered_source = replace(
+        request,
+        nodes=(*request.nodes[:2], replace(request.nodes[2], attrs=(("rounding", "different"),)), request.nodes[3]),
+    )
+    assert len(generate_rules(altered_source, _descriptors()).rewrites) == 4
     wrong_policy = _descriptor("load_a", "identity", ("external",), "a", "i8", "rounded", (2,))
     assert len(generate_rules(request, (wrong_policy,)).rewrites) == 1
     wrong_input = _descriptor("load_a", "identity", ("external",), "a", "i8", "exact", (2,), input_dtypes=("bf16",))
@@ -524,8 +553,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v2"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v1")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v3"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v2")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(
@@ -536,6 +565,15 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         source_revision="public-test-revision",
     )
     assert original.select(_request(), fixed_inputs={"x": 0}).status == "selected"
+    reserved_result = original.select(
+        _request(), fixed_inputs={"x": 0}, reservations=(Reservation("a", 0, 1),)
+    )
+    assert reserved_result.status == "selected"
+    assert reserved_result.graph is not None and reserved_result.allocation is not None
+    assert all(
+        reserved_result.allocation.addresses[value.id] != 0
+        for value in reserved_result.graph.values if value.storage == "a"
+    )
     smaller = NativeTargetProfile(
         "synthetic-revision-2",
         _descriptors(),
@@ -791,6 +829,81 @@ def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) 
     assert result.rejected_allocation == 1
 
 
+def test_search_deadlines_preserve_timeout_status(bridge: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    request = _request()
+    rules = generate_rules(request, _descriptors())
+    exploration = explore(rules, bridge=bridge)
+    with pytest.raises(ExtractionTimeout):
+        list(
+            enumerate_candidates(
+                exploration,
+                request,
+                rules,
+                node_budget=4,
+                max_candidates=4,
+                deadline=0,
+            )
+        )
+
+    clock = [0.0]
+    monkeypatch.setattr(native_search, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(native_extract, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(native_search, "explore", lambda *args, **kwargs: exploration)
+
+    def timed_allocation(graph, order, banks, **kwargs):
+        clock[0] = 2.0
+        return AllocationResult("infeasible_candidate", order, {})
+
+    monkeypatch.setattr(native_search, "allocate", timed_allocation)
+    result = select_and_allocate(
+        request,
+        _descriptors(),
+        _banks(),
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+        limits=SearchLimits(wall_timeout_s=1),
+    )
+    assert result.status == "search_timeout"
+    assert result.ordering_attempts == 1 and result.candidate is None
+
+    def unavailable(*args, **kwargs):
+        raise EGraphTimeout("watchdog elapsed")
+
+    clock[0] = 0.0
+    monkeypatch.setattr(native_search, "explore", unavailable)
+    expired = select_and_allocate(request, _descriptors(), _banks(), bridge=bridge)
+    assert expired.status == "search_timeout" and "watchdog" in expired.reason
+
+
+def test_egraph_bridge_watchdog_has_a_distinct_timeout_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = tmp_path / "bridge"
+    bridge.write_text("placeholder")
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="merlin-egg-bridge", timeout=0.01)
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(EGraphTimeout, match="timed out"):
+        explore(generate_rules(_request(), _descriptors()), bridge=bridge, wall_timeout_s=0.01)
+
+
+def test_search_keeps_unqualified_target_distinct_from_solver_timeout(
+    bridge: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unqualified(graph, order, banks, **kwargs):
+        return AllocationResult("unqualified_target", order, {}, "address units disagree")
+
+    monkeypatch.setattr(native_search, "allocate", unqualified)
+    result = select_and_allocate(_request(), _descriptors(), _banks(), bridge=bridge)
+    assert result.status == "unqualified_target"
+    assert "address units disagree" in result.reason
+    assert result.rejected_allocation > 0
+
+
 def test_generated_address_validity_and_independent_checker(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
@@ -883,6 +996,38 @@ def test_reserved_scratch_and_register_aliases_are_checked() -> None:
     assert allocate(single, (0,), banks, reservations=(Reservation("fp8_view", 4, 1),)).status == "unqualified_target"
     with pytest.raises(ValueError, match="reservation"):
         Reservation("fp8_view", True, 1)
+
+
+def test_final_replay_checks_reservations_and_binds_them_to_fingerprint(bridge: Path) -> None:
+    request = _request()
+    reserved = (Reservation("a", 0, 1),)
+    result = select_and_allocate(
+        request, _descriptors(), _banks(), bridge=bridge,
+        fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    assert result.rules is not None and result.exploration is not None and result.candidate is not None
+    value_id = next(value.id for value in result.graph.values if value.storage == "a")
+    assert result.allocation.addresses[value_id] == 1
+    checked = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert checked.valid and checked.fingerprint == result.check_fingerprint
+    without_reservation = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+    )
+    assert without_reservation.valid and without_reservation.fingerprint != checked.fingerprint
+    tampered_addresses = dict(result.allocation.addresses)
+    tampered_addresses[value_id] = 0
+    tampered = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, replace(result.allocation, addresses=tampered_addresses), _banks(),
+        fixed_inputs={"x": 0}, reservations=reserved,
+    )
+    assert not tampered.valid and "reserved" in tampered.reason
 
 
 def test_search_preserves_invalid_resource_contract_status(bridge: Path) -> None:

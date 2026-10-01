@@ -31,13 +31,17 @@ class EGraphUnavailable(RuntimeError):
     pass
 
 
+class EGraphTimeout(EGraphUnavailable):
+    pass
+
+
 def explore(
     program: RuleProgram,
     *,
     bridge: Path,
     iterations: int = 8,
     node_limit: int = 5000,
-    wall_timeout_s: int = 60,
+    wall_timeout_s: float = 60,
 ) -> Exploration:
     """Run only the explicitly supplied Merlin bridge; no ACT discovery/fallback."""
     if not bridge.is_file():
@@ -51,7 +55,9 @@ def explore(
             check=False,
             timeout=wall_timeout_s,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired as exc:
+        raise EGraphTimeout(f"Merlin e-graph bridge timed out: {exc}") from exc
+    except OSError as exc:
         raise EGraphUnavailable(f"Merlin e-graph bridge failed: {exc}") from exc
     if proc.returncode:
         stderr = proc.stderr.decode(errors="replace")
@@ -62,14 +68,18 @@ def explore(
             raise ValueError("unexpected e-graph result schema")
         classes = {
             int(row["id"]): tuple(
-                ENode(str(node["symbol"]), tuple(int(child) for child in node["children"]))
-                for node in row["nodes"]
+                ENode(str(node["symbol"]), tuple(int(child) for child in node["children"])) for node in row["nodes"]
             )
             for row in result["classes"]
         }
         roots = tuple(int(root) for root in result["roots"])
         if result["stop_reason"] not in {
-            "saturated", "iteration_limit", "node_limit", "time_limit", "other", "unknown",
+            "saturated",
+            "iteration_limit",
+            "node_limit",
+            "time_limit",
+            "other",
+            "unknown",
         }:
             raise ValueError("e-graph result has unknown stop reason")
         if any(root not in classes for root in roots):

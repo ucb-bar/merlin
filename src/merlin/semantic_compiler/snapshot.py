@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .allocate import StorageBank
+from .allocate import Reservation, StorageBank
 from .model import KernelRequest
 from .rules import InstructionDescriptor
 from .search import SearchLimits, SearchResult, select_and_allocate
@@ -53,7 +53,7 @@ class NativeTargetProfile:
 
     def record(self) -> dict[str, Any]:
         return {
-            "schema": "merlin.native_target_profile.v2",
+            "schema": "merlin.native_target_profile.v3",
             "target_identity": self.target_identity,
             "descriptors": [descriptor.record() for descriptor in self.descriptors],
             "banks": [bank.record() for bank in self.banks],
@@ -65,7 +65,7 @@ class NativeTargetProfile:
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> NativeTargetProfile:
         if set(row) != {"schema", "target_identity", "descriptors", "banks"} or row["schema"] != (
-            "merlin.native_target_profile.v2"
+            "merlin.native_target_profile.v3"
         ):
             raise ValueError("unexpected native target profile schema or fields")
         return cls(
@@ -87,6 +87,7 @@ class NativeSnapshot:
         request: KernelRequest,
         *,
         fixed_inputs: dict[str, int] | None = None,
+        reservations: tuple[Reservation, ...] = (),
         limits: SearchLimits = SearchLimits(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
@@ -101,6 +102,7 @@ class NativeSnapshot:
             self.profile.banks,
             bridge=self.bridge,
             fixed_inputs=fixed_inputs,
+            reservations=reservations,
             limits=limits,
         )
 
@@ -149,7 +151,7 @@ def build_native_snapshot(
         shutil.copy2(binary, copied)
         (temporary / "profile.json").write_bytes(_encoded(profile.record()) + b"\n")
         manifest = {
-            "schema": "merlin.native_target_snapshot.v2",
+            "schema": "merlin.native_target_snapshot.v3",
             "status": "selection_only",
             "source_revision": source_revision,
             "target_identity": profile.target_identity,
@@ -168,7 +170,7 @@ def build_native_snapshot(
 
 def open_native_snapshot(root: Path) -> NativeSnapshot:
     manifest = json.loads((root / "manifest.json").read_text())
-    if manifest.get("schema") != "merlin.native_target_snapshot.v2" or manifest.get("status") != "selection_only":
+    if manifest.get("schema") != "merlin.native_target_snapshot.v3" or manifest.get("status") != "selection_only":
         raise ValueError("native snapshot has invalid manifest")
     profile_path, bridge = root / "profile.json", root / "bin/merlin-egg-bridge"
     if _hash_file(profile_path) != manifest["profile_sha256"] or _hash_file(bridge) != manifest["bridge_sha256"]:
