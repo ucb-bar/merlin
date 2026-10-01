@@ -13,6 +13,7 @@ import pytest
 from merlin.common.paths import repo_root
 from merlin.semantic_compiler.allocate import (
     CandidateGraph,
+    Reservation,
     StorageBank,
     Value,
     allocate,
@@ -284,11 +285,45 @@ def test_address_relations_require_explicit_common_units() -> None:
     assert not valid and "units" in reason
 
 
+def test_reserved_scratch_and_register_aliases_are_checked() -> None:
+    banks = (
+        StorageBank("fp8_view", "tensor_registers", 4, "register"),
+        StorageBank("bf16_view", "tensor_registers", 4, "register", alignment=2),
+    )
+    reserved = (Reservation("fp8_view", 1, 2),)
+    single = CandidateGraph((Value(0, "copy", "fp8_view", 1, (), None, "instruction"),), (0,))
+    result = allocate(single, (0,), banks, reservations=reserved)
+    assert result.status == "feasible"
+    assert result.addresses[0] in {0, 3}
+    checked, reason = check_assignment(single, (0,), {0: 1}, banks, reservations=reserved)
+    assert not checked and "reserved" in reason
+
+    pair = CandidateGraph((Value(0, "wide", "bf16_view", 2, (), None, "instruction"),), (0,))
+    assert allocate(pair, (0,), banks, reservations=reserved).status == "infeasible_candidate"
+    checked, reason = check_assignment(pair, (0,), {0: 0}, banks, reservations=reserved)
+    assert not checked and "reserved" in reason
+    bad = (Reservation("fp8_view", 2, 2), Reservation("bf16_view", 2, 1))
+    assert allocate(single, (0,), banks, reservations=bad).status == "unqualified_target"
+    assert allocate(single, (0,), banks, reservations=(Reservation("fp8_view", 4, 1),)).status == "unqualified_target"
+    with pytest.raises(ValueError, match="reservation"):
+        Reservation("fp8_view", True, 1)
+
+
+def test_search_preserves_invalid_resource_contract_status(bridge: Path) -> None:
+    result = select_and_allocate(
+        _request(), _descriptors(), _banks(), bridge=bridge,
+        reservations=(Reservation("missing_store", 0, 1),),
+    )
+    assert result.status == "unqualified_target"
+    assert "unknown storage bank" in result.reason
+
+
 def _reference_feasible(
     graph: CandidateGraph,
     order: tuple[int, ...],
     banks: tuple[StorageBank, ...],
     fixed: dict[str, int],
+    reservations: tuple[Reservation, ...] = (),
 ) -> bool:
     """Tiny independent enumerator: at most three values and 4^3 assignments."""
     bank_by_name = {bank.name: bank for bank in banks}
@@ -308,6 +343,13 @@ def _reference_feasible(
         possible = range(0, bank.capacity - value.extent + 1)
         domains.append([addr for addr in possible if addr % bank.alignment == 0])
     for assignment in itertools.product(*domains):
+        if any(
+            bank_by_name[value.storage].backing == bank_by_name[reserved.storage].backing
+            and assignment[value.id] < reserved.start + reserved.extent
+            and reserved.start < assignment[value.id] + value.extent
+            for value in graph.values for reserved in reservations
+        ):
+            continue
         if any(
             value.kind == "input" and value.source_node in fixed and assignment[value.id] != fixed[value.source_node]
             for value in graph.values
@@ -353,8 +395,9 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         graph = CandidateGraph(tuple(values), (values[-1].id,))
         order = tuple(value.id for value in values if value.kind == "instruction")
         fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
-        expected = _reference_feasible(graph, order, banks, fixed)
-        result = allocate(graph, order, banks, fixed_inputs=fixed, timeout_ms=5000)
+        reservations = (Reservation("a", capacity_a - 1, 1),) if index % 4 == 0 else ()
+        expected = _reference_feasible(graph, order, banks, fixed, reservations)
+        result = allocate(graph, order, banks, fixed_inputs=fixed, reservations=reservations, timeout_ms=5000)
         assert result.status in outcomes, (index, result)
         outcomes[result.status] += 1
         assert (result.status == "feasible") == expected, (index, graph, banks, fixed, result)
