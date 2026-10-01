@@ -140,6 +140,9 @@ class InstructionDescriptor:
     completion_offset: int = 0
     shape_contract: str = "equal"
     shape_equalities: tuple[AxisEquality, ...] = ()
+    # An explicitly qualified instruction may overwrite one produced input
+    # only after its read and at completion. Boundary inputs are never mutable.
+    in_place_inputs: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
@@ -176,6 +179,17 @@ class InstructionDescriptor:
             for offset in self.input_read_offsets
         ):
             raise ValueError("input read offset must precede instruction completion")
+        if len(set(self.in_place_inputs)) != len(self.in_place_inputs) or any(
+            type(index) is not int or index < 0 or index >= arity for index in self.in_place_inputs
+        ):
+            raise ValueError("in-place operand index is invalid")
+        if self.in_place_inputs and self.completion_offset == 0:
+            raise ValueError("in-place writes need a later completion event")
+        if any(
+            self.input_read_offsets and self.input_read_offsets[index] >= self.completion_offset
+            for index in self.in_place_inputs
+        ):
+            raise ValueError("in-place input must be read before output completion")
         ports = {"out", *(f"in{index}" for index in range(len(self.input_storages)))}
         for condition in self.validity:
             if condition.lhs not in ports or (condition.rhs and condition.rhs not in ports):
@@ -240,6 +254,7 @@ class InstructionDescriptor:
             "completion_offset": self.completion_offset,
             "shape_contract": self.shape_contract,
             "shape_equalities": [condition.record() for condition in self.shape_equalities],
+            "in_place_inputs": list(self.in_place_inputs),
         }
 
     @classmethod
@@ -264,6 +279,7 @@ class InstructionDescriptor:
             "completion_offset",
             "shape_contract",
             "shape_equalities",
+            "in_place_inputs",
         }
         if set(row) != expected:
             raise ValueError("instruction descriptor has missing or unknown fields")
@@ -287,6 +303,7 @@ class InstructionDescriptor:
             completion_offset=row["completion_offset"],
             shape_contract=row["shape_contract"],
             shape_equalities=tuple(AxisEquality.from_record(item) for item in row["shape_equalities"]),
+            in_place_inputs=tuple(row["in_place_inputs"]),
         )
 
 

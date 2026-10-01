@@ -426,6 +426,33 @@ def test_two_outputs_share_one_instruction_under_one_node_budget(bridge: Path) -
     assert selected.outputs == (1, 1) and len(selected.values) == 2
 
 
+def test_diamond_charges_shared_producer_once_within_one_root(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("prepared", "prepare", ("x",), tensor),
+            SemanticNode("y", "combine", ("prepared", "prepared"), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-shared-diamond-1",
+    )
+    descriptors = (
+        _descriptor("prepare", "prepare", ("external",), "register", "i8", "exact", (2,)),
+        _descriptor("combine", "combine", ("register", "register"), "external", "i8", "exact", (2,)),
+    )
+    program = generate_rules(request, descriptors)
+    exploration = explore(program, bridge=bridge)
+    assert not list(enumerate_candidates(exploration, request, program, node_budget=1, max_candidates=2))
+    candidates = list(enumerate_candidates(exploration, request, program, node_budget=2, max_candidates=2))
+    assert len(candidates) == 1 and candidates[0].instruction_count() == 2
+    graph = lower_candidate(candidates[0], program)
+    assert len(graph.values) == 3
+    assert graph.values[-1].children == (1, 1)
+
+
 def test_repeated_instruction_signature_keeps_each_source_correspondence(bridge: Path) -> None:
     tensor = _type()
     request = KernelRequest(
@@ -485,6 +512,124 @@ def test_identical_pure_expressions_share_an_instruction(bridge: Path) -> None:
     )
     assert selected.status == "selected", selected.reason
     assert selected.graph is not None and selected.graph.outputs == (1, 1)
+
+
+def test_ordered_output_abi_is_solved_and_checked_independently(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), tensor, effect="input"), SemanticNode("y", "copy", ("x",), tensor)),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-fixed-output-1",
+    )
+    descriptor = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    banks = (StorageBank("external", "dram", 3, "word"),)
+    result = select_and_allocate(
+        request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(2,)
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    output_id = result.graph.outputs[0]
+    assert result.allocation.addresses[output_id] == 2
+    assert result.rules is not None and result.exploration is not None and result.candidate is not None
+    changed_abi = check_selection(
+        request,
+        (descriptor,),
+        result.rules,
+        result.exploration,
+        result.candidate,
+        result.graph,
+        result.allocation,
+        banks,
+        fixed_inputs={"x": 0},
+    )
+    assert changed_abi.valid and changed_abi.fingerprint != result.check_fingerprint
+    moved = dict(result.allocation.addresses)
+    moved[output_id] = 1
+    checked, reason = check_assignment(
+        result.graph, result.allocation.order, moved, banks, fixed_inputs={"x": 0}, fixed_outputs=(2,)
+    )
+    assert not checked and "fixed external address" in reason
+    assert (
+        select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(0,)
+        ).status
+        == "compile_error"
+    )
+    assert (
+        select_and_allocate(
+            request, (descriptor,), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(0, 1)
+        ).status
+        == "modeling_failure"
+    )
+
+
+def test_in_place_reuse_requires_declared_last_use_and_later_write(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "load", ("x",), tensor),
+            SemanticNode("b", "transform", ("a",), tensor),
+            SemanticNode("y", "store", ("b",), tensor),
+        ),
+        outputs=("y",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-in-place-1",
+    )
+    load = _descriptor("load", "load", ("external",), "register", "i8", "exact", (2,))
+    transform = _descriptor(
+        "transform",
+        "transform",
+        ("register",),
+        "register",
+        "i8",
+        "exact",
+        (2,),
+        input_read_offsets=(0,),
+        completion_offset=1,
+        in_place_inputs=(0,),
+    )
+    store = _descriptor("store", "store", ("register",), "external", "i8", "exact", (2,))
+    assert InstructionDescriptor.from_record(transform.record()) == transform
+    banks = (StorageBank("external", "dram", 2, "word"), StorageBank("register", "mrf", 1, "word"))
+    result = select_and_allocate(
+        request, (load, transform, store), banks, bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(1,)
+    )
+    assert result.status == "selected", result.reason
+    assert result.graph is not None and result.allocation is not None
+    produced = {value.source_node: value.id for value in result.graph.values if value.kind == "instruction"}
+    assert result.allocation.addresses[produced["a"]] == result.allocation.addresses[produced["b"]] == 0
+    retained_source = CandidateGraph(result.graph.values, (*result.graph.outputs, produced["a"]))
+    retained = allocate(retained_source, result.allocation.order, banks, fixed_inputs={"x": 0}, fixed_outputs=(1, 0))
+    assert retained.status == "infeasible_candidate"
+    wide_values = tuple(
+        replace(value, extent=2) if value.id in (produced["a"], produced["b"]) else value
+        for value in result.graph.values
+    )
+    wide_graph = CandidateGraph(wide_values, result.graph.outputs)
+    partial = dict(result.allocation.addresses)
+    partial[produced["b"]] = 1
+    wide_banks = (banks[0], StorageBank("register", "mrf", 3, "word"))
+    checked, reason = check_assignment(
+        wide_graph, result.allocation.order, partial, wide_banks, fixed_inputs={"x": 0}, fixed_outputs=(1,)
+    )
+    assert not checked and "overlap" in reason
+    refused = select_and_allocate(
+        request,
+        (load, replace(transform, in_place_inputs=()), store),
+        banks,
+        bridge=bridge,
+        fixed_inputs={"x": 0},
+        fixed_outputs=(1,),
+    )
+    assert refused.status == "compile_error"
+    with pytest.raises(ValueError, match="later completion"):
+        replace(transform, completion_offset=0)
+    with pytest.raises(ValueError, match="read before"):
+        replace(transform, input_read_offsets=(1,))
 
 
 def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path) -> None:
@@ -553,8 +698,8 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
     monkeypatch.setattr(subprocess, "run", guarded_run)
     crate = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
     profile = NativeTargetProfile(_request().target_identity, _descriptors(), _banks())
-    assert profile.record()["schema"] == "merlin.native_target_profile.v3"
-    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v2")
+    assert profile.record()["schema"] == "merlin.native_target_profile.v4"
+    old_profile = dict(profile.record(), schema="merlin.native_target_profile.v3")
     with pytest.raises(ValueError, match="schema"):
         NativeTargetProfile.from_record(old_profile)
     original = build_native_snapshot(
@@ -1045,6 +1190,7 @@ def _reference_feasible(
     banks: tuple[StorageBank, ...],
     fixed: dict[str, int],
     reservations: tuple[Reservation, ...] = (),
+    fixed_outputs: tuple[int | None, ...] | None = None,
 ) -> bool:
     """Tiny independent enumerator: at most three values and 4^3 assignments."""
     bank_by_name = {bank.name: bank for bank in banks}
@@ -1076,6 +1222,11 @@ def _reference_feasible(
             for value in graph.values
         ):
             continue
+        if fixed_outputs is not None and any(
+            address is not None and assignment[value_id] != address
+            for value_id, address in zip(graph.outputs, fixed_outputs)
+        ):
+            continue
         legal = True
         for left in graph.values:
             for right in graph.values[left.id + 1 :]:
@@ -1097,7 +1248,7 @@ def _reference_feasible(
 
 
 def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
-    """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2."""
+    """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2, fixed I/O."""
     rng = random.Random(1907)
     outcomes = {"feasible": 0, "infeasible_candidate": 0}
     for index in range(200):
@@ -1117,11 +1268,15 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
         order = tuple(value.id for value in values if value.kind == "instruction")
         fixed = {"input": rng.randint(0, 1)} if index % 3 else {}
         reservations = (Reservation("a", capacity_a - 1, 1),) if index % 4 == 0 else ()
-        expected = _reference_feasible(graph, order, banks, fixed, reservations)
-        result = allocate(graph, order, banks, fixed_inputs=fixed, reservations=reservations, timeout_ms=5000)
+        fixed_outputs = (rng.randint(0, 2),) if index % 4 == 0 else None
+        expected = _reference_feasible(graph, order, banks, fixed, reservations, fixed_outputs)
+        result = allocate(
+            graph, order, banks, fixed_inputs=fixed, reservations=reservations,
+            fixed_outputs=fixed_outputs, timeout_ms=5000,
+        )
         assert result.status in outcomes, (index, result)
         outcomes[result.status] += 1
-        assert (result.status == "feasible") == expected, (index, graph, banks, fixed, result)
+        assert (result.status == "feasible") == expected, (index, graph, banks, fixed, fixed_outputs, result)
     assert all(outcomes.values()), outcomes
 
 
