@@ -40,13 +40,19 @@ class TensorValue:
     elements: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        admitted = {("i32", "exact-i32"), ("i32", "i32-wrap-k-ascending"), ("i8", "signed-i8")}
+        admitted = {
+            ("i32", "exact-i32"), ("i32", "i32-wrap-k-ascending"),
+            ("i8", "signed-i8"), ("i8", "raw-byte-copy"),
+        }
         if (self.type.dtype, self.type.numerical_policy) not in admitted:
             raise ValueError("reference evaluator has no admitted numerical policy")
         if len(self.elements) != prod(self.type.shape):
             raise ValueError("reference tensor size differs from its type")
         for element in self.elements:
-            if self.type.dtype == "i8":
+            if self.type.dtype == "i8" and self.type.numerical_policy == "raw-byte-copy":
+                if type(element) is not int or not 0 <= element <= 255:
+                    raise ValueError("raw-byte value is outside its admitted domain")
+            elif self.type.dtype == "i8":
                 if type(element) is not int or not -128 <= element <= 127:
                     raise ValueError("signed-i8 value is outside its admitted domain")
             else:
@@ -83,6 +89,13 @@ def evaluate_graph(
         if node.effect != "pure":
             raise ValueError(f"reference evaluator has no semantics for {node.id}")
         operands = tuple(values[child] for child in node.inputs)
+        if node.type.dtype == "i8" and node.type.numerical_policy == "raw-byte-copy":
+            if node.op != "identity" or node.attrs or node.index_maps or len(operands) != 1 or (
+                operands[0].type != node.type
+            ):
+                raise ValueError("raw-byte reference admits only type-preserving identity")
+            values[node.id] = TensorValue(node.type, operands[0].elements)
+            continue
         if node.op == "matmul_accumulate":
             if node.attrs or node.index_maps != _matmul_maps() or len(operands) != 3:
                 raise ValueError("reference matmul has unsupported attributes or indexing maps")
