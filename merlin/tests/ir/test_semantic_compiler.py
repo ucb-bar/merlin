@@ -27,9 +27,11 @@ from merlin.semantic_compiler.allocate import (
 from merlin.semantic_compiler.egg_bridge import explore
 from merlin.semantic_compiler.extract import enumerate_candidates
 from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.rules import AddressConstraint, AxisBound, InstructionDescriptor, generate_rules
 from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
 from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
+from merlin.semantic_compiler.verify import check_selection
 
 
 @pytest.fixture(scope="session")
@@ -124,6 +126,55 @@ def test_semantic_kernel_round_trip_preserves_outputs_policies_and_rejects_unkno
         KernelRequest.from_record(altered)
 
 
+def test_independent_exact_i32_reference_keeps_outputs_and_declared_constants_separate() -> None:
+    tensor = TensorType((2, 2), "i32", "exact-i32")
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("c", "constant", (), tensor, effect="constant"),
+            SemanticNode("sum", "add", ("x", "c"), tensor),
+            SemanticNode("product", "multiply", ("sum", "x"), tensor),
+        ),
+        outputs=("product", "sum"),
+        output_storages=("external", "external"),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-exact-i32-reference-1",
+    )
+    constant = TensorValue(tensor, (2, -3, 4, 0))
+    first = evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))}, constants={"c": constant})
+    assert [value.elements for value in first] == [(3, -2, 21, 16), (3, -1, 7, 4)]
+    second = evaluate_graph(request, {"x": TensorValue(tensor, (5, 6, 7, 8))}, constants={"c": constant})
+    assert [value.elements for value in second] == [(35, 18, 77, 64), (7, 3, 11, 8)]
+    with pytest.raises(ValueError, match="declared constants"):
+        evaluate_graph(request, {"x": TensorValue(tensor, (1, 2, 3, 4))})
+    with pytest.raises(ValueError, match="outside its admitted domain"):
+        TensorValue(tensor, (1 << 31, 0, 0, 0))
+
+
+def test_exact_i32_reference_rejects_unknown_arithmetic_and_shape_errors() -> None:
+    left_type = TensorType((1, 2), "i32", "exact-i32")
+    right_type = TensorType((2, 1), "i32", "exact-i32")
+    output_type = TensorType((1, 1), "i32", "exact-i32")
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), left_type, effect="input"),
+            SemanticNode("y", "input", (), right_type, effect="input"),
+            SemanticNode("z", "matmul", ("x", "y"), output_type),
+        ),
+        outputs=("z",), output_storages=("external",),
+        input_storages=(("x", "external"), ("y", "external")),
+        target_identity="synthetic-matmul-reference-1",
+    )
+    values = {"x": TensorValue(left_type, (2, -3)), "y": TensorValue(right_type, (4, 5))}
+    assert evaluate_graph(request, values)[0].elements == (-7,)
+    unknown = replace(request, nodes=(*request.nodes[:-1], replace(request.nodes[-1], op="unknown"),))
+    with pytest.raises(ValueError, match="no semantics"):
+        evaluate_graph(unknown, values)
+    bad_shape = replace(request, nodes=(*request.nodes[:-1], replace(request.nodes[-1], type=left_type),))
+    with pytest.raises(ValueError, match="shape mismatch"):
+        evaluate_graph(bad_shape, values)
+
+
 def test_logical_index_maps_are_typed_and_part_of_semantic_identity() -> None:
     tensor = _type()
     identity = IndexMap(2, ((1, 0), (0, 1)), (0, 0))
@@ -201,6 +252,19 @@ def test_two_consumers_extract_same_value_into_different_banks(bridge: Path) -> 
     assert result.graph is not None and result.allocation is not None
     assert {value.storage for value in result.graph.values if value.kind == "instruction"} == {"a", "b", "external"}
     assert result.allocation.addresses
+    assert result.check_fingerprint
+    assert result.candidate is not None and result.rules is not None and result.exploration is not None
+    checked = check_selection(
+        request, _descriptors(), result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+    )
+    assert checked.valid and checked.fingerprint == result.check_fingerprint
+    changed = (replace(_descriptors()[0], extent=2), *_descriptors()[1:])
+    tampered = check_selection(
+        request, changed, result.rules, result.exploration, result.candidate,
+        result.graph, result.allocation, _banks(), fixed_inputs={"x": 0},
+    )
+    assert not tampered.valid and "differs from the target descriptor" in tampered.reason
 
 
 def test_bit_preserving_rewrite_exposes_instruction_without_copy(bridge: Path) -> None:
@@ -247,6 +311,61 @@ def test_two_outputs_share_one_instruction_under_one_node_budget(bridge: Path) -
     assert len(candidates) == 1 and candidates[0].instruction_count() == 1
     selected = lower_candidate(candidates[0], program)
     assert selected.outputs == (1, 1) and len(selected.values) == 2
+
+
+def test_repeated_instruction_signature_keeps_each_source_correspondence(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("y", "input", (), tensor, effect="input"),
+            SemanticNode("a", "copy", ("x",), tensor),
+            SemanticNode("b", "copy", ("y",), tensor),
+        ),
+        outputs=("a", "b"),
+        output_storages=("external", "external"),
+        input_storages=(("x", "external"), ("y", "external")),
+        target_identity="synthetic-repeated-signature-1",
+    )
+    descriptor = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    program = generate_rules(request, (descriptor,))
+    selected_symbols = {
+        symbol: metadata["source_node"]
+        for symbol, metadata in program.symbols.items()
+        if metadata["kind"] == "instruction"
+    }
+    assert len(selected_symbols) == 2 and set(selected_symbols.values()) == {"a", "b"}
+    result = select_and_allocate(
+        request, (descriptor,), (StorageBank("external", "dram", 4, "word"),),
+        bridge=bridge, fixed_inputs={"x": 0, "y": 1},
+    )
+    assert result.status == "selected", result.reason
+    assert result.check_fingerprint
+
+
+def test_identical_pure_expressions_share_an_instruction(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "copy", ("x",), tensor),
+            SemanticNode("b", "copy", ("x",), tensor),
+        ),
+        outputs=("a", "b"),
+        output_storages=("external", "external"),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-identical-sources-1",
+    )
+    descriptor = _descriptor("copy", "copy", ("external",), "external", "i8", "exact", (2,))
+    program = generate_rules(request, (descriptor,))
+    exploration = explore(program, bridge=bridge)
+    assert exploration.roots[0] == exploration.roots[1]
+    selected = select_and_allocate(
+        request, (descriptor,), (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge, fixed_inputs={"x": 0},
+    )
+    assert selected.status == "selected", selected.reason
+    assert selected.graph is not None and selected.graph.outputs == (1, 1)
 
 
 def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path) -> None:

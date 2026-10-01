@@ -56,6 +56,8 @@ def _literal(node: ast.AST) -> Any:
         return [_literal(item) for item in node.elts]
     if isinstance(node, ast.Dict):
         pairs = [(_literal(key), _literal(value)) for key, value in zip(node.keys, node.values)]
+        if any(type(key) is not str for key, _ in pairs):
+            raise ValueError("ACT metadata keys must be strings")
         if len({key for key, _ in pairs}) != len(pairs):
             raise ValueError("ACT metadata has duplicate keys")
         return dict(pairs)
@@ -97,20 +99,33 @@ def parse_act_assembly(source: str) -> ActAssembly:
     if len(statements) != 1 or not isinstance(statements[0], ast.FunctionDef):
         raise ValueError("ACT output needs one kernel function")
     outer = statements[0]
-    if [arg.arg for arg in outer.args.args] != ["kernel", "api"] or len(outer.body) != 2:
+    outer_args = outer.args
+    if (
+        [arg.arg for arg in outer_args.args] != ["kernel", "api"]
+        or outer_args.posonlyargs or outer_args.kwonlyargs or outer_args.defaults or outer_args.kw_defaults
+        or outer_args.vararg or outer_args.kwarg or outer.decorator_list or outer.returns
+        or any(arg.annotation for arg in outer_args.args) or getattr(outer, "type_params", ())
+        or outer.type_comment or len(outer.body) != 2
+    ):
         raise ValueError("ACT kernel wrapper has unexpected structure")
     inner, returned = outer.body
     if not isinstance(inner, ast.FunctionDef) or not isinstance(returned, ast.Return):
         raise ValueError("ACT kernel body or return is missing")
     if not isinstance(returned.value, ast.Name) or returned.value.id != inner.name:
         raise ValueError("ACT kernel returns an unexpected object")
-    if inner.args.args or len(inner.decorator_list) != 1:
+    if (
+        inner.args.args or inner.args.posonlyargs or inner.args.kwonlyargs or inner.args.defaults
+        or inner.args.kw_defaults or inner.args.vararg or inner.args.kwarg or inner.returns
+        or getattr(inner, "type_params", ()) or inner.type_comment or len(inner.decorator_list) != 1
+    ):
         raise ValueError("ACT inner kernel has unexpected arguments or decorators")
     decorator = inner.decorator_list[0]
     if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Name) or decorator.func.id != "kernel":
         raise ValueError("ACT kernel decorator is unsupported")
     if decorator.args or any(keyword.arg is None for keyword in decorator.keywords):
         raise ValueError("ACT kernel decorator needs named literal fields")
+    if len({keyword.arg for keyword in decorator.keywords}) != len(decorator.keywords):
+        raise ValueError("ACT kernel metadata has duplicate fields")
     metadata = {keyword.arg: _literal(keyword.value) for keyword in decorator.keywords}
     if set(metadata) != {"hbm", "input", "constant", "output"}:
         raise ValueError("ACT kernel metadata is incomplete")

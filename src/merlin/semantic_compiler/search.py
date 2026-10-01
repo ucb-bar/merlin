@@ -24,6 +24,7 @@ from .egg_bridge import EGraphUnavailable, Exploration, explore
 from .extract import Candidate, enumerate_candidates
 from .model import KernelRequest
 from .rules import InstructionDescriptor, RuleProgram, generate_rules
+from .verify import check_selection
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class SearchResult:
     rules: RuleProgram | None
     reason: str = ""
     pruned_orders: int = 0
+    check_fingerprint: str = ""
 
     @property
     def engine(self) -> str:
@@ -127,6 +129,16 @@ def select_and_allocate(
                     timeout_ms=limits.solver_timeout_ms,
                 )
                 if result.status == "feasible":
+                    checked = check_selection(
+                        request, descriptors, program, graph, candidate, candidate_graph, result, banks,
+                        fixed_inputs=fixed_inputs,
+                    )
+                    if not checked.valid:
+                        return SearchResult(
+                            "modeling_failure", identity, candidate, candidate_graph, result,
+                            candidate_attempts, ordering_attempts, rejected_allocation, graph, program,
+                            checked.reason, pruned_orders,
+                        )
                     return SearchResult(
                         "selected",
                         identity,
@@ -139,6 +151,7 @@ def select_and_allocate(
                         graph,
                         program,
                         pruned_orders=pruned_orders,
+                        check_fingerprint=checked.fingerprint,
                     )
                 rejected_allocation += 1
                 if result.status == "infeasible_candidate":
