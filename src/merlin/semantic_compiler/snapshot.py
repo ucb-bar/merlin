@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .allocate import StorageBank
+from .allocate import Reservation, StorageBank
 from .model import KernelRequest
 from .rules import InstructionDescriptor
 from .search import SearchLimits, SearchResult, select_and_allocate
@@ -87,6 +87,7 @@ class NativeSnapshot:
         request: KernelRequest,
         *,
         fixed_inputs: dict[str, int] | None = None,
+        reservations: tuple[Reservation, ...] = (),
         limits: SearchLimits = SearchLimits(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
@@ -101,6 +102,7 @@ class NativeSnapshot:
             self.profile.banks,
             bridge=self.bridge,
             fixed_inputs=fixed_inputs,
+            reservations=reservations,
             limits=limits,
         )
 

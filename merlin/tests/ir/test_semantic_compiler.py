@@ -565,6 +565,15 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         source_revision="public-test-revision",
     )
     assert original.select(_request(), fixed_inputs={"x": 0}).status == "selected"
+    reserved_result = original.select(
+        _request(), fixed_inputs={"x": 0}, reservations=(Reservation("a", 0, 1),)
+    )
+    assert reserved_result.status == "selected"
+    assert reserved_result.graph is not None and reserved_result.allocation is not None
+    assert all(
+        reserved_result.allocation.addresses[value.id] != 0
+        for value in reserved_result.graph.values if value.storage == "a"
+    )
     smaller = NativeTargetProfile(
         "synthetic-revision-2",
         _descriptors(),
