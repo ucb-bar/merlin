@@ -88,6 +88,7 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
 
 
 def _cmd_native_select(args: argparse.Namespace) -> int:
+    from merlin.semantic_compiler.allocate import Reservation
     from merlin.semantic_compiler.model import KernelRequest
     from merlin.semantic_compiler.snapshot import open_native_snapshot
 
@@ -96,10 +97,19 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
         snapshot = open_native_snapshot(Path(args.snapshot))
         request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
         abi = json.loads(Path(args.abi).read_text()) if args.abi else {"fixed_inputs": {}, "fixed_outputs": None}
-        if set(abi) != {"fixed_inputs", "fixed_outputs"} or not isinstance(abi["fixed_inputs"], dict):
-            raise ValueError("native ABI needs fixed_inputs and fixed_outputs")
+        if not {"fixed_inputs", "fixed_outputs"} <= set(abi) or set(abi) - {
+            "fixed_inputs", "fixed_outputs", "reservations"
+        } or not isinstance(abi["fixed_inputs"], dict):
+            raise ValueError("native ABI needs fixed_inputs and fixed_outputs; reservations are optional")
+        rows = abi.get("reservations", [])
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError("native ABI reservations must be a list of physical interval records")
+        reservations = tuple(Reservation(**row) for row in rows)
         fixed_outputs = None if abi["fixed_outputs"] is None else tuple(abi["fixed_outputs"])
-        result = snapshot.select(request, fixed_inputs=abi["fixed_inputs"], fixed_outputs=fixed_outputs)
+        result = snapshot.select(
+            request, fixed_inputs=abi["fixed_inputs"], fixed_outputs=fixed_outputs,
+            reservations=reservations,
+        )
         constants = {binding.node_id: binding for binding in request.constants}
         constant_requirements = [
             {"value_id": value.id, "storage": value.storage,
@@ -117,6 +127,7 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
             "candidate_digest": result.candidate.digest() if result.candidate else None,
             "selected_graph": asdict(result.graph) if result.graph else None,
             "allocation": asdict(result.allocation) if result.allocation else None,
+            "reservations": [asdict(item) for item in reservations],
             "constant_requirements": constant_requirements,
         }
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
@@ -161,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     native_select.add_argument("--engine", choices=("merlin_native",), required=True)
     native_select.add_argument("--snapshot", required=True)
     native_select.add_argument("--request", required=True, help="typed semantic kernel JSON")
-    native_select.add_argument("--abi", help="optional fixed_inputs/fixed_outputs JSON; no runtime samples")
+    native_select.add_argument("--abi", help="optional fixed I/O and reserved physical intervals JSON; no runtime samples")
     native_select.add_argument("--out", required=True, help="selection result JSON")
     native_select.set_defaults(func=_cmd_native_select)
 

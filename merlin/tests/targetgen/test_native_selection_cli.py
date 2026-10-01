@@ -61,6 +61,18 @@ def test_installed_native_build_select_and_failure_replace_stale_result(tmp_path
     assert report["scope"] == "selection_only" and report["check_fingerprint"]
     assert report["allocation"]["addresses"] and report["selected_graph"]
 
+    abi_path.write_text(json.dumps({
+        "fixed_inputs": {"x": 0}, "fixed_outputs": [2],
+        "reservations": [{"storage": "external", "start": 1, "extent": 1}],
+    }))
+    reserved = _invoke("native-select", "--engine", "merlin_native", "--snapshot", snapshot,
+                       "--request", request_path, "--abi", abi_path, "--out", output)
+    assert reserved.returncode == 0, reserved.stderr + reserved.stdout
+    reserved_report = json.loads(output.read_text())
+    assert reserved_report["status"] == "selected"
+    assert reserved_report["reservations"] == [{"storage": "external", "start": 1, "extent": 1}]
+    assert reserved_report["check_fingerprint"] != report["check_fingerprint"]
+
     with_constant = KernelRequest(
         nodes=(SemanticNode("x", "input", (), dtype, effect="input"),
                SemanticNode("c", "constant", (), dtype, effect="constant"),
