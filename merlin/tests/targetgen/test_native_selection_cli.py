@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from merlin.common.paths import repo_root
 from merlin.semantic_compiler.allocate import StorageBank
 from merlin.semantic_compiler.model import ConstantBinding, KernelRequest, SemanticNode, TensorType
 from merlin.semantic_compiler.rules import InstructionDescriptor
 from merlin.semantic_compiler.snapshot import NativeTargetProfile
+from merlin.semantic_compiler.target_binding import verify_native_publication
 
 
 def _invoke(*arguments: object) -> subprocess.CompletedProcess[str]:
@@ -19,6 +23,27 @@ def _invoke(*arguments: object) -> subprocess.CompletedProcess[str]:
     assert script.is_file(), "install the Merlin CLI entrypoint before this integration test"
     return subprocess.run([str(script), *(str(item) for item in arguments)], text=True,
                           capture_output=True, timeout=180, check=False)
+
+
+def test_native_publication_refuses_changed_execution_plan(tmp_path: Path) -> None:
+    binary = b"\x13\x00\x00\x00"
+    plan = b'{"inputs":[],"outputs":[]}\n'
+    (tmp_path / "program.bin").write_bytes(binary)
+    (tmp_path / "execution_plan.json").write_bytes(plan)
+    manifest = {
+        "engine": "merlin_native", "request_digest": "source-1", "target_identity": "target-1",
+        "binary_sha256": hashlib.sha256(binary).hexdigest(),
+        "execution_plan_sha256": hashlib.sha256(plan).hexdigest(),
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    kwargs = {"engine": "merlin_native", "request_digest": "source-1", "target_identity": "target-1"}
+    verify_native_publication(tmp_path, manifest, **kwargs)
+    (tmp_path / "execution_plan.json").write_bytes(plan + b" ")
+    with pytest.raises(ValueError, match="execution plan differs"):
+        verify_native_publication(tmp_path, manifest, **kwargs)
+    (tmp_path / "execution_plan.json").unlink()
+    with pytest.raises(ValueError, match="plan and manifest identity disagree"):
+        verify_native_publication(tmp_path, manifest, **kwargs)
 
 
 def test_installed_native_build_select_and_failure_replace_stale_result(tmp_path: Path) -> None:
