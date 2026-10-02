@@ -1,0 +1,295 @@
+"""Native finite-domain allocation with an independent witness checker.
+
+Z3 solves Merlin's generated placement formula. The checker below evaluates
+the selected graph and storage geometry directly without reusing the formula.
+An UNSAT result applies only to one candidate, order and bounded model.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+from .extract import Candidate, Choice
+from .rules import AddressConstraint, RuleProgram
+
+
+@dataclass(frozen=True)
+class StorageBank:
+    name: str
+    backing: str
+    capacity: int
+    unit: str
+    alignment: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.name or not self.backing or not self.unit or self.capacity <= 0 or self.alignment <= 0:
+            raise ValueError("storage bank needs positive geometry and explicit units")
+
+
+@dataclass(frozen=True)
+class Value:
+    id: int
+    symbol: str
+    storage: str
+    extent: int
+    children: tuple[int, ...]
+    source_node: str | None
+    kind: str
+    validity: tuple[AddressConstraint, ...] = ()
+
+
+@dataclass(frozen=True)
+class CandidateGraph:
+    values: tuple[Value, ...]
+    outputs: tuple[int, ...]
+
+    def value(self, value_id: int) -> Value:
+        return self.values[value_id]
+
+
+def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGraph:
+    values: list[Value] = []
+    ids: dict[tuple, int] = {}
+
+    def visit(choice: Choice) -> int:
+        key = choice.key()
+        if key in ids:
+            return ids[key]
+        children = tuple(visit(child) for child in choice.children)
+        metadata = program.symbols[choice.symbol]
+        kind = metadata["kind"]
+        extent = int(metadata["descriptor"]["extent"]) if kind == "instruction" else 1
+        validity = (
+            tuple(AddressConstraint(**row) for row in metadata["descriptor"]["validity"])
+            if kind == "instruction"
+            else ()
+        )
+        value_id = len(values)
+        ids[key] = value_id
+        values.append(
+            Value(
+                id=value_id,
+                symbol=choice.symbol,
+                storage=choice.storage,
+                extent=extent,
+                children=children,
+                source_node=metadata.get("source_node"),
+                kind=kind,
+                validity=validity,
+            )
+        )
+        return value_id
+
+    outputs = tuple(visit(choice) for choice in candidate.outputs)
+    return CandidateGraph(tuple(values), outputs)
+
+
+def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[int, ...]]:
+    """Enumerate bounded legal instruction orders after a low-pressure first order."""
+    if limit <= 0:
+        raise ValueError("order limit must be positive")
+    instructions = {value.id for value in graph.values if value.kind == "instruction"}
+    emitted = 0
+
+    def walk(done: tuple[int, ...], pending: frozenset[int]) -> Iterator[tuple[int, ...]]:
+        nonlocal emitted
+        if emitted >= limit:
+            return
+        if not pending:
+            emitted += 1
+            yield done
+            return
+        ready = [
+            item for item in pending
+            if not any(child in pending for child in graph.value(item).children)
+        ]
+        # Prefer consuming larger inputs, reducing the expected live set.
+        ready.sort(key=lambda item: (-sum(graph.value(c).extent for c in graph.value(item).children), item))
+        for item in ready:
+            if emitted >= limit:
+                return
+            yield from walk((*done, item), pending - {item})
+
+    yield from walk((), frozenset(instructions))
+
+
+def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
+    if set(order) != {value.id for value in graph.values if value.kind == "instruction"}:
+        raise ValueError("order omits or duplicates an instruction")
+    position = {value_id: index + 1 for index, value_id in enumerate(order)}
+    ranges: dict[int, tuple[int, int]] = {}
+    for value in graph.values:
+        start = position[value.id] if value.kind == "instruction" else 0
+        uses = [position[parent.id] for parent in graph.values if value.id in parent.children and parent.id in position]
+        end = max(uses, default=start)
+        if value.id in graph.outputs:
+            end = len(order) + 1
+        ranges[value.id] = (start, end)
+    return ranges
+
+
+@dataclass(frozen=True)
+class AllocationResult:
+    status: str
+    order: tuple[int, ...]
+    addresses: dict[int, int]
+    reason: str = ""
+
+
+def _geometry(banks: tuple[StorageBank, ...]) -> dict[str, StorageBank]:
+    by_name = {bank.name: bank for bank in banks}
+    if len(by_name) != len(banks):
+        raise ValueError("duplicate storage bank")
+    by_backing: dict[str, str] = {}
+    for bank in banks:
+        existing = by_backing.setdefault(bank.backing, bank.unit)
+        if existing != bank.unit:
+            raise ValueError("typed aliases need one explicit common address unit")
+    return by_name
+
+
+def _address_unit_problem(graph: CandidateGraph, bank_map: dict[str, StorageBank]) -> str:
+    for value in graph.values:
+        if value.storage not in bank_map:
+            return "unknown storage bank"
+        ports = {"out": value.storage, **{
+            f"in{index}": graph.value(child).storage for index, child in enumerate(value.children)
+        }}
+        for condition in value.validity:
+            if condition.kind == "eq_offset" and (
+                bank_map[ports[condition.lhs]].unit != bank_map[ports[condition.rhs]].unit
+            ):
+                return "address relation mixes physical units"
+    return ""
+
+
+def check_assignment(
+    graph: CandidateGraph,
+    order: tuple[int, ...],
+    addresses: dict[int, int],
+    banks: tuple[StorageBank, ...],
+    *,
+    fixed_inputs: dict[str, int] | None = None,
+) -> tuple[bool, str]:
+    """Recompute original geometry/lifetimes without consulting Z3 expressions."""
+    bank_map = _geometry(banks)
+    unit_problem = _address_unit_problem(graph, bank_map)
+    if unit_problem:
+        return False, unit_problem
+    fixed_inputs = fixed_inputs or {}
+    try:
+        ranges = live_ranges(graph, order)
+    except ValueError as exc:
+        return False, str(exc)
+    if set(addresses) != {value.id for value in graph.values}:
+        return False, "assignment omits a value"
+    for value in graph.values:
+        bank = bank_map.get(value.storage)
+        if bank is None:
+            return False, "unknown storage bank"
+        address = addresses[value.id]
+        if not isinstance(address, int) or isinstance(address, bool):
+            return False, "non-integer address"
+        if address < 0 or address + value.extent > bank.capacity or address % bank.alignment:
+            return False, "out-of-range or misaligned address"
+        if value.source_node in fixed_inputs and value.kind == "input":
+            if address != fixed_inputs[value.source_node]:
+                return False, "input moved from fixed external address"
+        for child_id in value.children:
+            child = graph.value(child_id)
+            if child.id not in ranges or ranges[child.id][1] < ranges[value.id][0]:
+                return False, "consumer reads a dead value"
+        ports = {"out": address, **{f"in{index}": addresses[child] for index, child in enumerate(value.children)}}
+        for condition in value.validity:
+            if condition.kind == "eq_offset" and ports[condition.lhs] != ports[condition.rhs] + condition.value:
+                return False, "instruction address map or validity failed"
+            if condition.kind == "aligned" and ports[condition.lhs] % condition.value:
+                return False, "instruction alignment validity failed"
+    for left_index, left in enumerate(graph.values):
+        for right in graph.values[left_index + 1 :]:
+            if bank_map[left.storage].backing != bank_map[right.storage].backing:
+                continue
+            lo1, hi1 = ranges[left.id]
+            lo2, hi2 = ranges[right.id]
+            if lo1 <= hi2 and lo2 <= hi1:
+                a = addresses[left.id]
+                b = addresses[right.id]
+                if a < b + right.extent and b < a + left.extent:
+                    return False, "simultaneously live physical views overlap"
+    return True, ""
+
+
+def allocate(
+    graph: CandidateGraph,
+    order: tuple[int, ...],
+    banks: tuple[StorageBank, ...],
+    *,
+    fixed_inputs: dict[str, int] | None = None,
+    timeout_ms: int = 5000,
+) -> AllocationResult:
+    if timeout_ms <= 0:
+        raise ValueError("solver timeout must be positive")
+    try:
+        import z3
+    except ImportError as exc:
+        return AllocationResult("tool_unavailable", order, {}, f"z3-solver missing: {exc}")
+    bank_map = _geometry(banks)
+    unit_problem = _address_unit_problem(graph, bank_map)
+    if unit_problem:
+        return AllocationResult("unqualified_target", order, {}, unit_problem)
+    fixed_inputs = fixed_inputs or {}
+    ranges = live_ranges(graph, order)
+    solver = z3.Solver()
+    solver.set(timeout=timeout_ms)
+    variables = {value.id: z3.Int(f"address_{value.id}") for value in graph.values}
+    for value in graph.values:
+        bank = bank_map.get(value.storage)
+        if bank is None:
+            return AllocationResult("unqualified_target", order, {}, "unknown storage bank")
+        addr = variables[value.id]
+        solver.add(addr >= 0, addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
+        if value.kind == "input" and value.source_node in fixed_inputs:
+            solver.add(addr == fixed_inputs[value.source_node])
+        ports = {"out": addr, **{f"in{index}": variables[child] for index, child in enumerate(value.children)}}
+        for condition in value.validity:
+            if condition.kind == "eq_offset":
+                solver.add(ports[condition.lhs] == ports[condition.rhs] + condition.value)
+            elif condition.kind == "aligned":
+                solver.add(ports[condition.lhs] % condition.value == 0)
+    for left_index, left in enumerate(graph.values):
+        for right in graph.values[left_index + 1 :]:
+            if bank_map[left.storage].backing != bank_map[right.storage].backing:
+                continue
+            lo1, hi1 = ranges[left.id]
+            lo2, hi2 = ranges[right.id]
+            if lo1 <= hi2 and lo2 <= hi1:
+                solver.add(
+                    z3.Or(
+                        variables[left.id] + left.extent <= variables[right.id],
+                        variables[right.id] + right.extent <= variables[left.id],
+                    )
+                )
+    status = solver.check()
+    if status == z3.unsat:
+        return AllocationResult("infeasible_candidate", order, {}, "bounded placement formula is UNSAT")
+    if status != z3.sat:
+        return AllocationResult("search_timeout", order, {}, f"solver returned {status}: {solver.reason_unknown()}")
+    model = solver.model()
+    addresses = {value_id: model[variable].as_long() for value_id, variable in variables.items()}
+    checked, reason = check_assignment(graph, order, addresses, banks, fixed_inputs=fixed_inputs)
+    if not checked:
+        return AllocationResult("modeling_failure", order, addresses, reason)
+    return AllocationResult("feasible", order, addresses)
+
+
+def may_prune_interference(
+    failed_base: str,
+    current_base: str,
+    failed_edges: frozenset[tuple[int, int]],
+    current_edges: frozenset[tuple[int, int]],
+    *,
+    failed_status: str,
+) -> bool:
+    """Only a same-base UNSAT graph's supergraph inherits the contradiction."""
+    return failed_status == "infeasible_candidate" and failed_base == current_base and failed_edges <= current_edges
