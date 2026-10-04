@@ -5,7 +5,7 @@ status: current
 owner: frontends
 last_verified: 2026-09-29
 related: [getting_started, extending_the_stack, phase0_specification, model_lowering, reproducibility]
-code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
+code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
 ---
 
 # model2MLIR frontend
@@ -122,6 +122,22 @@ for the extension seam and [Phase 0 specification](phase0_specification.md)
 for operation partitions, precision contracts and exact generated evidence.
 
 ## Consume complete capture bundles
+
+To give a compiler only declared source inputs, stage a fresh compiler directory
+from the materialized capture:
+
+```bash
+merlin-targetgen stage-capture --capture /absolute/capture \
+  --out /absolute/artifacts/compiler-inputs \
+  --status-file /absolute/artifacts/staging-status.json
+```
+
+The staged directory contains parsed `program.mlir`, external weights and their
+argument manifest, the frontend source trace, a static invocation signature,
+and a digest manifest. It does not copy or read runtime samples or goldens.
+The capture receipt binds the copied member bytes; source closure, target
+numerical admission, and model execution remain separate checks. The output
+directory must be new, and failure returns a nonzero status.
 
 `merlin.capture.bundle.CaptureBundle` is the canonical capture-bundle interface.
 `merlin.baselines.bundle` retains a compatibility import. Legacy roster resolution
