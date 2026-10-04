@@ -24,6 +24,19 @@ phase grading semantics. Register access identities before relocating graders or
 Never infer dead runs from age or a directory suffix; use leases and explicit retention pins.
 Do not modify historical evidence during migrations.
 
+## Before pushing
+
+Fetch the remote and review **every commit that the push would publish**, including commits
+introduced by a merge. Inspect the commit list, each commit's diff and size, and the final
+range diff. Each commit must contain one coherent, reviewable change and follow the message
+convention in `CLAUDE.md`. Split mixed or unnecessarily large commits and reword unclear or
+nonconforming messages while they are still unpublished. Run the relevant checks and confirm
+the remote branch is an ancestor before pushing. Do not push an unreviewed commit series,
+even when the final tree passes tests or a push has been requested urgently.
+
+Never force-push a shared or published branch to repair history. If poor history has already
+been published, report it and prepare a separate reviewed remedy before changing that branch.
+
 ## Verification
 
 Run the relevant behavior tests, source-layout/access checks, and
