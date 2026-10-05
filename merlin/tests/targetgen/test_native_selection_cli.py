@@ -12,8 +12,9 @@ import pytest
 
 from merlin.common.paths import repo_root
 from merlin.semantic_compiler.allocate import StorageBank
+from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 from merlin.semantic_compiler.model import ConstantBinding, KernelRequest, SemanticNode, TensorType
-from merlin.semantic_compiler.rules import InstructionDescriptor
+from merlin.semantic_compiler.rules import AxisEquality, InstructionDescriptor
 from merlin.semantic_compiler.snapshot import NativeTargetProfile
 from merlin.semantic_compiler.target_binding import verify_native_publication
 
@@ -116,3 +117,63 @@ def test_installed_native_build_select_and_failure_replace_stale_result(tmp_path
     wrong_engine = _invoke("native-select", "--engine", "act_reference", "--snapshot", snapshot,
                            "--request", request_path, "--out", output)
     assert wrong_engine.returncode == 2 and "invalid choice" in wrong_engine.stderr
+
+
+def test_installed_native_select_parses_linalg_with_exact_source_identity(tmp_path: Path) -> None:
+    source = """module { func.func @work(%a: tensor<2x2xi32>, %b: tensor<2x2xi32>,
+      %c: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      %r = linalg.matmul ins(%a, %b : tensor<2x2xi32>, tensor<2x2xi32>)
+        outs(%c : tensor<2x2xi32>) -> tensor<2x2xi32>
+      func.return %r : tensor<2x2xi32>
+    } }"""
+    input_path = tmp_path / "kernel.mlir"
+    input_path.write_bytes(source.replace("\n", "\r\n").encode())
+    target_identity = "synthetic-cli-linalg-1"
+    translated = translate_linalg_text(input_path.read_bytes().decode(), entry="work",
+                                       target_identity=target_identity)
+    descriptor = InstructionDescriptor(
+        "contract", "matmul_accumulate", ("external",) * 3, "external", "i32",
+        "i32-wrap-k-ascending", (2,),
+        input_dtypes=("i32", "i32", "i32"),
+        input_numerical_policies=("i32-wrap-k-ascending",) * 3,
+        input_ranks=(2, 2, 2), index_maps=translated.request.nodes[-1].index_maps,
+        shape_contract="relations",
+        shape_equalities=(
+            AxisEquality("in0", 0, "out", 0), AxisEquality("in0", 1, "in1", 0),
+            AxisEquality("in1", 1, "out", 1), AxisEquality("in2", 0, "out", 0),
+            AxisEquality("in2", 1, "out", 1),
+        ),
+    )
+    profile = NativeTargetProfile(target_identity, (descriptor,),
+                                  (StorageBank("external", "dram", 5, "tile"),))
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(json.dumps(profile.record()))
+    snapshot, output = tmp_path / "snapshot", tmp_path / "selection.json"
+    bridge = repo_root() / "src/merlin/semantic_compiler/egg_bridge"
+    built = _invoke("native-build", "--engine", "merlin_native", "--profile", profile_path,
+                    "--crate", bridge, "--cargo-target-dir", tmp_path / "cargo-target",
+                    "--source-revision", "public-linalg-cli-test", "--out", snapshot)
+    assert built.returncode == 0, built.stderr + built.stdout
+
+    selected = _invoke("native-select", "--engine", "merlin_native", "--snapshot", snapshot,
+                       "--linalg", input_path, "--linalg-entry", "work", "--out", output)
+    assert selected.returncode == 0, selected.stderr + selected.stdout
+    report = json.loads(output.read_text())
+    assert report["status"] == "selected" and report["candidate_digest"]
+    assert report["source_kind"] == "parsed_linalg"
+    assert report["source_identity"] == hashlib.sha256(input_path.read_bytes()).hexdigest()
+    assert report["source_operations"] == ["linalg.matmul", "func.return"]
+
+    missing_entry = _invoke("native-select", "--engine", "merlin_native", "--snapshot", snapshot,
+                            "--linalg", input_path, "--out", output)
+    assert missing_entry.returncode == 2
+    assert json.loads(output.read_text())["status"] == "compile_error"
+    assert "selected_graph" not in json.loads(output.read_text())
+
+    invalid = input_path.read_bytes().replace(b"i32", b"f32")
+    input_path.write_bytes(invalid)
+    unsupported = _invoke("native-select", "--engine", "merlin_native", "--snapshot", snapshot,
+                          "--linalg", input_path, "--linalg-entry", "work", "--out", output)
+    assert unsupported.returncode == 2
+    assert json.loads(output.read_text())["status"] == "unsupported_semantics"
+    assert "selected_graph" not in json.loads(output.read_text())

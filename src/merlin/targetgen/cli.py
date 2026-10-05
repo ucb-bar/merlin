@@ -153,14 +153,38 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "selection_only" else 2
 
 
-def _cmd_native_select(args: argparse.Namespace) -> int:
+def _load_native_request(args: argparse.Namespace, *, target_identity: str, mode: str):
+    """Read compiler inputs only; bind parsed Linalg to the selected target."""
+    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
     from merlin.semantic_compiler.model import KernelRequest
+
+    if args.linalg:
+        if not args.linalg_entry:
+            raise ValueError("--linalg-entry is required with --linalg")
+        source = Path(args.linalg).read_bytes().decode("utf-8")
+        translated = translate_linalg_text(
+            source, entry=args.linalg_entry, target_identity=target_identity,
+            lowering_policy=mode,
+        )
+        return translated.request, "parsed_linalg", translated.source_operations
+    if args.linalg_entry:
+        raise ValueError("--linalg-entry requires --linalg")
+    request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+    return request, "typed_request", ()
+
+
+def _cmd_native_select(args: argparse.Namespace) -> int:
+    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.snapshot import open_native_snapshot
 
     output = Path(args.out)
     try:
         snapshot = open_native_snapshot(Path(args.snapshot))
-        request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+        request, source_kind, source_operations = _load_native_request(
+            args, target_identity=snapshot.profile.target_identity, mode=args.mode,
+        )
+        if request.lowering_policy != args.mode:
+            raise ValueError("explicit selection mode differs from typed request")
         abi = json.loads(Path(args.abi).read_text()) if args.abi else {"fixed_inputs": {}, "fixed_outputs": None}
         if set(abi) != {"fixed_inputs", "fixed_outputs"} or not isinstance(abi["fixed_inputs"], dict):
             raise ValueError("native ABI needs fixed_inputs and fixed_outputs")
@@ -176,6 +200,8 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
         report = {
             "schema": "merlin.native_selection_result.v1", "engine": result.engine,
             "status": result.status, "scope": "selection_only", "request_digest": result.request_digest,
+            "source_kind": source_kind, "source_identity": request.source_identity,
+            "source_operations": list(source_operations),
             "target_digest": snapshot.profile.digest(), "snapshot": str(snapshot.root),
             "reason": result.reason, "candidate_attempts": result.candidate_attempts,
             "ordering_attempts": result.ordering_attempts, "rejected_allocation": result.rejected_allocation,
@@ -185,9 +211,10 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
             "allocation": asdict(result.allocation) if result.allocation else None,
             "constant_requirements": constant_requirements,
         }
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, UnicodeError) as error:
         report = {"schema": "merlin.native_selection_result.v1", "engine": args.engine,
-                  "status": "compile_error", "scope": "selection_only", "reason": str(error)}
+                  "status": "unsupported_semantics" if isinstance(error, LinalgBridgeError) else "compile_error",
+                  "scope": "selection_only", "reason": str(error)}
     _write_status(output, report)
     print(json.dumps({"status": report["status"], "engine": args.engine, "out": str(output)}, sort_keys=True))
     return 0 if report["status"] == "selected" else 2
@@ -195,7 +222,7 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
 
 def _cmd_native_compile(args: argparse.Namespace) -> int:
     """Invoke a selected target binding with typed source and an explicit ABI."""
-    from merlin.semantic_compiler.model import KernelRequest
+    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.search import SearchLimits
     from merlin.semantic_compiler.snapshot import open_native_snapshot
     from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
@@ -205,7 +232,9 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
         snapshot = open_native_snapshot(Path(args.snapshot))
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
-        request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+        request, source_kind, source_operations = _load_native_request(
+            args, target_identity=snapshot.profile.target_identity, mode=args.mode,
+        )
         if request.lowering_policy != args.mode:
             raise ValueError("explicit compile mode differs from typed request")
         output = Path(args.out)
@@ -238,9 +267,12 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
         report = {"schema": "merlin.native_compilation_status.v1", "status": "emitted",
                   "engine": args.engine, "support": args.support, "out": str(args.out),
                   "request_digest": request.digest(), "target_identity": snapshot.profile.target_identity,
+                  "source_kind": source_kind, "source_identity": request.source_identity,
+                  "source_operations": list(source_operations),
                   "binary_sha256": manifest.get("binary_sha256")}
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError) as error:
-        report = {"schema": "merlin.native_compilation_status.v1", "status": "compile_error",
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
+        report = {"schema": "merlin.native_compilation_status.v1",
+                  "status": "unsupported_semantics" if isinstance(error, LinalgBridgeError) else "compile_error",
                   "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}
     if args.status_file and not Path(args.status_file).resolve().is_relative_to(Path(args.out).resolve()):
         _write_status(Path(args.status_file), report)
@@ -296,7 +328,12 @@ def build_parser() -> argparse.ArgumentParser:
     native_select = sub.add_parser("native-select", help="select and allocate one typed kernel; no Atlas emission")
     native_select.add_argument("--engine", choices=("merlin_native",), required=True)
     native_select.add_argument("--snapshot", required=True)
-    native_select.add_argument("--request", required=True, help="typed semantic kernel JSON")
+    select_source = native_select.add_mutually_exclusive_group(required=True)
+    select_source.add_argument("--request", help="typed semantic kernel JSON")
+    select_source.add_argument("--linalg", help="parsed Linalg MLIR input; admitted integer subset only")
+    native_select.add_argument("--linalg-entry", help="entry function name for --linalg")
+    native_select.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"),
+                               default="strict-native")
     native_select.add_argument("--abi", help="optional fixed_inputs/fixed_outputs JSON; no runtime samples")
     native_select.add_argument("--out", required=True, help="selection result JSON")
     native_select.set_defaults(func=_cmd_native_select)
@@ -305,7 +342,10 @@ def build_parser() -> argparse.ArgumentParser:
     native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
     native_compile.add_argument("--support", required=True, help="installed target support entry point")
     native_compile.add_argument("--snapshot", required=True)
-    native_compile.add_argument("--request", required=True, help="typed semantic kernel JSON")
+    compile_source = native_compile.add_mutually_exclusive_group(required=True)
+    compile_source.add_argument("--request", help="typed semantic kernel JSON")
+    compile_source.add_argument("--linalg", help="parsed Linalg MLIR input; admitted integer subset only")
+    native_compile.add_argument("--linalg-entry", help="entry function name for --linalg")
     native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON")
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
