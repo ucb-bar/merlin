@@ -49,6 +49,12 @@ class Value:
     input_read_offsets: tuple[int, ...] = ()
     completion_offset: int = 0
     in_place_inputs: tuple[int, ...] = ()
+    # A source input is immutable across the kernel unless its boundary says reusable.
+    preserve_input: bool = True
+
+    def __post_init__(self) -> None:
+        if type(self.preserve_input) is not bool or (self.kind != "input" and not self.preserve_input):
+            raise ValueError("input retention must be a boolean on input values")
 
     def read_offset(self, index: int) -> int:
         return self.input_read_offsets[index] if self.input_read_offsets else 0
@@ -95,6 +101,7 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 input_read_offsets=tuple(metadata["descriptor"]["input_read_offsets"]) if kind == "instruction" else (),
                 completion_offset=int(metadata["descriptor"]["completion_offset"]) if kind == "instruction" else 0,
                 in_place_inputs=tuple(metadata["descriptor"]["in_place_inputs"]) if kind == "instruction" else (),
+                preserve_input=metadata.get("preserve_input", True),
             )
         )
         return value_id
@@ -341,30 +348,34 @@ def check_assignment(
         for right in graph.values[left_index + 1 :]:
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
+            a = addresses[left.id]
+            b = addresses[right.id]
+            overlap = a < b + right.extent and b < a + left.extent
+            if overlap and (
+                (left.kind == "input" and left.preserve_input and right.kind == "instruction")
+                or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+            ):
+                return False, "boundary input overlaps an instruction write"
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1:
-                a = addresses[left.id]
-                b = addresses[right.id]
-                if a < b + right.extent and b < a + left.extent:
-                    # Independent replay of the exact-reuse exception. A
-                    # boundary input or value with another user stays live.
-                    allowed = False
-                    for child, parent in ((left, right), (right, left)):
-                        if child.kind != "instruction" or parent.kind != "instruction":
-                            continue
-                        if child.id in graph.outputs or child.extent != parent.extent:
-                            continue
-                        if parent.children.count(child.id) != 1:
-                            continue
-                        port = parent.children.index(child.id)
-                        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
-                            continue
-                        if sum(value.children.count(child.id) for value in graph.values) != 1:
-                            continue
-                        allowed = a == b
-                    if not allowed:
-                        return False, "simultaneously live physical views overlap"
+            if overlap and lo1 <= hi2 and lo2 <= hi1:
+                # Replay the exact-reuse exception without relying on solver constraints.
+                allowed = False
+                for child, parent in ((left, right), (right, left)):
+                    if child.kind != "instruction" or parent.kind != "instruction":
+                        continue
+                    if child.id in graph.outputs or child.extent != parent.extent:
+                        continue
+                    if parent.children.count(child.id) != 1:
+                        continue
+                    port = parent.children.index(child.id)
+                    if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+                        continue
+                    if sum(value.children.count(child.id) for value in graph.values) != 1:
+                        continue
+                    allowed = a == b
+                if not allowed:
+                    return False, "simultaneously live physical views overlap"
     return True, ""
 
 
@@ -419,12 +430,16 @@ def allocate(
                 continue
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1:
+            preserve_input = (
+                (left.kind == "input" and left.preserve_input and right.kind == "instruction")
+                or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+            )
+            if preserve_input or lo1 <= hi2 and lo2 <= hi1:
                 alternatives = [
                     variables[left.id] + left.extent <= variables[right.id],
                     variables[right.id] + right.extent <= variables[left.id],
                 ]
-                if _qualified_in_place_pair(graph, left, right):
+                if not preserve_input and _qualified_in_place_pair(graph, left, right):
                     alternatives.append(variables[left.id] == variables[right.id])
                 solver.add(z3.Or(*alternatives))
     status = solver.check()

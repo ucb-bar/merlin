@@ -180,6 +180,11 @@ def check_selection(
         elif kind == "input":
             if choice.children or choice.storage != boundaries.get(source_id):
                 return "selected input lacks its declared boundary representation"
+            expected_preservation = dict(source.attrs).get("input_retention", "preserve") == "preserve"
+            if type(metadata.get("preserve_input")) is not bool or (
+                metadata["preserve_input"] != expected_preservation
+            ):
+                return "selected input retention differs from the source contract"
         elif kind == "constant":
             if choice.children or choice.storage != "external":
                 return "selected constant has no legal boundary representation"

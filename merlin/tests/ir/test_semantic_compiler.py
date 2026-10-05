@@ -1080,7 +1080,7 @@ def test_assignment_rejects_duplicate_and_reversed_instruction_orders() -> None:
 def test_delayed_operand_read_extends_lifetime_and_forces_serial_issue() -> None:
     graph = CandidateGraph(
         (
-            Value(0, "pointer", "scalar", 1, (), "pointer", "input"),
+            Value(0, "pointer", "scalar", 1, (), "pointer", "input", preserve_input=False),
             Value(
                 1, "delayed_read", "command", 1, (0,), None, "instruction", input_read_offsets=(3,), completion_offset=4
             ),
@@ -1329,6 +1329,97 @@ def test_address_relations_require_explicit_common_units() -> None:
     assert not valid and "units" in reason
 
 
+def test_boundary_input_survives_later_instruction_writes() -> None:
+    graph = CandidateGraph(
+        (
+            Value(0, "input", "external", 1, (), "x", "input"),
+            Value(1, "first", "external", 1, (0,), "a", "instruction"),
+            Value(2, "second", "external", 1, (1,), "y", "instruction"),
+        ),
+        (2,),
+    )
+    order = (1, 2)
+    cramped = (StorageBank("external", "dram", 2, "word"),)
+    # The first instruction consumes x, but the later output must not overwrite
+    # x merely because that read has completed.
+    valid, reason = check_assignment(graph, order, {0: 0, 1: 1, 2: 0}, cramped, fixed_inputs={"x": 0})
+    assert not valid and "input" in reason
+    assert allocate(graph, order, cramped, fixed_inputs={"x": 0}).status == "infeasible_candidate"
+
+    roomy = (StorageBank("external", "dram", 3, "word"),)
+    result = allocate(graph, order, roomy, fixed_inputs={"x": 0})
+    assert result.status == "feasible", result.reason
+    assert result.addresses[0] == 0
+    assert result.addresses[1] != 0 and result.addresses[2] != 0
+
+
+def test_input_retention_survives_rule_generation_and_controls_allocation(bridge: Path) -> None:
+    tensor = TensorType((2, 2), "i8", "exact")
+
+    def request(retention: str) -> KernelRequest:
+        return KernelRequest(
+            nodes=(
+                SemanticNode("x", "input", (), tensor, attrs=(("input_retention", retention),), effect="input"),
+                SemanticNode("a", "stage_a", ("x",), tensor),
+                SemanticNode("y", "stage_b", ("a",), tensor),
+            ),
+            outputs=("y",),
+            output_storages=("external",),
+            input_storages=(("x", "external"),),
+            target_identity="synthetic-input-retention",
+        )
+
+    descriptors = (
+        _descriptor("first", "stage_a", ("external",), "external", "i8", "exact", (2,)),
+        _descriptor("second", "stage_b", ("external",), "external", "i8", "exact", (2,)),
+    )
+    bank = (StorageBank("external", "dram", 2, "word"),)
+    retained = request("preserve")
+    reusable = request("reusable")
+    assert KernelRequest.from_record(reusable.record()) == reusable
+    assert retained.digest() != reusable.digest()
+    with pytest.raises(ValueError, match="input retention"):
+        request("unknown")
+    with pytest.raises(ValueError, match="input retention applies only"):
+        SemanticNode("a", "stage_a", ("x",), tensor, attrs=(("input_retention", "reusable"),))
+
+    retained_result = select_and_allocate(
+        retained, descriptors, bank, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert retained_result.status != "selected"
+    reusable_result = select_and_allocate(
+        reusable, descriptors, bank, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert reusable_result.status == "selected", reusable_result.reason
+    assert reusable_result.graph is not None and reusable_result.allocation is not None
+    source = next(value for value in reusable_result.graph.values if value.kind == "input")
+    assert not source.preserve_input
+    assert reusable_result.allocation.addresses[source.id] == reusable_result.allocation.addresses[
+        reusable_result.graph.outputs[0]
+    ]
+
+    roomy = (StorageBank("external", "dram", 3, "word"),)
+    stable = select_and_allocate(
+        retained, descriptors, roomy, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert stable.status == "selected"
+    assert stable.rules is not None and stable.candidate is not None
+    assert stable.exploration is not None and stable.allocation is not None
+    source_symbol = next(symbol for symbol, row in stable.rules.symbols.items() if row["kind"] == "input")
+    changed_symbols = {symbol: row.copy() for symbol, row in stable.rules.symbols.items()}
+    changed_symbols[source_symbol]["preserve_input"] = False
+    changed_rules = replace(stable.rules, symbols=changed_symbols)
+    changed_graph = lower_candidate(stable.candidate, changed_rules)
+    checked = check_selection(
+        retained, descriptors, changed_rules, stable.exploration, stable.candidate,
+        changed_graph, stable.allocation, roomy, fixed_inputs={"x": 0},
+    )
+    assert not checked.valid and "input retention" in checked.reason
+
+
 def _reference_feasible(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -1374,6 +1465,13 @@ def _reference_feasible(
                 both_live = left_birth <= right_death and right_birth <= left_death
                 left_addr, right_addr = assignment[left.id], assignment[right.id]
                 overlap = left_addr < right_addr + right.extent and right_addr < left_addr + left.extent
+                retained_input = (
+                    (left.kind == "input" and left.preserve_input and right.kind == "instruction")
+                    or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+                )
+                if retained_input and overlap:
+                    legal = False
+                    break
                 if both_live and overlap:
                     exact_reuse = False
                     for child, parent in ((left, right), (right, left)):
