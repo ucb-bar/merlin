@@ -44,6 +44,9 @@ needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
    Target-specific codegen, ABI interpretation and execution do not belong in Merlin's
    shared runtime. Support code is separate from the compiler candidate generated and
    evaluated by the phase workflow; a discovered backend is not a certified compiler.
+   Use the shared [host and device compilation boundary](../reference/host_device_compilation.md)
+   for the host recipe and execution plan. Put the actual launch protocol and
+   platform driver in the target package.
 5. Add target-specific conformance tests to the provider's `tests/`; shared interface
    regressions belong in the relevant `merlin/tests/<subsystem>/` bucket.
 
