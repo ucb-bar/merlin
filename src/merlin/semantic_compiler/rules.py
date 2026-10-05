@@ -392,6 +392,8 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
         else:
             symbol = "b_" + _digest(node.record())
             symbols[symbol] = {"kind": node.effect, "source_node": node.id, "type": node.type.record()}
+            if node.effect == "input":
+                symbols[symbol]["preserve_input"] = dict(node.attrs).get("input_retention", "preserve") == "preserve"
         source_symbol[node.id] = symbol
         index[node.id] = len(nodes)
         nodes.append({"symbol": symbol, "children": [index[child] for child in node.inputs]})

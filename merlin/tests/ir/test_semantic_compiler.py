@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import itertools
+import json
 import os
 import random
 import subprocess
@@ -1080,7 +1081,7 @@ def test_assignment_rejects_duplicate_and_reversed_instruction_orders() -> None:
 def test_delayed_operand_read_extends_lifetime_and_forces_serial_issue() -> None:
     graph = CandidateGraph(
         (
-            Value(0, "pointer", "scalar", 1, (), "pointer", "input"),
+            Value(0, "pointer", "scalar", 1, (), "pointer", "input", preserve_input=False),
             Value(
                 1, "delayed_read", "command", 1, (0,), None, "instruction", input_read_offsets=(3,), completion_offset=4
             ),
@@ -1329,6 +1330,97 @@ def test_address_relations_require_explicit_common_units() -> None:
     assert not valid and "units" in reason
 
 
+def test_boundary_input_survives_later_instruction_writes() -> None:
+    graph = CandidateGraph(
+        (
+            Value(0, "input", "external", 1, (), "x", "input"),
+            Value(1, "first", "external", 1, (0,), "a", "instruction"),
+            Value(2, "second", "external", 1, (1,), "y", "instruction"),
+        ),
+        (2,),
+    )
+    order = (1, 2)
+    cramped = (StorageBank("external", "dram", 2, "word"),)
+    # The first instruction consumes x, but the later output must not overwrite
+    # x merely because that read has completed.
+    valid, reason = check_assignment(graph, order, {0: 0, 1: 1, 2: 0}, cramped, fixed_inputs={"x": 0})
+    assert not valid and "input" in reason
+    assert allocate(graph, order, cramped, fixed_inputs={"x": 0}).status == "infeasible_candidate"
+
+    roomy = (StorageBank("external", "dram", 3, "word"),)
+    result = allocate(graph, order, roomy, fixed_inputs={"x": 0})
+    assert result.status == "feasible", result.reason
+    assert result.addresses[0] == 0
+    assert result.addresses[1] != 0 and result.addresses[2] != 0
+
+
+def test_input_retention_survives_rule_generation_and_controls_allocation(bridge: Path) -> None:
+    tensor = TensorType((2, 2), "i8", "exact")
+
+    def request(retention: str) -> KernelRequest:
+        return KernelRequest(
+            nodes=(
+                SemanticNode("x", "input", (), tensor, attrs=(("input_retention", retention),), effect="input"),
+                SemanticNode("a", "stage_a", ("x",), tensor),
+                SemanticNode("y", "stage_b", ("a",), tensor),
+            ),
+            outputs=("y",),
+            output_storages=("external",),
+            input_storages=(("x", "external"),),
+            target_identity="synthetic-input-retention",
+        )
+
+    descriptors = (
+        _descriptor("first", "stage_a", ("external",), "external", "i8", "exact", (2,)),
+        _descriptor("second", "stage_b", ("external",), "external", "i8", "exact", (2,)),
+    )
+    bank = (StorageBank("external", "dram", 2, "word"),)
+    retained = request("preserve")
+    reusable = request("reusable")
+    assert KernelRequest.from_record(reusable.record()) == reusable
+    assert retained.digest() != reusable.digest()
+    with pytest.raises(ValueError, match="input retention"):
+        request("unknown")
+    with pytest.raises(ValueError, match="input retention applies only"):
+        SemanticNode("a", "stage_a", ("x",), tensor, attrs=(("input_retention", "reusable"),))
+
+    retained_result = select_and_allocate(
+        retained, descriptors, bank, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert retained_result.status != "selected"
+    reusable_result = select_and_allocate(
+        reusable, descriptors, bank, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert reusable_result.status == "selected", reusable_result.reason
+    assert reusable_result.graph is not None and reusable_result.allocation is not None
+    source = next(value for value in reusable_result.graph.values if value.kind == "input")
+    assert not source.preserve_input
+    assert reusable_result.allocation.addresses[source.id] == reusable_result.allocation.addresses[
+        reusable_result.graph.outputs[0]
+    ]
+
+    roomy = (StorageBank("external", "dram", 3, "word"),)
+    stable = select_and_allocate(
+        retained, descriptors, roomy, bridge=bridge, fixed_inputs={"x": 0},
+        limits=SearchLimits(candidate_nodes=2, candidates=8),
+    )
+    assert stable.status == "selected"
+    assert stable.rules is not None and stable.candidate is not None
+    assert stable.exploration is not None and stable.allocation is not None
+    source_symbol = next(symbol for symbol, row in stable.rules.symbols.items() if row["kind"] == "input")
+    changed_symbols = {symbol: row.copy() for symbol, row in stable.rules.symbols.items()}
+    changed_symbols[source_symbol]["preserve_input"] = False
+    changed_rules = replace(stable.rules, symbols=changed_symbols)
+    changed_graph = lower_candidate(stable.candidate, changed_rules)
+    checked = check_selection(
+        retained, descriptors, changed_rules, stable.exploration, stable.candidate,
+        changed_graph, stable.allocation, roomy, fixed_inputs={"x": 0},
+    )
+    assert not checked.valid and "input retention" in checked.reason
+
+
 def _reference_feasible(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -1374,6 +1466,13 @@ def _reference_feasible(
                 both_live = left_birth <= right_death and right_birth <= left_death
                 left_addr, right_addr = assignment[left.id], assignment[right.id]
                 overlap = left_addr < right_addr + right.extent and right_addr < left_addr + left.extent
+                retained_input = (
+                    (left.kind == "input" and left.preserve_input and right.kind == "instruction")
+                    or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+                )
+                if retained_input and overlap:
+                    legal = False
+                    break
                 if both_live and overlap:
                     exact_reuse = False
                     for child, parent in ((left, right), (right, left)):
@@ -1458,6 +1557,9 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
 
 def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:
     """30 graphs; two unary steps, up to two instruction choices per step, two storage classes."""
+    selected_cases = 0
+    no_legal_path_cases = 0
+    max_enumerated_paths = 0
     for case in range(30):
         dimension = 2 + case % 3
         tensor = TensorType((dimension, 2), "i8", "exact")
@@ -1472,11 +1574,11 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
             input_storages=(("x", "external"),),
             target_identity=f"synthetic-choice-{case}",
         )
-        first: list[str] = []
-        second: list[str] = []
+        first: list[tuple[str, str]] = []
+        second: list[tuple[str, str]] = []
         descriptors: list[InstructionDescriptor] = []
         if case % 2 == 0:
-            first.append("register")
+            first.append(("a_register", "register"))
             descriptors.append(
                 _descriptor(
                     "a_register",
@@ -1490,7 +1592,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 3 != 0:
-            first.append("external")
+            first.append(("a_external", "external"))
             descriptors.append(
                 _descriptor(
                     "a_external",
@@ -1503,7 +1605,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 5 != 0:
-            second.append("register")
+            second.append(("b_register", "register"))
             descriptors.append(
                 _descriptor(
                     "b_register",
@@ -1516,7 +1618,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 7 != 0:
-            second.append("external")
+            second.append(("b_external", "external"))
             descriptors.append(
                 _descriptor(
                     "b_external",
@@ -1529,14 +1631,58 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         # Independent finite path oracle. No native matcher, extractor or solver is used.
-        legal_first = {storage for storage in first if storage != "register" or dimension <= 3}
-        expected = any(storage in second for storage in legal_first)
+        legal_paths = {
+            (first_name, second_name)
+            for first_name, output_storage in first
+            for second_name, required_storage in second
+            if output_storage == required_storage and (first_name != "a_register" or dimension <= 3)
+        }
+        max_enumerated_paths = max(max_enumerated_paths, len(first) * len(second))
+        banks = (StorageBank("external", "dram", 5, "word"), StorageBank("register", "regs", 2, "word"))
         result = select_and_allocate(
             request,
             tuple(descriptors),
-            (StorageBank("external", "dram", 5, "word"), StorageBank("register", "regs", 2, "word")),
+            banks,
             bridge=bridge,
             fixed_inputs={"x": 0},
             limits=SearchLimits(candidate_nodes=2, candidates=8),
         )
-        assert (result.status == "selected") == expected, (case, result.status, result.reason)
+        assert (result.status == "selected") == bool(legal_paths), (case, result.status, result.reason)
+        if not legal_paths:
+            no_legal_path_cases += 1
+            continue
+        selected_cases += 1
+        assert result.graph is not None and result.allocation is not None and result.rules is not None
+        instructions = {value.source_node: value for value in result.graph.values if value.kind == "instruction"}
+        assert set(instructions) == {"a", "y"}, (case, result.graph)
+        source = next(value for value in result.graph.values if value.kind == "input")
+        first_value, second_value = instructions["a"], instructions["y"]
+        assert first_value.children == (source.id,)
+        assert second_value.children == (first_value.id,)
+        assert result.graph.outputs == (second_value.id,)
+        path = (
+            result.rules.symbols[first_value.symbol]["descriptor"]["name"],
+            result.rules.symbols[second_value.symbol]["descriptor"]["name"],
+        )
+        assert path in legal_paths, (case, path, legal_paths)
+        assert first_value.storage == dict(first)[path[0]]
+        assert second_value.storage == "external"
+        # Check the chosen physical witness against this finite problem directly.
+        addresses = result.allocation.addresses
+        assert addresses[source.id] == 0
+        assert 1 <= addresses[second_value.id] < 5
+        if first_value.storage == "external":
+            assert 1 <= addresses[first_value.id] < 5
+            assert addresses[first_value.id] != addresses[second_value.id]
+        else:
+            assert 0 <= addresses[first_value.id] < 2
+    print(json.dumps({
+        "schema": "merlin.native_tiny_selection_reference.v1",
+        "cases": 30,
+        "selected_witnesses_checked": selected_cases,
+        "no_legal_path_cases": no_legal_path_cases,
+        "max_paths_enumerated_per_case": max_enumerated_paths,
+        "instruction_steps": 2,
+        "storage_classes": 2,
+        "shape_first_axis": [2, 3, 4],
+    }, sort_keys=True))
