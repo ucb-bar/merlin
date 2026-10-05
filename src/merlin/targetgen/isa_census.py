@@ -10,10 +10,38 @@ from __future__ import annotations
 import ast
 import hashlib
 import itertools
+import subprocess
 from pathlib import Path
 from typing import Any
 
 _FIELDS = {"opcode": (0, 7), "funct3": (12, 3), "funct2": (13, 2), "funct7": (25, 7)}
+
+
+def _git_source_at_revision(path: Path, revision: str) -> dict[str, str]:
+    """Bind an observed source file to bytes in one exact local Git commit."""
+    if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+        raise ValueError("source revision must be an exact 40-character commit")
+    source = path.resolve(strict=True)
+
+    def git(*arguments: str) -> bytes:
+        result = subprocess.run(
+            ["git", "-C", str(source.parent), *arguments],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if result.returncode:
+            raise ValueError(f"source revision cannot be verified for {source}: {result.stderr.decode(errors='replace').strip()}")
+        return result.stdout
+
+    root = Path(git("rev-parse", "--show-toplevel").decode().strip()).resolve()
+    relative = source.relative_to(root).as_posix()
+    head = git("rev-parse", "HEAD").decode().strip()
+    if head != revision:
+        raise ValueError(f"selected source checkout HEAD differs from declared revision: {source}")
+    selected = git("show", f"{revision}:{relative}")
+    observed = source.read_bytes()
+    if selected != observed:
+        raise ValueError(f"selected source bytes differ from declared Git revision: {source}")
+    return {"revision": revision, "path_at_revision": relative, "sha256": hashlib.sha256(observed).hexdigest()}
 
 
 def _source(path: Path) -> tuple[str, dict[str, str]]:
@@ -162,10 +190,24 @@ def derive_source_census(
     decoder_file: Path,
     model_isa_file: Path,
     rtl_revision: str,
+    model_revision: str | None = None,
+    verify_revisions: bool = False,
 ) -> dict[str, Any]:
     """Cross-link selected source bytes; retain all unqualified obligations."""
     if not rtl_revision or len(rtl_revision) != 40 or any(c not in "0123456789abcdef" for c in rtl_revision):
         raise ValueError("exact selected RTL commit is required")
+    revision_verification: dict[str, Any] = {"status": "unverified"}
+    if verify_revisions:
+        if model_revision is None:
+            raise ValueError("model revision is required for source revision verification")
+        rtl_patterns = _git_source_at_revision(pattern_file, rtl_revision)
+        rtl_decoder = _git_source_at_revision(decoder_file, rtl_revision)
+        model_source = _git_source_at_revision(model_isa_file, model_revision)
+        revision_verification = {
+            "status": "verified", "rtl_revision": rtl_revision,
+            "model_revision": model_revision,
+            "patterns": rtl_patterns, "decoder": rtl_decoder, "model_isa": model_source,
+        }
     pattern_text, pattern_source = _source(pattern_file)
     decoder_text, decoder_source = _source(decoder_file)
     model_text, model_source = _source(model_isa_file)
@@ -235,6 +277,7 @@ def derive_source_census(
         "schema": "merlin.isa_source_census.v1",
         "scope": "source_crosswalk_only_no_legal_or_executable_variant_denominator",
         "rtl_revision": rtl_revision,
+        "source_revision_verification": revision_verification,
         "sources": {"patterns": pattern_source, "decoder": decoder_source, "model_isa": model_source},
         "summary": {
             "patterns": len(patterns),

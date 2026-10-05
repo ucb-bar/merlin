@@ -1,4 +1,7 @@
 include build_tools/package_resources.json
+include src/merlin/semantic_compiler/egg_bridge/Cargo.toml
+include src/merlin/semantic_compiler/egg_bridge/Cargo.lock
+include src/merlin/semantic_compiler/egg_bridge/src/main.rs
 include merlin/benchmarks/dse_guidance/accuracy_gate.yaml
 include merlin/benchmarks/dse_guidance/commit_manifest.md
 include merlin/benchmarks/dse_guidance/measured_cycles.yaml

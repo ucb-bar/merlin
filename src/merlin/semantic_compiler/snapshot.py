@@ -20,7 +20,7 @@ from typing import Any
 from .allocate import StorageBank
 from .model import KernelRequest
 from .rules import InstructionDescriptor
-from .search import SearchLimits, SearchResult, select_and_allocate
+from .search import SearchAblations, SearchLimits, SearchResult, select_and_allocate
 
 
 def _encoded(value: object) -> bytes:
@@ -29,6 +29,39 @@ def _encoded(value: object) -> bytes:
 
 def _hash_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+_NATIVE_SOURCE_FILES = (
+    "__init__.py", "allocate.py", "egg_bridge.py", "extract.py", "linalg_bridge.py",
+    "model.py", "reference.py", "rules.py", "search.py", "snapshot.py",
+    "target_binding.py", "verify.py",
+)
+
+
+def packaged_egg_bridge_path() -> Path:
+    """Return the Rust bridge shipped with Merlin, in a checkout or wheel."""
+    crate = Path(__file__).resolve().with_name("egg_bridge")
+    required = ("Cargo.toml", "Cargo.lock", "src/main.rs")
+    missing = [name for name in required if not (crate / name).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"installed Merlin native bridge source is incomplete: {missing}"
+        )
+    return crate
+
+
+def _compiler_sources() -> dict[str, str]:
+    """Bind the installed Python selector bytes used by this snapshot."""
+    package = Path(__file__).resolve().parent
+    try:
+        return {name: _hash_file(package / name) for name in _NATIVE_SOURCE_FILES}
+    except OSError as exc:
+        raise ValueError("native compiler Python sources are unavailable") from exc
+
+
+def _check_compiler_sources(manifest: dict[str, Any]) -> None:
+    if manifest.get("compiler_sources") != _compiler_sources():
+        raise ValueError("native compiler Python sources differ from snapshot manifest")
 
 
 @dataclass(frozen=True)
@@ -89,11 +122,13 @@ class NativeSnapshot:
         fixed_inputs: dict[str, int] | None = None,
         fixed_outputs: tuple[int | None, ...] | None = None,
         limits: SearchLimits = SearchLimits(),
+        ablations: SearchAblations = SearchAblations(),
     ) -> SearchResult:
         if _hash_file(self.root / "profile.json") != self.manifest["profile_sha256"] or (
             _hash_file(self.bridge) != self.manifest["bridge_sha256"]
         ):
             raise ValueError("native snapshot changed after it was opened")
+        _check_compiler_sources(self.manifest)
         if request.target_identity != self.profile.target_identity:
             raise ValueError("kernel target identity differs from native snapshot")
         return select_and_allocate(
@@ -104,6 +139,7 @@ class NativeSnapshot:
             fixed_inputs=fixed_inputs,
             fixed_outputs=fixed_outputs,
             limits=limits,
+            ablations=ablations,
         )
 
 
@@ -151,13 +187,14 @@ def build_native_snapshot(
         shutil.copy2(binary, copied)
         (temporary / "profile.json").write_bytes(_encoded(profile.record()) + b"\n")
         manifest = {
-            "schema": "merlin.native_target_snapshot.v4",
+            "schema": "merlin.native_target_snapshot.v5",
             "status": "selection_only",
             "source_revision": source_revision,
             "target_identity": profile.target_identity,
             "profile_sha256": _hash_file(temporary / "profile.json"),
             "bridge_sha256": _hash_file(copied),
             "cargo_lock_sha256": _hash_file(lock_path),
+            "compiler_sources": _compiler_sources(),
             "bridge_build_seconds": round(time.monotonic() - started, 6),
         }
         (temporary / "manifest.json").write_bytes(_encoded(manifest) + b"\n")
@@ -170,11 +207,12 @@ def build_native_snapshot(
 
 def open_native_snapshot(root: Path) -> NativeSnapshot:
     manifest = json.loads((root / "manifest.json").read_text())
-    if manifest.get("schema") != "merlin.native_target_snapshot.v4" or manifest.get("status") != "selection_only":
+    if manifest.get("schema") != "merlin.native_target_snapshot.v5" or manifest.get("status") != "selection_only":
         raise ValueError("native snapshot has invalid manifest")
     profile_path, bridge = root / "profile.json", root / "bin/merlin-egg-bridge"
     if _hash_file(profile_path) != manifest["profile_sha256"] or _hash_file(bridge) != manifest["bridge_sha256"]:
         raise ValueError("native snapshot content differs from manifest")
+    _check_compiler_sources(manifest)
     profile = NativeTargetProfile.from_record(json.loads(profile_path.read_text()))
     if profile.target_identity != manifest["target_identity"]:
         raise ValueError("native snapshot target identity differs")

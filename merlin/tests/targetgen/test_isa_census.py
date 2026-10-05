@@ -1,6 +1,7 @@
 """The source census detects disagreements without certifying instruction legality."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,54 @@ def test_census_rejects_unpinned_or_malformed_source(tmp_path: Path) -> None:
     files["decoder_file"].write_text(f"val table:\nX -> List({_CONTROLS}),\nY -> List(\n")
     with pytest.raises(ValueError, match="unparsed or duplicate row"):
         derive_source_census(**files, rtl_revision=_RTL_REVISION)
+
+
+def test_source_revision_verification_binds_both_git_objects(tmp_path: Path) -> None:
+    rtl = tmp_path / "rtl"
+    model = tmp_path / "model"
+    rtl.mkdir()
+    model.mkdir()
+    files = _write_sources(
+        rtl, {"X": _pattern(opcode=1)}, "class X(RType, opcode=1): pass\n",
+    )
+    model_file = model / "isa_definition.py"
+    model_file.write_bytes(files["model_isa_file"].read_bytes())
+    files["model_isa_file"].unlink()
+    files["model_isa_file"] = model_file
+
+    def commit(root: Path) -> str:
+        for args in (["init", "-q"], ["add", "."], [
+            "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-qm", "selected source",
+        ]):
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+        return subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    rtl_revision = commit(rtl)
+    model_revision = commit(model)
+    census = derive_source_census(
+        **files, rtl_revision=rtl_revision, model_revision=model_revision,
+        verify_revisions=True,
+    )
+    assert census["source_revision_verification"]["status"] == "verified"
+    files["decoder_file"].write_text(files["decoder_file"].read_text() + "// changed\n")
+    with pytest.raises(ValueError, match="bytes differ"):
+        derive_source_census(
+            **files, rtl_revision=rtl_revision, model_revision=model_revision,
+            verify_revisions=True,
+        )
+    files["decoder_file"].write_bytes(subprocess.run(
+        ["git", "-C", str(rtl), "show", f"{rtl_revision}:IDecode.scala"],
+        check=True, capture_output=True,
+    ).stdout)
+    with pytest.raises(ValueError, match="HEAD differs"):
+        derive_source_census(
+            **files, rtl_revision="a" * 40, model_revision=model_revision,
+            verify_revisions=True,
+        )
 
 
 def test_installed_targetgen_audit_writes_status_and_removes_stale_result(

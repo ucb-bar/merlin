@@ -3,12 +3,17 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-09-29
+last_verified: 2026-10-04
 related: [generating_capsules, adding_a_target, integrations]
 code_refs:
   - src/merlin/targetgen/software_spec.py
   - src/merlin/targetgen/instruction_semantics.py
   - src/merlin/targetgen/rtl/circt_introspect.py
+  - src/merlin/targetgen/rtl/elaboration.py
+  - src/merlin/targetgen/rtl/source_selection.py
+  - src/merlin/targetgen/dialect_source_scope.py
+  - src/merlin/targetgen/isa_mode_audit.py
+  - src/merlin/targetgen/generate/typed_mlir.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
@@ -20,6 +25,85 @@ Phase 0 combines selected hardware evidence, a software specification, and workl
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
 to `merlin-experiments`; target-specific inputs belong to examples or selected OOT support.
+
+## Bind the selected configuration to its elaborated source
+
+An RTL source selection can verify that supplied FIRRTL produced selected HW MLIR,
+while still knowing a configuration name only as an operator-supplied label. For
+a new configuration campaign, run `python -m merlin.targetgen.rtl.elaboration`
+with an exact Git revision, a committed file containing the configuration
+symbol, explicitly selected submodule Git links, and a JSON argument vector.
+Pass every relevant nested submodule as `--submodule PATH=COMMIT`, including
+its pinned parent. Pass compiled generator JARs or other external executable
+inputs as `--tool-input FILE`; the receipt hashes them and rejects a later
+change. A successful source check still needs a separately recorded build
+dependency and environment closure.
+The vector must pass that symbol and contain one `{firrtl}` output placeholder.
+This command runs twice in separate fresh directories and writes a receipt only
+when both nonempty FIRRTL outputs have identical bytes. Pass that receipt as
+`--elaboration-receipt` to `python -m merlin.targetgen.rtl.source_selection`.
+The source-consistency view then verifies that the supplied FIRRTL, config,
+selected tracked source and receipt still match.
+
+This is a reproducibility and source-binding check, not complete hermetic build
+provenance: undeclared environment variables, untracked build inputs, downloaded
+dependencies, and elaborator semantics remain outside its scope. Record the
+selected build environment and independently qualify the resulting hardware.
+Historical source bundles without this receipt keep their prior FIRRTL-to-HW
+assessment; they do not acquire source-to-FIRRTL evidence retroactively.
+
+For a machine-dialect campaign, freeze the selected decoder population before
+compiler authoring. `merlin-targetgen audit-dialect-modes --require phase1-inputs`
+checks exact source revisions, every selected decoder row, parameter-domain
+declarations with reviewed finite values and units, explicit exclusions, and reviewed source/model discrepancy
+decisions. It deliberately does not require an operation grouping, typed
+dialect plan, software admission, or executable instruction tests: those are
+Phase 1 outcomes. The default `--require complete-dialect` criterion retains
+those later typed-mode and declared-qualification obligations. Neither result
+by itself proves arithmetic or hardware execution.
+
+Parameter domains are machine-value sets, not prose labels. An integer domain
+declares `kind: integer`, a physical `unit`, `reviewed: true`, and nonoverlapping
+`intervals` of `{min, max, step}` with reachable endpoints. An enumeration
+declares `kind: enum`, one physical `unit`, `reviewed: true`, and distinct
+`values` of one type. Both forms cite one or more `evidence_sources` as
+checkout-relative RTL file paths; the source-scope preflight checks those
+files against the selected elaboration's pinned Git objects. This records the declared legal value set for later
+verifier/allocation generation; source and execution tests still have to
+qualify the declaration. Legacy prose domains remain visible as
+`parameter_domain_unstructured` and cannot satisfy `--require phase1-inputs`.
+
+After producing the selected source bundle, ISA census, and reviewed OOT mode
+ledger, run `merlin-targetgen audit-dialect-source-scope --source-selection
+<selection.json> --census <census.json> --inventory <ledger.json>
+--expected-config <config-symbol> --out
+<report.json>`. This rechecks the configuration-to-FIRRTL receipt, replays the
+census from committed sources, and requires the pattern and decoder files to
+belong to exactly one pinned RTL checkout in the selected elaboration. Every
+required mode also needs nonempty RTL source references whose bytes match
+committed files in that checkout; the report records their relative names and
+hashes. Citing a file is a source basis, not a validated behavioral claim. A mode
+scope audit alone cannot establish that its decoder belongs to the elaborated
+machine. The report is a pre-authoring source and requirement population check;
+it does not establish the instruction semantics, typed operations, emission,
+or execution that Phase 1 must provide. Missing EE290 elaboration remains a
+blocker for an EE290 machine-dialect launch even if another configuration's
+source bundle is valid.
+
+The later `audit-dialect-modes --require complete-dialect` check binds each
+required mode's reviewed `parameter_domains` to fields in the generated typed
+plan. Each mode ledger row supplies `parameter_bindings`, mapping every domain
+name to one or more references such as
+`[{"kind": "attribute", "name": "register_index"}]` or
+`[{"kind": "type_parameter", "value": "source", "name": "first"}]`.
+The referenced attribute or custom-type parameter declares the same `unit`
+and exact finite domain. Integer domains use `intervals` of
+`{min, max, step}`; enums use `choices`. Contiguous `min`/`max` is equivalent
+to one step-one interval. This check catches an unconstrained odd register-pair
+type or a byte offset accidentally interpreted in words. The generated MLIR
+verifier enforces those declared values. A matching declaration remains an
+authored legality assertion; independent RTL and execution tests must qualify it.
+Phase 0 does not require these bindings before the compiler is authored.
 
 ## Select a frontend capture runtime for a frozen diagnostic run
 
