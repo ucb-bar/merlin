@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import itertools
+import json
 import os
 import random
 import subprocess
@@ -1556,6 +1557,9 @@ def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
 
 def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:
     """30 graphs; two unary steps, up to two instruction choices per step, two storage classes."""
+    selected_cases = 0
+    no_legal_path_cases = 0
+    max_enumerated_paths = 0
     for case in range(30):
         dimension = 2 + case % 3
         tensor = TensorType((dimension, 2), "i8", "exact")
@@ -1570,11 +1574,11 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
             input_storages=(("x", "external"),),
             target_identity=f"synthetic-choice-{case}",
         )
-        first: list[str] = []
-        second: list[str] = []
+        first: list[tuple[str, str]] = []
+        second: list[tuple[str, str]] = []
         descriptors: list[InstructionDescriptor] = []
         if case % 2 == 0:
-            first.append("register")
+            first.append(("a_register", "register"))
             descriptors.append(
                 _descriptor(
                     "a_register",
@@ -1588,7 +1592,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 3 != 0:
-            first.append("external")
+            first.append(("a_external", "external"))
             descriptors.append(
                 _descriptor(
                     "a_external",
@@ -1601,7 +1605,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 5 != 0:
-            second.append("register")
+            second.append(("b_register", "register"))
             descriptors.append(
                 _descriptor(
                     "b_register",
@@ -1614,7 +1618,7 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         if case % 7 != 0:
-            second.append("external")
+            second.append(("b_external", "external"))
             descriptors.append(
                 _descriptor(
                     "b_external",
@@ -1627,14 +1631,58 @@ def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration
                 )
             )
         # Independent finite path oracle. No native matcher, extractor or solver is used.
-        legal_first = {storage for storage in first if storage != "register" or dimension <= 3}
-        expected = any(storage in second for storage in legal_first)
+        legal_paths = {
+            (first_name, second_name)
+            for first_name, output_storage in first
+            for second_name, required_storage in second
+            if output_storage == required_storage and (first_name != "a_register" or dimension <= 3)
+        }
+        max_enumerated_paths = max(max_enumerated_paths, len(first) * len(second))
+        banks = (StorageBank("external", "dram", 5, "word"), StorageBank("register", "regs", 2, "word"))
         result = select_and_allocate(
             request,
             tuple(descriptors),
-            (StorageBank("external", "dram", 5, "word"), StorageBank("register", "regs", 2, "word")),
+            banks,
             bridge=bridge,
             fixed_inputs={"x": 0},
             limits=SearchLimits(candidate_nodes=2, candidates=8),
         )
-        assert (result.status == "selected") == expected, (case, result.status, result.reason)
+        assert (result.status == "selected") == bool(legal_paths), (case, result.status, result.reason)
+        if not legal_paths:
+            no_legal_path_cases += 1
+            continue
+        selected_cases += 1
+        assert result.graph is not None and result.allocation is not None and result.rules is not None
+        instructions = {value.source_node: value for value in result.graph.values if value.kind == "instruction"}
+        assert set(instructions) == {"a", "y"}, (case, result.graph)
+        source = next(value for value in result.graph.values if value.kind == "input")
+        first_value, second_value = instructions["a"], instructions["y"]
+        assert first_value.children == (source.id,)
+        assert second_value.children == (first_value.id,)
+        assert result.graph.outputs == (second_value.id,)
+        path = (
+            result.rules.symbols[first_value.symbol]["descriptor"]["name"],
+            result.rules.symbols[second_value.symbol]["descriptor"]["name"],
+        )
+        assert path in legal_paths, (case, path, legal_paths)
+        assert first_value.storage == dict(first)[path[0]]
+        assert second_value.storage == "external"
+        # Check the chosen physical witness against this finite problem directly.
+        addresses = result.allocation.addresses
+        assert addresses[source.id] == 0
+        assert 1 <= addresses[second_value.id] < 5
+        if first_value.storage == "external":
+            assert 1 <= addresses[first_value.id] < 5
+            assert addresses[first_value.id] != addresses[second_value.id]
+        else:
+            assert 0 <= addresses[first_value.id] < 2
+    print(json.dumps({
+        "schema": "merlin.native_tiny_selection_reference.v1",
+        "cases": 30,
+        "selected_witnesses_checked": selected_cases,
+        "no_legal_path_cases": no_legal_path_cases,
+        "max_paths_enumerated_per_case": max_enumerated_paths,
+        "instruction_steps": 2,
+        "storage_classes": 2,
+        "shape_first_axis": [2, 3, 4],
+    }, sort_keys=True))
