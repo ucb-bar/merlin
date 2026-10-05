@@ -782,6 +782,29 @@ def select_evidence(
         try:
             production = source_selection.load_selection(inputs["source_bundle_path"], target=target)
             consistency = source_selection.production_consistency(production)
+            if (consistency.get("elaboration") or {}).get("status") == "reproduced_exact_firrtl":
+                selected_receipt = production["production"]["elaboration"]
+                receipt_bytes = observe(selected_receipt["path"], "rtl-elaboration-receipt", required=True)
+                if _digest(receipt_bytes) != selected_receipt["sha256"]:
+                    raise ValueError("selected elaboration receipt changed during evidence snapshot")
+                receipt = json.loads(receipt_bytes)
+                source = receipt["source"]
+
+                def snapshot_elaboration_member(path, expected, role):
+                    captured = observe(path, role, required=True)
+                    if _digest(captured) != expected:
+                        raise ValueError(f"selected elaboration {role} changed during evidence snapshot")
+
+                snapshot_elaboration_member(
+                    Path(source["root"]) / source["config_file"], source["config_sha256"],
+                    "rtl-elaboration-config",
+                )
+                snapshot_elaboration_member(receipt["tool"]["path"], receipt["tool"]["sha256"], "rtl-elaboration-tool")
+                for run in receipt["runs"]:
+                    snapshot_elaboration_member(run["firrtl"], run["firrtl_sha256"], "rtl-elaboration-output")
+                    parent = Path(run["firrtl"]).parent
+                    snapshot_elaboration_member(parent / "stdout.log", run["stdout_sha256"], "rtl-elaboration-stdout")
+                    snapshot_elaboration_member(parent / "stderr.log", run["stderr_sha256"], "rtl-elaboration-stderr")
             # Generic serialization is a separate consumer edge after source
             # production. Validate it rather than discard its exact parser input
             # or falsely contradict a coherent source bundle with an added edge.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import itertools
+import json
 import os
 import random
 import subprocess
@@ -39,7 +40,7 @@ from merlin.semantic_compiler.rules import (
     InstructionDescriptor,
     generate_rules,
 )
-from merlin.semantic_compiler.search import SearchLimits, select_and_allocate
+from merlin.semantic_compiler.search import SearchAblations, SearchLimits, select_and_allocate
 from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot, open_native_snapshot
 from merlin.semantic_compiler.verify import check_selection, check_timing
 
@@ -332,6 +333,39 @@ def test_logical_index_maps_are_typed_and_part_of_semantic_identity() -> None:
         )
 
 
+def test_fixed_cross_shape_instruction_matches_only_declared_port_shapes(bridge: Path) -> None:
+    source_type = TensorType((32, 32), "i8", "exact")
+    result_type = TensorType((64, 16), "i8", "exact")
+    source = SemanticNode("x", "input", (), source_type, effect="input")
+    reduction = SemanticNode("y", "reduce_column", ("x",), result_type)
+    descriptor = _descriptor(
+        "fixed_reduction", "reduce_column", ("register",), "register", "i8", "exact", (2,),
+        input_ranks=(2,), shape_contract="bounded",
+        output_axis_bounds=(AxisBound(0, 64, 64), AxisBound(1, 16, 16)),
+        input_axis_bounds=((AxisBound(0, 32, 32), AxisBound(1, 32, 32)),),
+    )
+    assert InstructionDescriptor.from_record(descriptor.record()) == descriptor
+    assert descriptor.accepts(reduction, (source,))
+    request = KernelRequest(
+        nodes=(source, reduction), outputs=("y",), output_storages=("register",),
+        input_storages=(("x", "register"),), target_identity="synthetic-cross-shape-1",
+    )
+    assert any(rule.descriptor_name == "fixed_reduction" for rule in generate_rules(request, (descriptor,)).rewrites)
+    selected = select_and_allocate(
+        request, (descriptor,), (StorageBank("register", "regs", 2, "tile"),),
+        bridge=bridge, fixed_inputs={"x": 0}, fixed_outputs=(1,),
+    )
+    assert selected.status == "selected", selected.reason
+    assert selected.graph is not None and selected.allocation is not None
+    assert selected.allocation.addresses[selected.graph.outputs[0]] == 1
+    assert not descriptor.accepts(replace(reduction, type=TensorType((32, 32), "i8", "exact")), (source,))
+    assert not descriptor.accepts(reduction, (replace(source, type=TensorType((32, 33), "i8", "exact")),))
+    with pytest.raises(ValueError, match="exact bounds on every port axis"):
+        replace(descriptor, output_axis_bounds=(AxisBound(0, 64, 65), AxisBound(1, 16, 16)))
+    with pytest.raises(ValueError, match="exact bounds on every port axis"):
+        replace(descriptor, input_axis_bounds=((AxisBound(0, 32, 32),),))
+
+
 def test_generated_rules_depend_on_descriptor_and_numerical_policy() -> None:
     request = _request()
     with pytest.raises(ValueError, match="explicit dtype and numerical policy"):
@@ -510,6 +544,16 @@ def test_bit_preserving_rewrite_exposes_instruction_without_copy(bridge: Path) -
     assert [value.kind for value in result.graph.values] == ["input", "instruction"]
     assert result.rules is not None
     assert any(rule.name.startswith("structural_identity_v1") for rule in result.rules.rewrites)
+    ablated = select_and_allocate(
+        request, (consume,), (StorageBank("external", "dram", 2, "word"),),
+        bridge=bridge, fixed_inputs={"x": 0},
+        ablations=SearchAblations(disable_structural_rewrites=True),
+    )
+    assert ablated.status != "selected"
+    assert ablated.diagnostic_ablations == ("disable_structural_rewrites",)
+    assert ablated.diagnostic_only
+    assert ablated.rules is not None
+    assert not any(rule.descriptor_name == "<structural>" for rule in ablated.rules.rewrites)
 
 
 def test_generated_value_copy_materializes_direct_operand_without_source_copy(bridge: Path) -> None:
@@ -861,6 +905,40 @@ def test_missing_rule_and_exploration_limit_have_distinct_statuses(bridge: Path)
     assert bounded.status == "resource_limit"
 
 
+def test_search_limits_round_trip_and_exhausted_candidate_budget(bridge: Path) -> None:
+    limits = SearchLimits(candidate_nodes=1)
+    assert SearchLimits.from_record(limits.record()) == limits
+    for invalid in (
+        {**limits.record(), "candidate_nodes": True},
+        {**limits.record(), "candidate_nodes": 0},
+        {**limits.record(), "schema": "merlin.native_search_limits.v0"},
+        {key: value for key, value in limits.record().items() if key != "candidates"},
+    ):
+        with pytest.raises(ValueError, match="search limits"):
+            SearchLimits.from_record(invalid)
+
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("a", "add", ("x", "x"), tensor),
+            SemanticNode("y", "add", ("a", "x"), tensor),
+        ),
+        outputs=("y",), output_storages=("external",),
+        input_storages=(("x", "external"),), target_identity="synthetic-budget-1",
+    )
+    add = _descriptor("add", "add", ("external", "external"), "external", "i8", "exact", (2,))
+    banks = (StorageBank("external", "dram", 3, "word"),)
+    bounded = select_and_allocate(request, (add,), banks, bridge=bridge,
+                                  fixed_inputs={"x": 0}, fixed_outputs=(2,), limits=limits)
+    assert bounded.status == "resource_limit" and bounded.candidate_attempts == 0
+    selected = select_and_allocate(request, (add,), banks, bridge=bridge,
+                                   fixed_inputs={"x": 0}, fixed_outputs=(2,),
+                                   limits=SearchLimits(candidate_nodes=2))
+    assert selected.status == "selected" and selected.candidate is not None
+    assert selected.candidate.instruction_count() == 2
+
+
 def test_native_selection_runs_when_act_imports_and_executables_are_blocked(
     bridge: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -928,6 +1006,21 @@ def test_native_target_snapshots_rebuild_offline_and_bind_target_identity(
         source_revision="public-test-revision",
     )
     assert original.select(_request(), fixed_inputs={"x": 0}).status == "selected"
+    assert original.manifest["schema"] == "merlin.native_target_snapshot.v5"
+    assert {"search.py", "rules.py", "allocate.py"} <= set(original.manifest["compiler_sources"])
+    manifest_path = original.root / "manifest.json"
+    saved_manifest = manifest_path.read_bytes()
+    altered_manifest = dict(original.manifest)
+    altered_manifest["compiler_sources"] = {**altered_manifest["compiler_sources"], "search.py": "0" * 64}
+    manifest_path.write_text(json.dumps(altered_manifest))
+    with pytest.raises(ValueError, match="Python sources differ"):
+        open_native_snapshot(original.root)
+    manifest_path.write_bytes(saved_manifest)
+    saved_sources = original.manifest["compiler_sources"]
+    original.manifest["compiler_sources"] = altered_manifest["compiler_sources"]
+    with pytest.raises(ValueError, match="Python sources differ"):
+        original.select(_request(), fixed_inputs={"x": 0})
+    original.manifest["compiler_sources"] = saved_sources
     smaller = NativeTargetProfile(
         "synthetic-revision-2",
         _descriptors(),
@@ -1182,6 +1275,57 @@ def test_alternate_instruction_candidate_after_allocation_failure(bridge: Path) 
     assert result.status == "selected", result.reason
     assert result.candidate_attempts == 2
     assert result.rejected_allocation == 1
+    assert not result.diagnostic_only
+    for policy in (
+        SearchAblations(one_shot_extraction=True),
+        SearchAblations(disable_candidate_fallback=True),
+    ):
+        ablated = select_and_allocate(
+            request, (bad, good), (StorageBank("external", "dram", 2, "word"),),
+            bridge=bridge, fixed_inputs={"x": 0},
+            limits=SearchLimits(candidate_nodes=1, candidates=4), ablations=policy,
+        )
+        assert ablated.status == "resource_limit"
+        assert ablated.candidate_attempts == 1 and ablated.rejected_allocation == 1
+        assert ablated.diagnostic_ablations == policy.active() and ablated.diagnostic_only
+
+
+def test_search_order_ablation_exposes_required_fallback(bridge: Path) -> None:
+    tensor = _type()
+    request = KernelRequest(
+        nodes=(
+            SemanticNode("x", "input", (), tensor, effect="input"),
+            SemanticNode("y", "input", (), tensor, effect="input"),
+            SemanticNode("px", "produce_x", ("x",), tensor),
+            SemanticNode("py", "produce_y", ("y", "x"), tensor),
+            SemanticNode("cx", "consume_x", ("px",), tensor),
+            SemanticNode("cy", "consume_y", ("py",), tensor),
+        ),
+        outputs=("cx", "cy"), output_storages=("external", "external"),
+        input_storages=(("x", "external"), ("y", "external")),
+        target_identity="synthetic-order-ablation-1",
+    )
+    descriptors = (
+        _descriptor("px", "produce_x", ("external",), "register", "i8", "exact", (2,)),
+        _descriptor("py", "produce_y", ("external", "external"), "register", "i8", "exact", (2,)),
+        _descriptor("cx", "consume_x", ("register",), "external", "i8", "exact", (2,)),
+        _descriptor("cy", "consume_y", ("register",), "external", "i8", "exact", (2,)),
+    )
+    banks = (StorageBank("external", "dram", 4, "word"), StorageBank("register", "regs", 1, "word"))
+    full = select_and_allocate(
+        request, descriptors, banks, bridge=bridge, fixed_inputs={"x": 0, "y": 1},
+        limits=SearchLimits(candidate_nodes=4, candidates=8),
+    )
+    ablated = select_and_allocate(
+        request, descriptors, banks, bridge=bridge, fixed_inputs={"x": 0, "y": 1},
+        limits=SearchLimits(candidate_nodes=4, candidates=8),
+        ablations=SearchAblations(disable_alternative_orders=True),
+    )
+    assert full.status == "selected", full.reason
+    assert full.ordering_attempts > 1 and full.rejected_allocation > 0
+    assert ablated.status == "resource_limit" and ablated.ordering_attempts == 1
+    assert ablated.diagnostic_ablations == ("disable_alternative_orders",)
+    assert ablated.diagnostic_only
 
 
 def test_search_deadlines_preserve_timeout_status(bridge: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1335,25 +1479,38 @@ def _reference_feasible(
     banks: tuple[StorageBank, ...],
     fixed: dict[str, int],
     fixed_outputs: tuple[int | None, ...] | None = None,
+    trials: list[int] | None = None,
 ) -> bool:
     """Tiny independent enumerator: at most three values and 4^3 assignments."""
     bank_by_name = {bank.name: bank for bank in banks}
-    issue = {value_id: index + 1 for index, value_id in enumerate(order)}
+    issue: dict[int, int] = {}
+    completed: dict[int, int] = {}
+    clock = 0
+    for value_id in order:
+        instruction = graph.values[value_id]
+        clock += 1
+        issue[value_id] = clock
+        clock += instruction.completion_offset
+        completed[value_id] = clock
     lifetimes = []
     domains = []
     for value in graph.values:
         birth = issue.get(value.id, 0)
-        death = birth
+        death = completed.get(value.id, birth)
         for parent in graph.values:
-            if value.id in parent.children:
-                death = max(death, issue[parent.id])
+            for port, child in enumerate(parent.children):
+                if child == value.id:
+                    offset = parent.input_read_offsets[port] if parent.input_read_offsets else 0
+                    death = max(death, issue[parent.id] + offset)
         if value.id in graph.outputs:
-            death = len(order) + 1
+            death = clock + 1
         lifetimes.append((birth, death))
         bank = bank_by_name[value.storage]
         possible = range(0, bank.capacity - value.extent + 1)
         domains.append([addr for addr in possible if addr % bank.alignment == 0])
     for assignment in itertools.product(*domains):
+        if trials is not None:
+            trials[0] += 1
         if any(
             value.kind == "input" and value.source_node in fixed and assignment[value.id] != fixed[value.source_node]
             for value in graph.values
@@ -1365,6 +1522,20 @@ def _reference_feasible(
         ):
             continue
         legal = True
+        for value in graph.values:
+            ports = {"out": assignment[value.id]}
+            ports.update((f"in{port}", assignment[child]) for port, child in enumerate(value.children))
+            for condition in value.validity:
+                if condition.kind == "eq_offset" and (
+                    ports[condition.lhs] - ports[condition.rhs] != condition.value
+                ):
+                    legal = False
+                elif condition.kind == "aligned" and ports[condition.lhs] % condition.value:
+                    legal = False
+            if not legal:
+                break
+        if not legal:
+            continue
         for left in graph.values:
             for right in graph.values[left.id + 1 :]:
                 if bank_by_name[left.storage].backing != bank_by_name[right.storage].backing:
@@ -1400,60 +1571,127 @@ def _reference_feasible(
 
 
 def test_200_bounded_allocations_agree_with_independent_enumerator() -> None:
-    """200 seeded instances; 2-3 values, 1-2 stores, capacity 1-4 slots, extent 1-2, fixed I/O."""
+    """200 seeded graphs, 220 order instances, at most 4^3 assignments each.
+
+    Vary physical aliases, extent, alignment, address maps, fixed I/O,
+    in-place legality and delayed input reads. The oracle uses only Python
+    finite enumeration, never the native constraint builder or checker.
+    """
     rng = random.Random(1907)
     outcomes = {"feasible": 0, "infeasible_candidate": 0}
     in_place_only = 0
+    offset_values: set[int] = set()
+    constrained_outcomes: set[bool] = set()
+    delayed_cases = 0
+    checked_orders = 0
+    two_order_cases = 0
+    enumerated_assignments = 0
+    max_assignments_in_one_order = 0
     for index in range(200):
+        branch = index % 10 == 1
         two_stores = index % 2 == 0
         aliases = two_stores and index % 3 == 0
-        capacity_a = rng.randint(1, 4)
+        # Pin one known in-place-only witness inside the seeded population.
+        capacity_a = 2 if index == 7 else rng.randint(1, 4)
         capacity_b = rng.randint(1, 4)
         banks = (StorageBank("a", "shared", capacity_a, "slot"),)
         if two_stores:
             banks += (StorageBank("b", "shared" if aliases else "other", capacity_b, "slot"),)
         storage = "b" if two_stores and index % 4 == 0 else "a"
-        values = [Value(0, "source", "a", rng.randint(1, 2), (), "input", "input")]
-        values.append(Value(1, "compute", storage, rng.randint(1, 2), (0,), None, "instruction"))
+        values = [Value(0, "source", "a", 1 if index == 7 else rng.randint(1, 2), (), "input", "input")]
+        first_conditions = (
+            (AddressConstraint("eq_offset", "out", "in0", (index // 6) % 3 - 1),)
+            if index % 6 == 0 else
+            (AddressConstraint("aligned", "out", value=2),) if index % 8 == 0 else ()
+        )
+        values.append(Value(
+            1, "compute", storage, 1 if index == 7 else rng.randint(1, 2), (0,), None, "instruction",
+            validity=first_conditions,
+            input_read_offsets=(1,) if index % 13 == 0 else (),
+            completion_offset=1 if index % 13 == 0 else 0,
+        ))
         if index % 5:
+            later_completion = 2 if index % 13 == 0 else 1 if index % 7 == 0 else 0
+            later_conditions = (
+                (AddressConstraint("eq_offset", "out", "in0", (index // 9) % 3 - 1),)
+                if index % 9 == 0 else
+                (AddressConstraint("aligned", "out", value=2),) if index % 11 == 0 else ()
+            )
             values.append(
                 Value(
                     2,
                     "consume",
                     "a",
-                    rng.randint(1, 2),
-                    (1,),
+                    1 if index == 7 else rng.randint(1, 2),
+                    (0,) if branch else (1,),
                     None,
                     "instruction",
-                    completion_offset=1 if index % 7 == 0 else 0,
+                    validity=later_conditions,
+                    input_read_offsets=(1,) if index % 13 == 0 else (),
+                    completion_offset=later_completion,
                     in_place_inputs=(0,) if index % 7 == 0 else (),
                 )
             )
-        graph = CandidateGraph(tuple(values), (values[-1].id,))
-        order = tuple(value.id for value in values if value.kind == "instruction")
-        fixed = (
+        graph = CandidateGraph(tuple(values), (1, 2) if branch else (values[-1].id,))
+        orders = ((1, 2), (2, 1)) if branch else (tuple(value.id for value in values if value.kind == "instruction"),)
+        two_order_cases += branch
+        fixed = {"input": 0} if index == 7 else (
             {"input": rng.randint(0, min(1, capacity_a - values[0].extent))}
             if index % 3 and capacity_a >= values[0].extent
             else {}
         )
-        output = values[-1]
-        output_capacity = next(bank.capacity for bank in banks if bank.name == output.storage)
-        fixed_outputs = (
-            (rng.randint(0, min(2, output_capacity - output.extent)),)
-            if index % 4 == 0 and output_capacity >= output.extent
-            else None
+        pinned: list[int | None] = []
+        for position, value_id in enumerate(graph.outputs):
+            output = values[value_id]
+            output_capacity = next(bank.capacity for bank in banks if bank.name == output.storage)
+            select = (position == 0 and index % 4 in (0, 1)) or (position == 1 and index % 8 == 1)
+            pinned.append(
+                rng.randint(0, min(2, output_capacity - output.extent))
+                if select and output_capacity >= output.extent else None
+            )
+        fixed_outputs = (1,) if index == 7 else (
+            tuple(pinned) if any(address is not None for address in pinned) else None
         )
-        expected = _reference_feasible(graph, order, banks, fixed, fixed_outputs)
-        if len(values) == 3 and values[-1].in_place_inputs and expected:
-            ordinary = CandidateGraph((*values[:2], replace(values[-1], in_place_inputs=())), graph.outputs)
-            if not _reference_feasible(ordinary, order, banks, fixed, fixed_outputs):
-                in_place_only += 1
-        result = allocate(graph, order, banks, fixed_inputs=fixed, fixed_outputs=fixed_outputs, timeout_ms=5000)
-        assert result.status in outcomes, (index, result)
-        outcomes[result.status] += 1
-        assert (result.status == "feasible") == expected, (index, graph, banks, fixed, fixed_outputs, result)
+        conditions = tuple(condition for value in values for condition in value.validity)
+        offset_values.update(condition.value for condition in conditions if condition.kind == "eq_offset")
+        delayed_cases += any(value.input_read_offsets for value in values)
+        for order in orders:
+            checked_orders += 1
+            trials = [0]
+            expected = _reference_feasible(graph, order, banks, fixed, fixed_outputs, trials)
+            enumerated_assignments += trials[0]
+            max_assignments_in_one_order = max(max_assignments_in_one_order, trials[0])
+            if conditions:
+                constrained_outcomes.add(expected)
+            if len(values) == 3 and values[-1].in_place_inputs and expected:
+                ordinary = CandidateGraph((*values[:2], replace(values[-1], in_place_inputs=())), graph.outputs)
+                if not _reference_feasible(ordinary, order, banks, fixed, fixed_outputs):
+                    in_place_only += 1
+            result = allocate(graph, order, banks, fixed_inputs=fixed, fixed_outputs=fixed_outputs, timeout_ms=5000)
+            assert result.status in outcomes, (index, order, result)
+            outcomes[result.status] += 1
+            assert (result.status == "feasible") == expected, (
+                index, order, graph, banks, fixed, fixed_outputs, result
+            )
     assert all(outcomes.values()), outcomes
     assert in_place_only > 0
+    assert offset_values == {-1, 0, 1}
+    assert constrained_outcomes == {False, True}
+    assert delayed_cases > 0
+    assert two_order_cases == 20 and checked_orders == 220
+    assert 0 < max_assignments_in_one_order <= 64
+    print(json.dumps({
+        "schema": "merlin.native_tiny_allocation_reference.v1",
+        "graphs": 200,
+        "order_instances": checked_orders,
+        "two_order_graphs": two_order_cases,
+        "enumerated_assignments": enumerated_assignments,
+        "max_assignments_in_one_order": max_assignments_in_one_order,
+        "outcomes": outcomes,
+        "in_place_only_witnesses": in_place_only,
+        "delayed_read_graphs": delayed_cases,
+        "address_offsets": sorted(offset_values),
+    }, sort_keys=True))
 
 
 def test_30_two_step_instruction_choices_agree_with_independent_path_enumeration(bridge: Path) -> None:

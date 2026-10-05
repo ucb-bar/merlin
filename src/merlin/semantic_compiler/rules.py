@@ -175,12 +175,31 @@ class InstructionDescriptor:
                 raise ValueError("input axis bound is duplicated or exceeds operand rank")
         if self.index_maps and len(self.index_maps) != arity + 1:
             raise ValueError("instruction index maps need one map per operand and result")
-        if self.shape_contract not in {"equal", "relations"}:
+        if self.shape_contract not in {"equal", "relations", "bounded"}:
             raise ValueError("unknown instruction shape contract")
         if self.shape_contract == "equal" and self.shape_equalities:
             raise ValueError("equal-shape contract cannot add independent shape relations")
         if self.shape_contract == "relations" and (not self.shape_equalities or len(self.input_ranks) != arity):
             raise ValueError("relational shape contract needs equalities and explicit input ranks")
+        if self.shape_contract == "bounded":
+            # Without a dimension relation, an instruction can only be
+            # admitted at one exact shape per port. Wider intervals would
+            # claim unknown input/output shape combinations are equivalent.
+            def exact_axes(bounds: tuple[AxisBound, ...], rank: int) -> bool:
+                return {bound.axis for bound in bounds} == set(range(rank)) and all(
+                    bound.maximum == bound.minimum for bound in bounds
+                )
+
+            if (
+                self.shape_equalities or len(self.ranks) != 1 or len(self.input_ranks) != arity
+                or len(self.input_axis_bounds) != arity
+                or not exact_axes(self.output_axis_bounds, self.ranks[0])
+                or any(
+                    not exact_axes(bounds, rank)
+                    for bounds, rank in zip(self.input_axis_bounds, self.input_ranks)
+                )
+            ):
+                raise ValueError("bounded shape contract needs exact bounds on every port axis")
         if self.input_read_offsets and len(self.input_read_offsets) != arity:
             raise ValueError("input read offsets must match instruction arity")
         if type(self.completion_offset) is not int or self.completion_offset < 0:
@@ -245,8 +264,9 @@ class InstructionDescriptor:
             and (not self.input_ranks or all(len(n.type.shape) == rank for n, rank in zip(inputs, self.input_ranks)))
             and (
                 all(n.type.shape == node.type.shape for n in inputs)
-                if self.shape_contract == "equal"
-                else self._relations_accept(node, inputs)
+                if self.shape_contract == "equal" else
+                self._relations_accept(node, inputs)
+                if self.shape_contract == "relations" else True
             )
         )
 
