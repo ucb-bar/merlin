@@ -67,3 +67,13 @@ inline frames preserve context and their counts overlap parent call-site totals.
 Instruction counts never imply hardware cycles. The ELF reader explicitly
 refuses unsupported formats rather than guessing them. Tests live in the DSE
 bucket and exercise actual compiler/symbolizer twins plus changed-byte refusals.
+
+`execution_boundaries` summarizes explicit provider-decoded instruction extents,
+execution counts, call classifications, stack access widths and frame facts.
+Every instruction is covered once; unknown facts remain unknown. Entry-normalized
+counts and repeated stack sites are descriptive features, not physical traffic,
+peak stack usage, interprocedural dependencies or cycle prices. Its training-only
+boundary envelope checks an unpriced subdomain and never approves a ranking.
+The provider owns decoding/ABI and exact artifact verification; the existing
+fitter and held-out ordering gate remain separate. Independent expanded event
+traces and multiple provider geometries test the summary and refusal behavior.

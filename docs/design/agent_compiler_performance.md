@@ -237,6 +237,25 @@ These are target-independent contracts and tools. A provider supplies target cap
 legality, pipeline and bandwidth facts, instruction semantics, ABI details and execution adapters.
 Core code must not infer those facts from the name of a target.
 
+### Keep call and stack boundaries in the calibration domain
+
+`merlin.perf.execution_boundaries` accepts typed provider-decoded function extents
+and instruction records with explicit execution counts, call kinds, stack access
+widths and known or unknown frames. It checks complete, nonoverlapping coverage
+before summing or normalizing to a selected entry invocation. Symbol identities
+bind evidence only. The target provider owns instruction/register/ABI decoding
+and verifies the recorded program, census and provider artifacts.
+
+The summaries distinguish per-call prologue accesses from repeated stack sites,
+direct and indirect calls, unresolved callees and unknown classification. They
+do not recover chronological memory events, physical traffic, cross-call/loop
+dependencies or peak simultaneous stack usage. A training-only boundary envelope
+can refuse a newly outlined helper or new spill pattern even when the numerical
+features used by a cycle fit are inside its scalar ranges. Passing this unpriced
+subdomain neither prices those boundaries nor approves a ranking: the ordinary
+held-out coverage and ordering gates remain required. Missing facts are never
+treated as zero cost.
+
 ### Bind memory experiments to their byte representation and runtime
 
 A border-initialization experiment reduced isolated instructions by27% but
