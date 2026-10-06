@@ -2,7 +2,6 @@
 
 import ctypes
 import subprocess
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,7 +10,7 @@ from merlin.llvmlower.bounded_rne_lanes import emit_bounded_rne_lanes
 from merlin.llvmlower.toolchain import clang
 
 
-@pytest.mark.parametrize("lanes", [1, 2, 3, 4])
+@pytest.mark.parametrize("lanes", [1, 2, 3, 4, 7, 8])
 @pytest.mark.parametrize("bits", [8, 16])
 def test_portable_lanes_match_independent_rounding_and_target_compiles(tmp_path, lanes, bits):
     calls = ", ".join(f"x[{i}]" for i in range(lanes))
@@ -71,7 +70,7 @@ def test_portable_lanes_match_independent_rounding_and_target_compiles(tmp_path,
         dict(bits=25),
         dict(bits=True),
         dict(lanes=0),
-        dict(lanes=5),
+        dict(lanes=9),
         dict(lanes=True),
         dict(host_isa=None),
         dict(host_isa="unknown"),

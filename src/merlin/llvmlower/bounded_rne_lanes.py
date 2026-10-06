@@ -36,8 +36,8 @@ def emit_bounded_rne_lanes(name: str, *, bits: int, lanes: int, host_isa: str) -
         raise ValueError("name must be a C identifier")
     if type(bits) is not int or not 1 <= bits <= 24:
         raise ValueError("exact binary32 signed bounds require bits in [1,24]")
-    if type(lanes) is not int or not 1 <= lanes <= 4:
-        raise ValueError("bounded register packet requires lanes in [1,4]")
+    if type(lanes) is not int or not 1 <= lanes <= 8:
+        raise ValueError("bounded register packet requires lanes in [1,8]")
     if host_isa not in ("portable", "rv64gc"):
         raise ValueError("explicit supported host ISA is required")
     lower, upper = -(1 << (bits - 1)), (1 << (bits - 1)) - 1

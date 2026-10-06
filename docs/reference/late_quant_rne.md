@@ -3,9 +3,9 @@ title: Exact bounded host rounding
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [architecture, lowering_pipeline]
-code_refs: [src/merlin/llvmlower/late_quant_rne.py, merlin/tests/ir/test_late_quant_rne.py]
+code_refs: [src/merlin/llvmlower/late_quant_rne.py, src/merlin/llvmlower/bounded_rne_maps.py, src/merlin/llvmlower/bounded_rne_packet_llvm.py, src/merlin/llvmlower/bounded_rne_lanes.py, merlin/tests/ir/test_late_quant_rne.py]
 ---
 
 # Exact bounded host rounding
@@ -60,3 +60,24 @@ signed zero, subnormals and infinities. Structural/refusal tests cover other use
 multiple functions, alternative literal spellings and temporary-name collisions.
 Hardware qualification and five-mode CPU execution remain pinned experimental
 receipts, rather than claims inferred from these unit tests.
+
+## Explicit lane scheduling
+
+`schedule_bounded_rne_maps(module, lanes=...)` keeps the original scalar graph
+inside each lane. Static source index maps establish independent immutable
+inputs; the carried tensor result and upstream bufferization retain alias and
+lifetime authority. The default uses four lanes. Explicit widths through eight
+have separate full packets and exact static tails, including a tail-only map.
+
+`rewrite_packet_helpers(text, host_isa="rv64gc", max_lanes=8)` explicitly permits
+pure return aggregates with five through eight independently proved results.
+Its default lane budget remains four, preserving the prior refusal domain and
+emitted bytes. The separate CPU helper emitter also supports explicit widths
+through eight. Floating temporaries and clobbers cover every selected lane;
+there is no automatic width selection or profitability claim.
+
+The existing exception-flags-unobserved source policy and strict/constrained
+refusals remain unchanged. Comparing final runtime rounding modes and flags
+between schedules supplies additional operational evidence, without extending
+the declared source policy. Compiled register pressure, spills, code footprint,
+conversion/clamp latency and memory behavior require measured costs.

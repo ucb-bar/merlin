@@ -75,8 +75,8 @@ def test_semantic_near_misses_refuse(change):
     assert prove_scalar_bounded_rne(block) is None
 
 
-@pytest.mark.parametrize("n,pad", [(7, 1), (9, 0), (10, 0)])
-def test_stripmine_transpose_tails_live_destination_native(tmp_path, n, pad):
+@pytest.mark.parametrize("n,pad,lanes", [(7, 1, 4), (9, 0, 4), (10, 0, 4), (6, 0, 8), (15, 1, 8), (17, 0, 8)])
+def test_stripmine_transpose_tails_live_destination_native(tmp_path, n, pad, lanes):
     import subprocess
 
     import numpy as np
@@ -91,21 +91,28 @@ def test_stripmine_transpose_tails_live_destination_native(tmp_path, n, pad):
     m = 3
     pn, pm = n + 2 * pad, m + 2 * pad
     view = (
-        f'%view="tensor.extract_slice"(%old) <{{static_offsets=array<i64:{pad},{pad}>,static_sizes=array<i64:{n},{m}>,static_strides=array<i64:1,1>,operandSegmentSizes=array<i32:1,0,0,0>}}> : (tensor<{pn}x{pm}xi8>) -> tensor<{n}x{m}xi8>'
+        f'%view="tensor.extract_slice"(%old) <{{static_offsets=array<i64:{pad},{pad}>,'
+        f"static_sizes=array<i64:{n},{m}>,static_strides=array<i64:1,1>,"
+        f"operandSegmentSizes=array<i32:1,0,0,0>}}> : (tensor<{pn}x{pm}xi8>) -> tensor<{n}x{m}xi8>"
         if pad
         else ""
     )
     insert = (
-        f'%answer="tensor.insert_slice"(%r,%old) <{{static_offsets=array<i64:{pad},{pad}>,static_sizes=array<i64:{n},{m}>,static_strides=array<i64:1,1>,operandSegmentSizes=array<i32:1,1,0,0,0>}}> : (tensor<{n}x{m}xi8>,tensor<{pn}x{pm}xi8>) -> tensor<{pn}x{pm}xi8>'
+        f'%answer="tensor.insert_slice"(%r,%old) <{{static_offsets=array<i64:{pad},{pad}>,'
+        f"static_sizes=array<i64:{n},{m}>,static_strides=array<i64:1,1>,"
+        f"operandSegmentSizes=array<i32:1,1,0,0,0>}}> : "
+        f"(tensor<{n}x{m}xi8>,tensor<{pn}x{pm}xi8>) -> tensor<{pn}x{pm}xi8>"
         if pad
         else ""
     )
     module = parse_mlir_text(f"""module {{
-      func.func @forward(%a:tensor<{m}x{n}xf32>,%old:tensor<{pn}x{pm}xi8>) -> (tensor<{pn}x{pm}xi8>,tensor<{pn}x{pm}xi8>) attributes {{llvm.emit_c_interface}} {{
+      func.func @forward(%a:tensor<{m}x{n}xf32>,%old:tensor<{pn}x{pm}xi8>)
+        -> (tensor<{pn}x{pm}xi8>,tensor<{pn}x{pm}xi8>) attributes {{llvm.emit_c_interface}} {{
         %e=tensor.empty():tensor<{n}x{m}xf32>
         %t=linalg.transpose ins(%a:tensor<{m}x{n}xf32>) outs(%e:tensor<{n}x{m}xf32>) permutation=[1,0]
         {view}
-        %r=linalg.generic {{indexing_maps=[affine_map<(i,j)->(i,j)>,affine_map<(i,j)->(i,j)>],iterator_types=["parallel","parallel"]}}
+        %r=linalg.generic {{indexing_maps=[affine_map<(i,j)->(i,j)>,affine_map<(i,j)->(i,j)>],
+        iterator_types=["parallel","parallel"]}}
         ins(%t:tensor<{n}x{m}xf32>) outs({"%view" if pad else "%old"}:tensor<{n}x{m}xi8>) {{
         ^bb0(%x:f32,%o:i8):
           %s=arith.constant 2.500000e+00:f32
@@ -122,8 +129,8 @@ def test_stripmine_transpose_tails_live_destination_native(tmp_path, n, pad):
         return %old,{"%answer" if pad else "%r"}:tensor<{pn}x{pm}xi8>,tensor<{pn}x{pm}xi8>
       }} }}""")
     assert fuse_round_clamp_convert(module) == 1
-    reports = schedule_bounded_rne_maps(module)
-    assert len(reports) == 1 and reports[0]["packet_axis"] == 0 and reports[0]["tail"] == n % 4
+    reports = schedule_bounded_rne_maps(module, lanes=lanes)
+    assert len(reports) == 1 and reports[0]["packet_axis"] == 0 and reports[0]["tail"] == n % lanes
     module.verify()
     llvm = lower_to_llvm_ir(text(module, generic=True), workdir=tmp_path / "lower", vectorize=False)
     assert "call void @free(" in llvm

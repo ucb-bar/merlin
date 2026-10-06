@@ -1,7 +1,8 @@
 """CPU packet emission for pure scalar helpers returning proved RNE lanes.
 
 No symbol naming convention selects a function. The typed return aggregate must
-contain two to four fully proved scalar bounded-RNE results, and the function
+contain fully proved scalar bounded-RNE results within the explicit lane budget,
+and the function
 must contain only straight-line pure scalar arithmetic. The original arithmetic
 is retained as dead code until ordinary LLVM DCE; only return operands change.
 The explicit CPU policy assumes FP exception flags are not observable, matching
@@ -15,7 +16,16 @@ import hashlib
 from .late_quant_rne import _functions, _identity, _instruction, _match, _tokens
 
 
-def rewrite_packet_helpers(source: str, *, host_isa: str | None = None):
+def rewrite_packet_helpers(source: str, *, host_isa: str | None = None, max_lanes: int = 4):
+    """Legalize pure return packets under an explicit CPU/lane policy.
+
+    The default recognizes the original two-through-four lane domain. Larger
+    packets require an explicit budget, bounded at eight floating temporaries
+    under the supported CPU policy. This is a code-generation option, not a
+    profitability or alias proof; compiled register pressure must be measured.
+    """
+    if type(max_lanes) is not int or not 2 <= max_lanes <= 8:
+        raise ValueError("explicit packet lane budget must be an integer in [2,8]")
     report = {
         "schema": "bounded_rne_packet_llvm_v1",
         "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
@@ -131,7 +141,7 @@ def rewrite_packet_helpers(source: str, *, host_isa: str | None = None):
             continue
         dtypes = typelist[::2]
         width = len(dtypes)
-        if not 2 <= width <= 4 or len(set(dtypes)) != 1:
+        if not 2 <= width <= max_lanes or len(set(dtypes)) != 1:
             continue
         dtype = dtypes[0]
         chain = []

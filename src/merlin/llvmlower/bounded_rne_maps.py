@@ -118,8 +118,8 @@ def schedule_bounded_rne_maps(module, *, lanes=4, symbol_prefix="bounded_rne_pac
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineDimExpr, AffineMap
 
-    if type(lanes) is not int or not 1 <= lanes <= 4:
-        raise ValueError("packet width must be an integer in [1,4]")
+    if type(lanes) is not int or not 1 <= lanes <= 8:
+        raise ValueError("packet width must be an integer in [1,8]")
     if (
         not isinstance(symbol_prefix, str)
         or not symbol_prefix
@@ -253,7 +253,10 @@ def schedule_bounded_rne_maps(module, *, lanes=4, symbol_prefix="bounded_rne_pac
             n: arith.ConstantOp.from_int_and_width(n, IndexType())
             for n in {0, 1, lanes, *shape, *range(lanes), (shape[axis] // lanes) * lanes}
         }
-        c = lambda n: constants[n].result
+
+        def c(n):
+            return constants[n].result
+
         root = Block()
         uniform = {}
         for i, (source, dims) in enumerate(sources):
@@ -335,7 +338,9 @@ def schedule_bounded_rne_maps(module, *, lanes=4, symbol_prefix="bounded_rne_pac
                 "bounds": list(proof.bounds),
                 "helpers": helpers,
                 "numeric_contract": "original scalar body cloned; no reassociation",
-                "memory_contract": "immutable input tensors, carried output tensor; upstream bufferization owns alias copies",
+                "memory_contract": (
+                    "immutable input tensors, carried output tensor; upstream bufferization owns alias copies"
+                ),
             }
         )
     module.verify()

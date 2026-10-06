@@ -85,3 +85,47 @@ def test_existing_local_names_are_not_reused():
     original = source(2).replace("  %v1.lane0", "  %merlin.packet.0.asm = add i8 0, 0\n  %v1.lane0", 1)
     result, proof = rewrite_packet_helpers(original, host_isa="rv64gc")
     assert proof["routes"] and "%merlin.packet.1.asm = call" in result
+
+
+@pytest.mark.parametrize("width", [5, 6, 7, 8])
+def test_wide_packet_requires_explicit_budget_and_compiles(tmp_path, width):
+    original = source(width)
+    assert rewrite_packet_helpers(original, host_isa="rv64gc")[0] == original
+    result, proof = rewrite_packet_helpers(original, host_isa="rv64gc", max_lanes=8)
+    assert len(proof["routes"]) == 1 and proof["routes"][0]["lanes"] == width
+    path = tmp_path / "packet.ll"
+    path.write_text(result)
+    subprocess.run(
+        [
+            str(clang()),
+            "--target=riscv64-unknown-elf",
+            "-march=rv64gc",
+            "-O2",
+            "-c",
+            str(path),
+            "-o",
+            str(tmp_path / "packet.o"),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.parametrize("budget", [None, True, 1, 9, "8"])
+def test_unknown_or_unbounded_lane_budget_refuses(budget):
+    with pytest.raises(ValueError, match="lane budget"):
+        rewrite_packet_helpers(source(2), host_isa="rv64gc", max_lanes=budget)
+
+
+def test_explicit_budget_does_not_grant_new_numeric_or_effect_permissions():
+    original = source(8).replace(") {", ") strictfp {", 1)
+    result, proof = rewrite_packet_helpers(original, host_isa="rv64gc", max_lanes=8)
+    assert result == original and not proof["routes"]
+    assert rewrite_packet_helpers(source(9), host_isa="rv64gc", max_lanes=8)[0] == source(9)
+
+
+def test_explicit_wide_budget_preserves_the_original_four_lane_bytes_and_report():
+    original = source(4)
+    assert rewrite_packet_helpers(original, host_isa="rv64gc") == rewrite_packet_helpers(
+        original, host_isa="rv64gc", max_lanes=8
+    )
