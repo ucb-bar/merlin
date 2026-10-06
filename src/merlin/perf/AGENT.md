@@ -67,3 +67,8 @@ inline frames preserve context and their counts overlap parent call-site totals.
 Instruction counts never imply hardware cycles. The ELF reader explicitly
 refuses unsupported formats rather than guessing them. Tests live in the DSE
 bucket and exercise actual compiler/symbolizer twins plus changed-byte refusals.
+
+`address_locality` counts first touches and exact distinct-intervening-region
+recurrence distances from explicitly ordered requested addresses. Granule and
+resource budget are caller inputs; capacity thresholds exclude first touches.
+These are logical locality features, not physical traffic or timing estimates.
