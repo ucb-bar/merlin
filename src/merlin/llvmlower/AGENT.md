@@ -125,6 +125,19 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   remains defined. Only LLVM's exact function comparison grants merging; source
   arithmetic, observable stores and public function-address rules remain intact.
   Smaller code does not establish a cycle improvement.
+- `immutable_llvm_base.py` offers explicit immutable global-address binding
+  through an unchanged public wrapper to a hidden out-of-line implementation.
+  Typed pointer-use closure permits only GEPs and nonpointer loads from an
+  ordinary constant global. The original operations, order, attributes, pointer
+  identities and public signature remain intact; no FP, memory, effect or alias
+  permission is added. The build must seal the extra hidden borrowed-pointer ABI
+  and verify the complete resulting module. This default-off scheduling choice
+  does not establish a register or timing benefit: actual rematerialization,
+  call frame and complete-body costs require qualification.
+  Explicit LLVM frame/caller/stack/coroutine observations, special function
+  prologues and escaping block addresses refuse. Opaque calls and assembly keep
+  their existing provider obligations for helper placement; callee names grant
+  no purity or frame-independence fact.
 - `llvm_loop_metadata.py` retains an explicitly chosen ordinary CPU loop through
   upstream translation/optimization. Callers identify the actual latch; existing
   annotations refuse pending explicit composition. It grants no arithmetic,

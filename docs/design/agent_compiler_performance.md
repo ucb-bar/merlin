@@ -295,6 +295,23 @@ contract and witness collection. An unconsumed semantic property must be refused
 explained, rather than silently receiving a default. This coverage extension is proposed;
 the concrete OOT stride fix has its own target tests and qualification.
 
+### Verify immutable address materialization as a compiler decision
+
+A source-bound table calibration emitted the same constant address once in one
+helper and twice per element in another. The generic `immutable_llvm_base`
+alternative retains the public signature and every original operation, passing
+the immutable address once to an explicit hidden helper. Typed readonly pointer
+closure and a whole-source witness govern eligibility. Target ABI guards,
+instruction decoding and physical addresses remain the provider's responsibility.
+
+An initial internal helper was specialized back to the constant by LLVM despite
+`noinline`, so it was rejected before execution. The hidden borrowed-pointer ABI
+avoids that specialization in the qualified implementation but increases its
+frame. Agent edit grants and model features should expose constant materialization,
+extra ABI closure, frame and emitted dependency changes separately. No cycle price
+or automatic selection follows from fewer address instructions; complete matched
+timing and original output/effect gates govern promotion.
+
 ### Carry numerical requirements with optional algorithms
 
 Reusable certificate code now has distinct full-norm and representation-only metadata
