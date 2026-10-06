@@ -53,6 +53,21 @@ def run_on_gsim(
     from merlin.runtime.backends import base as backends
     from merlin.targetgen import gsim_emulator
 
+    # Refuse unusable destinations before spending any emulator time. Append
+    # mode probes an existing file without truncating retained stdout. A missing
+    # parent remains an explicit caller error; do not silently choose another path.
+    if stdout_path is not None:
+        stdout_path = Path(stdout_path)
+        if (stdout_path.exists() or stdout_path.is_symlink()) and not stdout_path.is_file():
+            raise ValueError("stdout_path must be a regular file")
+        if stdout_path.resolve() == Path(elf).resolve() or (
+            stdout_path.exists() and Path(elf).exists()
+            and stdout_path.samefile(elf)
+        ):
+            raise ValueError("stdout_path aliases the input ELF")
+        with stdout_path.open("a", encoding="utf-8"):
+            pass
+
     backend = backends.get_backend(target)
     prepare = getattr(backend, "prepare_gsim_command", None)
     if prepare is None:
