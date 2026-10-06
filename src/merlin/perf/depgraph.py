@@ -231,6 +231,7 @@ def build_dag(
     last_def: dict[Access, int] = {}
     readers: dict[Access, list[int]] = {}
     edges: list[Edge] = []
+    raw_edges: set[tuple[int, int, Access]] = set()
     carried: set[int] = set()  # stalls whose cycles an edge now carries
 
     def _sep(src: int, value: Access | None, kind: str) -> Edge:
@@ -247,11 +248,13 @@ def build_dag(
             if producer is not None:
                 proto = _sep(producer, value, RAW)
                 edge = Edge(producer, index, RAW, proto.cycles, proto.edge_class, value)
-                if edge not in edges:
+                key = (producer, index, value)
+                if key not in raw_edges:
                     # Two operands of one instruction reading the SAME value is one dependence, not
                     # two. Counting it twice inflates the demand on an unpriced class, and the demand
                     # is what decides whether two candidates may be differenced at all.
                     edges.append(edge)
+                    raw_edges.add(key)
                 if producer in declared:
                     carried.add(producer)
             readers.setdefault(value, []).append(index)

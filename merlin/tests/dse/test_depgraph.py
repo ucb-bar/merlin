@@ -158,6 +158,56 @@ def test_an_unpriced_separation_is_counted_by_class_never_given_a_latency():
     assert DG.critical_path(dag).complete is False
 
 
+@pytest.mark.parametrize("resolved", [None, {"separation.writer": 2.5}])
+def test_raw_dedup_preserves_value_identity_and_other_edge_order(resolved):
+    a, b = LV.Access("left", 1), LV.Access("right", 1)
+    instructions = [LV.Instruction(i, "writer" if i in {0, 3} else "reader") for i in range(4)]
+    effects = [
+        LV.Effects((a, b), (), ()),
+        LV.Effects((), (a, a, b, b), ()),
+        LV.Effects((), (a, b), ()),
+        LV.Effects((a, b), (a, a, b), ()),
+    ]
+    dag = DG.build_dag(
+        instructions,
+        effects,
+        issue=ISSUE,
+        stall_mnemonic="WAIT",
+        resolved_separations=resolved,
+        memory_conflicts=((1, 3, "overlap"),),
+    )
+    # Duplicate reads collapse one RAW edge per value, while original reader
+    # occurrences, overwrite ordering and appended memory edges stay intact.
+    assert [(e.src, e.dst, e.kind, e.value) for e in dag.edges] == [
+        (0, 1, DG.RAW, a),
+        (0, 1, DG.RAW, b),
+        (0, 2, DG.RAW, a),
+        (0, 2, DG.RAW, b),
+        (0, 3, DG.RAW, a),
+        (0, 3, DG.RAW, b),
+        (0, 3, DG.WAW, a),
+        (1, 3, DG.WAR, a),
+        (1, 3, DG.WAR, a),
+        (2, 3, DG.WAR, a),
+        (0, 3, DG.WAW, b),
+        (1, 3, DG.WAR, b),
+        (1, 3, DG.WAR, b),
+        (2, 3, DG.WAR, b),
+        (1, 3, DG.WAW, None),
+    ]
+    raw = [e for e in dag.edges if e.kind == DG.RAW]
+    assert len(raw) == 6
+    assert all(e.cycles is UNKNOWN for e in raw) if resolved is None else all(e.cycles == 2.5 for e in raw)
+
+
+def test_many_distinct_register_raw_edges_preserve_consumer_order():
+    values = [LV.Access("fixture", i) for i in range(4096)]
+    instructions = [LV.Instruction(i, "writer" if i == 0 else "reader") for i in range(4097)]
+    effects = [LV.Effects(tuple(values), (), ())] + [LV.Effects((), (v, v), ()) for v in values]
+    dag = DG.build_dag(instructions, effects, issue=ISSUE, stall_mnemonic="WAIT")
+    assert [(e.src, e.dst, e.kind, e.value) for e in dag.edges] == [(0, i + 1, DG.RAW, v) for i, v in enumerate(values)]
+
+
 def test_the_critical_path_is_a_lower_bound_on_the_ordering_the_machine_runs(dag):
     cp = DG.critical_path(dag)
     emitted = DG.makespan(dag, list(range(len(dag.instructions))))
