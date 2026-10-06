@@ -64,6 +64,8 @@ def _bits(typ) -> int:
 
 
 def _flags_absent(op: Operation) -> None:
+    if op.properties.get("isDisjoint") is not None:
+        raise StaticTraceError(f"{op.name}: poison-producing arithmetic flags unsupported")
     for key in ("overflowFlags", "nonNeg", "noWrapFlags"):
         value = op.properties.get(key)
         if value is not None and getattr(getattr(value, "value", None), "data", None) != 0:
@@ -142,6 +144,18 @@ def trace_static_function(
                 else:
                     value = a.value * b.value
                 result = StaticInt(value, _bits(op.results[0].type))
+            elif isinstance(op, (llvm.AndOp, llvm.OrOp, llvm.XOrOp)):
+                a, b = map(_integer, inputs)
+                bits = _bits(op.results[0].type)
+                if a.bits != b.bits or a.bits != bits:
+                    raise StaticTraceError("integer operand or result widths differ")
+                if isinstance(op, llvm.AndOp):
+                    value = a.value & b.value
+                elif isinstance(op, llvm.OrOp):
+                    value = a.value | b.value
+                else:
+                    value = a.value ^ b.value
+                result = StaticInt(value, bits)
             elif isinstance(op, (llvm.SExtOp, llvm.ZExtOp, llvm.TruncOp)):
                 value = _integer(inputs[0])
                 result = StaticInt(
