@@ -175,6 +175,14 @@ Default emitted bytes and numeric capability hooks remain unchanged.
 
 ### Optional prepared product-row domains
 
+`prepared_bf16_interval.h` also supplies private exact-source point results and
+base/count/epoch span matching. Equal finite BF16 bins must snapshot the current
+valid source interval after replay. An owned complete producer/copy proves the
+immutable span's lifetime through one synchronous product call; callers cannot
+infer this permission from equal sampled values. Exact source bounds retain all
+radix representation-error and source-FMA admission requirements. No span may
+escape or survive workspace reuse. See `prepared_probability_bins.md`.
+
 `prepared_fma_product_bounds.h` admits concrete immutable reconstructed-column
 spans and current complete source/error norms. For each row it derives a
 uniform center bound from reconstructed L1 times the maximum reconstructed

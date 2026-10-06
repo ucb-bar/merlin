@@ -122,6 +122,7 @@ def emit_source_attention_frontier(
     exact_bound_conversion: ExactBoundConversionContract | None = None,
     polynomial_batch_four: bool = False,
     fuse_encoded_witness: bool = False,
+    prepare_probability_points: bool = False,
 ) -> str:
     """Emit portable C; nonzero result certifies complete output publication.
 
@@ -223,6 +224,12 @@ def emit_source_attention_frontier(
         raise ValueError("explicit boolean endpoint preparation policy required")
     if type(word_interval_enclosure) is not bool:
         raise ValueError("explicit boolean word interval enclosure policy required")
+    if type(prepare_probability_points) is not bool:
+        raise ValueError("probability point sharing must be bool")
+    if prepare_probability_points and not (
+        prepare_probability_bins and prepare_softmax_spans and prepare_encoded_rows
+    ):
+        raise ValueError("probability points require source bins, producer spans and encoded rows")
     plan.validate()
     if not symbol or symbol[0].isdigit() or any(not (c.isascii() and (c.isalnum() or c == "_")) for c in symbol):
         raise ValueError("explicit valid C symbol required")
@@ -468,6 +475,10 @@ def emit_source_attention_frontier(
         from .exact_bound_conversion import emit_exact_bound_conversion_permission
 
         text = emit_exact_bound_conversion_permission(exact_bound_conversion) + text
+    if prepare_probability_points:
+        from .probability_point_spans import prepare_probability_point_spans
+
+        text = prepare_probability_point_spans(text)
     definitions = {
         "HEADS": plan.heads,
         "ROWS": plan.query_rows,
