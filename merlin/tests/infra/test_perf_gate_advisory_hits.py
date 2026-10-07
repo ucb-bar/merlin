@@ -147,16 +147,9 @@ def test_the_two_hit_classes_are_disjoint(gate):
     assert not (AUDIT_ADVISORY_KINDS & AUDIT_VIOLATION_KINDS)
 
 
-def test_the_auditor_and_the_gate_share_one_vocabulary(monkeypatch):
+def test_the_auditor_and_the_gate_share_one_vocabulary():
     """The gate must not re-derive the split -- that is how it drifted from the audit in the first
     place. The QA auditor's advisory set IS the declared constant this gate consumes."""
-    monkeypatch.setenv(
-        "MERLIN_TARGET_EXPERIMENT",
-        str(merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"),
-    )
-    harness = merlin_dir() / "experiments/capsule_bench/harness"
-    if str(harness) not in sys.path:
-        sys.path.insert(0, str(harness))
-    import run_baseline_qa_loop as L  # noqa: PLC0415
+    from merlin_experiments.phase1.audit import AnswerAudit  # noqa: PLC0415
 
-    assert L._ADVISORY_KINDS is AUDIT_ADVISORY_KINDS
+    assert AnswerAudit._ADVISORY_KINDS is AUDIT_ADVISORY_KINDS

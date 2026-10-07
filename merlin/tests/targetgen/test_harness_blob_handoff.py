@@ -76,7 +76,7 @@ def test_generic_linker_passes_renderer_blobs_to_the_executable(tmp_path, monkey
         error_cls = RuntimeError
 
         def with_effective_abi(self):
-            # The synthetic native harness has no target ABI overrides.
+            # The host compiler's default ABI is the one both halves of this ELF are built for.
             return self
 
         @staticmethod

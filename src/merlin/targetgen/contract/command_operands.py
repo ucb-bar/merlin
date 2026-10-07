@@ -39,11 +39,11 @@ OPTIONAL_MARKER = "(optional)"
 
 
 def _abi_path(contract: str | Path | None = None) -> Path:
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import contract_dir
 
     if contract is not None:
         return Path(contract)
-    return repo_root() / "merlin" / "contract" / "command_buffer_abi.yaml"
+    return contract_dir() / "command_buffer_abi.yaml"
 
 
 def declared_operands(*, contract: str | Path | None = None) -> dict[str, dict[str, bool]]:
@@ -98,13 +98,9 @@ def undeclared_opcodes(*, contract: str | Path | None = None, schema: str | Path
     """
     import json
 
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import contract_dir
 
-    path = (
-        Path(schema)
-        if schema is not None
-        else (repo_root() / "merlin" / "contract" / "schemas" / "command_buffer.schema.json")
-    )
+    path = Path(schema) if schema is not None else contract_dir() / "schemas" / "command_buffer.schema.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
     enum = doc["properties"]["commands"]["items"]["properties"]["opcode"].get("enum") or []
     return sorted(set(enum) - set(declared_operands(contract=contract)))

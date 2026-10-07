@@ -13,7 +13,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import contract_dir, repo_root
 
 
 def _llvm_bin() -> Path:
@@ -56,7 +56,7 @@ def iface_irdl() -> Path:
     Registering this into upstream ``mlir-opt --irdl-file`` gives a structural verifier for the one
     dialect that is contractually frozen, with no code of ours in the checking path.
     """
-    return repo_root() / "merlin" / "contract" / "merlin_iface.irdl.mlir"
+    return contract_dir() / "merlin_iface.irdl.mlir"
 
 
 def availability() -> dict[str, str | None]:

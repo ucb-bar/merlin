@@ -167,19 +167,15 @@ def test_one_pass_visibility_matches_existing_replay(setup):
 
 
 def test_reuses_real_private_overlay_for_missing_readonly_leaf(setup, tmp_path):
-    import importlib
-    import sys
+    from merlin_experiments.phase2.portfolio_probes import compiler_dependency_mounts
 
-    from merlin.common.paths import repo_root
     from merlin.targetgen.sandbox.bwrap import _mounts, is_exposed
 
-    sys.path.insert(0, str(repo_root() / "merlin/experiments/gemmini_perf_bench/scripts"))
-    controller = importlib.import_module("run_global_perf_experiment")
     cap, policy, _, frozen, helper = setup
     original = list(policy["command_prefix"])
     private = tmp_path / "private_overlay"
     private.mkdir()
-    actual = cap.extend(policy, cap.argv, overlay_root=private, overlay_builder=controller.compiler_dependency_mounts)
+    actual = cap.extend(policy, cap.argv, overlay_root=private, overlay_builder=compiler_dependency_mounts)
     assert original == policy["command_prefix"]
     assert not (frozen / "pure.py").exists()  # immutable original not edited
     served = [

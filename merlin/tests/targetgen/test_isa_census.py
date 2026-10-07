@@ -1,20 +1,52 @@
 """The source census detects disagreements without certifying instruction legality."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import ext_path, repo_root
 from merlin.targetgen.cli import main as targetgen_main
 from merlin.targetgen.isa_census import (
+    UNKNOWN,
     _model_classes,
     _patterns,
+    derive_format_layouts,
     derive_source_census,
 )
 
 _RTL_REVISION = "0079c0541111197741a231c002e3843fa6f545b2"
 _CONTROLS = ", ".join(["N"] * 17)
+
+#: A synthetic model's instruction-format module: each format's ENCODER is what places its keyword
+#: fields, and the census reads the positions from it (test data, not a real target's layout).
+_FORMATS = """
+def _mask(val, bits):
+    return val & ((1 << bits) - 1)
+
+class Instruction:
+    def __init_subclass__(cls, **kw):
+        pass
+
+class RType(Instruction):
+    def to_bytecode(self):
+        funct7_b = _mask(self.funct7, 7)
+        rs2_b = _mask(self.rs2, 5)
+        funct3_b = _mask(self.funct3, 3)
+        opcode_b = _mask(self.opcode, 7)
+        return (funct7_b << 25) | (rs2_b << 20) | (funct3_b << 12) | opcode_b
+
+class DMAType(RType):
+    pass
+
+class VIType(Instruction):
+    def to_bytecode(self):
+        imm_b = _mask(self.imm, 16)
+        funct3_b = _mask(self.funct3, 3)
+        opcode_b = _mask(self.opcode, 7)
+        return (imm_b << 16) | (funct3_b << 13) | opcode_b
+"""
 
 
 def _pattern(*, opcode: int, funct7: int | None = None, funct3: int | None = None, vi_mode: int | None = None) -> str:
@@ -38,12 +70,19 @@ def _write_sources(
     pattern_file = tmp_path / "Instructions.scala"
     decoder_file = tmp_path / "IDecode.scala"
     model_isa_file = tmp_path / "isa_definition.py"
+    format_file = tmp_path / "formats.py"
     pattern_file.write_text("\n".join(f'  def {name} = BitPat("b{bits}")' for name, bits in patterns.items()))
     decoder_file.write_text(
         "val table:\n" + "\n".join(f"  {name} -> List({_CONTROLS})," for name in (decoded or tuple(patterns)))
     )
     model_isa_file.write_text(model_source)
-    return {"pattern_file": pattern_file, "decoder_file": decoder_file, "model_isa_file": model_isa_file}
+    format_file.write_text(_FORMATS)
+    return {
+        "pattern_file": pattern_file,
+        "decoder_file": decoder_file,
+        "model_isa_file": model_isa_file,
+        "format_file": format_file,
+    }
 
 
 def test_vi_mode_uses_the_vi_encoding_not_rv32_funct3(tmp_path: Path) -> None:
@@ -105,6 +144,135 @@ def test_census_rejects_unpinned_or_malformed_source(tmp_path: Path) -> None:
         derive_source_census(**files, rtl_revision=_RTL_REVISION)
 
 
+def test_field_positions_are_read_from_each_formats_own_encoder() -> None:
+    layouts = derive_format_layouts(_FORMATS)
+    assert layouts["RType"]["funct7"] == (25, 7) and layouts["RType"]["opcode"] == (0, 7)
+    assert layouts["VIType"]["funct3"] == (13, 3)  # the same keyword, where THIS format's encoder puts it
+    assert layouts["DMAType"] == layouts["RType"]  # no encoder of its own: it encodes as the format it extends
+    ambiguous = derive_format_layouts(
+        "class Twice:\n    def enc(self):\n        a = m(self.f, 2)\n        return (a << 3) | (a << 9)\n"
+    )
+    assert ambiguous == {}  # a field placed at two positions is dropped, never guessed between
+
+
+def test_a_class_whose_format_cannot_be_derived_is_unknown_and_matched_against_nothing(tmp_path: Path) -> None:
+    """MUTATION: remove the format module. No assumed RISC-V layout stands in for it."""
+    files = _write_sources(tmp_path, {"X": _pattern(opcode=1)}, "class X(RType, opcode=1): pass\n")
+    files["format_file"].unlink()
+    files.pop("format_file")
+    census = derive_source_census(**files, rtl_revision=_RTL_REVISION)
+    assert census["summary"]["model_classes_without_derived_layout"] == ["X"]
+    assert census["summary"]["model_classes_without_compatible_pattern"] == []
+    assert census["rows"][0]["model_candidates"] == []
+    assert census["sources"]["formats"]["status"] == UNKNOWN
+    unknown_format = _model_classes("class Y(Mixin, opcode=3): pass\n", derive_format_layouts(_FORMATS))
+    assert unknown_format["Y"]["layout"] == UNKNOWN and unknown_format["Y"]["mask"] is None
+
+
+def test_the_format_module_is_found_beside_the_model_from_its_own_import(tmp_path: Path) -> None:
+    (tmp_path / "tree" / "configs").mkdir(parents=True)
+    files = _write_sources(
+        tmp_path / "tree" / "configs",
+        {"X": _pattern(opcode=0x33, funct7=1, funct3=2)},
+        "from fmtpkg.formats import RType\n\nclass X(RType, opcode=0x33, funct3=2, funct7=1): pass\n",
+    )
+    files.pop("format_file").unlink()
+    (tmp_path / "tree" / "fmtpkg").mkdir()
+    (tmp_path / "tree" / "fmtpkg" / "formats.py").write_text(_FORMATS)
+    census = derive_source_census(**files, rtl_revision=_RTL_REVISION)
+    assert census["rows"][0]["model_candidates"][0]["relation"] == "keyword_encoding_implies_pattern"
+    assert census["sources"]["formats"][0]["path"] == str(tmp_path / "tree" / "fmtpkg" / "formats.py")
+
+
+def test_source_revision_verification_binds_both_git_objects(tmp_path: Path) -> None:
+    rtl = tmp_path / "rtl"
+    model = tmp_path / "model"
+    rtl.mkdir()
+    model.mkdir()
+    files = _write_sources(
+        rtl,
+        {"X": _pattern(opcode=1)},
+        "class X(RType, opcode=1): pass\n",
+    )
+    # The model ISA and the format module it is encoded with are both the model's own sources.
+    for key, name in (("model_isa_file", "isa_definition.py"), ("format_file", "formats.py")):
+        moved = model / name
+        moved.write_bytes(files[key].read_bytes())
+        files[key].unlink()
+        files[key] = moved
+
+    def commit(root: Path) -> str:
+        for args in (
+            ["init", "-q"],
+            ["add", "."],
+            [
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "selected source",
+            ],
+        ):
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+        return subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    rtl_revision = commit(rtl)
+    model_revision = commit(model)
+    census = derive_source_census(
+        **files,
+        rtl_revision=rtl_revision,
+        model_revision=model_revision,
+        verify_revisions=True,
+    )
+    verification = census["source_revision_verification"]
+    assert verification["status"] == "verified"
+    assert [row["path_at_revision"] for row in verification["formats"]] == ["formats.py"]
+    files["format_file"].write_text(files["format_file"].read_text() + "# changed\n")
+    with pytest.raises(ValueError, match="bytes differ"):
+        derive_source_census(
+            **files,
+            rtl_revision=rtl_revision,
+            model_revision=model_revision,
+            verify_revisions=True,
+        )
+    files["format_file"].write_bytes(
+        subprocess.run(
+            ["git", "-C", str(model), "show", f"{model_revision}:formats.py"],
+            check=True,
+            capture_output=True,
+        ).stdout
+    )
+    files["decoder_file"].write_text(files["decoder_file"].read_text() + "// changed\n")
+    with pytest.raises(ValueError, match="bytes differ"):
+        derive_source_census(
+            **files,
+            rtl_revision=rtl_revision,
+            model_revision=model_revision,
+            verify_revisions=True,
+        )
+    files["decoder_file"].write_bytes(
+        subprocess.run(
+            ["git", "-C", str(rtl), "show", f"{rtl_revision}:IDecode.scala"],
+            check=True,
+            capture_output=True,
+        ).stdout
+    )
+    with pytest.raises(ValueError, match="HEAD differs"):
+        derive_source_census(
+            **files,
+            rtl_revision="a" * 40,
+            model_revision=model_revision,
+            verify_revisions=True,
+        )
+
+
 def test_installed_targetgen_audit_writes_status_and_removes_stale_result(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -118,6 +286,8 @@ def test_installed_targetgen_audit_writes_status_and_removes_stale_result(
         str(files["decoder_file"]),
         "--model-isa",
         str(files["model_isa_file"]),
+        "--formats",
+        str(files["format_file"]),
         "--rtl-revision",
         _RTL_REVISION,
         "--out",
@@ -139,9 +309,19 @@ def test_installed_targetgen_audit_writes_status_and_removes_stale_result(
 def test_curated_source_keeps_known_rtl_model_disagreements_visible() -> None:
     contract = repo_root() / "examples/atlas/phase1/contracts/hwbringup_atlas_v0"
     patterns = _patterns((contract / "rtl/atlas/scalar/Instructions.scala").read_text())
-    models = _model_classes((contract / "isa_include/isa_definition.py").read_text())
+    model_text = (contract / "isa_include/isa_definition.py").read_text()
     assert len(patterns) == 99
-    assert len(models) == 127
+    # Without the model's format module every class is still enumerated, and none is positioned.
+    unplaced = _model_classes(model_text, {})
+    assert len(unplaced) == 127 and all(m["layout"] == UNKNOWN for m in unplaced.values())
+    try:
+        formats = ext_path("npu_model") / "npu_model" / "isa.py"
+    except KeyError:
+        pytest.skip("the model's instruction-format module is not available on this host")
+    if not formats.is_file():
+        pytest.skip(f"the model's instruction-format module is not at {formats}")
+    models = _model_classes(model_text, derive_format_layouts(formats.read_text()))
+    assert len(models) == 127 and all(m["layout"] == "derived" for m in models.values())
     for name in ("CSRRCI", "VSQUARE_BF16", "VCUBE_BF16"):
         pattern, model = patterns[name], models[name]
         assert (pattern["value"] ^ model["value"]) & pattern["mask"] & model["mask"]

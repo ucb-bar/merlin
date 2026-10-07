@@ -44,7 +44,6 @@ build recipe, the entry symbol, the driver -- is read through it.
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import dataclasses
 import hashlib
@@ -59,10 +58,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from merlin.common import compile_trace as _trace
+
 # The memory map and the host-side grade live in their own module; re-exported here for callers.
 from merlin.perf.whole_model_memory import MEMORY_MAP_SCHEMA, grade_memory, memory_map
 
 from . import whole_model_object_cache as _OC
+from . import whole_model_partial as _partial
 
 __all__ = [
     "MEMORY_MAP_SCHEMA",
@@ -910,8 +912,20 @@ def _default_out(target: str, capsule: ModelCapsule) -> Path:
     return artifacts_dir() / "perf-bench" / target / "whole-model-build" / capsule.name / f"{utc_stamp()}_{git_sha7()}"
 
 
+#: The build's stages, in the order :func:`build` runs them; each is timed by :class:`_StageClock` and is a
+#: compile-trace stage whose products are the files it wrote under the build's directory.
+BUILD_STAGES = _trace.declare(
+    "whole-model",
+    ("passes", "statement", "group_objects", "extract", "render_kernels", "program_build", "memory_map", "oracle_join"),
+    entry="merlin.perf.whole_model_build.build",
+    summary="package passes -> per-group statement (lower/gN.*: interface, command buffer, target IR) -> "
+    "objects -> kernels -> program (C + ELF) -> memory map -> oracle",
+)
+
+
 class _StageClock:
-    """Wall seconds per named build stage, in the order the stages ran."""
+    """Wall seconds per named build stage, in the order the stages ran. Under an open compile trace each
+    stage also reports the files it wrote below ``root`` and is a point the build can stop at."""
 
     def __init__(self) -> None:
         import time
@@ -920,15 +934,21 @@ class _StageClock:
         self._started = self._clock()
         self._last = self._started
         self._stages: dict[str, float] = {}
+        self.root: Path | None = None
 
     @contextlib.contextmanager
     def __call__(self, name: str):
         began = self._clock()
+        before = _trace.snapshot(self.root) if self.root is not None else None
         try:
             yield
         finally:
             self._last = self._clock()
             self._stages[name] = round(self._stages.get(name, 0.0) + self._last - began, 3)
+        if before is not None:  # only a stage that completed reports, and only under an open trace
+            written = _trace.written_since(self.root, before)
+            _trace.artifact(name, written, pipeline="whole-model", seconds=self._last - began)
+            _trace.stop_if_reached()
 
     def mark(self, name: str) -> None:
         """Close a stage that began where the previous stage (or mark) ended, without a block."""
@@ -1003,6 +1023,7 @@ def build(
     allow_regions: bool = False,
     phase0_recipe: str | Path | None = None,
     descriptor: str | Path | None = None,
+    only_groups: Sequence[Any] = (),
 ) -> dict[str, Any]:
     """Build ``model_capsule`` as one runnable program whose kernels are ``package_dir``'s, with its oracle.
 
@@ -1046,7 +1067,10 @@ def build(
       * ``phase0_recipe`` / ``descriptor`` -- the Phase 0 recipe whose ``datapath`` block the corpus is
         built under, and the target descriptor (see :func:`corpus_binder`). Required with a package:
         each group is put to it as the capsule the corpus would write for that group, never under a
-        binding assumed here.
+        binding assumed here;
+      * ``only_groups`` -- ask the package for these groups alone (``["g12"]``); every other group is
+        declined to the target's library and the result is a PARTIAL build, marked so on the record,
+        the oracle and ``PARTIAL_BUILD.json`` and refused as a whole model (:mod:`.whole_model_partial`).
 
     Returns the build record (also written to ``<out>/whole_model_build.json``, with the oracle in
     ``<out>/oracle.json``): the ELF and its digest; per-group ATTRIBUTION -- ``package`` (the kernel is
@@ -1066,7 +1090,10 @@ def build(
     require_datapath_facts(target)
     out = Path(out) if out is not None else _default_out(target, capsule)
     out.mkdir(parents=True, exist_ok=True)
+    stages.root = out
     jobs = jobs or min(16, os.cpu_count() or 1)
+    if only_groups:
+        decline = [*decline, *_partial.unasked(capsule, target=target, only=only_groups)]
     binding = corpus_binder(target, phase0_recipe=phase0_recipe, descriptor=descriptor) if package_dir else None
 
     passes_record: dict[str, Any] | None = None
@@ -1355,6 +1382,8 @@ def build(
             extra={"compiler_sources": driver.program._compiler_provenance()},
         ),
     }
+    if only_groups:
+        _partial.mark(record, out, only_groups)
     (out / "whole_model_build.json").write_text(json.dumps(record, indent=1, default=str) + "\n", encoding="utf-8")
     (out / "manifest.yaml").write_text(
         dump_yaml(
@@ -1362,6 +1391,7 @@ def build(
                 "schema": SCHEMA,
                 "target": target,
                 "capsule": capsule.name,
+                **({_partial.MARKER: record[_partial.MARKER]} if only_groups else {}),
                 "git_sha": record["provenance"]["merlin"]["commit"],
                 "elf_sha256": receipt["elf_sha256"],
                 "artifacts": [
@@ -1381,119 +1411,10 @@ def build(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="merlin-whole-model-build",
-        description="Build a model capsule as one runnable program from a compiler package's own kernels, "
-        "with its per-group attribution and an independent oracle; or grade a run's UART against one.",
-    )
-    sub = parser.add_subparsers(dest="command", required=True)
-    make = sub.add_parser("build", help="build the whole-model ELF, attribution and oracle")
-    make.add_argument(
-        "--package",
-        type=Path,
-        help="the compiler package directory; omit it for the target's library program (every group vendor)",
-    )
-    make.add_argument("--capsule", required=True, type=Path, help="the model capsule directory")
-    make.add_argument("--target", required=True, help="the target the package lowers for")
-    make.add_argument("--machine", required=True, help="the hardware-registry entry the program is built for")
-    make.add_argument("--header", required=True, type=Path, help="that machine's vendor parameter header")
-    make.add_argument("--header-sha256", help="the header's digest, when the registry declares none for the machine")
-    make.add_argument("--out", type=Path, help="the product directory (default: under out/artifacts/perf-bench)")
-    make.add_argument("--no-oracle", action="store_true", help="skip the reference recomputation")
-    make.add_argument(
-        "--verify",
-        choices=("on_target", "host_dump", "local", "words"),
-        default="on_target",
-        help="check each group's output on the core (digests; 'local' also recomputes each exact group's "
-        "reference on the core from its actual inputs), or leave it to a host-side reader of a memory dump",
-    )
-    make.add_argument("--timeout", type=int, default=600, help="seconds per package entrypoint call")
-    make.add_argument("--jobs", type=int, help="parallel package calls and object builds")
-    make.add_argument(
-        "--decline",
-        action="append",
-        default=[],
-        metavar="OP_OR_GROUP",
-        help="route every group of this op (e.g. residual_add), or one group by index (e.g. g33), to the "
-        "target's library even where the package answered it (repeatable); each is recorded as a "
-        "caller_declined group",
-    )
-    make.add_argument(
-        "--harness-override",
-        action="append",
-        default=[],
-        type=Path,
-        metavar="FILE",
-        help="replace the harness file of this name in the build's copy of the harness tree (repeatable); "
-        "each is recorded by digest",
-    )
-    make.add_argument(
-        "--allow-passes",
-        action="store_true",
-        help="run the package's own whole_model_passes (its manifest) over the capsule's interface before "
-        "splitting it into groups, using the transformed module only if it verifies as computing the same "
-        "function; off by default",
-    )
-    make.add_argument(
-        "--phase0-recipe",
-        type=Path,
-        help="the Phase 0 recipe whose datapath block the corpus is built under; required with a package",
-    )
-    make.add_argument("--descriptor", type=Path, help="the target descriptor the experiment loads")
-    make.add_argument(
-        "--prohibited-role",
-        action="append",
-        default=[],
-        metavar="ROLE",
-        help="an instruction role the linked program must not contain (repeatable)",
-    )
-    make.add_argument(
-        "--allow-regions",
-        action="store_true",
-        help="offer the package a legal run of consecutive groups as one kernel, in addition to each group "
-        "alone; a package that never asks for a region sees no change; off by default",
-    )
-    check = sub.add_parser("grade", help="grade a run's UART against a build's oracle")
-    check.add_argument("--uart", required=True, type=Path)
-    check.add_argument("--oracle", required=True, type=Path)
-    args = parser.parse_args(argv)
-    if args.command == "grade":
-        verdict = grade(args.uart.read_text(encoding="utf-8", errors="replace"), json.loads(args.oracle.read_text()))
-        print(json.dumps(verdict, indent=1))
-        return 0 if verdict["quotable"] else 1
-    try:
-        record = build(
-            args.package,
-            args.capsule,
-            target=args.target,
-            machine=args.machine,
-            header=args.header,
-            header_sha256=args.header_sha256,
-            out=args.out,
-            oracle=not args.no_oracle,
-            verify=args.verify,
-            timeout=args.timeout,
-            jobs=args.jobs,
-            decline=args.decline,
-            harness_overrides=args.harness_override,
-            allow_passes=args.allow_passes,
-            allow_regions=args.allow_regions,
-            prohibited_roles=args.prohibited_role,
-            phase0_recipe=args.phase0_recipe,
-            descriptor=args.descriptor,
-        )
-    except WholeModelBuildError as refusal:
-        print(f"not built: {refusal}", file=sys.stderr)
-        return 2
-    counts = record["attribution"]["counts"]
-    print(f"built {record['elf']} ({record['elf_sha256'][:12]})")
-    print(f"groups: {counts}")
-    for row in record["attribution"]["per_group"]:
-        if row["on"] == ON_VENDOR:
-            print(f"  g{row['group']} ({row.get('op')}) -> vendor [{row.get('cause')}]: {str(row.get('why'))[:120]}")
-    if record["oracle"]:
-        print(f"oracle: argmax={record['oracle']['argmax']} golden={record['oracle']['golden_argmax']}")
-    return 0
+    """``python -m merlin.perf.whole_model_build`` (:mod:`.whole_model_build_cli`)."""
+    from .whole_model_build_cli import main as _main
+
+    return _main(argv)
 
 
 if __name__ == "__main__":

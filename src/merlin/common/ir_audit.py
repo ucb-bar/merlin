@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import TracebackType
 
+from merlin.common import compile_trace as _trace
+
 
 def audit_mode(value: bool | str) -> str:
     """Normalize the public option without accepting arbitrary truthy objects."""
@@ -202,8 +204,11 @@ class IrAudit:
 
         Inspection text is never an executable replacement for content. The caller
         owns elision/printing; this module only labels and binds the observed bytes.
+        An open compile trace (:mod:`merlin.common.compile_trace`) sees every stage,
+        audited or not, after the audit has recorded it.
         """
         if self.directory is None:
+            _trace.observe(name, pipeline=self.record["producer"], content=content, fmt=format)
             return
         if inspection_tensors:
             if inspection is None or self.mode not in {"compact", "both"}:
@@ -246,6 +251,7 @@ class IrAudit:
             stage["compact_status"] = "recorded"
         stages.append(stage)
         self._flush()
+        _trace.observe(name, pipeline=self.record["producer"], content=content, fmt=format)
 
     def collect_views(self) -> None:
         """Collect records emitted by the native printer; failed child prefixes survive."""
@@ -342,9 +348,12 @@ class IrAudit:
             except (OSError, KeyError):
                 accounting_changed = True
         self.record["outcome"] = (
-            "failed" if exc_type is not None or changed or tensors_changed or stages_changed or accounting_changed
+            "failed"
+            if exc_type is not None or changed or tensors_changed or stages_changed or accounting_changed
             else "completed"
         )
+        if exc_type is not None and issubclass(exc_type, _trace.StopAfterStage):
+            self.record["outcome"] = "stopped"  # a requested stop, not a failure: the prefix is complete
         if exc_type is not None:
             self.record["failure_type"] = exc_type.__name__
         if changed:

@@ -69,6 +69,7 @@ EVENT_TURN_STARTED = "turn.started"
 EVENT_TURN_COMPLETED = "turn.completed"
 EVENT_TURN_FAILED = "turn.failed"
 EVENT_ITEM_STARTED = "item.started"
+EVENT_ITEM_UPDATED = "item.updated"
 EVENT_ITEM_COMPLETED = "item.completed"
 EVENT_ERROR = "error"
 
@@ -79,7 +80,40 @@ ITEM_ERROR = "error"
 ITEM_FILE_CHANGE = "file_change"
 ITEM_MCP_TOOL_CALL = "mcp_tool_call"
 ITEM_WEB_SEARCH = "web_search"
+# Emitted by the tool and observed in captured sessions, though this driver handles neither: a plan
+# update (``todo_list``, carried by ``item.updated``) and a sub-agent call (``collab_tool_call``).
+ITEM_TODO_LIST = "todo_list"
+ITEM_COLLAB_TOOL_CALL = "collab_tool_call"
 _TOOL_ITEMS = (ITEM_COMMAND_EXECUTION, ITEM_FILE_CHANGE, ITEM_MCP_TOOL_CALL, ITEM_WEB_SEARCH)
+
+#: The whole measured envelope and item vocabularies, ONE declaration. The read audit fails closed on
+#: anything outside them, so a second copy that drifted would turn a real event into UNKNOWN (or, the
+#: dangerous way round, admit one this driver never saw).
+ENVELOPE_TYPES: frozenset[str] = frozenset(
+    (
+        EVENT_THREAD_STARTED,
+        EVENT_TURN_STARTED,
+        EVENT_TURN_COMPLETED,
+        EVENT_TURN_FAILED,
+        EVENT_ITEM_STARTED,
+        EVENT_ITEM_UPDATED,
+        EVENT_ITEM_COMPLETED,
+        EVENT_ERROR,
+    )
+)
+ITEM_TYPES: frozenset[str] = frozenset(
+    (
+        ITEM_COMMAND_EXECUTION,
+        ITEM_AGENT_MESSAGE,
+        ITEM_REASONING,
+        ITEM_ERROR,
+        ITEM_FILE_CHANGE,
+        ITEM_MCP_TOOL_CALL,
+        ITEM_WEB_SEARCH,
+        ITEM_TODO_LIST,
+        ITEM_COLLAB_TOOL_CALL,
+    )
+)
 
 # How this driver's runs are billed, DECLARED so the cost ledger asks the driver instead of guessing
 # from the model id. ChatGPT auth consumes a subscription seat: any USD figure downstream is notional.

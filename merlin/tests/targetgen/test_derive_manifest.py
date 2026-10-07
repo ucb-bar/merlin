@@ -6,12 +6,14 @@ grounded geometry, capacity and datapath evidence without promoting an observed
 decoder field to complete instruction legality.
 Hermetic: facts are read from the committed pin via an explicit path (no mlc regeneration).
 """
+
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
 
+import external_sources
 import pytest
 
 from merlin.common.paths import repo_root
@@ -43,7 +45,7 @@ def gemmini_facts():
     """
     try:
         facts = load_facts("gemmini")
-    except Exception as exc:                             # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         pytest.skip(f"gemmini facts are not derivable here: {type(exc).__name__}")
     if not (facts or {}).get("facts"):
         pytest.skip("gemmini facts resolve empty in this checkout (nothing generated yet)")
@@ -71,7 +73,7 @@ def test_derive_reproduces_gemmini_facts_fields(gemmini_tracked, gemmini_facts):
     dp_in = next(d for d in body["datapaths"] if d["name"] == "input")
     dp_acc = next(d for d in body["datapaths"] if d["name"] == "accumulator")
     unit = m["compute_units"][0]
-    assert unit["dtypes"] == ["int8"]                       # i8 datapath -> int8 quant-format name
+    assert unit["dtypes"] == ["int8"]  # i8 datapath -> int8 quant-format name
     assert unit["accumulate"] == [{"in": "int8", "weight": "int8", "acc": dp_acc["dtype"]}]
     assert dp_in["dtype"] == "i8" and dp_acc["dtype"] == "i32"
 
@@ -108,21 +110,30 @@ def test_derive_fills_schema_required_defaults(gemmini_tracked, gemmini_facts):
     assert "legality" not in gemmini_tracked
     m = cm.derive_manifest("gemmini", gemmini_facts, residual=gemmini_tracked)
     assert m["legality"] == []
-    cm.validate(m)   # raises on any schema / compute-unit problem
+    cm.validate(m)  # raises on any schema / compute-unit problem
 
 
 def test_derive_accepts_hand_stub_facts_for_non_arc_target():
     # Non-arc targets have no arc — their "facts" are hand literals (a bare {datapaths,...} stub with
     # no `facts` wrapper). The deriver must accept it and default runner/endpoint from the family.
-    hand_stub = {"datapaths": [{"name": "input", "dtype": "i8"},
-                               {"name": "accumulator", "dtype": "i32"}]}
+    hand_stub = {"datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}]}
     residual = {
-        "version": "0.1", "family": "cpu_vector", "status": "prototype",
-        "compute_units": [{"name": "vector", "kind": "vector", "ops": ["matmul", "elementwise"],
-                           "dtypes": ["fp32", "fp16", "bf16", "int8"], "scaling": "per_channel",
-                           "accumulate": [{"in": "fp32", "weight": "fp32", "acc": "f32"}],
-                           "requant": {"ref": "x"}}],
-        "capabilities": {"ops": ["matmul"]}, "memory_model": {"resident": False},
+        "version": "0.1",
+        "family": "cpu_vector",
+        "status": "prototype",
+        "compute_units": [
+            {
+                "name": "vector",
+                "kind": "vector",
+                "ops": ["matmul", "elementwise"],
+                "dtypes": ["fp32", "fp16", "bf16", "int8"],
+                "scaling": "per_channel",
+                "accumulate": [{"in": "fp32", "weight": "fp32", "acc": "f32"}],
+                "requant": {"ref": "x"},
+            }
+        ],
+        "capabilities": {"ops": ["matmul"]},
+        "memory_model": {"resident": False},
     }
     m = cm.derive_manifest("toy_vec", hand_stub, residual=residual)
     cm.validate(m)
@@ -137,8 +148,10 @@ def test_derive_accepts_hand_stub_facts_for_non_arc_target():
 
 def test_derive_synthesizes_unit_from_kind_when_residual_has_none():
     # A truly minimal residual (no compute_units) + a descriptor kind -> a synthesized primary unit.
-    stub = {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}],
-            "datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}]}
+    stub = {
+        "arrays": [{"name": "mesh", "rows": 8, "cols": 8}],
+        "datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}],
+    }
     m = cm.derive_manifest({"target": "mini", "kind": "systolic"}, stub, residual={"version": "0.1"})
     cm.validate(m)
     assert m["capabilities"]["mesh"] == {"rows": 8, "cols": 8}
@@ -147,11 +160,13 @@ def test_derive_synthesizes_unit_from_kind_when_residual_has_none():
     assert u["accumulate"] == [{"in": "int8", "weight": "int8", "acc": "i32"}]
 
 
+@external_sources.requires_rtl("atlas")
 def test_existing_manifests_path_unchanged():
     # derive_manifest is ADDITIVE — the hand-written MANIFESTS builders + load path still work.
     for name in cm.MANIFESTS:
         cm.validate(cm.MANIFESTS[name]())
     from merlin.targetgen.target_experiment import load_capability_manifest
+
     for target in ("atlas", "gemmini"):
         assert load_capability_manifest(target).kind == "systolic"
 
@@ -159,17 +174,26 @@ def test_existing_manifests_path_unchanged():
 def test_endpoint_kind_requires_complete_interface_not_decode_value_width():
     """A decoder field's value width cannot distinguish a host command from a local ISA."""
     body = cm._facts_body
-    rocc = {"facts": {"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 64, 126],
-                                        "scope": "observed_decode_field"}]}}
-    wide = {"facts": {"interfaces": [{"name": "funct_decode_table", "legal_funct": [87, 4311, 9943],
-                                        "scope": "observed_decode_field"}]}}
+    rocc = {
+        "facts": {
+            "interfaces": [
+                {"name": "funct_decode_table", "legal_funct": [0, 64, 126], "scope": "observed_decode_field"}
+            ]
+        }
+    }
+    wide = {
+        "facts": {
+            "interfaces": [
+                {"name": "funct_decode_table", "legal_funct": [87, 4311, 9943], "scope": "observed_decode_field"}
+            ]
+        }
+    }
     assert cm._endpoint_from_facts(body(rocc)) is None
     assert cm._endpoint_from_facts(body(wide)) is None
     assert cm._endpoint_from_facts(body({"facts": {"interfaces": []}})) is None  # -> family default
 
     # End-to-end: neither observed field is allowed to pick an executable endpoint.
-    res = {"compute_units": [{"name": "mxu", "kind": "systolic", "ops": ["matmul"],
-                              "dtypes": ["fp8_e4m3", "bf16"]}]}
+    res = {"compute_units": [{"name": "mxu", "kind": "systolic", "ops": ["matmul"], "dtypes": ["fp8_e4m3", "bf16"]}]}
     desc = {"target": "acme", "kind": "systolic"}
     m_rocc = cm.derive_manifest(desc, rocc, residual=res)
     m_wide = cm.derive_manifest(desc, wide, residual=res)
@@ -209,21 +233,24 @@ def test_derive_manifest_maps_the_spatial_opu_fact_shape():
     # (all named datapaths + tile geometry), with the command_buffer endpoint and NO RoCC encoding block.
     _T = "opu_synth_multiformat"
     facts = {
-        "target": _T, "kind": "spatial",
+        "target": _T,
+        "kind": "spatial",
         "method": "static OPU state-manifest + HW-dialect discovery",
         "fields": {
             "tile_dim": {"value": {"rows": 16, "cols": 16, "cells": 256}, "derived": True},
             "mrf_depth": {"value": 16, "derived": True},
-            "dtypes": {"value": [
-                {"name": "int8", "operand": "i8", "accumulator": "i32"},
-                {"name": "fp8_e4m3", "operand": "e4m3", "accumulator": "f32"},
-                {"name": "fp8_e5m2", "operand": "e5m2", "accumulator": "f32"},
-            ], "derived": True},
+            "dtypes": {
+                "value": [
+                    {"name": "int8", "operand": "i8", "accumulator": "i32"},
+                    {"name": "fp8_e4m3", "operand": "e4m3", "accumulator": "f32"},
+                    {"name": "fp8_e5m2", "operand": "e5m2", "accumulator": "f32"},
+                ],
+                "derived": True,
+            },
         },
         "n_derived": 3,
     }
-    residual = {"compute_units": [{"name": "opu", "kind": "spatial", "ops": ["matmul"]}],
-                "concepts": ["outer_product"]}
+    residual = {"compute_units": [{"name": "opu", "kind": "spatial", "ops": ["matmul"]}], "concepts": ["outer_product"]}
     m = cm.derive_manifest({"target": _T, "kind": "spatial"}, facts, residual=residual)
     cm.validate(m)
     u = m["compute_units"][0]

@@ -12,6 +12,7 @@ from its own compute_units.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.targetgen import compute_units as cu
@@ -218,6 +219,7 @@ class TestTheTargetsThatHadNoEngines:
             pytest.skip("saturn contract not resolvable")
         assert E.target_class_for(got) == "npu"
 
+    @external_sources.requires_rtl("atlas")
     def test_an_undeclared_engine_the_evidence_reaches_is_synthesized(self):
         """The audit reported atlas's vector engine on every run; this is the half that acts on it."""
         from merlin.targetgen import capability_manifests as _cm

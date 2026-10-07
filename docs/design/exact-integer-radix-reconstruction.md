@@ -3,7 +3,7 @@ title: Exact integer radix reconstruction before binary64 conversion
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: []
 code_refs:
   - src/merlin/llvmlower/radix_product_groups.py

@@ -13,6 +13,7 @@ uncovered point that reads as covered.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase0 import profiles as PROFILES
@@ -161,6 +162,7 @@ def test_the_batched_op_set_is_what_the_dialect_actually_emits():
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_the_batched_capsule_really_carries_a_rank_3_operand():
     """A rank-3 requirement met by a rank-2 capsule is the failure this axis exists to prevent, so the
     capsule is BUILT and its operands inspected rather than trusted from the entry."""

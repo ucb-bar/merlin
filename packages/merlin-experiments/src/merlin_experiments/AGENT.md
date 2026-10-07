@@ -23,6 +23,11 @@ execution or resume; mutable candidates, segments and leases cannot overlap froz
 Historical native commands remain unchanged. Scientific admission stays with the worker;
 catalog preflight never grants a performance verdict or native sandbox qualification.
 
+`group_inspect.py` owns `merlin experiment inspect <candidate> --group gN`: it rebuilds one
+group through the core per-group program build inside a compile trace. It reaches every hook
+(whole-model driver, functional-model machine) through the target and says "not available"
+when one is absent; it never names a target.
+
 `corpus/admission.py` owns evaluated conformance and default public-cohort tier
 selection. Query actual constructed adapters, never substitute advertised metadata.
 Keep construction order, unknown inventory, empty-declaration behavior and disjoint

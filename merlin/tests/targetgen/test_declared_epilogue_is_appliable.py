@@ -22,6 +22,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir
@@ -56,6 +57,7 @@ def _gemmini_interfaces():
         yield f
 
 
+@selected_driver.requires_support("gemmini")
 def test_every_declared_epilogue_is_applied_by_the_readout_it_commits_at():
     readouts = epilogue_readouts("gemmini")
     routes = epilogue_stage_routes("gemmini")
@@ -80,6 +82,7 @@ def test_every_declared_epilogue_is_applied_by_the_readout_it_commits_at():
     )
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.parametrize("stage", ["relu", "acc_scale", "bias_add", "maxpool"])
 def test_the_target_applies_the_stages_its_requirement_demands(stage):
     """The requirement and the readout declaration must not drift apart again.
@@ -94,6 +97,7 @@ def test_the_target_applies_the_stages_its_requirement_demands(stage):
     )
 
 
+@selected_driver.requires_support("gemmini")
 def test_bias_route_selects_a_contraction_commit_width_without_narrow_readout_bias():
     from merlin.targetgen.corpus_spec import CorpusBinding, _resolve_output_dtype, build_matmul
 
@@ -137,6 +141,7 @@ def test_bias_route_selects_a_contraction_commit_width_without_narrow_readout_bi
     assert assess(cb, epilogue_readouts("gemmini"), routes=epilogue_stage_routes("gemmini")).status == "applied"
 
 
+@selected_driver.requires_support("gemmini")
 def test_captured_readout_facet_keeps_bias_outside_readout_applies():
     from merlin.targetgen.readout_facet import capture_inputs, derive
 

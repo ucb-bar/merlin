@@ -39,6 +39,7 @@ from typing import Any
 __all__ = [
     "SCHEMA",
     "capsule_rows",
+    "contract_of_entry",
     "coverage_report",
     "form_of_entry",
     "load_counts",
@@ -58,6 +59,23 @@ def form_of_entry(entry: Mapping[str, Any], *, window_mean: bool) -> tuple[dict[
     oriented = device_orientation(dict(entry), {"stored_operand": None}) if window_mean else dict(entry)
     key = MF.form_key(oriented)
     return key, MF.key_text(key)
+
+
+def contract_of_entry(contract: Any):
+    """``exactness(group, entry)`` for a one-group program build: the exactness contract (``to_dict``) its
+    form is given, matched over the entry's own fields and its form key (an exactness contract names a
+    form by either), with the op's own declared tolerance where the contract does not name the form."""
+
+    def exactness(group: int, entry: Mapping[str, Any]) -> dict[str, Any]:
+        form = dict(entry or {})
+        try:
+            key, _text = form_of_entry(form, window_mean=False)
+            form.update(key)
+        except Exception:  # noqa: BLE001 -- a form key that cannot be formed leaves the entry's own fields
+            pass
+        return contract.resolve(form, op_bound_lsb=(entry or {}).get("bound_lsb")).to_dict()
+
+    return exactness
 
 
 def statement_forms(model_capsule: str | Path, *, target: str) -> list[dict[str, Any]]:

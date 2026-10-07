@@ -18,6 +18,11 @@ Large xDSL dense inspection payloads are stored as exact raw bytes under content
 `tensors/` files within one audit. Stage descriptors bind producer element types and shapes;
 identical bytes share storage across stages. Completion rechecks generated tensor hashes.
 This is inspection storage, not safetensors conversion or an executable reconstruction ABI.
+`compile_trace` is the user-facing debugging switch over the same recording points: a request
+(in `MERLIN_COMPILE_TRACE`, so child processes see it) names stages to dump and one to stop after.
+Pipelines declare their stage names beside the code that records them; never list them here. Only
+the session's own process raises the stop (`StopAfterStage`, a `BaseException`), so a stop is
+never swallowed as a per-group failure.
 
 ## What belongs here
 

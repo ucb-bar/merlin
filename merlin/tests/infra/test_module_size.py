@@ -69,8 +69,19 @@ def test_the_build_copy_under_data_is_not_counted(tmp_path):
 
 
 def test_every_ledger_entry_still_exists():
-    """A ledger naming a module that was deleted or split away can hide a regression under its name."""
+    """A ledger naming a module that was deleted or split away can hide a regression under its name.
+
+    Entries are debt identities (``_source_layout.policy_path``), the same key ``check_module_size``
+    matches: a module that moved into a ``packages/*/src/merlin`` distribution keeps its
+    ``merlin/python/merlin/...`` name, so existence is checked against the scanned modules, not a
+    literal path under the compatibility symlink.
+    """
+    mod = _module()
+    layout = mod._source_layout
+    scanned = {
+        layout.policy_path(path.as_posix()) for path in layout.python_files(repo_root(), layout.SOURCE_SCAN_ROOTS)
+    }
     ledger = repo_root() / "build_tools" / "scripts" / "module_size_ratchet.txt"
     entries = [ln.split("#", 1)[0].strip() for ln in ledger.read_text().splitlines()]
-    missing = [e for e in entries if e and not (repo_root() / e).is_file()]
+    missing = [e for e in entries if e and e not in scanned and not (repo_root() / e).is_file()]
     assert not missing, missing

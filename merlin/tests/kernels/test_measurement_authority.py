@@ -203,8 +203,16 @@ class TestDeclarationSurvivesARedirectedOutRoot:
 
     def test_the_fallback_records_which_file_answered(self, monkeypatch, tmp_path):
         """Provenance, not just a value: a reader must never have to infer which file was believed."""
+        from merlin.common.yaml import write_yaml
         from merlin.kernels import measurement as meas
+        from merlin.targetgen import capability_manifests, target_registry
 
+        # The generated contract is regenerable and untracked, so whether the checkout holds one is an
+        # accident of history. Derive it from the tracked residual into a private out root, so the
+        # first answer is the same on a fresh clone as on a machine that has already generated it.
+        contract = capability_manifests.manifest_for("rvv")
+        monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "generated"))
+        write_yaml(target_registry.resolve("rvv").contract_path, contract)
         assert meas.authority_for("rvv").source == "capability_manifest"
         monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
         assert meas.authority_for("rvv").source == "tracked_contract"

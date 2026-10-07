@@ -26,16 +26,28 @@ from __future__ import annotations
 
 import textwrap
 
+import plugin_isolation
 import pytest
 import yaml
 
 from merlin.runtime.backends import base
 from merlin.targetgen import package as pkg
 
-#: Neutral synthetic names. Distinct per test because backend registration is process-global and
-#: idempotent: a name loaded once stays loaded, so reusing one would make the second test a no-op.
+#: Neutral synthetic names, never a shipped target's.
 ONBOARDED = "synth_loadable_npu"
 UNDECLARED = "synth_undeclared_npu"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_plugins():
+    """Each test selects its own package; plugin ownership is process-immutable, so unload it afterwards.
+
+    Without this the first test's backend stays owned by its tmp package after ``monkeypatch`` drops the
+    selection, and every later registry query in the worker -- this file's and every other file's --
+    raises ``PluginOwnershipError`` for a target that test never touched.
+    """
+    with plugin_isolation.fresh_plugin_state():
+        yield
 
 
 def _descriptor(root, target: str):
@@ -77,7 +89,7 @@ def test_the_onboarded_backend_declines_instead_of_borrowing_the_oracle(tmp_path
     """It loads; it does not pretend to compute. Both halves are the point."""
     from merlin.targetgen import onboard as onboard_mod
 
-    name = ONBOARDED  # same package; registration is idempotent and this asserts its behaviour
+    name = ONBOARDED  # onboarded afresh: the previous test's package was unloaded with its selection
     descriptor, out_root = _descriptor(tmp_path, name)
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(out_root))
     root = onboard_mod.onboard(descriptor).oot_root

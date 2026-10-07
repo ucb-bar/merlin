@@ -17,7 +17,24 @@ consumers:
   - merlin.targetgen.generate.mlir_scaffold
 validation_notes: >-
   Ops/types/lowerings are a human-review decision; do not auto-generate dialect ops directly
-  from instruction names. Real targets emit empty ops/types flagged requires_human_review.
+  from instruction names. Conservative targets emit empty ops/types flagged requires_human_review.
+  An explicitly selected reviewed MLIR/C++ plan may instead give every operation a signature
+  with operands, results, attributes, and effects. In that mode all operations must be typed;
+  no name-only lowering is accepted. The signature checker admits built-in scalar/index and
+  ranked-tensor categories, declared custom types, bounded integer/string/Boolean attributes,
+  and explicit read/write/allocate/free effects. An empty effect list asserts Pure. ODS emission
+  is a parser/verifier contract, not evidence of computation semantics or executable lowering.
+  For ISA mode binding, attributes with role mode identify the decoder variant; binding
+  attributes hold physical choices and policy attributes hold numerical decisions. The
+  source mode audit checks every required mode value against those typed mode domains.
+  Optional signature.predicates are bounded typed expression trees over attributes
+  and declared custom-type parameters on operation operands/results.
+  They admit logical implication/conjunction/disjunction/negation, typed equality,
+  integer comparisons and modulo by a nonzero integer literal. Each has a stable id;
+  unknown operations, types and references refuse generation. They screen local
+  legality only, not hardware timing, arithmetic or the generated instruction word.
+  A type-parameter reference has the form `{type_param: {value: <field name>, name:
+  <parameter name>}}`; the generated verifier reads the actual SSA value type.
 
 example: |
   target: toy_npu
@@ -36,3 +53,29 @@ example: |
       to: toynpu.res_pack
   tests:
     - lit: res_pack_roundtrip
+
+typed_mlir_example: |
+  target: example_target
+  dialect_name: example_target
+  types:
+    - name: state
+    - name: slot
+      parameters:
+        - {name: unit, kind: unsigned, min: 0, max: 1}
+  ops:
+    - name: transfer
+      signature:
+        operands: [{name: state, type: '!example_target.state'}]
+        results: [{name: next, type: '!example_target.state'}]
+        attributes:
+          - {name: direction, type: string, role: mode, choices: [load, store]}
+          - {name: slot_index, type: i32, role: binding, min: 0, max: 7}
+        effects: [read, write]
+        predicates:
+          - id: even_store_slot
+            expr:
+              implies:
+                - {eq: [{attr: direction}, {string: store}]}
+                - {eq: [{mod: [{attr: slot_index}, {integer: 2}]}, {integer: 0}]}
+  lowering: []
+  tests: []

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import inspect
+import math
 import os
 from fractions import Fraction
 from functools import lru_cache
@@ -702,7 +703,7 @@ def _mx_safe_palette(mx, tok: str) -> list:
         vals = {float(mx.fp4_e2m1_decode(c)) for c in range(16)}
     else:
         raise ValueError(f"no MX palette for {tok!r}")
-    return sorted(v for v in vals if v == v and abs(v) <= 4.0)
+    return sorted(v for v in vals if not math.isnan(v) and abs(v) <= 4.0)
 
 
 def _mx_requant_blocks(P, palette, *, group: int, target: float = 2.0):

@@ -21,11 +21,14 @@ from merlin.common.paths import repo_root
 from merlin.runtime import fp8_formats as ff
 from merlin.targetgen import capsule_common, capsule_golden
 
-ATLAS = repo_root() / "merlin/contract/capsules/atlas"
+CAPSULES = repo_root() / "merlin/contract/capsules"
+ATLAS = CAPSULES / "atlas"
 
 
 def _capsule(name):
-    hits = [p.parent for p in ATLAS.rglob("capsule.yaml") if p.parent.name == name]
+    """A tracked capsule by name, from any target's corpus: the preload contract is dtype-driven, so a
+    bf16 donor serves whichever target's corpus holds it."""
+    hits = [p.parent for p in CAPSULES.rglob("capsule.yaml") if p.parent.name == name]
     if not hits:
         pytest.skip(f"capsule {name} not present")
     cd = hits[0]
@@ -38,19 +41,54 @@ def _decode_leaf(cap, name, raw):
     return ff._decode(np.frombuffer(raw, dtype=f"<u{width}").astype(np.uint32), dtype)
 
 
-def test_a_bf16_capsule_supplies_device_operands():
+def _codes(name: str, count: int, bits: int) -> np.ndarray:
+    """Deterministic finite device codes for one leaf: exponent field kept below all-ones, so no
+    inf/NaN pattern is drawn and every code decodes to an ordinary value of its format."""
+    rng = np.random.default_rng(sum(name.encode()))
+    codes = rng.integers(0, 1 << bits, size=count, dtype=np.uint32)
+    return codes & ~np.uint32(1 << (bits - 2))
+
+
+def _recorded(name, tmp_path, *, raw_hex: bool = False):
+    """``name``'s real capsule beside a golden that records its operands, the way the golden generator
+    records them: decoded values on each leaf's own grid (and, for the fp8 palette, the raw bytes).
+
+    The golden is an untracked answer key, so a fresh checkout has none; the preload contract under
+    test is about how operands are READ from it, which a recorded fixture states exactly.
+    """
+    cap, cd = _capsule(name)
+    work = tmp_path / name
+    work.mkdir()
+    (work / "capsule.yaml").write_text((cd / "capsule.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    inputs = {}
+    for leaf in cap["inputs"]:
+        dtype, shape = leaf["dtype"], list(leaf["shape"])
+        bits = ff.storage_bits(dtype)
+        codes = _codes(leaf["name"], int(np.prod(shape)), bits)
+        spec = {"shape": shape, "decoded": [float(v) for v in ff._decode(codes, dtype)]}
+        if raw_hex:
+            spec["fp8_raw_hex"] = [f"0x{int(c):02x}" for c in codes]
+        inputs[leaf["name"]] = spec
+    (work / "golden.yaml").write_text(
+        yaml.safe_dump({"golden_source": "host_torch_eager", "oracle_provenance": {"inputs": inputs}}),
+        encoding="utf-8",
+    )
+    return capsule_common.load_capsule(work), work
+
+
+def test_a_bf16_capsule_supplies_device_operands(tmp_path):
     """The regression that cost atlas 13 capsules: this returned {} and nothing was preloaded."""
-    cap, cd = _capsule("AF6_add_bf16_pt")
+    cap, cd = _recorded("RP18_resadd_bf16_pt", tmp_path)
     raws = capsule_golden.canonical_input_raws(cap, cd)
     assert set(raws) == {"A", "B"}, "a two-operand bf16 capsule must supply BOTH operands"
     for name, raw in raws.items():
         assert len(raw) == 16 * 16 * 2, f"{name}: bf16 16x16 is 512 bytes"
 
 
-def test_supplied_operands_decode_back_to_the_goldens_own_values():
+def test_supplied_operands_decode_back_to_the_goldens_own_values(tmp_path):
     """Preloading anything other than the operands the golden used grades against the wrong reference."""
-    for name in ("AF6_add_bf16_pt", "AF2_softmax_bf16_pt", "AF5_silu_bf16_pt"):
-        cap, cd = _capsule(name)
+    for name in ("RP18_resadd_bf16_pt", "MF1_softmax_bf16_pt", "MF3_silu_bf16_pt"):
+        cap, cd = _recorded(name, tmp_path)
         raws = capsule_golden.canonical_input_raws(cap, cd)
         vals = capsule_golden.canonical_input_values(cap, cd)
         assert raws, f"{name}: no operands supplied"
@@ -84,7 +122,7 @@ def test_every_atlas_capsule_with_representable_float_operands_supplies_them():
 def test_a_lossy_reencoding_is_refused_rather_than_quantized(tmp_path):
     """A golden that stored pre-quantization floats for a narrow format must yield NO preload: handing the
     device quantized operands would grade the kernel against operands the golden never saw."""
-    _, donor = _capsule("AF6_add_bf16_pt")  # a real, schema-valid capsule to vary from
+    _, donor = _capsule("RP18_resadd_bf16_pt")  # a real, schema-valid capsule to vary from
     spec = yaml.safe_load((donor / "capsule.yaml").read_text())
     spec["name"] = "SYN_offgrid"
     spec["inputs"] = [{"name": "X", "role": "input", "shape": [1, 2], "dtype": "fp8_e4m3"}]
@@ -119,10 +157,15 @@ def test_a_lossy_reencoding_is_refused_rather_than_quantized(tmp_path):
     assert set(capsule_golden.canonical_input_raws(cap, tmp_path)) == {"X"}
 
 
-def test_recorded_device_bytes_win_over_reencoding():
+def test_recorded_device_bytes_win_over_reencoding(tmp_path):
     """fp8 capsules record the EXACT palette bytes; those must never be replaced by a re-encoding."""
-    cap, cd = _capsule("AT2_single_tile_matmul")
+    cap, cd = _recorded("AT2_single_tile_matmul", tmp_path, raw_hex=True)
     gy = yaml.safe_load((cd / "golden.yaml").read_text())
+    # Make the two sources disagree, so the assertion below can tell which one was read: the decoded
+    # values now re-encode to different bytes than the recorded palette.
+    for spec in gy["oracle_provenance"]["inputs"].values():
+        spec["decoded"] = [0.0] * len(spec["decoded"])
+    (cd / "golden.yaml").write_text(yaml.safe_dump(gy), encoding="utf-8")
     recorded = {
         n
         for n, s in (gy["oracle_provenance"]["inputs"] or {}).items()

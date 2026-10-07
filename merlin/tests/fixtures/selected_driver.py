@@ -27,6 +27,24 @@ def require_support(target: str) -> Path:
     return Path(selected)
 
 
+def missing_support(*targets: str) -> list[str]:
+    """The targets among ``targets`` with no support provider selected on ``MERLIN_TARGET_PATH``."""
+    from merlin.targetgen import target_registry
+
+    selected = target_registry.explicit_targets()
+    return [target for target in targets if target not in selected]
+
+
+def requires_support(*targets: str):
+    """A ``skipif`` marker for a test or module whose subject is the named targets' selected support.
+
+    Evaluated when the test module is collected. Only ABSENCE skips, as in :func:`require_support`."""
+    absent = missing_support(*targets)
+    return pytest.mark.skipif(
+        bool(absent), reason=f"requires explicit {', '.join(absent)} support on MERLIN_TARGET_PATH"
+    )
+
+
 def driver_file(target: str, name: str) -> Path:
     """``<selected support>/whole_model/<name>`` for ``target``, or skip when none is selected."""
     from merlin.targetgen import target_registry
@@ -49,3 +67,29 @@ def load(target: str, name: str, *, module_name: str | None = None):
     sys.modules[key] = module
     spec.loader.exec_module(module)
     return module
+
+
+def software_spec_provider(target: str) -> str | None:
+    """The support provider ``target``'s phase-0 recipe takes its software spec FROM, or ``None``.
+
+    A recipe may name its software spec as a resource of a selected support provider rather than a
+    path in this repo; loading such a target's experiment then needs that provider selected. Read off
+    the recipe's own declaration, so no target is named here.
+    """
+    import yaml
+    from merlin_experiments.phase0.declarations import for_target
+
+    try:
+        recipe = for_target(target).recipe
+    except Exception:  # noqa: BLE001 - a target with no phase-0 declaration has no recipe to read
+        return None
+    if recipe is None or not Path(recipe).is_file():
+        return None
+    spec = (yaml.safe_load(Path(recipe).read_text(encoding="utf-8")) or {}).get("software_spec")
+    return str(spec["provider"]) if isinstance(spec, dict) and spec.get("provider") else None
+
+
+def requires_recipe_support(target: str):
+    """``requires_support`` for the provider ``target``'s recipe draws its software spec from, if any."""
+    provider = software_spec_provider(target)
+    return requires_support(provider) if provider else pytest.mark.skipif(False, reason="")

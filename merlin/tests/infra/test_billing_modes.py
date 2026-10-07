@@ -16,6 +16,7 @@ import json
 import pytest
 from merlin_experiments.phase1.providers import execution as EX
 
+from merlin.common.paths import merlin_dir
 from merlin.targetgen import experiment_tokens as ET
 
 
@@ -60,8 +61,17 @@ def test_rate_returns_none_rather_than_defaulting_to_the_priciest_model():
     assert ET._rate("claude-opus-4-8") == ET._RATES["opus"]
 
 
-def test_a_priced_model_does_get_a_rate():
-    """The complement of the above: the table is consulted, not ignored."""
+def test_a_priced_model_does_get_a_rate(monkeypatch):
+    """The complement of the above: the table is consulted, not ignored.
+
+    The rate lives in the tracked shared price table, which the accounting reads only through
+    ``AET_PRICE_TABLE`` (normally set in the operator's .env). Select that table explicitly so the
+    check does not depend on a local .env, and drop the module's cached overlay so it is re-read.
+    """
+    table = merlin_dir() / "experiments/capsule_bench/bedrock_prices.yaml"
+    assert table.is_file(), table
+    monkeypatch.setenv("AET_PRICE_TABLE", str(table))
+    monkeypatch.setattr(ET, "_OVERRIDES", None)
     assert ET._rate("gpt-5.6-sol") is not None, "gpt-5.6-sol carries a seat rate; it must be found"
 
 

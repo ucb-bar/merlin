@@ -524,8 +524,10 @@ def _is_empty_literal(node: ast.AST) -> bool | None:
         return len(node.value) == 0
     if isinstance(node, ast.Call):
         # A one-argument wrapper (`ArrayAttr([...])`, `frozenset([...])`, `tuple(...)`) is
-        # transparent for emptiness; a zero-argument call (`list()`, `dict()`) is empty.
-        if not node.args and not node.keywords and isinstance(node.func, (ast.Name, ast.Attribute)):
+        # transparent for emptiness; a zero-argument CONSTRUCTOR call (`list()`, `dict()`) is empty.
+        # A zero-argument METHOD call is not a constructor: `expected.tolist()` or
+        # `op.get_iterator_types()` returns whatever its receiver holds, so it is undecidable.
+        if not node.args and not node.keywords and isinstance(node.func, ast.Name):
             return True
         if len(node.args) == 1 and not node.keywords:
             return _is_empty_literal(node.args[0])
@@ -583,6 +585,14 @@ def _mutated_keys(corpus: _Corpus) -> set[str]:
                 elif isinstance(par, ast.Attribute) and par.attr in mutators:
                     keys.add(node.slice.value)
                 elif isinstance(par, ast.AugAssign):
+                    keys.add(node.slice.value)
+                elif (
+                    # `d["k"][x] = v` / `d["k"][x] += v` / `del d["k"][x]`: the field's own contents
+                    # are written through an inner index, so its empty initialiser is an accumulator.
+                    isinstance(par, ast.Subscript)
+                    and par.value is node
+                    and (isinstance(par.ctx, (ast.Store, ast.Del)) or isinstance(_parent(par), ast.AugAssign))
+                ):
                     keys.add(node.slice.value)
             elif isinstance(node, ast.Attribute) and node.attr in mutators:
                 base = node.value

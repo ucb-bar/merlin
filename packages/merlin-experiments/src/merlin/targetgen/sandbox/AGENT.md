@@ -20,6 +20,7 @@ views even after original aliases or selected providers change.
   not import-time constants. Explicit universal paths do not qualify simulator-family
   configuration, sandbox operability or native tool execution.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
+- `host_surfaces.py` — The answer surfaces host inputs create: private host files and every hardlink or bind alias that reaches them (`host_input_surfaces`, `private_file_surfaces`), masked last by `bwrap.apply_final_answer_masks`.
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.
 - `build_dependencies.py` — One-call host-owned pure-build source grants, preserving the existing answer masks and exact worker/request/tool pins. Never an agent mount API.
 - `preflight.py` — Whether the sandbox can actually be BUILT on this host, as a named condition (ok / absent / inoperable / unknown) rather than a `which` hit.

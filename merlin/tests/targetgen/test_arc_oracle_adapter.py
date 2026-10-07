@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 
 import pytest
+import selected_driver
 
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.rtl import mlc_bridge as B
@@ -52,20 +53,48 @@ def test_arc_is_the_default_tier_for_a_command_buffer_target(monkeypatch):
 def test_simt_cyclotron_target_routes_to_cyclotron_not_arc():
     # radiance is a self-hosted SIMT core (sim_via=cyclotron): its emitted kernel ELF is graded by the
     # bespoke cyclotron/VCS oracle, NOT the arc command-buffer adapter (which grades the wrong artifact).
+    # That oracle is registered by the Muon support provider, which now ships out of tree.
+    selected_driver.require_support("muon")
     ad = CR.oracle_adapters("radiance", sim_via=None)
     assert set(ad) >= {"L2"} and all(v.__module__ == "merlin._oot_backends.muon.muon_oracles" for v in ad.values())
     assert not any(v.__qualname__.startswith("mlc_arc_adapter") for v in ad.values())
 
 
-def test_external_backend_target_uses_the_program_oracle():
-    # atlas is a self-hosted ISA core (endpoint_kind=external_backend): its emitted kernel is assembled +
-    # run on the target's cosim by the generic program oracle, NOT the command_buffer arc path.
-    ad = CR.oracle_adapters("atlas", sim_via=None)
-    assert "L3" in ad
-    assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
+def test_external_backend_target_uses_the_program_oracle(monkeypatch):
+    # A self-hosted ISA core (endpoint_kind=external_backend) has its emitted kernel assembled and run by
+    # the generic program oracle, NOT the command_buffer arc path. Routed from the declared endpoint, so
+    # a synthetic target states it without borrowing any one target's contract.
+    from merlin.targetgen import program_oracle as PO
+
+    monkeypatch.setattr(CR, "_endpoint_of", lambda t: ("external_backend", "synthetic_model"))
+    monkeypatch.setattr(CR, "_bespoke_sim_via", lambda t: "")
+    # No elaborated-RTL engine registered: the model tier routes, and L3 is honestly absent rather than
+    # resolved to the arc model below it.
+    ad = CR.oracle_adapters("synthetic_isa_core", sim_via=None)
+    assert set(ad) == {"L2"}
+    assert ad["L2"].__module__ == "merlin.targetgen.program_oracle"
+    assert "program_oracle_adapter" in ad["L2"].__qualname__
+    # An engine that IS registered becomes the elaborated-RTL tier, still on the program oracle.
+    monkeypatch.setattr(PO, "select_rtl_engine", lambda t: {"engine": "verilator", "target": t})
+    ad = CR.oracle_adapters("synthetic_isa_core", sim_via=None)
+    assert set(ad) == {"L2", "L3"}
+    assert "program_verilator_adapter" in ad["L3"].__qualname__
+    assert not any(v.__qualname__.startswith("mlc_arc_adapter") for v in ad.values())
 
 
-def test_bespoke_sim_overrides_when_declared():
+def _engines_available(monkeypatch):
+    """A chipyard backend whose every engine reports available, so routing -- not this host's builds --
+    decides the ladder (the concrete backend ships in the target's out-of-tree support package)."""
+    from merlin.runtime.backends import base as backends
+
+    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
+    monkeypatch.setattr(
+        backends, "get_backend", lambda _target: type("Backend", (), {"available": lambda _self, _engine: True})()
+    )
+
+
+def test_bespoke_sim_overrides_when_declared(monkeypatch):
+    _engines_available(monkeypatch)
     ad = CR.oracle_adapters("gemmini", sim_via="chipyard")  # gemmini keeps its spike/verilator sims
     assert "L2" in ad and "L3" in ad
     # the chipyard sim adapters are the simulator_adapter closures, not the arc adapter
@@ -210,7 +239,7 @@ def test_qa_loop_gate_is_fastest_tier_only_for_chipyard():
     assert _closed_over(loop["L2"]) == {"spike", "gemmini"}
 
 
-def test_qa_checkpoint_is_full_ladder_for_chipyard():
+def test_qa_checkpoint_is_full_ladder_for_chipyard(monkeypatch):
     """gemmini/chipyard: the cycle-accurate checkpoint = spike (L2) + the elaborated-RTL tier (L3).
 
     L3 is a FIDELITY, not a simulator. This used to assert the literal "verilator" and broke the day
@@ -221,6 +250,7 @@ def test_qa_checkpoint_is_full_ladder_for_chipyard():
     is an elaborated-RTL engine rather than a quietly demoted one, and that both adapters are bound to
     the right target.
     """
+    _engines_available(monkeypatch)
     ckpt = CR.qa_checkpoint_adapters("gemmini", "chipyard")
     assert set(ckpt) == {"L2", "L3"}
     assert _closed_over(ckpt["L2"]) == {"spike", "gemmini"}
@@ -232,7 +262,8 @@ def test_qa_checkpoint_is_full_ladder_for_chipyard():
 def test_qa_adapters_are_cyclotron_for_a_simt_target():
     # a SIMT target (sim_via=cyclotron) resolves the bespoke cyclotron/VCS oracle — NOT the arc
     # command-buffer path and NO gemmini spike/verilator. Loop = the fast cyclotron tier; checkpoint adds
-    # the VCS tier. Both are the muon_oracles adapters.
+    # the VCS tier. Both are the muon_oracles adapters, registered by the out-of-tree Muon support.
+    selected_driver.require_support("muon")
     loop = CR.qa_loop_adapters("radiance", "cyclotron")
     ckpt = CR.qa_checkpoint_adapters("radiance", "cyclotron")
     assert loop and all(v.__module__ == "merlin._oot_backends.muon.muon_oracles" for v in loop.values())

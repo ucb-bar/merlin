@@ -25,6 +25,7 @@ code_refs:
   - src/merlin/targetgen/eligibility.py
   - src/merlin/perf/activity_schedule.py
   - src/merlin/perf/fast_estimate_validation.py
+  - src/merlin/perf/whole_model_screen.py
   - src/merlin/llvmlower/lowering_recipe.py
   - src/merlin/llvmlower/compilation_recipe.py
   - src/merlin/llvmlower/broadcast_math_hoist.py
@@ -107,6 +108,15 @@ screen explicitly selects a fixed term, requires two distinct points per paramet
 and refuses collinear features. Its coefficients are statistical screening terms,
 not physical service-rate calibrations. Existing mechanism calibration and resource
 composition remain authoritative for those claims.
+
+The functional-simulator structure screen is the validator's production caller. Each refit of its
+board/simulator calibration from the measurement store (`whole_model_screen.fit_calibration`, used by
+the measured mode's fast path) is cross-validated with each board-measured group held out in turn.
+Every threshold is derived: the error bound is the board's own noise margin (`noise.margin`), every
+held-out reading must be predicted, the minimum decided-pair count is the fewest a fair coin agrees on
+unanimously with probability at most that margin, and the agreement rate is the one a coin reaches on
+the store's measured order with probability at most the margin. A refit that fails, or that the store
+cannot yet decide, records the screen's ranking as `unvalidated`, and the screen says so.
 
 A known fast implementation should be evaluated using its own emitted/executed
 features with its timings excluded from coefficient fitting. Compare its section

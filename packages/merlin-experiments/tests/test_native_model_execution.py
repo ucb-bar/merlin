@@ -14,18 +14,20 @@ from merlin.runtime.route_quality import (
     HostComputeViolation,
     require_clean_host_compute,
 )
+from merlin.targetgen.native_dispatch_accounting import (
+    _completed_eligible_tasks,
+    _kernel_command_inventory,
+    _mandatory_command_blocks,
+    _verified_work_functs_by_family,
+)
 from merlin.targetgen.native_model_execution import (
     NativeModelExecutionError,
     _build_artifacts,
-    _completed_eligible_tasks,
     _digest,
     _frozen_model_policy,
     _functional_engine,
     _host_compute_report,
-    _kernel_command_inventory,
     _logical_values,
-    _mandatory_command_blocks,
-    _verified_work_functs_by_family,
     audit_candidate_source_placement,
     audit_emitted_host_compute,
     execute_candidate_model,

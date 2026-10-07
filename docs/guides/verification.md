@@ -3,7 +3,7 @@ title: Verify a compiler transformation
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [phase0_specification, model_lowering, simulator_selection]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -123,8 +123,10 @@ grading refuses that status. Older archives without a recipe report `not_recorde
 semantic-equivalence status remains `not_proven`: replay checks determinism and provenance, not
 whether a transformation preserves values or whether target execution matches the source.
 
-Each receipt records SHA-256 identities of the generic xDSL IR text and canonical command-buffer
-JSON, both sides' typed signatures, the verifier's source digest, translator path/version/hash,
+Each receipt records SHA-256 identities of the generic xDSL IR text (or, for an emitted
+`merlin_iface` target, its exact UTF-8 text) and canonical command-buffer JSON, both sides' typed
+signatures, the verifier's source digest (the `merlin.verify` semantic modules plus the
+`merlin_iface` generic-form bridge), translator path/version/hash,
 xDSL and Z3 versions, timeout, assumptions, solver-query digest, outcome, and any counterexample.
 The receipt's `status` is one of
 `verified`, `refuted`, `unknown`, `unsupported`, `unavailable`, or `error`. Only `verified` passes the
@@ -158,10 +160,14 @@ conformance checks against an independent implementation.
 
 The OOT-text bridge additionally recognizes static signed `i8` rank-2
 `linalg.generic` matmul with `i32` accumulation when its indexing maps, region,
-and zero initialization match the encoded contraction. Its `merlin_iface` side
-accepts only explicit `argN` tensor bindings, value-preserving resident pack,
-matmul, an empty-epilogue `i32` commit, and eviction. Unknown operations or
-attributes abstain. A checked 16×16 instance proves equality for all input
+and zero initialization match the encoded contraction. That structural check
+(`merlin.frontends.linalg_patterns`) is shared with the semantic compiler's Linalg
+reader, so a provenance label or `library_call` name never stands in for the
+scalar body. Its
+`merlin_iface` side accepts only explicit `argN` tensor bindings, each source
+argument declared exactly once, value-preserving resident pack, matmul, an
+empty-epilogue `i32` commit, and eviction, with exactly one committed output.
+Unknown operations or attributes abstain. A checked 16×16 instance proves equality for all input
 bit patterns **at that shape**, under this value model. It does not prove the
 physical packed layout, DMA, target RTL, or a mixed host/device program.
 The SMT source reader uses the shared parsed-body signed-`i8`/`i32` contraction

@@ -5,6 +5,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.generate_bundles import generate_bundles
@@ -17,7 +18,13 @@ pytestmark = pytest.mark.target("atlas", "radiance", "mx_gemmini")
 @pytest.mark.parametrize(
     ("target", "bringup", "files"),
     [
-        ("mx_gemmini", "hwbringup_mx_v0", ["isa_definition.py", "isa_patterns.py", "mmio_abi.py"]),
+        # mx_gemmini's software spec is a resource of its selected support provider.
+        pytest.param(
+            "mx_gemmini",
+            "hwbringup_mx_v0",
+            ["isa_definition.py", "isa_patterns.py", "mmio_abi.py"],
+            marks=selected_driver.requires_support("mx_gemmini"),
+        ),
         ("radiance", "hwbringup_radiance_v0", ["isa_definition.py", "isa_patterns.py"]),
         ("atlas", "hwbringup_atlas_v0", ["isa_definition.py"]),
     ],

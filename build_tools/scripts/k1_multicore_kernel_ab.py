@@ -157,7 +157,11 @@ def elf_census(elf: Path, objdump: Path) -> dict:
     ``forward`` and everything outlined out of it (the OpenMP regions) are counted together, because
     which of the two a body lives in is exactly what the parallel wrapper changes.
     """
-    out = subprocess.run([str(objdump), "-d", str(elf)], capture_output=True, text=True, timeout=3600).stdout
+    proc = subprocess.run([str(objdump), "-d", str(elf)], capture_output=True, text=True, timeout=3600)
+    if proc.returncode != 0:
+        # An empty disassembly would census as zero instructions -- a clean-looking number for nothing.
+        raise RuntimeError(f"{objdump} -d {elf} exited {proc.returncode}: {proc.stderr.strip()[:500]}")
+    out = proc.stdout
     cur = None
     instrs = vector = 0
     mnem: collections.Counter = collections.Counter()
@@ -239,6 +243,10 @@ def output_digests(elf: Path, qemu: Path, vlen: int, threads, pads, timeout: int
                 env=env,
                 timeout=timeout,
             )
+            if proc.returncode != 0:
+                # A crashed run's partial OUT lines must not digest like a completed one.
+                out[f"threads={n},pad={pad}"] = f"EXIT_{proc.returncode}"
+                continue
             lines = [l for l in proc.stdout.splitlines() if l.startswith("OUT ")]
             if not lines:
                 out[f"threads={n},pad={pad}"] = "NO_OUTPUT"

@@ -88,8 +88,12 @@ def apply_quant(
     ops it rewrote, and for the two passes that can find nothing to do, WHY. A pass reporting only
     "0" cannot be told apart from a pass that cannot fire at all.
     """
+    from .optional_passes import selected_quant_passes
+
     reg = registry()
-    want = set(_ORDER) if passes is None else set(passes)
+    # `--pass int-gelu` / `--no-pass int-gelu` (merlin.llvmlower.optional_passes) edit the set here, so
+    # an unselected build runs exactly the requested sequence.
+    want = set(selected_quant_passes(_ORDER if passes is None else passes))
     out: dict[str, int] = {}
     for n in _ORDER:
         if n not in want:

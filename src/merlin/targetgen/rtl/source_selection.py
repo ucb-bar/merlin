@@ -222,12 +222,38 @@ def production_consistency(doc: dict) -> dict:
     audit = firrtl_hierarchy_audit(Path(sources["firrtl"]["path"]), Path(sources["hierarchy"]["path"]))
     if audit["status"] != "verified":
         errors.append("selected hierarchy differs from FIRRTL")
+    elaboration = {"status": "not_selected", "qualification": "configuration label has no source-to-FIRRTL receipt"}
+    selected_elaboration = production.get("elaboration")
+    if selected_elaboration is not None:
+        try:
+            from .elaboration import verify
+
+            if (
+                not isinstance(selected_elaboration, dict)
+                or digest(selected_elaboration["path"]) != selected_elaboration["sha256"]
+            ):
+                raise ValueError("elaboration receipt bytes differ")
+            verified = verify(
+                Path(selected_elaboration["path"]),
+                firrtl=Path(sources["firrtl"]["path"]),
+                config=doc.get("config"),
+            )
+            elaboration = {
+                "status": "reproduced_exact_firrtl",
+                "receipt_sha256": selected_elaboration["sha256"],
+                "source_revision": verified["source"]["revision"],
+                "qualification": verified["qualification"],
+            }
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(f"selected elaboration receipt invalid: {exc}")
+            elaboration = {"status": "unverified"}
     return {
         "status": "verified" if not errors else "unverified",
         "basis": "recorded FIRRTL-to-HW execution; exact HW closure and FIRRTL/hierarchy structural correspondence",
         "config": doc.get("config"),
         "sources": [{"role": role, **member} for role, member in sorted(sources.items())],
         "production": production,
+        **({"elaboration": elaboration} if selected_elaboration is not None else {}),
         "hierarchy_correspondence": audit,
         "errors": errors,
         "qualification": "source consistency only; numerics and compiler conformance require separate receipts",
@@ -245,10 +271,18 @@ def produce_selection(
     firtool: Path,
     output: Path,
     drop_annotation_classes: list[str] | None = None,
+    elaboration_receipt: Path | None = None,
 ) -> Path:
     """Generate inspectable production artifacts; never rewrite an OOT source tree."""
     from . import extract_module
 
+    verified_elaboration = None
+    if elaboration_receipt is not None:
+        from .elaboration import verify
+
+        receipt = Path(elaboration_receipt).resolve(strict=True)
+        verify(receipt, firrtl=firrtl, config=config)
+        verified_elaboration = {"path": str(receipt), "sha256": digest(receipt)}
     output.mkdir(parents=True, exist_ok=False)
     historical_audit = firrtl_hierarchy_audit(firrtl, hierarchy) if hierarchy is not None else None
     generated_hierarchy = output / "hierarchy.json"
@@ -302,6 +336,7 @@ def produce_selection(
             "included_modules": included,
             "extractor_sha256": digest(Path(extract_module.__file__)),
             "producer_source": {"path": str(Path(__file__).resolve()), "sha256": digest(Path(__file__))},
+            **({"elaboration": verified_elaboration} if verified_elaboration is not None else {}),
             "input_preparation": {
                 "path": str(prepared.resolve()),
                 "sha256": digest(prepared),
@@ -331,6 +366,7 @@ def main(argv=None) -> int:
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--hierarchy", help="optional authored subtree root; otherwise derive the selected circuit")
     parser.add_argument("--drop-annotation-class", action="append", default=[])
+    parser.add_argument("--elaboration-receipt", help="optional reproduced exact source-to-FIRRTL receipt")
     args = parser.parse_args(argv)
     path = produce_selection(
         target=args.target,
@@ -342,6 +378,7 @@ def main(argv=None) -> int:
         firtool=Path(args.firtool),
         output=Path(args.output),
         drop_annotation_classes=args.drop_annotation_class,
+        elaboration_receipt=Path(args.elaboration_receipt) if args.elaboration_receipt else None,
     )
     print(path)
     return 0

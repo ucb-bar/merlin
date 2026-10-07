@@ -13,7 +13,7 @@ import pytest
 import yaml
 from merlin_experiments.phase1.feedback import private_full_models as gate
 
-from merlin.targetgen.sandbox import bwrap
+from merlin.targetgen.sandbox import bwrap, host_surfaces
 from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
 
 
@@ -505,7 +505,7 @@ def test_private_paths_are_denied_without_copying_capture_into_candidate(tmp_pat
         _policy_test_live_inputs=True,
     )
     alias = tmp_path / "runtime-alias"
-    surfaces = bwrap.host_input_surfaces(
+    surfaces = host_surfaces.host_input_surfaces(
         ["--ro-bind", str(tmp_path), str(alias)],
         ws,
         {"private_validation_paths": paths},
@@ -599,7 +599,7 @@ def test_live_bwrap_masks_resumed_private_grade_under_broad_grant(tmp_path):
     argv += ["--dir", str(alias), "--ro-bind", str(tmp_path), str(alias)]
     argv = bwrap.apply_answer_masks(
         argv,
-        bwrap.host_input_surfaces(argv, workspace, bundle, repo=tmp_path, _policy_test_live_inputs=True),
+        host_surfaces.host_input_surfaces(argv, workspace, bundle, repo=tmp_path, _policy_test_live_inputs=True),
     )
     probe = subprocess.run(
         [
@@ -687,7 +687,7 @@ def test_missing_future_private_output_refuses_live_parent_or_runtime_alias(tmp_
 
     no_public_grant = {"allowed": [], "private_validation_paths": bundle["private_validation_paths"]}
     with pytest.raises(RuntimeError, match="runtime bind could expose a future"):
-        bwrap.host_input_surfaces(
+        host_surfaces.host_input_surfaces(
             ["--ro-bind", str(parent), "/tmp/private-gate-alias"],
             workspace,
             no_public_grant,

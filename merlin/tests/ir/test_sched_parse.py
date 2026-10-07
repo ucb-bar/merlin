@@ -22,6 +22,7 @@ may import the harness they are graded against.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.sched.ir import (
     NULL,
@@ -291,6 +292,7 @@ SHAPES = [
 ]
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.target("gemmini")
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda s: "x".join(map(str, s)))
 def test_a_real_schedule_reads_back_identical(shape):

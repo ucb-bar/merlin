@@ -29,6 +29,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import sim_toolchain
 from merlin_experiments.access_policy import MODULE_ACCESS, unresolved_modules
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import checkpoint_admission as ADMISSION
@@ -199,7 +200,9 @@ def test_a_required_path_that_resolves_to_nothing_is_reported() -> None:
     assert new_drops[0].as_record()["reason"] == AS.DROP_PATH_ABSENT
 
 
-def test_the_coverage_guard_alone_cannot_see_a_dropped_rule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_coverage_guard_alone_cannot_see_a_dropped_rule(
+    tmp_path: Path, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """WHY THE DROP REPORT HAD TO BE ADDED AT ALL, asserted rather than argued.
 
     The mask set and the coverage guard both agree the mask is complete while a declared rule is masking
@@ -210,6 +213,8 @@ def test_the_coverage_guard_alone_cannot_see_a_dropped_rule(tmp_path: Path, monk
     """
     missing = "a_package_nobody_minted_for_this_test"
     monkeypatch.setattr(AS, "prior_backend_exemptions", lambda _te: (missing,))
+    # A mount-table check, not a launch: an absent sim checkout is stood in (see ``sim_toolchain``).
+    sim_toolchain.stand_in_absent_chipyard(monkeypatch, tmp_path_factory.mktemp("absent-chipyard"))
     sandbox = build_sandbox(_GEMMINI_DESCRIPTOR, tmp_path)
     assert [s.path for s in sandbox.coverage_gap()] == []
     assert any(d.declared == missing for d in sandbox.dropped_declarations())

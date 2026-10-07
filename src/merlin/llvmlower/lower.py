@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
@@ -26,7 +27,7 @@ from .concat_dps import ensure_registered as _register_concat_dps
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
-from .passes_xdsl import preprocess_text
+from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
 from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .transpose_maps import ensure_registered as _register_fold_weight_transpose
@@ -38,6 +39,26 @@ _register_concat_dps()
 _register_im2col_panel_pack()
 _register_fold_broadcast_into_generic()
 _register_named_broadcast_fold()
+
+
+#: The stages :func:`lower_model` records, in order. The native passes run between ``upstream-scheduled``
+#: and the LLVM stages; they are ``mlir:<pass>`` stages read off the pass pipeline the build uses, so they
+#: are not declared here. A serial build records ``llvm-translated``, an OpenMP one ``llvm-dialect``.
+STAGES = compile_trace.declare(
+    "llvm",
+    (
+        "input",
+        *PREPROCESS_STAGES,
+        "upstream",
+        "upstream-scheduled",
+        "llvm-translated",
+        "llvm-dialect",
+        "llvm-normalized",
+        "llvm-final",
+    ),
+    entry="merlin.llvmlower.lower_model",
+    summary="linalg text -> Merlin xDSL rewrites -> upstream MLIR passes (mlir:<pass>) -> LLVM IR",
+)
 
 
 @dataclass
@@ -109,9 +130,8 @@ def lower_model(
 
             upstream_text, stats = preprocess_text_textual(mlir_text)
         else:
-            upstream_text, stats = (
-                preprocess_text(mlir_text, audit=audit) if audit.directory is not None else preprocess_text(mlir_text)
-            )
+            observed = audit.directory is not None or compile_trace.active() is not None
+            upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
         audit.stage("upstream", upstream_text)
@@ -146,7 +166,9 @@ def lower_model(
                 raise exc
             raise enriched from exc
         if static_arena is None:
-            static_arena = bool(_os.environ.get("MERLIN_STATIC_ARENA"))
+            from .optional_passes import switched
+
+            static_arena = switched("static-arena", bool(_os.environ.get("MERLIN_STATIC_ARENA")))
         if static_arena:
             # Bind the emitted heap allocations to one statically planned arena. Kept behind a flag, and
             # applied HERE rather than inside the pass pipeline, because this is the last point the

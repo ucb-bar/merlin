@@ -20,7 +20,7 @@ import time
 import pytest
 from merlin_experiments.phase1.feedback import lifecycle as FL
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, module_source_path
 
 HARNESS = merlin_dir() / "experiments" / "capsule_bench" / "harness"
 
@@ -75,12 +75,18 @@ def test_a_healthy_channel_is_recorded_and_quiet(loop, tmp_path, capsys):
 def test_it_is_checked_during_the_run_not_only_at_the_end(loop):
     """The whole defect. Both operator-side grade paths must record it, or a continuous run — which
     has no rounds — reports nothing until it is over."""
-    src = (HARNESS / "run_baseline_qa_loop.py").read_text()
-    assert src.count("FL.record_channel_health(ws, run_dir)") >= 2, (
-        "health must be recorded where grades land, not only in the end-of-run summary"
-    )
+    import inspect
+
+    from merlin_experiments.phase1.feedback import loop_grading as LG
+
+    # The round grade and the continuous fast grade are the two places operator-side grades land.
+    for grade_path in (LG.grade, LG.fast_grade):
+        assert "FL.record_channel_health(ws, run_dir)" in inspect.getsource(grade_path), (
+            f"health must be recorded where grades land ({grade_path.__name__}), not only in the end-of-run summary"
+        )
     # and the end-of-run use must still be there: it gates whether the official grade counts
-    assert "feedback_health = FL.channel_health(ws)" in src
+    authoring = module_source_path("merlin_experiments.phase1.authoring").read_text()
+    assert "feedback_health = FL.channel_health(ws)" in authoring
 
 
 def test_it_never_reaches_the_agent(loop):

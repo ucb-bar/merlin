@@ -3,6 +3,10 @@
 LLVM's compile cost on one huge function is superlinear in its size, so an open-model build may
 split the host program into chunks before lowering it (``build(chunk_ops=...)``). The cut moves
 only which function's text an op's clone sits in; nothing a value computes, or its order, changes.
+
+``chunk_ops="auto"`` derives the size from the program itself (:func:`resolve_chunk_ops`): a forward
+body larger than :data:`DEFAULT_CHUNK_OPS` is cut at that size, and one that fits is left unchunked,
+byte for byte, and recorded as unchunked so its reference arm is the unchunked one too.
 """
 
 from __future__ import annotations
@@ -10,7 +14,22 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-__all__ = ["CHUNK_PREFIX", "chunk_forward", "chunk_symbols"]
+__all__ = [
+    "AUTO",
+    "CHUNK_PREFIX",
+    "DEFAULT_CHUNK_OPS",
+    "chunk_forward",
+    "chunk_symbols",
+    "forward_body_size",
+    "resolve_chunk_ops",
+]
+
+#: The ``chunk_ops`` value that derives the chunk size from the program (see :func:`resolve_chunk_ops`).
+AUTO = "auto"
+#: The chunk size ``"auto"`` cuts a large forward at. Measured on SmolVLA's open-model build (a
+#: 1,551-call ``forward``): unchunked, its host program took over two hours to compile; cut at 1,000
+#: ops, the whole build took about eleven minutes.
+DEFAULT_CHUNK_OPS = 1000
 
 #: The symbol of chunk ``i`` is ``CHUNK_PREFIX + str(i)``, for ``i`` in ``range(chunk_forward(...))``.
 CHUNK_PREFIX = "merlin_forward_chunk_"
@@ -103,6 +122,42 @@ def _chunk_bounds(body_ops: Sequence[Any], chunk_ops: int) -> list[int]:
     return bounds
 
 
+def resolve_chunk_ops(requested: int | str | None, *, forward_ops: int | None = None) -> int | None:
+    """The chunk size a build cuts its forward at, for the requested ``chunk_ops``.
+
+    ``None`` keeps the unchunked program. A positive integer (or its decimal spelling) is itself.
+    :data:`AUTO` is :data:`DEFAULT_CHUNK_OPS` when the forward body has more ops than that, and
+    ``None`` when it fits in one chunk (``forward_ops``, from :func:`forward_body_size`; unknown counts
+    as large). Anything else is refused: a misspelled size must not silently build unchunked."""
+    if requested is None:
+        return None
+    if isinstance(requested, str):
+        spelled = requested.strip().lower()
+        if spelled == AUTO:
+            return None if forward_ops is not None and forward_ops <= DEFAULT_CHUNK_OPS else DEFAULT_CHUNK_OPS
+        if not spelled.isdigit():
+            raise ValueError(f"chunk_ops is a positive op count or {AUTO!r}, not {requested!r}")
+        requested = int(spelled)
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested < 1:
+        raise ValueError(f"chunk_ops is a positive op count or {AUTO!r}, not {requested!r}")
+    return requested
+
+
+def _forward_block(module, function: str):
+    from merlin.perf.whole_model_open import OpenModelError
+
+    functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
+    functions = [f for f in functions if f.sym_name.data == function] or functions[:1]
+    if not functions:
+        raise OpenModelError(f"the module has no function @{function} with a body")
+    return functions[0].body.blocks[0]
+
+
+def forward_body_size(module, *, function: str = "forward") -> int:
+    """How many top-level ops ``@function``'s body holds before its terminator."""
+    return max(len(list(_forward_block(module, function).ops)) - 1, 0)
+
+
 def chunk_forward(module, *, chunk_ops: int, function: str = "forward") -> int:
     """Split ``@function``'s single flat block into ``chunk_ops``-bounded, sequentially-called
     functions, in place. Returns how many chunk functions were made (0 when the block already fit
@@ -123,11 +178,7 @@ def chunk_forward(module, *, chunk_ops: int, function: str = "forward") -> int:
     from merlin.perf.whole_model_open import OpenModelError
     from merlin.xdsl_dialects.lowering import outline as OL
 
-    functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
-    functions = [f for f in functions if f.sym_name.data == function] or functions[:1]
-    if not functions:
-        raise OpenModelError(f"the module has no function @{function} with a body")
-    block = functions[0].body.blocks[0]
+    block = _forward_block(module, function)
     ops = list(block.ops)
     if not ops or ops[-1].name != "func.return":
         raise OpenModelError(f"@{function}'s block does not end in func.return")

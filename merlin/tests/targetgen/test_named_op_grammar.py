@@ -10,6 +10,7 @@ combination fails loud instead of silently emitting one half.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir
@@ -53,6 +54,7 @@ def test_attention_qk_parses_to_the_opcode_and_operand_keys_codegen_reads():
     schemas.validate_command_buffer(cb)
 
 
+@selected_driver.requires_support("muon")
 def test_softmax_mnemonic_parses_and_emits():
     """`merlin_iface.softmax` is a whole-op mnemonic (the SOFTMAX opcode + nest already exist, so the grammar
     row is a one-line unlock); it parses to SOFTMAX{src,dst} and reaches a valid emitted kernel."""
@@ -129,6 +131,7 @@ def test_rope_parses_to_the_opcode_and_operand_keys_codegen_reads():
     schemas.validate_command_buffer(cb)
 
 
+@selected_driver.requires_support("muon")
 def test_standalone_rope_reaches_the_reference_emitter():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
@@ -137,6 +140,7 @@ def test_standalone_rope_reaches_the_reference_emitter():
     assert "llvm.func @t_kernel(%X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
 
 
+@selected_driver.requires_support("muon")
 def test_fused_matmul_rope_emits_both_stages():
     """A matmul feeding a rope (Y = rope(X @ W)) is a supported fused kernel: the emitted function takes the
     weight-first ABI [W, X, Y] and carries both the matmul accumulation and the sin/cos rope rewrite."""
@@ -163,6 +167,7 @@ module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merl
     assert [c["opcode"] for c in cb["commands"]] == ["RES_PACK", "MATMUL_RESIDENT", "COMMIT"]
 
 
+@selected_driver.requires_support("muon")
 def test_named_ops_reach_the_reference_emitter():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
@@ -172,6 +177,7 @@ def test_named_ops_reach_the_reference_emitter():
         assert "llvm.func @t_kernel(" in mlir
 
 
+@selected_driver.requires_support("muon")
 def test_vector_map_elementwise_emits_add_and_mul():
     """The transcendental-free elementwise core (VECTOR_MAP add/mul) emits a valid single-loop kernel."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
@@ -198,6 +204,7 @@ def test_vector_map_elementwise_emits_add_and_mul():
         assert fop in mlir
 
 
+@selected_driver.requires_support("muon")
 def test_vector_map_row_broadcast_bias_add_emits():
     """A length-n rhs broadcasts over the m rows of an (m,n) lhs (standalone bias-add / per-channel scale)."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
@@ -218,6 +225,7 @@ def test_vector_map_row_broadcast_bias_add_emits():
     assert "llvm.fadd" in mlir
 
 
+@selected_driver.requires_support("muon")
 def test_vector_map_rejects_incompatible_shapes():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
@@ -236,6 +244,7 @@ def test_vector_map_rejects_incompatible_shapes():
         codegen.emit_kernel_mlir(cb, target="t")
 
 
+@selected_driver.requires_support("muon")
 def test_fused_rmsnorm_matmul_emits():
     """rmsnorm feeding a matmul (Y = rmsnorm(X,G) @ W) is a supported fused kernel."""
     muon = pytest.importorskip("merlin.runtime.backends.base")
@@ -259,6 +268,7 @@ def test_fused_rmsnorm_matmul_emits():
     assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir  # rmsnorm stage present
 
 
+@selected_driver.requires_support("muon")
 def test_unsupported_fused_op_plus_matmul_fails_loud_not_silent():
     """A whole-op that is NOT the supported rmsnorm->matmul fusion (here attention_qk + matmul) must fail
     loud rather than silently emitting one half."""

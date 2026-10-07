@@ -16,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase2 import campaign as PC
@@ -655,9 +656,7 @@ def test_counter_passes_link_only_as_raw_named_readings() -> None:
 def test_counter_passes_use_only_the_explicitly_selected_timing_simulator() -> None:
     occupancy = _counter_pass_fixture("occupancy")
     physical = _counter_pass_fixture("physical_bytes")
-    selected = MS.link_counter_passes(
-        occupancy, physical, physical_unit="BYTES", timing_simulator="verilator"
-    )
+    selected = MS.link_counter_passes(occupancy, physical, physical_unit="BYTES", timing_simulator="verilator")
     assert selected["status"] == "linked"
     wrong = MS.link_counter_passes(occupancy, physical, physical_unit="BYTES", timing_simulator="gsim")
     assert wrong["status"] == "refused"
@@ -860,6 +859,7 @@ def test_rtl_identity_binds_full_facts_bytes_to_active_circt(tmp_path: Path, mon
         MS.load_rtl_identity(facts, "fixture")
 
 
+@external_sources.requires_ext("chipyard")
 def test_package_sandbox_is_answer_closed_networkless_and_submission_read_only(tmp_path: Path) -> None:
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -878,6 +878,7 @@ def test_package_sandbox_is_answer_closed_networkless_and_submission_read_only(t
     assert policy.required_tools, "tool enforcement must not be an empty loop"
 
 
+@external_sources.requires_ext("chipyard")
 def test_actual_entrypoint_and_every_tool_probe_use_the_bwrap_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -109,11 +109,6 @@ def _submission_regex_evidence(sub_dir: Path) -> tuple[list[dict], list[dict]]:
     return hits, vendored
 
 
-def _submission_regex(sub_dir: Path) -> list[dict]:
-    """List regex use in agent-AUTHORED Python. Empty means the authored compiler is clean."""
-    return _submission_regex_evidence(sub_dir)[0]
-
-
 @dataclass(frozen=True)
 class ToolCall:
     """One executed tool request paired with the result the agent actually received."""

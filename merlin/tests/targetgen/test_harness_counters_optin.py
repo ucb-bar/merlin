@@ -3,11 +3,13 @@
 This harness is on the L0/L1/L3 grading path. A change that altered every run would make a round's
 verdicts incomparable with the rounds before it, so the default must be byte-identical to what it was.
 """
+
 from __future__ import annotations
 
 import os
 
 import pytest
+import selected_driver
 
 from merlin.targetgen.contract import interface_emit as IE
 
@@ -30,6 +32,7 @@ def _clean_env(monkeypatch):
     monkeypatch.delenv("MERLIN_CACHE_STATE", raising=False)
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_default_harness_carries_no_counter_code(monkeypatch):
     got = _render()
     assert "counter_configure" not in got
@@ -38,6 +41,7 @@ def test_the_default_harness_carries_no_counter_code(monkeypatch):
     assert "METRIC cycles" in got and "read_cycles()" in got
 
 
+@selected_driver.requires_support("gemmini")
 def test_asking_for_counters_adds_the_bracket_around_the_same_window(monkeypatch):
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     got = _render()
@@ -50,6 +54,7 @@ def test_asking_for_counters_adds_the_bracket_around_the_same_window(monkeypatch
     assert "METRIC cycles" in got
 
 
+@selected_driver.requires_support("gemmini")
 def test_every_derived_counter_is_configured_and_read_back(monkeypatch):
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     got = _render()
@@ -59,13 +64,16 @@ def test_every_derived_counter_is_configured_and_read_back(monkeypatch):
     assert "padding: disabled event" in got
 
 
-@pytest.mark.parametrize("value,on", [("1", True), ("true", True), ("on", True), ("yes", True),
-                                      ("0", False), ("", False), ("no", False)])
+@selected_driver.requires_support("gemmini")
+@pytest.mark.parametrize(
+    "value,on", [("1", True), ("true", True), ("on", True), ("yes", True), ("0", False), ("", False), ("no", False)]
+)
 def test_the_switch_reads_only_affirmative_values(monkeypatch, value, on):
     monkeypatch.setenv("MERLIN_HW_COUNTERS", value)
     assert ("counter_configure" in _render()) is on
 
 
+@selected_driver.requires_support("gemmini")
 def test_requested_counter_failure_refuses_the_instrumented_run(monkeypatch):
     # Once explicitly requested, the bracket is campaign evidence. Silently rendering an uninstrumented
     # harness would let the campaign report GO for a measurement it never took.
@@ -80,6 +88,7 @@ def test_requested_counter_failure_refuses_the_instrumented_run(monkeypatch):
         _render()
 
 
+@selected_driver.requires_support("gemmini")
 def test_a_counter_unit_is_selected_from_the_shipped_header(monkeypatch):
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     monkeypatch.setenv("MERLIN_HW_COUNTER_UNIT", "BYTES")
@@ -92,6 +101,7 @@ def test_a_counter_unit_is_selected_from_the_shipped_header(monkeypatch):
     assert len(configured) > len(selected)
 
 
+@selected_driver.requires_support("gemmini")
 def test_warm_condition_executes_one_unmeasured_warmup(monkeypatch):
     monkeypatch.setenv("MERLIN_CACHE_STATE", "warm")
     got = _render()
@@ -100,31 +110,37 @@ def test_warm_condition_executes_one_unmeasured_warmup(monkeypatch):
     assert warmup < got.index("uint64_t c0 = read_cycles()")
 
 
+@selected_driver.requires_support("gemmini")
 def test_unknown_cache_condition_is_refused(monkeypatch):
     monkeypatch.setenv("MERLIN_CACHE_STATE", "wishful")
     with pytest.raises(Exception, match="unsupported cache-state"):
         _render()
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.parametrize("kind", ["movement", "whole_op"])
 def test_instrumentation_covers_movement_and_whole_op_harnesses(monkeypatch, kind):
     from merlin.runtime.backends import base as bk
 
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     monkeypatch.setenv("MERLIN_HW_COUNTER_UNIT", "BYTES")
-    tensors = {"X": {"shape": [3, 5], "dtype": "i8", "role": "input"},
-               "Y": {"shape": [3, 5], "dtype": "i32", "role": "output"}}
+    tensors = {
+        "X": {"shape": [3, 5], "dtype": "i8", "role": "input"},
+        "Y": {"shape": [3, 5], "dtype": "i32", "role": "output"},
+    }
     if kind == "movement":
-        commands = [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"},
-                     "attributes": {"output_dtype": "i32"}}]
+        commands = [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}, "attributes": {"output_dtype": "i32"}}]
     else:
         tensors["K"] = {"shape": [7, 5], "dtype": "i8", "role": "input"}
         tensors["Y"]["shape"] = [3, 7]
-        commands = [{"opcode": "ATTENTION_QK",
-                     "operands": {"q": "X", "k": "K", "dst": "Y"},
-                     "attributes": {"output_dtype": "i32", "epilogue": []}}]
-    cb = {"abi_version": "0.1", "target": "gemmini",
-          "tensors": tensors, "commands": commands}
+        commands = [
+            {
+                "opcode": "ATTENTION_QK",
+                "operands": {"q": "X", "k": "K", "dst": "Y"},
+                "attributes": {"output_dtype": "i32", "epilogue": []},
+            }
+        ]
+    cb = {"abi_version": "0.1", "target": "gemmini", "tensors": tensors, "commands": commands}
     got = bk.get_backend("gemmini").render_harness(cb, target="gemmini")
     assert "counter_configure" in got and "counter_read" in got
     assert got.index("counter_configure") < got.index("uint64_t c0")

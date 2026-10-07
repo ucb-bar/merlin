@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 
 import pytest
+import wmm_fixtures as FX
 from merlin_experiments.phase2.whole_model_measured import cell_prep as CP
 from merlin_experiments.phase2.whole_model_measured import cells as CELLS
 from merlin_experiments.phase2.whole_model_measured import forms as FORMS
@@ -28,6 +29,7 @@ LOOP = {
     "builder": {"spec": "b:build", "sha256": None},
     "store": "/store",
     "prohibited_instruction_roles": ["loop_descriptor"],
+    "instruction_policy": FX.sealed_policy(),
     "screen": {"build_options": {"machine": "board", "header": "/b.h", "prohibited_roles": ["loop_descriptor"]}},
     "certifier": {
         "build_options": {
@@ -67,6 +69,10 @@ def test_the_cell_config_is_the_loops_certifier_recipe_and_its_bar_carries_no_ru
     from merlin_experiments.phase2.whole_model_measured import config as CFG
 
     assert CFG.check_policy(config) == ["loop_descriptor"]  # the rule it is built under and judged by agree
+    assert config[CFG.SEALED_POLICY] == LOOP["instruction_policy"]  # and the sealed policy it is held to
+    unsealed = {k: v for k, v in LOOP.items() if k != "instruction_policy"}
+    with pytest.raises(CELLS.CellError, match="sealed Phase 0"):
+        CP.cell_objective_config(unsealed, machine=machine, reference="/ref.json", notice="CELL MODE")
 
 
 def test_prepare_measures_the_collateral_on_the_named_baseline_and_the_reference_once(tmp_path, monkeypatch):
@@ -119,3 +125,22 @@ def test_prepare_measures_the_collateral_on_the_named_baseline_and_the_reference
     assert "c" in written["harness_notices"][0] and prepared["held_out"] == []
     with pytest.raises(CELLS.CellError, match="verified baseline package"):
         CP.prepare(LOOP, target="toy", cell_id="c", groups=[1], collateral_share={}, out=tmp_path / "x")
+
+
+def test_a_form_capsule_screen_restricts_the_loops_own_check(tmp_path, monkeypatch):
+    """The cell's screen is the loop's pre-measure check narrowed to the cell's form capsules -- the same
+    runner and rule, run before any emulator time -- and a loop that declares no check has none to narrow."""
+    monkeypatch.setattr(FORMS, "statement_forms", lambda capsule, target: FORMS_A)
+    monkeypatch.setattr(CELLS, "reference_cell", lambda spec, *, target, out: {"objective_cycles": 1})
+    monkeypatch.setattr(CP, "cell_diagnostics", lambda groups, **kw: {"rooflines": {}})
+    with pytest.raises(CELLS.CellError, match="declares none"):
+        CP.prepare(LOOP, target="toy", cell_id="c", groups=[1], out=tmp_path / "a", screen_capsules="cap_a")
+    loop = {**LOOP, "pre_measure_check": {"argv": ["check", "{out}"], "capsules": "all", "required": False}}
+    prepared = CP.prepare(
+        loop, target="toy", cell_id="c", groups=[1], out=tmp_path / "b", screen_capsules="cap_a,cap_b"
+    )
+    check = prepared["config"]["pre_measure_check"]
+    assert check["capsules"] == "cap_a,cap_b" and check["required"] is True and check["argv"] == ["check", "{out}"]
+    assert (
+        "pre_measure_check" not in CP.prepare(LOOP, target="toy", cell_id="c", groups=[1], out=tmp_path / "c")["config"]
+    )

@@ -9,6 +9,7 @@ Target-agnostic: nothing here names a target; precision is a parameter (the toke
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.targetgen import capsule_source as CSrc
 from merlin.targetgen.golden_store import load_golden
@@ -331,6 +332,7 @@ def test_write_fused_pytorch_capsule_linalg_interface(entry, tmp_path):
     assert order[-1] == entry.get("out", "Y0") and len(order) >= 2
 
 
+@selected_driver.requires_support("muon")
 def test_args_from_cb_linalg_positional():
     """The positional-input harness path feeds a linalg-interface capsule's inputs in arg_order (incl.
     a rank-1 operand), producing the output last — no merlin_iface commands needed."""

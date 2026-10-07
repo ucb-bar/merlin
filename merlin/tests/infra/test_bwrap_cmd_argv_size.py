@@ -88,11 +88,15 @@ def test_composer_keeps_a_corpus_scale_mask_set_under_the_execve_limit(tmp_path)
     argv = ["bwrap", "--dev-bind", "/", "/"]
     for s in surfaces:
         argv += ["--ro-bind", "/dev/null", str(s.path)] if s.kind == "file" else ["--tmpfs", str(s.path)]
+    # The declared corpus alone no longer joins past the cap (26.5 KB measured 2026-10-06), so pad
+    # it with distinct stand-in mask targets until it does: the subject is the composer's behaviour
+    # above the execve limit, which a corpus that happens to fit cannot exercise.
+    n = 0
+    while len(" ".join(argv).encode("utf-8")) <= MAX_ARG_BYTES:
+        argv += ["--tmpfs", str(tmp_path / "stand_in_answer_surfaces" / f"surface_{n:06d}")]
+        n += 1
     inline_bytes = len(" ".join(argv).encode("utf-8"))
-    assert inline_bytes > MAX_ARG_BYTES, (
-        f"the inline join is {inline_bytes} B, under the {MAX_ARG_BYTES} B cap — this test is no "
-        f"longer exercising the rule it exists for; lower the surface threshold or drop it"
-    )
+    assert inline_bytes > MAX_ARG_BYTES
 
     # The composer writes its args file BESIDE `ws`, so `ws` must be a throwaway directory — pointing
     # it at a repo path would leave a 160 KB dotfile in the tree on every run of this test.

@@ -53,6 +53,7 @@ def _capsule(tmp_path: Path) -> Path:
 
 
 def _prepare(tmp_path: Path, **kw) -> RUNS.PreparedRun:
+    kw.setdefault("phase0_manifest", FX.write_phase0_manifest(tmp_path))
     return RUNS.prepare(
         target="toy",
         method="whole_model_measured_nofsm",
@@ -73,6 +74,11 @@ def test_a_prepared_run_carries_its_policy_its_frozen_inputs_and_its_seed(tmp_pa
     assert options["prohibited_roles"] == ["loop_descriptor"] and config["prohibited_instruction_roles"] == [
         "loop_descriptor"
     ]
+    # The sealed Phase 0 policy is stamped in by value, and the run records where it came from.
+    sealed = config[C.SEALED_POLICY]
+    assert sealed["prohibited_instructions"] == FX.SEALED_POLICY["prohibited_instructions"]
+    record = json.loads((run.run_dir / "run.json").read_text())
+    assert record["instruction_policy_source"] == sealed["sealed_source"]
     assert options["model_capsule"].startswith(str(run.run_dir / "inputs" / "model_capsule"))
     assert not os.access(run.config_path, os.W_OK)
     seed = json.loads((run.run_dir / "resumed_seed.json").read_text())
@@ -169,6 +175,18 @@ def test_derived_mechanisms_refuse_an_unfrozen_capsule(tmp_path, monkeypatch):
             why="must freeze",
             run_factory=_factory(tmp_path),
         )
+
+
+def test_roles_without_an_enforceable_sealed_policy_are_refused_before_anything_is_frozen(tmp_path):
+    """A no-FSM run whose Phase 0 policy matched no instruction measured programs nobody checked."""
+    vacuous = FX.sealed_policy()
+    vacuous["prohibited_instructions"] = {"loop_descriptor": []}
+    vacuous["vacuous_roles"] = ["loop_descriptor"]
+    with pytest.raises(RUNS.RunError, match="prohibits no instruction"):
+        _prepare(tmp_path / "a", phase0_manifest=FX.write_phase0_manifest(tmp_path / "vacuous", vacuous))
+    with pytest.raises(RUNS.RunError, match="does not exist"):
+        _prepare(tmp_path / "b", phase0_manifest=tmp_path / "missing" / "MANIFEST.yaml")
+    assert not (tmp_path / "a" / "runs").exists() and not (tmp_path / "b" / "runs").exists()
 
 
 def test_large_inputs_are_hard_linked_from_the_content_store_never_copied(tmp_path):

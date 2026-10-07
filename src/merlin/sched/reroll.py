@@ -113,22 +113,6 @@ class Run:
         return self.start + self.count
 
 
-def _affine_step(values: list[int]) -> int | None:
-    """The common difference of ``values``, or ``None`` if it is not an exact progression.
-
-    Checked over every element, not a prefix: a run that is affine for its first few members and then
-    diverges -- which is exactly what a carry out of one packed field looks like -- must be refused,
-    and a sampled check would admit it.
-    """
-    if len(values) < 2:
-        return 0
-    step = values[1] - values[0]
-    for i in range(2, len(values)):
-        if values[i] - values[i - 1] != step:
-            return None
-    return step
-
-
 def _extend(encoded: list[Encoded | None], start: int, period: int) -> tuple[int, tuple[Slot, ...] | None, int | None]:
     # noqa: D401
     """Longest run at ``start`` with this ``period``, grown forward one group at a time.

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; merlin.perf.exactness checks every field strictly).
+title: Exactness Contract
+purpose: >-
+  Per form, how far a program's output may differ from its reference: exact (the default and the only
+  default) or bounded by a stated number of output LSB (and optionally a fraction of the elements), with
+  the reviewed reason. Declared by a target's example as data; every gate that grades a group enforces
+  exactly the bound its form is given and records the contract it applied.
+
+required_top_level_fields:
+  - schema
+  - target
+  - forms
+
+example: |
+  schema: merlin.exactness_contract.v1
+  target: <target>
+  default: {mode: exact}
+  forms:
+    - name: device_requant
+      match: {op: <op>, epilogue: [<step>, ...]}
+      exactness:
+        mode: bounded
+        bound: {max_abs_lsb: 1, max_fraction: 0.01}
+        reason: the device's shift rounds half to even where the source rounds half up

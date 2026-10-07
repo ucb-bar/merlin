@@ -12,6 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
+import host_toolchain
 import pytest
 import yaml
 
@@ -65,6 +66,9 @@ def _gemmini_descriptor():
     return repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 
 
+_needs_gemmini_lane = host_toolchain.requires_host_lane_package(_gemmini_descriptor())
+
+
 def _snapshot_package(tmp_path, package_rel: str, descriptor: Path):
     """Freeze real declared host inputs with V4 ownership and a host-side record."""
     ws = tmp_path / "workspace"
@@ -77,6 +81,7 @@ def _snapshot_package(tmp_path, package_rel: str, descriptor: Path):
     return root, root / "repo" / package_rel, manifest["content_sha256"]
 
 
+@_needs_gemmini_lane
 def test_target_experiment_selects_scalar_lane_for_rocket():
     te = load_target_experiment(_gemmini_descriptor())
 
@@ -149,6 +154,7 @@ def test_board_catalog_rejects_malformed_host_dts_pin(tmp_path):
         load_boards(catalog)
 
 
+@_needs_gemmini_lane
 def test_gemmini_model_dtypes_match_the_descriptor_package():
     te = load_target_experiment(_gemmini_descriptor())
     from merlin.mining.registry import load_rvv_package

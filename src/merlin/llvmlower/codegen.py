@@ -1,14 +1,17 @@
 """LLVM IR -> object files (host x86 and bare-metal rv64gcv) and host .so."""
+
 from __future__ import annotations
 
 import os
 import subprocess
 from pathlib import Path
+
+from merlin.common import compile_trace
+from merlin.common import proc as _proc
 from merlin.common.paths import runtime_dir
 
 from ..common.paths import repo_root
 from .toolchain import clang
-from merlin.common import proc as _proc
 
 # A bounded per-compile wall clock. A pathological schedule (e.g. an outer-product contraction at a
 # large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a
@@ -23,8 +26,15 @@ _COMPILE_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or "0
 # -march=native lets clang use the host's vector units (AVX2/AVX-512) + aggressive unrolling,
 # multiplying throughput. IEEE semantics are preserved (NO -ffast-math) so host==torch holds.
 X86_FLAGS = ["-O3", "-march=native", "-funroll-loops", "-fPIC"]
-RISCV_FLAGS = ["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d",
-               "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
+RISCV_FLAGS = [
+    "--target=riscv64-unknown-elf",
+    "-march=rv64gcv",
+    "-mabi=lp64d",
+    "-mcmodel=medany",
+    "-O2",
+    "-ffreestanding",
+    "-fno-builtin",
+]
 
 
 def mlir_runtime_c() -> Path:
@@ -36,16 +46,29 @@ class CodegenError(RuntimeError):
     pass
 
 
+#: What this module produces from LLVM IR, as compile-trace stages: each object it compiles, and each
+#: program it links.
+STAGES = compile_trace.declare(
+    "codegen",
+    ("object", "link"),
+    entry="merlin.llvmlower.codegen",
+    summary="LLVM IR -> object (clang) -> linked program",
+)
+
+
 def _run(cmd: list[str]) -> None:
-    _proc.run_checked(cmd, error=CodegenError, timeout=(_COMPILE_TIMEOUT_S or None),
-                      timeout_hint=" (pathological compile)")
+    _proc.run_checked(
+        cmd, error=CodegenError, timeout=(_COMPILE_TIMEOUT_S or None), timeout_hint=" (pathological compile)"
+    )
 
 
-def compile_ll(ll_path: str | Path, out_obj: str | Path, target: str = "riscv", *,
-               extra_flags: tuple[str, ...] = ()) -> Path:
+def compile_ll(
+    ll_path: str | Path, out_obj: str | Path, target: str = "riscv", *, extra_flags: tuple[str, ...] = ()
+) -> Path:
     """Compile LLVM IR to an object file for ``riscv`` (rv64gcv) or ``x86``."""
     flags = RISCV_FLAGS if target == "riscv" else X86_FLAGS
     _run([clang(), *flags, *extra_flags, "-c", ll_path, "-o", out_obj])
+    compile_trace.artifact("object", [out_obj], pipeline="codegen")
     return Path(out_obj)
 
 
@@ -59,6 +82,8 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     model_o = out_so.with_suffix(".o")
     rt_o = out_so.with_name("mlir_runtime_host.o")
     _run([clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o])
+    compile_trace.artifact("object", [model_o], pipeline="codegen")
     _run(["cc", "-O2", "-fPIC", "-c", str(mlir_runtime_c()), "-o", rt_o])
     _run(["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so])
+    compile_trace.artifact("link", [out_so], pipeline="codegen")
     return out_so

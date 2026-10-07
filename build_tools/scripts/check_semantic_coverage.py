@@ -18,7 +18,14 @@ says to the reader.
 Ratcheted like the other structural gates: known holes live in ``generalization_debt.txt`` and that
 list MAY ONLY SHRINK, so this lands on a tree that is not yet clean without blocking every commit.
 
-Usage:  check_semantic_coverage.py [--target NAME] [--json]
+Usage:  check_semantic_coverage.py [--target NAME] [--json] [--allow-unresolved]
+
+``--allow-unresolved`` is the source-only CI mode, the same one the mesh-assertion gate uses: a fresh
+clone has no GENERATED capability contracts (they are derived from RTL into ``out/``), so a target whose
+contract is such a product and is absent here is printed as UNQUALIFIED instead of failing the job, and
+its ratcheted debt is reported as unmeasured rather than resolved. Every other finding still fails, a
+missing contract that is NOT a generated product still fails, and a run that resolves no target at all
+is CANNOT DECIDE (exit 2). Without the flag the gate stays fail-closed on every missing contract.
 """
 
 from __future__ import annotations
@@ -80,6 +87,23 @@ def _materializable_families() -> set[str]:
         return set()
 
 
+def _is_generated_product(target: str) -> bool:
+    """True when the target's capability contract is a GENERATED product under ``out/``.
+
+    Only such a contract may be absent from a clean checkout for a legitimate reason (it is derived
+    from RTL that a hosted runner does not have). A tracked contract that is missing is a broken tree,
+    and stays a failure in every mode.
+    """
+    from merlin.common.paths import out_dir, tracked_out_dir
+
+    try:
+        path = tr.resolve(target).capability_contract_path.resolve()
+    except Exception:  # noqa: BLE001 -- unresolvable target: not a known generated product
+        return False
+    roots = {out_dir().resolve(), tracked_out_dir().resolve()}
+    return any(path.is_relative_to(root) for root in roots)
+
+
 def _targets_with_profiles() -> list[str]:
     """Runtime targets with an explicitly declared derivation, never sidecar stems."""
     from merlin_experiments.phase0.declarations import all_declarations
@@ -97,7 +121,10 @@ def audit(target: str) -> list[dict]:
     try:
         contract = tr.load_contract(target)
     except Exception as exc:  # noqa: BLE001
-        return [{"target": target, "kind": "no_contract", "detail": f"{type(exc).__name__}: {exc}"}]
+        finding = {"target": target, "kind": "no_contract", "detail": f"{type(exc).__name__}: {exc}"}
+        if isinstance(exc, tr.TargetContractMissing) and _is_generated_product(target):
+            finding["unresolved"] = True
+        return [finding]
 
     cap_map = el.capability_map_from_contract(contract)
     undet = el.undetermined_families_from_contract(contract)
@@ -276,10 +303,19 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--target", help="one target (default: every target with a corpus profile)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--allow-unresolved",
+        action="store_true",
+        help="source-only CI: a missing GENERATED contract is UNQUALIFIED, every other finding still fails",
+    )
     a = ap.parse_args()
 
     targets = [a.target] if a.target else _targets_with_profiles()
     findings = [f for t in targets for f in audit(t)]
+    # A target with no generated contract here established NOTHING: it is neither clean nor resolved.
+    unresolved = sorted({f["target"] for f in findings if f.get("unresolved")}) if a.allow_unresolved else []
+    if unresolved:
+        findings = [f for f in findings if f["target"] not in unresolved]
 
     known = set()
     if DEBT.exists():
@@ -292,10 +328,18 @@ def main() -> int:
         selected = for_target(a.target).target
         known = {key for key in known if key.startswith(f"{selected}:")}
     fresh = [f for f in findings if _key(f) not in known]
-    stale = sorted(known - {_key(f) for f in findings})
+    stale = sorted(k for k in known - {_key(f) for f in findings} if k.split(":", 1)[0] not in unresolved)
+    measured = [t for t in targets if t not in unresolved]
+    if unresolved and not measured:
+        print(
+            "CANNOT DECIDE: semantic-coverage resolved no target's contract; a missing contract set "
+            "cannot pass vacuously",
+            file=sys.stderr,
+        )
+        return 2
 
     if a.json:
-        print(json.dumps({"findings": findings, "new": fresh, "resolved": stale}, indent=1))
+        print(json.dumps({"findings": findings, "new": fresh, "resolved": stale, "unqualified": unresolved}, indent=1))
         return 1 if fresh else 0
 
     for f in fresh:
@@ -310,10 +354,16 @@ def main() -> int:
         )
         for k in stale[:10]:
             print(f"         {k}")
+    if unresolved:
+        print(
+            f"[UNQUALIFIED] semantic-coverage: {len(unresolved)} target(s) have no generated contract in "
+            f"this checkout, so nothing about them was measured: {', '.join(unresolved)}. Run without "
+            "--allow-unresolved after generating their contracts to qualify them."
+        )
     if not fresh:
         n = len(findings)
         print(
-            f"[  ok] semantic-coverage: {len(targets)} target(s) measurable"
+            f"[  ok] semantic-coverage: {len(measured)} target(s) measurable"
             + (f"; {n} known hole(s) on the ratchet (may only fall)." if n else ".")
         )
         return 0

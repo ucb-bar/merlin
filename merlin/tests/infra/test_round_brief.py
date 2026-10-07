@@ -10,7 +10,10 @@ import json
 
 from merlin_experiments.phase1.feedback import brief as RB
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import module_source_path
+
+#: The QA-loop authoring driver; the harness ``run_baseline_qa_loop.py`` is only its entrypoint.
+_AUTHORING = module_source_path("merlin_experiments.phase1.authoring")
 
 
 def _verdict(n_passed, planes, mism):
@@ -113,7 +116,7 @@ def test_fresh_prelaunch_refresh_builds_brief_with_erratum_before_notes(tmp_path
 
 
 def test_every_qa_loop_agent_launch_refreshes_the_brief_first():
-    src = (repo_root() / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text(encoding="utf-8")
+    src = _AUTHORING.read_text(encoding="utf-8")
     tree = ast.parse(src)
     launches = 0
     for node in ast.walk(tree):
@@ -141,8 +144,7 @@ def test_every_qa_loop_agent_launch_refreshes_the_brief_first():
 
 
 def test_completed_round_publishes_through_canonical_brief_owner():
-    source = repo_root() / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py"
-    tree = ast.parse(source.read_text())
+    tree = ast.parse(_AUTHORING.read_text())
     publications = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Try):

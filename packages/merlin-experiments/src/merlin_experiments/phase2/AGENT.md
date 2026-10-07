@@ -358,3 +358,9 @@ output creation; use the installed experiment directly, never native callbacks o
 Keep native controller attribution for native calls. Completion-contract capabilities are
 optional only when absent; declared malformed or failed capabilities refuse. Do not infer
 complete deployment or scientific qualification from helper and admission tests.
+
+`whole_model_measured/` is the third mode (see its own AGENT.md): whole-model candidates measured on
+declared machines, keyed by exact bytes, with the experiment's `prohibited_instruction_roles` enforced
+over each candidate's whole linked ELF before any machine time. It reuses this package's broker,
+edit-authority, transcript-audit and stage-input owners; it never imports a native controller, and it
+never names a target -- machines, builders and capsules are declared data.

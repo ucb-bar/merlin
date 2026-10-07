@@ -19,6 +19,7 @@ not exist.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 import triton_kernels as K
 
 from merlin.common.paths import repo_root
@@ -62,6 +63,7 @@ def test_more_than_one_target_is_actually_under_test():
     assert len(staged_targets()) >= 2
 
 
+@selected_driver.requires_support("saturn")
 def test_the_frontends_output_is_identical_for_every_target(descents):
     """The measurement: one TTIR, one core MLIR, N targets. The frontend never branches."""
     from merlin import compile_core
@@ -76,6 +78,7 @@ def test_the_frontends_output_is_identical_for_every_target(descents):
         assert compile_core.choose_route(again.module, **kwargs).kind == "staged", name
 
 
+@selected_driver.requires_support("saturn")
 def test_each_target_lowers_to_its_own_dialect(descents):
     """The other half: identical input, genuinely different output. Otherwise nothing was proven."""
     dialects = {}
@@ -89,12 +92,14 @@ def test_each_target_lowers_to_its_own_dialect(descents):
     )
 
 
+@selected_driver.requires_support("saturn")
 def test_every_target_produces_a_command_buffer_naming_itself(descents):
     """The bug this catches is a silent fallback: asking for X and getting toy_npu's descent."""
     for name, lowered in descents["targets"].items():
         assert lowered.command_buffer["target"] == name
 
 
+@selected_driver.requires_support("saturn")
 def test_every_targets_command_buffer_simulates_correctly(descents):
     from merlin.runtime import reference_outputs, simulate
 

@@ -238,7 +238,7 @@ def test_the_objective_reads_its_best_gap_holders_against_the_marked_session(tmp
 
 
 # --------------------------------------------------------------- the config's policy
-def _config(tmp_path, roles, screen_roles, certifier_roles=None):
+def _config(tmp_path, roles, screen_roles, certifier_roles=None, *, sealed=True):
     spec, pin = FX.write_builder(tmp_path)
     machine = FX.spike_machine(tmp_path)
 
@@ -252,6 +252,8 @@ def _config(tmp_path, roles, screen_roles, certifier_roles=None):
         "prohibited_instruction_roles": roles,
         "screen": section(screen_roles),
     }
+    if roles and sealed:
+        document[C.SEALED_POLICY] = FX.sealed_policy(roles)
     if certifier_roles is not None:
         document["certifier"] = section(certifier_roles)
     return document
@@ -266,10 +268,41 @@ def test_a_candidate_section_that_dropped_the_declared_roles_refuses_the_launch(
     objective = C.from_config(_config(tmp_path, ["loop_descriptor"], ["loop_descriptor"]), target="toy")
     assert objective.screen.build_options["prohibited_roles"] == ["loop_descriptor"]
     assert objective.rule()["prohibited_roles"] == ["loop_descriptor"]
+    # The sealed policy rides every candidate job, so the instruction gate can hold the program to it.
+    assert objective.screen.instruction_policy == FX.sealed_policy(["loop_descriptor"])
+
+
+def test_declared_roles_without_an_enforceable_sealed_policy_refuse_the_launch(tmp_path):
+    """Roles with no sealed Phase 0 policy, or one that is vacuous or unresolved, never start a run."""
+    with pytest.raises(C.ConfigError, match="no enforceable sealed Phase 0"):
+        C.from_config(_config(tmp_path, ["loop_descriptor"], ["loop_descriptor"], sealed=False), target="toy")
+    vacuous = _config(tmp_path, ["loop_descriptor"], ["loop_descriptor"])
+    vacuous[C.SEALED_POLICY]["prohibited_instructions"] = {"loop_descriptor": []}
+    with pytest.raises(C.ConfigError, match="prohibits no instruction"):
+        C.from_config(vacuous, target="toy")
+    unknown = _config(tmp_path, ["loop_descriptor"], ["loop_descriptor"])
+    unknown[C.SEALED_POLICY]["status"] = "UNKNOWN"
+    with pytest.raises(C.ConfigError, match="not 'resolved'"):
+        C.from_config(unknown, target="toy")
+
+
+def test_the_sealed_policy_is_read_from_the_phase0_manifest_by_value(tmp_path):
+    manifest = FX.write_phase0_manifest(tmp_path)
+    document = C.with_policy(_config(tmp_path, [], None, [], sealed=False), ["loop_descriptor"])
+    sealed = C.seal_policy(document, target="toy", manifest=manifest)
+    assert sealed[C.SEALED_POLICY]["prohibited_instructions"] == FX.SEALED_POLICY["prohibited_instructions"]
+    assert sealed[C.SEALED_POLICY]["sealed_source"]["path"] == str(manifest.resolve())
+    assert C.check_policy(sealed) == ["loop_descriptor"]
+    # A relaunch keeps the policy it was sealed under; a manifest naming another one is refused.
+    assert C.seal_policy(sealed, target="toy") == sealed
+    other = FX.write_phase0_manifest(tmp_path / "other", FX.sealed_policy(["loop_descriptor", "sync"]))
+    with pytest.raises(C.ConfigError, match="differs"):
+        C.seal_policy(sealed, target="toy", manifest=other)
 
 
 def test_with_policy_writes_the_declared_roles_into_every_candidate_section(tmp_path):
     document = C.with_policy(_config(tmp_path, [], None, []), ["loop_descriptor"])
+    document[C.SEALED_POLICY] = FX.sealed_policy()
     assert C.check_policy(document) == ["loop_descriptor"]
     assert document["certifier"]["build_options"]["prohibited_roles"] == ["loop_descriptor"]
 

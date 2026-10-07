@@ -1,0 +1,30 @@
+# The cells of the gemmini ResNet-50 whole-model measured loop, as data for
+# `merlin experiment cell prepare <loop run> --cells examples/gemmini/phase2/cells.yaml --cell <id>`.
+#
+# Each cell names the model groups a cell run measures as their own one-group programs: `groups` by the
+# capture's own group index, or `form_of` anchors whose whole FORM the cell is (one group per distinct
+# shape, derived from the capture by cell_prep.form_cell_groups). The indices are SY_model_resnet50's, as
+# its 2026-10 cell runs read them; the command refuses this file against a loop measuring any other model.
+# Optional `screen_capsules` restricts the loop's capsule screen to the cell's form capsules; none are
+# listed here because the form capsules those runs screened on belong to their own phase-0 release.
+schema: merlin.phase2.whole_model_measured.cells.v1
+model: SY_model_resnet50
+cells:
+  g1_stem:
+    groups: [1]
+    why: the 7x7 stride-2 stem convolution and its max-pool
+  mm1x1:
+    form_of: [32, 34]
+    why: the 1x1 convolutions, contracted as matmuls, at every stage
+  conv3x3:
+    form_of: [67]
+    why: the 3x3 stride-1 convolutions
+  conv3x3s2:
+    form_of: [16]
+    why: the 3x3 stride-2 convolutions
+  fc:
+    groups: [71]
+    why: the classifier; its accumulator readout is full width, so it runs only on a board that has one
+  resadd:
+    form_of: [10, 19]
+    why: the residual adds

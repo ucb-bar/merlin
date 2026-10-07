@@ -21,6 +21,7 @@ coverage certificate reported that as a real-looking ARR of 0.0.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase0.declarations import for_target
@@ -53,6 +54,7 @@ def _model_capsule(target: str):
 
 @pytest.mark.parametrize("target", TARGETS)
 def test_the_mesh_datapath_is_read_off_the_target(target):
+    external_sources.require_rtl(target)
     from merlin.runtime.dispatch_runtime import mesh_datapath
 
     b = mesh_datapath(target, numeric_policy=_declared_policy(target))
@@ -65,6 +67,7 @@ def test_the_mesh_datapath_is_read_off_the_target(target):
     assert spelling == dtype_info(b.operand_dtype)[1]
 
 
+@external_sources.requires_rtl("gemmini", "atlas")
 def test_two_targets_derive_two_different_datapaths():
     """The regression guard: a single hardcoded pair cannot be right for both."""
     from merlin.runtime.dispatch_runtime import mesh_datapath
@@ -76,6 +79,7 @@ def test_two_targets_derive_two_different_datapaths():
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults():
     """The regression guard for the bug this whole path was built around.
 

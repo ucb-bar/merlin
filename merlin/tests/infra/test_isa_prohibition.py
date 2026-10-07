@@ -301,3 +301,88 @@ def test_the_range_split_scan_reports_exactly_what_one_pass_reports(target, monk
     assert len(parts[0]) >= 4, "the program was not split into ranges"
     assert not one_pass["clean"] and one_pass["hits"]
     assert json.dumps(split) == json.dumps(one_pass)
+
+
+# --------------------------------------------------------------- the rule must be able to fail
+def test_a_rule_whose_roles_match_no_instruction_is_unmeasured_never_clean(target, monkeypatch):
+    """MUTATION: an empty role table. A prohibited set that is empty makes every program clean without
+    reading it -- here the program is FULL of loop-descriptor instructions, and the role table that
+    should name them names nothing."""
+    unroled = {**FACTS, "roles_by_selector": {k: [] for k in FACTS["roles_by_selector"]}}
+    monkeypatch.setattr(TIE, "target_instruction_facts", lambda _target: unroled)
+    _fake_tools(monkeypatch, _listing({"main": [5, 5, 6]}), {})
+    report = ISA.check_program(
+        target.tmp / "p.elf", target="any", roles=["loop_descriptor"], compiler=target.compiler, group_objects={}
+    )
+    assert report["status"] == "unmeasured" and report["clean"] is None and report["prohibited"] == {}
+    scanned = ISA.scan_elf(target.tmp / "p.elf", target="any", roles=["loop_descriptor"])
+    assert scanned["status"] == "unmeasured" and scanned["clean"] is None
+
+
+def test_a_measured_verdict_names_what_it_prohibited(target, monkeypatch):
+    _fake_tools(monkeypatch, _listing({"main": [1, 9]}), {})
+    report = ISA.check_program(
+        target.tmp / "p.elf", target="any", roles=["loop_descriptor"], compiler=target.compiler, group_objects={}
+    )
+    assert report["status"] == "measured" and report["clean"] is True
+    assert report["prohibited"] == {"5": "STEP_A", "6": "STEP_B"}
+
+
+def test_a_prohibited_instruction_in_code_nothing_calls_is_refused(target, monkeypatch):
+    """The scan reads the whole listing, not the call graph: a function reached only through a pointer,
+    or never reached at all, is in the binary and is refused like one on the hot path."""
+    _fake_tools(monkeypatch, _listing({"main": [1], "reached_only_by_pointer": [5], "dead_code": [6]}), {})
+    report = ISA.check_program(
+        target.tmp / "p.elf", target="any", roles=["loop_descriptor"], compiler=target.compiler, group_objects={}
+    )
+    assert report["clean"] is False
+    assert {h["function"] for h in report["hits"]} == {"reached_only_by_pointer", "dead_code"}
+
+
+_ADDRESS_TAKEN_SOURCE = """
+typedef void (*fn_t)(void);
+__attribute__((noinline)) void loop_via_pointer(void) {{
+    __asm__ volatile(".insn r {opcode}, 0, {selector}, x0, x0, x0");
+}}
+/* Address taken, never called: the program's entry never reaches it. */
+fn_t volatile table[1] = {{ loop_via_pointer }};
+void _start(void) {{ for (;;) {{ }} }}
+"""
+
+
+def _cross_build(tmp_path, *, opcode: int, selector: int):
+    """A real RISC-V ELF from the host's clang + lld, or a skip when this host has neither."""
+    import shutil
+
+    clang, lld = shutil.which("clang"), shutil.which("ld.lld")
+    if not clang or not lld:
+        pytest.skip("no clang + ld.lld on this host to build a RISC-V ELF")
+    source = tmp_path / "address_taken.c"
+    source.write_text(_ADDRESS_TAKEN_SOURCE.format(opcode=hex(opcode), selector=selector))
+    elf = tmp_path / "address_taken.elf"
+    built = subprocess.run(
+        [clang, "--target=riscv64-unknown-elf", "-march=rv64gc", "-O2", "-nostdlib", "-static",
+         "-fuse-ld=lld", "-Wl,-e,_start", str(source), "-o", str(elf)],
+        capture_output=True, text=True,
+    )  # fmt: skip
+    if built.returncode != 0:
+        pytest.skip(f"this host's clang cannot build a RISC-V ELF: {built.stderr[-300:]}")
+    return elf
+
+
+def test_a_real_elf_with_an_address_taken_never_executed_prohibited_instruction_is_refused(target, monkeypatch):
+    """MUTATION, on a real linked ELF: the prohibited instruction sits in a function whose address is
+    stored in a table and which the entry point never calls (the shape of a program that keeps the
+    hardware-loop path behind a function pointer and runs it zero times). The opcode and selector are
+    this test's synthetic target's facts, not a real encoding."""
+    from merlin.targetgen import elf_lanes as EL
+
+    monkeypatch.setattr(EL, "accelerator_opcode", lambda _target: (OPCODE, "synthetic facts"))
+    elf = _cross_build(target.tmp, opcode=OPCODE, selector=5)
+    report = ISA.scan_elf(elf, target="any", roles=["loop_descriptor"])
+    assert report["status"] == "measured" and report["clean"] is False
+    assert report["summary"] == {"STEP_A": 1}
+    # The same program whose pointer-only function issues a non-prohibited instruction is clean.
+    (target.tmp / "clean").mkdir()
+    clean = _cross_build(target.tmp / "clean", opcode=OPCODE, selector=1)
+    assert ISA.scan_elf(clean, target="any", roles=["loop_descriptor"])["clean"] is True

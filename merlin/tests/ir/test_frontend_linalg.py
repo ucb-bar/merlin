@@ -11,10 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import selected_driver
 
 from merlin.xdsl_dialects import _common
 
-pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+pytestmark = [pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed"), pytest.mark.target("saturn")]
 
 SMOLVLA_DIR = Path("/path/to/model2MLIR/workloads/smolvla")
 SMOLVLA_MLIR = SMOLVLA_DIR / "smolvla.mlir"
@@ -81,6 +82,7 @@ def test_weight_reuse_facts_and_gemm_selection():
     assert ff.select_gemm(inv).weight_name == "model.linear.weight"
 
 
+@selected_driver.requires_support("saturn")
 def test_pipeline_runs_real_shape_from_frontend():
     from merlin.frontends import facts as ff
     from merlin.frontends import linalg_mlir as fl
@@ -94,6 +96,7 @@ def test_pipeline_runs_real_shape_from_frontend():
     assert execute(res)["correct"] is True
 
 
+@selected_driver.requires_support("saturn")
 def test_dse_records_resident_variants():
     from merlin.common import schemas
     from merlin.frontends import facts as ff
@@ -119,6 +122,7 @@ def test_dse_records_resident_variants():
     assert schemas.validate(payload, "dse_result") == []
 
 
+@selected_driver.requires_support("saturn")
 def test_no_reuse_is_not_exploitable():
     from merlin.frontends import facts as ff
     from merlin.frontends import linalg_mlir as fl

@@ -3,7 +3,7 @@ title: Source closure for guarded ordered floating contractions
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related:
   - docs/reference/architecture.md
 code_refs:

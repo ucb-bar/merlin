@@ -30,6 +30,10 @@ def freeze(run_dir: Path, *, repo: Path) -> dict:
     if history is not None:
         rec["oot"] = history  # the harness-owned `frozen` tag on exactly these bytes
     (run_dir / "freeze.json").write_text(json.dumps(rec, indent=2), encoding="utf-8")
+    if history is not None and history.get("frozen_commit"):
+        from merlin.targetgen import target_index
+
+        target_index.refresh_for_run(run_dir, 1)  # the index lists the new frozen compiler
     return rec
 
 

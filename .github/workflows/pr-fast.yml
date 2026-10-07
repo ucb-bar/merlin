@@ -59,10 +59,22 @@ jobs:
       # and the coverage gate was wired to no hook and no job at all.
       - name: overfit-register gate (declared coupling may only shrink)
         run: uv run --no-sync python build_tools/scripts/check_overfit_register.py
+      # Source-only, like the mesh-assertion gate below: a hosted runner has no GENERATED capability
+      # contracts, so a target whose contract is one is printed UNQUALIFIED instead of failing; every
+      # other finding still fails, and a run that resolves no target at all cannot pass.
       - name: semantic-coverage gate (generalization debt may only shrink)
-        run: uv run --no-sync python build_tools/scripts/check_semantic_coverage.py
+        run: uv run --no-sync python build_tools/scripts/check_semantic_coverage.py --allow-unresolved
       - name: wiring gate (every instrument has a production caller)
         run: uv run --no-sync python build_tools/scripts/check_wiring.py
+      # A gate nobody has ever seen fail reads exactly like one that cannot. The structural half runs
+      # pre-commit; this is the half that cannot be faked: it runs each recorded proof and requires the
+      # proof to be observed entering its own gate.
+      - name: mutation-proof gate (every check has a recorded failing direction)
+        run: uv run --no-sync python build_tools/scripts/check_mutation_proofs.py --prove
+      # On an evidence path, absent must not read as a value: a fabricated `.get` fallback, a
+      # swallowed load error, a discarded subprocess result, a shelled pipeline's last-stage status.
+      - name: silent-default gate (a substituted datum may not become a verdict)
+        run: uv run --no-sync python build_tools/scripts/check_silent_defaults.py
       - name: sign coverage (a sign-sensitive capsule can go negative)
         run: uv run --no-sync python build_tools/scripts/check_sign_coverage.py
       # A slope is only a rate if exactly one term moved between the points; the plan's isolation is
@@ -106,6 +118,11 @@ jobs:
         run: uv run --no-sync python build_tools/scripts/check_contract_copies.py
       - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
         run: uv run --no-sync python build_tools/scripts/check_fact_provenance.py
+      # Provenance asks which revision a fact came from; this asks what a declared RESTRICTION was read
+      # off. A narrowing claim is the one a wrong answer makes invisible -- it removes demand, so
+      # nothing fails.
+      - name: capability-backing gate (a claim that narrows a target must cite its source)
+        run: uv run --no-sync python build_tools/scripts/check_capability_backing.py
       - name: opcode-documentation gate (every accepted op has ABI semantics)
         run: uv run --no-sync python build_tools/scripts/check_opcode_documentation.py
       # Fresh CI has no generated OOT contracts. Keep new weakenings fatal for contracts it CAN read,
@@ -140,13 +157,17 @@ jobs:
       #
       # Gates on all eleven axes: until 2026-09-22 six of them were measured, printed with the same
       # un-ratcheted marker as the rest, and never accumulated into the verdict.
+      #
+      # --allow-unresolved: the memory-mapping axis sizes the operand store from RTL facts, which a
+      # hosted runner cannot extract. That axis is printed UNQUALIFIED here instead of being reported
+      # as three uncovered regimes; every axis it CAN measure still fails on a new gap.
       - name: conformance coverage (tracked spec)
         run: |
           uv run --no-sync python build_tools/scripts/check_conformance_coverage.py \
             --target gemmini \
             --spec merlin/contract/capsules/conformance/gemmini.yaml \
             --ratchet build_tools/scripts/conformance_ratchet.txt \
-            --fail-on-uncovered
+            --fail-on-uncovered --allow-unresolved
       # THE CIRCULARITY GUARD. A requirement cell derived from a model the experiment then claims to
       # generalize TO is not evidence of anything, and this is the check that says so. It was listed
       # out-of-band at "> 4 min on a populated out/" — measured here at 2m30s, and a CI runner clones
