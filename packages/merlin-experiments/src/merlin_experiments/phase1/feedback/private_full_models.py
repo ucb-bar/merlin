@@ -116,7 +116,8 @@ def loader_env_requirements_for(descriptor: str | Path) -> dict[str, dict[str, A
     roles = gate.get("required_selected_roles") or {}
     workloads = gate.get("source_workload_dirs") or {}
     dtypes = gate.get("deployment_dtypes") or {}
-    integer_required = gate.get("require_integer_contractions", False)
+    # An opt-in obligation: a descriptor that does not declare it does not require integer contractions.
+    integer_required = gate["require_integer_contractions"] if "require_integer_contractions" in gate else False
     if type(integer_required) is not bool:
         raise ValueError("target integer-contraction requirement must be boolean")
     if any(not isinstance(value, Mapping) for value in (expected, forbidden, roles, workloads, dtypes)):
@@ -1179,12 +1180,14 @@ def complete(
             and isinstance((row.get("checks") or {}).get("build", {}).get("programs"), list)
             and (row.get("checks") or {}).get("build", {}).get("linked_device_groups")
             == sum(
-                entry.get("linked_device_groups", 0)
+                entry["linked_device_groups"]
                 for entry in (row.get("checks") or {}).get("build", {}).get("programs", [])
                 if isinstance(entry, Mapping) and type(entry.get("linked_device_groups")) is int
             )
+            # Every program states its own linked count: one that omits it is not summed as zero.
             and all(
-                isinstance(entry, Mapping) for entry in (row.get("checks") or {}).get("build", {}).get("programs", [])
+                isinstance(entry, Mapping) and type(entry.get("linked_device_groups")) is int
+                for entry in (row.get("checks") or {}).get("build", {}).get("programs", [])
             )
             and [entry.get("program") for entry in (row.get("checks") or {}).get("build", {}).get("programs", [])]
             == list(required_programs[row["model"]])

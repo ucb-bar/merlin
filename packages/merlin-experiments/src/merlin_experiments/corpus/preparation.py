@@ -340,6 +340,25 @@ def _verify_completed_generation(plan: dict, generated: Path) -> None:
                 raise SpecError(f"generation-time capture attestation changed: {member}: {exc}") from exc
         if failure := verified_capture_failure(capsule):
             raise SpecError(f"generation-time capture admission changed: {member}: {failure}")
+    # Last, once the capture evidence is known to be the evidence the corpus was generated from: a
+    # verified corpus whose sealed instruction policy forbids nothing is not released.
+    _require_enforceable_instruction_policy(plan, generated)
+
+
+def _require_enforceable_instruction_policy(plan: dict, generated: Path) -> None:
+    """Refuse to release a verified corpus whose sealed instruction policy cannot refuse anything.
+
+    The roles the Phase 0 command declared (else the ones the manifest records) must each resolve to at
+    least one of the target's instructions. A corpus once sealed ``status: resolved`` beside
+    ``vacuous_roles: [loop_descriptor]`` -- a no-FSM rule that matched nothing -- and every later phase
+    read that as enforced."""
+    from ..phase0.instruction_roles import enforcement_problems
+
+    policy = read_yaml(generated / "MANIFEST.yaml").get("instruction_policy")
+    declared = ((plan["phases"]["0"].get("instruction_policy") or {}).get("prohibited_instruction_roles")) or []
+    roles = list(declared) or list((policy or {}).get("prohibited_instruction_roles") or ())
+    if roles and (problems := enforcement_problems(policy, roles)):
+        raise SpecError(f"verified Phase-0 corpus carries an unenforceable instruction policy: {'; '.join(problems)}")
 
 
 def _members(root: Path) -> dict[str, tuple[Path, dict]]:

@@ -85,7 +85,6 @@ def private_functional(tmp_path, monkeypatch, request):
     )
     sealed_repo = tmp_path / "sealed-repo"
     sealed_repo.mkdir()
-    monkeypatch.setattr(AW, "repo_root", lambda: sealed_repo)
     monkeypatch.setattr(FI, "repo_root", lambda: sealed_repo)
     yield SimpleNamespace(
         repo=repo,
@@ -248,12 +247,16 @@ def test_v3_agent_planes_mask_translated_private_and_raw_marker_aliases(private_
     ]
     monkeypatch.setattr(AW, "verify_answer_free_agent_inputs", lambda inputs: None)
     monkeypatch.setattr(BW, "base_argv", lambda *args, **kwargs: ["bwrap"])
-    monkeypatch.setattr(TC, "toolchain_binds", lambda te: runtime)
-    monkeypatch.setattr(AW, "answer_surfaces", lambda te: [])
+    monkeypatch.setattr(TC, "toolchain_binds", lambda te, **selected: runtime)
+    # An explicit selection: the sealed checkout, no simulator family, no harness, no answer surfaces.
+    paths = TC.ToolchainPaths(
+        f.sealed_repo, *[str(f.tmp_path / name) for name in ("venv", "llvm", "compat", "clang", "uv")]
+    )
+    selected = PC.PackageSandboxInputs(paths, TC.SimToolchain(), "", ())
     if plane == "inner":
-        policy = AW.inner_execution_policy(None, candidate, agent_inputs, frozen)
+        policy = AW.inner_execution_policy(None, candidate, agent_inputs, frozen, inputs=selected)
     else:
-        policy = AW.outer_codex_policy(candidate, agent_inputs, runtime, None, frozen)
+        policy = AW.outer_codex_policy(candidate, agent_inputs, runtime, None, frozen, inputs=selected)
     argv = list(policy.argv)
     assert BW.is_exposed(argv, f.sealed_repo / "inputs/public.h")
     assert not BW.is_exposed(argv, f.sealed_repo / "inputs/private-holdout/secret-case.txt")

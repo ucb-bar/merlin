@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen.sandbox import bwrap, toolchain
+from merlin.targetgen.sandbox import bwrap, host_surfaces, toolchain
 from merlin.targetgen.sandbox.answer_surfaces import (
     AUDIT_ADVISORY_KINDS,
     AUDIT_VIOLATION_KINDS,
@@ -184,7 +184,7 @@ class Sandbox:
     def coverage_gap(self) -> list[AnswerSurface]:
         """The answer surfaces still reachable under the built argv — MUST be empty (hermetic guard)."""
         argv = self.argv()
-        private = bwrap.host_input_surfaces(
+        private = host_surfaces.host_input_surfaces(
             argv, self.ws, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs
         )
         return bwrap.coverage_gap(argv, [*self.answer_surfaces, *private])

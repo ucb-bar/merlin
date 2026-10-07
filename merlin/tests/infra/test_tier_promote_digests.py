@@ -440,9 +440,13 @@ def test_the_promotion_plumbing_reads_no_capsule_declaration():
 def test_every_declared_command_runs_for_every_capsule():
     """THE PREMISE the removal rests on, asserted against the runner rather than trusted.
 
-    `capsule_common.run_entrypoints` is the shared ABI front half every target's runner goes through. It
-    invokes each of the four contract entrypoints unconditionally -- there is no per-capsule subset -- so
-    no capsule can honestly say it does not ride on one of them. If this ever becomes conditional, the
+    `capsule_common.run_entrypoints` is the shared ABI front half every target's runner goes through, and
+    it hands every capsule to `capsule_common.lower_interface`, which walks the contract entrypoints. The
+    walk has no per-capsule subset: `parse` and `lower_interface_to_target` always run, and the buffer and
+    target artifact come either from their two commands or, when the PACKAGE declares it, from the one
+    `emit_analysis_bundle` process that returns both. Every condition on an entrypoint call is therefore a
+    property of the package (or of how the calls are scheduled), never of the capsule, so no capsule can
+    honestly say it does not ride on one of them. If this ever becomes conditional on the capsule, the
     rationale for retiring `depends_on` is void and this test is where that shows up.
     """
     import ast
@@ -450,30 +454,71 @@ def test_every_declared_command_runs_for_every_capsule():
 
     from merlin.targetgen import capsule_common
 
-    tree = ast.parse(inspect.getsource(capsule_common.run_entrypoints))
-    called = set()
+    front = ast.parse(inspect.getsource(capsule_common.run_entrypoints))
+    walks = [
+        node
+        for node in ast.walk(front)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "lower_interface"
+    ]
+    assert walks, "run_entrypoints no longer hands the capsule to lower_interface"
+    for node in ast.walk(front):
+        if isinstance(node, (ast.If, ast.For, ast.While)):
+            assert not any(inner in walks for inner in ast.walk(node)), "the entrypoint walk became conditional"
+
+    tree = ast.parse(inspect.getsource(capsule_common.lower_interface))
+    alternatives: dict[str, set[str]] = {}
+    selectors: dict[str, ast.expr] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        fn = node.func
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            value = node.value
+            if isinstance(value, ast.IfExp) and all(
+                isinstance(arm, ast.Constant) and isinstance(arm.value, str) for arm in (value.body, value.orelse)
+            ):
+                alternatives[node.targets[0].id] = {value.body.value, value.orelse.value}
+            selectors[node.targets[0].id] = value
+
+    def entrypoint(call: ast.Call) -> set[str]:
+        fn = call.func
         name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
-        if name != "run_entrypoint":
-            continue
-        for arg in node.args[1:2]:
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                called.add(arg.value)
+        if name == "invoke":
+            arg = call.args[1] if len(call.args) > 1 else None
+        elif name == "submit" and call.args and getattr(call.args[0], "id", None) == "invoke":
+            arg = call.args[2] if len(call.args) > 2 else None
+        else:
+            return set()
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return {arg.value}
+        if isinstance(arg, ast.Name) and arg.id in alternatives:
+            return alternatives[arg.id]
+        raise AssertionError(f"an entrypoint is chosen by an expression this test cannot read: {ast.dump(arg)}")
+
+    calls = {node: entrypoint(node) for node in ast.walk(tree) if isinstance(node, ast.Call) and entrypoint(node)}
+    called = set().union(*calls.values())
     # The fourth entrypoint has two accepted spellings; either satisfies the ladder.
     fourth = {"lower_target_to_llvm", "emit_target_artifact"}
-    assert set(CMDS[:3]) <= called, f"a contract entrypoint is no longer unconditional: {called}"
-    assert called & fourth, f"the fourth entrypoint is no longer unconditional: {called}"
+    assert set(CMDS[:2]) <= called, f"a contract entrypoint is no longer unconditional: {called}"
+    assert CMDS[2] in called or "emit_analysis_bundle" in called, f"no command emits the buffer: {called}"
+    assert called & fourth, f"the fourth entrypoint is no longer called: {called}"
+
+    # Whether the package bundles its emitters is the package's own declaration, read from its manifest.
+    bundled = selectors.get("_bundled")
+    assert isinstance(bundled, ast.Compare) and getattr(bundled.left.func, "id", None) == (
+        "analysis_emission_entrypoints"
+    ), "the bundle choice is no longer the package's declaration"
+
     # and nothing guards any of those calls on a per-capsule condition
+    package_level = {"_bundled", "overlap", "early"}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.If, ast.For, ast.While)):
-            for inner in ast.walk(node):
-                if isinstance(inner, ast.Call):
-                    fn = inner.func
-                    nm = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
-                    assert nm != "run_entrypoint", "an entrypoint call became conditional"
+        if isinstance(node, (ast.If, ast.IfExp, ast.For, ast.While)):
+            if not any(inner in calls for inner in ast.walk(node)):
+                continue
+            assert isinstance(node, (ast.If, ast.IfExp)), "an entrypoint call is inside a loop"
+            names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
+            assert names <= package_level, f"an entrypoint call became conditional on {sorted(names - package_level)}"
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.If, ast.IfExp)):
+            guarded = {cmd for inner in ast.walk(node) if inner in calls for cmd in calls[inner]}
+            assert not (guarded & set(CMDS[:2])), f"{sorted(guarded & set(CMDS[:2]))} became conditional"
 
 
 def test_a_retired_depends_on_narrows_nothing(tmp_path, monkeypatch, capsys):

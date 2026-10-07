@@ -179,6 +179,54 @@ def test_always_empty_field_clears_once_a_stage_can_be_built(checker, tmp_path):
     assert not any(i.endswith(":epilogue") for i in ids), ids
 
 
+_ROWS_CONSUMER = """
+    def report(rows):
+        out = []
+        for r in rows:
+            for v in r["values"]:
+                out.append(v)
+            for s in r["slots"]:
+                out.append(s)
+        return out
+"""
+
+
+def test_a_zero_argument_method_call_is_not_an_empty_constructor(checker, tmp_path):
+    """``x.tolist()`` returns what its receiver holds; only a bare ``list()``-style constructor is
+    decidably empty. Reading the method call as empty made a populated field read as always empty."""
+    root = tmp_path / "repo"
+    _write(root, "lib/consumer.py", _ROWS_CONSUMER)
+    _write(
+        root, "lib/build.py", 'def build(arr, rows):\n    rows.append(dict(values=None, **{"values": arr.tolist()}))\n'
+    )
+    ids = [f["id"] for f in _run(checker, root, kinds="always-empty-field")]
+    assert not any(i.endswith(":values") for i in ids), ids
+    # The bare constructor is still the empty literal it always was.
+    _write(root, "lib/build.py", 'def build(rows):\n    rows.append(dict(**{"values": list()}))\n')
+    ids = [f["id"] for f in _run(checker, root, kinds="always-empty-field")]
+    assert any(i.endswith(":values") for i in ids), ids
+
+
+def test_a_field_filled_through_an_inner_index_is_an_accumulator(checker, tmp_path):
+    """``slot["slots"][k] = v`` writes the field's contents; its ``{}`` initialiser is not a field that
+    is always empty. Without the nested-store rule that initialiser was reported as dead."""
+    root = tmp_path / "repo"
+    _write(root, "lib/consumer.py", _ROWS_CONSUMER)
+    body = (
+        "def build(by, pairs):\n"
+        "    for key, k, v in pairs:\n"
+        '        slot = by.setdefault(key, {"slots": {}})\n'
+        '        slot["slots"][k] = v\n'
+    )
+    _write(root, "lib/build.py", body)
+    ids = [f["id"] for f in _run(checker, root, kinds="always-empty-field")]
+    assert not any(i.endswith(":slots") for i in ids), ids
+    # MUTATION: with no write through the field, the empty initialiser IS the only value it holds.
+    _write(root, "lib/build.py", body.replace('        slot["slots"][k] = v\n', ""))
+    ids = [f["id"] for f in _run(checker, root, kinds="always-empty-field")]
+    assert any(i.endswith(":slots") for i in ids), ids
+
+
 def test_unproduced_member_flags_a_stage_nothing_constructs(checker, tmp_path):
     """The second half of the same defect: even with ``bias_add`` reachable, ``maxpool`` is
     validated for and built by nothing. The verifier admits a value the compiler cannot emit."""

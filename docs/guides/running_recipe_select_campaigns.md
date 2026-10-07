@@ -3,7 +3,7 @@ title: "Running the Gemmini recipe-select agent campaigns"
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [agent_uses_the_compiler_gemmini]
 code_refs: [merlin/experiments/agent_recipe_select_v0/scripts/_track.py, merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py, merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py, merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py, merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py]
 ---
@@ -33,6 +33,15 @@ experiment; they do not certify a different OOT backend or a new model invocatio
 * The GSIM emulator this track certifies against, at `$TMPDIR/gsim_cert_serialclk_v1/` or wherever
   `$MERLIN_GEMMINI_GSIM_EMU` points. The scripts check its sha256 (`GSIM_SHA`) on the way in — the
   binary is identified by its digest, never by where it happens to sit.
+* The historical certified compiler package, which this repository no longer ships. Set
+  `MERLIN_RECIPE_FROZEN_PACKAGE_ROOT` to the **absolute** root of an externally obtained copy: its
+  `SHA256SUMS` must hash to the manifest digest pinned in `_track.py`, and every file it lists is
+  re-hashed. Without it, every script that guards the champion (`assert_frozen_intact`), including
+  the AutoComp arm's driver, refuses to start. Check a copy with
+  `.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/_track.py`, and reconstruct the
+  recipe arm's fork from it as `merlin/experiments/agent_recipe_select_v0/compiler/AGENT.md`
+  describes. A similarly named package or a newer OOT backend is not a substitute; if the pinned
+  bytes cannot be obtained, the campaign stays historical rather than reproducible.
 * A codex seat (`auth_mode: chatgpt`). Runs are billed as `subscription_notional`; `billed_usd` stays
   empty on seat rows and empty never means zero.
 

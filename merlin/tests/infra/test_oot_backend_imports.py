@@ -16,6 +16,7 @@ import ast
 import symtable
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.target_registry import explicit_targets
@@ -52,6 +53,7 @@ def test_no_parent_relative_import(path):
     )
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_gemmini_harness_renderer_resolves_its_lazy_imports():
     """The renderer's imports are function-local, so only calling into it proves they resolve."""
     from merlin.runtime.backends.base import get_backend

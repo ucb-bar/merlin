@@ -325,7 +325,7 @@ def test_absent_execution_is_not_misreported_as_certificate_rejection(tmp_path, 
     monkeypatch.setattr(MS, "measurement_identity", lambda **_k: ({}, []))
     calls = []
     monkeypatch.setattr(GATE, "validate_execution", lambda *_a: calls.append(1))
-    row = PME._run_arm4_engines(
+    row = PME._run_el4_compiler_engines(
         tmp_path,
         {"id": "one"},
         tmp_path,

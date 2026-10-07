@@ -21,15 +21,19 @@ def test_atlas_reference_contract_is_selected_and_matches_derivation_intent(monk
     contract = capability_manifests.validate(info.load_contract())
     residual = yaml.safe_load((selected / "contracts/residual.yaml").read_text(encoding="utf-8"))
     assert residual.pop("facts_source") == "rtl"
-    assert residual == contract
+    # The authored part is exactly the residual. Units the deriver synthesized from the RTL facts are
+    # recorded beside it and marked in `derived_compute_units` (test_lane_datapaths re-derives them);
+    # they are never authored intent, so they are set aside for this comparison.
+    derived_units = set(contract.get("derived_compute_units") or ())
+    authored = {k: v for k, v in contract.items() if k != "derived_compute_units"}
+    authored["compute_units"] = [u for u in contract["compute_units"] if u["name"] not in derived_units]
+    assert residual == authored
     assert contract["status"] == "prototype" and contract["requires_human_review"] is True
     assert "mesh" not in contract["capabilities"]
     assert "encoding" not in contract
     assert "scaling" not in contract["compute_units"][0]
     assert "requant" not in contract["compute_units"][0]
-    assert contract["compute_units"][0]["accumulate"] == [
-        {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "bf16"}
-    ]
+    assert contract["compute_units"][0]["accumulate"] == [{"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "bf16"}]
 
     spec = load_software_spec(selected / "software-spec.yaml", target="atlas")
     assert capability_contract(spec, base_contract=contract) == contract

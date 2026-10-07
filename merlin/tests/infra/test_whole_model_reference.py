@@ -13,6 +13,7 @@ import json
 import struct
 
 import pytest
+import selected_driver
 
 from merlin.perf import whole_model_open as WO
 from merlin.perf import whole_model_reference as R
@@ -52,6 +53,7 @@ def _reference(values=_VALUES, digest=1234) -> dict:
     }
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_program_prints_its_whole_outputs_digest_and_the_verdict_reads_it() -> None:
     from merlin.runtime.backends import base as backends
 

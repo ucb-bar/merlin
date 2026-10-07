@@ -60,6 +60,7 @@ from typing import Any, Protocol
 
 from merlin.perf import whole_model_verdict as V
 
+from . import gates as G
 from . import jobs as J
 from .identity import load_builder, now
 
@@ -98,7 +99,8 @@ class CellMeasurer(Protocol):
     ``programs`` builds one program per group of one member and returns ``{label: record}``; a record
     carries ``group``, ``linked`` (``submission`` when the package answers it), ``cause``, ``elf`` and,
     when it could not be built, ``refusal``.  ``scan`` checks one program's WHOLE ELF for the roles and
-    returns ``{clean, summary}``.  ``time`` runs the given programs and returns ``{label: {status,
+    returns ``{clean, summary, prohibited}`` (``prohibited``: the ``{selector: name}`` it held the
+    program to).  ``time`` runs the given programs and returns ``{label: {status,
     cycles, correct, ...}}``; it is only ever handed programs that may be timed."""
 
     def programs(
@@ -143,17 +145,33 @@ def measure_member(
     roles: Sequence[str],
     out: Path,
     max_cycles: int,
+    sealed: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """One member's rows: built, refused where the rule or coverage refuses, and only the rest timed.
 
     For the PACKAGE arm of the OBJECTIVE member, a group the package does not answer is refused
     before any emulator time.  Every package program's whole ELF is scanned for the roles; a scan that
-    cannot run refuses (it never passes)."""
+    cannot run refuses (it never passes), and so does one that prohibits less than the ``sealed``
+    Phase 0 policy (:func:`.gates.scan_weaker_than_sealed`).
+
+    A FUSED REGION is one program: the internal members' records name the boundary they are timed with
+    (``timed_with``), are never timed alone, and take the boundary's grade with no cycles of their own --
+    the region's cycles are counted once, at its boundary, and every member is still the package's."""
     records = dict(measurer.programs(arm, member["groups"], package_dir=package_dir, member=member, out=out))
     refused: dict[str, str] = {}
     census: dict[str, Any] = {}
     required = _required_groups(arm, member)
+    with_boundary = {label: record for label, record in records.items() if record.get("timed_with") is not None}
     for label, record in records.items():
+        if label in with_boundary:
+            # A REGION MEMBER IS THE PACKAGE'S ONLY WHILE THE PACKAGE ANSWERS IT: claiming a region and
+            # handing a member back is a decline like any other, refused by the same rule.
+            if int(record.get("group", -1)) in required and record.get("linked") != LINKED_SUBMISSION:
+                refused[label] = (
+                    f"coverage: the package does not answer this cell group inside its claimed region "
+                    f"({record.get('cause') or record.get('linked')}); not timed"
+                )
+            continue
         if record.get("refusal"):
             refused[label] = str(record["refusal"])
             continue
@@ -168,6 +186,9 @@ def measure_member(
                 scan = dict(measurer.scan(record, roles=roles))
             except Exception as exc:  # noqa: BLE001 -- a scan that cannot run refuses
                 scan = {"clean": False, "summary": {}, "error": f"{type(exc).__name__}: {exc}"}
+            weaker = G.scan_weaker_than_sealed(scan, sealed, roles) if sealed is not None else ""
+            if weaker:
+                scan = {**scan, "clean": False, "error": scan.get("error") or weaker}
             if scan.get("clean") is not True:
                 refused[label] = "isa_prohibited: " + (
                     ", ".join(sorted(scan.get("summary") or {}))
@@ -176,8 +197,28 @@ def measure_member(
                 continue
             if scan.get("census") is not None:
                 census[label] = scan["census"]
-    runnable = {label: record for label, record in records.items() if label not in refused}
+    runnable = {
+        label: record for label, record in records.items() if label not in refused and label not in with_boundary
+    }
     timed = dict(measurer.time(runnable, member=member, max_cycles=max_cycles, out=out)) if runnable else {}
+    boundary_label = {int(r.get("group", -1)): label for label, r in records.items() if label not in with_boundary}
+    for label, record in with_boundary.items():
+        boundary = boundary_label.get(int(record["timed_with"]))
+        if label in refused:
+            continue
+        if boundary is None:
+            refused[label] = f"its fused region's boundary g{record['timed_with']} is not among this cell's programs"
+        elif boundary in refused:
+            refused[label] = (
+                f"its fused region's boundary g{record['timed_with']} was refused: {refused[boundary][:200]}"
+            )
+        else:
+            shared = dict(timed.get(boundary) or {"status": "refused", "refusal": "the boundary was not timed"})
+            timed[label] = {
+                **{k: shared.get(k) for k in ("status", "correct", "refusal", "exactness", "carried")},
+                "cycles": 0 if shared.get("status") == "graded" else None,
+                "timed_with": int(record["timed_with"]),
+            }
     rows = []
     for label, record in sorted(records.items()):
         row = {
@@ -190,6 +231,8 @@ def measure_member(
             "kind": record.get("kind") or record.get("op"),
             "elf_sha256": record.get("elf_sha256"),
         }
+        if record.get("region"):
+            row["region"] = record["region"]
         if label in refused:
             row.update(status="refused", refusal=refused[label])
         else:
@@ -256,6 +299,14 @@ def compose_cell(
     for row in rows:
         if row.get("model") == COLLATERAL:
             baseline = dict((collateral or {}).get(str(row["group"])) or {})
+            members = [int(g) for g in (row.get("region") or {}).get("members") or ()]
+            if members and row.get("timed_with") is None:
+                # A REGION'S BOUNDARY times every member: it is held to the sum of their baselines.
+                baselines = [(collateral or {}).get(str(m)) or {} for m in members]
+                if all(isinstance(b.get("cycles"), int) for b in baselines):
+                    baseline["cycles"] = sum(int(b["cycles"]) for b in baselines)
+            elif row.get("timed_with") is not None:
+                baseline.pop("cycles", None)  # timed inside its boundary's program, whose sum is checked
             problem = collateral_problem(row, baseline, tolerance)
             collateral_rows.append(
                 {
@@ -282,6 +333,10 @@ def compose_cell(
         }
         if row.get("refusal"):
             entry["refusal"] = str(row["refusal"])[:300]
+        if row.get("region"):
+            entry["region"] = row["region"]
+        if row.get("timed_with") is not None:
+            entry["timed_with"] = row["timed_with"]  # its cycles are its region boundary's
         where = f"{row['model']}:g{row['group']}" if row.get("model") else f"g{row['group']}"
         (held_out.append({**entry, "model": row["model"]}) if row.get("model") else groups.append(entry))
         if entry["state"] == "refused":
@@ -487,8 +542,22 @@ def measure_cell(job: Mapping[str, Any], job_dir: Path, package: Path, *, target
     cell = dict(spec.get("cell") or {})
     timing = dict(spec.get("timing") or {})
     roles = list((job.get("build_options") or {}).get("prohibited_roles") or ())
+    sealed = job.get("instruction_policy")
+    unsealed = G.sealed_policy_problems(sealed, roles)
+    if unsealed:
+        # Before any program is built: a cell under a rule nobody sealed spends emulator time on
+        # programs whose instruction scan could not have refused them.
+        raise J.ServiceError(f"the cell carries no enforceable sealed instruction policy ({'; '.join(unsealed)})")
+    # THE EXACTNESS CONTRACT the run carries (the cell machine's own when the job carries none): every
+    # program's group is graded under it, and the result records which contract that was.
+    from merlin.perf import exactness as EX
+
+    carried = (job.get("exactness") or {}).get("contract") or spec.get("exactness")
+    contract = EX.Contract.from_value(carried, target=target)
     # The package arm is built by the job's own recipe (its build options), as its whole model would be.
-    measurer = _measurer({**spec, "build_options": dict(job.get("build_options") or {})})
+    measurer = _measurer(
+        {**spec, "build_options": dict(job.get("build_options") or {}), "exactness": contract.to_document()}
+    )
     rows: list[dict[str, Any]] = []
     # A member never needs more than its own baseline (two invocations and setup) to show it is no
     # worse; a regression or a deadlock is refused at that bound instead of run to a flat one.
@@ -513,6 +582,7 @@ def measure_cell(job: Mapping[str, Any], job_dir: Path, package: Path, *, target
                 roles=roles,
                 out=Path(job_dir) / "cell" / (member["label"] or "objective"),
                 max_cycles=bound,
+                sealed=sealed if roles else None,
             )
         ]
     machine = str(timing.get("registry_machine") or spec.get("registry_name") or "cell")
@@ -574,6 +644,20 @@ def measure_cell(job: Mapping[str, Any], job_dir: Path, package: Path, *, target
     diagnostics = diagnostics_of(rows, cell)
     if diagnostics:
         fields["diagnostics"] = diagnostics
+    per_group = {
+        f"{r['model'] + ':' if r.get('model') else ''}g{r['group']}": r.get("exactness")
+        for r in rows
+        if r.get("exactness")
+    }
+    summary: dict[str, int] = {}
+    for label in per_group.values():
+        summary[str(label)] = summary.get(str(label), 0) + 1
+    fields["exactness"] = {
+        "contract": contract.record(),
+        "per_group": per_group,
+        "summary": summary,
+        "label": EX.label_summary({"summary": summary}),
+    }
     return fields
 
 

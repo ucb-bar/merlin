@@ -185,7 +185,7 @@ entry used to vanish from the capsule while `_semantic_block` still credited tha
 
 ## 3. The four golden regimes
 
-`_entry_regime` picks the engine; there is no default and no fallback.
+`corpus_spec.entry_binding` picks the engine; there is no default and no fallback.
 
 | regime | engine | datapath | compare |
 |---|---|---|---|

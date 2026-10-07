@@ -3,6 +3,7 @@ kind: model_slice
 source_role: pytorch_model_slice
 source_reference: PyTorch bias add bf16 (atlas bias_add)
 label: public
+stimulus_range: [-4, 3]
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: X

@@ -524,6 +524,8 @@ ADAPTERS = {
             "model_capsule": Option("input", flag=""),
             "phase1_oot": Option("path"),
             "price_table": _INPUT,
+            # The sealed Phase 0 corpus manifest whose instruction_policy the declared roles are held to.
+            "phase0_manifest": _INPUT,
         },
         mode="whole_model_measured",
         resume="native_flag",

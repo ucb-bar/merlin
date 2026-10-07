@@ -164,6 +164,19 @@ def schemas_dir() -> Path:
     return data_path("schemas")
 
 
+def contract_dir() -> Path:
+    """Return the contract dir (``<repo>/merlin/contract`` in-repo, bundled ``_data/contract`` in a
+    wheel). Honors ``MERLIN_CONTRACT_DIR``.
+
+    Every reader of a contract file resolves through this, never through ``merlin_dir()``: a frozen
+    source snapshot installs the package as a wheel, where ``merlin_dir()/contract`` does not exist
+    and only ``MERLIN_CONTRACT_DIR`` names the contract the run was sealed against."""
+    env = os.environ.get("MERLIN_CONTRACT_DIR")
+    if env:
+        return Path(env)
+    return data_path("contract")
+
+
 def prompts_dir() -> Path:
     """Return the agent-prompt dir (``<repo>/merlin/prompts`` in-repo, bundled ``_data/prompts`` in a
     wheel). Honors ``MERLIN_PROMPTS_DIR``."""
@@ -334,16 +347,42 @@ def target_env_name(target: str, what: str) -> str:
     return f"MERLIN_{target.upper()}_{what.upper()}"
 
 
+class ExternalPathUnset(KeyError):
+    """``MERLIN_EXT_<NAME>`` is not configured: this host does not have that external checkout.
+
+    A ``KeyError`` so every existing ``except KeyError`` is unchanged. Its own type is what lets a reader
+    whose contract is "nothing derived when the source is absent" tell an absent checkout apart from a
+    ``KeyError`` raised by a defect somewhere inside the code that would have read it.
+    """
+
+
 def ext_path(name: str) -> Path:
     """Resolve an external, machine-specific dependency location by short key.
 
     Reads ``MERLIN_EXT_<NAME_UPPERCASE>`` from the process environment (wins) or from the
-    gitignored ``<repo>/.env``. Raises ``KeyError`` if unset (copy ``.env.example`` -> ``.env``).
-    Example: ``ext_path('chipyard')`` -> reads ``MERLIN_EXT_CHIPYARD``.
+    gitignored ``<repo>/.env``. Raises :class:`ExternalPathUnset` (a ``KeyError``) if unset (copy
+    ``.env.example`` -> ``.env``). Example: ``ext_path('chipyard')`` -> reads ``MERLIN_EXT_CHIPYARD``.
     """
     key = f"MERLIN_EXT_{name.upper()}"
     val = os.environ.get(key) or _dotenv().get(key)
     if not val:
         known = sorted(k[len("MERLIN_EXT_") :].lower() for k in _dotenv() if k.startswith("MERLIN_EXT_"))
-        raise KeyError(f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}")
+        raise ExternalPathUnset(f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}")
     return Path(val)
+
+
+def is_external_path_unset(exc: BaseException | None) -> bool:
+    """Whether ``exc`` is, or was explicitly raised FROM, an unconfigured external checkout.
+
+    The lookup's error used to escape from deep inside an extractor, crashing readers documented to
+    report "unavailable" -- only on a host without the checkout. Only explicit ``raise ... from`` causes
+    are followed: a declaration naming a checkout this host lacks wraps the lookup that way, whereas an
+    error a defect raises merely *while* handling one is implicit context and is not absence.
+    """
+    for _ in range(16):  # a cause chain is short; the bound only guards a pathological cycle
+        if exc is None:
+            return False
+        if isinstance(exc, ExternalPathUnset):
+            return True
+        exc = exc.__cause__
+    return False

@@ -148,7 +148,9 @@ def test_packaged_tool_brokers_use_canonical_modules_and_explicit_isa_context(lo
         "merlin_experiments.phase1.brokers.simjob",
     }
     isa = modules["merlin_experiments.phase1.brokers.isa_tools"]
-    assert isa[isa.index("--descriptor") + 1] == str(loop.C.DESCRIPTOR)
+    # The invocation context carries the resolved descriptor (the legacy target path is a compat symlink).
+    assert isa[isa.index("--descriptor") + 1] == str(loop.C.CONTEXT.descriptor)
+    assert loop.C.CONTEXT.descriptor == loop.C.DESCRIPTOR.resolve()
     assert isa[isa.index("--repo") + 1] == str(loop.C.REPO)
     assert "--descriptor" not in modules["merlin_experiments.phase1.brokers.cca"]
     assert all("--max-jobs" not in argv for argv in modules.values())

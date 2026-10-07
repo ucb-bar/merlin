@@ -90,10 +90,17 @@ def compact_text(module, *, elements_limit: int = 64, tensor_sink=None) -> str:
 
 
 def record_stage(audit, name: str, module, *, generic: bool = False) -> None:
-    """Serialize in the caller's executable syntax for exact-byte attribution."""
-    if audit.directory is None:
-        return
+    """Serialize in the caller's executable syntax for exact-byte attribution.
+
+    With no audit directory the module is serialized only if an open compile trace wants this stage
+    (:func:`merlin.common.compile_trace.observe` renders lazily); with one, the audit reports it."""
     from ._common import text
+
+    if audit.directory is None:
+        from merlin.common import compile_trace
+
+        compile_trace.observe(name, pipeline=audit.record["producer"], render=lambda: text(module, generic=generic))
+        return
 
     tensors = []
 

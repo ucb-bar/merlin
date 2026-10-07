@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import ast
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
-# Resolved through the repo's own path helper, never `Path(__file__).parents[N]`: this file moved once
-# already while I was writing it and the index arithmetic silently pointed at a directory that does not
-# exist, which the vacuity guard below caught and a `parents[N]` would not have.
-DRIVER = merlin_dir() / "experiments" / "capsule_bench" / "harness" / "run_baseline_qa_loop.py"
+# Resolved by MODULE, never by a file path: the stubs have moved twice (from the harness script into
+# the phase-1 loop grader), and each move left a path pointing at a file without them, which only the
+# vacuity guard below caught.
+DRIVER = module_source_path("merlin_experiments.phase1.feedback.loop_grading")
 
 
 def _stub_verdicts() -> list[dict]:

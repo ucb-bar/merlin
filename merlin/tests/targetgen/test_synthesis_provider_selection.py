@@ -71,6 +71,60 @@ def test_selected_provider_missing_plan_synthesizes_without_in_tree_fallback(pro
     assert plan["requires_human_review"] is True
 
 
+def test_selected_operation_contract_generates_typed_mlir_package(providers, tmp_path):
+    root, contract, _ = providers
+    (root / "contracts/dialect_plan.yaml").unlink()
+    contract["dialect_name"] = "synthetic"
+    contract["types"] = [{"name": "state"}]
+    contract["operation_capabilities"] = {
+        "version": 1,
+        "operations": [
+            {
+                "domain": "dialect",
+                "dialect": "synthetic",
+                "operation": "step",
+                "status": "unknown",
+                "effects": ["movement"],
+                "semantics": {
+                    "kind": "machine",
+                    "mlir_signature": {
+                        "operands": [{"name": "state", "type": "!synthetic.state"}],
+                        "results": [{"name": "next", "type": "!synthetic.state"}],
+                        "attributes": [
+                            {"name": "mode", "type": "string", "role": "mode", "choices": ["read", "write"]}
+                        ],
+                        "effects": ["read", "write"],
+                    },
+                },
+            }
+        ],
+    }
+    (root / "contracts/target_contract.yaml").write_text(yaml.safe_dump(contract))
+    result = pipeline.build("synthetic", out=tmp_path / "generated", emit=["mlir"])
+    assert result.schema_problems == []
+    assert result.plans["dialect_plan"]["generated_from_contract"] is True
+    ops = (result.out / "include/MerlinTargetSynthetic/Dialect/Synthetic/IR/SyntheticOps.td").read_text()
+    assert "Synthetic_State:$state" in ops
+    assert "StrAttr:$mode" in ops
+    assert (result.out / "tools/merlin-synthetic-opt.cpp").is_file()
+    (root / "contracts/dialect_plan.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "target": "synthetic",
+                "dialect_name": "synthetic",
+                "types": [],
+                "ops": [{"name": "step"}],
+                "lowering": [],
+                "tests": [],
+            }
+        )
+    )
+    duplicate_output = tmp_path / "duplicate"
+    with pytest.raises(ValueError, match="duplicate dialect authority"):
+        pipeline.build("synthetic", out=duplicate_output, emit=["mlir"])
+    assert not duplicate_output.exists()
+
+
 @pytest.mark.parametrize("member", ["target_contract", "dialect_plan"])
 @pytest.mark.parametrize("bad", ["yaml", "nonmapping", "directory", "dangling", "escape"])
 def test_invalid_selected_resources_refuse_before_pipeline_output(providers, tmp_path, member, bad):

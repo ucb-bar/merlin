@@ -94,9 +94,9 @@ def _declared() -> dict[str, Verdict]:
     """The reviewed table. Absent or malformed means every engine is UNKNOWN, never trusted."""
     import yaml
 
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import contract_dir
 
-    path = merlin_dir() / "contract" / "counter_trust.yaml"
+    path = contract_dir() / "counter_trust.yaml"
     try:
         body = yaml.safe_load(path.read_text())
     except (OSError, ValueError):

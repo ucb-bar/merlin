@@ -44,8 +44,13 @@ __all__ = [
     "LABEL",
     "SCHEMA",
     "ScreenRefusal",
+    "VALIDATED",
+    "UNVALIDATED",
     "collect_pairs",
     "fit_calibration",
+    "minimum_decided_pairs",
+    "minimum_rank_rate",
+    "validate_calibration",
     "pairs_from_consoles",
     "routes_of",
     "screen_console",
@@ -58,6 +63,8 @@ LABEL = "STRUCTURE SCREEN (functional simulator): correctness and compute struct
 SCREEN_FILE = "structure_screen.json"
 #: Above this board/simulator ratio a kind's (or group's) functional cycles are blind to its board cost.
 BLIND_RATIO = 20.0
+VALIDATION_SCHEMA = "whole_model_screen_calibration_validation_v1"
+VALIDATED, UNVALIDATED = "validated", "unvalidated"
 
 
 class ScreenRefusal(ValueError):
@@ -122,6 +129,9 @@ def screen_console(
         row: dict[str, Any] = {"group": int(group), "kind": line.kind, "spike_cycles": line.cycles, "local": state}
         if routes:
             row["on"] = routes.get(group)
+        if detail:
+            # The check's own numbers, kept for every group: an exactness contract grades from them.
+            row["check"] = detail
         if detail and state != "correct":
             row["failure"] = detail
         on = (routes or {}).get(group)
@@ -145,6 +155,14 @@ def screen_console(
             row["class_ratio"] = {k: fit_kind[k] for k in ("median_ratio", "p10", "p90", "n")}
         rows.append(row)
     wrong = [r["group"] for r in rows if r["local"] != "correct"]
+    # THE SCREEN'S RANKING (its class ratios as a board estimate) stands only on a calibration whose refit
+    # was validated against held-out board readings; anything else is recorded as unvalidated, and why.
+    validation = (calibration or {}).get("validation") or {}
+    ranking = {
+        "status": VALIDATED if validation.get("status") == VALIDATED else UNVALIDATED,
+        "reasons": list(validation.get("reasons") or ())
+        or ([] if validation.get("status") == VALIDATED else ["no validated calibration was refit for this screen"]),
+    }
     return {
         "schema": SCHEMA,
         "label": LABEL,
@@ -163,9 +181,11 @@ def screen_console(
             "pairs": (calibration or {}).get("pairs"),
             "sources": (calibration or {}).get("sources"),
             "blind_ratio": blind_ratio,
+            "validation": validation or None,
         }
         if calibration
         else None,
+        "ranking": ranking,
         "groups": rows,
     }
 
@@ -312,7 +332,7 @@ def collect_pairs(store_bases: Iterable[str | Path]) -> list[dict[str, Any]]:
             if not uart.is_file() or not console.is_file():
                 continue
             try:
-                pairs += pairs_from_consoles(
+                found = pairs_from_consoles(
                     console.read_text(encoding="utf-8", errors="replace"),
                     uart.read_text(encoding="utf-8", errors="replace"),
                     source=f"{job.parent.name}/{job.name[:16]} elf {elf[:12]}",
@@ -320,8 +340,24 @@ def collect_pairs(store_bases: Iterable[str | Path]) -> list[dict[str, Any]]:
                 )
             except (ScreenRefusal, ValueError):
                 continue
+            # What a held-out validation binds each pair to: the executable, the measurement domain (the
+            # board's own identity, as the store recorded it) and the bytes the two readings came from.
+            binding = {
+                "elf_sha256": str(elf),
+                "domain": _domain(result.get("device")),
+                "evidence_sha256s": [_sha256(result_path), _sha256(uart), _sha256(console)],
+            }
+            pairs += [{**pair, **binding} for pair in found]
             seen.add(elf)
     return pairs
+
+
+def _domain(device: Any) -> dict[str, Any] | None:
+    """The measurement domain a board reading belongs to: its target, rung and the board's own binary
+    digest -- the identity the store's noise derivation keys a machine by -- or None when unrecorded."""
+    if not isinstance(device, Mapping) or not device.get("binary_sha256"):
+        return None
+    return {key: device.get(key) for key in ("target", "rung", "binary_sha256")}
 
 
 def _quantile(values: Sequence[float], q: float) -> float:
@@ -334,11 +370,22 @@ def _quantile(values: Sequence[float], q: float) -> float:
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
 
 
-def fit_calibration(pairs: Sequence[Mapping[str, Any]], *, blind_ratio: float = BLIND_RATIO) -> dict[str, Any]:
+def fit_calibration(
+    pairs: Sequence[Mapping[str, Any]],
+    *,
+    blind_ratio: float = BLIND_RATIO,
+    margin: Mapping[str, Any] | None = None,
+    validate: bool = True,
+) -> dict[str, Any]:
     """Per kind and per group: the board/simulator ratio's median, spread and pair count; the blind flag.
 
     Also the log-log correlation of the two instruments over every pair, which says how much a
     simulator cycle count tells about a board one at all.
+
+    Every refit is validated (:func:`validate_calibration`) against held-out board-measured groups under
+    the machine's derived noise ``margin`` (the measured mode's :func:`noise.margin` document), and the
+    result is recorded as ``validation``; with no margin the screen's ranking is ``unvalidated``.
+    ``validate`` is off only for the per-fold fits the validation itself makes.
     """
     by_kind: dict[str, list[float]] = {}
     by_class: dict[str, list[float]] = {}
@@ -384,8 +431,230 @@ def fit_calibration(pairs: Sequence[Mapping[str, Any]], *, blind_ratio: float = 
         # averaged over both describes neither.
         "classes": {name: summary(r) for name, r in sorted(by_class.items())},
         "groups": {group: summary(r) for group, r in sorted(by_group.items())},
+        **({"validation": validate_calibration(pairs, margin=margin)} if validate else {}),
     }
 
 
 def _class(kind_or_group: Any, on: Any) -> str:
     return f"{kind_or_group}@{on}"
+
+
+# ------------------------------------------------------------------------------------ validation
+#
+# A refit calibration is a fast estimate of board cycles: a group's functional-simulator cycles times
+# the board/simulator ratio band of its class. It is only worth exposing if it predicts board readings
+# it was not fitted on, and orders candidates the way the board did. Every threshold below is derived:
+#
+# * the error bound is the machine's own noise margin (a prediction that misses by more than the
+#   machine's run-to-run spread is not a prediction at the machine's resolution);
+# * every held-out reading the store holds must be predicted (none may be UNKNOWN);
+# * the statistical minimum is the smallest count of decided pairs at which a scorer at chance (each
+#   pair a fair coin) could agree on all of them with probability no larger than that margin: below it
+#   no agreement rate is evidence, so the validation is undeterminable and fails closed;
+# * the agreement rate must be one a fair coin would reach on the store's own measured order (its
+#   within-workload pairs of board readings) with probability no larger than the margin.
+
+
+def minimum_decided_pairs(margin: float) -> int:
+    """The fewest decided pairs on which unanimous agreement is evidence at significance ``margin``: the
+    smallest ``n`` with ``CHANCE ** n <= margin`` for a fair coin."""
+    from .rank_validation import CHANCE
+
+    if not math.isfinite(margin) or not 0 < margin < 1:
+        raise ValueError("a significance margin must lie strictly between 0 and 1")
+    return max(1, math.ceil(math.log(margin) / math.log(CHANCE)))
+
+
+def minimum_rank_rate(pairs: int, margin: float) -> float:
+    """The smallest agreement rate ``k / pairs`` a fair coin reaches with probability at most ``margin``
+    (the upper binomial tail), on ``pairs`` measured within-workload pairs."""
+    from .rank_validation import CHANCE
+
+    if pairs < minimum_decided_pairs(margin):
+        raise ValueError(f"{pairs} measured pair(s) cannot show agreement beyond chance at {margin}")
+    log_p = pairs * math.log(CHANCE)  # P(X = pairs): every pair agreed
+    tail, k = 0.0, pairs
+    while k > 0:
+        mass = math.exp(log_p)
+        if tail + mass > margin:
+            break
+        tail += mass
+        # P(X = k - 1) from P(X = k) for a fair coin: times k / (pairs - k + 1)
+        log_p += math.log(k) - math.log(pairs - k + 1)
+        k -= 1
+    return (k + 1) / pairs
+
+
+class _RatioScreen:
+    """The calibration's own prediction for a held-out reading: its functional cycles times the board/
+    simulator band ``[p10, p90]`` of its kind under its route (else of its kind), as :func:`screen_console`
+    selects it."""
+
+    def __init__(self, calibration: Mapping[str, Any], domain_sha256: str) -> None:
+        self.calibration, self.domain_sha256 = calibration, domain_sha256
+
+    def predict(self, features: Mapping[str, float | None], *, domain_sha256: str):
+        from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
+
+        if domain_sha256 != self.domain_sha256:
+            return CycleInterval.unknown("the reading is from another measurement domain than the fit")
+        if len(features) != 1:
+            return CycleInterval.unknown("a held-out reading names exactly one group's simulator cycles")
+        ((pointer, spike),) = features.items()
+        kind, on = _parse_pointer(pointer)
+        if spike is None or kind is None:
+            return CycleInterval.unknown(f"feature {pointer} names no kind's simulator cycles")
+        classes, kinds = self.calibration.get("classes") or {}, self.calibration.get("kinds") or {}
+        fit = (classes.get(_class(kind, on)) if on else None) or kinds.get(kind)
+        if not fit:
+            return CycleInterval.unknown(f"no training pair of kind {kind!r}")
+        return CycleInterval(
+            float(fit["p10"]) * float(spike),
+            float(fit["p90"]) * float(spike),
+            provenance=(f"board/simulator band [p10, p90] over {fit['n']} training pair(s)",),
+        )
+
+
+def _escape(token: str) -> str:
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def _pointer(kind: str, on: str | None) -> str:
+    """The JSON pointer (RFC 6901) of a reading's simulator cycles: its kind, and its route when known."""
+    route = f"/routes/{_escape(on)}" if on else ""
+    return f"/kinds/{_escape(kind)}{route}/spike_cycles"
+
+
+def _parse_pointer(pointer: str) -> tuple[str | None, str | None]:
+    tokens = [t.replace("~1", "/").replace("~0", "~") for t in pointer.split("/")[1:]]
+    if len(tokens) == 3 and tokens[0] == "kinds" and tokens[2] == "spike_cycles":
+        return tokens[1], None
+    if len(tokens) == 5 and tokens[0] == "kinds" and tokens[2] == "routes" and tokens[4] == "spike_cycles":
+        return tokens[1], tokens[3]
+    return None, None
+
+
+def _slices_required() -> int:
+    """How many held-out workloads must carry evidence: the existing schedule-rank gate's own minimum (a
+    rate measured on one slice says nothing about another)."""
+    import inspect
+
+    from . import rank_validation as R
+
+    return int(inspect.signature(R.verdict).parameters["minimum_slices"].default)
+
+
+def validate_calibration(pairs: Sequence[Mapping[str, Any]], *, margin: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Hold out each board-measured group of the store in turn, refit the calibration on the others, and
+    predict it (:func:`merlin.perf.fast_estimate_validation.cross_validate`). ``status`` is
+    :data:`VALIDATED` only when every derived threshold holds; otherwise :data:`UNVALIDATED`, with why."""
+    from merlin.common.digest import is_sha256
+    from merlin.common.jsonio import canonical_sha256
+
+    from . import fast_estimate_validation as FV
+    from . import rank_validation as R
+
+    def unvalidated(*reasons: str, **known: Any) -> dict[str, Any]:
+        return {"schema": VALIDATION_SCHEMA, "status": UNVALIDATED, "reasons": list(reasons), **known}
+
+    value = (margin or {}).get("margin")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < float(value) < 1:
+        return unvalidated("no machine noise margin was derived for this store, so no error bound exists")
+    margin_value = float(value)
+    record: dict[str, Any] = {"margin": dict(margin or {})}
+    observations: list[Any] = []
+    by_id: dict[str, Mapping[str, Any]] = {}
+    unbound = 0
+    for pair in pairs:
+        domain, elf = pair.get("domain"), str(pair.get("elf_sha256") or "")
+        evidence = tuple(pair.get("evidence_sha256s") or ())
+        if not isinstance(domain, Mapping) or not is_sha256(elf) or not evidence:
+            unbound += 1
+            continue
+        observation = FV.Observation(
+            program=elf,
+            workload=canonical_sha256(["whole_model_group", str(pair["group"]), str(pair["kind"])]),
+            group=str(pair["group"]),
+            domain=canonical_sha256(dict(domain)),
+            features={_pointer(str(pair["kind"]), str(pair["on"]) if pair.get("on") else None): float(pair["spike"])},
+            cycles=float(pair["board"]),
+            evidence_sha256s=evidence,
+        )
+        observations.append(observation)
+        by_id[observation.id] = pair
+    record.update(observations=len(observations), unbound_pairs=unbound)
+    if unbound:
+        # The fit uses every pair; one the validation cannot bind is data nothing checked.
+        return unvalidated(f"{unbound} pair(s) carry no executable, domain or evidence binding", **record)
+    if len({o.domain for o in observations}) > 1:
+        return unvalidated("the store's pairs span more than one measurement domain", **record)
+    needed = minimum_decided_pairs(margin_value)
+    measured_order = len(R.ordered_pairs([R.Program(o.workload, o.id, o.cycles, o.group) for o in observations]))
+    record["measured_order_pairs"] = measured_order
+    if measured_order < needed:
+        return unvalidated(
+            f"the store's measured order holds {measured_order} within-workload pair(s); at least {needed} are "
+            f"needed before agreement at the machine's margin {margin_value:.6g} is evidence",
+            **record,
+        )
+    domain_sha256 = observations[0].domain
+
+    def fit(train):
+        return _RatioScreen(fit_calibration([by_id[o.id] for o in train], validate=False), domain_sha256)
+
+    def run(rate: float, basis: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        thresholds = {
+            "maximum_relative_error": margin_value,
+            "maximum_relative_error_basis": f"the machine's noise margin ({(margin or {}).get('basis')})",
+            "minimum_predictions": len(observations),
+            "minimum_predictions_basis": "every held-out board reading the store holds",
+            "minimum_rank_rate": rate,
+            "minimum_rank_rate_basis": basis,
+            "minimum_decided": needed,
+            "minimum_slice_decided": needed,
+            "minimum_decided_basis": "the fewest decided pairs a fair coin agrees on unanimously with probability "
+            "at most the margin",
+            "minimum_slices": _slices_required(),
+        }
+        result = FV.cross_validate(
+            observations,
+            fit,
+            maximum_relative_error=thresholds["maximum_relative_error"],
+            minimum_predictions=thresholds["minimum_predictions"],
+            minimum_rank_rate=thresholds["minimum_rank_rate"],
+            minimum_decided=thresholds["minimum_decided"],
+            minimum_slice_decided=thresholds["minimum_slice_decided"],
+            minimum_slices=thresholds["minimum_slices"],
+        )
+        return result, thresholds
+
+    validation, thresholds = run(
+        minimum_rank_rate(measured_order, margin_value),
+        f"agreement a fair coin reaches on the store's {measured_order} measured pair(s) with probability at most "
+        "the margin",
+    )
+    decided = int(validation["ranking"]["overall"]["decided"])
+    if decided >= needed and decided < measured_order:
+        # The rate is a rate over the pairs the screen decided; hold it to the significance of that count.
+        validation, thresholds = run(
+            minimum_rank_rate(decided, margin_value),
+            f"agreement a fair coin reaches on the {decided} pair(s) the screen decided with probability at most "
+            "the margin",
+        )
+    collisions = [
+        row
+        for pointer in sorted({next(iter(o.features)) for o in observations})
+        for row in FV.feature_collisions([o for o in observations if pointer in o.features], [pointer])
+    ]
+    record.update(
+        thresholds=thresholds,
+        absolute_error=validation["absolute_error"],
+        ranking=validation["ranking"],
+        predictions=len(validation["predictions"]),
+        unresolved_predictions=sum(1 for row in validation["predictions"] if not row["prediction"]["resolved"]),
+        collisions=len(collisions),
+        coefficient_scope=validation["coefficient_scope"],
+    )
+    if validation["exposable"]:
+        return {"schema": VALIDATION_SCHEMA, "status": VALIDATED, "reasons": [], **record}
+    return unvalidated(*validation["reasons"], **record)

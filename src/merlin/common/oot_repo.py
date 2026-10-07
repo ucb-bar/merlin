@@ -17,6 +17,10 @@ Three properties make that history evidence rather than decoration:
   measurement store names the package by. A symlink or special file is refused rather than guessed at.
 * **The history is reproducible.** Author and committer are pinned and both dates come from the run
   clock the caller passes, so the same package bytes, label, time and parent always give the same sha.
+
+A lineage older than this module has no such history. :func:`reconstruct` rebuilds one from the stored
+package bytes, digest-checked hop by hop, and labels the repository and every commit
+``reconstructed: true`` so it is never mistaken for a history a harness recorded live.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ MOVABLE_TAGS = frozenset({BEST_TAG})
 _FORMAT = "1"
 _ZERO = "0" * 40
 _ORIGIN_RECORD = "merlin-origin.json"
+_RECONSTRUCTION_RECORD = "merlin-reconstruction.json"
 _STAMP = "%Y%m%dT%H%M%SZ"
 
 
@@ -246,6 +251,84 @@ def init_from(path: Path | str, source: Path | str, *, ref: str = FROZEN_TAG, sa
 def origin(path: Path | str) -> dict[str, str] | None:
     """The repository a phase-2 history was started from, or None for a phase-1 repository."""
     record = _require_repo(path) / ".git" / _ORIGIN_RECORD
+    if not record.is_file():
+        return None
+    return json.loads(record.read_text(encoding="utf-8"))
+
+
+def reconstruct(
+    path: Path | str,
+    hops: list[dict[str, Any]],
+    *,
+    frozen: int,
+    best: int,
+    reason: str,
+    sandbox_roots=(),
+) -> dict[str, Any]:
+    """Rebuild a harness history from stored package bytes, for a lineage that never kept one.
+
+    Runs that predate the harness ``oot/`` repository left their packages behind as directories (a
+    store entry, a round's ``submission``), not as commits. Each hop is ``{"package": dir, "digest":
+    sha256, "label": str, "when": run clock, "run": str | None, "metadata": dict}``, oldest first; it is
+    committed only when its bytes still hash to the digest it was measured or graded as, so the
+    reconstruction cannot quietly substitute other bytes. ``frozen`` and ``best`` index the hops the
+    ``frozen`` and ``best`` tags name.
+
+    Every commit carries ``reconstructed: true`` in its metadata and the repository records the
+    reconstruction in ``.git/merlin-reconstruction.json`` (see :func:`reconstruction`): its history is
+    a faithful ordering of bytes that existed, not a record of what a harness observed as it happened,
+    and a reader must be able to tell the two apart.
+    """
+    if not isinstance(reason, str) or not reason.strip():
+        raise OotRepoError("a reconstruction must say why no harness history exists")
+    if not hops:
+        raise OotRepoError("a reconstruction needs at least one hop")
+    if not (0 <= frozen <= best < len(hops)):
+        raise OotRepoError(f"frozen ({frozen}) and best ({best}) must index the hops in lineage order")
+    for index, hop in enumerate(hops):
+        package = hop.get("package")
+        if not package or not Path(package).is_dir():
+            raise OotRepoError(f"hop {index} names no package directory: {package!r}")
+        observed = package_digest(package)
+        if observed != hop.get("digest"):
+            raise OotRepoError(
+                f"hop {index} ({package}) holds package {observed}, not the recorded {hop.get('digest')}"
+            )
+    repo = init(path, sandbox_roots=sandbox_roots)
+    commits = []
+    for hop in hops:
+        metadata = {**dict(hop.get("metadata") or {}), "reconstructed": True, "source": str(hop["package"])}
+        commits.append(
+            commit_candidate(
+                repo,
+                hop["package"],
+                label=hop["label"],
+                when=hop["when"],
+                run_id=hop.get("run"),
+                metadata=metadata,
+                sandbox_roots=sandbox_roots,
+            )
+        )
+    tag(repo, FROZEN_TAG, commits[frozen].commit)
+    tag(repo, BEST_TAG, commits[best].commit)
+    record = {
+        "format": _FORMAT,
+        "reconstructed": True,
+        "reason": reason.strip(),
+        "frozen": commits[frozen].commit,
+        "best": commits[best].commit,
+        "hops": [
+            {"label": c.label, "commit": c.commit, "package_digest": c.package_digest, "source": str(h["package"])}
+            for c, h in zip(commits, hops, strict=True)
+        ],
+    }
+    (repo / ".git" / _RECONSTRUCTION_RECORD).write_bytes(canonical_json(record, trailing_newline=True))
+    return record
+
+
+def reconstruction(path: Path | str) -> dict[str, Any] | None:
+    """The record :func:`reconstruct` left, or None for a history a harness wrote as it happened."""
+    record = _require_repo(path) / ".git" / _RECONSTRUCTION_RECORD
     if not record.is_file():
         return None
     return json.loads(record.read_text(encoding="utf-8"))

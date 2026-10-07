@@ -22,7 +22,6 @@ correctness gates before any success is reported. This CLI only ORCHESTRATES the
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 import tempfile
@@ -99,6 +98,18 @@ from .compile.route_before_build import plan_before_build
 # Workloads that ship as model2MLIR capture bundles (RVV whole-model path). Not exhaustive — any
 # workloads/<name> with a loader can be captured; this is the "known-good" convenience set for --list.
 _RVV_DTYPES = ("fp32", "int8", "fp16", "fp8")
+#: Where ``--run`` can put a compiled result.
+_RUNS = ("none", "host", "k1", "spike", "zephyr", "verilator", "gsim")
+
+from .common import compile_trace as _trace  # noqa: E402
+
+#: The stage the front door itself reaches before any lowering: the model bundle it resolved or captured.
+_STAGES = _trace.declare(
+    "frontend",
+    ("capture",),
+    entry="merlin.compile_cli",
+    summary="merlin-compile resolves (or captures) the model bundle it lowers",
+)
 
 
 def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
@@ -355,6 +366,7 @@ def compile_rvv(
         multi_program = session_contract_version == 2
     if not (bundle / "model.mlir").is_file() and not multi_program:
         raise FileNotFoundError(f"explicit capture bundle has neither model.mlir nor a version-2 session: {bundle}")
+    _trace.artifact("capture", [bundle / "model.mlir"], pipeline="frontend")
     pkg_dir = package or default_package(dtype, bundle=bundle)
     pkg = load_rvv_package(pkg_dir)
     package_backend = getattr(pkg, "backend", "rvv")
@@ -1211,189 +1223,28 @@ def compile_oot(
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        prog="merlin-compile",
-        description="Compile saved models or OOT capsules; inspect model readiness without claiming execution.",
-    )
-    ap.add_argument(
-        "--workload",
-        required=False,
-        help="rvv: a captured model name (bitvla, openvla, rdt2, …); "
-        "an OOT target: a capsule name (A2_single_tile_matmul, …); "
-        "not needed for --model-preflight (which selects an explicit bundle)",
-    )
-    # --target choices = rvv (whole-model) + every registered OOT target, auto-discovered via the
-    # target registry (in-tree references + MERLIN_TARGET_PATH). Registering a dialect package makes
-    # `--target=<name>` work with no code change here.
-    try:
-        from .targetgen.target_registry import all_targets
+    from .common.compile_trace import StopAfterStage
+    from .compile import command, debug
 
-        _oot_targets = sorted(all_targets())
-    except Exception as exc:  # noqa: BLE001 — an unreadable registry offers no OOT target, and says so
-        print(
-            f"[merlin-compile] target registry unreadable ({type(exc).__name__}: {exc}); only "
-            f"--target rvv is available",
-            file=sys.stderr,
-        )
-        _oot_targets = []
-    ap.add_argument(
-        "--target",
-        choices=["rvv", *_oot_targets],
-        default="rvv",
-        help="rvv (whole-model) or any registered OOT target (auto-discovered)",
-    )
-    ap.add_argument("--dtype", choices=list(_RVV_DTYPES), default="fp32", help="rvv only")
-    ap.add_argument(
-        "--harts",
-        type=int,
-        default=1,
-        help="rvv+zephyr: harts to fan the model across (>1 builds the multicore "
-        "OpenMP image; needs a matching SoC/sim)",
-    )
-    ap.add_argument(
-        "--iters",
-        type=int,
-        default=1,
-        help="rvv: timed inference iterations (sustained mode; k1/zephyr/spike/verilator)",
-    )
-    ap.add_argument("--warmup", type=int, default=0, help="rvv: untimed warmup iterations before the timed ones")
-    ap.add_argument(
-        "--run",
-        choices=["none", "host", "k1", "spike", "zephyr", "verilator", "gsim"],
-        default=None,
-        help="where to run after compiling (default: rvv→k1, an OOT target→spike; 'none' = compile only)",
-    )
-    ap.add_argument(
-        "--verify",
-        dest="verify",
-        action="store_true",
-        default=True,
-        help="gate the run output vs the golden (default on)",
-    )
-    ap.add_argument("--no-verify", dest="verify", action="store_false")
-    ap.add_argument(
-        "--no-capture",
-        dest="capture",
-        action="store_false",
-        default=True,
-        help="rvv: do NOT auto-capture a missing bundle (fail with the capture command instead)",
-    )
-    ap.add_argument("--package", default=None, help="override the codegen/OOT package dir")
-    ap.add_argument(
-        "--board",
-        help="board name for RVV execution or an explicitly selected bare-metal --model-build",
-    )
-    ap.add_argument(
-        "--corpus-descriptor",
-        type=Path,
-        help="explicit OOT corpus descriptor; prefer a released descriptor (this CLI does not verify its seal)",
-    )
-    ap.add_argument(
-        "--model-preflight",
-        action="store_true",
-        help="read-only OOT model analysis: compare declared routes with groups in a captured program",
-    )
-    ap.add_argument("--model-build", action="store_true", help="build one saved capture as a bare-metal ELF")
-    ap.add_argument("--capture-bundle", help="explicit saved capture for --model-preflight or --model-build")
-    ap.add_argument("--board-catalog", type=Path, help="explicit board catalog for --model-build")
-    ap.add_argument("--host-dts", type=Path, help="byte-pinned elaborated host DTS for --model-build")
-    ap.add_argument("--output", type=Path, help="fresh generated output directory for --model-build")
-    ap.add_argument("--arena-mb", type=int, help="explicit model arena size for --model-build")
-    ap.add_argument("--reference-file", help="explicit in-capture .npy reference for model execution")
-    ap.add_argument("--rtl-facts", type=Path, help="selected RTL facts for native --model-build execution")
-    ap.add_argument(
-        "--deployment-dtype",
-        help="exact target operand format for --model-preflight (e.g. int8, bf16, fp8_e4m3)",
-    )
-    ap.add_argument("--timeout", type=int, default=900)
-    ap.add_argument("--json", action="store_true", help="emit the result dict as JSON")
+    ap = command.parser(_RVV_DTYPES, _RUNS, "k1", ("k1", "zephyr", "spike", "verilator"))
     a = ap.parse_args(argv)
-
-    if a.model_build and a.model_preflight:
-        ap.error("--model-build and --model-preflight are separate workflows")
-    if a.corpus_descriptor is not None and (a.target == "rvv" or a.model_preflight or a.model_build):
-        ap.error("--corpus-descriptor applies only to OOT capsule compilation")
-    if a.board is not None and a.target != "rvv" and not a.model_build:
-        ap.error("--board applies only to RVV spike/Zephyr/Verilator execution")
-    if a.capture_bundle is not None and not (a.model_preflight or a.model_build):
-        ap.error("--capture-bundle requires --model-preflight or --model-build")
-    build_only_inputs = (a.board_catalog, a.host_dts, a.output, a.arena_mb, a.reference_file, a.rtl_facts)
-    if any(value is not None for value in build_only_inputs) and not a.model_build:
-        ap.error("bare-metal build inputs require --model-build")
-    if a.model_build:
-        if not all((a.capture_bundle, a.package, a.board_catalog, a.board, a.host_dts, a.output, a.arena_mb)):
-            ap.error(
-                "--model-build requires --capture-bundle, --package (host), --board-catalog, "
-                "--board, --host-dts, --output and --arena-mb"
-            )
-        if a.harts != 1 or a.iters != 1 or a.warmup != 0:
-            ap.error("--model-build currently supports one hart and one inference")
-        if a.run not in (None, "none", "spike", "gsim", "verilator"):
-            ap.error("--model-build supports --run none, spike, gsim or verilator")
-        if a.run not in (None, "none") and (not a.verify or not a.reference_file):
-            ap.error("model execution requires --reference-file and complete-output verification")
-        if a.run in ("gsim", "verilator") and not a.rtl_facts:
-            ap.error("native model execution requires --rtl-facts")
-    elif a.target == "rvv" and a.run == "gsim":
-        ap.error("RVV gsim execution requires an explicit --model-build and matching board")
-
-    if a.model_preflight and (a.target == "rvv" or not a.capture_bundle or not a.deployment_dtype):
-        ap.error("--model-preflight requires an OOT --target, --capture-bundle, and --deployment-dtype")
-    if not (a.model_preflight or a.model_build) and not a.workload:
-        ap.error("--workload is required for compilation")
-    if a.model_preflight or a.model_build:
-        # The explicit bundle selects the model. An optional --workload supplied
-        # out of habit must not become a second, possibly conflicting selector.
-        a.workload = Path(a.capture_bundle).name
+    if a.list_passes:
+        return command.list_passes(a)
+    if a.list_stages:
+        return debug.list_stages(a)
+    selection = command.pass_selection(ap, a)
+    command.validate(ap, a)
+    trace = debug.request_from_args(ap, a, target=a.target, workload=str(a.workload))
     run = a.run or ("none" if a.model_build else "k1" if a.target == "rvv" else "spike")
     try:
-        if a.model_build:
-            from .compile.baremetal_model import compile_saved_model
-
-            res = compile_saved_model(
-                capture=a.capture_bundle,
-                package=a.package,
-                board_catalog=a.board_catalog,
-                board=a.board,
-                dts=a.host_dts,
-                output=a.output,
-                target=a.target,
-                run=run,
-                arena_mb=a.arena_mb,
-                timeout_s=a.timeout,
-                reference_file=a.reference_file,
-                rtl_facts=a.rtl_facts,
-            )
-        elif a.model_preflight:
-            from .compile.model_preflight import preflight_model
-
-            res = preflight_model(a.capture_bundle, target=a.target, deployment_dtype=a.deployment_dtype)
-        elif a.target == "rvv":
-            res = compile_rvv(
-                a.workload,
-                a.dtype,
-                run=run,
-                verify=a.verify,
-                package=a.package,
-                auto_capture=a.capture,
-                timeout=a.timeout,
-                harts=a.harts,
-                iters=a.iters,
-                warmup=a.warmup,
-                board=a.board,
-            )
-        else:
-            res = compile_oot(
-                a.workload,
-                target=a.target,
-                run=run,
-                verify=a.verify,
-                package=a.package,
-                timeout=a.timeout,
-                corpus_descriptor=a.corpus_descriptor,
-            )
+        with debug.opened(trace, ["merlin-compile", *(sys.argv[1:] if argv is None else argv)]) as opened:
+            res = _dispatch(a, run, selection)
+        if debug.not_reached(opened):
+            res.update(status="stop_stage_not_reached", reason=debug.not_reached(opened))
     except SystemExit:
         raise
+    except StopAfterStage as stop:  # a requested stop: the IR is written, no artifact; not an error
+        return debug.stopped("merlin-compile", stop, as_json=a.json)
     except Exception as e:  # noqa: BLE001 — surface any pipeline error honestly, don't fake a pass
         res = {
             "tool": "merlin-compile",
@@ -1402,20 +1253,69 @@ def main(argv: list[str] | None = None) -> int:
             "status": "error",
             "error": f"{type(e).__name__}: {e}",
         }
+    if trace is not None:
+        res["trace"] = str(Path(trace.directory).absolute() / "trace.json")
+    return command.report(a, res)
 
-    if a.json:
-        print(json.dumps(res, indent=2, default=str))
-    else:
-        print(
-            f"\n[merlin-compile] {a.target}:{a.workload}"
-            f"{':' + a.dtype if a.target == 'rvv' else ''} → status={res.get('status')}"
-            + (f"  gate_ok={res['verify'].get('gate_ok')}" if res.get("verify") else "")
-            + (f"  reason={res.get('reason') or res.get('error')}" if res.get("reason") or res.get("error") else "")
+
+def _dispatch(a, run: str, selection) -> dict:
+    """The selected workflow, run with the optional lowering passes ``selection`` names."""
+    from .llvmlower import optional_passes
+
+    with optional_passes.applied(selection) as passes:
+        res = _workflow(a, run)
+    if passes:
+        res["lowering_passes"] = passes.spell()
+    return res
+
+
+def _workflow(a, run: str) -> dict:
+    """Dispatch to the workflow the arguments select."""
+    if a.model_build:
+        from .compile.baremetal_model import compile_saved_model
+
+        return compile_saved_model(
+            capture=a.capture_bundle,
+            package=a.package,
+            board_catalog=a.board_catalog,
+            board=a.board,
+            dts=a.host_dts,
+            output=a.output,
+            target=a.target,
+            run=run,
+            arena_mb=a.arena_mb,
+            timeout_s=a.timeout,
+            reference_file=a.reference_file,
+            rtl_facts=a.rtl_facts,
         )
-        for k in ("binary", "cycles", "vlen", "bundle", "package"):
-            if res.get(k) is not None:
-                print(f"    {k}: {res[k]}")
-    return 0 if res.get("status") in ("compiled", "ran", "verified", "verified_complete_output") else 1
+    elif a.model_preflight:
+        from .compile.model_preflight import preflight_model
+
+        return preflight_model(a.capture_bundle, target=a.target, deployment_dtype=a.deployment_dtype)
+    elif a.target == "rvv":
+        return compile_rvv(
+            a.workload,
+            a.dtype,
+            run=run,
+            verify=a.verify,
+            package=a.package,
+            auto_capture=a.capture,
+            timeout=a.timeout,
+            harts=a.harts,
+            iters=a.iters,
+            warmup=a.warmup,
+            board=a.board,
+        )
+    else:
+        return compile_oot(
+            a.workload,
+            target=a.target,
+            run=run,
+            verify=a.verify,
+            package=a.package,
+            timeout=a.timeout,
+            corpus_descriptor=a.corpus_descriptor,
+        )
 
 
 if __name__ == "__main__":

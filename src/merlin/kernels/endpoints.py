@@ -20,17 +20,39 @@ from typing import Any
 
 import yaml
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import contract_dir
 from merlin.kernels import roles as _roles
 
-_SPEC = "contract/compute_endpoints.yaml"
+#: The declaration's name inside the selected contract directory (:func:`merlin.common.paths.contract_dir`).
+SPEC_NAME = "compute_endpoints.yaml"
+
+
+class EndpointSpecMissing(FileNotFoundError):
+    """The selected contract carries no compute-endpoint declaration.
+
+    Raised, never answered with an empty table: an absent declaration used to read as "this target
+    declares no endpoints", so every instruction derived no role and a prohibited-role policy resolved
+    to nothing while still reporting itself resolved. That is how a frozen snapshot -- whose contract
+    lives under ``MERLIN_CONTRACT_DIR``, not under the checkout -- certified a no-FSM corpus that could
+    not refuse a single loop-descriptor instruction."""
+
+
+def spec_path() -> Path:
+    """Where the compute-endpoint declaration is read from: the SELECTED contract, never the checkout."""
+    return contract_dir() / SPEC_NAME
 
 
 def _spec() -> dict[str, Any]:
-    path = merlin_dir() / _SPEC
+    path = spec_path()
     if not path.is_file():
-        return {"endpoints": {}}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {"endpoints": {}}
+        raise EndpointSpecMissing(
+            f"no compute-endpoint declaration at {path}: the selected contract (MERLIN_CONTRACT_DIR or the "
+            f"checkout's) does not carry {SPEC_NAME}, so no instruction role can be derived"
+        )
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not isinstance(document.get("endpoints"), dict):
+        raise ValueError(f"{path}: a compute-endpoint declaration must map `endpoints` to their blocks")
+    return document
 
 
 @dataclass(frozen=True)

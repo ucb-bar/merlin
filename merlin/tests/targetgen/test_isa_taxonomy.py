@@ -9,6 +9,7 @@ Gated on the model venv (npu_model) being present.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 from merlin_experiments.phase0.declarations import for_target
 
@@ -29,6 +30,7 @@ def _atlas_taxonomy():
     return tax
 
 
+@external_sources.requires_ext("npu_model")
 def test_taxonomy_has_the_real_mxu_datapath_not_the_fabricated_classes():
     tax = _atlas_taxonomy()
     classes = set(tax["by_class"])
@@ -41,6 +43,7 @@ def test_taxonomy_has_the_real_mxu_datapath_not_the_fabricated_classes():
     assert tax["by_mnemonic"]["VMATMUL_MXU0"]["class"] == "MXUMatMul"
 
 
+@external_sources.requires_ext("npu_model")
 def test_matmul_required_classes_are_derived_from_the_taxonomy():
     tax = _atlas_taxonomy()
     req = IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16")
@@ -52,6 +55,7 @@ def test_matmul_required_classes_are_derived_from_the_taxonomy():
     assert mv == ["TensorBaseOffset"] and not any(c.startswith("MXU") for c in mv)
 
 
+@external_sources.requires_ext("npu_model")
 def test_classes_carry_derived_roles_not_hardcoded_names():
     """OV13#2: every class carries a semantic ROLE derived structurally from its operand datapath — the
     MXU/tensor structural checks select BY ROLE, not by a hardcoded pattern name. Assert the real atlas
@@ -118,6 +122,7 @@ def test_asm_mnemonic_of_reads_the_op_class_classvar():
     assert _asm_mnemonic_of(Bare) is None
 
 
+@external_sources.requires_ext("npu_model")
 def test_atlas_asm_mnemonics_and_reference_kernel_classes_derive():
     """Regression: the derived taxonomy populates ``asm_mnemonics`` from each op class's own mnemonic (even
     though the standalone ``isa_definition.py`` load exposes no reachable ``operations`` container), so an
@@ -149,6 +154,7 @@ def _atlas_binding():
     return _CS.derive_binding(_lte(_ATLAS), datapath)
 
 
+@external_sources.requires_ext("npu_model")
 def test_committed_atlas_corpus_matches_the_live_derivation():
     """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
     derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""

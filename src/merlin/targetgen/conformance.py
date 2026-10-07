@@ -2794,9 +2794,23 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         from merlin.targetgen import memory_regime as MR
 
         mem_corpus = MR.corpus_regimes(corpus_roots, str(spec_doc.get("target") or ""), labels=labels, exclude=exclude)
-        mgap = MR.uncovered_regimes({"by_regime": mem_req}, mem_corpus)
-        mgap["status"] = "ok"
-        mgap["covered_by"] = mem_corpus["by_regime"]
-        mgap["region_counts"] = (spec_doc.get("memory_mapping") or {}).get("region_counts") or {}
-        out["memory_mapping"] = mgap
+        if mem_req and mem_corpus["capacity_rows"] is None:
+            # No capsule could be placed in ANY regime because the operand store itself did not resolve
+            # (no RTL facts for the target on this host). That measures nothing; reporting every required
+            # regime as uncovered would blame the corpus for the host. Same shape as the phase-0 reader.
+            out["memory_mapping"] = {
+                "status": "not_measured",
+                "detail": "the target's operand-store capacity did not resolve here (no RTL facts), so no "
+                "capsule's regime could be measured",
+                "required": mem_req,
+                "n_required": len([r for r in mem_req if r != MR.UNKNOWN]),
+                "n_covered": 0,
+                "uncovered": [],
+            }
+        else:
+            mgap = MR.uncovered_regimes({"by_regime": mem_req}, mem_corpus)
+            mgap["status"] = "ok"
+            mgap["covered_by"] = mem_corpus["by_regime"]
+            mgap["region_counts"] = (spec_doc.get("memory_mapping") or {}).get("region_counts") or {}
+            out["memory_mapping"] = mgap
     return out

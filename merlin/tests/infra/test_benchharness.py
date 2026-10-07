@@ -11,6 +11,7 @@ import importlib.util
 import json
 import sys
 
+import external_sources
 import pytest
 
 from merlin import benchharness as B
@@ -47,13 +48,40 @@ def test_common_shim_preserves_symbols():
     assert callable(c.sh) and callable(c.hash_tree) and c.repo_sha() != "unknown"
 
 
+_PBCOMMON = "merlin/experiments/gemmini_perf_bench/scripts/_pbcommon.py"
+
+
 def test_pbcommon_shim_preserves_symbols():
-    p = _load("_pb_common", "merlin/experiments/gemmini_perf_bench/scripts/_pbcommon.py")
+    p = _load("_pb_common", _PBCOMMON)
     assert p.RUNS == ROOT / "out" / "runs" / "gemmini" / "perf-bench"
     assert p.REPORTS == ROOT / "out/artifacts" / "plots" / "gemmini" / "perf-bench"
     assert p.KERNELS == p.EXP / "kernels"
+    assert p.matmul_macs(2, 3, 4) == 24
+
+
+def test_pbcommon_reads_the_array_edge_from_the_facts_when_first_used():
+    """Importing the shim derives nothing; DIM and the peak rate come from the target's facts on use.
+
+    Every bench script imports the shim for its bootstrap, so deriving the edge at import made each of
+    them require the RTL checkout. A synthetic observation stands in for the facts, which also shows the
+    numbers are the facts' and not a default.
+    """
+    from merlin.targetgen.rtl.facts import observed_facts
+
+    p = _load("_pb_common_lazy", _PBCOMMON)
+    doc = {"facts": {"target": p.TARGET, "arrays": [{"name": "mesh", "rows": 4, "cols": 8}]}}
+    with observed_facts(p.TARGET, doc):
+        assert p.DIM == 4 and p.PEAK_MACS_PER_CYCLE == 32
+        assert p.align(5) == 8 and p.align(5, 3) == 6 and p.utilization_pct(32, 1) == 100.0
+    with pytest.raises(AttributeError):
+        p.NOT_A_SYMBOL
+
+
+@external_sources.requires_ext("chipyard")
+def test_pbcommon_geometry_is_the_benched_array():
+    p = _load("_pb_common_rtl", _PBCOMMON)
     assert p.DIM == 16 and p.PEAK_MACS_PER_CYCLE == 256
-    assert p.align(17) == 32 and p.matmul_macs(2, 3, 4) == 24 and p.utilization_pct(256, 1) == 100.0
+    assert p.align(17) == 32 and p.utilization_pct(256, 1) == 100.0
 
 
 # --- target-parametric bench driver (spec + selfcheck + perf), oracle-free via a stub runner -------

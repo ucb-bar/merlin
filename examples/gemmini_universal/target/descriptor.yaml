@@ -42,11 +42,12 @@ rtl:
 #                                                               is closer to this device than to
 #                                                               gemmini's. It is still not an attested
 #                                                               artifact of this build.
-#       rtl/                        -> <selected universal Chipyard>/generators/gemmini/src/main/scala
-#                                                               THIS device's Chisel, read-only, in
-#                                                               another user's tree. Same
-#                                                               absolute-symlink-to-a-checkout
-#                                                               convention gemmini's own rtl/ uses.
+#       (no rtl/)                   THIS device's Chisel is NOT committed as a link: it is reached
+#                                                               per host through the `gemmini_universal_rtl`
+#                                                               hardware pin ($MERLIN_UNIVERSAL_CHIPYARD +
+#                                                               generators/gemmini), which the ISA/RTL
+#                                                               cross-check already resolves. Unset, the
+#                                                               RTL is reported absent, never guessed.
 #       example_kernel/             -> gemmini's                Four bareMetalC examples. int8 matmul /
 #                                                               mvin_mvout / conv / padded -- none asks
 #                                                               for a full-width accumulator read.

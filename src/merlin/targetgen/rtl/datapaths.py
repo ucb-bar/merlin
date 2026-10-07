@@ -607,3 +607,230 @@ def datapaths_from_compute_cells(
         out += rec.to_facts(prefix="" if not named_roles else f"{element.casefold()}.")
         named_roles = True
     return out, notes
+
+
+# ------------------------------------------------------------------------- lane engines beside the array
+#: Provenance tag for a LANE engine's element format: a unit beside the compute array that replicates its
+#: arithmetic once per lane (a vector engine). Distinct from ``firrtl_pe_geometry``, which reads the
+#: array's own replicated cell, because the evidence is different -- here the format is NAMED by the
+#: per-lane arithmetic, not read off a multiply-accumulate cell's ports.
+LANE_SOURCE = "firrtl_lane_replication"
+
+
+def dedup_base(module: str) -> str:
+    """The module a FIRRTL dedup copy was cloned from: ``MulRawFN_15`` -> ``MulRawFN``.
+
+    An elaboration keeps structurally identical instances as numbered copies of one module, so sixteen
+    lanes of one multiplier appear as sixteen distinct module names. Counting them as one primitive
+    replicated sixteen times is what makes the lane count visible at all.
+    """
+    head, sep, tail = module.rpartition("_")
+    return head if sep and head and tail.isdigit() else module
+
+
+def hardfloat_formats(module: str) -> tuple[str, ...]:
+    """Registered formats a berkeley-hardfloat ``..._e<E>_s<S>`` suffix states, in order, deduped.
+
+    hardfloat parameterises every float primitive by ``expWidth`` and ``sigWidth`` (the significand
+    INCLUDING its hidden bit) and puts both in the elaborated module name, so ``_e8_s8`` is the 16-bit
+    format with an 8-bit exponent and a 7-bit fraction. The NAME is looked up in the format registry by
+    that split -- this reader holds no ``(E, S) -> name`` table of its own -- and a block-scaled format
+    cannot match: it is a pair of tensors, not one lane value.
+    """
+    parts = dedup_base(module).split("_")
+    out: list[str] = []
+    for exp_tok, sig_tok in zip(parts, parts[1:]):
+        if not (exp_tok[:1] == "e" and exp_tok[1:].isdigit() and sig_tok[:1] == "s" and sig_tok[1:].isdigit()):
+            continue
+        e, s = int(exp_tok[1:]), int(sig_tok[1:])
+        out += [
+            f.name
+            for f in qf.registry().values()
+            if f.exp_bits == e and f.mant_bits == s - 1 and f.element_bits == e + s and f.scale.block is None
+        ]
+    return tuple(dict.fromkeys(out))
+
+
+def _named_lane_formats(module: str, widths: frozenset[int]) -> dict[str, str]:
+    """``format -> why`` for the formats ``module`` names AND corroborates with a port of that format.
+
+    A hardfloat primitive is corroborated by its RECODED width (``E + S + 1``: hardfloat carries one
+    extra exponent bit internally) or the plain element width; a registry token in the identifier by
+    the format's element width, as :func:`cell_datapath` requires.
+    """
+    out: dict[str, str] = {}
+    for name in hardfloat_formats(module):
+        fmt = qf.get(name)
+        recoded = fmt.element_bits + 1
+        if recoded in widths or fmt.element_bits in widths:
+            out[name] = (
+                f"`{module}` is a hardfloat primitive parameterised e{fmt.exp_bits}/s{fmt.mant_bits + 1} "
+                f"({fmt.exp_bits} exponent + {fmt.mant_bits} fraction bits = {name} in the format registry) "
+                f"and declares the {recoded if recoded in widths else fmt.element_bits}-bit port it implies"
+            )
+    for name in format_tokens(module):
+        if qf.get(name).element_bits in widths:
+            out.setdefault(name, f"`{module}` names {name} and declares a {qf.get(name).element_bits}-bit port")
+    return out
+
+
+def _parents(edges: dict[str, set[str]]) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for parent, children in edges.items():
+        for child in children:
+            out.setdefault(child, set()).add(parent)
+    return out
+
+
+def peer_units(el: Elaboration, array_element: str, scope_root: str | None = None) -> tuple[str, ...]:
+    """The subtrees that sit BESIDE the compute array: every child of an ancestor of ``array_element``
+    whose instance closure does not contain the array, up to and including the children of
+    ``scope_root`` (the facts' census unit root) when one is given.
+
+    No module name is consulted: the array element comes from the facts' own array discovery and the
+    walk is over instantiation edges only. Dedup copies of the element itself are the array, not peers.
+    """
+    parents = _parents(el.edges)
+    element_base = dedup_base(array_element)
+    holds_array: dict[str, bool] = {}
+
+    def _holds(module: str) -> bool:
+        if module not in holds_array:
+            holds_array[module] = any(dedup_base(m) == element_base for m in instance_closure(el.edges, module))
+        return holds_array[module]
+
+    out: list[str] = []
+    frontier, seen = [array_element], {array_element}
+    while frontier:
+        nxt: list[str] = []
+        for node in frontier:
+            for anc in sorted(parents.get(node, ())):
+                if anc in seen:
+                    continue
+                seen.add(anc)
+                out += [c for c in sorted(el.edges.get(anc, ())) if c not in out and not _holds(c)]
+                if anc != scope_root:
+                    nxt.append(anc)
+        frontier = nxt
+    return tuple(out)
+
+
+@dataclass(frozen=True)
+class LaneDatapath:
+    """The element format one lane engine's per-lane arithmetic names."""
+
+    unit: str
+    lanes: int
+    dtype: str | None
+    per_lane: tuple[str, ...]
+    evidence: str
+    why_not: str = ""
+
+    def to_fact(self) -> dict[str, Any]:
+        rec: dict[str, Any] = {
+            "unit_module": self.unit,
+            "lanes": self.lanes,
+            "dtype": self.dtype,
+            "source": LANE_SOURCE,
+            "per_lane_modules": list(self.per_lane),
+            "evidence": self.evidence,
+        }
+        if self.dtype is not None:
+            rec["elem_bits"] = qf.get(self.dtype).element_bits
+        else:
+            rec["dtype_unknown"] = self.why_not
+        return rec
+
+
+def lane_datapath(el: Elaboration, unit: str) -> LaneDatapath | None:
+    """The lane format of ``unit``, or ``None`` when ``unit`` replicates nothing per lane.
+
+    The LANE COUNT is the replication count most of the unit's primitive groups share (a parent
+    instantiating the same primitive ``k`` times is one group of ``k``); a reduction tree's ``k - 1``
+    adders or a pair of row units do not set it. The FORMAT is what the primitives replicated exactly
+    once per lane name and corroborate with a port. Two different formats is an ambiguity and fails
+    closed -- an engine whose lanes both multiply fp8 and round to bf16 has not said which one it
+    computes in.
+    """
+    groups: dict[int, dict[str, set[str]]] = {}
+    for parent in instance_closure(el.edges, unit):
+        by_base: dict[str, set[str]] = {}
+        for child in el.edges.get(parent, ()):
+            by_base.setdefault(dedup_base(child), set()).add(child)
+        for base, members in by_base.items():
+            if len(members) > 1:
+                groups.setdefault(len(members), {}).setdefault(base, set()).update(members)
+    if not groups:
+        return None
+    tally = sorted(((len(bases), k) for k, bases in groups.items()), reverse=True)
+    if len(tally) > 1 and tally[0][0] == tally[1][0]:
+        return LaneDatapath(
+            unit,
+            0,
+            None,
+            (),
+            "",
+            f"module {unit} replicates primitives {tally[0][1]} and {tally[1][1]} times equally often, "
+            f"so its lane count is UNKNOWN",
+        )
+    lanes = tally[0][1]
+    per_lane = tuple(sorted(groups[lanes]))
+    named: dict[str, str] = {}
+    for base, members in sorted(groups[lanes].items()):
+        for member in sorted(members):
+            for fmt, why in _named_lane_formats(member, el.widths.get(member, frozenset())).items():
+                named.setdefault(fmt, why)
+    lead = (
+        f"module {unit} (a unit beside the compute array) replicates {len(per_lane)} primitive(s) once per "
+        f"lane, {lanes}x each: {', '.join(per_lane)}"
+    )
+    if not named:
+        return None  # replication with no named arithmetic (queues, crossbars) is not a lane engine
+    if len(named) == 1:
+        ((fmt, why),) = named.items()
+        return LaneDatapath(unit, lanes, fmt, per_lane, f"{lead}; {why}")
+    reason = (
+        f"its per-lane primitives name {len(named)} formats ({sorted(named)}), and which one the lanes "
+        f"compute in is not decidable from the elaboration"
+    )
+    return LaneDatapath(unit, lanes, None, per_lane, lead, reason)
+
+
+def lane_datapaths(facts: dict, fir_paths: Iterable[Path | str]) -> tuple[list[dict[str, Any]], list[str]]:
+    """``(lane datapath facts, why-not notes)`` for the units beside each discovered compute array.
+
+    Readings from several elaborations that agree are folded; a disagreement drops the unit with a note,
+    as :func:`datapaths_from_compute_cells` does for array cells.
+    """
+    arrays = [a for a in facts.get("arrays") or [] if isinstance(a, dict) and a.get("element")]
+    elements = [str(a["element"]) for a in arrays if not a.get("geometry_unknown")]
+    if not elements:
+        return [], ["no compute array element is discovered, so no unit can be placed beside one"]
+    census = facts.get("census") if isinstance(facts.get("census"), dict) else {}
+    scope_root = census.get("unit_root") if isinstance(census.get("unit_root"), str) else None
+    readings: dict[str, list[LaneDatapath]] = {}
+    notes: list[str] = []
+    for path in fir_paths:
+        p = Path(path)
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            notes.append(f"{p.name}: unreadable ({type(exc).__name__}), so it contributes no lane datapath")
+            continue
+        el = read_elaboration(text)
+        for element in elements:
+            for unit in peer_units(el, element, scope_root):
+                rec = lane_datapath(el, unit)
+                if rec is not None:
+                    readings.setdefault(unit, []).append(rec)
+    out: list[dict[str, Any]] = []
+    for unit, recs in sorted(readings.items()):
+        distinct = {(r.lanes, r.dtype) for r in recs}
+        if len(distinct) > 1:
+            notes.append(f"lane unit {unit}: elaborations disagree ({sorted(distinct, key=str)}), so none is published")
+            continue
+        rec = recs[0]
+        if rec.dtype is None:
+            notes.append(f"lane unit {unit}: {rec.why_not}")
+        out.append(rec.to_fact())
+    return out, notes

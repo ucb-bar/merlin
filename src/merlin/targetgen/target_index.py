@@ -148,6 +148,7 @@ def _champions(target: str, artifacts_root: str | Path | None, problems: list) -
             continue
         records = read_champion(root)
         provenance, measured = records["provenance"], records["measurements"]
+        legacy = (provenance.get("lineage") or {}).get("legacy")
         firesim = measured.get("firesim") or {}
         out.append(
             {
@@ -172,6 +173,10 @@ def _champions(target: str, artifacts_root: str | Path | None, problems: list) -
                     "best_commit": (provenance.get("phase2") or {}).get("best_commit"),
                     "corpus_seal_digest": provenance.get("corpus_seal_digest"),
                     "phase0_evidence_digest": provenance.get("phase0_evidence_digest"),
+                    "unsealed_legacy": legacy is not None,
+                    "legacy_run_dirs": list((legacy or {}).get("run_dirs") or ()),
+                    "reconstructed": bool((provenance.get("phase2") or {}).get("reconstructed")),
+                    "composed": provenance.get("composition") is not None,
                 },
             }
         )
@@ -208,6 +213,32 @@ def write_index(target: str, *, artifacts_root: str | Path | None = None) -> Pat
     return path
 
 
+def refresh_for_run(run_dir: str | Path, phase: int | str) -> Path | None:
+    """Regenerate the index of the target whose phase-``phase`` run root holds ``run_dir``.
+
+    Called when a phase-1 run freezes and when a phase-2 run's ``best`` moves, so the index follows
+    those events instead of waiting for someone to run ``merlin experiment index``.  A run outside the
+    canonical ``out/runs/<target>/phase<N>/`` root is not one the index lists, so nothing is written.
+    NEVER RAISES: the event it follows has already happened and is recorded in its own run; a failed
+    refresh is printed (and leaves the index stale, which ``index --check`` reports), never silent.
+    """
+    import sys
+
+    try:
+        run = Path(run_dir).resolve()
+        target = run.parent.parent.name
+        if not target or paths.phase_runs_root(target, phase).resolve() != run.parent:
+            return None
+        return write_index(target)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring: reported, never raised
+        print(
+            f"[index] INDEX.yaml not refreshed after {run_dir}: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+
+
 def is_current(target: str, *, artifacts_root: str | Path | None = None) -> bool:
     path = index_path(target, artifacts_root=artifacts_root)
     expected = render(build_index(target, artifacts_root=artifacts_root))
@@ -220,7 +251,9 @@ def rows_citing(target: str, run_dir: str | Path, *, artifacts_root: str | Path 
     document = build_index(target, artifacts_root=artifacts_root)
 
     def cites(row: dict) -> bool:
-        values = [row.get("run"), row.get("source_run"), *((row.get("lineage") or {}).values())]
+        lineage = (row.get("lineage") or {}).values()
+        values = [row.get("run"), row.get("source_run")]
+        values += [item for value in lineage for item in (value if isinstance(value, list) else [value])]
         return any(
             isinstance(v, str) and (v in wanted or (Path(v).is_absolute() and _rel(Path(v)) in wanted)) for v in values
         )

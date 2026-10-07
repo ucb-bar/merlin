@@ -20,6 +20,10 @@ Modes, mirroring the other gates in this directory:
   --json               machine-readable
   --ratchet PATH       pre-existing debt that MAY ONLY SHRINK; unlisted new gaps fail
   --fail-on-uncovered  exit non-zero when any non-ratcheted cell is uncovered (default: report only)
+  --allow-unresolved   source-only CI mode: an axis whose REQUIRED regimes could not be measured on this
+                       host (e.g. no RTL facts, so the operand store does not resolve) is printed
+                       UNQUALIFIED instead of failing; without it such an axis is CANNOT DECIDE (exit 2)
+                       under --fail-on-uncovered. Every measured gap still fails either way.
 
 Three axes are measured. The ``(semantic_family, dtype, tile_alignment)`` cells say WHAT the corpus
 computes; the COMPOSITION axis (:mod:`merlin.targetgen.boundary`) says how the work is assembled --
@@ -589,6 +593,23 @@ def uncovered_debt(reports: list[dict], ratchet: set) -> list[str]:
     return bad
 
 
+def unmeasured_requirements(reports: list[dict]) -> list[tuple[str, str, str]]:
+    """``(target, axis, why)`` for every axis that carries a requirement it could not measure here.
+
+    A requirement that was derived but could not be measured on this host established nothing. It is
+    not debt (nothing was found uncovered) and it is not clean, so the verdict names it explicitly
+    instead of letting an empty ``uncovered`` list read as coverage.
+    """
+    return [
+        (r["target"], key, str(axis.get("detail") or axis.get("reason") or axis.get("status")))
+        for r in reports
+        if r["status"] == "ok"
+        for key, _tag in AXES
+        for axis in [r.get(key) or {}]
+        if axis.get("status") not in (None, "ok") and axis.get("required")
+    ]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=[])
@@ -624,6 +645,11 @@ def main(argv=None) -> int:
     ap.add_argument("--fail-on-uncovered", action="store_true")
     ap.add_argument(
         "--fail-on-unverifiable", action="store_true", help="exit 2 when a target could not be audited at all"
+    )
+    ap.add_argument(
+        "--allow-unresolved",
+        action="store_true",
+        help="source-only CI: a required axis this host cannot measure is UNQUALIFIED, not CANNOT DECIDE",
     )
     a = ap.parse_args(argv)
     if (a.software_spec is not None or a.rtl_facts is not None) and not a.inventory_out:
@@ -1031,9 +1057,23 @@ def main(argv=None) -> int:
         for r in unrunnable:
             print(f"    ? {r['target']:28s} {r['status']}: {r.get('detail', '')}", file=sys.stderr)
 
+    unmeasured = unmeasured_requirements(reports)
+    if unmeasured:
+        label = "UNQUALIFIED" if a.allow_unresolved else "UNMEASURED"
+        print(f"\n  {label} ({len(unmeasured)}) — a derived requirement this host could not measure:", file=sys.stderr)
+        for target, axis, why in unmeasured:
+            print(f"    ? {target:28s} {axis}: {why}", file=sys.stderr)
+
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1
+    if unmeasured and a.fail_on_uncovered and not a.allow_unresolved:
+        print(
+            f"\nCANNOT DECIDE: {len(unmeasured)} required axis/axes could not be measured on this host; "
+            "provide the target's RTL facts, or pass --allow-unresolved for a source-only run",
+            file=sys.stderr,
+        )
+        return 2
     if (unrunnable or incomplete_applications or (a.fail_on_unverifiable and unverified_applications)) and (
         a.fail_on_uncovered or a.fail_on_unverifiable
     ):

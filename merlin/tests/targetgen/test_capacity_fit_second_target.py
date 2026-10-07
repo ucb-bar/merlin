@@ -15,6 +15,7 @@ Measured on the first attempt to carry the gemmini whole-model certification ove
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.compile_cli import _dtype_bits, _operand_store_bytes, capacity_fit
@@ -158,6 +159,7 @@ def test_the_obligation_is_evaluated_on_every_mesh_path(monkeypatch, target, dty
     separate matter: an undecidable ``holds: None`` is a legitimate outcome, and getting one recorded
     is the whole difference from the silence this replaced.
     """
+    external_sources.require_rtl(target)
     obs = _probe(monkeypatch, target, dtype, 32, 64, 64)
     if obs.get("path") is None:
         pytest.skip(f"{target} has no reachable mesh path in this checkout")
@@ -168,6 +170,7 @@ def test_the_obligation_is_evaluated_on_every_mesh_path(monkeypatch, target, dty
 
 @pytest.mark.parametrize("target,dtype,exact,accum", [("gemmini", "int8", True, "i32")])
 def test_an_oversized_layer_is_blocked_and_charged(monkeypatch, target, dtype, exact, accum):
+    external_sources.require_rtl(target)
     obs = _probe(monkeypatch, target, dtype, 32, 512, 512)
     cf = obs.get("capacity_fit")
     if cf is None:
@@ -182,6 +185,7 @@ def test_an_oversized_layer_is_blocked_and_charged(monkeypatch, target, dtype, e
     assert ("CHANGES THE REDUCTION ORDER" in cf["note"]) is (not exact)
 
 
+@external_sources.requires_rtl("gemmini")
 def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     """`holds: None` is the correct answer for a target that declares no capacity -- and a silent None
     is how a whole class of residency failures came to be reported as an unreachable oracle."""
@@ -196,6 +200,7 @@ def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     assert "UNATTRIBUTED" in obs["capacity_fit_unevaluable"]["detail"]
 
 
+@external_sources.requires_rtl("atlas")
 def test_the_unclassified_target_declines_with_the_reason_named(monkeypatch):
     """End to end on the real target: no declared store, so a decline must carry
     ``capacity_fit_unevaluable`` -- naming the missing fact -- and must charge nobody."""

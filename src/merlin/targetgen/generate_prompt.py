@@ -198,9 +198,9 @@ def _cmdbuf_opcodes() -> list[str]:
     """
     import json
 
-    from ..common.paths import repo_root
+    from ..common.paths import contract_dir
 
-    path = repo_root() / "merlin" / "contract" / "schemas" / "command_buffer.schema.json"
+    path = contract_dir() / "schemas" / "command_buffer.schema.json"
     try:
         schema = json.loads(path.read_text(encoding="utf-8"))
         enum = (

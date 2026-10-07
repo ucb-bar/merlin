@@ -18,8 +18,13 @@ import copy
 import pytest
 
 from merlin.verify import HAS_XDSL, HAS_Z3
+from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(not (HAS_XDSL and HAS_Z3), reason="needs the verify extra (xdsl + z3)")
+# The SMT-LIB export runs upstream `mlir-translate`; only the cells that reach a solver need it.
+_needs_translate = pytest.mark.skipif(
+    find_mlir_tool("mlir-translate") is None, reason="mlir-translate not found (MLIR install / PATH)"
+)
 
 _TIMEOUT_MS = 20_000
 
@@ -81,6 +86,7 @@ def test_a_restructured_submission_is_eligible():
 # -- 2. the verdicts themselves ------------------------------------------------------------------
 
 
+@_needs_translate
 def test_an_equivalent_restructuring_is_verified():
     """Contract against the weight directly instead of packing it first; expect `unsat`.
 
@@ -105,6 +111,7 @@ def test_an_equivalent_restructuring_is_verified():
     )
 
 
+@_needs_translate
 def test_a_wrong_buffer_is_refuted_with_a_counterexample():
     """A validator that has never rejected anything has not been shown to work.
 
@@ -218,6 +225,7 @@ def test_right_values_under_the_wrong_name_is_refuted_not_verified():
         validate_equivalence(spec, agent, timeout_ms=_TIMEOUT_MS)
 
 
+@_needs_translate
 def test_committing_the_declared_name_twice_is_not_silently_collapsed():
     """Two of the thirteen committed `['Y0', 'Y0']`; a dict env keeps only the last.
 

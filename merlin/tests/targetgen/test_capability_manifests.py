@@ -8,6 +8,7 @@ tests pin that the derive path reproduces the residual field-for-field and that 
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.targetgen import capability_manifests as cm
@@ -20,6 +21,7 @@ from merlin.targetgen.target_experiment import _primary_kind
 pytestmark = pytest.mark.target("radiance", "mx_gemmini", "atlas")
 
 
+@external_sources.requires_rtl("atlas")
 def test_manifests_are_schema_valid():
     for name in cm.MANIFESTS:
         cm.validate(cm.MANIFESTS[name]())  # raises on any problem
@@ -67,6 +69,7 @@ def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
         assert m["runner"]["suite"] == f"{name}-capsule-bench"
 
 
+@external_sources.requires_rtl("atlas")
 def test_atlas_manifest_reproduced_from_residual_and_facts():
     """Atlas intent survives fact derivation without promoting a decoder field to an ISA."""
     m = cm.manifest_for("atlas")
@@ -102,10 +105,22 @@ def test_endpoint_from_facts_covers_rocc_and_self_hosted_isa():
     ef = cm._endpoint_from_facts
     assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 3, 126]}]}) is None
     assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 9943]}]}) is None
-    assert ef({"interfaces": [{
-        "name": "funct_decode_table", "scope": "complete_rocc_funct7", "complete_isa": True,
-        "custom_opcode": 123, "legal_funct": [0, 3, 126],
-    }]}) == "inline_asm_insn"
+    assert (
+        ef(
+            {
+                "interfaces": [
+                    {
+                        "name": "funct_decode_table",
+                        "scope": "complete_rocc_funct7",
+                        "complete_isa": True,
+                        "custom_opcode": 123,
+                        "legal_funct": [0, 3, 126],
+                    }
+                ]
+            }
+        )
+        == "inline_asm_insn"
+    )
     assert (
         ef({"interfaces": [{"name": "self_hosted_isa", "encoding_bits": 64, "instruction_classes": ["FMA", "TMC"]}]})
         == "external_backend"
@@ -116,9 +131,13 @@ def test_endpoint_from_facts_covers_rocc_and_self_hosted_isa():
 
 
 def test_rocc_endpoint_uses_command_transport_not_observed_funct_width():
-    observed = {"name": "funct_decode_table", "legal_funct": [87, 9943],
-                "scope": "observed_decode_field", "complete_isa": False,
-                "custom_opcode": 123}
+    observed = {
+        "name": "funct_decode_table",
+        "legal_funct": [87, 9943],
+        "scope": "observed_decode_field",
+        "complete_isa": False,
+        "custom_opcode": 123,
+    }
     assert cm._endpoint_from_facts({"interfaces": [observed]}) is None
     assert cm._endpoint_from_facts({"interfaces": [{"name": "rocc_cmd"}, observed]}) == "inline_asm_insn"
 
@@ -130,6 +149,7 @@ def test_required_executable_facts_cannot_fall_back_to_family_endpoint():
     assert unknown["endpoint_resolution"]["status"] == "unverified"
 
 
+@external_sources.requires_ext("chipyard")
 def test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted():
     """Use selected transport evidence; a missing SIMT provider cannot become RoCC by default."""
     from merlin.targetgen.rtl import mlc_bridge
@@ -177,6 +197,7 @@ def test_rvv_accepts_regular_formats_rejects_low_bit():
         assert res[0].gap is not None, fmt
 
 
+@external_sources.requires_ext("chipyard")
 def test_mx_gemmini_accepts_low_bit_and_mixed():
     units = _units("mx_gemmini")
     ok = rt.route(
@@ -191,6 +212,7 @@ def test_mx_gemmini_accepts_low_bit_and_mixed():
     assert rt.is_fully_routed(ok)
 
 
+@external_sources.requires_ext("chipyard")
 def test_cross_target_contrast():
     # The same fp4 matmul: gap on RVV, routed on mx_gemmini — the whole point.
     d = [rt.OpDemand("matmul", "mxfp4", "mxfp4")]
@@ -198,6 +220,7 @@ def test_cross_target_contrast():
     assert rt.route(d, _units("mx_gemmini"))[0].unit == "mx_pe"
 
 
+@external_sources.requires_rtl("atlas")
 def test_write_and_route_target(tmp_path):
     # Writing to a temp base and resolving via a plugged-in path proves the end-to-end plumbing.
     import os
@@ -249,6 +272,7 @@ def test_target_resolution_is_read_only_and_materialization_is_explicit(tmp_path
     assert calls == [(name, destination)]
 
 
+@external_sources.requires_ext("chipyard")
 def test_radiance_composes_mx_gemmini():
     # radiance's SIMT cluster CONTAINS the gemmini-mx PE: effective dtypes = regular floats + MX.
     units = cu.compute_units(cm.manifest_for("radiance"))

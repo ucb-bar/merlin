@@ -3,9 +3,9 @@ title: model2MLIR frontend
 kind: guide
 status: current
 owner: frontends
-last_verified: 2026-09-29
+last_verified: 2026-10-05
 related: [getting_started, extending_the_stack, phase0_specification, model_lowering, reproducibility]
-code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
+code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, src/merlin/semantic_compiler/linalg_bridge.py, src/merlin/targetgen/cli.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
 ---
 
 # model2MLIR frontend
@@ -138,6 +138,24 @@ and a digest manifest. It does not copy or read runtime samples or goldens.
 The capture receipt binds the copied member bytes; source closure, target
 numerical admission, and model execution remain separate checks. The output
 directory must be new, and failure returns a nonzero status.
+
+For a single admitted static rank-two integer contraction, the installed native
+selector can parse Linalg directly. Supply a native snapshot built for the selected
+target profile, and select the entry function explicitly:
+
+```bash
+merlin-targetgen native-select --engine merlin_native \
+  --snapshot /absolute/native-snapshot --linalg /absolute/region.mlir \
+  --linalg-entry work --mode strict-native --out /absolute/selection.json
+```
+
+`native-compile` accepts the same `--linalg` and `--linalg-entry` pair alongside
+its required OOT support, ABI, target source and output arguments. Both commands
+also accept `--request` for an already typed semantic graph. The Linalg bridge
+currently admits signed i8/i32 or i32 contractions with ordered wrapping i32
+accumulation, explicit initialization and static rank-two shapes. Other
+operations or numerical policies return a nonzero structured status; this
+single-region route does not compile a complete capture or model.
 
 `merlin.capture.bundle.CaptureBundle` is the canonical capture-bundle interface.
 `merlin.baselines.bundle` retains a compatibility import. Legacy roster resolution

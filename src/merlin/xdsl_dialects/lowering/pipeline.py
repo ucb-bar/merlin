@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit
 from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
@@ -27,6 +28,14 @@ from .interface_lowering import LoweringError, lower_to_interface
 from .runtime_lowering import lower_to_runtime
 from .schedule_decisions import lower_to_schedule
 from .target_lowering import lower_to_target
+
+#: The stages :func:`lower_module` records, in order (``--stop-after``/``--dump-ir-after`` names them).
+STAGES = compile_trace.declare(
+    "staged",
+    ("input", "contract", "schedule", "interface", "target", "runtime"),
+    entry="merlin.xdsl_dialects.lowering.lower_module",
+    summary="linalg payload -> contract -> schedule -> interface -> target dialect -> runtime (command buffer)",
+)
 
 
 def load_curated_contract(target: str) -> dict:

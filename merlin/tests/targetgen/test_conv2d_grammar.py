@@ -19,9 +19,9 @@ The contract this file pins is two-sided:
 Supported subset: NHWC layout, ``kernel = [kh, kw, ci, co]``, ``stride``, 4-edge ``padding``,
 ``dilation``, the readout a commit applies (``bias_add``/``bias`` with a NAMED bias tensor,
 ``acc_scale`` with a DECLARED multiplier, ``requant``, ``relu``, ``maxpool``), and an integer
-``output_dtype``. Deliberately NOT supported (and asserted to raise): grouped/depthwise convolution,
-a non-nhwc layout, a bias stage that names no tensor, an ``acc_scale`` stage that names no
-multiplier, and a float output dtype.
+``output_dtype`` (a float token reads the accumulator out unchanged, as the golden engine does).
+Deliberately NOT supported (and asserted to raise): grouped/depthwise convolution, a non-nhwc layout,
+a bias stage that names no tensor, and an ``acc_scale`` stage that names no multiplier.
 
 The bias and the multiplier were the measured gap: every quantized CNN layer is a convolution with a
 per-channel bias, a requantization and an activation, and the op could state none of it as one
@@ -38,9 +38,11 @@ import yaml
 
 from merlin.common.paths import repo_root
 from merlin.runtime.commandbuffer import conv_im2col
-from merlin.runtime.reference import UnmodeledOp, reference_outputs
+from merlin.runtime.reference import reference_outputs
 from merlin.runtime.simulator import SimulationError, simulate
 from merlin.runtime.tensor import Tensor
+from merlin.targetgen import capsule_golden
+from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
 from merlin.targetgen.contract import interface_emit as IE
 from merlin.targetgen.contract.schemas import contract_dir
 
@@ -60,6 +62,17 @@ _CONV_IFACE = textwrap.dedent("""\
 
 def _capsule_dir(name: str):
     return repo_root() / "merlin" / "contract" / "capsules" / "layers" / name
+
+
+def _capsule(name: str) -> dict:
+    return yaml.safe_load((_capsule_dir(name) / "capsule.yaml").read_text(encoding="utf-8"))
+
+
+def _simulate_on_declared_stimulus(name: str, cb: dict) -> dict:
+    """Simulate ``cb`` on the leaf operands the capsule DECLARES (its own stimulus range), the stimulus
+    its golden is evaluated on -- not the simulator's default unsigned fill."""
+    leaves = {k: t.to_list() for k, t in materialize_capsule_leaves(_capsule(name)).items()}
+    return simulate(cb, leaves)["outputs"]
 
 
 def _conv_cb(
@@ -244,9 +257,14 @@ class TestUnsupportedParametersFailClosed:
         with pytest.raises(ValueError, match="no `acc_scale` multiplier"):
             reference_outputs(_conv_cb(epilogue=["acc_scale"], output_dtype="i8"))
 
-    def test_a_float_output_dtype_is_rejected_by_the_integer_engine(self):
-        with pytest.raises(SimulationError, match="bf16"):
-            simulate(_conv_cb(output_dtype="bf16"))
+    def test_a_float_output_dtype_reads_the_accumulator_out_as_the_golden_does(self):
+        # The golden engine passes a non-integer readout token through, so an integer engine that
+        # raised on one disagreed with the authority on correct buffers. Both engines here read the
+        # accumulator out whole, and neither saturates it as if it were an integer readout.
+        whole = simulate(_conv_cb())["outputs"]["Y0"]
+        assert simulate(_conv_cb(output_dtype="bf16"))["outputs"]["Y0"] == whole
+        assert reference_outputs(_conv_cb(output_dtype="bf16"))["Y0"] == whole
+        assert max(v for row in whole for v in row) > 127
 
     def test_a_channel_count_that_contradicts_the_activation_is_rejected(self):
         cb = _conv_cb(ci=4)
@@ -263,40 +281,40 @@ class TestUnsupportedParametersFailClosed:
 
 class TestTheShippedCapsulesRunAndMatchTheirGolden:
     @pytest.mark.parametrize("name", _CONV_CAPSULES)
-    def test_parse_then_simulate_reproduces_the_shipped_golden_exactly(self, name):
+    def test_parse_then_simulate_reproduces_the_golden_exactly(self, name):
         # Integer workload => exact equality, never a tolerance (command_buffer_abi correctness_gate).
+        # The golden is an untracked answer key, so it is recomputed here by the same independent
+        # engine that writes it -- from the capsule's DECLARED operation, never from the parsed buffer.
         d = _capsule_dir(name)
         cb = IE.parse_interface_mlir((d / "capsule.interface.mlir").read_text(encoding="utf-8"))
-        got = simulate(cb)["outputs"]
-        want = yaml.safe_load((d / "golden.yaml").read_text(encoding="utf-8"))["outputs"]
-        assert got == want
+        assert _simulate_on_declared_stimulus(name, cb) == capsule_golden.golden(_capsule(name), d)
 
-    def test_the_relu_capsule_cannot_currently_witness_its_own_relu(self):
-        """MEASURED weakness of the shipped corpus, recorded rather than papered over.
+    def test_the_relu_capsule_witnesses_its_own_relu(self):
+        """``B4_conv2d_relu_i8`` is ``B3`` plus a relu, the falsifier that catches a dropped epilogue.
 
-        ``B4_conv2d_relu_i8`` is ``B3`` plus a relu, so it looks like the falsifier that would catch a
-        dropped epilogue. It is not: both operands come from the deterministic 0..3 fill, so the conv
-        accumulator is never negative and the relu is the identity — the two capsules' shipped goldens
-        are byte-identical. A backend that ignored ``relu`` entirely would pass both. Relu is therefore
-        exercised against signed stimulus in :class:`TestSimulatorSemantics` instead, and this test
-        pins the fact so the corpus gap is visible rather than mistaken for coverage.
+        It could not be one on the deterministic 0..3 fill: a non-negative activation times a
+        non-negative weight never makes the accumulator negative, so the relu was the identity and a
+        backend that ignored it passed. The capsule now declares a signed stimulus range; on it the
+        bare convolution goes negative and the relu changes the answer.
         """
+        name = "B4_conv2d_relu_i8"
+        assert min(_capsule(name)["stimulus_range"]) < 0
+        cb = IE.parse_interface_mlir((_capsule_dir(name) / "capsule.interface.mlir").read_text(encoding="utf-8"))
+        (conv,) = [c for c in cb["commands"] if c["opcode"] == "CONV2D"]
+        assert conv["attributes"]["epilogue"] == ["relu"]
+        with_relu = _simulate_on_declared_stimulus(name, cb)["Y0"]
+        conv["attributes"]["epilogue"] = []
+        bare = _simulate_on_declared_stimulus(name, cb)["Y0"]
+        assert any(v < 0 for row in bare for v in row), "the declared stimulus must reach the relu clamp"
+        assert with_relu == [[max(v, 0) for v in row] for row in bare]
+        assert with_relu != bare
 
-        def out(name):
-            d = _capsule_dir(name)
-            return simulate(IE.parse_interface_mlir((d / "capsule.interface.mlir").read_text(encoding="utf-8")))[
-                "outputs"
-            ]["Y0"]
-
-        assert out("B4_conv2d_relu_i8") == out("B3_conv2d_im2col_i8")
-        assert all(v >= 0 for row in out("B3_conv2d_im2col_i8") for v in row)
-
-    def test_the_reference_engine_says_it_cannot_cross_check_a_conv(self):
-        # The residency-bypass cross-check does not extend to CONV2D (the reference engine models the
-        # matmul/commit path only). That limit is stated, not hidden: an engine that returned an empty
-        # output map here would read downstream as "the kernel never wrote its output".
-        with pytest.raises(UnmodeledOp, match="CONV2D"):
-            reference_outputs(_conv_cb())
+    def test_the_reference_engine_cross_checks_a_conv(self):
+        # The residency-bypass cross-check covers CONV2D: the reference engine evaluates the whole-op
+        # convolution independently of the simulator's dispatch, and the two must agree exactly.
+        for geom in (dict(), dict(stride=(2, 2), padding=(1, 1, 1, 1)), dict(output_dtype="i8")):
+            cb = _conv_cb(**geom)
+            assert reference_outputs(cb) == simulate(cb)["outputs"]
 
 
 class TestTheContractDeclaresConv2d:

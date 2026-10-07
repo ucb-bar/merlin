@@ -156,6 +156,102 @@ def test_one_target_semantic_audit_does_not_claim_other_targets_debt_resolved(tm
     assert "RESOLVED" not in capsys.readouterr().out
 
 
+def test_a_required_axis_this_host_cannot_measure_is_named_not_clean():
+    """An axis with a requirement but no measurement contributes no debt, so it must be named instead."""
+    rep = _report(memory_mapping={"status": "not_measured", "required": {"spills": ["m"]}, "uncovered": []})
+    assert CC.uncovered_debt([rep], set()) == []
+    assert [(t, axis) for t, axis, _why in CC.unmeasured_requirements([rep])] == [("T", "memory_mapping")]
+
+
+def test_an_axis_with_no_requirement_is_not_reported_unmeasured():
+    rep = _report(memory_mapping={"status": "not_measured", "detail": "spec predates the axis"})
+    assert CC.unmeasured_requirements([rep]) == []
+
+
+def test_unresolved_operand_store_is_not_measured_rather_than_all_uncovered(monkeypatch, tmp_path):
+    from merlin.targetgen import conformance
+    from merlin.targetgen import memory_regime as MR
+
+    monkeypatch.setattr(
+        MR,
+        "corpus_regimes",
+        lambda *a, **k: {"by_regime": {MR.UNKNOWN: ["c"]}, "capacity_rows": None, "largest_working_set": {}},
+    )
+    spec = {"target": "T", "cells": [], "memory_mapping": {"required": {"fits_double": ["m"], "spills": ["m"]}}}
+    got = conformance.uncovered(spec, [tmp_path])["memory_mapping"]
+    assert got["status"] == "not_measured"
+    assert got["uncovered"] == [] and got["n_required"] == 2
+
+
+def _semantic_gate(tmp_path, monkeypatch, findings_by_target, debt_lines=()):
+    gate = _load("check_semantic_coverage")
+    debt = tmp_path / "debt.txt"
+    debt.write_text("".join(f"{line}\n" for line in debt_lines))
+    monkeypatch.setattr(gate, "DEBT", debt)
+    monkeypatch.setattr(gate, "_targets_with_profiles", lambda: sorted(findings_by_target))
+    monkeypatch.setattr(gate, "audit", lambda target: list(findings_by_target[target]))
+    return gate
+
+
+def _missing(target: str, *, generated: bool) -> dict:
+    finding = {"target": target, "kind": "no_contract", "detail": "TargetContractMissing: fixture"}
+    if generated:
+        finding["unresolved"] = True
+    return finding
+
+
+def test_a_missing_generated_contract_is_unqualified_not_clean_or_resolved(tmp_path, monkeypatch, capsys):
+    gate = _semantic_gate(
+        tmp_path,
+        monkeypatch,
+        {"measured": [], "generated": [_missing("generated", generated=True)]},
+        debt_lines=("generated:known:hole",),
+    )
+    monkeypatch.setattr("sys.argv", ["check_semantic_coverage.py", "--allow-unresolved"])
+
+    assert gate.main() == 0
+    out = capsys.readouterr().out
+    assert "UNQUALIFIED" in out and "generated" in out
+    assert "RESOLVED" not in out  # its debt was not measured, so it cannot have been resolved
+
+
+def test_without_the_flag_a_missing_generated_contract_still_fails(tmp_path, monkeypatch):
+    gate = _semantic_gate(tmp_path, monkeypatch, {"measured": [], "generated": [_missing("generated", generated=True)]})
+    monkeypatch.setattr("sys.argv", ["check_semantic_coverage.py"])
+
+    assert gate.main() == 1
+
+
+def test_source_only_mode_still_fails_a_missing_tracked_contract(tmp_path, monkeypatch):
+    gate = _semantic_gate(tmp_path, monkeypatch, {"measured": [], "tracked": [_missing("tracked", generated=False)]})
+    monkeypatch.setattr("sys.argv", ["check_semantic_coverage.py", "--allow-unresolved"])
+
+    assert gate.main() == 1
+
+
+def test_source_only_mode_cannot_pass_when_nothing_resolved(tmp_path, monkeypatch):
+    gate = _semantic_gate(tmp_path, monkeypatch, {"generated": [_missing("generated", generated=True)]})
+    monkeypatch.setattr("sys.argv", ["check_semantic_coverage.py", "--allow-unresolved"])
+
+    assert gate.main() == 2
+
+
+def test_a_contract_under_the_generated_root_is_recognised_as_a_product(tmp_path, monkeypatch):
+    gate = _load("check_semantic_coverage")
+    out = tmp_path / "out"
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
+    generated = out / "artifacts" / "targets" / "t" / "contracts" / "target_contract.yaml"
+    tracked = tmp_path / "examples" / "t" / "target" / "contracts" / "target_contract.yaml"
+
+    def resolver(path):
+        return lambda _target: type("Resolved", (), {"capability_contract_path": path})()
+
+    monkeypatch.setattr(gate.tr, "resolve", resolver(generated))
+    assert gate._is_generated_product("t")
+    monkeypatch.setattr(gate.tr, "resolve", resolver(tracked))
+    assert not gate._is_generated_product("t")
+
+
 # ------------------------------------------------------------------------ claim-set disjointness
 
 CS = _load("check_claim_set_disjointness")

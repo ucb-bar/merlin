@@ -363,6 +363,12 @@ class Expectations:
         """
         if not isinstance(document, Mapping):
             raise VerdictRefusal("expectations must be a mapping")
+        from .whole_model_partial import PartialBuildRefused, refuse
+
+        try:  # a PARTIAL (only_groups) build prints every group line and is still not the whole model
+            refuse(document, reader="a whole-model verdict")
+        except PartialBuildRefused as exc:
+            raise VerdictRefusal(str(exc)) from None
         raw_groups = document.get("groups")
         if not isinstance(raw_groups, Mapping) or not raw_groups:
             raise VerdictRefusal("expectations name no groups; a verdict with nothing to check is not one")

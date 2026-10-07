@@ -1,0 +1,23 @@
+# The exactness contract of the gemmini whole-model gates (merlin/schemas/exactness_contract.schema.yaml,
+# enforced by merlin.perf.exactness): which forms may differ from their reference, by how much, and why.
+#
+# EVERY FORM IS EXACT unless an entry below says otherwise, and an entry is a reviewed decision, not a
+# tuning knob: a bounded form trades bit-exactness for a lever (a device requantization whose shift
+# rounds half to even where the source rounds half up is within one output LSB, never exact), and the
+# bound is enforced exactly as written by the whole-model gate, the measured run's verdict, the cell
+# and group-capsule grades and the champion export -- each of which records the contract it applied.
+#
+# A group whose op itself declares a tolerance (a residual add's two rescales, `bound_lsb` on its
+# statement) is graded at that bound unless an entry here names its form.
+#
+# To declare a bounded form, add an entry such as
+#   - name: device_requant_conv
+#     match: {op: conv2d}
+#     exactness:
+#       mode: bounded
+#       bound: {max_abs_lsb: 1}
+#       reason: <the reviewed reason this form cannot be bit-exact>
+schema: merlin.exactness_contract.v1
+target: gemmini
+default: {mode: exact}
+forms: []

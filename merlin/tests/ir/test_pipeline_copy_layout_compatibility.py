@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from merlin.llvmlower import pipeline, toolchain
+from merlin.llvmlower import int_softmax_table, pipeline, toolchain
 
 SOURCE = """module {
   func.func @add(%a: f32, %b: f32) -> f32 {
@@ -32,7 +32,9 @@ def test_actual_runner_layout_slot_and_independent_copy_gates(tmp_path, uniform,
     # argv[0] is the Python executable; the runner's sys.argv starts at argv[1].
     runner_argv = record["commands"][0]["argv"][1:]
     assert runner_argv[17] == LAYOUT
-    assert runner_argv[18:] == ["1" if uniform else "0", "1" if contiguous else "0"]
+    assert runner_argv[18:20] == ["1" if uniform else "0", "1" if contiguous else "0"]
+    # The integer-softmax gate is appended after the copy gates and stays off unless selected.
+    assert len(runner_argv) == int_softmax_table.ARGV_INDEX + 1 and runner_argv[int_softmax_table.ARGV_INDEX] == "0"
     assert f'target datalayout = "{LAYOUT}"' in llvm
     assert (tmp_path / "uniform_fill_copy.json").exists() == uniform
     assert (tmp_path / "contiguous_suffix_copy.json").exists() == contiguous
@@ -46,4 +48,4 @@ def test_empty_copy_selection_keeps_default_lowering_bytes(tmp_path):
     empty = pipeline.lower_to_llvm_ir(SOURCE, workdir=tmp_path / "empty", vectorize=False, features=frozenset())
     assert ordinary == empty
     record = json.loads((tmp_path / "empty/lowering_recipe.json").read_text())
-    assert record["commands"][0]["argv"][1:][17:] == ["", "0", "0"]
+    assert record["commands"][0]["argv"][1:][17:] == ["", "0", "0", "0"]

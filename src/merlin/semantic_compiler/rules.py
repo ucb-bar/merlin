@@ -175,12 +175,30 @@ class InstructionDescriptor:
                 raise ValueError("input axis bound is duplicated or exceeds operand rank")
         if self.index_maps and len(self.index_maps) != arity + 1:
             raise ValueError("instruction index maps need one map per operand and result")
-        if self.shape_contract not in {"equal", "relations"}:
+        if self.shape_contract not in {"equal", "relations", "bounded"}:
             raise ValueError("unknown instruction shape contract")
         if self.shape_contract == "equal" and self.shape_equalities:
             raise ValueError("equal-shape contract cannot add independent shape relations")
         if self.shape_contract == "relations" and (not self.shape_equalities or len(self.input_ranks) != arity):
             raise ValueError("relational shape contract needs equalities and explicit input ranks")
+        if self.shape_contract == "bounded":
+            # Without a dimension relation, an instruction can only be
+            # admitted at one exact shape per port. Wider intervals would
+            # claim unknown input/output shape combinations are equivalent.
+            def exact_axes(bounds: tuple[AxisBound, ...], rank: int) -> bool:
+                return {bound.axis for bound in bounds} == set(range(rank)) and all(
+                    bound.maximum == bound.minimum for bound in bounds
+                )
+
+            if (
+                self.shape_equalities
+                or len(self.ranks) != 1
+                or len(self.input_ranks) != arity
+                or len(self.input_axis_bounds) != arity
+                or not exact_axes(self.output_axis_bounds, self.ranks[0])
+                or any(not exact_axes(bounds, rank) for bounds, rank in zip(self.input_axis_bounds, self.input_ranks))
+            ):
+                raise ValueError("bounded shape contract needs exact bounds on every port axis")
         if self.input_read_offsets and len(self.input_read_offsets) != arity:
             raise ValueError("input read offsets must match instruction arity")
         if type(self.completion_offset) is not int or self.completion_offset < 0:
@@ -199,8 +217,12 @@ class InstructionDescriptor:
         if type(self.value_preserving_copy) is not bool:
             raise ValueError("value-preserving copy flag must be boolean")
         if self.value_preserving_copy and (
-            self.computation != "identity" or arity != 1 or self.required_attrs or self.index_maps
-            or self.shape_contract != "equal" or self.shape_equalities
+            self.computation != "identity"
+            or arity != 1
+            or self.required_attrs
+            or self.index_maps
+            or self.shape_contract != "equal"
+            or self.shape_equalities
             or self.output_dtype != self.input_dtypes[0]
             or self.numerical_policy != self.input_numerical_policies[0]
         ):
@@ -232,10 +254,13 @@ class InstructionDescriptor:
             and node.type.numerical_policy == self.numerical_policy
             and len(node.type.shape) in self.ranks
             and all(bound.accepts(node.type.shape) for bound in self.output_axis_bounds)
-            and (not self.input_axis_bounds or all(
-                all(bound.accepts(value.type.shape) for bound in bounds)
-                for value, bounds in zip(inputs, self.input_axis_bounds)
-            ))
+            and (
+                not self.input_axis_bounds
+                or all(
+                    all(bound.accepts(value.type.shape) for bound in bounds)
+                    for value, bounds in zip(inputs, self.input_axis_bounds)
+                )
+            )
             and node.index_maps == self.index_maps
             # Semantic attributes are part of the computation. An undeclared
             # attribute cannot silently become a hardware don't-care.
@@ -247,6 +272,8 @@ class InstructionDescriptor:
                 all(n.type.shape == node.type.shape for n in inputs)
                 if self.shape_contract == "equal"
                 else self._relations_accept(node, inputs)
+                if self.shape_contract == "relations"
+                else True
             )
         )
 
@@ -392,6 +419,8 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
         else:
             symbol = "b_" + _digest(node.record())
             symbols[symbol] = {"kind": node.effect, "source_node": node.id, "type": node.type.record()}
+            if node.effect == "input":
+                symbols[symbol]["preserve_input"] = dict(node.attrs).get("input_retention", "preserve") == "preserve"
         source_symbol[node.id] = symbol
         index[node.id] = len(nodes)
         nodes.append({"symbol": symbol, "children": [index[child] for child in node.inputs]})
@@ -404,21 +433,26 @@ def generate_rules(request: KernelRequest, descriptors: tuple[InstructionDescrip
                 continue
             descriptor_digest = _digest(descriptor.record())
             instruction_symbol = "i_" + _digest(("value_preserving_copy_v1", descriptor_digest, symbol))
-            symbols.setdefault(instruction_symbol, {
-                "kind": "instruction",
-                "descriptor": descriptor.record(),
-                "source_node": node.id,
-                "type": node.type.record(),
-                "realization": "value_preserving_copy_v1",
-            })
-            rules.append(Rule(
-                name=f"materialize_{descriptor.name}_{node.id}_{descriptor_digest}",
-                lhs=lhs,
-                rhs=f"({instruction_symbol} {lhs})",
-                source_node=node.id,
-                descriptor_name=descriptor.name,
-                descriptor_digest=descriptor_digest,
-            ))
+            symbols.setdefault(
+                instruction_symbol,
+                {
+                    "kind": "instruction",
+                    "descriptor": descriptor.record(),
+                    "source_node": node.id,
+                    "type": node.type.record(),
+                    "realization": "value_preserving_copy_v1",
+                },
+            )
+            rules.append(
+                Rule(
+                    name=f"materialize_{descriptor.name}_{node.id}_{descriptor_digest}",
+                    lhs=lhs,
+                    rhs=f"({instruction_symbol} {lhs})",
+                    source_node=node.id,
+                    descriptor_name=descriptor.name,
+                    descriptor_digest=descriptor_digest,
+                )
+            )
         if node.effect != "pure":
             continue
         # This is a bit-preserving semantic identity, including the numerical

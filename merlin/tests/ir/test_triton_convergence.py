@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 
 import pytest
+import selected_driver
 import triton_kernels as K
 
 from merlin.common.paths import repo_root
@@ -78,6 +79,7 @@ def test_the_input_modules_differ_only_in_accumulator_initialization(both_paths)
     assert triton_text.count("linalg.quantized_matmul") == hand_text.count("linalg.quantized_matmul")
 
 
+@selected_driver.requires_support("saturn")
 def test_convergence_holds_for_the_generic_target_too(both_paths):
     """Not a Gemmini coincidence: the same identity must hold on a structurally different target."""
     from merlin import compile_core

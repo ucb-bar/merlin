@@ -203,7 +203,28 @@ def _unit_dtypes(unit: dict) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def _from_isa_roles(taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str, ...]) -> bool:
+def _role_dtypes(role: str, units: list[dict], fallback: tuple[str, ...]) -> tuple[str, ...]:
+    """Operand formats a role's evidence may carry: those of the units on the role's ENGINE.
+
+    A role that evidences an engine (``matmul`` -> the spatial array, ``tensor_compute_binary`` -> the
+    vector engine) is evidence about THAT engine's datapath, so it carries the formats of the units of
+    that engine. Handing every role the union of every unit's formats stamped a vector unit's bf16 onto
+    the array's contraction -- one engine's element type claimed as another's operand type. A role that
+    evidences no engine (data movement), or an engine no unit declares, keeps the union.
+    """
+    facet = _ROLE_ENGINE.get(role)
+    if facet is None:
+        return fallback
+    from merlin.kernels import engines as _eng
+
+    owned = [u for u in units if _eng.ENGINE_FACET.get(str(u.get("kind"))) == facet]
+    formats = tuple(dict.fromkeys(d for u in owned for d in _unit_dtypes(u)))
+    return formats or fallback
+
+
+def _from_isa_roles(
+    taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str, ...], units: list[dict] | None = None
+) -> bool:
     """Rung 1 — the structural role census. Returns whether it ran conclusively."""
     from merlin.targetgen import isa_taxonomy as _it
 
@@ -224,7 +245,7 @@ def _from_isa_roles(taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str,
                 status="supported",
                 source="isa_role",
                 evidence=f"ISA role {role!r} -> {classes[:3]}",
-                dtypes=dtypes,
+                dtypes=_role_dtypes(role, units or [], dtypes),
                 composed_with=comp,
             ),
         )
@@ -628,7 +649,7 @@ def derive(
         except Exception:  # noqa: BLE001 — no self-hosted ISA (a RoCC target); other rungs still run
             taxonomy = None
     if taxonomy:
-        conclusive = _from_isa_roles(taxonomy, out, dtypes)
+        conclusive = _from_isa_roles(taxonomy, out, dtypes, units)
 
     _from_isa_classes(contract, out, dtypes)
     _from_rtl_facts(facts or {}, out)

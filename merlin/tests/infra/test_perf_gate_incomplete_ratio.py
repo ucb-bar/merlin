@@ -20,6 +20,7 @@ These tests pin the distinction that replaces it, in BOTH directions:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,6 +29,7 @@ import yaml
 from merlin_experiments.phase2 import campaign as PC
 
 from merlin.benchharness import hash_tree
+from merlin.targetgen.sandbox import bwrap as BW
 
 
 def _clean_run(tmp_path: Path, run_id: str = "arm4_ratio") -> tuple[Path, str]:
@@ -52,6 +54,16 @@ def _clean_run(tmp_path: Path, run_id: str = "arm4_ratio") -> tuple[Path, str]:
     )
     (sub / "tool.py").write_text("print('fixture')\n")
     digest = hash_tree(sub)["sha256"]
+    # The gate verifies a real V4 bundle-input snapshot against host provenance, so the run owns one.
+    workspace = run / "authoring/workspace"
+    workspace.mkdir(parents=True)
+    inputs = run / "inputs"
+    inputs.mkdir()
+    (inputs / "public.txt").write_text("declared input")
+    bundle = {"allowed": [{"path": "inputs"}]}
+    manifest = run / "input_bundle_manifest.yaml"
+    manifest.write_text(yaml.safe_dump(bundle))
+    BW.materialize_bundle_inputs(workspace, bundle, repo=run)
 
     (run / "environment.yaml").write_text(
         yaml.safe_dump(
@@ -59,12 +71,9 @@ def _clean_run(tmp_path: Path, run_id: str = "arm4_ratio") -> tuple[Path, str]:
                 "run_id": run_id,
                 "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
                 "sandbox": "bwrap",
-                "bundle_input_snapshot": {
-                    "version": 2,
-                    "content_sha256": "a" * 64,
-                    "n_files": 7,
-                    "n_bytes": 41,
-                },
+                "bundle_input_snapshot": BW.snapshot_record(workspace),
+                "workspace_path": str(workspace),
+                "bundle_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
                 "task_scope": {"target": "fixture", "required_public_dev_capsules": 2, "held_out_capsules": 1},
                 "isolation_violations": [],
                 "golden_mask_selftest": {"n_answer_files_masked": 3, "leaked_answer_files": []},

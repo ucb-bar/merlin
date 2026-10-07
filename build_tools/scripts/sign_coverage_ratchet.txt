@@ -2,7 +2,6 @@
 # May only shrink: declare `stimulus_range: [lo, hi]` with lo < 0 on the capsule and
 # regenerate its golden.
 # growth-accepted: the gate is new; this is debt it discovered, not debt added.
-AF10_bias_add_bf16_pt
 AT4_bf16_scale
 AT5_relu_epilogue
 BT1_linear_relu

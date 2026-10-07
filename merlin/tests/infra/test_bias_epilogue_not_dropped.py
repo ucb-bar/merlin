@@ -29,6 +29,7 @@ from merlin.common.paths import merlin_dir
 from merlin.runtime.commandbuffer import bias_tensor_name
 from merlin.runtime.reference import reference_outputs
 from merlin.runtime.simulator import simulate
+from merlin.targetgen import capsule_golden
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
 _PERF = merlin_dir() / "contract/capsules/_perf"
@@ -46,11 +47,23 @@ _FUSED = ["PF00_fused_matmul_bias_m16k16n16", "PF03_fused_matmul_bias_m16k32n16"
 
 
 def _capsule(name: str):
+    """The capsule's command buffer and its golden, computed by the golden engine.
+
+    ``golden.yaml`` is an untracked answer key (absent from a clean clone). For these
+    ``merlin_tensor_int`` capsules it is only a cached copy of :func:`capsule_golden.golden`, which
+    computes the outputs from the capsule's DECLARED operation rather than from the command buffer, so
+    the engine is the independent golden; a recorded key, when present, must agree with it.
+    """
     d = _PERF / name
     if not d.is_dir():
         pytest.skip(f"{name} is not present in this checkout")
     cb = parse_interface_mlir((d / "capsule.interface.mlir").read_text(encoding="utf-8"))
-    golden = yaml.safe_load((d / "golden.yaml").read_text(encoding="utf-8"))["outputs"]
+    declaration = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
+    assert capsule_golden.golden_source(declaration, d) == "merlin_tensor_int", name
+    golden = capsule_golden.golden(declaration, d)
+    recorded = d / "golden.yaml"
+    if recorded.is_file():
+        assert yaml.safe_load(recorded.read_text(encoding="utf-8"))["outputs"] == golden, f"{name}: stale golden.yaml"
     return cb, golden
 
 

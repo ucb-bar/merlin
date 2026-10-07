@@ -23,7 +23,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, repo_root
 
 #: The stages, in the order the command-buffer ABI applies them. Order is load-bearing: bias lands on
 #: the accumulator BEFORE the readout multiply, and a backend that scales first computes a different
@@ -39,7 +39,8 @@ NAMES = (
 
 
 def _profile() -> dict:
-    path = merlin_dir() / "contract" / "capsules" / "profiles" / "gemmini.yaml"
+    """The authored seed entries these capsules were generated from (gemmini's regression seeds)."""
+    path = repo_root() / "examples" / "gemmini" / "phase0" / "regression-seeds.yaml"
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
@@ -62,7 +63,8 @@ def test_the_family_exists_and_is_a_family() -> None:
 @pytest.mark.parametrize("name", NAMES)
 def test_each_declares_the_three_stage_quantized_epilogue_on_the_conv_itself(name) -> None:
     entry = _entries()[name]
-    assert entry["op"] == "conv2d" and entry["cat"] == "layers"
+    # The directory category is derived from ``kind`` by the profile loader (layer -> layers).
+    assert entry["op"] == "conv2d" and entry["kind"] == "layer"
     assert entry["epilogue"] == EPILOGUE, "the ABI order is the contract, not a set of names"
     assert isinstance(entry.get("acc_scale"), float), "an acc_scale stage with no multiplier is read as 1.0"
 

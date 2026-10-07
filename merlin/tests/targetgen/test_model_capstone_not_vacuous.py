@@ -14,6 +14,7 @@ Two independent defects made it do exactly that, and either one alone was suffic
 Both are fixed by DERIVATION, not by authoring: the demand comes from the model's own captured linalg
 crossed with the target's declared capabilities and its own role census.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -51,17 +52,24 @@ def _frozen_bundle_double(monkeypatch):
     monkeypatch.setattr(_CR, "_model_runtime_bundle", _double)
 
 
-
 @pytest.fixture(autouse=True)
 def _descriptor_pinned_host_lane(monkeypatch):
     """These tests isolate capstone verdict logic from the independently tested host-lane resolver."""
     from merlin.targetgen import capsule_runner as CR
+
     monkeypatch.setattr(CR, "_resolve_model_numeric_policy", lambda target: (None, None))
-    monkeypatch.setattr(CR, "_resolve_model_host_lane", lambda target, dtype: (
-        None, repo_root() / "frozen-test-host", {
-            "package_sha256": "a" * 64,
-            "dtype_strategy": "int8_w8a8" if dtype == "int8" else "fp32",
-        }))
+    monkeypatch.setattr(
+        CR,
+        "_resolve_model_host_lane",
+        lambda target, dtype: (
+            None,
+            repo_root() / "frozen-test-host",
+            {
+                "package_sha256": "a" * 64,
+                "dtype_strategy": "int8_w8a8" if dtype == "int8" else "fp32",
+            },
+        ),
+    )
 
 
 def _capstones():
@@ -87,9 +95,11 @@ def _capstones():
 def _binding(target: str):
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.target_experiment import load_target_experiment
+
     root = repo_root() / "merlin" / "contract" / "capsules"
     te = load_target_experiment(
-        repo_root() / "merlin/experiments/capsule_bench/targets" / target / "target_experiment.yaml")
+        repo_root() / "merlin/experiments/capsule_bench/targets" / target / "target_experiment.yaml"
+    )
     prof = yaml.safe_load((root / "profiles" / f"{target}.yaml").read_text()) or {}
     return CS.derive_binding(te, prof.get("datapath") or {})
 
@@ -105,7 +115,7 @@ def test_a_model_region_reads_the_compile_dtype_not_the_token_ids():
         declared = ((cap.get("operation") or {}).get("attributes") or {}).get("dtype")
         entry = next((i.get("dtype") for i in cap.get("inputs") or [] if i.get("role") == "input"), None)
         if not declared or entry == declared:
-            continue                      # only the mismatching case is interesting
+            continue  # only the mismatching case is interesting
         r = cr._capsule_region(cap)
         assert r.in_dtype == declared and r.weight_dtype == declared, (r.in_dtype, entry, declared)
         checked += 1
@@ -126,7 +136,7 @@ def _grounded_pairs():
             continue
         try:
             fam, classes = model_accelerator_demand(lin, _binding(t))
-        except Exception:                                        # noqa: BLE001 — unresolvable target
+        except Exception:  # noqa: BLE001 — unresolvable target
             continue
         # The must_accelerate assertions below turn on ELIGIBILITY, which comes from the target's
         # capability map. That map is derived into out/artifacts/, which is generated and untracked --
@@ -136,9 +146,10 @@ def _grounded_pairs():
         # not run must not report a failure.
         try:
             from merlin.targetgen import eligibility as _el
+
             if not _el.capability_map_for_target(t):
                 continue
-        except Exception:                                        # noqa: BLE001 — no derived contract
+        except Exception:  # noqa: BLE001 — no derived contract
             continue
         if fam and classes:
             out.append((t, cap))
@@ -153,11 +164,11 @@ def test_a_grounded_capstone_fails_a_cpu_only_submission():
     for t, cap in grounded:
         name = cap["name"]
         cpu = cr._acceleratable_coverage([{"capsule": name, "tiers": {}}], {name: cap}, t)
-        assert name in cpu["must_accelerate_violations"], \
+        assert name in cpu["must_accelerate_violations"], (
             f"{t}/{name}: a CPU-only whole-model run must not pass the capstone"
+        )
         assert not cpu["must_accelerate_pass"]
-        hit = cr._acceleratable_coverage(
-            [{"capsule": name, "tiers": {"L2": {"status": "pass"}}}], {name: cap}, t)
+        hit = cr._acceleratable_coverage([{"capsule": name, "tiers": {"L2": {"status": "pass"}}}], {name: cap}, t)
         assert hit["must_accelerate_pass"], f"{t}/{name}: an accelerated run must still pass"
 
 
@@ -166,8 +177,9 @@ def test_a_grounded_capstone_demands_real_instruction_classes():
     if not grounded:
         pytest.skip("no capstone with a grounded accelerator demand in this checkout")
     for t, cap in grounded:
-        assert (cap.get("expected") or {}).get("instruction_classes"), \
+        assert (cap.get("expected") or {}).get("instruction_classes"), (
             f"{t}/{cap['name']}: must_accelerate asserted with no coverage requirement behind it"
+        )
 
 
 def test_the_capstone_demand_matches_the_op_capsules_of_the_same_family():
@@ -184,7 +196,7 @@ def test_the_capstone_demand_matches_the_op_capsules_of_the_same_family():
     for t, cap, lin in caps:
         try:
             b = _binding(t)
-        except Exception:                                        # noqa: BLE001 — unresolvable target
+        except Exception:  # noqa: BLE001 — unresolvable target
             continue
         fam, classes = model_accelerator_demand(lin, b)
         if not classes:
@@ -201,9 +213,10 @@ def test_the_capstone_demand_matches_the_op_capsules_of_the_same_family():
         seq = list(b.classes_for(op="matmul", output_dtype=b.cap_dtype(b.operand_dtype)))
         assert seq, f"{t}: the target derives no contraction sequence at all"
         positions = [classes.index(c) for c in seq if c in classes]
-        assert len(positions) == len(seq) and positions == sorted(positions), \
-            f"{t}: the capstone's classes drifted from the target's own contraction sequence: " \
+        assert len(positions) == len(seq) and positions == sorted(positions), (
+            f"{t}: the capstone's classes drifted from the target's own contraction sequence: "
             f"{classes} does not contain {seq} in order"
+        )
         checked += 1
     if not checked:
         pytest.skip("no target in this checkout derives a class sequence")
@@ -212,6 +225,7 @@ def test_the_capstone_demand_matches_the_op_capsules_of_the_same_family():
 def test_the_demand_fails_closed_when_it_cannot_be_grounded():
     """An ungrounded demand fails a CONFORMANT submission — the one direction running it cannot catch —
     so nothing is asserted unless both halves derive."""
+
     class _NoTarget:
         target = None
         operand_dtype = "int8"
@@ -228,7 +242,7 @@ def test_the_demand_fails_closed_when_it_cannot_be_grounded():
     if caps:
         try:
             b = _binding(caps[0][0])
-        except Exception:                                        # noqa: BLE001
+        except Exception:  # noqa: BLE001
             return
         assert model_accelerator_demand("", b) == (None, [])
 
@@ -239,11 +253,31 @@ def test_an_ungrounded_capstone_records_why():
         sem = cap.get("semantic") or {}
         if sem.get("must_accelerate"):
             continue
-        assert sem.get("not_asserted_reason"), \
-            f"{t}/{cap['name']}: must_accelerate withheld with no reason recorded"
+        assert sem.get("not_asserted_reason"), f"{t}/{cap['name']}: must_accelerate withheld with no reason recorded"
 
 
 # --- the tier verdict must follow the tiles, and a failing tier must not pass --------------------
+
+# Two gates a target model grade passes through before the ones these tests probe, each pinned by its
+# own tests in `test_model_capsule_fails_closed`: the captured->normalized->outlined IR was replayed,
+# and every eligible source region was joined to a completed accelerator dispatch. The fakes below
+# satisfy both, so each case reaches the question it actually asks instead of stopping at either gate.
+_REPLAYED = {"status": "structural_replay_matched", "normalization_replay": "matched"}
+
+
+def _measured_source_regions():
+    return {
+        "false_fallback_count": 0,
+        "source_region_execution": {
+            "status": "measured",
+            "outline_inventory_status": "matched",
+            "n_eligible_source_regions": 1,
+            "eligible_accelerator_region_ids": ["matmul_0"],
+            "eligible_host_region_ids": [],
+            "eligible_mixed_region_ids": [],
+        },
+    }
+
 
 def _statuses(r):
     """Tier -> status, from the rich per-tier objects the merged row carries. The row is the same shape
@@ -254,12 +288,25 @@ def _statuses(r):
 
 
 def _passed(r):
-    """The tiers that actually certified — the guarantee, independent of how the row is shaped."""
-    return {t: v for t, v in _statuses(r).items() if v == "pass"}
+    """The tiers that actually certified — the guarantee, independent of how the row is shaped.
+
+    The functional SCREEN rung is excluded: it is a cheap simulator every tile clears before the cert
+    oracle sees it, recorded as its own tier (`test_model_earns_screen_tier`). A screen that ran and
+    passed is a true record about the screen; it certifies nothing about the RTL, which is what these
+    cases probe. It is told apart by its own evidence, not by its name."""
+    return {t: v for t, v in _statuses(r).items() if v == "pass" and not _is_screen(r, t)}
 
 
-def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0,
-                dispatch_ledger=None):
+def _is_screen(r, tier) -> bool:
+    row = (r.get("tiers") or {}).get(tier) or {}
+    return row.get("evidence") == "mesh_tile_verification.per_tile[].screen" and not row.get("derived_from_rtl")
+
+
+def _screen_passed(r) -> set:
+    return {t for t, v in _statuses(r).items() if v == "pass" and _is_screen(r, t)}
+
+
+def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0, dispatch_ledger=None):
     """Drive the tier-derivation block with a synthetic TILE-certification record.
 
     The tile record lives under ``mesh_tile_verification``; ``mesh_execution`` is the separate record of
@@ -277,23 +324,38 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=1
     # rung's own behaviour.
     if isinstance(mesh_exec, dict) and "n_tiles" in mesh_exec and "n_screened" not in mesh_exec:
         _n = int(mesh_exec["n_tiles"])
-        mesh_exec = {**mesh_exec, "n_screened": _n, "n_screen_passed": _n,
-                     "n_screen_failed": 0, "n_screen_unavailable": 0,
-                     "screen_tier": "L2", "screen_sim": "spike"}
+        mesh_exec = {
+            **mesh_exec,
+            "n_screened": _n,
+            "n_screen_passed": _n,
+            "n_screen_failed": 0,
+            "n_screen_unavailable": 0,
+            "screen_tier": "L2",
+            "screen_sim": "spike",
+        }
 
-    capsule = {"name": "M_probe", "kind": "model",
-               "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "int8",
-                                                           "dtype": "i8"}},
-               "required_oracle_tiers": list(declared),
-               "semantic": {"semantic_family": "contraction", "must_accelerate": True}}
-    out = {"status": "verified", "verify": {"gate_ok": True},
-           "placement_census": _DEFAULT_PLACEMENT_CENSUS,
-           "mesh_tile_verification": mesh_exec,
-           "mesh_execution": {"target": "gemmini", "matmul_layers_routed": on_mesh + fallback,
-                              "matmul_layers_on_mesh": on_mesh,
-                              "matmul_layers_host_fallback": fallback,
-                              **({"dispatch_ledger": dispatch_ledger}
-                                 if dispatch_ledger is not None else {})}}
+    capsule = {
+        "name": "M_probe",
+        "kind": "model",
+        "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "int8", "dtype": "i8"}},
+        "required_oracle_tiers": list(declared),
+        "semantic": {"semantic_family": "contraction", "must_accelerate": True},
+    }
+    out = {
+        "status": "verified",
+        "verify": {"gate_ok": True},
+        "placement_census": _DEFAULT_PLACEMENT_CENSUS,
+        "coverage_certificate": _measured_source_regions(),
+        "mesh_tile_verification": mesh_exec,
+        "mesh_execution": {
+            "target": "gemmini",
+            "matmul_layers_routed": on_mesh + fallback,
+            "matmul_layers_on_mesh": on_mesh,
+            "matmul_layers_host_fallback": fallback,
+            "transform_audit_qualification": dict(_REPLAYED),
+            **({"dispatch_ledger": dispatch_ledger} if dispatch_ledger is not None else {}),
+        },
+    }
     # `_grade_model_capsule` imports compile_model INSIDE the function, so the module attribute is what
     # has to move.
     real = CCLI.compile_model
@@ -305,25 +367,22 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=1
 
 
 def test_a_tier_passes_when_every_tile_passed():
-    r = _grade_with({"n_tiles": 15, "n_passed": 15, "n_failed": 0,
-                     "n_unavailable": 0, "n_unsynthesizable": 0})
+    r = _grade_with({"n_tiles": 15, "n_passed": 15, "n_failed": 0, "n_unavailable": 0, "n_unsynthesizable": 0})
     assert _passed(r) == {"L3": "pass"}, r["tiers"]
+    # ...and the screen every tile cleared first is recorded as its own passed rung, not dropped.
+    assert _screen_passed(r) == {"L2"}, r["tiers"]
     assert r["status"] == "pass", r
 
 
 def test_model_tier_does_not_invent_cycles_from_dispatch_ledger():
-    oracle = {"result": "pass", "derived_from_rtl": True,
-              "cycle_accurate": True, "cycles": 569}
+    oracle = {"result": "pass", "derived_from_rtl": True, "cycle_accurate": True, "cycles": 569}
     ledger = [
-        {"ordinal": 0, "symbol": "layer0", "lane": "on_mesh", "status": "pass",
-         "oracle_evidence": dict(oracle)},
-        {"ordinal": 1, "symbol": "layer1", "lane": "on_mesh", "status": "pass",
-         "oracle_evidence": dict(oracle)},
+        {"ordinal": 0, "symbol": "layer0", "lane": "on_mesh", "status": "pass", "oracle_evidence": dict(oracle)},
+        {"ordinal": 1, "symbol": "layer1", "lane": "on_mesh", "status": "pass", "oracle_evidence": dict(oracle)},
     ]
     from merlin.targetgen import capsule_runner as CR
 
-    model_exec = {"matmul_layers_on_mesh": 2, "matmul_layers_host_fallback": 0,
-                  "dispatch_ledger": ledger}
+    model_exec = {"matmul_layers_on_mesh": 2, "matmul_layers_host_fallback": 0, "dispatch_ledger": ledger}
     l3 = CR._model_tier_map(["L0", "L1", "L2", "L3"], "gemmini", model_exec)["L3"].to_dict()
 
     assert l3["status"] == "pass"
@@ -333,14 +392,17 @@ def test_model_tier_does_not_invent_cycles_from_dispatch_ledger():
 
 def test_model_tier_fidelity_is_not_inferred_from_dispatch_ledger():
     ledger = [
-        {"ordinal": 0, "symbol": "layer0", "lane": "on_mesh", "status": "pass",
-         "oracle_evidence": {"result": "pass", "derived_from_rtl": True,
-                             "cycle_accurate": True, "cycles": 7}},
+        {
+            "ordinal": 0,
+            "symbol": "layer0",
+            "lane": "on_mesh",
+            "status": "pass",
+            "oracle_evidence": {"result": "pass", "derived_from_rtl": True, "cycle_accurate": True, "cycles": 7},
+        },
     ]
     from merlin.targetgen import capsule_runner as CR
 
-    model_exec = {"matmul_layers_on_mesh": 1, "matmul_layers_host_fallback": 0,
-                  "dispatch_ledger": ledger}
+    model_exec = {"matmul_layers_on_mesh": 1, "matmul_layers_host_fallback": 0, "dispatch_ledger": ledger}
     l3 = CR._model_tier_map(["L0", "L1", "L2", "L3"], "gemmini", model_exec)["L3"].to_dict()
 
     assert l3["status"] == "pass"
@@ -351,10 +413,12 @@ def test_model_tier_fidelity_is_not_inferred_from_dispatch_ledger():
 def test_a_tier_that_ran_and_failed_is_not_a_pass():
     """The contradiction this guards: `status: pass` printed beside `tiers: {L3: fail}`, with the
     flattering half being the one a reader takes away."""
-    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 1,
-                     "n_unavailable": 0, "n_unsynthesizable": 0})
+    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 1, "n_unavailable": 0, "n_unsynthesizable": 0})
     assert _statuses(r).get("L3") == "fail", r["tiers"]
     assert _passed(r) == {}, "a failing tile certifies nothing"
+    # The tile cleared the cheap screen and failed the cert: both are recorded, and only the screen,
+    # which is not RTL evidence, reads as passed.
+    assert _screen_passed(r) == {"L2"}, r["tiers"]
     assert r["status"] == "fail", r
     assert r["failure"]["category"] == "FUNCTIONAL_MISMATCH"
 
@@ -363,8 +427,7 @@ def test_a_tier_that_ran_and_failed_is_not_a_pass():
 def test_an_unrun_tile_is_not_counted_as_a_pass(key):
     """NOT-RUN-IS-NOT-PASS at tile granularity: a layer the oracle could not run leaves the model's
     accelerator claim unproven, so the tier cannot pass on the strength of the tiles that did run."""
-    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 0,
-                     "n_unavailable": 0, "n_unsynthesizable": 0, key: 1})
+    r = _grade_with({"n_tiles": 15, "n_passed": 14, "n_failed": 0, "n_unavailable": 0, "n_unsynthesizable": 0, key: 1})
     assert _statuses(r).get("L3") == "fail", r["tiers"]
     assert _passed(r) == {}
     assert r["status"] == "fail", r
@@ -384,17 +447,25 @@ def test_nothing_ran_at_all_is_reported_unknown_not_failed():
 # --------------------------------------------------------------------------- model vs tile evidence
 def _model_capsule(tmp_path, **semantic):
     import yaml
+
     d = tmp_path / "M0_probe"
     d.mkdir(parents=True, exist_ok=True)
-    cap = {"name": "M0_probe", "kind": "model", "label": "public",
-           "source_role": "pytorch_model_slice", "source_reference": "probe",
-           "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "fp32",
-                                                       "dtype": "fp32", "out": "Y0"}},
-           "numeric_policy": {"compare": "tolerance_float", "dtype": "f32", "atol": 0.1, "rtol": 0.1},
-           "expected": {"instruction_classes": []},
-           "required_oracle_tiers": ["L3"],
-           "semantic": {"generalization_axis": "model", **semantic},
-           "__dir__": str(d)}
+    cap = {
+        "name": "M0_probe",
+        "kind": "model",
+        "label": "public",
+        "source_role": "pytorch_model_slice",
+        "source_reference": "probe",
+        "operation": {
+            "op": "model",
+            "attributes": {"model": "probe", "compile_dtype": "fp32", "dtype": "fp32", "out": "Y0"},
+        },
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "f32", "atol": 0.1, "rtol": 0.1},
+        "expected": {"instruction_classes": []},
+        "required_oracle_tiers": ["L3"],
+        "semantic": {"generalization_axis": "model", **semantic},
+        "__dir__": str(d),
+    }
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap), encoding="utf-8")
     return cap
 
@@ -405,16 +476,32 @@ _DEFAULT_PLACEMENT_CENSUS = {"silent_fallbacks_status": "offloaded", "silent_fal
 def _fake_compile(monkeypatch, *, on_mesh, fallback, tiles_pass=15, placement_census=_DEFAULT_PLACEMENT_CENSUS):
     """A compile_model whose MODEL ran `on_mesh` layers on the accelerator while its synthesized TILE
     certification is perfect — the exact shape that used to read as a pass."""
+
     def _cm(*a, **k):
-        return {"status": "verified",
-                "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
-                "placement_census": placement_census,
-                "mesh_execution": {"target": k.get("target"), "matmul_layers_routed": on_mesh + fallback,
-                                   "matmul_layers_on_mesh": on_mesh,
-                                   "matmul_layers_host_fallback": fallback},
-                "mesh_tile_verification": {"n_tiles": tiles_pass, "n_passed": tiles_pass, "n_failed": 0,
-                                           "n_unavailable": 0, "n_unsynthesizable": 0, "per_tile": []}}
+        return {
+            "status": "verified",
+            "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
+            "placement_census": placement_census,
+            "coverage_certificate": _measured_source_regions(),
+            "mesh_execution": {
+                "target": k.get("target"),
+                "matmul_layers_routed": on_mesh + fallback,
+                "matmul_layers_on_mesh": on_mesh,
+                "matmul_layers_host_fallback": fallback,
+                "transform_audit_qualification": dict(_REPLAYED),
+            },
+            "mesh_tile_verification": {
+                "n_tiles": tiles_pass,
+                "n_passed": tiles_pass,
+                "n_failed": 0,
+                "n_unavailable": 0,
+                "n_unsynthesizable": 0,
+                "per_tile": [],
+            },
+        }
+
     import merlin.compile_cli as _cc
+
     monkeypatch.setattr(_cc, "compile_model", _cm)
 
 
@@ -425,8 +512,7 @@ def test_a_model_that_never_reached_the_mesh_cannot_pass(tmp_path, monkeypatch):
     from merlin.targetgen.capsule_runner import _grade_model_capsule
 
     _fake_compile(monkeypatch, on_mesh=0, fallback=15)
-    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
-                         semantic_family="contraction")
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto", semantic_family="contraction")
     res = _grade_model_capsule(cap, target="probe_target", timeout=1)
     assert res["status"] == "fail", res
     assert res["failure"]["category"] == "FALLBACK_ON_ELIGIBLE_REGION"
@@ -438,8 +524,7 @@ def test_a_partial_fallback_is_also_a_failure(tmp_path, monkeypatch):
     from merlin.targetgen.capsule_runner import _grade_model_capsule
 
     _fake_compile(monkeypatch, on_mesh=14, fallback=1)
-    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
-                         semantic_family="contraction")
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto", semantic_family="contraction")
     res = _grade_model_capsule(cap, target="probe_target", timeout=1)
     assert res["status"] == "fail", res
     assert res["failure"]["category"] == "FALLBACK_ON_ELIGIBLE_REGION"
@@ -492,8 +577,7 @@ def test_a_model_fully_on_the_mesh_is_not_blocked(tmp_path, monkeypatch):
     from merlin.targetgen.capsule_runner import _grade_model_capsule
 
     _fake_compile(monkeypatch, on_mesh=15, fallback=0)
-    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
-                         semantic_family="contraction")
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto", semantic_family="contraction")
     res = _grade_model_capsule(cap, target="probe_target", timeout=1)
     assert res["status"] == "pass", res
 
@@ -503,14 +587,27 @@ def test_missing_per_layer_accounting_is_incomplete_not_pass(tmp_path, monkeypat
     from merlin.targetgen.capsule_runner import _grade_model_capsule
 
     def _cm(*a, **k):
-        return {"status": "verified", "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
-                "mesh_execution": {"target": k.get("target")},        # no counts at all
-                "mesh_tile_verification": {"n_tiles": 15, "n_passed": 15, "n_failed": 0,
-                                           "n_unavailable": 0, "n_unsynthesizable": 0, "per_tile": []}}
+        return {
+            "status": "verified",
+            "verify": {"gate_ok": True, "fp32_cos": 1.0, "ok": True},
+            "mesh_execution": {
+                "target": k.get("target"),  # no counts at all
+                "transform_audit_qualification": dict(_REPLAYED),
+            },
+            "mesh_tile_verification": {
+                "n_tiles": 15,
+                "n_passed": 15,
+                "n_failed": 0,
+                "n_unavailable": 0,
+                "n_unsynthesizable": 0,
+                "per_tile": [],
+            },
+        }
+
     import merlin.compile_cli as _cc
+
     monkeypatch.setattr(_cc, "compile_model", _cm)
-    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto",
-                         semantic_family="contraction")
+    cap = _model_capsule(tmp_path, must_accelerate=True, eligible="auto", semantic_family="contraction")
     res = _grade_model_capsule(cap, target="probe_target", timeout=1)
     assert res["status"] == "incomplete", res
     assert res["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
@@ -523,8 +620,9 @@ def test_the_two_mesh_records_never_share_a_key():
     from merlin import compile_cli
 
     src = inspect.getsource(compile_cli.compile_model)
-    assert 'out["mesh_tile_verification"] = _mesh_verify(' in src, \
+    assert 'out["mesh_tile_verification"] = _mesh_verify(' in src, (
         "the synthesized-tile record must not be written to the model-execution key"
+    )
     assert 'out["mesh_execution"] = _mesh_verify(' not in src
 
 
@@ -534,6 +632,7 @@ def test_the_two_mesh_records_never_share_a_key():
 # tier ladder then had nothing to record, and the capsule reported a verdict backed by the functional
 # lane alone. The cost of collecting it is real -- it is bounded by MERLIN_MODEL_BUDGET_S, not by
 # declining to look.
+
 
 def _mesh_verify_default(capsule: dict, env: str | None) -> bool:
     """The decision under test, evaluated exactly as `_grade_model_capsule_inline` writes it."""
@@ -546,14 +645,14 @@ def _mesh_verify_default(capsule: dict, env: str | None) -> bool:
 
 def test_mesh_verification_follows_the_capsules_own_demand():
     must = {"semantic": {"must_accelerate": True}}
-    interop = {"semantic": {"must_accelerate": False},
-               "lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
+    interop = {"semantic": {"must_accelerate": False}, "lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
     neither = {"semantic": {"must_accelerate": False}}
 
     assert _mesh_verify_default(must, None) is True
     assert _mesh_verify_default(interop, None) is True, (
         "an interop capsule withholds must_accelerate on purpose — host work is the behaviour under "
-        "test — but it REQUIRES on_mesh, and that requirement is unverifiable without the evidence")
+        "test — but it REQUIRES on_mesh, and that requirement is unverifiable without the evidence"
+    )
     assert _mesh_verify_default(neither, None) is False
 
     # the env var still overrides, in BOTH directions, for a deliberate diagnostic run
@@ -571,8 +670,10 @@ def test_every_capstone_either_demands_the_evidence_or_records_why_it_cannot():
     """
     from merlin.common.paths import merlin_dir
 
-    roots = [merlin_dir() / "experiments/capsule_bench/harness/full_public_capsules",
-             merlin_dir() / "contract/capsules"]
+    roots = [
+        merlin_dir() / "experiments/capsule_bench/harness/full_public_capsules",
+        merlin_dir() / "contract/capsules",
+    ]
     demanding = withheld = 0
     for root in roots:
         for f in sorted(root.rglob("capsule.yaml")):
@@ -586,7 +687,8 @@ def test_every_capstone_either_demands_the_evidence_or_records_why_it_cannot():
             reason = ((c.get("semantic") or {}).get("not_asserted_reason") or "").strip()
             assert reason, (
                 f"{c.get('name')} ({f}) demands no accelerator evidence and records no reason — "
-                f"silence here is indistinguishable from 'this target has no accelerator demand'")
+                f"silence here is indistinguishable from 'this target has no accelerator demand'"
+            )
     assert demanding >= 3, f"expected the grounded capstones, found {demanding}"
     assert withheld >= 1, "the withholding path is real and must stay exercised by the corpus"
 
@@ -594,8 +696,10 @@ def test_every_capstone_either_demands_the_evidence_or_records_why_it_cannot():
 def test_a_withheld_demand_cannot_buy_a_pass():
     """Withholding is honest, not free: with no demand there is no mesh verification, so no tier the
     capsule declared is exercised, and the ladder refuses to call that a pass."""
-    ungrounded = {"semantic": {"must_accelerate": False, "not_asserted_reason": "could not derive"},
-                  "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}
+    ungrounded = {
+        "semantic": {"must_accelerate": False, "not_asserted_reason": "could not derive"},
+        "required_oracle_tiers": ["L0", "L1", "L2", "L3"],
+    }
     assert _mesh_verify_default(ungrounded, None) is False
     # no mesh verification -> no tile record -> nothing exercised -> every declared tier unexercised
     exercised: dict[str, str] = {}

@@ -28,3 +28,5 @@ merlin/python/merlin/targetgen/corpus_spec.py  # 1703
 merlin/python/merlin/targetgen/corpus_synth.py  # 1765
 merlin/python/merlin/targetgen/publish.py  # 1897
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # 1748
+# growth-accepted: sealed_m2m.py's own SHA-256 (b1b521864876767bcaa55968fe98f7b1de76494d43b3afd82220a10454b54a13 at 1636 lines) IS the sealed M2M issuer identity: issue() records it, capture selections bind it as issuer_source_sha256 and replay_verify accepts only it plus named historical digests. Any split changes it and moves issuer logic out of the hashed file, so it needs an identity carry-over (the issuer identity hashed over both files, the old digest accepted for replay only, as _ARCHIVED_V3_ISSUER_SHA256 is). Deferred until no sealed captures are in flight; remove this entry in that change.
+packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py  # 1636

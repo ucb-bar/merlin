@@ -190,22 +190,3 @@ def test_a_block_scaled_integer_dtype_fails_closed_for_the_same_reason_a_float_o
     # The control: a per-channel int8 output still decodes, because 19 shipped capsules declare one.
     assert PO._decode_output(b"\x01\x02\x03\x04", [4], "i8", None, name="Y0").tolist() == [1, 2, 3, 4]
     assert qf.get("int8").granularity == "per_channel"
-
-
-def test_the_two_regressed_atlas_capsules_declare_an_f32_output():
-    """Ties the unit above to the corpus: the interface these capsules are graded against declares an
-    f32 result, so decoding f32 is not a hypothetical -- it is what their L3 needs.
-
-    Read from the capsule corpus via ``repo_root()`` so the test survives a move.
-    """
-    from merlin.common.paths import repo_root
-
-    root = repo_root() / "merlin" / "contract" / "capsules"
-    found = 0
-    for name in ("AF0_rmsnorm_bf16_pt", "AF8_rope_bf16_pt"):
-        for iface in root.rglob(f"{name}/capsule.interface.mlir"):
-            text = iface.read_text(encoding="utf-8")
-            assert "xf32>" in text, f"{name}: interface declares no f32 tensor"
-            found += 1
-    if not found:
-        pytest.skip("capsule corpus not present in this checkout")

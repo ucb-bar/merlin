@@ -12,8 +12,6 @@
 #
 # To clear one: add its `opcodes:` block to command_buffer_abi.yaml (operands, attributes, semantics)
 # and delete the line. Semantics must be DERIVED from the op's builder and golden, not invented.
-attention_qk ATTENTION_QK
-matmul_batched BATCHED_MATMUL
 rmsnorm RMSNORM
 rope ROPE
 softmax SOFTMAX

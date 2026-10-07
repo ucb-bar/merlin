@@ -692,7 +692,15 @@ def _export_role(sel: ChampionSelection):
     if provider.target != sel.target:
         raise PublishError("provider target does not match selected publication target")
     if provider.role == ProviderRole.CANDIDATE_COMPILER:
-        from .package_runtime import load_package
+        try:
+            from .package_runtime import load_package
+        except ModuleNotFoundError as exc:
+            if exc.name != "jsonschema":
+                raise
+            # The ABI is schema-validated; a minimal install refuses rather than skipping that check.
+            raise PublishError(
+                "candidate compiler manifest validation requires jsonschema (pip install 'merlin[targetgen]')"
+            ) from exc
 
         try:
             pkg = load_package(sel.package_dir)

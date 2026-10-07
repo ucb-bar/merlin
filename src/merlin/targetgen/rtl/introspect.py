@@ -102,6 +102,8 @@ class RtlSource:
     config: str  # the elaborated config, e.g. the chipyard TestHarness config name
     generator: str  # the generator source dir whose modules ARE this target's
     origin: Path  # the declaration file this came from — provenance, so a wrong pin is traceable
+    source_revision: str | None = None
+    gitlinks: tuple[tuple[str, str], ...] = ()
 
     def artifacts(self) -> dict[str, Path]:
         return find_artifacts(self.root, self.config)
@@ -210,12 +212,17 @@ def declared_rtl_source(target: str) -> RtlSource:
                 f"means is not resolvable — an SoC checkout holds many, and picking one would be a "
                 f"guess about the hardware"
             )
+        from .declared_revision import declared_revision
+
+        revision, gitlinks = declared_revision(block, Path(str(root)), where=f"{target}: {path}")
         return RtlSource(
             target=target,
             root=Path(str(root)),
             config=str(config),
             generator=str(block.get("generator") or target),
             origin=path,
+            source_revision=revision,
+            gitlinks=gitlinks,
         )
     raise RtlSourceUndeclared(
         f"{target}: no file of this target's declares an elaborated-RTL source. Add an `rtl_source:` "

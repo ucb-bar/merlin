@@ -13,6 +13,8 @@ built, so a reader can subtract the fixture passes instead of taking the headlin
 
 from __future__ import annotations
 
+import selected_driver
+
 from merlin.targetgen.capsule_runner import TierResult
 
 
@@ -47,6 +49,7 @@ def test_output_is_unchanged_when_no_toolchain_was_reported():
     }
 
 
+@selected_driver.requires_support("muon")
 def test_the_mx_branch_precedes_the_artifact_branch():
     """Structural: the MX route must be checked BEFORE is_mlir_artifact.
 

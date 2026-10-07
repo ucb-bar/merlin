@@ -44,6 +44,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin_experiments.phase1.providers import codex_agent as _codex
+
 from merlin.common.access import audit_token_in
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_hit_is_violation, audit_tokens
@@ -63,36 +65,11 @@ CLEAN = "CLEAN"
 CONTAMINATED = "CONTAMINATED"
 UNKNOWN = "UNKNOWN"
 
-#: Event envelope kinds the driver emits. DECLARED, so an envelope this module has never seen forces
-#: UNKNOWN rather than being skipped — an unrecognised envelope may be carrying a read we cannot see.
-KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
-    {
-        "thread.started",
-        "turn.started",
-        "turn.completed",
-        "turn.failed",
-        "item.started",
-        "item.updated",
-        "item.completed",
-        "error",
-    }
-)
-
-#: Item kinds the driver emits. Same rule, same reason: an unknown item kind is UNKNOWN, never ignored.
-#: ``todo_list`` is here because the tool emits it even though the driver's own constants omit it.
-KNOWN_ITEM_TYPES: frozenset[str] = frozenset(
-    {
-        "command_execution",
-        "agent_message",
-        "reasoning",
-        "error",
-        "file_change",
-        "mcp_tool_call",
-        "web_search",
-        "todo_list",
-        "collab_tool_call",
-    }
-)
+#: Event envelope and item kinds the driver emits, read from the driver's ONE declaration of its
+#: measured event contract. DECLARED, so an envelope or item kind this module has never seen forces
+#: UNKNOWN rather than being skipped -- an unrecognised event may be carrying a read we cannot see.
+KNOWN_EVENT_TYPES: frozenset[str] = _codex.ENVELOPE_TYPES
+KNOWN_ITEM_TYPES: frozenset[str] = _codex.ITEM_TYPES
 
 #: ``collab_tool_call`` carries a ``tool`` field with its own open vocabulary, so accepting the ITEM
 #: kind outright would accept every tool that kind ever grows. These are the tools observed to touch no

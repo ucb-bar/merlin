@@ -20,6 +20,11 @@ judgement:
 
 Everything else is left alone and merely reported, because "probably finished" is not a property of
 a run directory that this tool can read off the filesystem. Dry-run is the default; ``--apply`` acts.
+
+Three commands reach past ``out/`` (:mod:`merlin.common.storage_ops`): ``move`` relocates a tree to
+another disk behind a relative symlink after a checksum-verified copy, ``dedup --peers`` hard-links
+duplicates to each other where the content store cannot reach, and ``worktrees`` classifies a
+repository's worktrees read-only. The two that change the disk refuse a path a live process holds.
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from merlin.common import content_store, storage_lifecycle
+from merlin.common import content_store, storage_lifecycle, storage_ops
 from merlin.common.artifacts import declared_product_roots
 from merlin.common.artifacts import storage_contract as contract
 from merlin.common.paths import artifacts_dir, build_dir, out_dir, runs_dir
@@ -820,13 +825,13 @@ def _sealed(directory: Path, patterns: tuple[str, ...]) -> bool:
     return False
 
 
-def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 20) -> dict:
+def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 20, deny: tuple[Path, ...] = ()) -> dict:
     """Files under ``roots`` that hold bytes some other file already holds.
 
     Digesting the whole root would cost hours, so only files that SHARE A SIZE with another file are
     digested -- two files with different sizes cannot have the same content, and that prefilter drops
     the work to a fraction of the root. ``min_bytes`` keeps the walk off the long tail of small files
-    where the saving cannot repay the inode.
+    where the saving cannot repay the inode. A directory under ``deny`` is never entered.
     """
     declared = contract()
     patterns = tuple(str(x) for x in (declared.get("mode_verified_seals") or []))
@@ -839,6 +844,8 @@ def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 2
         stack = [root]
         while stack:
             current = stack.pop()
+            if storage_ops.denied(current, deny) is not None:
+                continue  # not ours to read
             if _sealed(current, patterns):
                 skipped_sealed += 1
                 continue  # its verifier reads file modes; sharing an inode breaks it
@@ -1018,15 +1025,17 @@ def retention_plan(keep: int, match: str | None = None) -> dict:
             drops.append({"name": name, "path": str(path), "bytes": size})
             plan["drop_bytes"] += size
             plan["drop_units"] += 1
-        plan["groups"][group] = {
-            "units": len(rows),
-            "undated": unplaceable.get(group, 0),
-            "drops": drops,
-            "protected": protected,
-        }
+        plan["groups"][group] = _group_row(len(rows), unplaceable.get(group, 0), drops, protected)
     for group, count in unplaceable.items():
-        plan["groups"].setdefault(group, {"units": 0, "undated": count, "drops": [], "protected": []})
+        if group not in plan["groups"]:
+            plan["groups"][group] = _group_row(0, count, [], [])
     return plan
+
+
+def _group_row(units: int, undated: int, drops: list[dict], protected: list[dict]) -> dict:
+    """One group's row of a prune plan. Built in one place so a group with only undated units has
+    exactly the shape of one that was measured."""
+    return {"units": units, "undated": undated, "drops": drops, "protected": protected}
 
 
 CLASSES = ("store-orphans", "pending-snapshots", "caches")
@@ -1141,9 +1150,40 @@ def _organize(apply: bool) -> int:
     return 1 if failures or unresolved else 0
 
 
-def _dedup(paths: list[Path] | None, min_bytes: int, top: int, apply: bool) -> int:
+def _not_held(groups: list[tuple[int, list[Path]]], check) -> tuple[list[tuple[int, list[Path]]], list[str]]:
+    """The groups with every name a live process holds open removed, and those names."""
+    kept: list[tuple[int, list[Path]]] = []
+    held: list[str] = []
+    for size, same in groups:
+        free = []
+        for path in same:
+            pids = check.holders(path)
+            if pids:
+                held.append(f"{path} (pid {', '.join(map(str, pids))})")
+            else:
+                free.append(path)
+        if len(free) > 1:
+            kept.append((size, free))
+    return kept, held
+
+
+def _dedup(
+    paths: list[Path] | None,
+    min_bytes: int,
+    top: int,
+    apply: bool,
+    *,
+    peers: bool = False,
+    check_open: bool = True,
+    deny: tuple[Path, ...] = (),
+) -> int:
     roots = [p.resolve() for p in paths] if paths else None
-    found = dedup_candidates(roots, min_bytes=min_bytes)
+    for root in roots or ():
+        hit = storage_ops.denied(root, deny)
+        if hit is not None:
+            print(f"refusing {root}: under the deny-list entry {hit}", file=sys.stderr)
+            return 1
+    found = dedup_candidates(roots, min_bytes=min_bytes, deny=deny)
     groups = found["groups"]
     if not groups:
         print("no duplicated content found")
@@ -1166,6 +1206,23 @@ def _dedup(paths: list[Path] | None, min_bytes: int, top: int, apply: bool) -> i
     if not apply:
         print("\ndry run -- pass --apply to collapse these onto one copy each")
         return 0
+    try:
+        check = storage_ops.checker_for(check_open)
+    except storage_ops.OpenFileCheckUnavailable as exc:
+        print(f"refusing to de-duplicate: {exc}", file=sys.stderr)
+        return 1
+    if peers:
+        result = storage_ops.link_duplicates(groups, apply=True, deny=deny, tracked=_holds_tracked_files, checker=check)
+        for name, why in result["skipped"]:
+            print(f"  skipped {name}: {why}", file=sys.stderr)
+        print(
+            f"\nlinked {result['linked']} names to a peer holding the same bytes, releasing "
+            f"{_human(result['released_bytes'])}; each kept inode is now read-only and shared."
+        )
+        return 0
+    groups, held = _not_held(groups, check)
+    for name in held:
+        print(f"  skipped {name}: held open", file=sys.stderr)
     try:
         result = dedup(groups)
     except OSError as exc:
@@ -1216,6 +1273,72 @@ def _retain(keep: int, match: str | None, apply: bool) -> int:
     return 1 if failures else 0
 
 
+def _guard_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-open-file-check",
+        dest="open_file_check",
+        action="store_false",
+        help="do not ask lsof/fuser whether a live process holds the path (refused without a tool otherwise)",
+    )
+    parser.add_argument(
+        "--deny",
+        action="append",
+        type=Path,
+        default=[],
+        help="a tree this command must not read or touch (repeatable)",
+    )
+
+
+def _move(args: argparse.Namespace) -> int:
+    record = storage_ops.move(
+        args.source,
+        args.destination,
+        apply=args.apply,
+        check_open=args.open_file_check,
+        deny=tuple(args.deny),
+        protected=_protection_reasons,
+    )
+    if args.json:
+        print(json.dumps(record, indent=2, sort_keys=True, default=str))
+    else:
+        size = _human(int(record.get("bytes") or 0))
+        verb = {"planned": "would move", "moved": "moved", "refused": "refused", "failed": "FAILED"}[record["status"]]
+        print(f"{verb} {record['source']} -> {record['destination']} ({record.get('files', 0)} files, {size})")
+        for reason in record["reasons"]:
+            print(f"  {reason}")
+        if record["status"] == "moved":
+            print(f"  left a relative symlink: {record['source']} -> {record['symlink']}")
+        elif record["status"] == "planned":
+            print("\ndry run -- pass --apply to copy, verify by checksum, and leave a relative symlink")
+    return 0 if record["status"] in ("planned", "moved") else 1
+
+
+def _worktrees(args: argparse.Namespace) -> int:
+    try:
+        census = storage_ops.worktrees(
+            args.repo, base=args.base, deny=tuple(args.deny), sizes=not args.no_size, check_open=args.open_file_check
+        )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(census, indent=2, sort_keys=True, default=str))
+        return 0
+    print(f"base {census['base'] or '(none found)'}; open-file check: {census['open_file_check']}")
+    print(f"{'size':>10}  {'state':<8} {'mod':>4} {'untr':>5} {'merged':<6} {'ahead':>5} {'live':>4}  branch / path")
+    for row in sorted(census["worktrees"], key=lambda r: -(r.get("size") or 0)):
+        size = _human(row["size"]) if row.get("size") is not None else "?"
+        merged = {True: "yes", False: "no"}.get(row.get("merged"), "?")
+        live = "?" if row.get("holders") is None else str(len(row["holders"]))
+        flags = "".join(f" [{k}]" for k in ("locked", "prunable") if row.get(k))
+        print(
+            f"{size:>10}  {row['state']:<8} {row.get('modified', ''):>4} {row.get('untracked', ''):>5} "
+            f"{merged:<6} {row.get('ahead') if row.get('ahead') is not None else '':>5} {live:>4}  "
+            f"{row.get('branch') or '(detached)'}  {row['path']}{flags}"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="merlin-storage", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1243,6 +1366,29 @@ def main(argv: list[str] | None = None) -> int:
     dd.add_argument("--min-bytes", type=int, default=1 << 20, help="ignore files smaller than this (default 1 MiB)")
     dd.add_argument("--top", type=int, default=15, help="how many duplicate groups to list")
     dd.add_argument("--apply", action="store_true", help="actually re-point the names; without it nothing is touched")
+    dd.add_argument(
+        "--peers",
+        action="store_true",
+        help="hard-link duplicates to one another instead of into the content store: for trees on "
+        "another filesystem than the store, or outside out/",
+    )
+    _guard_arguments(dd)
+
+    mv = sub.add_parser(
+        "move", help="copy a tree elsewhere, verify by checksum, leave a relative symlink (dry run by default)"
+    )
+    mv.add_argument("source", type=Path, help="a directory or file (never a symlink)")
+    mv.add_argument("destination", type=Path, help="where it goes; must not exist yet")
+    mv.add_argument("--apply", action="store_true", help="actually move; without it nothing is touched")
+    mv.add_argument("--json", action="store_true", help="emit the record instead of a summary")
+    _guard_arguments(mv)
+
+    wt = sub.add_parser("worktrees", help="classify a repository's worktrees: dirty, merged, size, in use (read-only)")
+    wt.add_argument("repo", nargs="?", type=Path, default=Path.cwd(), help="any checkout of the repository")
+    wt.add_argument("--base", help="the ref 'merged' is judged against (default: origin's HEAD, else main)")
+    wt.add_argument("--no-size", action="store_true", help="skip the du walk of each worktree")
+    wt.add_argument("--json", action="store_true", help="emit the rows instead of a table")
+    _guard_arguments(wt)
 
     ret = sub.add_parser("retain", help="what a retention depth would drop (dry run by default)")
     ret.add_argument("--keep", type=int, required=True, help="how many of the newest units to keep per group")
@@ -1283,7 +1429,21 @@ def main(argv: list[str] | None = None) -> int:
         return _organize(args.apply)
 
     if args.command == "dedup":
-        return _dedup(args.paths or None, args.min_bytes, args.top, args.apply)
+        return _dedup(
+            args.paths or None,
+            args.min_bytes,
+            args.top,
+            args.apply,
+            peers=args.peers,
+            check_open=args.open_file_check,
+            deny=tuple(args.deny),
+        )
+
+    if args.command == "move":
+        return _move(args)
+
+    if args.command == "worktrees":
+        return _worktrees(args)
 
     if args.command == "retain":
         return _retain(args.keep, args.match, args.apply)

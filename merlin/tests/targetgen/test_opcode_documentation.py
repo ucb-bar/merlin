@@ -53,7 +53,7 @@ def test_the_parser_defines_the_bias_add_op_it_emits():
 
 
 def test_no_new_op_reaches_a_capsule_without_abi_semantics():
-    """The gate's own verdict, ratchet included. The five pre-existing entries may only shrink."""
+    """The gate's own verdict, ratchet included. The pre-existing entries may only shrink."""
     gate = _gate()
     rep = gate.audit()
     assert rep["status"] == "ok", rep.get("detail")
@@ -74,7 +74,7 @@ def test_the_gate_would_have_caught_the_op_that_prompted_it():
     """Non-vacuity, in the specific shape that actually happened.
 
     An empty ratchet must flag every undocumented op; that only proves the gate can fail. What matters
-    is that a NEW op is separated from the inherited five, since that is the state a real change
+    is that a NEW op is separated from the inherited ones, since that is the state a real change
     arrives in.
     """
     gate = _gate()
@@ -83,9 +83,10 @@ def test_the_gate_would_have_caught_the_op_that_prompted_it():
     assert "bias_add" in documented, "the op that prompted this gate must itself be documented"
 
     with_empty = {m: oc for m, oc in rep["undocumented"].items()}
-    assert len(with_empty) == 5, (
-        f"expected exactly the five inherited ops, got {sorted(with_empty)}; if this changed, either "
-        f"debt was paid (shrink the ratchet) or a new op arrived undocumented"
+    inherited = gate._ratchet(gate._DEFAULT_RATCHET)
+    assert inherited and set(with_empty) == inherited, (
+        f"expected exactly the inherited ops {sorted(inherited)}, got {sorted(with_empty)}; if this "
+        f"changed, either debt was paid (shrink the ratchet) or a new op arrived undocumented"
     )
 
 

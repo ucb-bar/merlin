@@ -135,16 +135,6 @@ def _boundaries(evt: dict) -> list[dict]:
     return out
 
 
-def _marks(evt: dict) -> list[tuple[str, str]]:
-    """The tool-call boundaries this event announces, as ``(OPEN|CLOSE, call_id)``.
-
-    Recognises the harness's normalized claude-shaped events AND a raw ``codex exec --json`` envelope,
-    so the same timeline algebra reads either file. An event in neither shape yields nothing (it is a
-    timeline TICK, not a tool boundary) rather than being guessed at.
-    """
-    return [(b["kind"], b["call_id"]) for b in _boundaries(evt)]
-
-
 def _is_segment_start(evt: dict) -> bool:
     """A new agent SESSION begins here (the harness's per-round init header)."""
     return evt.get("type") == "system" and evt.get("subtype") == "init"

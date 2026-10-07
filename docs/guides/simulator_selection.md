@@ -3,7 +3,7 @@ title: Selecting and checking a simulator
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [phase0_specification, target_resolution, reproducing_whole_model_on_rtl]
 code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/targetgen/program_engine_policy.py, src/merlin/targetgen/program_oracle.py]
 ---
@@ -74,6 +74,15 @@ unreceipted/adopted GSIM wrappers, including explicitly registered wrapper homes
 It does not make older receipts stronger or establish that the simulator's
 FIRRTL equals a separate Phase 0 source selection.
 
+That source comparison is automatic only when the run names its selected facts.
+With `MERLIN_RTL_FACTS` pointing at a facts file (frozen runs set it to their
+verified input snapshot), the Chipyard engine selection and the capsule GSIM
+adapter require a *bound* build receipt whose `firrtl_sha256` equals the facts'
+FIRRTL digest; an unbound receipt or a different digest makes GSIM unavailable
+with that reason. Without `MERLIN_RTL_FACTS`, GSIM keeps its availability
+semantics, but its selection reason records that source identity is unverified
+and cannot be cited as evidence of it.
+
 Compare the actual engine's FIRRTL digest and configuration with the selected
 Phase 0 facts. Do not infer equivalence from a shared target name or array size.
 If an engine uses another retained elaboration, derive a new facts bundle from
@@ -116,9 +125,15 @@ declared string arguments are provider policy, not an inferred ISA encoding.
 
 Use a program that exercises nonzero operands, the actual compute instruction,
 memory transfers and a declared termination. Run it with a bounded cycle budget
-and wall-clock deadline through the existing execution adapter. Check:
+and wall-clock deadline through the existing execution adapter. A program-driven
+GSIM run holds one of a fixed number of per-user GSIM slots for the whole
+simulation; when every slot is busy it waits up to its timeout and then fails,
+rather than oversubscribing the host. Check:
 
 - termination and absence of design assertions or traps;
+- complete decode by the functional model: the program oracle, for grading and
+  for the debugger alike, refuses a run whose model substituted any submitted
+  instruction it does not support, or that reports no decode coverage at all;
 - every output region's exact shape, byte length and precision;
 - the complete result against the independent golden;
 - the simulator binary/wrapper, input executable or words, and source digests;

@@ -18,6 +18,37 @@ compute_units:
       - {in: fp8_e4m3, weight: fp8_e4m3, acc: bf16}
     semantic_capabilities:
       - {family: contraction, dtypes: [fp8_e4m3], ranks: [2, 3]}
+      # Both below are what capability_derive establishes from the selected RTL facts and ISA role
+      # (derivation: merlin.targetgen.capability_derive.derive, via merlin.targetgen.capability_manifests.manifest_for)
+      # census (semantic_capabilities_derived of manifest_for('atlas')), declared so the audit's
+      # drift is empty rather than reporting them missing:
+      #   elementwise_map <- role 'acc_readout_scaled' (MXUAccumulatorPopE1): the scaled readout of
+      #     this array's accumulator, in this unit's format, fused with the contraction only;
+      #   movement <- role 'memory' (TensorBaseOffset). It evidences no engine, so it carries the
+      #     formats of the units the facts derive (fp8_e4m3 here, bf16 on the lane engine).
+      - {family: elementwise_map, dtypes: [fp8_e4m3], composed_with: [contraction]}
+      - {family: movement, dtypes: [fp8_e4m3, bf16]}
+  # DERIVED, not authored: the unit capability_manifests.manifest_for('atlas') synthesizes from the
+  # selected RTL facts (AtlasRocketConfig FIRRTL, sha256 fefa711dba44498317573ee5af2cfd82edb674cdfff1505318ea93e896fc123d).
+  # The ISA role census evidences the engine; the lane-replication reader names its element format.
+  # merlin/tests/targetgen/test_lane_datapaths.py re-derives it and compares whenever that checkout is present.
+  - name: vector_unit
+    kind: vector
+    dtypes: [bf16]
+    ops: [elementwise]
+    scaling: none
+    requant: {ref: none}
+    semantic_capabilities:
+      - {family: elementwise_map, dtypes: [bf16]}
+    derived_from: "isa_role: ISA role 'tensor_compute_binary' -> ['TensorComputeBinary']"
+    dtypes_derived_from: >-
+      rtl_facts.lane_datapaths[VectorEngineTop] (firrtl_lane_replication): module VectorEngineTop
+      (a unit beside the compute array) replicates 6 primitive(s) once per lane, 16x each: AddRecFN,
+      MulRawFN, RecFNToRecFN, RoundRawFNToRecFN_e8_s8, Tanh, VectorAddRecFN; `RoundRawFNToRecFN_e8_s8`
+      is a hardfloat primitive parameterised e8/s8 (8 exponent + 7 fraction bits = bf16 in the format
+      registry) and declares the 17-bit port it implies
+# Marks the vector unit above as synthesized from evidence, never as author-declared.
+derived_compute_units: [vector_unit]
 memory_model:
   resident: true
   accumulators: true

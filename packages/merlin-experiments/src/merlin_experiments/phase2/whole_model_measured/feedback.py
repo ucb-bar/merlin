@@ -146,6 +146,16 @@ def package_authored(result: Mapping[str, Any], reference: Mapping[str, Any] | N
     }
 
 
+def coverage_text(authored: Mapping[str, Any] | None) -> str:
+    """``54/71 groups, 93.2%`` -- the package-authored share printed beside a cycle count."""
+    authored = authored or {}
+    share = authored.get("priced_share")
+    return (
+        f"{authored.get('groups_answered')}/{authored.get('groups_total')} groups, "
+        f"{'-' if share is None else f'{100 * float(share):.1f}%'}"
+    )
+
+
 def compare(result: Mapping[str, Any], reference: Mapping[str, Any] | None, *, top: int = 15) -> dict[str, Any]:
     """Per-group ours-vs-reference on one machine, the distance to the bar, and the gap holders."""
     status = result.get("timing_status")
@@ -233,7 +243,9 @@ def compare(result: Mapping[str, Any], reference: Mapping[str, Any] | None, *, t
         )
         positive = sum(max(0, int(entry["delta_cycles"])) for entry in holders)
         document["reference"]["correct"] = reference.get("timing_status") == V.TIMING_MEASURED
+        document["reference"]["role"] = "context_only"
         document["distance_to_bar"] = {
+            "role": "context_only: the vendor reference's cycles orient; the roofline is the machine's bound",
             "ours_whole_window_cycles": int(whole),
             "bar_whole_window_cycles": bar,
             "gap_cycles": gap,
@@ -411,7 +423,10 @@ def largest_gaps(document: Mapping[str, Any], *, top: int = 10) -> list[str]:
     bar = document.get("distance_to_bar")
     if not bar:
         return []
-    lines = ["  LARGEST GAPS vs the same-machine reference (this measurement's per-group table):"]
+    lines = [
+        "  LARGEST GAPS vs the same-machine VENDOR reference (context only -- another implementation's cycles, "
+        "not a target; this measurement's per-group table):"
+    ]
     kinds = [row for row in document.get("by_kind") or [] if row.get("reference_cycles")]
     for row in sorted(kinds, key=lambda r: -(int(r["cycles"]) - int(r["reference_cycles"]))):
         delta = int(row["cycles"]) - int(row["reference_cycles"])
@@ -466,12 +481,12 @@ def render(document: Mapping[str, Any], *, rows: int = 15) -> str:
         return "\n".join(lines)
     authored = document.get("package_authored") or {}
     if authored:
-        share = authored.get("priced_share")
         lines.append(
-            f"  package-authored: {authored.get('groups_answered')} of {authored.get('groups_total')} groups, "
-            f"{'-' if share is None else f'{100 * share:.1f}%'} of the work (priced by the reference's own cycles)"
+            f"  package-authored: {coverage_text(authored)} of the work (priced by the reference's own cycles)"
             + (f"  [{document['coverage_regression']}]" if document.get("coverage_regression") else "")
         )
+    if document.get("roofline_unavailable"):
+        lines.append(f"  no derived roofline in this feedback: {document['roofline_unavailable']}")
     failing = document.get("failing_groups") or []
     if failing:
         # CORRECTNESS LEADS. A wrong program's cycles are where its time went, not a result; the groups
@@ -492,7 +507,9 @@ def render(document: Mapping[str, Any], *, rows: int = 15) -> str:
         lines.extend(largest_gaps(document))
     correctness = document.get("correctness") or {}
     lines.append(
-        f"  whole-window {document.get('whole_window_cycles'):,} cycles; correctness "
+        f"  whole-window {document.get('whole_window_cycles'):,} cycles"
+        + (f" (package-authored {coverage_text(authored)})" if authored else "")
+        + "; correctness "
         f"{correctness.get('status')} (failed groups {correctness.get('groups_failed')}, argmax "
         f"{(correctness.get('argmax') or {}).get('observed')} vs oracle "
         f"{(correctness.get('argmax') or {}).get('oracle')}); "
@@ -517,8 +534,9 @@ def render(document: Mapping[str, Any], *, rows: int = 15) -> str:
     bar = document.get("distance_to_bar")
     if bar:
         lines.append(
-            f"  bar (reference, same machine) {bar['bar_whole_window_cycles']:,}; gap {bar['gap_cycles']:+,} "
-            f"cycles, ratio {bar['ratio']}" + (f"  [{bar['note']}]" if bar.get("note") else "")
+            f"  vendor reference, same machine (context only, not a target) {bar['bar_whole_window_cycles']:,}; "
+            f"ours {bar['gap_cycles']:+,} cycles, ratio {bar['ratio']}"
+            + (f"  [{bar['note']}]" if bar.get("note") else "")
         )
         lines.append(f"  {'group':>5} {'kind':<8} {'ours':>11} {'reference':>11} {'delta':>11} {'gather':>10}  route")
         for holder in (document.get("gap_holders") or [])[:rows]:
@@ -602,6 +620,7 @@ def render_capsule_report(report: Mapping[str, Any]) -> list[str]:
 
 __all__ = [
     "SCHEMA",
+    "coverage_text",
     "render_stagnation",
     "stagnation",
     "compare",

@@ -8,11 +8,14 @@ elementwise capsules end to end: parse -> lower -> schema-valid command buffer -
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
-from merlin.targetgen.linalg_lower import LinalgLowerError, lower_linalg_to_cb
+from merlin.targetgen.linalg_lower import lower_linalg_to_cb
+
+pytestmark = pytest.mark.target("muon")
 
 _CAPS = repo_root() / "merlin" / "contract" / "capsules" / "radiance" / "model_slices"
 
@@ -62,6 +65,7 @@ def test_single_matmul_with_bias_lowers_to_residency_commands():
     assert commit["attributes"]["epilogue"] == ["bias_add"] and commit["operands"].get("bias")
 
 
+@selected_driver.requires_support("muon")
 @pytest.mark.parametrize(
     "rel",
     ["RP18_resadd_bf16_pt", "RP16_bias_add_fp32_pt", "RP15_fused_matmul_bias_bf16_pt", "RP12_embed_scale_fp32_pt"],
@@ -129,6 +133,7 @@ def test_layernorm_recognized_by_provenance_and_lowered():
     assert cmd["attributes"]["eps"] == pytest.approx(1e-5)
 
 
+@selected_driver.requires_support("muon")
 def test_layernorm_emits_a_valid_kernel():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
@@ -137,6 +142,7 @@ def test_layernorm_emits_a_valid_kernel():
     assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir
 
 
+@selected_driver.requires_support("muon")
 def test_conv_im2col_matmul_lowers_to_conv_and_emits():
     # an im2col-conv region lowers to a single CONV command carrying the derived geometry + the compile-time
     # (k, patch) -> X source-offset table, and the reference emitter builds a kernel from it.

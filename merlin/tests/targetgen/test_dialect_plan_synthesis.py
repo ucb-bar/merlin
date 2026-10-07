@@ -12,7 +12,12 @@ import yaml
 from merlin.common import schemas
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.evidence.store import Evidence
-from merlin.targetgen.synthesize.dialect_plan import _generate, _is_tensor_resident, synthesize_dialect_plan
+from merlin.targetgen.synthesize.dialect_plan import (
+    _generate,
+    _generate_from_operation_capabilities,
+    _is_tensor_resident,
+    synthesize_dialect_plan,
+)
 
 
 def _contract(target: str) -> dict:
@@ -79,3 +84,78 @@ def test_generated_plan_builds_a_dialect():
         "demonpu.commit",
         "demonpu.evict",
     }
+
+
+def _typed_contract() -> dict:
+    return {
+        "name": "synthetic",
+        "dialect_name": "synthetic",
+        "types": [{"name": "state"}],
+        "operation_capabilities": {
+            "version": 1,
+            "operations": [
+                {
+                    "domain": "dialect",
+                    "dialect": "synthetic",
+                    "operation": "step",
+                    "status": "unknown",
+                    "effects": ["movement"],
+                    "semantics": {
+                        "kind": "machine",
+                        "mlir_signature": {
+                            "operands": [{"name": "state", "type": "!synthetic.state"}],
+                            "results": [{"name": "next", "type": "!synthetic.state"}],
+                            "attributes": [
+                                {
+                                    "name": "mode",
+                                    "type": "string",
+                                    "role": "mode",
+                                    "choices": ["read", "write"],
+                                }
+                            ],
+                            "effects": ["read", "write"],
+                        },
+                    },
+                }
+            ],
+        },
+    }
+
+
+def test_typed_plan_is_generated_from_existing_operation_contract():
+    from merlin.targetgen.generate import mlir_scaffold
+
+    contract = _typed_contract()
+    plan = _generate_from_operation_capabilities(contract)
+    assert plan is not None
+    assert synthesize_dialect_plan(Evidence(target="synthetic", sources={}), contract) == plan
+    assert plan["generated_from_contract"] is True
+    assert plan["requires_human_review"] is True
+    assert plan["source_operation_ids"] == [{"domain": "dialect", "dialect": "synthetic", "operation": "step"}]
+    assert schemas.validate(plan, "dialect_plan") == []
+    artifacts = {item.relpath: item.content for item in mlir_scaffold.generate(plan)}
+    ops = artifacts["include/MerlinTargetSynthetic/Dialect/Synthetic/IR/SyntheticOps.td"]
+    assert "Synthetic_State:$state" in ops
+    assert "StrAttr:$mode" in ops
+    assert "Synthetic_StepOp" in ops
+    contract["operation_capabilities"]["operations"][0]["semantics"]["mlir_signature"]["attributes"][0]["choices"] = [
+        "read"
+    ]
+    changed = _generate_from_operation_capabilities(contract)
+    assert changed["ops"][0]["signature"]["attributes"][0]["choices"] == ["read"]
+
+
+def test_incomplete_typed_contract_refuses_name_only_fallback():
+    import pytest
+
+    contract = _typed_contract()
+    contract["operation_capabilities"]["operations"].append(
+        {
+            "domain": "dialect",
+            "dialect": "synthetic",
+            "operation": "other",
+            "semantics": {"kind": "machine"},
+        }
+    )
+    with pytest.raises(ValueError, match="every selected dialect operation"):
+        _generate_from_operation_capabilities(contract)

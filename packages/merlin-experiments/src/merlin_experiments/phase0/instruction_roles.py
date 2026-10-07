@@ -54,6 +54,13 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     try:
         names = funct_table_for(target).get("names") or {}
         endpoints = endpoints_for(target)
+        if not endpoints:
+            # No endpoint binds a role to any of this target's instructions, so every instruction would
+            # come back role-less and a prohibited role would match nothing -- a policy that cannot fail,
+            # reading as derived. Unknown, with the reason, instead.
+            from merlin.kernels.endpoints import spec_path
+
+            raise LookupError(f"no compute endpoint in {spec_path()} declares instruction roles for {target!r}")
         facts: dict[str, Any] = {
             "target": target,
             "instruction_names": names,
@@ -95,20 +102,48 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     }
 
 
+#: The one status a declared policy may be enforced under.
+RESOLVED = "resolved"
+NONE_DECLARED = "none_declared"
+
+
 def resolve_policy(roles: Sequence[str], taxonomy: Mapping[str, Any]) -> dict[str, Any]:
-    """The declared prohibition resolved against the derived taxonomy: what it forbids on THIS target."""
+    """The declared prohibition resolved against the derived taxonomy: what it forbids on THIS target.
+
+    FAILS CLOSED ON A VACUOUS ROLE. A declared role that matches no instruction of this target forbids
+    nothing, so a scan under it cannot refuse anything -- and a policy that cannot fail is not one.
+    Recorded as ``vacuous_roles`` it used to sit beside ``status: resolved``, which every consumer read
+    as "enforced": a sealed Phase 0 release prohibited ``loop_descriptor`` while matching zero
+    instructions, because the endpoint declaration that binds the role was never read. Any vacuous role
+    makes the policy ``UNKNOWN`` with the reason, so verified Phase 0 refuses it."""
     declared = validate_roles(list(roles))
     derived = taxonomy.get("status") == "derived"
     by_role = taxonomy.get("by_role") or {}
     prohibited = {role: copy.deepcopy(by_role.get(role) or []) for role in declared} if derived else {}
     vacuous = sorted(role for role in declared if derived and not prohibited.get(role))
+    if not declared:
+        status, reason = NONE_DECLARED, None
+    elif not derived:
+        status, reason = UNKNOWN, f"the target's instruction-role taxonomy was not derived: {taxonomy.get('reason')}"
+    elif vacuous:
+        sources = list(taxonomy.get("role_sources") or ())
+        status, reason = (
+            UNKNOWN,
+            (
+                f"declared prohibited role(s) {vacuous} match no instruction of target {taxonomy.get('target')!r} "
+                f"(role sources: {sources or 'none'}); a prohibition that forbids nothing cannot be enforced"
+            ),
+        )
+    else:
+        status, reason = RESOLVED, None
     return {
         "schema": POLICY_SCHEMA,
         "prohibited_instruction_roles": declared,
-        "status": ("none_declared" if not declared else ("resolved" if derived else UNKNOWN)),
+        "status": status,
+        **({"reason": reason} if reason else {}),
         "prohibited_instructions": prohibited,
-        # A declared role no instruction of this target carries forbids nothing here: recorded, so a
-        # policy that cannot fail on this target is visible rather than read as enforced.
+        # A declared role no instruction of this target carries forbids nothing here: recorded by name,
+        # and it makes the policy UNKNOWN (above) rather than resolved.
         "vacuous_roles": vacuous,
         "taxonomy_status": taxonomy.get("status"),
         **({"taxonomy_reason": taxonomy.get("reason")} if not derived else {}),
@@ -116,6 +151,42 @@ def resolve_policy(roles: Sequence[str], taxonomy: Mapping[str, Any]) -> dict[st
         "exempt": ["phase2_vendor_reference_arm"],
         "enforcement": "whole_linked_program_scan",
     }
+
+
+def enforcement_problems(policy: Mapping[str, Any] | None, roles: Sequence[str] | None = None) -> list[str]:
+    """Why ``policy`` cannot be enforced for ``roles`` (its own declared roles when omitted); empty when it can.
+
+    The one predicate every consumer of a sealed instruction policy applies -- verified Phase 0 before
+    it seals, Phase 2 measured/cell/group modes before they spend machine time, champion export: the
+    policy resolved, it declares every role the caller enforces, and each of those roles names at least
+    one of the target's instructions."""
+    if not isinstance(policy, Mapping):
+        return ["no instruction policy was supplied"]
+    declared = list(policy.get("prohibited_instruction_roles") or ())
+    wanted = declared if roles is None else list(roles)
+    if not wanted:
+        return []
+    problems = []
+    if policy.get("status") != RESOLVED:
+        why = policy.get("reason") or policy.get("taxonomy_reason") or "no reason recorded"
+        problems.append(f"the instruction policy is {policy.get('status')!r}, not {RESOLVED!r}: {why}")
+    missing = sorted(set(wanted) - set(declared))
+    if missing:
+        problems.append(f"the instruction policy does not declare role(s) {missing} (it declares {declared})")
+    prohibited = policy.get("prohibited_instructions")
+    prohibited = prohibited if isinstance(prohibited, Mapping) else {}
+    empty = sorted(role for role in wanted if role in declared and not prohibited.get(role))
+    if empty:
+        problems.append(f"the instruction policy prohibits no instruction for role(s) {empty}")
+    return problems
+
+
+def require_enforceable(policy: Mapping[str, Any] | None, roles: Sequence[str] | None = None) -> dict[str, Any]:
+    """``policy``, or :class:`ValueError` naming every reason it cannot be enforced for ``roles``."""
+    problems = enforcement_problems(policy, roles)
+    if problems:
+        raise ValueError("; ".join(problems))
+    return dict(policy or {})
 
 
 def candidate_arm_policy(policy: Mapping[str, Any] | None) -> dict[str, Any]:

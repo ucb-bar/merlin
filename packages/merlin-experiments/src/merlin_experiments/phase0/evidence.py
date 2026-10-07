@@ -850,6 +850,9 @@ def select_evidence(
         try:
             production = source_selection.load_selection(inputs["source_bundle_path"], target=target)
             consistency = source_selection.production_consistency(production)
+            from .elaboration_evidence import snapshot_elaboration
+
+            snapshot_elaboration(production, consistency, observe)
             # Generic serialization is a separate consumer edge after source
             # production. Validate it rather than discard its exact parser input
             # or falsely contradict a coherent source bundle with an added edge.

@@ -1684,7 +1684,7 @@ def test_refused_binding_is_recorded_so_the_receipt_join_stays_total(tmp_path, m
         )
 
 
-def test_inner_sandbox_never_writes_bytecode_into_the_candidate():
+def test_inner_sandbox_never_writes_bytecode_into_the_candidate(monkeypatch, tmp_path):
     """Importing a candidate must not deposit bytes its own digest does not cover.
 
     hash_tree skips __pycache__, so a cache written into the candidate is unattested state inside a
@@ -1692,12 +1692,16 @@ def test_inner_sandbox_never_writes_bytecode_into_the_candidate():
     Measured on perf_stage_20260903T163936Z: 15 cache dirs appeared the moment the broker first ran
     the candidate's tools, and a complete round was discarded for it.
     """
+    import sim_toolchain
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.sandbox import toolchain as TCM
 
     descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     if not descriptor.is_file():
         pytest.skip("target descriptor is absent in this checkout")
+    # The exported environment, not a launch: an absent sim checkout is stood in.
+    sim_toolchain.stand_in_absent_chipyard(monkeypatch, tmp_path / "absent-chipyard")
     env = TCM.sandbox_env(load_target_experiment(descriptor), Path("/unreached"))
     assert "export PYTHONDONTWRITEBYTECODE=1;" in env
 

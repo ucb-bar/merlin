@@ -109,13 +109,6 @@ def _dram_addrs_from_memory_map(md_text: str) -> list[int] | None:
     return None
 
 
-def _dram_base_from_memory_map(md_text: str) -> int | None:
-    """The DRAM region start from a markdown memory map, or None. Thin view over
-    :func:`_dram_addrs_from_memory_map` (kept so the base-only reading stays byte-identical)."""
-    addrs = _dram_addrs_from_memory_map(md_text)
-    return addrs[0] if addrs else None
-
-
 #: The three real shapes a target's DRAM window derivation can take. A *target-data* gap (the card
 #: ships no upper bound, or the target ships no memory map at all) must read differently from a
 #: *tooling* gap (the caller never asked) — otherwise "unknown" says nothing about who can fix it.

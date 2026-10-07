@@ -111,7 +111,7 @@ def service_build(
     host_hart: int | None | str = "vector",
     phase0_recipe: str | Path | None = None,
     descriptor: str | Path | None = None,
-    chunk_ops: int | None = None,
+    chunk_ops: int | str | None = None,
 ) -> dict[str, Any]:
     """:func:`build`, returned in the shape the measurement service and the whole-model gate read.
 
@@ -126,8 +126,9 @@ def service_build(
     class, so ``expectations.argmax`` is ``None``.
 
     ``chunk_ops`` is passed straight through to :func:`whole_model_open.build` (``None`` keeps the
-    unchunked program). The build's per-stage seconds, kernel-object dedup and forward chunks ride
-    along under the keys the whole-model gate copies into its build check.
+    unchunked program; ``"auto"`` derives the size from the forward). The build's per-stage seconds,
+    kernel-object dedup and forward chunks ride along under the keys the whole-model gate copies into
+    its build check.
     """
     from merlin.runtime.backends import base as backends
 
@@ -218,6 +219,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     make.add_argument("--dram-bytes", type=lambda v: int(v, 0))
     make.add_argument("--jobs", type=int)
     make.add_argument("--host-hart", type=int, help="a two-hart program: the host code on this (vector) hart")
+    make.add_argument(
+        "--chunk-ops",
+        help="cut the host forward into functions of this many ops, or 'auto' to derive the size from the "
+        "forward (a large forward otherwise compiles as one function for hours); omitted, it stays one function",
+    )
     check = sub.add_parser("grade")
     check.add_argument("--uart", required=True, type=Path)
     check.add_argument("--expectations", required=True, type=Path)
@@ -289,6 +295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             dram_bytes=args.dram_bytes,
             jobs=args.jobs,
             host_hart=args.host_hart,
+            chunk_ops=args.chunk_ops,
         )
     except WO.OpenModelError as refusal:
         print(f"not built: {refusal}", file=sys.stderr)

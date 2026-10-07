@@ -3,7 +3,7 @@ title: Shared explicit tensor permutation proof
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 code_refs: [src/merlin/llvmlower/shared_permutation.py]
 ---
 

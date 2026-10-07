@@ -18,6 +18,16 @@ compute_units:
       - {in: fp8_e4m3, weight: fp8_e4m3, acc: bf16}
     semantic_capabilities:
       - {family: contraction, dtypes: [fp8_e4m3], ranks: [2, 3]}
+      # Both below are what capability_derive establishes from the selected RTL facts and ISA role
+      # (derivation: merlin.targetgen.capability_derive.derive, via merlin.targetgen.capability_manifests.manifest_for)
+      # census (semantic_capabilities_derived of manifest_for('atlas')), declared so the audit's
+      # drift is empty rather than reporting them missing:
+      #   elementwise_map <- role 'acc_readout_scaled' (MXUAccumulatorPopE1): the scaled readout of
+      #     this array's accumulator, in this unit's format, fused with the contraction only;
+      #   movement <- role 'memory' (TensorBaseOffset). It evidences no engine, so it carries the
+      #     formats of the units the facts derive (fp8_e4m3 here, bf16 on the lane engine).
+      - {family: elementwise_map, dtypes: [fp8_e4m3], composed_with: [contraction]}
+      - {family: movement, dtypes: [fp8_e4m3, bf16]}
 memory_model:
   resident: true
   accumulators: true

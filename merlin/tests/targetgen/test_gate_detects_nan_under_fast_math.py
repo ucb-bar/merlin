@@ -16,6 +16,7 @@ import subprocess
 import textwrap
 
 import pytest
+import selected_driver
 
 from merlin.runtime.backends import base as backends
 
@@ -25,6 +26,7 @@ pytestmark = pytest.mark.skipif(CC is None, reason="no host C compiler")
 FAST_MATH_FLAGS = ["-O2", "-ffast-math"]
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_recipe_really_does_use_fast_math() -> None:
     """If this ever stops being true the guard below is belt-and-braces, not load-bearing."""
     cflags = list(backends.harness_build_recipe("gemmini").cflags)

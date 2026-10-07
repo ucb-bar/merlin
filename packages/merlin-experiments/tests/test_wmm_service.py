@@ -65,7 +65,10 @@ def test_an_infra_screen_failure_under_another_spec_is_rescreened_not_reused(tmp
     fixed = _service(tmp_path, pre_measure_check=_check(tmp_path, passes=True))
     reopened = fixed.request(candidate)
     assert reopened["state"] in (J.PENDING, J.RUNNING) and reopened["reopened_infra_snapshot_mismatch"] is True
-    assert (fixed.root / reopened["package_sha256"] / "screen_failed_result.json").is_file()
+    attempt = fixed.root / reopened["package_sha256"] / J.ATTEMPTS_DIR / "0"
+    assert (attempt / "result.json").is_file() and read_json(attempt / J.ATTEMPT_RECORD)[
+        "kind"
+    ] == "screen_failed_attempt"
 
 
 def test_a_package_caused_screen_failure_is_never_reopened_by_a_new_spec(tmp_path):
@@ -96,7 +99,7 @@ def test_a_done_job_whose_builder_changed_is_remeasured_once_with_the_new_builde
     job_dir = _done(service, pkg, builder_sha="an-older-builder")
     reopened = service.request(pkg)
     assert reopened["reopened_builder_changed"] is True and reopened["state"] in (J.PENDING, J.RUNNING)
-    assert (job_dir / "lost_attempt_0" / "result.json").is_file() and not (job_dir / "result.json").exists()
+    assert (job_dir / J.ATTEMPTS_DIR / "0" / "result.json").is_file() and not (job_dir / "result.json").exists()
     assert reopened["builder"]["module_identity"] == service.builder["module_identity"]
     # The refreshed record means the next request finds nothing stale.
     record = read_json(job_dir / "job.json")
@@ -135,7 +138,10 @@ def test_a_lost_worker_is_requeued_once_under_this_services_screen_then_recorded
     requeued = read_json(current.root / job["package_sha256"] / "job.json")
     # dispatched again (fake worker), carrying THIS service's spec, its loss on record
     assert requeued["worker_losses"] and requeued["pre_measure_check"]["label"] == "relaunched"
-    assert (current.root / job["package_sha256"] / "lost_attempt_0").is_dir()
+    assert (
+        read_json(current.root / job["package_sha256"] / J.ATTEMPTS_DIR / "0" / J.ATTEMPT_RECORD)["kind"]
+        == "lost_attempt"
+    )
     current.poll()
     lost = read_json(current.root / job["package_sha256"] / "job.json")
     assert lost["state"] == J.FAILED and "not a verdict" in lost["failure"]
