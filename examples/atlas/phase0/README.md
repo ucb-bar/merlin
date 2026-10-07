@@ -40,6 +40,81 @@ Source consistency proves provenance, not operation legality or numerical agreem
 Manual RTL audit improves the deterministic extractor; it is not an agentic runtime
 step in Phase 0. Keep raw facts separate from the effective consumer views.
 
+For a machine-dialect generation campaign, audit the **selected decoder-mode
+population** separately from the model-derived capsule population. Supply the
+exact selected RTL pattern and decoder files, the corresponding model ISA file,
+and a reviewed mode ledger from the explicitly selected OOT support package:
+
+```sh
+merlin-targetgen audit-isa \
+  --patterns "$RTL_SOURCE/Instructions.scala" \
+  --decoder "$RTL_SOURCE/IDecode.scala" \
+  --model-isa "$MODEL_SOURCE/isa_definition.py" \
+  --rtl-revision "$RTL_COMMIT" \
+  --model-revision "$MODEL_COMMIT" --verify-revisions \
+  --out "$DERIVATION_ROOT/isa-census.json"
+merlin-targetgen audit-dialect-modes \
+  --census "$DERIVATION_ROOT/isa-census.json" \
+  --inventory "$MODE_LEDGER" \
+  --require phase1-inputs \
+  --out "$DERIVATION_ROOT/dialect-mode-scope.json"
+```
+
+The revision check compares both selected checkout HEADs and the three exact
+file bodies with their Git commit objects. A commit string alone is insufficient.
+These commands keep missing and changed modes in the denominator, including
+scalar/control modes that do not appear in tensor workloads. They return a
+nonzero status for source disagreements or incomplete mode scope. This is the
+pre-authoring Phase 0 input check: it does not require a generated dialect,
+software admission, or closed instruction qualification. Exclusions require a
+reviewed `scope_exclusion` with a reason and evidence reference; the selected Atlas ledger currently declares
+all 99 decoder modes required. The source
+crosswalk and OOT ledger can establish exact mode accounting; their reported
+test flags do not certify legality, arithmetic, timing, or integrated execution.
+The handwritten ledger's current parameter-domain prose must be replaced by
+reviewed finite machine-value domains with explicit units before this check
+can pass. A range such as an even BF16 register pair must state its step;
+offset domains must state their physical units, and each domain cites pinned
+RTL source files. This remains an authored
+hardware contract to qualify, not a bound inferred from a mode name.
+If model and RTL encodings disagree, the mode ledger may include exact
+`source_resolutions` entries with the census discrepancy `kind` and `item`,
+`authority: selected_rtl`, `reviewed: true`, and an evidence reference. The
+same mechanism covers an individual ledger-to-model conflict with kind
+`mode_model_encoding_disagrees` and the decoder mode as `item`. The audit
+rejects stale or invented resolutions. Such a declaration records the
+source-selection decision; numerical and temporal qualification still needs
+independent tests.
+After Phase 1 authors a dialect, rerun `audit-dialect-modes` with
+`--require complete-dialect --dialect-plan "$REVIEWED_DIALECT_PLAN"`.
+The reviewed **typed** plan is required for that completion result. Its explicit
+mode attributes must cover every required decoder variant with legal values;
+the audit does not accept a matching operation name alone. Such a plan is not present in
+this example yet. A handwritten dialect's inventory is useful as an
+independent comparator and is not a substitute for Merlin-generated signatures
+and verifiers. Keep the ledger and generated compiler outside this example
+directory.
+
+The current descriptor selects `AtlasRocketConfig`. If the campaign instead
+targets `EE290SimConfig`, create a new selected source bundle and Phase 0 run
+with that exact elaboration and simulator identity. Existing receipts must not
+be relabeled as evidence for the new SoC configuration.
+For that new campaign, use the generic
+[`rtl.elaboration` receipt](../../../docs/guides/phase0_specification.md#bind-the-selected-configuration-to-its-elaborated-source)
+to bind the exact `EE290SimConfig` invocation to fresh FIRRTL, then supply
+`--elaboration-receipt` when producing `source-selection.json`. The selected
+Chipyard Git link for `generators/atlas-npu` must be checked against the exact
+Atlas revision; a matching configuration name in a command alone does not
+establish the selected hardware source or execution behavior.
+Then run `merlin-targetgen audit-dialect-source-scope` with that selection,
+the ISA census regenerated from the pinned `generators/atlas-npu` checkout,
+the reviewed OOT mode ledger, and `--expected-config EE290SimConfig`. The
+ledger must name its selected target explicitly. The current handwritten
+ledger does not yet carry that field, and the selected EE290 elaboration is
+not available here, so this pre-authoring check cannot currently pass for
+the intended configuration. Source-scope readiness would still leave numeric,
+temporal, typed-dialect, emission, and execution work for Phase 1.
+
 ## 3. Capture the independent iteration workloads
 
 Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,

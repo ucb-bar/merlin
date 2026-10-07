@@ -22,6 +22,7 @@ against a corpus whose predicted total is 181 hours.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.targetgen import cert_cost as CC
@@ -46,6 +47,7 @@ def test_the_axis_carries_three_occupancy_classes_where_the_edge_allows():
     assert axis == ["aligned", "partial", "sub_tile"], axis
 
 
+@external_sources.requires_rtl("gemmini")
 def test_sub_tile_is_actually_less_occupied_than_partial():
     """The property that makes it a distinct class rather than a second name for `partial`."""
     probes = CF.boundaries("gemmini").extent_probes()
@@ -68,6 +70,7 @@ def test_sub_tile_is_actually_less_occupied_than_partial():
     assert sub["M"] < partial["M"] or sub["N"] < partial["N"]
 
 
+@external_sources.requires_rtl("gemmini")
 def test_sub_tile_still_asks_for_a_real_reduction():
     """A single-pass contraction would exercise accumulation not at all."""
     probes = CF.boundaries("gemmini").extent_probes()
@@ -77,6 +80,7 @@ def test_sub_tile_still_asks_for_a_real_reduction():
     assert sub["K"] >= sub["M"], f"K should not be the smallest extent: {sub}"
 
 
+@external_sources.requires_rtl("gemmini")
 def test_the_extents_stay_tile_relative_not_baked_integers():
     """The same entry must describe the same shape on a target with a different edge."""
     probes = CF.boundaries("gemmini").extent_probes()
@@ -88,6 +92,7 @@ def test_the_extents_stay_tile_relative_not_baked_integers():
     assert wide["M"] == 4 * narrow["M"], (wide, narrow)
 
 
+@external_sources.requires_rtl("gemmini")
 def test_closing_the_gap_is_cheap_by_the_measured_cost_law():
     """The argument for adding a class to a requirement is that it buys coverage, not hours."""
     probes = CF.boundaries("gemmini").extent_probes()

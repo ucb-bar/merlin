@@ -28,6 +28,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import sim_toolchain
 
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.sandbox import build_sandbox
@@ -79,6 +80,16 @@ def _ids(paths):
 
 
 ROSTER = _roster()
+
+
+@pytest.fixture(autouse=True)
+def _sim_family_policy_without_its_checkout(monkeypatch, tmp_path_factory):
+    """Every check here replays a mount table or a probe list; none launches the RTL-sim tools.
+
+    A roster target's sim family refuses to resolve without its configured checkout, which a hosted
+    runner never has, so an absent one is stood in by an empty root (see ``sim_toolchain``)."""
+    sim_toolchain.stand_in_absent_chipyard(monkeypatch, tmp_path_factory.mktemp("absent-chipyard"))
+
 
 _MODEL_WEIGHT_RELS = (
     "merlin/contract/capsules/model/M2_microvit_gemmini/capsule.weights.safetensors",

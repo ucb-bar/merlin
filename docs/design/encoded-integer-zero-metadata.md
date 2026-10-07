@@ -3,7 +3,7 @@ title: Exact zero metadata for encoded integer panels
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: []
 code_refs:
   - src/merlin/llvmlower/encoded_i8_zeros.py

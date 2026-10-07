@@ -312,6 +312,8 @@ def test_module_metadata_and_registration():
 
 def generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
     """Return xdsl/ artifacts for the given dialect_plan."""
+    if any(isinstance(op, dict) and "signature" in op for op in dialect_plan.get("ops", [])):
+        raise ValueError("reviewed typed plans use the MLIR/C++ plane; xDSL variadic output would lose their contract")
     dialect = dialect_plan.get("dialect_name", dialect_plan.get("target", "target"))
     ops = [o["name"] for o in dialect_plan.get("ops", []) if isinstance(o, dict) and "name" in o]
     types = [t["name"] for t in dialect_plan.get("types", []) if isinstance(t, dict) and "name" in t]

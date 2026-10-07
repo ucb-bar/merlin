@@ -46,11 +46,10 @@ def _link(cb, monkeypatch, tmp_path, *, inputs=None):
     from merlin.runtime.backends import base
 
     monkeypatch.setattr(base, "harness_renderer", lambda target: rec)
-    monkeypatch.setattr(
-        base,
-        "harness_build_recipe",
-        lambda target: SimpleNamespace(load_address=0, link_script=None, support_sources=(), error_cls=RuntimeError),
-    )
+    recipe = SimpleNamespace(load_address=0, link_script=None, support_sources=(), error_cls=RuntimeError)
+    # The linker pins the recipe's effective ABI first; this stub's ABI is already whatever it is.
+    recipe.with_effective_abi = lambda: recipe
+    monkeypatch.setattr(base, "harness_build_recipe", lambda target: recipe)
     with pytest.raises(_Rendered):
         contract_compile.link_elf(cb, tmp_path / "kernel.o", tmp_path, target="synthetic", inputs=inputs)
     return rec.inputs

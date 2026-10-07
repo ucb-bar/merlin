@@ -231,43 +231,6 @@ def cost_model_artifact(target: str) -> Path | None:
     return _artifact(target)
 
 
-def _serial_ceiling(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
-    """The per-command model's serial sum, plus its own measured error, as an upper bound."""
-    events = command_events(buffer)
-    if events is None:
-        return {
-            "status": UNAVAILABLE,
-            "reason": (
-                "the buffer declares a command outside the calibrated vocabulary, so its "
-                "event histogram is incomplete and pricing it would understate this arm"
-            ),
-        }
-    artifact = cost_model_artifact(target)
-    if artifact is None:
-        return {"status": UNAVAILABLE, "reason": f"no calibrated cost model for target {target!r}"}
-    try:
-        from merlin.perf.linear_cost import LinearCostModel  # noqa: PLC0415
-
-        model = LinearCostModel.load(artifact)
-        cycles, spread = model.predict_with_band(events)
-    except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so
-        return {
-            "status": UNAVAILABLE,
-            "reason": f"the calibrated model for {target!r} did not load: {type(exc).__name__}",
-        }
-    # The BAND IS ADDED, not subtracted. A ceiling that quoted the fit's central value would be beaten
-    # by any program inside the model's own measured error, which is not a ceiling.
-    return {
-        "status": DERIVED,
-        "cycles": float(cycles) + float(spread),
-        "central": float(cycles),
-        "model_band": float(spread),
-        "events": events,
-        "basis": "per-command coefficients summed serially, plus the model's measured error",
-        "licence": "an upper bound: a serial sum credits no overlap this machine achieves",
-    }
-
-
 def _priced_macs(buffer: Mapping[str, Any]) -> tuple[int, bool, str]:
     """``(macs, is_lower_bound, basis)`` for one buffer, from whichever pricing can read it.
 

@@ -108,6 +108,9 @@ def test_a_binary_file_is_skipped_by_content_not_extension(tmp_path, monkeypatch
     """An extension list is a way to miss the next format."""
     blob = tmp_path / "weights.bin"
     blob.write_bytes(b"\x00\x01\x02" * 100)
+    # The binary skip is the subject, not the hidden corpus: a stand-in name keeps the scan from
+    # returning `undeterminable` on a checkout that carries no held-out capsules.
+    monkeypatch.setattr(G, "holdout_names", lambda: {"STAND_IN_HOLDOUT"})
     monkeypatch.setattr(G, "_tracked_files", lambda: [blob])
     monkeypatch.setattr(G, "REPO", tmp_path)
     rep = G.scan()

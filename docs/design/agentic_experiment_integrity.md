@@ -3,7 +3,7 @@ title: "Design: rules for citable agentic-compiler experiments"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [capsule_generation, capsule_phase_split, radiance_staged_evaluation]
 code_refs:
   - packages/merlin-experiments/src/merlin/targetgen/capsule_grade.py
@@ -41,8 +41,10 @@ Current functional feedback implementations live in `merlin_experiments.phase1.f
 owns enqueue-time candidate copies. Native launchers call these owners; relocating them does
 not reattribute historical experiment evidence or qualify a complete installed controller.
 The newer implementation-source inventory in `merlin_experiments.phase1.source_inputs` binds
-native and outer Phase-1 owners for freshly frozen runs; it does not retroactively establish
-ownership for legacy freezes that recorded only a repository SHA and submission bytes.
+native and outer Phase-1 owners for freshly frozen runs, including the historical target-access
+policy, the selected target's capability contract, and the software specification named by the
+run's numeric profile. It does not retroactively establish ownership for legacy freezes that
+recorded only a repository SHA and submission bytes.
 For a new installed run, the reviewed Phase 0 release, selected tool/provider bytes
 and frozen Phase 1 implementation are separate identities. Reusing an immutable
 historical capture does not relabel its producer as the current tool; launch
@@ -59,7 +61,14 @@ was all `cheap_tier_only`. A tier *name* is not evidence either: one target's L3
 is an RTL-derived model, so `rtl_backed` counts what the oracle itself reported as derived from RTL.
 
 **Gate.** `capsule_grade.py` writes `pass_evidence` on every score. `agg_agentic_results.py` reads
-L3 evidence rather than the headline.
+L3 evidence rather than the headline. A whole-model capsule that must accelerate is scored only
+from the submitted program's own evidence (`candidate_native_model_check`): the runner-owned
+host-dispatch graph is kept as a diagnostic, its tiers, numerics and cycles never enter the score,
+and a candidate tier without an explicit `derived_from_rtl` flag is not counted as RTL-backed by
+name. The agent-facing verdict carries the same redacted candidate facet and no execution digest
+for such a row, so a certificate is never reused across the two programs. A capsule that inherits
+a deeper tier from a sibling reads that sibling's certificate only from the same selected suite
+run, never from ambient output roots.
 
 ## 2. Compare arms on one cohort, pinned before launch
 
@@ -91,7 +100,9 @@ disagree by several capsules is the signature of this rule being broken.
 
 **Gate.** `freeze_run.py` records `repo_sha` and the submission digest. Enqueue-time promotion
 snapshots bind candidate source bytes; the shared implementation inventory binds source ownership
-for newly frozen Phase-1 runs. Neither makes a legacy campaign's in-process mid-batch working-tree
+for newly frozen Phase-1 runs. Model capsules are copied into a grade-owned, byte-frozen snapshot
+before the package build, so a corpus generation collected mid-grade cannot change what is graded.
+None of these makes a legacy campaign's in-process mid-batch working-tree
 imports trustworthy. Such a campaign still needs a revision pin or a fresh freeze and regrade of
 every arm before its comparison can be cited.
 
@@ -121,7 +132,14 @@ attribute and so verified a different, easier program. None was found by reading
 found by mutation.
 
 **Gate.** Mutation tests next to each gate. Examples: the promotion-wiring tests, and the holdout
-check that must fail when it is blind. See `merlin/tests/infra/`.
+check that must fail when it is blind. See `merlin/tests/infra/`. `check_mutation_proofs.py` requires
+every `check_*` gate to name a runnable mutation that makes it fail (`gate_mutations.yaml`), and CI
+runs each recorded proof with `--prove`.
+
+The same rule holds for the instruction policy a capsule is graded under. `capsule_runner` scans every
+ELF a grade linked for the sealed prohibited roles: a prohibited instruction anywhere fails the capsule
+(`PROHIBITED_INSTRUCTION`), and a grade that linked no ELF, a scan that could not run, or roles that
+match no instruction leave it `PROHIBITION_NOT_MEASURED` — incomplete, never passed.
 
 ## 6. Prove the arm was served before blaming the model
 
@@ -136,7 +154,10 @@ arm non-conformant. In a third, the same model on the same task scored 0/20 in o
 another.
 
 **Gate.** `readiness_check.py` (visibility checked from inside the sandbox); `conformance.py`;
-feedback-channel health on every verdict.
+feedback-channel health on every verdict. Under the outer sandbox, the Codex driver runs its
+candidate commands in a second, deny-by-default permission profile and proves it with a no-model
+probe through the same mounts (credential unreadable, workspace writable, tools runnable) before
+the first paid turn; it refuses to launch rather than fall back to bypassing that profile.
 
 ## 7. Answer keys stay out of reach, and holdouts are real
 
@@ -199,6 +220,11 @@ recorded reason).
 **Why.** Runs died when the launching session restarted, when the root filesystem filled with
 abandoned temp directories, and when a console buffer grew to 72 GB. Each death looked, from the
 headline, like a slow or stuck agent.
+
+**Gate.** Partly process. The Codex driver resumes the same session after a transient
+model-capacity refusal, a bounded number of times inside the wall budget and never on another
+model, and records `capacity_retries` and `unrecovered_errors`, so a recovered turn is not read as
+a death and an unrecovered one is not hidden.
 
 ## 12. Paper numbers come from one generated ledger
 

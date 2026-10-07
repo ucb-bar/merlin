@@ -13,6 +13,14 @@ is a statement about the batch, not about its candidates: each is re-measured AL
 (:data:`CONTROL_DRIFT_REQUEUES` times) before the drift refuses it.  Until the control has a solo
 result there is nothing to judge drift against, so a batch waits rather than running unjudged.
 
+THE CONTROL IS CHECKED BEFORE A BOARD JOB IS SPENT (:func:`control_preflight`).  Its solo result must be
+a MEASURED reading taken ALONE, of the very program the batch links as the control, on the very device
+the batch runs on; anything else -- a missing file, a batched or wrong reading, another machine's or a
+functional model's result -- holds the batch (``control_preflight.json`` says why) instead of
+spending a board job whose control could only ever read as drift.  The drift TOLERANCE is the
+machine's own (:func:`.noise.drift_tolerance`): the declared bound, widened to the spread this device's
+solo repeats actually show over the same timescale, and recorded with its basis in every batch.
+
 A board that never ran the batch (the FPGA absent, a failed flash) is an OUTAGE, not a verdict: every
 job goes back to the board queue, the outage is recorded for the store, and one batch is retried per
 :data:`BOARD_RETRY_SECONDS` while the functional-model half keeps grading.
@@ -35,6 +43,9 @@ from .machines import INFRA_BOARD_UNAVAILABLE, machine_from_spec
 
 BATCH_SCHEMA = "whole_model_batch_v1"
 BOARD_OUTAGE = "board_outage.json"
+#: The store's last control preflight that held a batch (removed when one passes).
+CONTROL_PREFLIGHT = "control_preflight.json"
+INFRA_CONTROL_UNMEASURED = "infra_control_unmeasured"
 BOARD_OUTAGES = "board_outages.jsonl"
 BOARD_RETRY_SECONDS = 900
 #: A drifted batch's candidates are each measured alone this many times before the drift refuses them.
@@ -122,23 +133,84 @@ def worth_starting(root: Path, spec: Mapping[str, Any], *, clock: float | None =
     if any(job.get("solo") or job.get("role") == J.ROLE_REFERENCE for job in waiting):
         return True
     control = spec.get("control") or {}
-    if control and not Path(str(control.get("solo_result") or "")).is_file():
-        return False  # nothing to judge drift against yet
+    if control:
+        held = control_preflight(control)
+        if not held["ok"]:
+            # NOTHING TO JUDGE DRIFT AGAINST: no board job is spent; the hold is on record, said once.
+            if (read_json(Path(root) / CONTROL_PREFLIGHT) or {}).get("reason") != held["reason"]:
+                write_json_atomic(Path(root) / CONTROL_PREFLIGHT, {**held, "checked_at": now()})
+            return False
     if len(waiting) >= int(spec.get("batch_size") or DEFAULT_BATCH_SIZE):
         return True
     oldest = min(float(job.get("board_ready_epoch") or now_epoch) for job in waiting)
     return now_epoch - oldest >= float(spec.get("batch_wait_seconds") or DEFAULT_BATCH_WAIT_SECONDS)
 
 
+def control_preflight(control: Mapping[str, Any], *, device_sha256: str | None = None) -> dict[str, Any]:
+    """Whether the declared control can judge a batch, checked BEFORE a board job is spent.
+
+    Its ``solo_result`` must be a MEASURED reading with a whole-window count, taken alone (no batch, or a
+    batch of one), of the program its ``board_request`` links (the same ``elf_sha256``) -- and, given
+    ``device_sha256`` (the batch's own device), on that device.  ``ok`` False names the first reason."""
+
+    def refuse(reason: str) -> dict[str, Any]:
+        return {"ok": False, "reason": f"{INFRA_CONTROL_UNMEASURED}: {reason}", "solo_result": str(solo_path)}
+
+    solo_path = Path(str(control.get("solo_result") or ""))
+    solo = read_json(solo_path) if solo_path.name else None
+    if solo is None:
+        return refuse(f"the control has no readable solo result ({solo_path}); a batch needs one to judge drift")
+    if solo.get("timing_status") != V.TIMING_MEASURED:
+        return refuse(f"the control's solo result is {solo.get('timing_status')}, not a MEASURED reading")
+    cycles = (solo.get("verdict") or {}).get("whole_window_cycles")
+    if not isinstance(cycles, int) or cycles <= 0:
+        return refuse("the control's solo result has no whole-window cycle count")
+    batch = solo.get("batch")
+    if isinstance(batch, Mapping) and int(batch.get("size") or 1) > 1:
+        return refuse(f"the control's 'solo' result was measured inside a batch of {batch.get('size')}")
+    request = read_json(Path(str(control.get("board_request") or "")))
+    if not request or not isinstance(request.get("variant"), Mapping):
+        return refuse("the control's board request names no linkable variant")
+    linked = ((request.get("builds") or {}).get("timing") or {}).get("elf_sha256")
+    measured = (solo.get("build") or {}).get("elf_sha256")
+    if linked and measured and linked != measured:
+        return refuse(f"the solo result measured program {str(measured)[:12]}, the batch links {str(linked)[:12]}")
+    device = (solo.get("device") or {}).get("binary_sha256")
+    if device_sha256 is not None and device != device_sha256:
+        return refuse(
+            f"the control's solo result ran on device {str(device)[:12]}, this batch runs on "
+            f"{str(device_sha256)[:12]}; a reading from another machine cannot judge this one"
+        )
+    return {
+        "ok": True,
+        "solo_result": str(solo_path),
+        "solo_whole_window_cycles": cycles,
+        "solo_device_sha256": device,
+        "solo_finished_at": solo.get("finished_at"),
+    }
+
+
 def control_check(
-    control: Mapping[str, Any], block: str | None, solo_cycles: int, solo_words: Mapping[str, Any]
+    control: Mapping[str, Any],
+    block: str | None,
+    solo_cycles: int,
+    solo_words: Mapping[str, Any],
+    *,
+    noise: Mapping[str, Any] | None = None,
+    same_day: bool | None = None,
 ) -> dict[str, Any]:
-    """Whether the control variant, measured inside this batch, is the control measured alone."""
+    """Whether the control variant, measured inside this batch, is the control measured alone -- within
+    the machine's own drift tolerance (:func:`.noise.drift_tolerance` over ``noise``)."""
+    from . import noise as NOISE
+
     if block is None:
         return {"ok": False, "reason": "the control variant printed no block"}
     parsed = V.parse_log(block)
     cycles = parsed.whole_window_cycles
-    tolerance = float(control.get("cycles_tolerance") or DEFAULT_CONTROL_TOLERANCE)
+    rule = NOISE.drift_tolerance(
+        noise, declared=float(control.get("cycles_tolerance") or DEFAULT_CONTROL_TOLERANCE), same_day=same_day
+    )
+    tolerance = float(rule["tolerance"])
     unstable = {str(g) for g in control.get("unstable_groups") or ()}
     moved = sorted(
         (g for g in solo_words if g not in unstable and parsed.words.get(g) != tuple(solo_words[g])), key=V._order
@@ -151,6 +223,7 @@ def control_check(
         "batched_whole_window_cycles": cycles,
         "ratio": round(ratio, 6) if ratio else None,
         "tolerance": tolerance,
+        "tolerance_rule": rule,
         "groups_whose_bytes_moved": moved,
         "reason": None if ok else "the control variant measured differently inside the batch than alone",
     }
@@ -246,6 +319,16 @@ def requeue_for_rebuild(job_dir: Path, job: dict[str, Any], missing: Sequence[st
     RET.prune_archived_attempt(attempt, job.get("retain"))
 
 
+def _machine_noise(root: Path, control: Mapping[str, Any], device: str | None) -> dict[str, Any]:
+    """The batch device's noise, from this store's solo readings and the control's own solo result."""
+    from . import noise as NOISE
+
+    extra = [Path(str(control["solo_result"]))] if control.get("solo_result") else []
+    return NOISE.machine_noise(
+        NOISE.solo_readings([root], extra=extra), device=device, controls=NOISE.control_readings([root])
+    )
+
+
 def _control_variant(root: Path, control: Mapping[str, Any], variants: list[dict[str, Any]]):
     request = read_json(Path(str(control["board_request"]))) or {}
     solo = read_json(Path(str(control["solo_result"]))) or {}
@@ -301,7 +384,24 @@ def batch_main(root: Path, *, driver: Any = None) -> int:
     blocks: dict[int, str] = {}
     failure: str | None = None
     try:
+        machine = machine_from_spec(spec["timing"])
+        identity = machine.identity()
         if control and not solo:
+            # THE CONTROL IS CHECKED ON THIS BATCH'S OWN DEVICE BEFORE THE BOARD IS ASKED FOR ANYTHING.
+            preflight = control_preflight(control, device_sha256=identity.binary_sha256)
+            record["control_preflight"] = preflight
+            if not preflight["ok"]:
+                write_json_atomic(batch_dir / "batch.json", record)
+                write_json_atomic(root / CONTROL_PREFLIGHT, {**preflight, "checked_at": now(), "batch": batch_id})
+                _back_to_board(
+                    root,
+                    chosen,
+                    "control_preflight_holds",
+                    {"at": now(), "batch": batch_id, "reason": preflight["reason"]},
+                    f"{preflight['reason']} (no board job was spent; not a verdict)",
+                )
+                return 0
+            (root / CONTROL_PREFLIGHT).unlink(missing_ok=True)
             control_index, control_solo_cycles, control_words = _control_variant(root, control, variants)
         program = variants[0]["program"]
         driver = driver or W.whole_model_driver(str(first["target"])).program
@@ -314,8 +414,6 @@ def batch_main(root: Path, *, driver: Any = None) -> int:
             link_script=program["link_script"],
             supports=variants[0]["supports"],
         )
-        machine = machine_from_spec(spec["timing"])
-        identity = machine.identity()
         timeout = float(first.get("timeout_seconds") or 3600) * max(1, len(variants))
         run = machine.run(Path(linked["elf"]), batch_dir / "run", timeout_s=timeout)
         record.update(
@@ -339,7 +437,14 @@ def batch_main(root: Path, *, driver: Any = None) -> int:
             else {}
         )
         check = (
-            control_check(control, blocks.get(control_index), int(control_solo_cycles or 0), control_words)
+            control_check(
+                control,
+                blocks.get(control_index),
+                int(control_solo_cycles or 0),
+                control_words,
+                noise=_machine_noise(root, control, identity.binary_sha256),
+                same_day=str((record.get("control_preflight") or {}).get("solo_finished_at") or "")[:8] == batch_id[:8],
+            )
             if control_index
             else {"ok": True, "reason": "no control in a solo batch"}
         )
@@ -388,7 +493,14 @@ def batch_main(root: Path, *, driver: Any = None) -> int:
             batch={"batch": batch_id, "position": position, "size": len(variants), "control": record.get("control")},
             job_dir=job_dir,
         )
-        write_json_atomic(job_dir / "result.json", outcome)
+        try:
+            J.write_result(job_dir, outcome)
+        except J.ResultExists:
+            # The job already ended (a supersede, an earlier runner): that result stands; this board reading
+            # is kept as an attempt of its own, never written over it.
+            J.preserve_result(job_dir, outcome, why=f"batch {batch_id} finished after the job already had a result")
+            finalized.append(None)
+            continue
         with locked(job_dir):
             fresh = read_json(job_dir / "job.json") or dict(job)
             fresh.update(state=J.DONE, finished_at=now(), timing_status=outcome.get("timing_status"))
@@ -400,6 +512,9 @@ def batch_main(root: Path, *, driver: Any = None) -> int:
 
 
 __all__ = [
+    "CONTROL_PREFLIGHT",
+    "INFRA_CONTROL_UNMEASURED",
+    "control_preflight",
     "MAX_CONSECUTIVE_SOLO_BATCHES",
     "PROMOTED_REPEAT_PRIORITY",
     "record_batch_kind",

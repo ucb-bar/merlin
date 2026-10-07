@@ -209,7 +209,7 @@ SUITES = {
             "test_exact_offload_release_binding.py",
         ),
         "support_files": ("reviewed_corpus_fixtures.py", "phase1_feedback_fixtures.py"),
-        "source_inputs": ("examples/gemmini/target/descriptor.yaml",),
+        "source_inputs": ("examples/gemmini/target/descriptor.yaml",),  # target-ok: these tests' fixture descriptor
         "core_extras": ("xdsl",),
         "probe_modules": (
             "merlin_experiments.phase0",

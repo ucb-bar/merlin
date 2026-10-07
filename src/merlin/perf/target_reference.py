@@ -49,7 +49,7 @@ from typing import Any
 
 import yaml
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import contract_dir
 
 from .program_identity import (
     UNKNOWN_IDENTITY,
@@ -92,7 +92,7 @@ def load_ledger(path: Path | None = None) -> dict[str, Any]:
     Separate from :func:`load_references` because the roster is not a reference and a caller that
     wants to resolve a candidate's identity needs it without pretending it is one.
     """
-    ledger = Path(path) if path is not None else merlin_dir() / REFERENCE_LEDGER_NAME
+    ledger = Path(path) if path is not None else contract_dir() / Path(REFERENCE_LEDGER_NAME).relative_to("contract")
     document = yaml.safe_load(ledger.read_text())
     if not isinstance(document, Mapping) or not isinstance(document.get("references"), Mapping):
         raise ReferenceError(f"{ledger} declares no `references` mapping")

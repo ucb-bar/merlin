@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from phase1_feedback import feedback_context, feedback_source
+from phase1_feedback import MODULES, feedback_context, feedback_source
 
 from merlin.common.paths import merlin_dir, module_source_path
 
@@ -27,7 +27,9 @@ def _module(name: str):
         if name == "selfcheck_shim"
         else feedback_source(name, HARNESS / f"{name}.py")
     )
-    spec = importlib.util.spec_from_file_location(f"required_engine_{name}", source)
+    # A fresh, unregistered copy named for its package, so its own relative imports still resolve.
+    canonical = "merlin_experiments.phase1.tools.selfcheck" if name == "selfcheck_shim" else MODULES.get(name, name)
+    spec = importlib.util.spec_from_file_location(canonical, source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

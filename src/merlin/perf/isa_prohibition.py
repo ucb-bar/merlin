@@ -166,11 +166,32 @@ def check_program(
     is part of the program's own. Also carries a per-group instruction CENSUS under ``"census"`` --
     every custom instruction the program emits, by its derived role, whether prohibited or not. That
     field is diagnostic only: a role's count names no fix, it is read from the same disassembly pass
-    this check already pays for."""
+    this check already pays for.
+
+    ``status`` is ``measured``, or ``unmeasured`` with ``clean: None`` when ``roles`` are declared but
+    the target's facts give none of them to any instruction -- the same rule as :func:`scan_elf`. A
+    prohibited set that is empty would make every program clean without reading it, which is how a
+    no-FSM rule once passed programs full of loop-descriptor instructions.
+
+    The scan reads the WHOLE linked program as the disassembler lists it: every executable section,
+    every function, called or not. An instruction reached only through a function pointer, or never
+    executed at all, is in the binary and is refused exactly like one on the hot path."""
     by_selector = _declared_by_selector(target)
     prohibited = {
         selector: entry["name"] for selector, entry in by_selector.items() if roles and set(roles) & set(entry["roles"])
     }
+    if roles and not prohibited:
+        return {
+            "schema": SCHEMA,
+            "status": "unmeasured",
+            "roles": list(roles),
+            "prohibited": {},
+            "clean": None,
+            "detail": f"the target's instruction facts give no instruction any of the roles {list(roles)}",
+            "hits": [],
+            "summary": {},
+            "library_groups": list(library_groups),
+        }
     objdump = disassembler_for(compiler)
     nm = objdump.with_name(objdump.name.replace("objdump", "nm"))
     owner = _owner_of(group_objects, nm=nm)
@@ -217,6 +238,7 @@ def check_program(
     ]
     return {
         "schema": SCHEMA,
+        "status": "measured",
         "roles": list(roles),
         "prohibited": {str(k): v for k, v in sorted(prohibited.items())},
         "clean": not counts,

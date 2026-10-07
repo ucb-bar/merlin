@@ -372,3 +372,105 @@ def test_receipts_join_in_the_order_calls_started_not_the_order_they_finished(tm
         "".join(json.dumps({"index": i, "action": a, "bindings_command_sha256": d}) + "\n" for a, d, i in rows[:2])
     )
     assert R.join_receipts(missing, {"broker_invocations": started})["joined"] is False
+
+
+# ------------------------------------------------------------------- a killed agent or driver
+def test_a_killed_agent_is_a_refused_round_and_the_next_session_starts_from_the_previous_candidate(run):
+    """SIGKILL leaves no evidence of its own: the round is refused (never authored), its requests are
+    unauthored, and the run goes on from the bytes it had."""
+    before = package_digest(run.run_dir / "workspace")
+    agents = iter([dummy_agent(edit=faster, rc=-9), dummy_agent(edit=faster)])
+    driver = _driver(run, None)
+
+    def run_round(*, session, stage_root):
+        driver.agent = next(agents)
+        return driver(session=session, stage_root=stage_root)
+
+    document = SES.run_sessions(
+        run.objective,
+        run_round=run_round,
+        stage_root=run.run_dir / "stage",
+        run="run",
+        max_sessions=2,
+        total_seconds=1e9,
+    )
+    assert [row["status"] for row in document["sessions"]] == ["refused", "authored"]
+    killed = json.loads((run.run_dir / "stage" / "rounds" / "round_00.round.json").read_text())
+    assert killed["agent_signal"] == 9 and killed["carried_forward"] is False
+    assert set(killed["attribution"].values()) == {J.ATTRIBUTION_UNAUTHORED}
+    assert package_digest(run.run_dir / "workspace") != before  # the second, authored round carried
+    assert not list((run.run_dir / "stage" / "rounds").glob(f"*{R.OPEN_SUFFIX}"))
+
+
+def test_an_agent_driver_that_raises_is_recorded_and_its_requests_resolved(run):
+    """A driver that dies (no transcript at all) is the ROUND's failure, recorded with its requests
+    attributed -- never an exception that leaves them pending forever."""
+
+    def agent(**kw):
+        dummy_agent(edit=faster)(**kw)  # it asked the screen for its bytes ...
+        raise RuntimeError("agent process killed (signal 9)")  # ... and then the driver died
+
+    before = package_digest(run.run_dir / "workspace")
+    outcome = _driver(run, agent)(session=1, stage_root=run.run_dir / "stage")
+    assert outcome["status"] == SES.ROUND_FAILED and "signal 9" in outcome["failure"]
+    record = json.loads((run.run_dir / "stage" / "rounds" / "round_00.round.json").read_text())
+    assert record["status"] == SES.ROUND_FAILED and record["agent_exit_code"] is None
+    (digest,) = record["requested"]
+    assert run.objective.screen.attribution(digest)["state"] == J.ATTRIBUTION_UNAUTHORED
+    assert package_digest(run.run_dir / "workspace") == before
+
+
+def test_a_driver_killed_mid_round_is_closed_by_the_next_start(run):
+    """The marker names what the round asked for; nothing alive owns it, so its requests become
+    unauthored and the round is recorded as killed."""
+    seen = {}
+
+    def agent(**kw):
+        dummy_agent(edit=faster)(**kw)
+        marker = Path(kw["stage_root"]) / "rounds" / f"round_00{R.OPEN_SUFFIX}"
+        seen["marker"] = json.loads(marker.read_text())
+        raise SystemExit("the launcher was killed")  # not an Exception: nothing of the round runs after it
+
+    with pytest.raises(SystemExit):
+        _driver(run, agent)(session=1, stage_root=run.run_dir / "stage")
+    (digest,) = seen["marker"]["requested"]
+    assert run.objective.screen.attribution(digest)["state"] == J.ATTRIBUTION_PENDING
+    stage = run.run_dir / "stage"
+    assert R.next_session(stage) == 2  # a relaunched start continues after the killed round
+    # The marker records this process as the driver; the next start runs in another one.
+    marker = stage / "rounds" / f"round_00{R.OPEN_SUFFIX}"
+    marker.write_text(json.dumps({**seen["marker"], "pid": 2**22 + 1}))
+    (record,) = R.recover_killed_rounds(stage, attribute=run.objective.attribute, run_name="run")
+    assert record["status"] == R.ROUND_KILLED and record["attribution"] == {digest: J.ATTRIBUTION_UNAUTHORED}
+    assert run.objective.screen.attribution(digest)["state"] == J.ATTRIBUTION_UNAUTHORED
+    assert not marker.exists() and (stage / "rounds" / "round_00.round.json").is_file()
+    assert R.recover_killed_rounds(stage, attribute=run.objective.attribute, run_name="run") == []
+
+
+# ------------------------------------------------------------------- judging a recorded round again
+def test_a_recorded_round_is_judged_again_from_its_own_evidence(run):
+    """The replay reruns the round driver's own owners over the round's sealed evidence; a recorded
+    status the evidence no longer supports is reported, never rewritten."""
+    from merlin_experiments.phase2.whole_model_measured import round_audit as AUD
+
+    stage = run.run_dir / "stage"
+    target = SimpleNamespace(target="synthetic")
+    driver = _driver(run, dummy_agent(edit=faster))
+    assert driver(session=1, stage_root=stage)["status"] == "authored"
+    document = AUD.audit_round(run.run_dir, 0, target_experiment=target, audit_token_set=TOKENS)
+    assert document["agrees"] is True and document["replayed"]["status"] == "authored"
+    assert document["replayed"]["receipts"]["joined"] is True and document["replayed"]["edits"]["status"] == "allowed"
+    driver.agent = dummy_agent(edit=faster, extra=("cat golden.yaml",))
+    assert driver(session=2, stage_root=stage)["status"] == "refused"
+    refused = AUD.audit_round(run.run_dir, 1, target_experiment=target, audit_token_set=TOKENS)
+    assert refused["agrees"] is True and refused["replayed"]["audit_clean"] is False
+    numbers = sorted({n for lines in refused["replayed"]["hits"].values() for n in lines})
+    assert any("golden.yaml" in text for text in AUD.transcript_lines(run.run_dir, 1, numbers).values())
+    assert "DISAGREES" not in AUD.format_audit(refused)
+    path = stage / "rounds" / "round_00.round.json"
+    record = json.loads(path.read_text())
+    path.write_text(json.dumps({**record, "status": "refused"}))
+    assert AUD.audit_round(run.run_dir, 0, target_experiment=target, audit_token_set=TOKENS)["agrees"] is False
+    assert json.loads(path.read_text())["status"] == "refused"  # the replay wrote nothing
+    with pytest.raises(AUD.RoundAuditError, match="no record of round 7"):
+        AUD.audit_round(run.run_dir, 7, target_experiment=target, audit_token_set=TOKENS)

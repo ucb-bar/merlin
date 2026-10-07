@@ -440,9 +440,17 @@ def main(argv=None) -> int:
         j.stage("chain", "failed", "functional stage did not complete; not freezing or calibrating")
         return 3
 
-    stage_grade_and_freeze(j, logs, run_dir, a)
-    stage_calibration(j, logs, a)
-    stage_performance(j, logs, a)
+    # Each stage's refusal is the chain's result: an unattended run that reports "ok" over a failed
+    # freeze or calibration is the adjacent-thing-succeeded failure this file exists to prevent.
+    if not stage_grade_and_freeze(j, logs, run_dir, a):
+        j.stage("chain", "failed", "grade/freeze did not complete; calibration and performance were not launched")
+        return 4
+    if not stage_calibration(j, logs, a):
+        j.stage("chain", "failed", "calibration did not complete; performance was not launched")
+        return 5
+    if not stage_performance(j, logs, a):
+        j.stage("chain", "failed", "performance stage did not complete")
+        return 6
 
     j.stage("chain", "ok", "chain finished; read REPORT.md for what ran and what refused")
     return 0

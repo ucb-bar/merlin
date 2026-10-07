@@ -6,6 +6,7 @@ instruction set, an endpoint, or whole-word legality.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.targetgen import rtl_check_compiler as CC
@@ -21,6 +22,7 @@ def _facts(target):
     return f
 
 
+@external_sources.requires_rtl("gemmini", "atlas")
 def test_gemmini_is_rocc_routed_and_atlas_is_not():
     fg, fa = _facts("gemmini"), _facts("atlas")
     assert CC._is_rocc_target("gemmini", fg) is True
@@ -41,6 +43,7 @@ def test_mx_gemmini_routes_trace_and_radiance_routes_kernel():
     assert CC._is_rocc_target("radiance", {}) is False
 
 
+@external_sources.requires_rtl("atlas")
 def test_compile_checks_does_not_route_on_decoder_field_alone():
     cap = {"name": "m", "operation": {"op": "matmul"}, "inputs": [{"role": "output", "shape": [16, 16]}]}
     a = CC.compile_checks(_facts("atlas"), cap, "atlas")
@@ -50,6 +53,7 @@ def test_compile_checks_does_not_route_on_decoder_field_alone():
     assert "gemmini" not in (a["kernel"] or "")
 
 
+@external_sources.requires_rtl("atlas")
 def test_observed_decoder_values_cannot_validate_entire_kernel_words():
     fa = _facts("atlas")
     observed = next(i for i in (fa.get("facts", fa).get("interfaces")) if i.get("name") == "funct_decode_table")

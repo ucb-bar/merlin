@@ -24,8 +24,8 @@ def _inspection_pass_manager(pipeline, context):
     segment.mkdir()
     (segment / "pipeline.txt").write_text(pipeline, encoding="utf-8")
     manager.enable_ir_printing(
-        print_before_all=True,
-        print_after_all=True,
+        print_before_all=_MERLIN_PRINT_BEFORE,
+        print_after_all=_MERLIN_PRINT_AFTER,
         large_elements_limit=64,
         large_resource_limit=64,
         tree_printing_dir_path=str(segment),
@@ -70,8 +70,18 @@ def _write_view(operation, directory, name, keep_exact):
     (root / (name + ".json")).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
 
-def bind_inspection(source: str, directory: str | None, *, keep_exact: bool = False) -> str:
-    """Bind declared runner template hooks; absent hooks refuse rather than skip views."""
+def bind_inspection(
+    source: str,
+    directory: str | None,
+    *,
+    keep_exact: bool = False,
+    print_before: bool = True,
+    print_after: bool = True,
+) -> str:
+    """Bind declared runner template hooks; absent hooks refuse rather than skip views.
+
+    ``print_before``/``print_after`` choose which side of each pass the native printer dumps (an audit
+    keeps both; a compile trace asks only for the side it was told to dump)."""
     hooks = {"# __MERLIN_INSPECT_PARSED__": "00-parsed", "# __MERLIN_INSPECT_LOWERED__": "01-lowered"}
     for token, name in hooks.items():
         if source.count(token) != 1:
@@ -85,6 +95,8 @@ def bind_inspection(source: str, directory: str | None, *, keep_exact: bool = Fa
     source = source.replace("PassManager.parse(", "_inspection_pass_manager(")
     return (
         f"_MERLIN_INSPECTION_DIRECTORY = {directory!r}\n"
+        f"_MERLIN_PRINT_BEFORE = {bool(print_before)!r}\n"
+        f"_MERLIN_PRINT_AFTER = {bool(print_after)!r}\n"
         + inspect.getsource(_inspection_pass_manager)
         + "\n"
         + inspect.getsource(_write_view)

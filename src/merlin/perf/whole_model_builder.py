@@ -110,7 +110,93 @@ def build(
     allow_regions: bool = False,
     phase0_recipe: str | None = None,
     descriptor: str | None = None,
-    chunk_ops: int | None = None,
+    chunk_ops: int | str | None = None,
+    lowering_passes: Sequence[str] = (),
+    only_groups: Sequence[Any] = (),
+    trace_dir: str | None = None,
+    dump_ir_after: Sequence[str] | str = (),
+    dump_ir_before: Sequence[str] | str = (),
+    stop_after: str | None = None,
+) -> dict[str, Any]:
+    """Build one candidate; every option up to ``lowering_passes`` is :func:`_build`'s.
+
+    ``lowering_passes`` selects Merlin's optional lowering passes for this build by registry name
+    (:mod:`merlin.llvmlower.optional_passes`; ``-name`` turns off one that is on by default). It is a
+    launch config's ``build_options`` entry like the rest, empty by default -- so a config that names
+    none builds exactly as before -- and the selection is recorded in the result's ``notes``.
+
+    The compile-debugging keys (:mod:`merlin.compile.debug`) are ``build_options`` too, all empty by
+    default: ``only_groups`` builds a PARTIAL program (marked on its expectations, so every verdict and
+    measurement refuses it), and ``trace_dir``/``dump_ir_after``/``dump_ir_before``/``stop_after`` keep a
+    trace of the build. A build stopped at a stage produces no program, so here -- where a program is
+    what the caller is owed -- the stop is a :class:`WholeModelBuildError` naming where the IR is.
+    """
+    from merlin.common.compile_trace import StopAfterStage
+    from merlin.compile import debug
+    from merlin.llvmlower import optional_passes
+    from merlin.perf import whole_model_build as WMB
+
+    options = {"trace_dir": trace_dir, "dump_ir_after": dump_ir_after, "dump_ir_before": dump_ir_before}
+    trace = debug.request_from_options(
+        {**options, "stop_after": stop_after}, target=target, workload=Path(model_capsule).name
+    )
+    selection = optional_passes.Selection.parse(list(lowering_passes))
+    try:
+        with (
+            debug.opened(trace, ["merlin.perf.whole_model_builder.build"]),
+            optional_passes.applied(selection) as active,
+        ):
+            record = _build(
+                package_dir,
+                target=target,
+                out_dir=out_dir,
+                model_capsule=model_capsule,
+                machine=machine,
+                header=header,
+                header_sha256=header_sha256,
+                verify=verify,
+                jobs=jobs,
+                timeout=timeout,
+                harness_overrides=harness_overrides,
+                prohibited_roles=prohibited_roles,
+                decline=decline,
+                allow_passes=allow_passes,
+                allow_regions=allow_regions,
+                phase0_recipe=phase0_recipe,
+                descriptor=descriptor,
+                chunk_ops=chunk_ops,
+                only_groups=only_groups,
+            )
+    except StopAfterStage as stop:
+        raise WMB.WholeModelBuildError(stop.message("whole-model builder")) from None
+    if active:
+        record.setdefault("notes", {})["lowering_passes"] = active.spell()
+    if trace is not None:
+        record.setdefault("notes", {})["compile_trace"] = str(Path(trace.directory).absolute() / "trace.json")
+    return record
+
+
+def _build(
+    package_dir: str | Path,
+    *,
+    target: str,
+    out_dir: str | Path,
+    model_capsule: str,
+    machine: str,
+    header: str,
+    header_sha256: str | None = None,
+    verify: str = "on_target",
+    jobs: int | None = None,
+    timeout: int = 600,
+    harness_overrides: list[str] | tuple[str, ...] = (),
+    prohibited_roles: Sequence[str] = (),
+    decline: Sequence[Any] = (),
+    allow_passes: bool = False,
+    allow_regions: bool = False,
+    phase0_recipe: str | None = None,
+    descriptor: str | None = None,
+    chunk_ops: int | str | None = None,
+    only_groups: Sequence[Any] = (),
 ) -> dict[str, Any]:
     """``decline`` (op names / group indices) is CELL MODE's own hook: naming every group outside one
     cell routes them all to the target's library, so only the cell's own groups can move whatever this
@@ -122,16 +208,18 @@ def build(
 
     ``phase0_recipe`` / ``descriptor`` name the corpus binding every group is stated under.
     ``chunk_ops`` (an open model only) bounds the open build's lowered functions; ``None`` keeps the
-    unchunked program.
+    unchunked program. ``"auto"`` derives the size from an open model's forward and asks nothing of a
+    closed one (it has no host forward to cut), so one build option serves both.
     """
     from merlin.perf import whole_model_build as WMB
     from merlin.perf import whole_model_open as WO
+    from merlin.perf import whole_model_partial as PARTIAL
     from merlin.runtime.backends import base as backends
 
     if WO.is_open_model(model_capsule, target):
-        if harness_overrides or decline or allow_passes or allow_regions:
+        if harness_overrides or decline or allow_passes or allow_regions or only_groups:
             raise WMB.WholeModelBuildError(
-                "an open-model build takes no harness overrides, declines, passes or regions"
+                "an open-model build takes no harness overrides, declines, passes, regions or only_groups"
             )
         return WO.service_build(
             package_dir,
@@ -150,7 +238,9 @@ def build(
             descriptor=descriptor,
             **({"chunk_ops": chunk_ops} if chunk_ops is not None else {}),
         )
-    if chunk_ops is not None:
+    from merlin.perf.whole_model_chunks import AUTO
+
+    if chunk_ops is not None and str(chunk_ops).strip().lower() != AUTO:
         raise WMB.WholeModelBuildError("chunk_ops bounds an open model's lowered functions; this model is closed")
     record = WMB.build(
         package_dir,
@@ -171,6 +261,7 @@ def build(
         allow_regions=allow_regions,
         phase0_recipe=phase0_recipe,
         descriptor=descriptor,
+        only_groups=only_groups,
     )
     oracle = json.loads(Path(record["oracle"]["path"]).read_text(encoding="utf-8"))
     capsule = WMB.load_model_capsule(model_capsule)
@@ -248,6 +339,8 @@ def build(
             ),
             "argmax": int(oracle["argmax"]),
             "source": f"{record['oracle']['path']} (golden argmax {oracle.get('golden_argmax')})",
+            # A PARTIAL build carries its marker where every verdict reads, and is refused there.
+            **({PARTIAL.MARKER: record[PARTIAL.MARKER]} if record.get(PARTIAL.MARKER) else {}),
         },
         "groups": routes,
         "protocol": {key: driver.program.UART[key] for key in _PROTOCOL_KEYS if key in driver.program.UART},
@@ -261,6 +354,7 @@ def build(
             "build_record": str(Path(out_dir) / "whole_model_build.json"),
         },
         "provenance": record.get("provenance"),
+        **({PARTIAL.MARKER: record[PARTIAL.MARKER]} if record.get(PARTIAL.MARKER) else {}),
     }
 
 

@@ -115,3 +115,13 @@ def test_the_stem_resolves_back_to_its_own_arm_by_longest_match():
 def test_an_unknown_arm_still_fails_closed(te):
     with pytest.raises(KeyError):
         generate_bundles(te, arms=("merlin_verfy",))
+
+
+def test_a_rewritten_manifest_does_not_leak_into_the_next_one(te):
+    """Release selection rewrites grant paths in place. The deny tables are shared module state, so a
+    manifest that aliased them carried one bundle's absolute paths into every later manifest."""
+    first = _arm_manifest(te, "merlin_assisted", "bid")
+    for entry in (*first["allowed"], *first["denied"]):
+        entry["path"] = "/rewritten/" + entry["path"]
+    allowed, denied, _ = _sets(te, "merlin_assisted")
+    assert not any(path.startswith("/rewritten/") for path in allowed | denied)

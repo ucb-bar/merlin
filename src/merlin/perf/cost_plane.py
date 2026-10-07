@@ -168,9 +168,9 @@ def declared_slack() -> tuple[float | None, str]:
     """
     import yaml
 
-    from ..common.paths import merlin_dir
+    from ..common.paths import contract_dir
 
-    path = merlin_dir() / "contract" / "gate_phases.yaml"
+    path = contract_dir() / "gate_phases.yaml"
     if not path.is_file():
         return None, f"no gate declaration at {path}, so no slack over the issue floor is declared"
     try:

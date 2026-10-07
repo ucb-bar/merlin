@@ -47,7 +47,12 @@ def test_every_edit_states_why_and_is_logged(tmp_path):
     assert A.mark_infra(store, [key[:12]], kind="snapshot_contamination", why="uncommitted edit in the snapshot") == [
         key
     ]
-    assert read_json(store / key / "result.json")[A.INFRA_MARK]["kind"] == "snapshot_contamination"
+    # The mark is an annotation BESIDE the result, laid over it on read; the result file is untouched.
+    assert A.INFRA_MARK not in read_json(store / key / "result.json")
+    assert read_json(store / key / J.ANNOTATIONS_FILE)[A.INFRA_MARK]["kind"] == "snapshot_contamination"
+    from merlin_experiments.phase2.whole_model_measured import attempts as AT
+
+    assert AT.effective_result(store / key)[A.INFRA_MARK]["kind"] == "snapshot_contamination"
     assert _log(store)[-1]["operation"] == "mark-infra"
 
 
@@ -81,8 +86,9 @@ def test_requeue_solo_sets_the_attempt_aside_and_never_deletes_it(tmp_path):
     store, key = _store(tmp_path)
     job = A.requeue_solo(store, key, why="control drift before the drift rule existed")
     assert job["state"] == J.PENDING and job["solo"] is True and "requeued by the operator" in job["notice"]
-    attempt = store / key / "paused_attempt_0"
+    attempt = store / key / J.ATTEMPTS_DIR / "0"
     assert (attempt / "result.json").is_file() and not (store / key / "result.json").exists()
+    assert read_json(attempt / J.ATTEMPT_RECORD)["kind"] == "paused_attempt"
 
 
 def test_a_running_job_is_never_touched(tmp_path):
@@ -95,9 +101,13 @@ def test_a_citation_is_corrected_with_its_old_value_and_a_measurement_never_is(t
     store, key = _store(tmp_path, refusal=None)
     with pytest.raises(A.AdminError, match="re-taken"):
         A.correct_citation(store, key, field="objective_cycles", value=1, why="x")
+    before = (store / key / "result.json").read_bytes()
     was = A.correct_citation(store, key, field="builder.note", value="the fixed builder", why="stale citation")
     assert was == {"job.json": None, "result.json": "old"}
-    result = read_json(store / key / "result.json")
+    from merlin_experiments.phase2.whole_model_measured import attempts as AT
+
+    assert (store / key / "result.json").read_bytes() == before  # a result file is never rewritten
+    result = AT.effective_result(store / key)
     assert result["builder"]["note"] == "the fixed builder" and result["citation_corrections"][0]["was"] == "old"
     assert result["objective_cycles"] == 10
 
@@ -107,3 +117,18 @@ def test_the_plateau_operations_run_through_the_command_line(tmp_path, capsys):
     assert cli.main(["admin", str(store), "reset-plateau", "--at", "20260926T175000Z", "--why", "tooling change"]) == 0
     trace = json.loads((store / "plateau.json").read_text())["trace"]
     assert trace[0]["reset_at"] == "20260926T175000Z" and _log(store)[-1]["operation"] == "reset-plateau"
+
+
+def test_a_board_reported_back_is_tried_now_and_the_outage_stays_open(tmp_path, capsys):
+    """A report is not evidence the board works: the next batch may try it at once, and only a batch
+    that runs its workload closes the outage."""
+    from merlin_experiments.phase2.whole_model_measured import batch as B
+
+    store, _key = _store(tmp_path)
+    with pytest.raises(A.AdminError, match="no open board outage"):
+        A.outage_retry_now(store, why="board re-enumerated")
+    write_json_atomic(store / B.BOARD_OUTAGE, {"opened_at": "x", "failures": [{}], "retry_after_epoch": 4e9})
+    assert cli.main(["admin", str(store), "outage-retry-now", "--why", "U250 re-enumerated, xdma probed"]) == 0
+    outage = read_json(store / B.BOARD_OUTAGE)
+    assert outage["retry_after_epoch"] < 4e9 and outage["reported_back"][0]["why"] == "U250 re-enumerated, xdma probed"
+    assert B.board_outage(store) is not None and _log(store)[-1]["operation"] == "outage-retry-now"

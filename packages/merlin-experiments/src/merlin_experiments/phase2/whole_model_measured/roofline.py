@@ -45,16 +45,20 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
+    "REPORT_SCHEMA",
     "SCHEMA",
     "compute_floor",
     "confront",
     "form_table",
     "group_roofline",
     "group_shapes",
+    "measured_groups",
+    "report",
     "roofline_machine",
 ]
 
 SCHEMA = "merlin_group_roofline_v1"
+REPORT_SCHEMA = "merlin_roofline_report_v1"
 #: The perf-coverage convention for a window mean's constant operand (see forms.statement_forms).
 _CONSTANT_ONES_PREFIX = "ONES_"
 _READ_ROLES = ("lhs", "rhs")
@@ -335,3 +339,60 @@ def form_table(
                 row[arm] = None
         rows.append(row)
     return sorted(rows, key=lambda r: -(r.get("roofline_cycles") or 0))
+
+
+def measured_groups(result: Mapping[str, Any]) -> dict[str, int]:
+    """``{group: cycles}`` of a whole-model measurement result (its verdict's per-group rows)."""
+    rows = ((result.get("verdict") or {}).get("groups")) or ()
+    return {str(row["group"]): int(row["cycles"]) for row in rows if isinstance(row.get("cycles"), int)}
+
+
+def report(
+    target: str,
+    model_capsule: str | Path,
+    results: Mapping[str, str | Path],
+    *,
+    emulator: str | Path | None = None,
+) -> dict[str, Any]:
+    """Every group's derived roofline confronted with each labelled measurement ``results`` (a
+    whole-model ``result.json`` per arm), and the per-form table.  The measured cycles are each
+    result's own -- the device that produced them named beside them -- compared, never certified."""
+    from merlin.common import provenance as PROV
+
+    measured, devices = {}, {}
+    for label, path in results.items():
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        measured[str(label)] = measured_groups(document)
+        devices[str(label)] = {
+            "result": str(path),
+            "objective_cycles": document.get("objective_cycles"),
+            "timing_status": document.get("timing_status"),
+            "artifact": (document.get("device") or {}).get("artifact"),
+            "package_sha256": document.get("package_sha256"),
+        }
+    machine = roofline_machine(target, emulator=emulator)
+    shapes = group_shapes(model_capsule, target=target)
+    rooflines = {
+        group: confront(group_roofline(shape, machine), [(arm, cycles.get(group)) for arm, cycles in measured.items()])
+        for group, shape in shapes.items()
+    }
+    pins = {}
+    for name, pin in PROV.load_pins().items():
+        if target in (pin.targets or ()):
+            try:
+                pins[name] = PROV.verify(name)
+            except Exception:  # noqa: BLE001 -- an unverifiable pin is recorded by name, never omitted
+                continue
+    firrtl = (machine.get("memory") or {}).get("firrtl") or {}
+    return {
+        "schema": REPORT_SCHEMA,
+        "target": target,
+        "model_capsule": str(model_capsule),
+        "claim": "derived lower bounds per group; the measured cycles are each result's own, compared, not certified",
+        "machine": machine,
+        "measured_on": devices,
+        "refuted_groups": sorted(g for g, doc in rooflines.items() if doc.get("status") == "refuted"),
+        "rooflines": rooflines,
+        "table": form_table(shapes, rooflines, measured),
+        "provenance": PROV.record(pins=pins, artifacts={"firrtl": firrtl["path"]} if firrtl.get("path") else {}),
+    }

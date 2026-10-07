@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 import pytest
+import sim_toolchain
 
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.sandbox import toolchain
@@ -35,7 +36,9 @@ def _bwrap_works() -> bool:
     return run.returncode == 0
 
 
-def test_tool_only_bundle_refuses_a_missing_promised_grant():
+def test_tool_only_bundle_refuses_a_missing_promised_grant(monkeypatch, tmp_path):
+    # Bundle policy, not a launch: an absent sim checkout is stood in (see ``sim_toolchain``).
+    sim_toolchain.stand_in_absent_chipyard(monkeypatch, tmp_path / "absent-chipyard")
     readiness = _module()
     exp = merlin_dir() / "experiments/capsule_bench/targets/gemmini"
     te = load_target_experiment(exp / "target_experiment.yaml")
@@ -49,7 +52,8 @@ def test_tool_only_bundle_refuses_a_missing_promised_grant():
         readiness._tool_only_bundle(te, "merlin_assisted_rtlchecks", stale)
 
 
-def test_sandbox_pythonpath_names_the_frozen_checkout_not_an_unbuilt_workspace_tree(tmp_path):
+def test_sandbox_pythonpath_names_the_frozen_checkout_not_an_unbuilt_workspace_tree(tmp_path, monkeypatch):
+    sim_toolchain.stand_in_absent_chipyard(monkeypatch, tmp_path / "absent-chipyard")
     exp = merlin_dir() / "experiments/capsule_bench/targets/gemmini"
     te = load_target_experiment(exp / "target_experiment.yaml")
     value = toolchain.sandbox_env(te, tmp_path / "workspace")

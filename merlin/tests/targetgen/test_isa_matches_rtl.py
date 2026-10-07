@@ -12,6 +12,7 @@ These tests pin the three properties that make the cross-check worth having:
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.targetgen import isa_rtl_crosscheck as X
@@ -123,6 +124,12 @@ def test_a_model_is_never_graded_against_the_table_it_was_built_from():
         assert not any(f.source == X.RTL_DECODE_TABLE for f in rep.by_verdict(X.AGREE)), (
             f"{target}: tautological agreements leaked into the verdict"
         )
+    if not checked:
+        # The model is built from a decode table only where a target's RTL facts carry one, so with no
+        # target's RTL checkout on this host there is nothing to exercise. That absence (only that) skips.
+        present, absent = external_sources.rtl_presence(_targets())
+        if absent and not present:
+            pytest.skip(f"no target's RTL checkout is available to build a decode-table model from: {absent}")
     assert checked, "no target exercises the circular-provenance path; this test asserted nothing"
 
 

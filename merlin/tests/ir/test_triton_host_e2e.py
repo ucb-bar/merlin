@@ -12,6 +12,7 @@ the block divides the extent, and only those sizes get tested by hand.
 
 from __future__ import annotations
 
+import host_toolchain
 import numpy as np
 import pytest
 import triton_kernels as K
@@ -19,7 +20,10 @@ import triton_kernels as K
 from merlin.triton import source
 from merlin.triton.bridge import to_linalg
 
-pytestmark = pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed")
+pytestmark = [
+    pytest.mark.skipif(not K.HAS_TRITON, reason="the `triton` optional extra is not installed"),
+    host_toolchain.requires_lowering(),
+]
 
 SIZES = [1, 15, 16, 17, 63, 64, 65, 255, 256, 257, 1000, 1023, 1024, 1025, 4099]
 

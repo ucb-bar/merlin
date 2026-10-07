@@ -54,6 +54,7 @@ from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
@@ -428,6 +429,7 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _PARALLEL_COARSEN_STAGE_SRC
         + _ALLOCA_SCOPE_LOWER_PRELUDE
         + _ROUND_INTRINSIC_PRELUDE
+        + _INT_SOFTMAX_TABLE_PRELUDE
         + _SCALAR_CONTRACTION_PRELUDE
         + _SCALAR_POINTWISE_UNROLL_PRELUDE
         + f"\nMARKER = {SCALARIZE_MARKER!r}\n"
@@ -443,6 +445,8 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
         "# __MERLIN_INSPECT_PARSED__\n"
+        "if _INT_SOFTMAX_TABLE:\n"
+        "    _ist_run_and_report(ctx, module)\n"
         + (
             "_tag_stage1 = [p for p in stage1.split(',') if p]\n"
             "_tag_cut = next((i + 1 for i, p in enumerate(_tag_stage1) "

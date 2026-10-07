@@ -34,7 +34,7 @@ Each row answers a concrete question:
 | What could be false? | `hypothesis` | The declared observation and falsifier from the shared performance family. |
 | What is compared? | `matched_comparator` | Declared equal-demand fields and, when present, the candidate group members. Matching remains `planned_unverified` until the analyzer checks emitted programs and results. |
 | What detects a spurious effect? | `negative_control` | The family's declared control. Its presence is a plan; the control is not established by generation. |
-| How is it measured? | `measurement`, `correctness`, `repeat_dispersion` | Instrument, timing and correctness tiers, replicate plan and dispersion rule. A missing policy stays missing rather than becoming zero noise. |
+| How is it measured? | `measurement`, `correctness`, `repeat_dispersion` | Instrument, the concrete timing and correctness engines with their tiers, replicate plan and dispersion rule. A missing policy stays missing rather than becoming zero noise. |
 | Can this member run? | `support` | The software screen; unknown support stays unverified and an explicit refusal stays unsupported. |
 
 The receipt binds the shared template digest, raw RTL digest, derived performance facts, operation
@@ -46,15 +46,26 @@ identity-matched correctness and timing cells and the family's declared analyzer
 instruction counts from a functional simulator do not substitute for cycle measurements from the
 selected timing engine.
 
-The shared performance template resolves correctness and timing oracles from the selected
-target's tier policy rather than baking in a simulator name. Its form-performance `PW` members
-derive form classes and source-convolution windows from the declared iteration workloads, then
-plan paired candidate and target-support reference measurements. A generated pair, even with a
-declared acceptance analyzer and replicate band, is still an unmeasured hypothesis; separate
-measured evidence must establish both arms on identical demand and the selected timing oracle.
+The shared performance template names oracle *tiers*, not simulators: its evidence fields carry
+placeholders such as `$target_oracle:L2` and `$target_oracle:L3`. Phase 0 resolves them per target
+from the capability contract or the recipe's explicit oracle selection and freezes the concrete
+engine names, with the placeholders they came from, into each generated member. The receipt's
+`measurement.timing_simulator` and `correctness.simulator` therefore name that target's engines. A
+placeholder that does not resolve to a concrete simulator is a generation error for that member
+(recorded under `families_not_generated.errors`); it never falls back to whichever simulator is
+installed. Its form-performance `PW` members derive form classes and source-convolution windows
+from the declared iteration workloads, then plan paired candidate and target-support reference
+measurements. A generated pair, even with a declared acceptance analyzer and replicate band, is
+still an unmeasured hypothesis; separate measured evidence must establish both arms on identical
+demand and the selected timing oracle.
 
 Read `test_justification.json` next to a frozen `performance_corpus_manifest.json`. First inspect
 `families_not_generated`, then each member's workload and support status. A missing family may be
 inapplicable, unimplemented or failed; it is not evidence that the compiler handles that lever.
+Families admitted only by the selected frozen requirement (a captured multi-region scope chain or
+a derived model form class) are listed as `skipped_inapplicable` when that requirement selects
+nothing, and as `blocked_unimplemented` when the requirement lacks the scope they need. Families
+the template declares but this cohort cannot measure, such as claims decided from the decoded
+instruction stream rather than from cycles, are also listed as `blocked_unimplemented`.
 For a performance conclusion, inspect the later measured result and its analyzer verdict as a
 separate artifact. Do not promote a generated test or a diagnostic receipt to a measured claim.

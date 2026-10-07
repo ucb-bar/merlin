@@ -123,6 +123,8 @@ used more than once, `fptoui` instead of `fptosi` -- is REFUSED and COUNTED, nev
 
 from __future__ import annotations
 
+import math
+
 #: Feature name. Registered on demand (see :func:`ensure_registered`) rather than at import, for the
 #: reason `wholemodel_proposer` documents at length: `_composes` swallows the KeyError an unregistered
 #: name raises and returns False, so a lever nobody registered is not declined, it is INVISIBLE.
@@ -246,7 +248,7 @@ def _is_zero_guarded_scale(value) -> bool:
     fallback = _const_float(when_zero)
     false_owner = getattr(otherwise, "owner", None)
     cmp = getattr(cond, "owner", None)
-    if fallback is None or fallback != fallback or fallback <= 0.0 or getattr(cmp, "name", None) != "arith.cmpf":
+    if fallback is None or math.isnan(fallback) or fallback <= 0.0 or getattr(cmp, "name", None) != "arith.cmpf":
         return False
     # Most constructors select the raw division. i-GELU retains its pre-existing positive epsilon
     # floor for tiny nonzero rows and selects one only at exactly zero. Accept that exact spelling
@@ -256,7 +258,7 @@ def _is_zero_guarded_scale(value) -> bool:
         floor, otherwise = _const_float(b), a
         if floor is None:
             floor, otherwise = _const_float(a), b
-        if floor is None or floor != floor or floor <= 0.0:
+        if floor is None or math.isnan(floor) or floor <= 0.0:
             return False
         false_owner = getattr(otherwise, "owner", None)
     div = false_owner
@@ -269,7 +271,7 @@ def _is_zero_guarded_scale(value) -> bool:
         return False
     numerator, denominator = div.operands
     denom = _const_float(denominator)
-    if denom is None or denom != denom or denom == 0.0:
+    if denom is None or math.isnan(denom) or denom == 0.0:
         return False
     lhs, rhs = cmp.operands
     return (lhs is numerator and _const_float(rhs) == 0.0) or (rhs is numerator and _const_float(lhs) == 0.0)
@@ -351,7 +353,7 @@ def _match_chain(fptosi_op):
             divisor_value = _dynamic_scale_of_quant_input(rounded)
             if divisor_value is not None:
                 divisor = _const_float(divisor_value)
-                if (divisor is None or divisor != divisor or divisor == 0.0) and not _is_zero_guarded_scale(
+                if (divisor is None or math.isnan(divisor) or divisor == 0.0) and not _is_zero_guarded_scale(
                     divisor_value
                 ):
                     return "round_divisor_may_be_zero"

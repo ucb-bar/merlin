@@ -13,7 +13,9 @@ a reason" and "absent" are different states and only one of them is honest here.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
+import selected_driver
 import yaml
 from merlin_experiments.phase0 import profiles as PROFILES
 from merlin_experiments.phase0 import sweeps as SWEEPS
@@ -139,11 +141,13 @@ def _expanded(target: str):
     return [e for e in entries if (e.get("performance") or {}).get("family") == "PG"], errors
 
 
+@selected_driver.requires_support("mx_gemmini")
 @pytest.mark.parametrize("target", ["atlas", "mx_gemmini"])
 def test_the_encoding_family_compares_two_of_the_targets_own_encodings(target):
     """Both members must come from what the target DECLARES, and they must differ -- a group whose two
     members resolved to the same encoding is a differential over identical work, which always reads as
     'this lever does nothing'."""
+    external_sources.require_rtl(target)
 
     members, errors = _expanded(target)
     if not members:
@@ -160,11 +164,13 @@ def test_the_encoding_family_compares_two_of_the_targets_own_encodings(target):
         assert len(encs) == 2, f"group {name} compares {encs}, which is not two encodings"
 
 
+@selected_driver.requires_support("mx_gemmini")
 @pytest.mark.parametrize("target", ["atlas", "mx_gemmini"])
 def test_each_encoding_member_accumulates_in_its_own_datapath(target):
     """An accumulator belongs to the datapath its operand feeds. Carrying the corpus binding's
     accumulator across would describe a machine that pairs one encoding's operands with another's
     accumulator -- and the resulting cycle difference would be about that fiction."""
+    external_sources.require_rtl(target)
     members, _ = _expanded(target)
     if not members:
         pytest.skip(f"{target} declares no second contraction encoding")
@@ -174,6 +180,7 @@ def test_each_encoding_member_accumulates_in_its_own_datapath(target):
         assert resolved.get("accum_dtype"), f"{e['name']} has no derived accumulator"
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_single_encoding_target_is_refused_rather_than_compared_against_itself():
     """The gate's whole content. On a one-format machine the encoding question is not hard, it is
     absent, and emitting a group anyway would compare a thing to itself."""

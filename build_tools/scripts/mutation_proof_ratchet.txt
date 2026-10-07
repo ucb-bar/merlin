@@ -1,0 +1,48 @@
+# Gates that ship without a recorded, runnable mutation demonstrating a failing direction.
+# A check nobody has ever seen fail is indistinguishable from one that cannot fail. Clearing an entry
+# means: write a test that drives the gate into its failing direction, and record it in
+# gate_mutations.yaml with the mutation AND everything that mutation removes.
+# May only shrink.
+# growth-accepted: the gate is new; this is debt it discovered, not debt added.
+build_tools/scripts/check_artifact_layout.py
+build_tools/scripts/check_bundled_data.py
+build_tools/scripts/check_capability_drift.py
+build_tools/scripts/check_cert_affordability.py
+build_tools/scripts/check_contract_copies.py
+build_tools/scripts/check_core_dependencies.py
+build_tools/scripts/check_defect_reach.py
+build_tools/scripts/check_distribution_layout.py
+build_tools/scripts/check_doc_paths.py
+build_tools/scripts/check_docs.py
+build_tools/scripts/check_docs_freshness.py
+build_tools/scripts/check_epilogue_vocabulary.py
+build_tools/scripts/check_exchange_rate_windows.py
+build_tools/scripts/check_fact_provenance.py
+build_tools/scripts/check_format.py
+build_tools/scripts/check_generated_target.py
+build_tools/scripts/check_holdout_disjointness.py
+build_tools/scripts/check_isa_matches_rtl.py
+build_tools/scripts/check_kernel_abi_arg_order.py
+build_tools/scripts/check_mesh_assertion_not_weakened.py
+build_tools/scripts/check_no_answer_keys.py
+build_tools/scripts/check_no_assumed_constants.py
+build_tools/scripts/check_no_holdout_names.py
+build_tools/scripts/check_no_local_paths.py
+build_tools/scripts/check_no_public_port_bindings.py
+build_tools/scripts/check_no_regex.py
+build_tools/scripts/check_no_target_name.py
+build_tools/scripts/check_opcode_documentation.py
+build_tools/scripts/check_oracle_blind_spots.py
+build_tools/scripts/check_overfit_register.py
+build_tools/scripts/check_package_group_overfit.py
+build_tools/scripts/check_pass_obligations.py
+build_tools/scripts/check_phase_split.py
+build_tools/scripts/check_provenance.py
+build_tools/scripts/check_ratchets_shrink.py
+build_tools/scripts/check_repro_env.py
+build_tools/scripts/check_route_partition.py
+build_tools/scripts/check_semantic_coverage.py
+build_tools/scripts/check_sign_coverage.py
+build_tools/scripts/check_stage_parameters.py
+build_tools/scripts/check_standalone_install.py
+build_tools/scripts/check_structure.py

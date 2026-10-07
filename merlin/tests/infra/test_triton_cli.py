@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 
+import host_toolchain
 import pytest
 import triton_kernels as K
 
@@ -96,6 +97,7 @@ def test_route_only_reports_without_writing(capsys, tmp_path):
     assert not list(tmp_path.iterdir()), "--route-only must not write artifacts"
 
 
+@host_toolchain.requires_lowering()
 def test_the_vector_add_example_compiles_and_reports(tmp_path):
     """The example in the docs, run as written — so a stale example fails the suite."""
     assert (
@@ -178,6 +180,7 @@ def test_a_kernel_the_bridge_refuses_exits_nonzero_without_a_traceback(capsys, t
     assert "n_elements" in capsys.readouterr().err
 
 
+@host_toolchain.requires_lowering()
 def test_gpu_scheduling_knobs_are_recorded_as_provenance_only(tmp_path):
     """`num_warps` means nothing on a systolic array, so it is kept and never interpreted."""
     assert (

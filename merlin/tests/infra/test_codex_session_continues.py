@@ -62,9 +62,18 @@ def test_resume_preserves_each_path_sandbox_policy_without_an_unsupported_flag()
 def test_the_continuation_prompt_carries_no_hint():
     """The standing instruction only. An arm handed extra guidance mid-session is not comparable to
     one that was not, and this text is sent on every resumed turn."""
+    import ast
+
     src = module_source_path("merlin_experiments.phase1.providers.codex_agent").read_text()
-    start = src.index("_CONTINUE_MSG = (")
-    msg = src[start : src.index("\n\n", start)].lower()
+    # Read the assigned string itself, not a text window: the code after it may say anything.
+    values = [
+        node.value
+        for node in ast.walk(ast.parse(src))
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "_CONTINUE_MSG" for t in node.targets)
+    ]
+    assert len(values) == 1, "expected exactly one _CONTINUE_MSG assignment"
+    msg = ast.literal_eval(values[0]).lower()
     for leak in ("golden", "expected", "answer", "hidden", "dma_config", "funct", "opcode"):
         assert leak not in msg, f"continuation prompt leaks {leak!r}"
     assert "qa/verdict.json" in msg and "agent_selfcheck" in msg

@@ -10,6 +10,7 @@ never permits borrowing another provider's plan.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from ..evidence.store import Evidence
@@ -54,6 +55,74 @@ def _curated(target_name: str) -> dict[str, Any] | None:
         raise ValueError(f"{path}: dialect plan must be a mapping")
     if plan.get("target") != selected.name:
         raise ValueError(f"{path}: dialect plan target differs from selected provider {selected.name!r}")
+    return plan
+
+
+def _generate_from_operation_capabilities(target_contract: dict[str, Any]) -> dict[str, Any] | None:
+    """Project reviewed typed signatures from the existing operation contract.
+
+    The source registry remains authoritative. This projection does not infer
+    semantics, Pure effects, or a lowering from a mnemonic. An incomplete
+    explicitly typed declaration refuses rather than falling back to the
+    legacy name-only dialect generator.
+    """
+    declaration = target_contract.get("operation_capabilities") or {}
+    if not isinstance(declaration, dict):
+        raise ValueError("operation_capabilities must be a mapping")
+    rows = declaration.get("operations") or []
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("operation_capabilities.operations must be a list")
+    typed_rows = [
+        row
+        for row in rows
+        if row.get("domain") == "dialect"
+        and isinstance(row.get("semantics"), dict)
+        and "mlir_signature" in row["semantics"]
+    ]
+    if not typed_rows:
+        return None
+    dialect = target_contract.get("dialect_name")
+    if not isinstance(dialect, str) or not dialect:
+        raise ValueError("typed operation contract requires dialect_name")
+    selected = [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("domain") == "dialect" and row.get("dialect") == dialect
+    ]
+    if not selected or any(row not in selected for row in typed_rows):
+        raise ValueError("typed operation dialect differs from selected dialect_name")
+    if any(not isinstance(row.get("semantics"), dict) or "mlir_signature" not in row["semantics"] for row in selected):
+        raise ValueError("every selected dialect operation needs an explicit MLIR signature")
+    types = target_contract.get("types", [])
+    if not isinstance(types, list) or any(not isinstance(row, dict) for row in types):
+        raise ValueError("typed operation contracts require explicit custom type declarations")
+    ops = []
+    for row in sorted(selected, key=lambda item: str(item.get("operation"))):
+        if not isinstance(row.get("operation"), str) or not row["operation"]:
+            raise ValueError("typed operation contract has no operation name")
+        ops.append(
+            {
+                "name": row["operation"],
+                "summary": str((row.get("semantics") or {}).get("summary") or row["operation"]),
+                "signature": copy.deepcopy(row["semantics"]["mlir_signature"]),
+            }
+        )
+    plan = {
+        "target": target_contract["name"],
+        "dialect_name": target_contract["dialect_name"],
+        "types": copy.deepcopy(types),
+        "ops": ops,
+        "lowering": [],
+        "tests": [],
+        "generated_from_contract": True,
+        "requires_human_review": True,
+        "source_operation_ids": [
+            {"domain": "dialect", "dialect": target_contract["dialect_name"], "operation": op["name"]} for op in ops
+        ],
+    }
+    from ..generate.typed_mlir import validate
+
+    validate(plan)
     return plan
 
 
@@ -141,9 +210,14 @@ def synthesize_dialect_plan(evidence: Evidence, target_contract: dict[str, Any])
     or a review-flagged conservative skeleton, never another provider's authored plan.
     """
     name = target_contract.get("name")
+    typed = _generate_from_operation_capabilities(target_contract)
     curated = _curated(name)
+    if typed is not None and curated is not None:
+        raise ValueError("selected typed operation contract and separate dialect plan duplicate dialect authority")
     if curated is not None:
         return curated
+    if typed is not None:
+        return typed
     if _is_tensor_resident(target_contract):
         return _generate(target_contract)  # usable generated plan (was: empty _conservative stub)
     return _conservative(evidence)

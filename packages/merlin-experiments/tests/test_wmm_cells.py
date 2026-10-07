@@ -51,6 +51,7 @@ class FakeMeasurer:
             "clean": record["group"] not in self.dirty,
             "summary": {f"LOOP in g{record['group']}": 1},
             "census": {"total": 3},
+            "prohibited": dict(self.spec.get("fake", {}).get("prohibited", {"8": "LOOP_A"})),
         }
 
     def time(self, records, *, member, max_cycles, out):
@@ -91,13 +92,14 @@ def _reset():
     FakeMeasurer.instances = []
 
 
-def _job(tmp_path, spec, roles=("loop_descriptor",)):
+def _job(tmp_path, spec, roles=("loop_descriptor",), *, sealed=True):
     job_dir = FX.job_dir_for(
         tmp_path / "store",
         FX.package(tmp_path, "p"),
         machine=spec,
         builder=FX.write_builder(tmp_path),
         build_options={"prohibited_roles": list(roles)},
+        instruction_policy=FX.sealed_policy(roles) if roles and sealed else None,
     )
     return job_dir
 
@@ -131,6 +133,20 @@ def test_a_cell_program_with_a_prohibited_instruction_is_refused_untimed(tmp_pat
     result = W.work(_job(tmp_path, _spec(dirty=[2])))
     assert result["isa_prohibited"]["summary"] == {"g2": 1} and result["refusal"].startswith("isa_prohibited")
     assert not any(label.endswith(":objective:g2") for label in FakeMeasurer.instances[-1].timed)
+
+
+def test_a_cell_under_roles_no_sealed_policy_resolved_is_refused_before_any_program_is_built(tmp_path):
+    result = W.work(_job(tmp_path, _spec(), sealed=False))
+    assert result["timing_status"] == V.TIMING_REFUSED and "sealed instruction policy" in result["refusal"]
+    assert not FakeMeasurer.instances  # refused before the measurer was even made
+
+
+def test_a_cell_scan_that_prohibits_less_than_phase0_sealed_is_refused_untimed(tmp_path):
+    """A scan whose prohibited set is empty (or misses a sealed instruction) checked nothing."""
+    for name, prohibited in (("empty", {}), ("weaker", {"9": "OTHER"})):
+        result = W.work(_job(tmp_path / name, _spec(prohibited=prohibited)))
+        assert result["timing_status"] == V.TIMING_REFUSED and result["refusal"].startswith("isa_prohibited")
+        assert not any(":objective:" in label for label in FakeMeasurer.instances[-1].timed)
 
 
 def test_the_reference_arm_is_measured_unrestricted_by_the_same_path(tmp_path):
@@ -353,3 +369,84 @@ def test_the_measurer_takes_an_efficiency_census_of_correct_objective_package_pr
     assert "efficiency" not in rows["package_g2"] and "efficiency" not in rows["reference_g1"]
     held = measurer.time(records, member={"label": "heldout", "diagnostics": diagnostics}, max_cycles=1, out=tmp_path)
     assert not any("efficiency" in row for row in held.values())
+
+
+# --------------------------------------------------------------- fused regions in a cell
+
+
+class RegionMeasurer(FakeMeasurer):
+    """The package answers groups 1 and 2 as ONE fused region (boundary 2): one program, timed once."""
+
+    def programs(self, arm, groups, *, package_dir, member, out):
+        records = super().programs(arm, groups, package_dir=package_dir, member=member, out=out)
+        if arm != "package" or member.get("label") is not None:
+            return records
+        region = {"members": [1, 2], "boundary": 2, "id": "r1"}
+        for label, record in records.items():
+            if record["group"] in (1, 2):
+                record["region"] = region
+            if record["group"] == 1:
+                record["timed_with"] = 2
+                record.pop("elf")
+                if 1 in self.spec.get("fake", {}).get("declined_inside", ()):
+                    record["linked"] = "vendor"
+        return records
+
+    def time(self, records, *, member, max_cycles, out):
+        assert not any(r.get("timed_with") for r in records.values()), "an internal member is never timed alone"
+        timed = super().time(records, member=member, max_cycles=max_cycles, out=out)
+        for label, record in records.items():
+            if record.get("region"):
+                timed[label]["cycles"] = 250  # the region's one program
+        return timed
+
+
+def make_region(spec):
+    return RegionMeasurer(spec)
+
+
+def _region_spec(**fake):
+    spec = _spec(**fake)
+    spec["measurer"] = f"{__name__}:make_region"
+    return spec
+
+
+def test_a_fused_region_is_timed_once_and_every_member_is_the_packages(tmp_path):
+    result = W.work(_job(tmp_path, _region_spec()))
+    assert result["timing_status"] == V.TIMING_MEASURED and result["objective_cycles"] == 250  # not 100 + 250
+    groups = {g["group"]: g for g in result["verdict"]["groups"]}
+    assert groups["1"]["timed_with"] == 2 and groups["1"]["cycles"] == 0 and groups["2"]["cycles"] == 250
+    assert {r["group"]: r["on"] for r in result["build"]["groups"] if r["group"] in ("1", "2")} == {
+        "1": "package",
+        "2": "package",
+    }
+
+
+def test_a_member_handed_back_inside_a_claimed_region_is_refused_like_any_decline(tmp_path):
+    """Claiming a region and declining inside it cannot keep the claim's coverage."""
+    result = W.work(_job(tmp_path, _region_spec(declined_inside=[1])))
+    assert result["timing_status"] == V.TIMING_REFUSED and "g1" in result["refusal"]
+    row = next(g for g in result["verdict"]["groups"] if g["group"] == "1")
+    assert "inside its claimed region" in row["refusal"]
+
+
+def test_a_refused_region_boundary_refuses_its_members(tmp_path):
+    result = W.work(_job(tmp_path, _region_spec(dirty=[2])))
+    assert result["timing_status"] == V.TIMING_REFUSED
+    row = next(g for g in result["verdict"]["groups"] if g["group"] == "1")
+    assert "boundary g2 was refused" in row["refusal"]
+
+
+def test_a_collateral_region_is_held_to_its_members_summed_baselines():
+    rows = [
+        {"group": 7, "model": CELLS.COLLATERAL, "linked": "submission", "status": "graded", "correct": True,
+         "cycles": 0, "timed_with": 8, "region": {"members": [7, 8], "boundary": 8}},
+        {"group": 8, "model": CELLS.COLLATERAL, "linked": "submission", "status": "graded", "correct": True,
+         "cycles": 290, "region": {"members": [7, 8], "boundary": 8}},
+    ]  # fmt: skip
+    baseline = {"7": {"cycles": 100, "on": "package"}, "8": {"cycles": 200, "on": "package"}}
+    verdict = CELLS.compose_cell(rows, machine="emu", collateral=baseline, tolerance=0.01)
+    assert verdict["collateral"][1]["baseline_cycles"] == 300 and not verdict.get("collateral_regression")
+    # MUTATION: held to the boundary's own baseline alone, the same region would read as a 45% regression.
+    alone = CELLS.collateral_problem(rows[1], baseline["8"], 0.01)
+    assert alone and "+45.0%" in alone

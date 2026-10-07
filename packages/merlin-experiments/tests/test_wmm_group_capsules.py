@@ -54,7 +54,9 @@ def faked(monkeypatch):
         }
 
     monkeypatch.setattr(GC, "build_arm_programs", build)
-    monkeypatch.setattr(GC, "isa_scan", lambda record, *, target, roles: {"clean": True, "summary": {}})
+    monkeypatch.setattr(
+        GC, "isa_scan", lambda record, *, target, roles: {"clean": True, "summary": {}, "prohibited": {"8": "LOOP_0"}}
+    )
     monkeypatch.setattr(
         GC,
         "time_on_gsim",
@@ -79,6 +81,7 @@ def _cell_job(tmp_path, cell):
         machine=spec,
         builder=FX.write_builder(tmp_path),
         build_options=dict(OPTIONS),
+        instruction_policy=FX.sealed_policy(),
     )
 
 
@@ -106,6 +109,27 @@ def test_the_reference_arm_builds_with_the_library_and_no_rule(tmp_path, faked):
     }
     document = CELLS.reference_cell(spec, target="toy", out=tmp_path / "ref")
     assert document["timing_status"] == V.TIMING_MEASURED and faked[0][0] == GC.ARM_REFERENCE
+
+
+def test_the_validation_path_refuses_an_arm_with_no_enforceable_sealed_policy(tmp_path, faked):
+    """Arms from two whole-model jobs: the package arm is held to the job's sealed policy, and an arm
+    under roles no sealed policy resolved is refused before any program is built."""
+    import json
+
+    jobs = {}
+    for name, policy in (("package", FX.sealed_policy()), ("reference", None)):
+        options = dict(OPTIONS) if name == "package" else {k: v for k, v in OPTIONS.items() if k != "prohibited_roles"}
+        jobs[name] = tmp_path / f"{name}.json"
+        jobs[name].write_text(json.dumps({"build_options": options, "instruction_policy": policy}))
+    arms = GC.arms_from_jobs(jobs["package"], jobs["reference"])
+    assert arms[GC.ARM_PACKAGE].instruction_policy == FX.sealed_policy()
+    document = GC.measure_on_gsim(arms, [1], package_dir=tmp_path, model_capsule="/m", target="toy", out=tmp_path / "o")
+    assert all(r["status"] == "graded" for r in document["rows"])
+    unsealed = {**arms, GC.ARM_PACKAGE: GC.arm_from_options(OPTIONS, name=GC.ARM_PACKAGE)}
+    faked.clear()
+    with pytest.raises(GC.GroupCapsuleError, match="sealed instruction policy"):
+        GC.measure_on_gsim(unsealed, [1], package_dir=tmp_path, model_capsule="/m", target="toy", out=tmp_path / "u")
+    assert faked == []  # nothing was built
 
 
 def test_the_validation_table_keeps_each_signed_offset_and_flags_a_systematic_one():

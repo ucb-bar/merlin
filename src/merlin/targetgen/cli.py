@@ -15,6 +15,7 @@ Deterministic, no LLM calls.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import tempfile
@@ -22,7 +23,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import pipeline
+from .dialect_source_scope import audit_dialect_source_scope
 from .isa_census import derive_source_census
+from .isa_mode_audit import audit_mode_inventory
 from .validate import check_generated_target
 
 
@@ -71,6 +74,9 @@ def _cmd_audit_isa(args: argparse.Namespace) -> int:
             decoder_file=Path(args.decoder),
             model_isa_file=Path(args.model_isa),
             rtl_revision=args.rtl_revision,
+            format_file=Path(args.formats) if args.formats else None,
+            model_revision=args.model_revision,
+            verify_revisions=args.verify_revisions,
         )
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary.write_text(json.dumps(census, indent=2, sort_keys=True) + "\n")
@@ -87,6 +93,7 @@ def _cmd_audit_isa(args: argparse.Namespace) -> int:
             "patterns_not_decoded",
             "decoder_rows_without_pattern",
             "model_classes_without_compatible_pattern",
+            "model_classes_without_derived_layout",
             "overlapping_patterns",
             "dma_kind_conflicts",
         )
@@ -94,6 +101,76 @@ def _cmd_audit_isa(args: argparse.Namespace) -> int:
     status = "SOURCE_DISCREPANCIES" if problems else "SOURCE_CROSSWALK_ONLY"
     print(json.dumps({"status": status, "discrepancies": problems, "out": str(output)}))
     return 1 if problems else 0
+
+
+def _cmd_audit_dialect_modes(args: argparse.Namespace) -> int:
+    """Reconcile an OOT mode ledger with pinned source rows and an optional plan."""
+    import yaml
+
+    output = Path(args.out)
+    temporary = output.with_name(output.name + ".tmp")
+    try:
+        census_bytes = Path(args.census).read_bytes()
+        inventory_bytes = Path(args.inventory).read_bytes()
+        plan_bytes = Path(args.dialect_plan).read_bytes() if args.dialect_plan else None
+        census = json.loads(census_bytes)
+        inventory = json.loads(inventory_bytes)
+        plan = yaml.safe_load(plan_bytes) if plan_bytes is not None else None
+        report = audit_mode_inventory(census, inventory, dialect_plan=plan)
+        report["inputs_sha256"] = {
+            "census": hashlib.sha256(census_bytes).hexdigest(),
+            "inventory": hashlib.sha256(inventory_bytes).hexdigest(),
+            "dialect_plan": hashlib.sha256(plan_bytes).hexdigest() if plan_bytes is not None else None,
+        }
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        temporary.replace(output)
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        output.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
+        print(json.dumps({"status": "FAIL", "error": str(error), "out": str(output)}))
+        return 2
+    criterion = "phase1_parameter_domains_ready" if args.require == "phase1-inputs" else "mode_inventory_ready"
+    status = (
+        "SOURCE_MISMATCH"
+        if not report["source_bound"]
+        else "SOURCE_DISCREPANCIES"
+        if not report["source_reconciled"]
+        else "PARAMETER_DOMAINS_OPEN"
+        if (args.require == "phase1-inputs" and report["phase1_mode_scope_ready"] and not report[criterion])
+        else "MODE_SCOPE_OPEN"
+        if args.require == "phase1-inputs" and not report[criterion]
+        else "PHASE1_INPUTS_READY"
+        if args.require == "phase1-inputs"
+        else "MODE_OBLIGATIONS_OPEN"
+        if not report[criterion]
+        else "MODE_INVENTORY_READY"
+    )
+    print(json.dumps({"status": status, "counts": report["counts"], "out": str(output)}))
+    return 0 if report[criterion] else 1
+
+
+def _cmd_audit_dialect_source_scope(args: argparse.Namespace) -> int:
+    """Check that a mode census belongs to one reproduced selected RTL source."""
+    output = Path(args.out)
+    temporary = output.with_name(output.name + ".tmp")
+    try:
+        report = audit_dialect_source_scope(
+            selection_path=Path(args.source_selection),
+            census_path=Path(args.census),
+            inventory_path=Path(args.inventory),
+            expected_config=args.expected_config,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        temporary.replace(output)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        output.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
+        print(json.dumps({"status": "FAIL", "error": str(error), "out": str(output)}))
+        return 2
+    print(json.dumps({"status": report["status"].upper(), "blockers": len(report["blockers"]), "out": str(output)}))
+    return 0 if report["status"] == "ready" else 1
 
 
 def _write_status(path: Path, report: dict[str, object]) -> None:
@@ -138,7 +215,11 @@ def _cmd_stage_capture(args: argparse.Namespace) -> int:
 
 
 def _cmd_native_build(args: argparse.Namespace) -> int:
-    from merlin.semantic_compiler.snapshot import NativeTargetProfile, build_native_snapshot
+    from merlin.semantic_compiler.snapshot import (
+        NativeTargetProfile,
+        build_native_snapshot,
+        packaged_egg_bridge_path,
+    )
     from merlin.semantic_compiler.target_binding import load_native_target_binding
 
     try:
@@ -152,7 +233,7 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
         snapshot = build_native_snapshot(
             profile,
             destination=Path(args.out),
-            crate=Path(args.crate),
+            crate=Path(args.crate) if args.crate else packaged_egg_bridge_path(),
             cargo_target_dir=Path(args.cargo_target_dir),
             source_revision=args.source_revision,
         )
@@ -168,19 +249,62 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "selection_only" else 2
 
 
-def _cmd_native_select(args: argparse.Namespace) -> int:
+def _load_native_search_limits(path: str | None):
+    from merlin.semantic_compiler.search import SearchLimits
+
+    return SearchLimits.from_record(json.loads(Path(path).read_text())) if path else SearchLimits()
+
+
+def _load_native_request(args: argparse.Namespace, *, target_identity: str, mode: str):
+    """Read compiler inputs only; bind parsed Linalg to the selected target."""
+    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
     from merlin.semantic_compiler.model import KernelRequest
+
+    if args.linalg:
+        if not args.linalg_entry:
+            raise ValueError("--linalg-entry is required with --linalg")
+        source = Path(args.linalg).read_bytes().decode("utf-8")
+        translated = translate_linalg_text(
+            source,
+            entry=args.linalg_entry,
+            target_identity=target_identity,
+            lowering_policy=mode,
+        )
+        return translated.request, "parsed_linalg", translated.source_operations
+    if args.linalg_entry:
+        raise ValueError("--linalg-entry requires --linalg")
+    request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+    return request, "typed_request", ()
+
+
+def _cmd_native_select(args: argparse.Namespace) -> int:
+    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
+    from merlin.semantic_compiler.search import SearchAblations
     from merlin.semantic_compiler.snapshot import open_native_snapshot
 
     output = Path(args.out)
     try:
         snapshot = open_native_snapshot(Path(args.snapshot))
-        request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+        request, source_kind, source_operations = _load_native_request(
+            args,
+            target_identity=snapshot.profile.target_identity,
+            mode=args.mode,
+        )
+        if request.lowering_policy != args.mode:
+            raise ValueError("explicit selection mode differs from typed request")
         abi = json.loads(Path(args.abi).read_text()) if args.abi else {"fixed_inputs": {}, "fixed_outputs": None}
         if set(abi) != {"fixed_inputs", "fixed_outputs"} or not isinstance(abi["fixed_inputs"], dict):
             raise ValueError("native ABI needs fixed_inputs and fixed_outputs")
         fixed_outputs = None if abi["fixed_outputs"] is None else tuple(abi["fixed_outputs"])
-        result = snapshot.select(request, fixed_inputs=abi["fixed_inputs"], fixed_outputs=fixed_outputs)
+        ablations = SearchAblations(**{name: name in args.ablation for name in vars(SearchAblations())})
+        limits = _load_native_search_limits(args.search_limits)
+        result = snapshot.select(
+            request,
+            fixed_inputs=abi["fixed_inputs"],
+            fixed_outputs=fixed_outputs,
+            limits=limits,
+            ablations=ablations,
+        )
         constants = {binding.node_id: binding for binding in request.constants}
         constant_requirements = [
             {
@@ -198,8 +322,15 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
             "status": result.status,
             "scope": "selection_only",
             "request_digest": result.request_digest,
+            "source_kind": source_kind,
+            "source_identity": request.source_identity,
+            "source_operations": list(source_operations),
+            "qualification": "component_diagnostic" if result.diagnostic_only else "component_check",
+            "diagnostic_only": result.diagnostic_only,
+            "diagnostic_ablations": list(result.diagnostic_ablations),
             "target_digest": snapshot.profile.digest(),
             "snapshot": str(snapshot.root),
+            "search_limits": limits.record(),
             "reason": result.reason,
             "candidate_attempts": result.candidate_attempts,
             "ordering_attempts": result.ordering_attempts,
@@ -211,11 +342,11 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
             "allocation": asdict(result.allocation) if result.allocation else None,
             "constant_requirements": constant_requirements,
         }
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, UnicodeError) as error:
         report = {
             "schema": "merlin.native_selection_result.v1",
             "engine": args.engine,
-            "status": "compile_error",
+            "status": "unsupported_semantics" if isinstance(error, LinalgBridgeError) else "compile_error",
             "scope": "selection_only",
             "reason": str(error),
         }
@@ -226,17 +357,24 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
 
 def _cmd_native_compile(args: argparse.Namespace) -> int:
     """Invoke a selected target binding with typed source and an explicit ABI."""
-    from merlin.semantic_compiler.model import KernelRequest
-    from merlin.semantic_compiler.search import SearchLimits
+    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.snapshot import open_native_snapshot
-    from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
+    from merlin.semantic_compiler.target_binding import (
+        NativeCompilationError,
+        load_native_target_binding,
+        verify_native_publication,
+    )
 
     try:
         binding = load_native_target_binding(args.support)
         snapshot = open_native_snapshot(Path(args.snapshot))
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
-        request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+        request, source_kind, source_operations = _load_native_request(
+            args,
+            target_identity=snapshot.profile.target_identity,
+            mode=args.mode,
+        )
         if request.lowering_policy != args.mode:
             raise ValueError("explicit compile mode differs from typed request")
         output = Path(args.out)
@@ -253,6 +391,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
             not all(type(value) is int for value in abi["fixed_outputs"])
         ):
             raise ValueError("native compile ABI addresses must be integers")
+        limits = _load_native_search_limits(args.search_limits)
         if output.exists():
             raise FileExistsError(f"fresh native compilation output required: {output}")
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -265,7 +404,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
                 fixed_outputs=tuple(abi["fixed_outputs"]),
                 target_source=Path(args.target_source),
                 destination=staged,
-                limits=SearchLimits(),
+                limits=limits,
             )
             verify_native_publication(
                 staged,
@@ -283,12 +422,28 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
             "out": str(args.out),
             "request_digest": request.digest(),
             "target_identity": snapshot.profile.target_identity,
-            "binary_sha256": manifest.get("binary_sha256"),
+            "source_kind": source_kind,
+            "source_identity": request.source_identity,
+            "source_operations": list(source_operations),
+            "search_limits": limits.record(),
+            "artifact_kind": manifest.get("artifact_kind", "program"),
         }
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError) as error:
+        if manifest.get("artifact_kind") == "program_set":
+            report["program_count"] = len(manifest["segments"])
+            report["segment_binary_sha256"] = [row["binary_sha256"] for row in manifest["segments"]]
+        else:
+            report["binary_sha256"] = manifest["binary_sha256"]
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
+        status = (
+            "unsupported_semantics"
+            if isinstance(error, LinalgBridgeError)
+            else error.status
+            if isinstance(error, NativeCompilationError)
+            else "compile_error"
+        )
         report = {
             "schema": "merlin.native_compilation_status.v1",
-            "status": "compile_error",
+            "status": status,
             "engine": args.engine,
             "support": args.support,
             "out": str(args.out),
@@ -301,6 +456,8 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from merlin.semantic_compiler.search import SearchAblations
+
     parser = argparse.ArgumentParser(prog="merlin-targetgen", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -325,9 +482,46 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--patterns", required=True, help="selected RTL Instructions.scala")
     a.add_argument("--decoder", required=True, help="selected RTL IDecode.scala")
     a.add_argument("--model-isa", required=True, help="selected Python ISA definition")
+    a.add_argument(
+        "--formats",
+        help="the model's instruction-format module (default: the modules the ISA definition imports, found beside it)",
+    )
     a.add_argument("--rtl-revision", required=True, help="exact selected RTL commit")
+    a.add_argument("--model-revision", help="exact selected model commit")
+    a.add_argument(
+        "--verify-revisions",
+        action="store_true",
+        help="require selected RTL/model bytes to match both local Git HEADs and their commit objects",
+    )
     a.add_argument("--out", required=True, help="census JSON artifact")
     a.set_defaults(func=_cmd_audit_isa)
+
+    modes = sub.add_parser("audit-dialect-modes", help="account for every selected decoder mode in an OOT ledger")
+    modes.add_argument("--census", required=True, help="output of audit-isa for the selected source bytes")
+    modes.add_argument("--inventory", required=True, help="explicitly selected OOT JSON mode ledger")
+    modes.add_argument("--dialect-plan", help="reviewed dialect plan YAML from the same selected target")
+    modes.add_argument(
+        "--require",
+        choices=("phase1-inputs", "complete-dialect"),
+        default="complete-dialect",
+        help=(
+            "phase1-inputs freezes source/mode scope and reviewed finite parameter domains; "
+            "complete-dialect additionally requires typed bindings and declared admission"
+        ),
+    )
+    modes.add_argument("--out", required=True, help="mode audit JSON artifact")
+    modes.set_defaults(func=_cmd_audit_dialect_modes)
+
+    source_scope = sub.add_parser(
+        "audit-dialect-source-scope",
+        help="bind a reviewed decoder-mode scope to reproduced selected RTL elaboration",
+    )
+    source_scope.add_argument("--source-selection", required=True, help="selected FIRRTL-to-HW source bundle")
+    source_scope.add_argument("--census", required=True, help="exact source ISA census")
+    source_scope.add_argument("--inventory", required=True, help="reviewed OOT mode ledger")
+    source_scope.add_argument("--expected-config", required=True, help="campaign configuration symbol")
+    source_scope.add_argument("--out", required=True, help="source-scope report JSON")
+    source_scope.set_defaults(func=_cmd_audit_dialect_source_scope)
 
     stage = sub.add_parser("stage-capture", help="stage IR, weights and signature without evaluator inputs")
     stage.add_argument("--capture", required=True, help="materialized model capture directory")
@@ -339,7 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
     native_build.add_argument("--engine", choices=("merlin_native",), required=True)
     native_build.add_argument("--profile", help="versioned native target profile JSON")
     native_build.add_argument("--support", help="explicit installed native target support provider")
-    native_build.add_argument("--crate", required=True, help="pinned Merlin egg bridge source directory")
+    native_build.add_argument("--crate", help="override the packaged Merlin egg bridge source directory")
     native_build.add_argument("--cargo-target-dir", required=True)
     native_build.add_argument("--source-revision", required=True)
     native_build.add_argument("--out", required=True, help="fresh snapshot directory")
@@ -348,8 +542,20 @@ def build_parser() -> argparse.ArgumentParser:
     native_select = sub.add_parser("native-select", help="select and allocate one typed kernel; no target emission")
     native_select.add_argument("--engine", choices=("merlin_native",), required=True)
     native_select.add_argument("--snapshot", required=True)
-    native_select.add_argument("--request", required=True, help="typed semantic kernel JSON")
+    select_source = native_select.add_mutually_exclusive_group(required=True)
+    select_source.add_argument("--request", help="typed semantic kernel JSON")
+    select_source.add_argument("--linalg", help="parsed Linalg MLIR input; admitted integer subset only")
+    native_select.add_argument("--linalg-entry", help="entry function name for --linalg")
+    native_select.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), default="strict-native")
     native_select.add_argument("--abi", help="optional fixed_inputs/fixed_outputs JSON; no runtime samples")
+    native_select.add_argument("--search-limits", help="complete versioned native search-limit JSON")
+    native_select.add_argument(
+        "--ablation",
+        action="append",
+        default=[],
+        choices=tuple(vars(SearchAblations())),
+        help="diagnostic-only native mechanism removal; repeat for multiple ablations",
+    )
     native_select.add_argument("--out", required=True, help="selection result JSON")
     native_select.set_defaults(func=_cmd_native_select)
 
@@ -357,8 +563,12 @@ def build_parser() -> argparse.ArgumentParser:
     native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
     native_compile.add_argument("--support", required=True, help="installed target support entry point")
     native_compile.add_argument("--snapshot", required=True)
-    native_compile.add_argument("--request", required=True, help="typed semantic kernel JSON")
+    compile_source = native_compile.add_mutually_exclusive_group(required=True)
+    compile_source.add_argument("--request", help="typed semantic kernel JSON")
+    compile_source.add_argument("--linalg", help="parsed Linalg MLIR input; admitted integer subset only")
+    native_compile.add_argument("--linalg-entry", help="entry function name for --linalg")
     native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON")
+    native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_compile.add_argument("--out", required=True, help="fresh compilation output directory")

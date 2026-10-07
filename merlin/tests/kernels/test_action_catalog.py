@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from merlin.common.paths import repo_root
+import ast
+
+from merlin.common.paths import module_source_path
 from merlin.kernels import action_catalog as ac
 from merlin.kernels import cca, cca_compare
 
@@ -443,9 +445,26 @@ def test_per_op_register_block_is_forkable_because_it_is_wired():
     route = next(r for r in ac._RVV_ROUTES if r.axis == "coverage.unclaimed_op_classes")
     assert route.forkable_now is True
     assert _impr_seam_feature(route.target_seam) == PEROP_BLOCK_NAME
-    src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
+    src = module_source_path("merlin.runtime.backends.zephyr_model").read_text(encoding="utf-8")
     assert "if PEROP_BLOCK_NAME in features:" in src  # the sentinel IS consumed
-    assert "ensure_perop_block(table, _PEROP_KC)" in src  # ...and swapped for the real feature
+    # ...and swapped for the real feature built from the derived table and K-chunk. Matched on the
+    # expression's structure, so a trailing argument added to the call does not read as an unwired seam.
+    swaps = [
+        node
+        for node in ast.walk(ast.parse(src))
+        if isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.BitOr)
+        and ast.unparse(node.left) == "features - {PEROP_BLOCK_NAME}"
+        and isinstance(node.right, ast.Set)
+        and any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "ensure_perop_block"
+            and [ast.unparse(arg) for arg in call.args[:2]] == ["table", "_PEROP_KC"]
+            for call in node.right.elts
+        )
+    ]
+    assert swaps, "the sentinel is never replaced by ensure_perop_block(table, _PEROP_KC, ...)"
 
 
 # ---------------------------------------------------------------------------------------

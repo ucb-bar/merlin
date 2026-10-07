@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -310,6 +311,8 @@ def test_chia_remote_task_executes_parent_pinned_transport_without_inherited_con
     )
     monkeypatch.setitem(sys.modules, "ray", ray)
     wrapper = _module("chia_agentic_perf_experiment")
+    from merlin_experiments.phase2 import chia_envelope as envelope
+
     program = (
         "import merlin.optional; import os,json,hashlib; from pathlib import Path; "
         "payload=Path(os.environ['MERLIN_CHIA_LAUNCH_RECEIPT']).read_bytes(); "
@@ -319,13 +322,17 @@ def test_chia_remote_task_executes_parent_pinned_transport_without_inherited_con
     native = [sys.executable, "-c", "import merlin.missing" if missing else program]
     transport = _command(gateway, snapshot, native)
     plan = {
+        "command": native,
+        "cwd": str(tmp_path),
+        "envelope_owner": envelope._owner_identity(),
         "wrapper": gateway._pin(Path(wrapper.__file__)),
         "chia_trace": gateway._pin(Path(trace.__file__)),
-        "command_artifacts": wrapper.chia_launch.command_artifacts(native),
-        "launch_policy": wrapper.chia_launch.policy_identity(),
+        "command_artifacts": envelope.chia_launch.command_artifacts(native),
+        "launch_policy": envelope.chia_launch.policy_identity(),
         "transport_command": transport,
     }
-    plan["sha256"] = wrapper.hashlib.sha256(wrapper._canonical(plan)).hexdigest()
+    plan["python_sources"], plan["python_source_environment"] = envelope._python_selection(native)
+    plan["sha256"] = hashlib.sha256(envelope._canonical(plan)).hexdigest()
     monkeypatch.delenv(gateway.CONTEXT, raising=False)
     from merlin_experiments.execution.chia_native import Session, cleanup, setup
 
@@ -333,7 +340,9 @@ def test_chia_remote_task_executes_parent_pinned_transport_without_inherited_con
         invitation = session.reserve()
         setup(invitation)
         try:
-            result = wrapper.run_coordinator(native, str(tmp_path), plan, str(tmp_path / "receipts"))
+            result = wrapper.run_coordinator(
+                native, str(tmp_path), plan, str(tmp_path / "receipts"), str(Path(wrapper.__file__))
+            )
         finally:
             cleanup(invitation)
         lifecycle = session.receipt(invitation)

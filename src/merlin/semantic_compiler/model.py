@@ -64,8 +64,10 @@ class IndexMap:
     def apply(self, indices: tuple[int, ...]) -> tuple[int, ...]:
         if len(indices) != self.loop_rank or any(type(value) is not int for value in indices):
             raise ValueError("logical index has wrong rank or type")
-        return tuple(sum(coefficient * index for coefficient, index in zip(row, indices)) + offset
-                     for row, offset in zip(self.coefficients, self.offsets))
+        return tuple(
+            sum(coefficient * index for coefficient, index in zip(row, indices)) + offset
+            for row, offset in zip(self.coefficients, self.offsets)
+        )
 
     def record(self) -> dict[str, Any]:
         return {
@@ -83,6 +85,13 @@ class IndexMap:
 
 @dataclass(frozen=True)
 class SemanticNode:
+    """Typed source node.
+
+    Input nodes default to retained storage. ``input_retention=reusable`` is an
+    explicit boundary promise that their storage may be overwritten after the
+    last qualified read, including a delayed execution-time read.
+    """
+
     id: str
     op: str
     inputs: tuple[str, ...]
@@ -108,6 +117,11 @@ class SemanticNode:
             raise ValueError("unknown effect class")
         if self.op == "input" and (self.inputs or self.effect != "input"):
             raise ValueError("input nodes must have input effect and no operands")
+        input_retention = dict(self.attrs).get("input_retention", "preserve")
+        if self.op == "input" and input_retention not in {"preserve", "reusable"}:
+            raise ValueError("input retention must be preserve or reusable")
+        if self.op != "input" and "input_retention" in dict(self.attrs):
+            raise ValueError("input retention applies only to input nodes")
         if self.op == "constant" and (self.inputs or self.effect != "constant"):
             raise ValueError("constant nodes must have constant effect and no operands")
         if self.effect != "pure" and self.op not in {"input", "constant"}:
@@ -119,9 +133,16 @@ class SemanticNode:
 
     def semantic_key(self) -> str:
         """Exclude source id and provenance, which do not change pure semantics."""
-        return sha256(_json_bytes((
-            self.op, self.type.record(), sorted(self.attrs), [index_map.record() for index_map in self.index_maps],
-        ))).hexdigest()
+        return sha256(
+            _json_bytes(
+                (
+                    self.op,
+                    self.type.record(),
+                    sorted(self.attrs),
+                    [index_map.record() for index_map in self.index_maps],
+                )
+            )
+        ).hexdigest()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -221,9 +242,16 @@ class KernelRequest:
             raise ValueError("input boundary names and storages must be nonempty strings")
         if {n.id for n in self.nodes if n.effect == "input"} != set(boundary):
             raise ValueError("each input needs exactly one declared boundary representation")
-        if not isinstance(self.target_identity, str) or not self.target_identity or self.lowering_policy not in {
-            "strict-native", "hybrid", "diagnostic",
-        }:
+        if (
+            not isinstance(self.target_identity, str)
+            or not self.target_identity
+            or self.lowering_policy
+            not in {
+                "strict-native",
+                "hybrid",
+                "diagnostic",
+            }
+        ):
             raise ValueError("target identity and valid lowering policy are required")
         if not isinstance(self.source_identity, str):
             raise ValueError("source identity must be a string")
@@ -258,8 +286,14 @@ class KernelRequest:
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> KernelRequest:
         expected = {
-            "schema", "nodes", "outputs", "output_storages", "input_storages",
-            "target_identity", "lowering_policy", "source_identity",
+            "schema",
+            "nodes",
+            "outputs",
+            "output_storages",
+            "input_storages",
+            "target_identity",
+            "lowering_policy",
+            "source_identity",
             "constants",
         }
         if set(row) != expected or row["schema"] != "merlin.semantic_kernel.v2":

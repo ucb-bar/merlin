@@ -30,6 +30,21 @@
       "drain_seconds": 0,
       "min_memory_available_gib": 16,
       "max_swap_used_gib": 8
+    },
+    "codex-gpt-6-sol-cell": {
+      "description": "A cell run's sessions: Codex gpt-6-sol, 45-minute rounds over one day; the cell's own group programs are timed on the emulator, so rounds are short and many.",
+      "driver": "codex",
+      "model": "gpt-6-sol",
+      "effort": "high",
+      "max_sessions": 48,
+      "round_seconds": 2700,
+      "total_authoring_seconds": 86400,
+      "iteration_seconds": 1200,
+      "max_tool_calls": 400,
+      "edit_authority": "whole-package",
+      "drain_seconds": 1800,
+      "min_memory_available_gib": 16,
+      "max_swap_used_gib": 8
     }
   }
 }

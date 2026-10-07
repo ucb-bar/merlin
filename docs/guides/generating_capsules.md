@@ -3,7 +3,7 @@ title: Generating capsules for a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [adding_a_target, gemmini_experiment, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
@@ -18,6 +18,8 @@ code_refs:
   - src/merlin/targetgen/group_capsule_entries.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/model_forms.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py
+  - src/merlin/kernels/endpoints.py
+  - src/merlin/perf/isa_prohibition.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/instruction_roles.py
 ---
 
@@ -137,6 +139,23 @@ and records the result as `instruction_policy` in `MANIFEST.yaml` and `coverage/
 Phase 1 receives it in `MERLIN_PROHIBITED_INSTRUCTION_ROLES` and every phase command carries it.
 Declaring a role does not by itself scan a program; enforcement is a separate whole-ELF check.
 
+The policy fails closed at every step, because a rule that forbids nothing reads exactly like an
+enforced one:
+
+- The taxonomy binds roles through `compute_endpoints.yaml`, read from the selected contract
+  (`MERLIN_CONTRACT_DIR`). A missing declaration raises, and a target that no endpoint binds has an
+  `UNKNOWN` taxonomy.
+- A declared role that matches none of the target's instructions makes the policy `UNKNOWN`, with a
+  `reason`. Verified Phase 0 refuses it, and `corpus prepare` refuses to release a verified corpus
+  whose policy cannot be enforced.
+- Phase 1 scans every ELF that a capsule grade links, including code that nothing calls. A prohibited
+  instruction fails the capsule (`PROHIBITED_INSTRUCTION`). A scan that could not run, or whose roles
+  name no instruction, leaves the capsule `incomplete`.
+- Phase 2 measured mode carries the sealed policy by value. It reads it from `--phase0-manifest`, the
+  config's `phase0_manifest`, or the descriptor's corpus manifest. A run, cell or group arm whose
+  policy is not enforceable is refused before any build. So is a scan that prohibits fewer
+  instructions than Phase 0 sealed.
+
 ## Review before Phase 1
 
 A completed generation run does not automatically become the grading corpus. Prepare a
@@ -169,6 +188,10 @@ and tool sources while retaining the Phase 0 producer's historical identity. The
 receipt establishes recorded byte consistency, not cryptographic proof of execution; operator
 review and sealing remain separate. Combined plans with non-run-owned input pins remain
 outside this artifact-only admission path.
+`--phase1-policy-descriptor FILE` retains an explicit Phase-1-only gate policy beside the release
+(`phase1-policy-descriptor.yaml`, owner-only and read-only, recorded by digest). It may differ from
+the frozen Phase 0 descriptor only in `phase1_gates`; any other difference refuses, so the overlay
+never changes the Phase 0 source identity.
 For a sealed Phase 1 run, select the released descriptor and use its complete descriptor
 cohort. A raw capsule-root override is diagnostic only and cannot inherit the review,
 even when its files are under the reviewed release.

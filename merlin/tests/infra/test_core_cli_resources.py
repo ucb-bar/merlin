@@ -45,11 +45,19 @@ def test_publish_help_without_jsonschema(tmp_path, arguments):
 
 
 def test_publish_validation_requires_extra_without_suppressing_validation(tmp_path):
+    # Publication no longer synthesizes a manifest; the schema check it cannot skip is the one
+    # that loads a declared candidate compiler's ABI before export.
+    package = tmp_path / "candidate"
+    package.mkdir()
+    (package / "provider.yaml").write_text(
+        "schema: merlin.provider.v1\nid: fixture\ntarget: fixture\nrole: candidate_compiler\n"
+    )
     result = _without_jsonschema(
         tmp_path,
-        """
+        f"""
+from types import SimpleNamespace
 try:
-    publish._rewrite_manifest(None, layout_version='fixture', hoisted_tree=False)
+    publish._export_role(SimpleNamespace(package_dir={str(package)!r}, target='fixture'))
 except publish.PublishError as error:
     assert "pip install 'merlin[targetgen]'" in str(error)
     print('missing-validator-refused')

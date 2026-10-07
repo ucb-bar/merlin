@@ -115,11 +115,7 @@ def _occupancy(value: OccupancySummary | Mapping[str, Any] | None) -> OccupancyS
     )
     optional_integer = ("movement_commands", "encoding_transitions")
     parsed: dict[str, Any] = {
-        name: (
-            None
-            if value.get(name) is None
-            else float(_finite_nonnegative(value[name], name.replace("_", " ")))
-        )
+        name: (None if value.get(name) is None else float(_finite_nonnegative(value[name], name.replace("_", " "))))
         for name in optional_float
     }
     parsed.update(
@@ -136,8 +132,7 @@ def _occupancy(value: OccupancySummary | Mapping[str, Any] | None) -> OccupancyS
         total_cycles=float(_finite_nonnegative(value.get("total_cycles"), "occupancy total cycles")),
         busy_cycles=tuple(
             sorted(
-                (str(key), float(_finite_nonnegative(amount, f"busy cycles for {key}")))
-                for key, amount in busy.items()
+                (str(key), float(_finite_nonnegative(amount, f"busy cycles for {key}"))) for key, amount in busy.items()
             )
         ),
         compute_resources=tuple(str(item) for item in value.get("compute_resources") or ()),
@@ -301,9 +296,7 @@ def standard_four_model_quality_schema(
             (
                 QualityBudget.classification_top1(f"held-out corpus sha256:{corpus_sha256_by_member[member]}")
                 if member == classification_member_sha256
-                else QualityBudget.numerical_similarity(
-                    f"held-out corpus sha256:{corpus_sha256_by_member[member]}"
-                )
+                else QualityBudget.numerical_similarity(f"held-out corpus sha256:{corpus_sha256_by_member[member]}")
             ),
         )
         for member in members
@@ -379,9 +372,7 @@ class CoverageSummary:
             raise ValueError("zero placed work cannot have connected regions")
         if self.connected_region_work and self.connected_region_work[0] != self.largest_connected_region_work:
             raise ValueError("largest connected region must match the first region")
-        if not math.isclose(
-            sum(self.connected_region_work), self.supported_work_placed, rel_tol=0.0, abs_tol=1e-9
-        ):
+        if not math.isclose(sum(self.connected_region_work), self.supported_work_placed, rel_tol=0.0, abs_tol=1e-9):
             raise ValueError("connected regions must exactly partition placed source work")
         if not self.work_unit.strip() or not self.provenance:
             raise ValueError("coverage requires a work unit and provenance")
@@ -417,8 +408,7 @@ class CoverageSummary:
             "largest_connected_region_fraction": self.largest_connected_region_fraction,
             "connected_region_work": list(self.connected_region_work),
             "host_islands": [
-                {"taxonomy": name, "count": count, "work": work}
-                for name, count, work in self.host_islands
+                {"taxonomy": name, "count": count, "work": work} for name, count, work in self.host_islands
             ],
             "host_island_count": self.host_island_count,
             "boundary_crossings": self.boundary_crossings,
@@ -448,12 +438,8 @@ def _coverage(value: CoverageSummary | Mapping[str, Any] | None) -> CoverageSumm
             )
         )
     return CoverageSummary(
-        supported_work_total=float(
-            _finite_nonnegative(value.get("supported_work_total"), "supported work total")
-        ),
-        supported_work_placed=float(
-            _finite_nonnegative(value.get("supported_work_placed"), "supported work placed")
-        ),
+        supported_work_total=float(_finite_nonnegative(value.get("supported_work_total"), "supported work total")),
+        supported_work_placed=float(_finite_nonnegative(value.get("supported_work_placed"), "supported work placed")),
         largest_connected_region_work=float(
             _finite_nonnegative(value.get("largest_connected_region_work"), "largest connected region")
         ),
@@ -521,9 +507,7 @@ class RooflineSummary:
             "composition": self.composition,
             "provenance": list(self.provenance),
             "headroom_to_lower_bound": (
-                None
-                if total_cycles is None or self.lower_bound_cycles == 0
-                else total_cycles / self.lower_bound_cycles
+                None if total_cycles is None or self.lower_bound_cycles == 0 else total_cycles / self.lower_bound_cycles
             ),
             "attainment_fraction": (
                 None if total_cycles is None or total_cycles == 0 else self.lower_bound_cycles / total_cycles
@@ -540,9 +524,7 @@ def _roofline(value: RooflineSummary | Mapping[str, Any] | None) -> RooflineSumm
     if not isinstance(floors, Mapping):
         raise TypeError("roofline resource floors must be a mapping")
     return RooflineSummary(
-        lower_bound_cycles=float(
-            _finite_nonnegative(value.get("lower_bound_cycles"), "roofline lower bound")
-        ),
+        lower_bound_cycles=float(_finite_nonnegative(value.get("lower_bound_cycles"), "roofline lower bound")),
         resource_floors=tuple(
             sorted(
                 (str(name), float(_finite_nonnegative(cycles, f"roofline floor for {name}")))
@@ -577,9 +559,7 @@ class AnalyticalMetrics:
             ("cycles", self.cycles),
             ("encoding conversion cycles", self.encoding_conversion_cycles),
         ):
-            if interval.resolved and not all(
-                math.isfinite(float(endpoint)) for endpoint in (interval.lo, interval.hi)
-            ):
+            if interval.resolved and not all(math.isfinite(float(endpoint)) for endpoint in (interval.lo, interval.hi)):
                 raise ValueError(f"{name} must be finite")
         if self.movement_scope not in ("physical", "unavailable"):
             raise ValueError("movement scope must be physical or unavailable")
@@ -601,17 +581,13 @@ class AnalyticalMetrics:
             if self.roofline.lower_bound_cycles > float(self.cycles.lo):
                 raise ValueError("roofline lower bound exceeds the analytical cycle interval")
         if self.occupancy is not None and self.cycles.resolved:
-            if not math.isclose(
-                self.occupancy.total_cycles, float(self.cycles.hi), rel_tol=0.0, abs_tol=1e-9
-            ):
+            if not math.isclose(self.occupancy.total_cycles, float(self.cycles.hi), rel_tol=0.0, abs_tol=1e-9):
                 raise ValueError("occupancy total must equal the conservative cycle endpoint")
         if (
             self.occupancy is not None
             and self.occupancy.movement_bytes is not None
             and self.movement_bytes is not None
-            and not math.isclose(
-                self.occupancy.movement_bytes, self.movement_bytes, rel_tol=0.0, abs_tol=1e-9
-            )
+            and not math.isclose(self.occupancy.movement_bytes, self.movement_bytes, rel_tol=0.0, abs_tol=1e-9)
         ):
             raise ValueError("movement bytes disagree with the occupancy timeline")
         if (
@@ -635,9 +611,7 @@ class AnalyticalMetrics:
         )
         return cls(
             cycles=_interval(value.get("cycles"), "whole-model cycles"),
-            movement_bytes=(
-                None if movement is None else float(_finite_nonnegative(movement, "movement bytes"))
-            ),
+            movement_bytes=(None if movement is None else float(_finite_nonnegative(movement, "movement bytes"))),
             movement_scope=str(value.get("movement_scope") or "unavailable"),
             occupancy=_occupancy(value.get("occupancy")),
             coverage=_coverage(value.get("coverage")),
@@ -657,12 +631,8 @@ class AnalyticalMetrics:
         return {
             "cycles": self.cycles,
             "movement_bytes": self.movement_bytes,
-            "compute_utilization": (
-                None if self.occupancy is None else self.occupancy.compute_utilization
-            ),
-            "latency_hiding_efficiency": (
-                None if self.occupancy is None else self.occupancy.latency_hiding_efficiency
-            ),
+            "compute_utilization": (None if self.occupancy is None else self.occupancy.compute_utilization),
+            "latency_hiding_efficiency": (None if self.occupancy is None else self.occupancy.latency_hiding_efficiency),
             "encoding_conversion_count": self.encoding_conversion_count,
             "encoding_conversion_bytes": self.encoding_conversion_bytes,
             "encoding_conversion_cycles": self.encoding_conversion_cycles,
@@ -701,9 +671,7 @@ class FastEvaluationPolicy:
     """Conservative per-model Pareto, uncertainty, roofline, and risk policy."""
 
     required_objectives: tuple[str, ...] = tuple(_DIRECTIONS)
-    maximum_regression_fraction: tuple[tuple[str, float], ...] = tuple(
-        (name, 0.0) for name in _DIRECTIONS
-    )
+    maximum_regression_fraction: tuple[tuple[str, float], ...] = tuple((name, 0.0) for name in _DIRECTIONS)
     minimum_improvement_fraction: float = 0.0
     maximum_risk_score: float = 0.25
     maximum_cycle_interval_width_fraction: float = 0.25
@@ -718,14 +686,12 @@ class FastEvaluationPolicy:
             set(self.required_objectives)
         ):
             raise ValueError("required objectives must be unique known objectives")
-        if set(self.global_benefit_objectives) - set(_DIRECTIONS) or len(
-            self.global_benefit_objectives
-        ) != len(set(self.global_benefit_objectives)):
+        if set(self.global_benefit_objectives) - set(_DIRECTIONS) or len(self.global_benefit_objectives) != len(
+            set(self.global_benefit_objectives)
+        ):
             raise ValueError("global benefit objectives must be unique known objectives")
         regressions = dict(self.maximum_regression_fraction)
-        if len(regressions) != len(self.maximum_regression_fraction) or set(regressions) - set(
-            _DIRECTIONS
-        ):
+        if len(regressions) != len(self.maximum_regression_fraction) or set(regressions) - set(_DIRECTIONS):
             raise ValueError("maximum regression policy must name unique known objectives")
         for value in (
             *regressions.values(),
@@ -791,9 +757,7 @@ def _quality_gate(
         if value is None:
             blockers.append(f"candidate quality metric {limit.metric} is unavailable")
         else:
-            threshold_passes = (
-                value <= limit.threshold if limit.direction == "at_most" else value >= limit.threshold
-            )
+            threshold_passes = value <= limit.threshold if limit.direction == "at_most" else value >= limit.threshold
             if not threshold_passes:
                 failures.append(f"candidate quality metric {limit.metric} exceeds its budget")
         if limit.maximum_degradation is not None:
@@ -895,6 +859,12 @@ def _compare(
     }
 
 
+def _needs_evidence(model_id: str, reason: str) -> dict[str, Any]:
+    """The row for a model whose analytical result could not be judged. It recommends no lever: a
+    lever is a reading of measured evidence, and this row has none."""
+    return {"model_id": model_id, "status": "needs_evidence", "reason": reason, "recommended_levers": []}
+
+
 def _recommended_levers(
     comparisons: Sequence[Mapping[str, Any]],
     quality_status: str,
@@ -930,12 +900,7 @@ def _recommended_levers(
         for surface in surfaces:
             declared = frozenset(str(item) for item in surface.get("effects") or ())
             if declared.intersection(effects):
-                result.append(
-                    {
-                        key: surface.get(key)
-                        for key in ("id", "path", "symbol", "scope", "effects")
-                    }
-                )
+                result.append({key: surface.get(key) for key in ("id", "path", "symbol", "scope", "effects")})
         return result
 
     result = []
@@ -1001,12 +966,9 @@ def evaluate_fast_portfolio(
         provider_failure = raw.get("provider_failure")
         if isinstance(provider_failure, Mapping):
             reason = (
-                f"host analytical provider failed: {provider_failure.get('type')}: "
-                f"{provider_failure.get('reason')}"
+                f"host analytical provider failed: {provider_failure.get('type')}: {provider_failure.get('reason')}"
             )
-            model_results.append(
-                {"model_id": model_id, "status": "needs_evidence", "reason": reason, "recommended_levers": []}
-            )
+            model_results.append(_needs_evidence(model_id, reason))
             all_blockers.append(f"{model_id}: {reason}")
             continue
         try:
@@ -1031,14 +993,7 @@ def evaluate_fast_portfolio(
                 ):
                     raise ValueError("coverage arms disagree on source-work denominator")
         except (KeyError, TypeError, ValueError) as exc:
-            model_results.append(
-                {
-                    "model_id": model_id,
-                    "status": "needs_evidence",
-                    "reason": f"invalid analytical adapter result: {exc}",
-                    "recommended_levers": [],
-                }
-            )
+            model_results.append(_needs_evidence(model_id, f"invalid analytical adapter result: {exc}"))
             all_blockers.append(f"{model_id}: invalid analytical adapter result")
             continue
 
@@ -1055,15 +1010,12 @@ def evaluate_fast_portfolio(
             for objective in _DIRECTIONS
         ]
         failures = [
-            f"{model_id}: {item['objective']} regressed"
-            for item in comparisons
-            if item["status"] == "regression"
+            f"{model_id}: {item['objective']} regressed" for item in comparisons if item["status"] == "regression"
         ]
         blockers = [
             f"{model_id}: {item['objective']} is {item['status']}"
             for item in comparisons
-            if item["objective"] in policy.required_objectives
-            and item["status"] in ("UNKNOWN", "UNCERTAIN")
+            if item["objective"] in policy.required_objectives and item["status"] in ("UNKNOWN", "UNCERTAIN")
         ]
         for arm_name, metrics in (("baseline", baseline), ("candidate", candidate)):
             if metrics.risk_score is None:
@@ -1079,9 +1031,7 @@ def evaluate_fast_portfolio(
                 blockers.append(f"{model_id}: {arm_name} physical roofline is UNKNOWN")
         failures.extend(f"{model_id}: {reason}" for reason in quality["failures"])
         blockers.extend(f"{model_id}: {reason}" for reason in quality["blockers"])
-        improvements = [
-            item["objective"] for item in comparisons if item.get("robust_improvement") is True
-        ]
+        improvements = [item["objective"] for item in comparisons if item.get("robust_improvement") is True]
         any_global_improvement = any_global_improvement or any(
             objective in policy.global_benefit_objectives for objective in improvements
         )

@@ -15,6 +15,38 @@ from merlin_experiments.phase2.whole_model_measured.identity import package_dige
 
 HEADER = "a" * 64
 
+#: A sealed Phase 0 instruction policy for a synthetic target: what a config that declares
+#: ``loop_descriptor`` must carry by value (``config.SEALED_POLICY``), resolved and non-vacuous.
+SEALED_POLICY: dict[str, Any] = {
+    "schema": "merlin.phase0.instruction_policy.v1",
+    "prohibited_instruction_roles": ["loop_descriptor"],
+    "status": "resolved",
+    "prohibited_instructions": {"loop_descriptor": [{"selector": "8", "name": "LOOP_A"}]},
+    "vacuous_roles": [],
+    "taxonomy_status": "derived",
+}
+
+
+def sealed_policy(roles=("loop_descriptor",)) -> dict[str, Any]:
+    """:data:`SEALED_POLICY` declaring ``roles``, each prohibiting one synthetic instruction."""
+    roles = list(roles)
+    return {
+        **SEALED_POLICY,
+        "prohibited_instruction_roles": roles,
+        "prohibited_instructions": {r: [{"selector": str(8 + i), "name": f"LOOP_{i}"}] for i, r in enumerate(roles)},
+    }
+
+
+def write_phase0_manifest(root: Path, policy: dict[str, Any] | None = None) -> Path:
+    """A sealed Phase 0 corpus ``MANIFEST.yaml`` carrying ``policy`` (default :data:`SEALED_POLICY`)."""
+    import yaml
+
+    path = Path(root) / "phase0_corpus" / "MANIFEST.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump({"instruction_policy": policy or SEALED_POLICY}), encoding="utf-8")
+    return path
+
+
 BUILDER_SOURCE = """
 import hashlib, json
 from pathlib import Path

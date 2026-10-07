@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import inspect
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase0.declarations import for_target
@@ -20,6 +21,8 @@ from merlin.common.paths import merlin_dir
 from merlin.targetgen import corpus_spec as CS
 from merlin.targetgen import corpus_synth as CSY
 from merlin.targetgen.target_experiment import load_target_experiment
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _binding():
@@ -61,11 +64,13 @@ def test_the_synthesizer_emits_no_empty_modes_override():
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_an_epilogue_implies_its_mode_when_the_entry_declares_none():
     m = _modes({**_BASE, "name": "P1", "epilogue": ["relu"]})
     assert m.get("relu") is True, m
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_different_epilogue_derives_a_different_mode():
     """MUTATION CONTROL: if modes were not derived from the epilogue these two would be identical."""
     relu = _modes({**_BASE, "name": "P1", "epilogue": ["relu"]})
@@ -75,6 +80,7 @@ def test_a_different_epilogue_derives_a_different_mode():
     assert scale.get("relu") is False and relu.get("acc_scale") is False
 
 
+@external_sources.requires_rtl("gemmini")
 def test_an_explicit_modes_declaration_is_still_honoured_verbatim():
     """An author who DOES declare modes keeps them -- the fix removes the empty override, not the hook."""
     m = _modes({**_BASE, "name": "P3", "epilogue": ["relu"], "modes": {"k_accumulate": True}})

@@ -1,0 +1,18 @@
+{
+  "what": "Integer-softmax modules as the capture worker emits them (linalg-on-tensors), for the int_softmax_table rewrite's exactness tests.",
+  "generator": "merlin/tests/fixtures/capture_integer_softmax_ir.py",
+  "capture_sources": {
+    "merlin_commit": "6547ee31f2eea47e77a306003e795c9242148256",
+    "modules": ["src/merlin/targetgen/_integer_nonlinear.py", "src/merlin/targetgen/_activation_contractions.py"]
+  },
+  "model2mlir": {
+    "pin": "model2mlir_capture (merlin/contract/software_pins.yaml)",
+    "commit": "8893a37480b4560f701089e5bf408644573a906f"
+  },
+  "torch": "2.10.0+cu128",
+  "files": {
+    "softmax_wide.mlir": "integer_softmax over [3, 11200] f32",
+    "attention_bf16_masked.mlir": "scaled_dot_product_attention, bf16, q [1,2,20,32], k/v [1,2,24,32], additive -inf mask",
+    "attention_long_f32.mlir": "scaled_dot_product_attention, f32, q [1,1,6,32], k/v [1,1,1024,32]"
+  }
+}

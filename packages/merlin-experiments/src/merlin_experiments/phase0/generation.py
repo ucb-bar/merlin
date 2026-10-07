@@ -16,7 +16,7 @@ from merlin.targetgen import corpus_spec as CS  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 from .claim_boundary import assert_no_claim_capsules, held_out_models
-from .instruction_roles import validate_roles
+from .instruction_roles import enforcement_problems, validate_roles
 from .profiles import load_profile, validate_profile_inputs
 from .program_admission import entry_refusal_is_final, screen_written
 from .provenance import _capture_failure_reason, _scrub_capsule_dir, update_provenance_manifest
@@ -422,11 +422,8 @@ def generate_target(
     binding = CS.derive_binding(te, profile.get("datapath", {}), **selected)
     declared_roles = validate_roles(prohibited_instruction_roles)
     instruction_policy = _instruction_policy(hardware_target, declared_roles, evidence, rtl_facts)
-    if evidence_mode == "verified" and declared_roles and instruction_policy["status"] != "resolved":
-        raise ValueError(
-            "verified Phase 0 cannot resolve the declared prohibited instruction roles against this "
-            f"target's instruction taxonomy: {instruction_policy.get('taxonomy_reason')}"
-        )
+    if declared_roles:
+        require_enforceable_policy(evidence_mode, declared_roles, instruction_policy)
     out_root = Path(output_root).expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
     # `sweeps:` (if any) expand into the same flat entries `capsules:` holds, so
@@ -1011,6 +1008,19 @@ def _form_perf_coverage(profile: dict, requirement: dict | None, out_root: Path,
         if path.is_file():
             capsules.append(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
     return form_perf_coverage(requirement, capsules, threshold=threshold)
+
+
+def require_enforceable_policy(evidence_mode: str | None, roles: list[str], policy: dict) -> None:
+    """Verified Phase 0 refuses to seal a declared prohibition it cannot enforce: an underivable
+    taxonomy, or a role that matches none of the target's instructions (a rule that forbids nothing)."""
+    if evidence_mode != "verified" or not roles:
+        return
+    refused = enforcement_problems(policy, roles)
+    if refused:
+        raise ValueError(
+            "verified Phase 0 cannot resolve the declared prohibited instruction roles against this "
+            f"target's instruction taxonomy: {'; '.join(refused)}"
+        )
 
 
 def _instruction_policy(target: str, roles: list[str], evidence, rtl_facts) -> dict:

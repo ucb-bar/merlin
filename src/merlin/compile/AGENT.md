@@ -8,6 +8,8 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 
 - `bundles.py` — Capture bundles for the RVV whole-model lane, and the scalar datatype a bundle's IR carries.
 - `capacity.py` — Operand and accumulator capacity of a target's matrix unit, and the tile that fits it.
+- `command.py` — The `merlin-compile` command line: its arguments, the combinations it refuses, and its report.
+- `debug.py` — Compile debugging options (`--list-stages`, `--dump-ir-after/-before`, `--stop-after`, `--trace-dir`), shared by `merlin-compile`, the whole-model builder CLI and launch configs.
 - `host_lane.py` — The RVV host lane: which package a compile uses for each datatype, and its provenance pin.
 - `mesh.py` — Execute and certify matmul layers on a target's accelerator mesh.
 - `mesh_backend.py` — Plumbing for running a layer through a target's out-of-tree backend package.
@@ -23,8 +25,13 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `merlin.compile_cli` is the front door: `compile_rvv`, `compile_model`, `compile_oot`, `main`, and the
   steps only they use (`_ensure_bundle`, `_workload_features`, `_session_correctness_gate`,
   `_summarize_route_plan`) stay DEFINED there, because other modules look them up through it at call
-  time (`compare.study`, `targetgen.capsule_runner`) and tests replace them there. Everything this
-  package defines is re-exported by `compile_cli` for callers.
+  time (`compare.study`, `targetgen.capsule_runner`) and tests replace them there. The
+  exact historical facade imports from the extracted modules are re-exported by `compile_cli`
+  for existing callers. New module APIs keep their helpers local rather than growing the CLI
+  facade's import surface. The compatibility test pins those historical names explicitly;
+  its monkeypatch scan still discovers all compile modules, including nested packages.
+  `command.py` holds only the argument parsing, validation and report `main` calls; it dispatches
+  nothing itself, so no test needs to patch it.
 - Patch a name in the module that DEFINES it. A re-export (in `compile_cli`, or a sibling imported by
   name, e.g. `mesh` importing `capacity`'s helpers) is a separate binding the defining module's callers
   never read, so a patch there passes without testing anything.

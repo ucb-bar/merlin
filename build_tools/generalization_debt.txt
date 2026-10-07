@@ -19,11 +19,6 @@ radiance:unsupported_declaration:normalization
 radiance:undetermined_declaration:reduction
 radiance:unsupported_declaration:softmax
 radiance:undetermined_declaration:synchronization
-# The OPU contracts are generated output, not checked-in source. A fresh clone
-# without the selected MLC cache has no contract to audit and must remain
-# explicitly unqualified rather than inheriting this machine's generated facts.
-saturn_opu:no_contract:-
-saturn_opu_rvv:no_contract:-
 
 # corpus_contains_unexecutable — capsules in a target's RESOLVED corpus that it structurally cannot
 # execute. Recorded 2026-08-21 after two runs paid for them: they can never pass, and because the agent

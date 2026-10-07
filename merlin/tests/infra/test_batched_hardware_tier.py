@@ -193,7 +193,10 @@ def test_a_target_declaring_no_batched_tier_is_byte_identical(monkeypatch) -> No
 
     tiers = CR._model_tier_map(["L0", "L1", "L2", "L3"], "gemmini", _ON_MESH)
 
-    assert set(tiers) == {"L0", "L1", "L3"}
+    # The declared screen rung is recorded too (a not-applicable skip: this call carries no tile
+    # record); what the batched machinery must not do is add or alter a tier when none is batched.
+    assert set(tiers) == {"L0", "L1", "L2", "L3"}
+    assert tiers["L2"].status == "skipped" and tiers["L2"].not_applicable is True
     assert tiers["L3"].status == "pass"
 
 

@@ -3,7 +3,7 @@ title: Inspecting whole-model MLIR lowering
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [llvm_toolchain, llvm_integration, triton_kernels]
 code_refs:
   - src/merlin/llvmlower/cli.py
@@ -66,7 +66,10 @@ still elide constants without this payload export.
 Compact means readable text, not a disk-size guarantee: raw storage for expanded
 splat tensors can exceed their short MLIR spelling. `exact` does not export these blobs.
 The audit records completed preprocessing stages and upstream pass evidence available
-from the existing pipeline. It is not a promise of one complete module per upstream pass.
+from the existing pipeline (the xDSL stages are `xdsl-parsed` and one per rewrite, read off
+the same table the preprocessing runs; a generically printed module gains its C interface
+on the public definition only). To stop at a named stage or dump its IR without an audit,
+see [compile_debugging](compile_debugging.md). It is not a promise of one complete module per upstream pass.
 For example, a fresh DeepJSCC capture completed with six named stages (input,
 upstream, upstream-scheduled, llvm-translated, llvm-normalized, llvm-final) and
 52 native pass views. This demonstrates inspectability of that shared lowering

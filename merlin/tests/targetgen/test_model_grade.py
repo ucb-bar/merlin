@@ -63,6 +63,13 @@ _CAP_INT8 = {
 }
 
 
+# A target model grade first requires the captured->normalized->outlined IR to have been replayed
+# (`_model_transform_audit_verdict`, pinned in `test_model_capsule_fails_closed`). These tests probe
+# what the grader concludes from the per-layer counters, so the mesh run they fake carries a matched
+# replay; without it every case stops at the transform gate before reaching its own question.
+_REPLAYED = {"status": "structural_replay_matched", "normalization_replay": "matched"}
+
+
 def _mesh(monkeypatch, *, ran, fell, status="verified", gate=True, verify=None, unrouted=0):
     """Patch compile_rvv to look like a mesh run that placed `ran` layers and fell back on `fell`."""
     out = {
@@ -73,6 +80,7 @@ def _mesh(monkeypatch, *, ran, fell, status="verified", gate=True, verify=None, 
             "matmul_layers_on_mesh": ran,
             "matmul_layers_host_fallback": fell,
             "matmul_layers_unrouted": unrouted,
+            "transform_audit_qualification": dict(_REPLAYED),
         },
     }
     monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: out)
@@ -125,6 +133,16 @@ def test_a_passing_model_verdict_records_the_tree_that_produced_it(monkeypatch):
     monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
     withheld = R._grade_model_capsule(_CAP, timeout=60)  # host -> no hardware claim
     assert "provenance" not in withheld
+
+
+def test_a_transform_replay_refusal_still_records_its_tiers(monkeypatch):
+    """The replay gate refuses before any counter is read, and its refusal must still say which tier
+    refused it -- like every other fail-closed branch of the model grade."""
+    _mesh(monkeypatch, ran=15, fell=0)
+    cc.compile_rvv()["mesh_execution"].pop("transform_audit_qualification")
+    r = R._grade_model_capsule(_CAP, target="radiance", timeout=60)
+    assert r["status"] != "pass"
+    assert set(r["tiers"]) >= {"L0", "L1", "L2"}
 
 
 def test_no_layer_on_the_mesh_is_not_a_pass(monkeypatch):

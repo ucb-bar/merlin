@@ -16,9 +16,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 
 from merlin.runtime.backends import base
 from merlin.targetgen.contract import build_recipe
+
+pytestmark = pytest.mark.target("gemmini")
 
 
 def _recipe(**over):
@@ -119,6 +122,7 @@ def test_a_backend_without_a_recipe_refuses_by_name():
         base.harness_build_recipe("spike")
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_reference_target_declares_a_complete_recipe():
     """The regression for the migration: if the backend stops declaring one, the generic path loses
     its build entirely rather than falling back to the literals it used to carry."""
@@ -137,6 +141,7 @@ def test_a_backend_without_a_renderer_refuses_by_name():
         base.harness_renderer("spike")
 
 
+@selected_driver.requires_support("gemmini")
 def test_the_renderer_chooses_the_form_from_the_command_buffer():
     """Which harness applies is a property of the target's command vocabulary, so the backend decides.
 

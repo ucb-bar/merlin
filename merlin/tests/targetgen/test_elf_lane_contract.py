@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import struct
 
+import external_sources
 import pytest
 
 from merlin.targetgen import capsule_runner as R
@@ -99,10 +100,15 @@ def derivable():
     """A target whose accelerator major opcode is derivable, plus that opcode.
 
     Chosen by DERIVATION over the registry rather than named here, so this test does not pin a target;
-    it asserts (never skips) that at least one exists -- a suite where none did would report success
-    while proving nothing."""
+    it asserts that at least one exists -- a suite where none did would report success while proving
+    nothing. The one exception is a host with NO target's RTL checkout: the opcode is an RTL fact, so
+    there is nothing to derive it from, and that absence (only that) is a skip that names the keys."""
     found = [(t, EL.accelerator_opcode(t)) for t in all_targets()]
     have = [(t, op) for t, (op, _src) in found if op is not None]
+    if not have:
+        present, absent = external_sources.rtl_presence(t for t, _ in found)
+        if absent and not present:
+            pytest.skip(f"no target's RTL checkout is available to derive an opcode from: {absent}")
     assert have, (
         "no registered target has a derivable accelerator opcode; this test would otherwise "
         f"pass while measuring nothing (looked at {[t for t, _ in found]})"

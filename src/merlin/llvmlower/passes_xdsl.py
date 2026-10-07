@@ -602,17 +602,26 @@ def add_c_interface(module) -> int:
     return n
 
 
+#: The Merlin xDSL rewrites before the upstream pipeline, in order: ``(statistic, stage, transform)``.
+#: :func:`_preprocess_module` runs exactly this table, and :data:`PREPROCESS_STAGES` is read off it. The
+#: transform is named, and resolved in this module when it runs, so a replaced rewrite is the one run.
+_PREPROCESS = (
+    ("dead_tensor_ops_pruned", "xdsl-pruned", "prune_dead_pure_tensor_ops"),
+    ("quant_ext_lowered", "xdsl-quant-lowered", "lower_quant_ext"),
+    ("c_interface_funcs", "xdsl-c-interface", "add_c_interface"),
+)
+#: The stage names the xDSL preprocessing records: the parsed module, then one per rewrite.
+PREPROCESS_STAGES = ("xdsl-parsed", *(stage for _, stage, _ in _PREPROCESS))
+
+
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from ..xdsl_dialects.ir_inspection import record_stage
 
     if audit is not None:
-        record_stage(audit, "xdsl-parsed", module, generic=True)
+        record_stage(audit, PREPROCESS_STAGES[0], module, generic=True)
     stats = {}
-    for statistic, stage, transform in (
-        ("dead_tensor_ops_pruned", "xdsl-pruned", prune_dead_pure_tensor_ops),
-        ("quant_ext_lowered", "xdsl-quant-lowered", lower_quant_ext),
-        ("c_interface_funcs", "xdsl-c-interface", add_c_interface),
-    ):
+    for statistic, stage, name in _PREPROCESS:
+        transform = globals()[name]
         stats[statistic] = (
             transform(module, on_rewrite=on_quant_rewrite)
             if statistic == "quant_ext_lowered" and on_quant_rewrite is not None

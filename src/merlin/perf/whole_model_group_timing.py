@@ -41,7 +41,7 @@ import json
 import os
 import subprocess
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -130,8 +130,13 @@ def _prepare(
     jobs: int,
     binder: Any = None,
     ask_only: bool = False,
+    allow_regions: bool = False,
 ) -> dict[str, Any]:
     """The statement, the package's rows (objects built for ``groups`` only), the driver's model.
+
+    ``allow_regions`` offers a package that opts in (``whole_model_regions``) fused regions of adjacent
+    groups, exactly as the whole-model build does; with ``ask_only`` only the asked groups can form one
+    (every other group is declined, and a region never spans a declined group).
 
     ``binder`` is the corpus binding a package build states every group under (the whole-model build's
     own, :func:`merlin.perf.whole_model_build.corpus_binder`).  ``ask_only`` puts only ``groups`` to the
@@ -157,10 +162,13 @@ def _prepare(
         jobs=jobs,
         decline=[*unasked, *decline] if unasked else decline,
         binder=binder,
+        allow_regions=allow_regions,
     )
     rows = W.decline_ops(W.bind_groups(buffer), decline)
     wanted = {int(r["group"]) for r in rows} if groups is None else {int(g) for g in groups}
     W._kernel_objects([r for r in rows if int(r["group"]) in wanted], target=target, out=work / "objects", jobs=jobs)
+    # A region's internal members stand or fall with its boundary's kernel (an object that failed to build).
+    W.settle_regions(rows)
     driver = backends.whole_model_driver(target)
     (value,) = capsule.inputs.values()
     (golden,) = capsule.outputs.values()
@@ -305,6 +313,31 @@ def ctype_dtypes(header: str | Path) -> dict[str, str]:
     return found
 
 
+def _names(value: Any) -> list[str]:
+    """Every string a step names, its members' steps included (a fused region's step nests them)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        return [name for item in value.values() for name in _names(item)]
+    if isinstance(value, (list, tuple)):
+        return [name for item in value for name in _names(item)]
+    return []
+
+
+def linked_region(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """``{"members", "boundary", "id"}`` when ``row`` is a member of a fused region the package answers
+    and whose kernel is linked (its boundary on the package), else None."""
+    from . import whole_model_build as W
+
+    region = (row or {}).get("region")
+    if not isinstance(region, Mapping) or (row or {}).get("on") != W.ON_PACKAGE:
+        return None
+    members = [int(g) for g in region.get("member_groups") or ()]
+    if len(members) < 2:
+        return None
+    return {"members": members, "boundary": members[-1], "id": region.get("id")}
+
+
 def _one_group_model(
     model: Mapping[str, Any], group: int, values: Mapping[str, Any], dtypes: Mapping[str, str]
 ) -> dict[str, Any]:
@@ -321,9 +354,12 @@ def _one_group_model(
     step = copy.deepcopy(steps[0])
     buffers = {str(b["name"]): b for b in model["buffers"]}
     out = str(step["out"])
-    named = [str(v) for v in step.values() if isinstance(v, str)]
-    reads = list(dict.fromkeys(n for n in named if n in buffers and n != out))
-    elsewhere = {str(v) for s in model["steps"] if s is not steps[0] for v in s.values() if isinstance(v, str)}
+    named = _names(step)
+    # A fused region's step carries its members' steps: what they produce inside it is the region's own,
+    # never an input; what they read from outside it is.
+    inside = {str(m.get("out")) for m in step.get("members") or () if isinstance(m, Mapping)}
+    reads = list(dict.fromkeys(n for n in named if n in buffers and n != out and n not in inside))
+    elsewhere = {v for s in model["steps"] if s is not steps[0] for v in _names(s)}
     arrays = {k: v for k, v in model["arrays"].items() if k in named or k not in elsewhere}
     for name in reads:
         if name not in values:
@@ -389,11 +425,39 @@ def _addresses(elf: Path) -> dict[str, int]:
     return found
 
 
-def _group_map(elf: Path, one: Mapping[str, Any], full_row: Mapping[str, Any], producers: Mapping[str, int]) -> dict:
-    """A memory map (the build's own schema) for the one group: its output, and its embedded inputs."""
+#: ``exactness(group, entry)``: a group's exactness contract (a dict), or None for the comparison its op implies.
+ContractOf = Callable[[int, Mapping[str, Any]], Mapping[str, Any] | None]
+
+
+def _entries(buffer: Mapping[str, Any]) -> dict[int, dict[str, Any]]:
+    """Each group's statement entry (what its form, and so its exactness contract, is read from)."""
+    return {
+        int(r["group"]): dict(r.get("entry") or {}) for r in (buffer.get("whole_program") or {}).get("per_group") or ()
+    }
+
+
+def _contract(exactness: ContractOf | None, group: int, entries: Mapping[int, Mapping[str, Any]]):
+    if exactness is None:
+        return None
+    found = exactness(int(group), entries.get(int(group)) or {})
+    return dict(found) if found else None
+
+
+def _group_map(
+    elf: Path,
+    one: Mapping[str, Any],
+    full_row: Mapping[str, Any],
+    producers: Mapping[str, int],
+    *,
+    contract: Mapping[str, Any] | None = None,
+    stated: Mapping[str, Any] | None = None,
+) -> dict:
+    """A memory map (the build's own schema) for the one group: its output, and its embedded inputs --
+    and, given one, the exactness ``contract`` the grade holds it to.  A fused region's program is mapped
+    against the ``stated`` buffer, whose per-group entries say how its boundary is graded."""
     from . import whole_model_build as W
 
-    layout = W.memory_map(elf, one, {"whole_program": {"per_group": []}})
+    layout = W.memory_map(elf, one, stated if stated is not None else {"whole_program": {"per_group": []}})
     (row,) = layout["groups"]
     addresses = _addresses(elf)
 
@@ -412,14 +476,17 @@ def _group_map(elf: Path, one: Mapping[str, Any], full_row: Mapping[str, Any], p
     row["inputs"] = [
         {**place(name), "produced_by": producers[name]} for name in one["embedded_inputs"] if name in producers
     ]
-    for key in ("compare", "bound_lsb", "lhs_scale", "rhs_scale", "relu"):
-        if key in full_row:
-            row[key] = full_row[key]
+    if row.get("compare") != "region":  # a region is graded at its boundary from its members (memory_map)
+        for key in ("compare", "bound_lsb", "lhs_scale", "rhs_scale", "relu"):
+            if key in full_row:
+                row[key] = full_row[key]
     if row.get("compare") == "bounded":
         step = one["steps"][0]
         row["lhs"], row["rhs"] = place(str(step["lhs"])), place(str(step["rhs"]))
     layout["dump"] = {"symbols": [row["symbol"]], "bytes": row["bytes"]}
     layout["note"] = "one-group program: inputs are embedded read-only data served from the ELF"
+    if contract:
+        row["exactness"] = dict(contract)
     return layout
 
 
@@ -443,8 +510,23 @@ def build_group_programs(
     ask_only: bool = False,
     phase0_recipe: str | Path | None = None,
     descriptor: str | Path | None = None,
+    keep_statement: bool = False,
+    exactness: ContractOf | None = None,
+    allow_regions: bool = False,
+    debug_companion: bool = False,
 ) -> dict[int, dict[str, Any]]:
     """One small program per group in ``groups``, built for ``machine``: ``{group: record}``.
+
+    ``allow_regions`` lets the package answer adjacent asked groups as ONE fused region (see
+    :func:`_prepare`).  A linked region is one program -- the driver's own region step
+    (``program.region_steps``), graded at its boundary -- recorded on the boundary's record; each
+    internal member's record names the boundary it is timed with (``timed_with``) and builds nothing, so a
+    region's cycles are counted once and every member stays the package's.  A region the driver will not
+    step is refused by name for each member, never silently split.
+
+    ``exactness(group, entry)`` gives a group's exactness contract (:meth:`merlin.perf.exactness.
+    Exactness.to_dict`) from its statement entry; it rides in the group's memory map, so the grade holds
+    the group to exactly that contract and says so (:func:`merlin.perf.whole_model_memory.grade_memory`).
 
     Built the way the whole-model program it stands for is: under the corpus binding ``phase0_recipe``
     declares (required with a package, as for the whole-model build), with ``harness_overrides``
@@ -455,6 +537,11 @@ def build_group_programs(
     ``verify`` is the driver's verification mode (``host_dump`` for the emulator's memory dump; a
     functional-model check builds ``local_map``, which grades on the core and says where it is wrong).
     ``prohibited_roles`` builds the program under the same instruction rule as the run's own builds.
+    ``keep_statement`` keeps the statement's work tree (``lower/``: each asked group's interface, the
+    package's command buffer and target artifact), which is otherwise removed; an inspection reads it.
+    ``debug_companion`` also links each program a second time from the same model, kernels and recipe
+    with debug information added (:func:`_debug_companion`), so a PC count of the program can be read
+    against source lines; the companion is recorded beside the program and never replaces it.
 
     Each record names the ELF, its memory map, the oracle (the whole model's, for the chained digest),
     who answered the group and the object's digest. ``expect_objects`` (``{group: object_sha256}``, from
@@ -480,12 +567,14 @@ def build_group_programs(
         jobs=jobs,
         binder=binding.binder if binding is not None else None,
         ask_only=ask_only,
+        allow_regions=allow_regions,
     )
     overrides = {str(Path(o).resolve()): W._sha256(o) for o in harness_overrides}
     reference = reference_context(model_capsule, target=target)
     values = reference["values"]
     (out / "oracle.json").write_text(json.dumps(reference["oracle"], indent=1) + "\n", encoding="utf-8")
     full_rows = _graded_as(ctx["buffer"])
+    entries = _entries(ctx["buffer"])
     dtypes = ctype_dtypes(header)
     producers = {str(s["out"]): int(s["group"]) for s in ctx["model"]["steps"]}
     if groups is None:  # every DEVICE group of the model: the steps of its program
@@ -504,6 +593,14 @@ def build_group_programs(
             # the agent reads its own error, never a paraphrase of it.
             "why": row.get("why"),
         }
+        region = linked_region(row)
+        if region is not None:
+            record["region"] = region
+            if int(group) != region["boundary"]:
+                # AN INTERNAL MEMBER: answered by its region's one kernel, timed in the boundary's program.
+                record.update(linked="submission", timed_with=region["boundary"])
+                records[int(group)] = record
+                continue
         try:
             want = (expect_objects or {}).get(int(group))
             if want and row.get("object_sha256") != want:
@@ -511,33 +608,55 @@ def build_group_programs(
                     f"the rebuilt object is {str(row.get('object_sha256'))[:12]}, the build record named "
                     f"{str(want)[:12]}; timing it would time a different kernel"
                 )
-            one = _one_group_model(ctx["model"], int(group), values, dtypes)
+            stepped, member_rows = ctx["model"], ([row] if row else [])
+            if region is not None:
+                stepped, refused = ctx["driver"].program.region_steps(
+                    ctx["model"], [{"members": region["members"], "boundary": region["boundary"]}]
+                )
+                if refused:
+                    raise GroupTimingError(
+                        f"the target's driver will not step the region {region['members']}: {refused}"
+                    )
+                member_rows = [rows[m] for m in region["members"] if m in rows]
+            one = _one_group_model(stepped, int(group), values, dtypes)
             kernels = ctx["driver"].kernels.render_kernels(
                 one,
-                [row] if row else [],
+                member_rows,
                 entry=domain["tensor"],
                 row_padding=W.pointee_row_padding(target)["multiple"],
             )
             recipe = W._with_header(
                 backends.harness_build_recipe(target), Path(header), here / "harness", [Path(o) for o in overrides]
             )
-            receipt = ctx["driver"].program.build(
-                one,
-                None,
-                None,
-                here / "program",
-                sched_kernels=kernels,
-                extra_objects=[Path(o) for o in kernels["objects"]],
-                recipe=recipe,
-                verify=verify,
-                **(
-                    {"library_loops": False, "prohibited_selectors": sorted(W._prohibited(target, prohibited_roles))}
-                    if prohibited_roles
-                    else {}
-                ),
+            rule = (
+                {"library_loops": False, "prohibited_selectors": sorted(W._prohibited(target, prohibited_roles))}
+                if prohibited_roles
+                else {}
             )
+
+            def link(directory: Path, chosen: Any, one=one, kernels=kernels, rule=rule) -> Mapping[str, Any]:
+                return ctx["driver"].program.build(
+                    one,
+                    None,
+                    None,
+                    directory,
+                    sched_kernels=kernels,
+                    extra_objects=[Path(o) for o in kernels["objects"]],
+                    recipe=chosen,
+                    verify=verify,
+                    **rule,
+                )
+
+            receipt = link(here / "program", recipe)
             _require_headers_read(receipt, abi, overrides)
-            layout = _group_map(Path(receipt["elf"]), one, full_rows[int(group)], producers)
+            layout = _group_map(
+                Path(receipt["elf"]),
+                one,
+                full_rows[int(group)],
+                producers,
+                contract=_contract(exactness, group, entries),
+                stated=ctx["buffer"] if region is not None else None,
+            )
             (here / "memory_map.json").write_text(json.dumps(layout, indent=1) + "\n", encoding="utf-8")
             record.update(_kept_interface(out / "lower", int(group), here))
             census = {int(c["group"]): c for c in kernels["census"]}.get(int(group)) or {}
@@ -555,9 +674,12 @@ def build_group_programs(
                     "host_routed": receipt.get("host_routed") or [],
                     "library_paths": receipt.get("library_paths"),
                     "program_source": receipt.get("program_source"),
+                    "program_object": receipt.get("program_object"),
                     "variant": _board_variant(receipt),
                 }
             )
+            if debug_companion:
+                record["debug_companion"] = _debug_companion(link, recipe, here / "program.debug")
         except (Exception, SystemExit) as error:  # noqa: BLE001 -- a group that cannot be built is a named refusal
             # The driver reports a failed compile or link as SystemExit; a group whose program does not
             # build is a refusal for that group, never the end of every other group's build.
@@ -568,8 +690,38 @@ def build_group_programs(
     # for a ResNet) is regenerable -- the replies are cached by content -- and nothing reads it again.
     import shutil
 
-    shutil.rmtree(out / "lower", ignore_errors=True)
+    if not keep_statement:
+        shutil.rmtree(out / "lower", ignore_errors=True)
     return records
+
+
+#: The C compiler option that adds debug information (POSIX ``c99 -g``). It asks the compiler to describe
+#: the code it emits, not to emit different code; :func:`merlin.perf.debug_companion.verify_debug_companion`
+#: refuses a companion whose allocated bytes differ anyway, so a compiler that did change them is caught.
+DEBUG_INFO_OPTION = "-g"
+
+
+def _debug_companion(link: Callable[[Path, Any], Mapping[str, Any]], recipe: Any, directory: Path) -> dict[str, Any]:
+    """The program linked again by ``link`` from the same inputs, under ``recipe`` with debug information.
+
+    Every compile and link flag the program was built with is kept, in order, and the debug option is
+    appended to them, so the companion is the recorded recipe plus debug information and nothing else.
+    A companion that cannot be built is a refusal recorded here; the program itself stands either way."""
+    import dataclasses
+
+    try:
+        chosen = dataclasses.replace(recipe, cflags=(*recipe.cflags, DEBUG_INFO_OPTION))
+        receipt = link(directory, chosen)
+    except (Exception, SystemExit) as error:  # noqa: BLE001 -- a companion that does not build is named, not fatal
+        return {"refusal": f"{type(error).__name__}: {str(error)[-400:]}", "option": DEBUG_INFO_OPTION}
+    return {
+        "elf": receipt.get("elf"),
+        "elf_sha256": receipt.get("elf_sha256"),
+        "program_object": receipt.get("program_object"),
+        "compiler": str(chosen.compiler),
+        "option": DEBUG_INFO_OPTION,
+        "cflags": list(chosen.cflags),
+    }
 
 
 def _program_files(receipt: Mapping[str, Any]) -> tuple[Path, Path]:
@@ -647,8 +799,10 @@ def build_reference_group_programs(
     out: str | Path,
     verify: str = "host_dump",
     harness_overrides: Sequence[str | Path] = (),
+    exactness: ContractOf | None = None,
 ) -> dict[int, dict[str, Any]]:
-    """The REFERENCE arm's one-group programs: the target's library answers the group.
+    """The REFERENCE arm's one-group programs: the target's library answers the group (graded under the
+    same ``exactness`` contract as the package arm, see :func:`build_group_programs`).
 
     :func:`merlin.perf.whole_model_builder.build_reference` restricted to one step -- the same driver,
     header assertion, harness overrides and no instruction rule (the reference arm is the bar, and the
@@ -679,7 +833,9 @@ def build_reference_group_programs(
     )
     reference = reference_context(model_capsule, target=target)
     (out / "oracle.json").write_text(json.dumps(reference["oracle"], indent=1) + "\n", encoding="utf-8")
-    full_rows = _graded_as(W.state(capsule, target=target))
+    stated = W.state(capsule, target=target)
+    full_rows = _graded_as(stated)
+    entries = _entries(stated)
     dtypes = ctype_dtypes(header)
     producers = {str(s["out"]): int(s["group"]) for s in model["steps"]}
     if groups is None:
@@ -696,7 +852,13 @@ def build_reference_group_programs(
             )
             receipt = driver.program.build(one, None, None, here / "program", recipe=recipe, verify=verify)
             _require_headers_read(receipt, abi, overrides)
-            layout = _group_map(Path(receipt["elf"]), one, full_rows[int(group)], producers)
+            layout = _group_map(
+                Path(receipt["elf"]),
+                one,
+                full_rows[int(group)],
+                producers,
+                contract=_contract(exactness, group, entries),
+            )
             (here / "memory_map.json").write_text(json.dumps(layout, indent=1) + "\n", encoding="utf-8")
             record.update(
                 {
@@ -784,7 +946,17 @@ def time_group_programs(
     def carried(program: Mapping[str, Any]) -> Path | None:
         if cache is None or not program.get("elf_sha256") or not engine:
             return None
-        return Path(cache) / engine[:16] / f"{program['elf_sha256']}.json"
+        # A grade is a function of the program AND of the contract it was held to: a contract (in the
+        # memory map, not the ELF) keys its own entry, so a changed contract is never served an old grade.
+        try:
+            rows = json.loads(Path(str(program.get("memory_map"))).read_text(encoding="utf-8")).get("groups") or []
+        except (OSError, ValueError):
+            rows = []
+        contract = next((r.get("exactness") for r in rows if isinstance(r, Mapping) and r.get("exactness")), None)
+        suffix = (
+            "." + hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()[:16] if contract else ""
+        )
+        return Path(cache) / engine[:16] / f"{program['elf_sha256']}{suffix}.json"
 
     def one(group: int, program: Mapping[str, Any]) -> dict[str, Any]:
         kept = carried(program)
@@ -822,6 +994,9 @@ def time_group_programs(
                     "correct": bool(entry["correct"]),
                     "failure": (grade.get("disagree") or grade.get("unverified") or [None])[0],
                     "chained_digest_agrees": str(group) in ((grade.get("chained") or {}).get("agree") or ()),
+                    # Which exactness contract the grade held the group to, and its own numbers.
+                    "exactness": (grade.get("contracts") or {}).get(str(group)),
+                    "evidence": (grade.get("evidence") or {}).get(str(group)),
                 }
             )
             if kept is not None:

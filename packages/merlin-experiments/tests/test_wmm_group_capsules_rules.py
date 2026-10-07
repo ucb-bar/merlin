@@ -234,3 +234,22 @@ def test_an_unanswered_group_is_refused_with_the_packages_own_words(tmp_path, mo
     )  # fmt: skip
     (row,) = document["rows"]
     assert "NameError: x" in row["refusal"] and row["why"] == "NameError: x"
+
+
+def test_a_group_capsule_measurement_records_the_contract_it_graded_under(tmp_path, monkeypatch):
+    from merlin.perf import exactness as EX
+
+    seen = {}
+
+    def fake_build(arm, groups, **kw):
+        seen["contract"] = kw.get("exactness")
+        return {}
+
+    monkeypatch.setattr(G, "build_arm_programs", fake_build)
+    monkeypatch.setattr(G, "time_on_gsim", lambda programs, **kw: {})
+    document = G.measure_on_gsim(
+        {"package": G.Arm("package", "m", "/h")}, [3], package_dir="/p", model_capsule="/c", target="t", out=tmp_path
+    )
+    # No contract named: the default one, every form exact, and the measurement says so.
+    assert seen["contract"].semantics_sha256 == EX.DEFAULT_SEMANTICS_SHA256
+    assert document["exactness"]["semantics_sha256"] == EX.DEFAULT_SEMANTICS_SHA256

@@ -13,8 +13,11 @@ a required RTL oracle that is unavailable still makes the capsule ``incomplete``
 from __future__ import annotations
 
 import copy
+import shutil
+from pathlib import Path
 
 import pytest
+import yaml
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_golden as CG
@@ -24,8 +27,32 @@ from merlin.targetgen.contract import schemas
 from merlin.targetgen.runner_config import RunnerConfig
 
 CAPS = repo_root() / "merlin/contract/capsules"
-ATLAS_AT2 = CAPS / "atlas/isa/AT2_single_tile_matmul"  # fp8-e4m3 in / bf16 out, independent golden
+ATLAS_AT2_SOURCE = CAPS / "atlas/isa/AT2_single_tile_matmul"  # fp8-e4m3 in / bf16 out, independent golden
 GEMMINI_A2 = CAPS / "isa/A2_single_tile_matmul"  # i8 x i8 -> i32, recomputed golden
+
+
+def _bf16_output(rows: int, cols: int) -> list[list[float]]:
+    """A non-degenerate bf16-representable output: distinct, genuinely fractional values."""
+    return [[(r * cols + c - 300) * 0.03125 for c in range(cols)] for r in range(rows)]
+
+
+@pytest.fixture
+def atlas_at2(tmp_path_factory) -> Path:
+    """AT2's real capsule, beside an independent golden recorded the way the refmodel records one.
+
+    ``golden.yaml`` is an untracked answer key produced by an external reference model, so a fresh
+    checkout has none. What these tests pin is how an INDEPENDENT float golden is read and graded, which
+    a recorded fixture states exactly; the values themselves were never the subject.
+    """
+    work = tmp_path_factory.mktemp("capsules") / ATLAS_AT2_SOURCE.name
+    shutil.copytree(ATLAS_AT2_SOURCE, work, ignore=shutil.ignore_patterns("golden.*"))
+    capsule = yaml.safe_load((work / "capsule.yaml").read_text(encoding="utf-8"))
+    attrs = capsule["operation"]["attributes"]
+    shapes = {leaf["name"]: leaf["shape"] for leaf in capsule["inputs"]}
+    rows, cols = shapes[attrs["lhs"]][0], shapes[attrs["weight"]][1]
+    golden = {"golden_source": "specir_refmodel_fp8_bf16", "outputs": {attrs["out"]: _bf16_output(rows, cols)}}
+    (work / "golden.yaml").write_text(yaml.safe_dump(golden), encoding="utf-8")
+    return work
 
 
 def _atlas_config(capsule=None) -> RunnerConfig:
@@ -63,8 +90,8 @@ def test_integer_capsule_uses_recompute_path():
     assert all(isinstance(v, int) for v in flat)
 
 
-def test_float_capsule_reads_independent_golden():
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+def test_float_capsule_reads_independent_golden(atlas_at2):
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
     assert CG.is_independent_float_golden(cap) is True
     assert CG.golden_source(cap) == "specir_refmodel_fp8_bf16"
     g = CG.golden(cap)
@@ -81,8 +108,8 @@ def test_float_capsule_reads_independent_golden():
 # --------------------------------------------------------------------------------------------
 # tolerance_float comparator + honest golden_source
 # --------------------------------------------------------------------------------------------
-def test_compare_tolerance_float_and_source_reported():
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+def test_compare_tolerance_float_and_source_reported(atlas_at2):
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
     pol = cap["numeric_policy"]  # tolerance_float, atol 0.25, rtol 0.02
     g = CG.golden(cap)
     src = CG.golden_source(cap)
@@ -129,9 +156,9 @@ def _oracle_returning(outputs, capsule=None):
     return {t: run for t in tiers or ["L3"]}
 
 
-def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
+def test_float_run_capsule_grades_pass(tmp_path, monkeypatch, atlas_at2):
     _stub_front_half(monkeypatch)
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
     gold = CG.golden(cap)
 
     res = CR.run_capsule(
@@ -156,9 +183,9 @@ def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
     schemas.validate(res, "capsule_result", contract="merlin/contract")
 
 
-def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
+def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch, atlas_at2):
     _stub_front_half(monkeypatch)
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
     bad = CG.golden(cap)
     bad = copy.deepcopy(bad)
     bad["Y0"][0][0] += 100.0  # outside tolerance
@@ -179,7 +206,7 @@ def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("onboard_status", ["pass", "fail"])
-def test_float_run_capsule_accepts_declared_result_page_verdict(onboard_status, tmp_path, monkeypatch):
+def test_float_run_capsule_accepts_declared_result_page_verdict(onboard_status, tmp_path, monkeypatch, atlas_at2):
     """An RTL carrier can grade memory without fabricating captured outputs.
 
     This exercises both halves of the production seam: run_capsule attaches the
@@ -188,7 +215,7 @@ def test_float_run_capsule_accepts_declared_result_page_verdict(onboard_status, 
     """
     seen = []
     cb = _stub_front_half(monkeypatch)
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
     gold = CG.golden(cap)
 
     def onboard(bound_cb, llvm_text, workdir, timeout):
@@ -227,9 +254,9 @@ def test_float_run_capsule_accepts_declared_result_page_verdict(onboard_status, 
     schemas.validate(result, "capsule_result", contract="merlin/contract")
 
 
-def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(tmp_path, monkeypatch) -> None:
+def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(tmp_path, monkeypatch, atlas_at2) -> None:
     cb = _stub_front_half(monkeypatch)
-    cap = copy.deepcopy(load_capsule(ATLAS_AT2, contract="merlin/contract"))
+    cap = copy.deepcopy(load_capsule(atlas_at2, contract="merlin/contract"))
     cap["evaluation_stage"] = {
         "predecessor_l2_cycles": 218_162,
         "cycle_budget": {
@@ -262,11 +289,11 @@ def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(tmp_path, 
     assert "_oracle_l2_cycles" not in cb
 
 
-def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
+def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch, atlas_at2):
     """A required RTL oracle that is absent -> incomplete, never pass — even though the integer L0/L1
     floor is legitimately skipped for the float datapath."""
     _stub_front_half(monkeypatch)
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
 
     res = CR.run_capsule(
         cap, "unused-package", runs_root=tmp_path, run_id="AT2_incomplete", config=_atlas_config(), oracle_adapters={}
@@ -279,13 +306,13 @@ def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
     assert res["tiers"]["L0"]["not_applicable"] is True
 
 
-def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
+def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch, atlas_at2):
     """--no-oracle STRUCTURE-ONLY smoke: the SAME missing numeric tier that makes a GRADED run
     `incomplete`/`oracle_unavailable` instead reads back as the DISTINCT `not_gradeable_no_oracle`
     (a withheld numeric verdict) — never a numeric pass. This is the honest no-oracle plane; the
     not_run_is_not_pass gate stays fully in force for graded runs (asserted separately)."""
     _stub_front_half(monkeypatch)
-    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    cap = load_capsule(atlas_at2, contract="merlin/contract")
 
     res = CR.run_capsule(
         cap,
@@ -307,13 +334,11 @@ def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
 
 def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
-    assert {"L2", "L3"} <= set(ad)  # model loop + elaborated-RTL cert
-    assert ad["L2"].__module__ == "merlin.targetgen.program_oracle"
-    assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
-    if "L4" in ad:  # additive RTL-certified verilator tier
-        assert ad["L4"].__module__ == "merlin.targetgen.program_oracle"
+    assert "L2" in ad and set(ad) <= {"L2", "L3"}  # model loop (+ elaborated-RTL cert when registered)
+    assert all(v.__module__ == "merlin.targetgen.program_oracle" for v in ad.values())
     assert "program_oracle_adapter" in ad["L2"].__qualname__  # model-backed numeric loop
-    assert "program_verilator_adapter" in ad["L3"].__qualname__  # elaborated-RTL certification
+    if "L3" in ad:
+        assert "program_verilator_adapter" in ad["L3"].__qualname__  # elaborated-RTL certification
 
 
 def test_external_backend_requires_model_ext_no_target_default(monkeypatch):

@@ -55,3 +55,32 @@ def test_an_integer_nonlinear_capture_refuses_an_off_pin_checkout(tmp_path):
         source.capture_loader(
             loader, "i8", workdir=tmp_path / "w", activation_contractions=True, integer_nonlinear=True
         )
+
+
+def _pinned_blob(repo: Path, commit: str, path: str) -> str | None:
+    """``path`` at ``commit`` out of ``repo``'s object store (never its working tree); None if absent."""
+    git = ["git", "-C", str(repo)]
+    if subprocess.run([*git, "cat-file", "-e", f"{commit}:{path}"], capture_output=True).returncode != 0:
+        return None
+    return subprocess.run([*git, "show", f"{commit}:{path}"], capture_output=True, text=True, check=True).stdout
+
+
+def test_the_pinned_capture_revision_decomposes_every_integer_nonlinear_op():
+    """The pin carries the exact integer shift and floor-division lowerings the integer nonlinears are
+    captured through, and the test that holds them to torch -- read at the pinned commit, so a dirty
+    checkout or a different HEAD cannot answer for it."""
+    pin = P.load_pins(P.software_pins_path())[M.CAPTURE_PIN]
+    repo = CS._m2m_dir()
+    if not (repo / ".git").exists():
+        pytest.skip(f"no model2MLIR checkout at {repo}")
+    table = _pinned_blob(repo, pin.commit, "m2m/ir/decompositions.py")
+    if table is None:
+        pytest.skip(f"the checkout at {repo} does not hold the pinned commit {pin.commit[:12]}")
+    sys.path.insert(0, str(Path(CS.__file__).parent))
+    try:
+        import _integer_nonlinear as NL  # noqa: PLC0415 -- a capture-side sibling imported by bare name
+    finally:
+        sys.path.pop(0)
+    missing = [name for name in NL.REQUIRED_DECOMPOSITIONS if f'"{name}"' not in table]
+    assert not missing, f"the pinned model2MLIR does not decompose {missing}"
+    assert _pinned_blob(repo, pin.commit, "tests/test_integer_shift_floordiv.py") is not None

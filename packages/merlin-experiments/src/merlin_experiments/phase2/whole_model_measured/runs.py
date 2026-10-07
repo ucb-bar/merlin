@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from . import MODE
+from . import capabilities as CAP
 from . import config as CFG
 from .identity import package_digest, program_digest, read_json, write_json_atomic
 
@@ -59,6 +60,8 @@ class PreparedRun:
     roles: tuple[str, ...]
     seed_package_sha256: str
     store_roots: Mapping[str, str]
+    #: What each section's machine lacks against the others its registry declares (:mod:`.capabilities`).
+    machine_warnings: tuple[str, ...] = ()
 
 
 def _default_run_factory(*, target: str, method: str) -> Path:
@@ -151,6 +154,7 @@ def prepare(
     oot: Any = None,
     environment: Mapping[str, str] | None = None,
     import_evidence: Path | None = None,
+    phase0_manifest: Path | None = None,
 ) -> PreparedRun:
     """Prepare one run: freeze its inputs by content, copy and commit its seed, write its objective
     config (policy stamped in, read-only) and the records that say what it is and where it came from.
@@ -159,7 +163,11 @@ def prepare(
     Phase 1 freeze -- another line's store, a champion measured elsewhere.  Its lineage is recorded as
     exactly that (``lineage_kind: imported``, ``frozen: false``) with the evidence by content, and the
     seed's bytes must be the bytes that evidence measured; an imported seed is never presented as a
-    Phase 1 freeze."""
+    Phase 1 freeze.
+
+    ``phase0_manifest`` is the sealed Phase 0 corpus manifest whose ``instruction_policy`` the declared
+    roles are held to (:func:`.config.seal_policy`); a run that declares roles and cannot find an
+    enforceable sealed policy is refused here, before anything is frozen."""
     if not str(why or "").strip():
         raise RunError("a prepared run states why it exists")
     if not method or "/" in method:
@@ -170,11 +178,17 @@ def prepare(
         raise RunError(f"the seed package {seed} is not a directory")
     previous = read_json(Path(resumed_from) / CONFIG_NAME) if resumed_from is not None else None
     config = CFG.with_policy(objective_config, roles)
+    try:
+        config = CFG.seal_policy(config, target=target, manifest=phase0_manifest)
+        CFG.check_policy(config)
+    except (CFG.ConfigError, OSError, ValueError) as exc:
+        raise RunError(f"the run's instruction rule is not enforceable: {exc}") from exc
     run_dir = Path(run_factory(target=target, method=method))
     frozen = freeze_inputs(run_dir, dict(inputs or {}))
     config = _substitute(config, frozen)
     _require_frozen_mechanism_inputs(config, frozen, resumed_from)
     config = CFG.prepare_document(config, target=target)
+    config = CFG.seal_exactness(config, target=target)
     CFG.check_policy(config)
     roots = {k: str(v) for k, v in CFG.store_roots(config, environment=environment).items()}
     moved = {}
@@ -216,6 +230,8 @@ def prepare(
         )
         oot.verify(repo, commit.commit, package_digest(submission))
         oot_record = commit.as_record()
+    capabilities = machine_capabilities(config, environment=environment)
+    write_json_atomic(run_dir / CAP.RECORD, capabilities)
     config_path = run_dir / CONFIG_NAME
     config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     config_path.chmod(0o444)
@@ -255,11 +271,35 @@ def prepare(
             "target": target,
             "method": method,
             "prohibited_instruction_roles": roles,
+            "instruction_policy_source": (config.get(CFG.SEALED_POLICY) or {}).get("sealed_source"),
             "config_sha256": config_sha256,
             "resumed_from_run": str(resumed_from) if resumed_from is not None else None,
         },
     )
-    return PreparedRun(run_dir, config_path, config_sha256, method, tuple(roles), seed_sha, roots)
+    return PreparedRun(
+        run_dir,
+        config_path,
+        config_sha256,
+        method,
+        tuple(roles),
+        seed_sha,
+        roots,
+        tuple(capabilities["warnings"]),
+    )
+
+
+def machine_capabilities(config: Mapping[str, Any], *, environment: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """Each candidate section's machine capability report (:func:`.capabilities.section_report`) and
+    every warning they raise, prefixed with the section -- the record a launch writes and prints."""
+    sections = {
+        name: CAP.section_report(config[name], environment=environment)
+        for name in CFG.CANDIDATE_SECTIONS
+        if config.get(name)
+    }
+    warnings = [
+        f"{name}: {warning}" for name, document in sections.items() for warning in document.get("warnings") or ()
+    ]
+    return {"schema": CAP.SCHEMA, "sections": sections, "warnings": warnings}
 
 
 def _lineage_kind(*, imported: Any, resumed_from: Path | None, phase1_oot: Path | None) -> str:
@@ -332,6 +372,7 @@ def resume(
     run_factory: Callable[..., Path] = _default_run_factory,
     oot: Any = None,
     environment: Mapping[str, str] | None = None,
+    phase0_manifest: Path | None = None,
 ) -> PreparedRun:
     """Prepare the next run of ``previous``: its method, roles, target and config carried over, its
     latest workspace as the seed, its store kept.  A caller that names a DIFFERENT method or roles is
@@ -380,6 +421,7 @@ def resume(
         run_factory=run_factory,
         oot=oot,
         environment=environment,
+        phase0_manifest=phase0_manifest,
     )
 
 

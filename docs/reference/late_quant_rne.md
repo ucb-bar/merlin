@@ -3,7 +3,7 @@ title: Exact bounded host rounding
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [architecture, lowering_pipeline]
 code_refs: [src/merlin/llvmlower/late_quant_rne.py, merlin/tests/ir/test_late_quant_rne.py]
 ---
