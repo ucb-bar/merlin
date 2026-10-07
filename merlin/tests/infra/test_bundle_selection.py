@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase1 import session, treatments, workspace_transport
@@ -65,6 +66,7 @@ def bundle(root: Path, name: str, tools: str = "") -> Path:
     return path
 
 
+@external_sources.requires_ext("chipyard")
 def test_main_callbacks_keep_selected_bundle_after_another_invocation(loop, monkeypatch, tmp_path, capsys):
     first = bundle(loop.C.BUNDLES, "first", "isa_tools\ncca_tools\n")
     second = bundle(loop.C.BUNDLES, "second", "rtl_facts\n")

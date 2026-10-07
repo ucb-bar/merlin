@@ -203,21 +203,35 @@ def test_normal_pipeline_requires_permission_and_scalar_policy(tmp_path):
         lower_to_llvm_ir(source(), workdir=tmp_path / "unused_effects", masked_contraction_effects=EFFECTS)
 
 
-def test_normal_pipeline_emits_identical_selected_llvm(tmp_path):
-    from merlin.llvmlower.masked_contraction import FEATURE
+@pytest.mark.parametrize("integer_softmax", [False, True])
+def test_normal_pipeline_emits_identical_selected_llvm(tmp_path, integer_softmax):
+    import json
+
+    from merlin.llvmlower import int_softmax_table
+    from merlin.llvmlower.masked_contraction import ARGV_INDEX, FEATURE
     from merlin.llvmlower.scalar_contraction import RECTANGULAR_FEATURE
 
     original = source()
     rewritten, count = apply_for_test(original, effects=EFFECTS, outputs=4, rows=2)
     assert count == 1
     prepared = lower_to_llvm_ir(rewritten, workdir=tmp_path / "prepared")
+    features = {FEATURE, RECTANGULAR_FEATURE}
+    if integer_softmax:
+        features.add(int_softmax_table.FEATURE)
     normal = lower_to_llvm_ir(
         original,
         workdir=tmp_path / "normal",
-        features=frozenset({FEATURE, RECTANGULAR_FEATURE}),
+        features=frozenset(features),
         masked_contraction_effects=EFFECTS,
     )
     assert normal == prepared
+    recipe = json.loads((tmp_path / "normal/lowering_recipe.json").read_text())
+    argv = recipe["commands"][0]["argv"][1:]
+    assert ARGV_INDEX == int_softmax_table.ARGV_INDEX + 1
+    assert len(argv) == ARGV_INDEX + 1
+    assert argv[int_softmax_table.ARGV_INDEX] == ("1" if integer_softmax else "0")
+    assert argv[ARGV_INDEX] == "1"
+    assert (tmp_path / "normal/int_softmax_table_report.json").exists() == integer_softmax
 
 
 def test_captured_outer_mask_refuses_without_fabricated_dominance():

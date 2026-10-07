@@ -41,6 +41,7 @@ def selected(tmp_path):
     for name in (
         "common.paths",
         "common.digest",
+        "common.yaml",
         "targetgen.providers",
         "targetgen.target_registry",
         "targetgen.rtl.facts",

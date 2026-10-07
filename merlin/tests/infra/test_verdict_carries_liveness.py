@@ -145,10 +145,16 @@ def test_a_target_with_no_memory_map_gets_no_window_field(tmp_path):
 
 
 def test_the_field_is_on_the_redacted_row_beside_emitted_cost(tmp_path):
-    """The reader that builds the row must actually call it -- a helper nobody calls is silence."""
-    src = (feedback_source("qa_check")).read_text()
-    assert '"liveness": _liveness_screen(cr),' in src
-    assert '"emitted_cost": _emitted_cost(cr),' in src
+    """The reader that builds the row must actually call it -- a helper nobody calls is silence.
+
+    Read the row the agent receives rather than the reader's source spelling: a capsule-runner result
+    (no candidate-native record) carries both screens.
+    """
+    cr = _stage(tmp_path)
+    row = Q._per_capsule_from_results(tmp_path)["SY_x"]
+    liveness, emitted_cost = Q._liveness_screen(cr), Q._emitted_cost(cr)
+    assert liveness is not None and row["liveness"] == liveness
+    assert emitted_cost is not None and row["emitted_cost"] == emitted_cost
 
 
 # --- nothing else survives --------------------------------------------------------------------------

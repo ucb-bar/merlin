@@ -101,3 +101,76 @@ def test_feedback_ranks_every_group_by_its_roofline_gap_even_one_faster_than_the
     assert "DISTANCE TO THE MACHINE'S ROOFLINE" in "\n".join(F.roofline_lines(document))
     # A refuted roofline is not a bar, and a result with no diagnostics has no block at all.
     assert "roofline_gaps" not in F.compare(result([("1", 300)]), None)
+
+
+# ----------------------------------------------------------------------- the defaults the agent reads
+
+
+def test_every_cycle_count_in_the_feedback_carries_its_package_authored_share():
+    reference = _result([100, 150])
+    document = F.compare(_result([300, 200]), reference)
+    text = F.render(document)
+    assert "package-authored: 2/2 groups, 100.0% of the work" in text
+    assert "whole-window 500 cycles (package-authored 2/2 groups, 100.0%)" in text
+    declined = _result([300, 200])
+    declined["build"]["groups"][0]["on"] = "vendor"
+    assert "whole-window 500 cycles (package-authored 1/2 groups, 60.0%)" in F.render(F.compare(declined, reference))
+
+
+def test_the_vendor_reference_is_labelled_context_only_never_a_target():
+    document = F.compare(_result([300, 200]), _result([100, 150]))
+    assert document["reference"]["role"] == "context_only"
+    assert document["distance_to_bar"]["role"].startswith("context_only")
+    text = F.render(document)
+    assert "vendor reference, same machine (context only, not a target) 250" in text
+    assert "VENDOR reference (context only" in text and "bar (reference, same machine)" not in text
+
+
+class _Screen:
+    target = "toy"
+    machine = {"kind": "spike"}
+    build_options: dict = {}
+    root = None
+
+    def jobs(self):
+        return []
+
+
+def test_the_whole_model_feedback_carries_the_derived_rooflines_by_default(tmp_path, monkeypatch):
+    from merlin_experiments.phase2.whole_model_measured import objective as O
+    from merlin_experiments.phase2.whole_model_measured import roofline as ROOF
+
+    from merlin.perf import whole_model_capsule
+
+    capsule = tmp_path / "capsule"
+    capsule.mkdir()
+    (capsule / "iface.mlir").write_text("module {}")
+    monkeypatch.setattr(
+        whole_model_capsule, "load_model_capsule", lambda path: type("C", (), {"interface": capsule / "iface.mlir"})()
+    )
+    monkeypatch.setattr(
+        ROOF, "roofline_machine", lambda target: {"array_rows": 4, "array_cols": 4, "memory": {}, "unresolved": {}}
+    )
+    monkeypatch.setattr(
+        ROOF, "group_shapes", lambda capsule, target: {"1": {"op": "matmul", "extents": {"M": 8, "K": 8, "N": 8}}}
+    )
+    objective = O.WholeModelObjective(screen=_Screen(), screen_reference=None)
+    objective.screen_reference = _result([100, 150])
+    objective.config = {"screen": {"build_options": {"model_capsule": str(capsule)}}}
+    document = objective.feedback(_result([300, 200]))
+    assert document["roofline_gaps"][0]["group"] == "1" and document["roofline_gaps"][0]["roofline"] == 32
+    assert "DISTANCE TO THE MACHINE'S ROOFLINE" in F.render(document)
+
+
+def test_rooflines_that_cannot_be_derived_are_said_never_silently_absent():
+    from merlin_experiments.phase2.whole_model_measured import objective as O
+
+    objective = O.WholeModelObjective(screen=_Screen(), screen_reference=None)
+    objective.screen_reference = _result([100, 150])
+    objective.config = {}
+    document = objective.feedback(_result([300, 200]))
+    assert "no model capsule" in document["roofline_unavailable"]
+    assert "no derived roofline in this feedback: the screen names no model capsule" in F.render(document)
+    opted_out = O.WholeModelObjective(screen=_Screen(), screen_reference=None)
+    opted_out.config = {"roofline_feedback": False}
+    assert "turned roofline feedback off" in opted_out.feedback(_result([300, 200]))["roofline_unavailable"]

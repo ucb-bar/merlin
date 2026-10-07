@@ -16,8 +16,9 @@ experiment declares (``phase1_gates.whole_model.models``):
    denominator; a group the package declined -- to the library, or to the core because the library's
    path would need a prohibited instruction -- counts against it;
 4. **correctness** on the functional simulator: every group's own local check (its reference
-   recomputed on the core from the inputs it actually held), and the model's end result against the
-   oracle;
+   recomputed on the core from the inputs it actually held), held to the bound the target's EXACTNESS
+   CONTRACT gives the group's form (:mod:`.exactness`; exact unless the contract says otherwise, and the
+   contract applied is recorded), and the model's end result against the oracle;
 5. **float accuracy**, for an open model: its output against the FLOAT model the capture quantized,
    at the capture's own declared tolerance (:mod:`.float_accuracy`). The checks in 4 are self-consistency --
    a quantized variant agrees with itself however far it is from the network -- so this one is
@@ -75,6 +76,82 @@ def models_of(gate: Mapping[str, Any], *, root: Path) -> list[dict[str, Any]]:
         row.setdefault("name", Path(row["capsule"]).name)
         out.append(row)
     return out
+
+
+def contract_of(gate: Mapping[str, Any], model: Mapping[str, Any] | None, *, root: Path, target: str):
+    """The exactness contract a model is graded under: the model's own ``exactness`` path, else the
+    gate's, else the default (every form exact).  A declared contract that cannot be read is an error,
+    never the default."""
+    from . import exactness as EX
+
+    declared = (model or {}).get("exactness") or gate.get("exactness")
+    if not declared:
+        return EX.Contract.default(target=target)
+    path = Path(str(declared))
+    return EX.load(path if path.is_absolute() else root / path)
+
+
+def grade_exactness(
+    screen: Mapping[str, Any],
+    expectations: Mapping[str, Any],
+    contract: Any,
+    *,
+    routes: Sequence[Mapping[str, Any]],
+    forms: Mapping[str, Any] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The screen's groups held to their exactness contract: ``(not_correct, record)``.
+
+    A group whose contract is the check it already ran (exact on an exact check, an op's own declared
+    bound on its bound check) keeps the check's verdict; any other is re-graded from the check's own
+    numbers (:func:`.exactness.judge`), failing closed when they cannot show the bound held."""
+    from . import exactness as EX
+
+    groups = expectations.get("groups") or {}
+    resolve = EX.resolver(
+        contract,
+        forms={str(k): v for k, v in (forms or {}).items() if isinstance(v, Mapping)},
+        routes=routes,
+        op_bounds={str(g): (e or {}).get("bound_lsb") for g, e in groups.items()},
+    )
+    per_group: dict[str, Any] = {}
+    summary: dict[str, int] = {}
+    wrong = []
+    for row in screen.get("groups") or ():
+        key = str(row["group"])
+        compare = str((groups.get(key) or {}).get("compare") or "exact")
+        try:
+            exactness = resolve(key, row)
+        except EX.ExactnessError as exc:
+            wrong.append({"group": key, "kind": row.get("kind"), "local": "wrong", "failure": {"exactness": str(exc)}})
+            continue
+        label = exactness.label()
+        summary[label] = summary.get(label, 0) + 1
+        builtin = (exactness.mode == EX.EXACT and compare == "exact") or (
+            exactness.declared_by == EX.DECLARED_OP and compare != "exact"
+        )
+        if builtin or row.get("local") == "absent":
+            ok = row.get("local") == "correct"
+            per_group[key] = {"contract": label, "regraded": False}
+        else:
+            check = row.get("check") or {}
+            grade = EX.judge(
+                exactness, max_abs=check.get("max_abs"), mismatches=check.get("mismatches"), elements=check.get("of")
+            )
+            ok = bool(grade["passed"])
+            per_group[key] = {**grade, "regraded": True}
+        if not ok:
+            wrong.append(
+                {
+                    "group": key,
+                    "kind": row.get("kind"),
+                    "local": row.get("local") if not per_group[key].get("regraded") else "wrong",
+                    "failure": row.get("failure") or per_group[key].get("why"),
+                    "exactness": label,
+                }
+            )
+    record = {"contract": contract.record(), "summary": summary, "label": EX.label_summary({"summary": summary})}
+    record["per_group"] = per_group
+    return wrong, record
 
 
 def _headers_of(gate: Mapping[str, Any], *, root: Path) -> list[str]:
@@ -448,11 +525,15 @@ def run_model(
     jobs: int | None = None,
     keep_build: bool = False,
     headers: Sequence[str] = (),
-    chunk_ops: int | None = None,
+    chunk_ops: int | str | None = None,
     phase0_recipe: str | Path | None = None,
     descriptor: str | Path | None = None,
+    exactness: Any = None,
 ) -> dict[str, Any]:
     """Every check of one declared model on ``package``; see the module docstring.
+
+    ``exactness`` is the :class:`.exactness.Contract` the model's groups are held to (the default --
+    every form exact -- when None); the correctness check records the contract it applied.
 
     ``phase0_recipe`` / ``descriptor`` name the corpus binding the builder states every group under; a
     package build refuses to guess it, so a gate that builds a package passes the experiment's own.
@@ -463,6 +544,7 @@ def run_model(
     """
     from . import isa_prohibition as ISA
     from . import whole_model_builder as B
+    from . import whole_model_partial as PARTIAL
     from . import whole_model_screen as S
 
     out = Path(out)
@@ -478,7 +560,7 @@ def run_model(
     checks = result["checks"]
 
     def _build(machine: str, header: str, header_sha256: str | None) -> dict[str, Any]:
-        return B.build(
+        record = B.build(
             Path(package),
             target=target,
             out_dir=out / "build",
@@ -494,6 +576,8 @@ def run_model(
             phase0_recipe=None if phase0_recipe is None else str(phase0_recipe),
             descriptor=None if descriptor is None else str(descriptor),
         )
+        PARTIAL.refuse(record, reader="the whole-model gate")  # a partial program is not the model
+        return record
 
     try:
         chosen = _READOUT_CHOICE.get(_choice_key(model))
@@ -568,17 +652,24 @@ def run_model(
         checks["correctness"] = {"passed": False, "refused": screen.get("refusal"), "wall_s": screen.get("wall_s")}
         checks["end_result"] = {"passed": False, "note": "the program's run could not be read"}
     else:
-        wrong = [
-            {"group": str(r["group"]), "kind": r.get("kind"), "local": r.get("local"), "failure": r.get("failure")}
-            for r in screen.get("groups") or ()
-            if r.get("local") != "correct"
-        ]
+        from . import exactness as EX
+
+        wrong, applied = grade_exactness(
+            screen,
+            record.get("expectations") or {},
+            exactness if exactness is not None else EX.Contract.default(target=target),
+            routes=per_group,
+            forms=model.get("forms"),
+        )
         checks["correctness"] = {
             "passed": not wrong,
             "groups": len(screen.get("groups") or ()),
             "not_correct": wrong,
             "wall_s": screen.get("wall_s"),
+            # WHICH CONTRACT THE GROUPS WERE HELD TO -- "exact" only when every group was.
+            "exactness": applied,
         }
+        result["exactness"] = applied["label"]
         expectations = record.get("expectations") or {}
         checks["end_result"] = end_result(screen, expectations)
         if expectations.get("argmax") is None and (full.get("reference_identity") or {}):
@@ -747,6 +838,7 @@ def run(
             chunk_ops=model.get("chunk_ops"),
             phase0_recipe=phase0_recipe,
             descriptor=descriptor,
+            exactness=contract_of(gate, model, root=Path(root or repo_root()), target=target),
         )
         for model in models
     ]

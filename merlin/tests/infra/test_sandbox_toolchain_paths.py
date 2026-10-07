@@ -61,7 +61,8 @@ def test_explicit_clang_selects_external_llvm_install(tmp_path, monkeypatch):
     target = SimpleNamespace(sim_via="", curated_harness=None, target="synthetic")
     exports = TC.sandbox_env(target, tmp_path, paths=selected, sim=TC.SimToolchain(), harness="")
     assert f"export MERLIN_CLANG={llvm / 'bin/clang-23'};" in exports
-    assert f"export PYTHONPATH={TC.python_source_dir()};" in exports
+    # Exact roots, no inherited entries; the workspace is the explicit, writable candidate import root.
+    assert f"export PYTHONPATH={TC.python_source_dir()}:{tmp_path};" in exports
 
 
 def test_explicit_paths_drive_binds_environment_and_probes(tmp_path, monkeypatch):

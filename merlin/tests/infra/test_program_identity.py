@@ -379,7 +379,8 @@ class TestTheShippedLedger:
     def test_the_authoring_loop_is_not_yet_wired_and_that_is_recorded_here(self):
         """THE KNOWN HOLE, asserted so it cannot be forgotten.
 
-        `run_global_perf_experiment.reference_gap` still calls `estimate_cycles` without stating
+        `reference_gap` (now in `merlin_experiments.phase2.portfolio_analysis`, which the
+        `run_global_perf_experiment` script delegates to) still calls `estimate_cycles` without stating
         which program its candidate is, so the loop keeps receiving an estimate against a
         reference it may not share an identity with. The one-line fix is written and was backed
         out of this change for an unrelated reason: that file is 6,874 lines and not yet
@@ -390,10 +391,12 @@ class TestTheShippedLedger:
         When the loop is wired -- pass `program_identity=` at that call site, then make this test
         the positive one that its stated identity is in the roster -- this assertion flips and
         says so."""
-        from merlin.common.paths import merlin_dir
+        from pathlib import Path
 
-        script = merlin_dir() / "experiments/gemmini_perf_bench/scripts/run_global_perf_experiment.py"
-        text = script.read_text()
+        from merlin_experiments.phase2 import portfolio_analysis
+
+        text = Path(portfolio_analysis.__file__).read_text()
+        assert "def reference_gap(" in text, "reference_gap moved again; point this test at its owner"
         assert "estimate_cycles(" in text, "the loop no longer scores against a reference at all"
         if "program_identity=" in text:
             stated = [

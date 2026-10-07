@@ -141,7 +141,7 @@ def test_prompt_is_deterministic_and_carries_every_campaign_boundary() -> None:
 @pytest.mark.parametrize(
     "mutate, message",
     (
-        (lambda value: replace(value, approach="golden"), "only approach='arm4'"),
+        (lambda value: replace(value, approach="golden"), "only an EL4-produced compiler"),
         (lambda value: replace(value, frozen_functional_sha256="e" * 64), "frozen functional bytes"),
         (lambda value: replace(value, submission_initial_sha256="e" * 64), "exact functional fork"),
         (lambda value: replace(value, functional_hidden_capsules=0), "positive integer"),

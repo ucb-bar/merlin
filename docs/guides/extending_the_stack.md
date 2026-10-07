@@ -3,7 +3,7 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -157,7 +157,10 @@ Authored inputs still have a role. The SW spec supplies behavior not yet establi
 extraction: operation legality, layouts and tails, numerical semantics, ABI ordering,
 quantization eligibility and host/accelerator transfer rules. Workload policy supplies
 test objectives and selection constraints. Do not duplicate extracted geometry or turn
-an unknown into a default. Validate selected declarations through
+an unknown into a default. Where the facts establish a hardware form, an operation can name
+it with `hardware:` so Phase 0 selection fills its hardware-shaped fields from the selected
+facts; narrow a derived value with a reasoned `restrictions` entry rather than re-authoring
+it (see [Phase 0 specification](phase0_specification.md)). Validate selected declarations through
 `merlin.targetgen.software_spec.load_software_spec`; validation checks structure, not truth.
 
 To improve extraction, audit a small exact RTL cone yourself and compare it with the
@@ -213,6 +216,8 @@ TorchAO or a compiler implements them. `quant_layer_plan.plan` checks module fam
 weight shapes. `_recipe_quantizer.build_quantizer` additionally checks exported operations
 and owners for static PT2E annotation. `build_fqn_config` maps rejected dynamic layers to
 `None`, using TorchAO's built-in per-module configuration rather than modifying TorchAO.
+Functional arithmetic a container owns between its children (a residual add, for example) is
+planned per operation; an operation whose owner cannot be established is refused.
 Module eligibility is a first filter, not complete proof of arbitrary functional-operator
 or fused-region placement.
 
@@ -334,7 +339,9 @@ trace or hardware observation, including hazards and a changed pipeline configur
 ## Extend dispatch without hiding host work
 
 `outline_dispatches` forms callable kernels; `build_dispatch_program` emits ordered
-dispatch/view nodes and typed buffer identities. `verify_program` checks dependencies.
+dispatch/view nodes and typed buffer identities; a call to an explicitly declared external
+catalog symbol stays a dispatch node in its original position and is neither an outlined kernel
+nor an implementation. `verify_program` checks dependencies.
 The Python `dispatch_runtime` executes supported driver glue and compiled host kernels
 as a reference route. That is not proof of accelerator offload. Region captures, argument
 order and buffer lifetimes must remain explicit; missing captured reads cannot be assumed
@@ -369,6 +376,14 @@ ordered stages and hashes. `lower_module(..., ir_audit="both", workdir=...)` pro
 staged kernel audit; [Triton](triton_kernels.md) exposes the same flag. Exact snapshots
 and available native pass views are distinct: this does not promise a complete module
 after every internal pass. See [Model lowering](model_lowering.md) for the full audit contract.
+
+The whole-model reference route has a matching audit:
+`merlin.runtime.dispatch_runtime.run_model(..., transform_audit="exact")` (or
+`MERLIN_MODEL_TRANSFORM_AUDIT=exact`) retains the exact captured, normalized and outlined
+modules with their normalization recipe. The result records the outlined dispatch inventory
+and the audit's qualification, which replays normalization and outlining from the captured
+bytes and requires identical output; that checks archival integrity and deterministic passes, not value
+equivalence. A `compact` audit keeps only hashes and is refused because it cannot be replayed.
 
 Pass the exact executable MLIR, external weights/biases and manifest, input/golden data,
 entrypoint/ABI description, producer identity and stage digest together. The capture trace

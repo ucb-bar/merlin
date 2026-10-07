@@ -25,6 +25,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from merlin.common import compile_trace
+
 from .toolchain import m2m_python
 
 
@@ -88,7 +90,9 @@ def _sink_deallocs() -> bool:
     read per build instead of frozen at import."""
     import os
 
-    return bool(os.environ.get("MERLIN_SINK_DEALLOCS"))
+    from .optional_passes import switched
+
+    return switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
 
 
 #: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK
@@ -856,6 +860,7 @@ from .contiguous_suffix_copy import MID_STAGE_SRC as _CONTIGUOUS_COPY_MID_SRC
 from .contiguous_suffix_copy import RUNNER_PRELUDE as _CONTIGUOUS_COPY_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
 from .uniform_fill_copy import MID_STAGE_SRC as _UNIFORM_FILL_COPY_MID_SRC
 from .uniform_fill_copy import RUNNER_PRELUDE as _UNIFORM_FILL_COPY_PRELUDE
 
@@ -1154,6 +1159,7 @@ from torch_mlir.dialects import llvm
     + _PARALLEL_COARSEN_STAGE_SRC
     + _ALLOCA_SCOPE_LOWER_PRELUDE
     + _ROUND_INTRINSIC_PRELUDE
+    + _INT_SOFTMAX_TABLE_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
     + _MASKED_CONTRACTION_PRELUDE
@@ -1188,6 +1194,10 @@ ctx = ir.Context()
 with open(src_path) as f:
     module = ir.Module.parse(f.read(), ctx)
 # __MERLIN_INSPECT_PARSED__
+# int_softmax_table (default-off): restructure every integer softmax in the captured IR, exactly,
+# before any other rewrite sees it. See llvmlower/int_softmax_table.py.
+if _INT_SOFTMAX_TABLE:
+    _ist_run_and_report(ctx, module)
 # fuse_transpose_b (default-off): fold `matmul(A, transpose(B))` into a transpose-b matmul BEFORE
 # the pass manager runs, so the (still-named) linalg.matmul carries the transposed-B indexing map
 # and the frozen RVV schedule tiles+vectorizes it while the scalar weight transpose disappears.
@@ -1276,6 +1286,7 @@ _RUNNER_ACT_POLY_TAIL = (
     + _PARALLEL_COARSEN_STAGE_SRC
     + _ALLOCA_SCOPE_LOWER_PRELUDE
     + _ROUND_INTRINSIC_PRELUDE
+    + _INT_SOFTMAX_TABLE_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
     + _MASKED_CONTRACTION_PRELUDE
@@ -1299,6 +1310,10 @@ with open(src_path) as f:
 # (hand_v0_int8 package, act_poly + erase_self_copy): the 17 in-loop `@memrefCopy` call sites the
 # erase removes on the plain runner were all still there. Since the whole-model proposer enables
 # act_poly by default, that is every beam fork -- and the erase read as an inert lever.
+# int_softmax_table (default-off): restructure every integer softmax in the captured IR, exactly,
+# before any other rewrite sees it. See llvmlower/int_softmax_table.py.
+if _INT_SOFTMAX_TABLE:
+    _ist_run_and_report(ctx, module)
 if _FUSE_TRANSPOSE_B:
     print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
 # fold_weight_transpose (default-off): the general form of the fold above -- a loop-invariant weight
@@ -1370,7 +1385,13 @@ def _activation_poly_runner(emit: str = EMIT_TRANSLATE, *, fused: bool = False) 
 
 
 def _select_runner(
-    pipeline: str, feats: "frozenset[str]", *, emit: str, inspection_dir: str | None = None, keep_exact: bool = False
+    pipeline: str,
+    feats: "frozenset[str]",
+    *,
+    emit: str,
+    inspection_dir: str | None = None,
+    keep_exact: bool = False,
+    printing: tuple[bool, bool] = (True, True),
 ) -> str:
     """Pick the lowering-runner source for these features and bind how it emits its result.
 
@@ -1391,7 +1412,32 @@ def _select_runner(
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
-    return bind_inspection(fusion_guard.inject(source), inspection_dir, keep_exact=keep_exact)
+    return bind_inspection(
+        fusion_guard.inject(source),
+        inspection_dir,
+        keep_exact=keep_exact,
+        print_before=printing[0],
+        print_after=printing[1],
+    )
+
+
+def _harvest_native(traced: "tuple[Path, bool] | None", produced: Path, failure: BaseException | None = None) -> None:
+    """Index a native pass run's dumps into the open compile trace (``(directory, prune)``; None: no
+    trace selects a native pass). A stop selected on a pass that ran before ``failure`` still stops.
+
+    The pass manager ran its whole pipeline in the child before the trace could stop it, so on a stop
+    its output (``produced``, the IR after the LAST pass) is removed: nothing past the stop survives."""
+    if traced is None:
+        return
+    try:
+        compile_trace.harvest_native(traced[0], pipeline="llvm", prune=traced[1])
+    except compile_trace.StopAfterStage as stop:
+        produced.unlink(missing_ok=True)
+        stop.note = "the pass manager ran on in its child process; the output of the passes after it was discarded"
+        if failure is None:
+            raise
+        stop.note += f"; a later pass failed: {str(failure).strip().splitlines()[0][:200]}"
+        raise stop from failure
 
 
 class PipelineError(RuntimeError):
@@ -1545,7 +1591,13 @@ def lower_to_llvm_ir(
     from .quant_scope import ensure_registered as _register_quant_scope
 
     _register_quant_scope()
-    feats = normalize(features)
+    from .int_softmax_table import ensure_registered as _register_int_softmax_table
+
+    _register_int_softmax_table()
+    # `--pass` / `--no-pass` / MERLIN_PASSES add or remove feature-bound optional passes.
+    from .optional_passes import selected_features
+
+    feats = normalize(selected_features(features))
     from .masked_contraction import FEATURE as _MASKED_FEATURE
     from .masked_contraction import MaskEffectContract
 
@@ -1651,12 +1703,21 @@ def lower_to_llvm_ir(
         if audit is not None and audit.directory is not None and audit.mode in {"compact", "both"}
         else None
     )
+    # An open compile trace that selects a native pass gets the same printer: into the audit's directory
+    # when an audit already binds it (indexed, never pruned), else into the trace's own.
+    native = compile_trace.native_directory() if inspection_dir is None else None
+    traced = (
+        (native[0], True)
+        if native is not None
+        else ((Path(inspection_dir), False) if inspection_dir and compile_trace.active() else None)
+    )
     runner_src = _select_runner(
         pipeline,
         feats,
         emit=EMIT_DUMP if omp else EMIT_TRANSLATE,
-        inspection_dir=inspection_dir,
+        inspection_dir=inspection_dir or (str(native[0]) if native is not None else None),
         keep_exact=audit is not None and audit.mode == "both",
+        printing=(native[1], native[2]) if native is not None else (True, True),
     )
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
@@ -1763,6 +1824,12 @@ def lower_to_llvm_ir(
     # is verifier-invalid. The pair tags are the durable witness because the user-facing sentinel
     # has already been consumed by per-op schedule derivation.
     _alloca_scope_gate = "1" if omp and "merlin.rqfuse" in mlir_text else "0"
+    # argv[20] gates the integer-softmax restructuring, which runs on the module as parsed, before every
+    # other pre-pipeline rewrite. Appended after the data layout so no existing slot moves.
+    from .int_softmax_table import ARGV_INDEX as _INT_SOFTMAX_ARGV
+    from .int_softmax_table import FEATURE as _INT_SOFTMAX_FEATURE
+
+    _int_softmax_gate = "1" if _INT_SOFTMAX_FEATURE in feats else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
@@ -1789,16 +1856,25 @@ def lower_to_llvm_ir(
         data_layout or "",
         "1" if "fold_uniform_fill_copy" in feats else "0",
         "1" if "specialize_contiguous_copy" in feats else "0",
+        _int_softmax_gate,
     ]
+    # The runner reads the gate at sys.argv[ARGV_INDEX] (command[0] is the interpreter).
+    if len(command) - 2 != _INT_SOFTMAX_ARGV:
+        raise PipelineError("the lowering runner's argv layout no longer matches int_softmax_table.ARGV_INDEX")
     if masked_contraction_effects is not None:
+        from .masked_contraction import ARGV_INDEX as _MASKED_ARGV
+
+        if len(command) - 1 != _MASKED_ARGV:
+            raise PipelineError("the lowering runner's argv layout no longer matches masked_contraction.ARGV_INDEX")
         command.append("1")
+    if audit is not None:
+        audit.stage("upstream-scheduled", mlir_text)  # an open compile trace observes it unaudited too
     recipe_sources.update(prepared_mlir=src, runner=runner)
     recipe = LoweringRecipe(work, features=feats, sources=recipe_sources)
     recipe.command(command)
     if audit is not None and audit.directory is not None:
         from ..targetgen.provenance import toolchain_provenance
 
-        audit.stage("upstream-scheduled", mlir_text)
         audit.command(command, sources=(__file__, runner), provenance=toolchain_provenance())
     try:
         proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
@@ -1819,9 +1895,12 @@ def lower_to_llvm_ir(
                 audit.collect_views()
             except (OSError, ValueError) as audit_error:
                 error.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
+        _harvest_native(traced, stage_out, failure=error)
         raise error
     if audit is not None:
         audit.collect_views()
+    _harvest_native(traced, stage_out)
+    if audit is not None:
         audit.stage(
             "llvm-dialect" if omp else "llvm-translated",
             stage_out.read_text(encoding="utf-8"),
@@ -1886,6 +1965,18 @@ def lower_to_llvm_ir(
             _require_coarsen_report(proc.stdout)
         except ValueError as exc:
             raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
+    if _int_softmax_gate == "1":
+        from .int_softmax_table import require_report as _require_int_softmax_report
+
+        try:
+            _ist = _require_int_softmax_report(proc.stdout, work)
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
+        print(
+            f"[int-softmax-table] {_ist['softmax']} softmax(es), {_ist['int32_sums']} int32 row sum(s), "
+            f"{_ist['row_quantizations']} per-row quantization(s), {_ist['scales_moved']} scale(s) moved"
+            + (f"; left alone: {'; '.join(_ist['refused'])}" if _ist["refused"] else "")
+        )
     if fusion_guard.FUSE_PASS in pipeline and fusion_guard.enabled() and fusion_guard.TOKEN not in proc.stdout:
         # The pass ran and the broadcast control function did not: a runner that reached the native
         # PassManager without the guard would silently re-evaluate per-row values per element.

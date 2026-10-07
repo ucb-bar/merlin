@@ -3,7 +3,7 @@ title: Quantized host optimizations
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [architecture, lowering_pipeline]
 code_refs: [src/merlin/llvmlower/requantization.py, src/merlin/llvmlower/integer_readout.py, src/merlin/llvmlower/guarded_quantized_mean.py]
 ---

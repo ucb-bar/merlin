@@ -3,15 +3,22 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [generating_capsules, adding_a_target, integrations]
 code_refs:
   - src/merlin/targetgen/software_spec.py
   - src/merlin/targetgen/instruction_semantics.py
   - src/merlin/targetgen/rtl/circt_introspect.py
+  - src/merlin/targetgen/rtl/elaboration.py
+  - src/merlin/targetgen/rtl/source_selection.py
+  - src/merlin/targetgen/dialect_source_scope.py
+  - src/merlin/targetgen/isa_mode_audit.py
+  - src/merlin/targetgen/generate/typed_mlir.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
+  - src/merlin/targetgen/spec_fact_drift.py
 ---
 
 # Define the software contract before generating tests
@@ -20,6 +27,85 @@ Phase 0 combines selected hardware evidence, a software specification, and workl
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
 to `merlin-experiments`; target-specific inputs belong to examples or selected OOT support.
+
+## Bind the selected configuration to its elaborated source
+
+An RTL source selection can verify that supplied FIRRTL produced selected HW MLIR,
+while still knowing a configuration name only as an operator-supplied label. For
+a new configuration campaign, run `python -m merlin.targetgen.rtl.elaboration`
+with an exact Git revision, a committed file containing the configuration
+symbol, explicitly selected submodule Git links, and a JSON argument vector.
+Pass every relevant nested submodule as `--submodule PATH=COMMIT`, including
+its pinned parent. Pass compiled generator JARs or other external executable
+inputs as `--tool-input FILE`; the receipt hashes them and rejects a later
+change. A successful source check still needs a separately recorded build
+dependency and environment closure.
+The vector must pass that symbol and contain one `{firrtl}` output placeholder.
+This command runs twice in separate fresh directories and writes a receipt only
+when both nonempty FIRRTL outputs have identical bytes. Pass that receipt as
+`--elaboration-receipt` to `python -m merlin.targetgen.rtl.source_selection`.
+The source-consistency view then verifies that the supplied FIRRTL, config,
+selected tracked source and receipt still match.
+
+This is a reproducibility and source-binding check, not complete hermetic build
+provenance: undeclared environment variables, untracked build inputs, downloaded
+dependencies, and elaborator semantics remain outside its scope. Record the
+selected build environment and independently qualify the resulting hardware.
+Historical source bundles without this receipt keep their prior FIRRTL-to-HW
+assessment; they do not acquire source-to-FIRRTL evidence retroactively.
+
+For a machine-dialect campaign, freeze the selected decoder population before
+compiler authoring. `merlin-targetgen audit-dialect-modes --require phase1-inputs`
+checks exact source revisions, every selected decoder row, parameter-domain
+declarations with reviewed finite values and units, explicit exclusions, and reviewed source/model discrepancy
+decisions. It deliberately does not require an operation grouping, typed
+dialect plan, software admission, or executable instruction tests: those are
+Phase 1 outcomes. The default `--require complete-dialect` criterion retains
+those later typed-mode and declared-qualification obligations. Neither result
+by itself proves arithmetic or hardware execution.
+
+Parameter domains are machine-value sets, not prose labels. An integer domain
+declares `kind: integer`, a physical `unit`, `reviewed: true`, and nonoverlapping
+`intervals` of `{min, max, step}` with reachable endpoints. An enumeration
+declares `kind: enum`, one physical `unit`, `reviewed: true`, and distinct
+`values` of one type. Both forms cite one or more `evidence_sources` as
+checkout-relative RTL file paths; the source-scope preflight checks those
+files against the selected elaboration's pinned Git objects. This records the declared legal value set for later
+verifier/allocation generation; source and execution tests still have to
+qualify the declaration. Legacy prose domains remain visible as
+`parameter_domain_unstructured` and cannot satisfy `--require phase1-inputs`.
+
+After producing the selected source bundle, ISA census, and reviewed OOT mode
+ledger, run `merlin-targetgen audit-dialect-source-scope --source-selection
+<selection.json> --census <census.json> --inventory <ledger.json>
+--expected-config <config-symbol> --out
+<report.json>`. This rechecks the configuration-to-FIRRTL receipt, replays the
+census from committed sources, and requires the pattern and decoder files to
+belong to exactly one pinned RTL checkout in the selected elaboration. Every
+required mode also needs nonempty RTL source references whose bytes match
+committed files in that checkout; the report records their relative names and
+hashes. Citing a file is a source basis, not a validated behavioral claim. A mode
+scope audit alone cannot establish that its decoder belongs to the elaborated
+machine. The report is a pre-authoring source and requirement population check;
+it does not establish the instruction semantics, typed operations, emission,
+or execution that Phase 1 must provide. Missing EE290 elaboration remains a
+blocker for an EE290 machine-dialect launch even if another configuration's
+source bundle is valid.
+
+The later `audit-dialect-modes --require complete-dialect` check binds each
+required mode's reviewed `parameter_domains` to fields in the generated typed
+plan. Each mode ledger row supplies `parameter_bindings`, mapping every domain
+name to one or more references such as
+`[{"kind": "attribute", "name": "register_index"}]` or
+`[{"kind": "type_parameter", "value": "source", "name": "first"}]`.
+The referenced attribute or custom-type parameter declares the same `unit`
+and exact finite domain. Integer domains use `intervals` of
+`{min, max, step}`; enums use `choices`. Contiguous `min`/`max` is equivalent
+to one step-one interval. This check catches an unconstrained odd register-pair
+type or a byte offset accidentally interpreted in words. The generated MLIR
+verifier enforces those declared values. A matching declaration remains an
+authored legality assertion; independent RTL and execution tests must qualify it.
+Phase 0 does not require these bindings before the compiler is authored.
 
 ## Select a frontend capture runtime for a frozen diagnostic run
 
@@ -31,11 +117,13 @@ requires live PyTorch capsules, provide both `--phase0-m2m-root` and
 `m2m_root` and `m2m_python` in a Phase 0 experiment definition. Neither field
 belongs in a target's SW spec.
 
-The run copies the selected `m2m` package and exact workload directories named
-by live model entries, then records their membership and bytes in
+The run copies the selected `m2m` package (without `__pycache__`) and exact workload
+directories named by live model entries, then records their membership and bytes in
 `phase0/private/m2m-runtime.json`. It checks the selected virtual environment
 and base Python byte inventories before freezing and on resume, and routes all
-M2M aliases to the copied source. A requested frontend capsule cannot silently
+M2M aliases to the copied source. The copy must stay a read-only, run-owned tree
+with exactly its recorded members and no symlinks; reusing a completed run verifies
+that archived copy without reopening the historical host venv. A requested frontend capsule cannot silently
 disappear when the selected interpreter becomes unavailable. A workload that
 names a different interpreter or external source requires a separate materialized
 capture; it is not silently run in the wrong environment.
@@ -51,6 +139,16 @@ historical evidence. That completed-artifact check does not reopen the old host
 runtime or claim the current producer reran it. Starting or resuming execution
 still requires the selected live runtime to match; the new Phase 1 source and
 tool bundle is frozen separately.
+
+Without `diagnostic`, the same selection instead configures the sealed Model2MLIR
+runner for generation-time captures (operation probes, derived micro models): each
+is preselected, run in the sandbox, replayed and attested against the selected
+runtime, under `phase0/private/sealed-captures/`, and the capsule records the
+attestation it was built from. A verified run with no selected sealed runtime is
+refused before any capsule is written, and a capture request the sealed policy
+cannot express (a declared loader environment, a pinned interpreter, a quantization
+scheme instead of a recipe, an already-materialized model) fails closed rather than
+running outside the seal.
 
 ## Start with five decisions
 
@@ -90,6 +188,9 @@ Add reviewed declarations only when independent evidence supports exactly what y
 Use the operation's name once. A shared family name such as `contraction` or `movement`
 selects that family; a custom name must explicitly name its `ops` or `families`. Named
 groups are normalized to the same internal operation rows as the legacy list syntax.
+A standalone declaration admits only that standalone use: it does not admit the same
+family composed into another operation (`composed_with`) or, for an elementwise map,
+applied as a fused epilogue. Declare and review such a composition explicitly.
 Transfer names work the same way:
 
 ```yaml
@@ -130,12 +231,14 @@ software-visible behavior. It is not a second handwritten hardware geometry tabl
 | Selected capability contract | Target ISA/runner intent and extraction anchors that RTL facts cannot establish; explicit same-target Phase 0 input | Executable OOT support, extracted geometry or certification |
 | Selected OOT provider/backend config | Runtime implementation, ISA vocabulary/protocol ownership, extraction anchors and callable references | A second mandatory software spec to hand-maintain |
 | Hardware selection | Which evidence is required and which source/configuration is selected | A capability declaration or certificate |
-| Extracted RTL facts | Array and memory geometry, interfaces, observed decoder fields, datatype evidence and structural timing where established | Complete operation latency, numerical behavior, endpoint kind or software legality |
+| Extracted RTL facts | Array and memory geometry, interfaces, observed decoder fields, datatype evidence (the array cell's operand and accumulator, and the element format of a lane engine beside it) and structural timing where established | Complete operation latency, numerical behavior, endpoint kind or software legality |
 | Recipe/workload policy | Application roster, semantic seeds, tolerances, oracle tiers, holdouts and performance objectives | Hardware facts or generated capsules |
 
-The authored spec holds `operations`, `numerical_semantics`, `quantization` and
-`transfer_contracts`. Review status defaults safely to unreviewed. Operation rows require placement
-and executable typed constraints. Use semantic `families` for a shared class, or exact
+The authored spec holds `operations`, `numerical_semantics`, `quantization`,
+`transfer_contracts` and optional `restrictions`. Review status defaults safely to unreviewed.
+An operation may also carry its own `status: unreviewed`; an operation is admitted only when
+both it and the spec are reviewed. Operation rows require placement and executable typed
+constraints, unless they name a fact-derived `hardware` form (below). Use semantic `families` for a shared class, or exact
 `ops` selectors when behavior must be operation-specific; do not duplicate both lists.
 Numerical semantics select an independent model and its rounding/reduction policy,
 never a target-name default. Generated source audits, test counts, qualification hashes
@@ -147,6 +250,34 @@ exact bytes and refuses a changed contract on resume. For a new run, use
 `--phase0-capability-contract PATH` to select a reviewed replacement without
 editing the experiment definition. An authored prototype remains diagnostic
 until the required RTL and executable support evidence are separately qualified.
+
+## Let the selected facts fill hardware-shaped fields
+
+An operation row can name the hardware form it relies on instead of authoring
+hardware-shaped values: `hardware: standalone`, `fused` or `fused_operand_sum`,
+with exactly one semantic family (from `families`, `ops` or the row name). Phase 0
+selection fills its placement, `composed_with`, dtypes, epilogues and scale
+granularity from the selected facts, under the experiment's
+`policy.prohibited_instruction_roles` (`merlin.targetgen.spec_fact_drift.resolve_spec`).
+Authoring any of those fields beside `hardware` is refused: one value, one authority.
+A form the facts do not establish resolves to placement `unknown` with a
+`software-spec-derivation` diagnostic; it is never filled with a plausible value.
+A quantization format may likewise set `eligible_operations: from_facts`, which
+resolves to every accelerator declaration covering a family the derived hardware
+recipes quantize.
+
+To narrow a derived value, add a top-level `restrictions` entry with `family`, `field`,
+the declined `values` and a stated `reason`, optionally scoped to one fact-derived
+`declaration`. A restriction that declines every value, or a declaration's own form,
+is an authoring error. `software/software-spec.json` holds the resolved spec, and
+`software/selection.json` records what was filled from which evidence; the authored
+bytes remain the selected source identity.
+
+Phase 0 also compares the resolved spec with the fact-derived capability field by field,
+in both directions, and writes `coverage/spec-fact-drift.json`. An authored field narrower
+than the facts without a recorded restriction (`forbids_established`), or one claiming
+values the facts decide against (`exceeds_facts`), blocks the coverage commitment.
+`restricted`, `unconfirmed` and `undetermined` findings are reported for review.
 
 ## Describe instruction semantics separately
 
@@ -181,7 +312,9 @@ do not need IDs, `signature` wrappers or duplicate copy endpoint constraints.
 Expanded v1 list declarations remain readable for compatibility and generated
 inspection, but are not the starter format. The examples do not
 repeat mesh/memory geometry, opcode maps, calibration coefficients, historical runs or
-backend code. Gemmini explicitly constrains the internal i20 partial-sum domain even
+backend code. Gemmini authors its contraction directly but names fact-derived
+`hardware` forms for its fused and standalone elementwise, readout pooling and movement
+declarations. Gemmini explicitly constrains the internal i20 partial-sum domain even
 though its software readout is i32. Atlas explicitly constrains the finite-normal FP8
 and BF16 domain; unknown block-size/scale parameters remain unknown. Host capabilities
 are a separate manifest bound to the selected host compiler, not accelerator facts.
@@ -258,7 +391,14 @@ precision coverage. Scoped dynamic module transforms are not currently supported
 by this signature-screened recipe route.
 
 Reviewed operation declarations can carry `numerical_contract` with `status`,
-structured `semantics` and review `evidence`. The corresponding declaration on
+structured `semantics` and review `evidence`, or name a supported contract. The named
+`operand_sum_exhaustive_i8_v1` contract admits a composition only with the program's
+operand-sum numeric screen: a fact-described software model checks all 65,536 ordered
+i8 operand pairs for the selected scale pair against a fact-derived error bound. A missing
+screen leaves the operation unknown and an exceeded bound refuses it; the screen is not
+RTL execution or target-oracle evidence. An exact-op declaration can also constrain integer
+`quantization_parameters` (`zero_point`, `quant_min`, `quant_max`); an unobserved parameter
+stays unknown and a different value is refused. The corresponding declaration on
 the pinned host capability spec is independent of accelerator arithmetic.
 Selected contraction-level `numerical_semantics` apply only to accelerator
 contractions, not automatically to host operations or other operation families.
@@ -309,7 +449,7 @@ Each new run writes the following beneath `<run>/phase0/`:
 | --- | --- |
 | `hardware/circt/facts.json` | Byte-for-byte copy of the selected extraction; absence remains a diagnostic gap |
 | `hardware/effective-views/` | Actual resolved facts, target/performance profiles, execution capabilities, readout inputs, quantization and toolchain observations |
-| `software/software-spec.json`, `software/contract.json`, `software/datapath.json` | Selected software declaration and the views passed to generation |
+| `software/software-spec.json`, `software/contract.json`, `software/datapath.json` | Selected software declaration (with fact-derived declarations resolved) and the views passed to generation |
 | `software/source-snapshots/` | Observed source bytes, indexed by role and hash; not candidate grants |
 | `evidence-manifest.json` | Artifact hashes, source identities, consumer-to-artifact mapping and qualification blockers |
 | `software/framework/pytorch-opset.json` | Versioned operator catalog observed in the selected capture interpreter: registered ATen overloads, Core ATen and decomposition sets, each with its own scope |
@@ -320,6 +460,7 @@ Each new run writes the following beneath `<run>/phase0/`:
 | `coverage/operation-accounting.json` | Per-application and combined operation partitions, provenance groups, signature/ordinal traceability and declared-versus-observed support |
 | `coverage/phase1-capsule-coverage.json` → `phase1_witness_basis` | Finite source-operation and typed-edge witness universe, a compact inventoried selection from the selected cohort, uncovered obligations and the selection's minimum-proof status |
 | `coverage/README.md` | Automatically rendered summary of those same operation and quantization views |
+| `coverage/spec-fact-drift.json` | Field-by-field comparison of the resolved spec with the fact-derived capability; blocking findings stay open in the coverage commitment |
 | `software/quantization-contract.json` | All authored formats, matching hardware recipes, parameter unknowns and operation-scoped quantization decisions |
 | `coverage/generation.json` | Written/omitted capsules, failures, synthesis input identity and diagnostic status |
 | `capsules/MANIFEST.yaml` | Actual members and distinct functional/performance/diagnostic selections |
@@ -332,10 +473,14 @@ files came from one elaboration.
 Diagnostic selections remain diagnostic until their required semantics, source
 consistency and coverage are qualified. They cannot become a verified release by
 relabeling them or passing `--phase0-evidence-mode verified`: unresolved evidence
-is refused. Verified generation is an explicit path that requires reviewed,
-coherent software and hardware evidence, source-closed selected captures and
-admitted capsule outputs; editing a spec's review-status field alone does not
-establish it.
+is refused. The selection's status is a function of its diagnostics alone: it is
+`verified` only when none is on record, and verified generation refuses anything
+else. Besides a reviewed spec and resolved fact-derived declarations, that requires
+an `rtl-source-audit` report (`validation.json`) beside the selected facts that
+verifies every audited fact and is bound to the exact facts and hardware-spec bytes,
+an admitted sealed-runner attestation for every selected application capture,
+re-checked against the capture bytes on disk, and admitted capsule outputs. Editing
+a spec's review-status field alone does not establish it.
 
 ## Inspect the operator split and quantization contract
 
@@ -429,7 +574,7 @@ not the full declared roster, and an incomplete inventory still exits nonzero af
 writing its diagnostic reports. Changed outputs require a new versioned destination.
 
 Each `quantization.formats` entry references SW operation IDs through
-`eligible_operations`. Use a distinct `id` for each format or variant; same-width alternatives
+`eligible_operations`, or sets it to `from_facts` (see above). Use a distinct `id` for each format or variant; same-width alternatives
 must not borrow each other's scale/readout evidence. Values inferable from the selected
 readout come from existing `quant_recipe` derivation. Residual authored parameters must be
 explicit, with unknowns retained rather than filled by framework defaults.

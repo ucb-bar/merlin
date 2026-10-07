@@ -4,6 +4,13 @@
 # Host locations are environment references, never paths written here.
 schema: merlin.phase2.whole_model_measured.machines.v1
 target: gemmini
+# The ABI headers each machine's capability report reads, found BY CONTENT: a machine's
+# program_header_sha256 selects its own, so a header listed here never speaks for a machine it is not.
+# A launch compares the chosen machine's header and cannot_express limits with every other board here
+# and warns about what it lacks (the lean board's missing full-width readout, for one).
+capability_headers:
+  - ../phase1/contracts/harness_curated/gemmini-rocc-tests/include/gemmini_params.h
+  - {env: MERLIN_CHIPYARD_GEMMINI_STOCK, join: generators/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h}
 machines:
   # Preferred full Gemmini/Rocket U250 design. Its queue name resolves to the
   # FireSimGemminiRocketConfig bitstream pinned by content in hardware_pins.yaml.
@@ -42,6 +49,26 @@ machines:
       - output_element_bytes: 4
         compare: exact
         reason: no full-width accumulator readout on this bitstream (acc_read_full_width=false)
+  # The STOCK FireSimGemminiRocketConfig board: full-width accumulator readout (the GemminiConfigs
+  # default), so a program committing a 4-byte accumulator element runs here and not on the lean board.
+  # Its hw-config resolves to `firesim_gemmini_rocket_u250` in hardware_pins.yaml, which declares its
+  # generated ABI header (3758ae96) and the host driver built for it. The chipyard is the private tree
+  # that driver was built in, so this board's jobs never touch another session's checkout.
+  stock_u250_board:
+    kind: firesim
+    hw_config: alveo_u250_firesim_gemmini_rocket_stock
+    chipyard: {env: MERLIN_CHIPYARD_GEMMINI_STOCK}
+    workload: merlin-phase2-wholemodel
+    bootbinary: wholemodel-baremetal
+    queue_command: [env, -u, HOME, -u, USER, -u, LOGNAME, firesim-queue]
+    jobs_root: {env: MERLIN_FIRESIM_QUEUE_JOBS}
+    uart_relative: simulation/sim_slot_0/uartlog
+    submit_arguments: [--timeout, "3600", --priority, "10"]
+    program_header_sha256: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+    # One physical U250 behind one queue: the same lock as every other board entry here.
+    lock_path: {env: TMPDIR, join: merlin_firesim.lock}
+    poll_seconds: 20.0
+    adjudicates: [cycle_count]
   # The functional model grades every group locally, in parallel with the board.
   functional_model:
     kind: spike
@@ -62,6 +89,14 @@ machines:
   batched_board:
     kind: batched
     timing: full_u250_board
+    local: functional_model
+    timing_verify: words
+    batch_size: 8
+    batch_wait_seconds: 240
+  # The stock board batched the same way, with the vendor reference as its in-batch control.
+  stock_batched_board:
+    kind: batched
+    timing: stock_u250_board
     local: functional_model
     timing_verify: words
     batch_size: 8

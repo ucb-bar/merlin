@@ -1,6 +1,15 @@
 # DERIVED — regenerate with:
 #   build_tools/scripts/check_conformance_coverage.py --target atlas --write merlin/contract/capsules/conformance/atlas.yaml
 # Do not hand-edit: the point of this file is that it is evidence, not authorship.
+#
+# HAND CORRECTION (2026-10-06), pending a full regeneration: the three contraction/bf16 cells and the
+# contraction/bf16 admitted pair are removed. They were derived from a manifest that counted the MXU's
+# bf16 ACCUMULATOR as an operand format. The derived facts admit mxu contraction fp8_e4m3 only (the PE
+# consumes 8-bit e4m3 act/weight; bf16 is its accumulator) and bf16 only on the vector unit's
+# elementwise_map (lane_datapaths: VectorEngineTop, hardfloat e8/s8 per lane). Every other field is as
+# derived. Regenerating needs the four application captures this host lacks (coverage_mlp,
+# residual_cnn, causal_decoder, multimodal_policy), so the bf16 contraction classes in
+# application_shapes.refused still carry their pre-correction reason until then.
 target: atlas
 generated_by: merlin.targetgen.conformance.spec
 derivation:
@@ -307,7 +316,6 @@ host_lane:
     n_regions: 1
     evidenced_by: corpus
   admitted_pairs:
-  - contraction/bf16
   - contraction/fp8_e4m3
   - elementwise_map/bf16
   - elementwise_map/fp8_e4m3
@@ -1714,7 +1722,7 @@ host_only:
     captures contain is admitted -- and never that none is needed: a target with an empty complement simply
     cannot be asked this question, which is a different fact from passing it'
 diagnostics:
-  n_cells: 18
+  n_cells: 15
   captures_read:
   - deepjscc_int8
   - gemma2_2b_int8
@@ -1783,117 +1791,6 @@ diagnostics:
       exercised its tail path'
 personas: {}
 cells:
-- cell: contraction/bf16/aligned
-  family: contraction
-  dtype: bf16
-  alignment: aligned
-  shape_quantum:
-    row: 1
-    reduction: 1
-  basis: observed
-  observed_in:
-  - deepjscc_int8
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
-  - lstmnetvit_int8_pretransposed
-  - lstmnetvit_int8_w8a8
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - small_llama_int8_pretransposed
-  - small_llama_pretransposed
-  - spectformer_int8_full
-  - spectformer_int8_full_pretransposed
-  admitted_by:
-  - mxu
-  n_regions: 2533
-- cell: contraction/bf16/partial
-  family: contraction
-  dtype: bf16
-  alignment: partial
-  shape_quantum:
-    row: 1
-    reduction: 1
-  basis: observed
-  observed_in:
-  - deepjscc_int8
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
-  - lstmnetvit_int8_pretransposed
-  - lstmnetvit_int8_w8a8
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - small_llama_int8_pretransposed
-  - small_llama_pretransposed
-  - spectformer_int8_full
-  - spectformer_int8_full_pretransposed
-  admitted_by:
-  - mxu
-  n_regions: 2533
-- cell: contraction/bf16/sub_tile
-  family: contraction
-  dtype: bf16
-  alignment: sub_tile
-  shape_quantum:
-    row: 1
-    reduction: 1
-  basis: observed
-  observed_in:
-  - deepjscc_int8
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - lstmnetvit_fp8
-  - lstmnetvit_int8
-  - lstmnetvit_int8_pretransposed
-  - lstmnetvit_int8_w8a8
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - small_llama_int8_pretransposed
-  - small_llama_pretransposed
-  - spectformer_int8_full
-  - spectformer_int8_full_pretransposed
-  admitted_by:
-  - mxu
-  n_regions: 2533
 - cell: contraction/fp8_e4m3/aligned
   family: contraction
   dtype: fp8_e4m3

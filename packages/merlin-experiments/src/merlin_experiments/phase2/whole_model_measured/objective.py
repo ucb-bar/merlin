@@ -148,6 +148,9 @@ class WholeModelObjective:
         self.session_started_epoch: float | None = None
         #: The run's OOT history (:class:`.ledger.OotLedger`): a commit per candidate, a tag per measurement.
         self.ledger: Any = None
+        #: The launcher's heartbeat (:class:`.liveness.Heartbeat`), set by the process that runs the sessions;
+        #: a reader that opens the objective (``status``) leaves it None and never writes one.
+        self.heartbeat: Any = None
         # THE SCREEN ARMS ITS OWN COVERAGE GATE AT REQUEST TIME: a gate armed only on poll left the first
         # request after every relaunch without one, and a candidate that handed work back reached the board.
         if hasattr(screen, "coverage_gate_provider"):
@@ -158,6 +161,8 @@ class WholeModelObjective:
         import time
 
         self.session_started_epoch = float(epoch if epoch is not None else time.time())
+        if self.heartbeat is not None:
+            self.heartbeat.tick("session started", force=True)
 
     def stagnation(self, *, top: int = 5) -> dict[str, Any] | None:
         """Whether this session's correct measurements moved the best's top gap-holding groups (a
@@ -167,7 +172,7 @@ class WholeModelObjective:
         best = self._screen_best_unretracted()
         if not best or not best.get("verdict"):
             return None
-        holders = [str(h["group"]) for h in (F.compare(best, self.screen_reference).get("gap_holders") or [])[:top]]
+        holders = [str(h["group"]) for h in (self.feedback(best).get("gap_holders") or [])[:top]]
         if not holders:
             return None
         history = []
@@ -187,6 +192,83 @@ class WholeModelObjective:
             }
             history.append((epoch, counts))
         return F.stagnation(history, holders, since_epoch=self.session_started_epoch, noise=self.noise_margin())
+
+    # ---- what the agent reads about one result
+    def feedback(self, result: Mapping[str, Any]) -> dict[str, Any]:
+        """:func:`.feedback.compare` of ``result`` against the screen's reference, WITH the model's
+        fact-derived rooflines by default (:meth:`rooflines`): a whole-model result carries no diagnostics
+        of its own, and an agent that sees only the vendor's cycles optimizes where the vendor is weak.
+        When the rooflines cannot be derived the feedback says why, never nothing."""
+        diagnosed = dict(result)
+        # A result that carries its own diagnostics (a cell's) is read as it is; only the others need the model's.
+        rooflines = self.rooflines() if not diagnosed.get("diagnostics") else {}
+        if not diagnosed.get("diagnostics") and rooflines.get("per_group"):
+            diagnosed["diagnostics"] = {
+                "schema": "merlin_whole_model_diagnostics_v1",
+                "per_group": {g: {"roofline": r} for g, r in rooflines["per_group"].items()},
+                "source": rooflines.get("source"),
+            }
+        document = F.compare(diagnosed, self.screen_reference)
+        if not diagnosed.get("diagnostics") and rooflines.get("why"):
+            document["roofline_unavailable"] = rooflines["why"]
+        return document
+
+    def rooflines(self) -> dict[str, Any]:
+        """Each group's derived roofline for the screen's model (:mod:`.roofline`), computed once per model
+        and machine facts and kept in the store (``rooflines.json``): ``{"per_group", "source"}``, or
+        ``{"why"}`` when it cannot be derived (no model capsule, no facts, an opt-out by the config's
+        ``roofline_feedback: false``)."""
+        cached = getattr(self, "_rooflines", None)
+        if cached is not None:
+            return cached
+        self._rooflines = self._derive_rooflines()
+        return self._rooflines
+
+    def _derive_rooflines(self) -> dict[str, Any]:
+        import hashlib
+
+        from . import roofline as ROOF
+
+        config = self.config or {}
+        if config.get("roofline_feedback") is False:
+            return {"why": "the objective config turned roofline feedback off (roofline_feedback: false)"}
+        capsule = ((config.get("screen") or {}).get("build_options") or {}).get("model_capsule")
+        target = str(getattr(self.screen, "target", "") or "")
+        if not capsule or not Path(str(capsule)).is_dir() or not target:
+            return {"why": "the screen names no model capsule to derive each group's roofline from"}
+        try:
+            from merlin.perf.whole_model_capsule import load_model_capsule
+
+            interface = Path(load_model_capsule(capsule).interface)
+            machine = ROOF.roofline_machine(target)
+            key = hashlib.sha256(
+                json.dumps(
+                    {
+                        "interface": hashlib.sha256(interface.read_bytes()).hexdigest(),
+                        "target": target,
+                        "machine": machine,
+                    },
+                    sort_keys=True,
+                    default=str,
+                ).encode()
+            ).hexdigest()
+            root = getattr(self.screen, "root", None)
+            kept = Path(root) / "rooflines.json" if root else None
+            stored = _load(kept) if kept is not None else None
+            if stored and stored.get("key") == key:
+                return stored
+            shapes = ROOF.group_shapes(capsule, target=target)
+            document = {
+                "key": key,
+                "source": {"model_capsule": str(capsule), "machine": machine.get("provenance"), "schema": ROOF.SCHEMA},
+                "per_group": {g: ROOF.group_roofline(shape, machine) for g, shape in shapes.items()},
+            }
+            if kept is not None:
+                with contextlib.suppress(OSError):
+                    write_json_atomic(kept, document)
+            return document
+        except Exception as exc:  # noqa: BLE001 -- said in the feedback, never a silent absence
+            return {"why": f"the rooflines could not be derived: {type(exc).__name__}: {str(exc)[:300]}"}
 
     # ---- the loop's hook
     def measure(
@@ -254,7 +336,7 @@ class WholeModelObjective:
             return None
         result = newest[1]
         verdict = result.get("verdict") or {}
-        feedback = F.compare(result, self.screen_reference) if result.get("verdict") else None
+        feedback = self.feedback(result) if result.get("verdict") else None
         return {
             "package_sha256": result.get("package_sha256"),
             "finished_at": result.get("finished_at"),
@@ -268,7 +350,7 @@ class WholeModelObjective:
 
     def document(self, digest: str) -> dict[str, Any]:
         screen = self.screen.measurement_for(digest)
-        feedback = F.compare(screen, self.screen_reference) if screen.get("verdict") else None
+        feedback = self.feedback(screen) if screen.get("verdict") else None
         coverage = self.coverage(screen)
         if feedback is not None and coverage is not None and coverage.get("coverage_regression"):
             feedback["coverage_regression"] = coverage["coverage_regression"]
@@ -353,7 +435,7 @@ class WholeModelObjective:
         final = screen.get("verdict") if screen.get("timing_status") != TIMING_PENDING else None
         text = F.render_early(early)
         if final:
-            feedback = F.compare(screen, self.screen_reference)
+            feedback = self.feedback(screen)
             text = F.render(feedback)
         text = prohibited_text(screen) or text
         document = self.compact(digest)
@@ -454,7 +536,10 @@ class WholeModelObjective:
                 ((regression + "\n") if regression else "") + (document.get("feedback_text") or ""), COMPACT_TEXT
             ),
             "bar_cycles": (summary.get("bar") or {}).get("screen_whole_window_cycles"),
-            "best": {k: (summary.get("best") or {}).get(k) for k in ("package_sha256", "screen_whole_window_cycles")}
+            "best": {
+                k: (summary.get("best") or {}).get(k)
+                for k in ("package_sha256", "screen_whole_window_cycles", "package_authored")
+            }
             if summary.get("best")
             else None,
             "latest_measured": {
@@ -542,6 +627,8 @@ class WholeModelObjective:
             self._record_staleness_on_disk()
             if self.ledger is not None:
                 self.ledger.sync(self)
+            if self.heartbeat is not None:
+                self.heartbeat.tick("poll")
 
     def _record_staleness_on_disk(self) -> None:
         """Every certification verdict gets its staleness record, whether or not THIS process promoted
@@ -849,6 +936,9 @@ class WholeModelObjective:
         """The lead line for a candidate below the coverage floor: which groups it declined, and what
         each costs when the package lowers it -- from the last eligible measurement's own per-group rows
         against the same-machine reference. Data only: the gap to reduce, never how."""
+        mismatch = self.exactness_mismatch(result)
+        if mismatch:
+            return f"INELIGIBLE -- {mismatch}"
         coverage = self.coverage(result)
         if coverage is None or coverage.get("eligible"):
             return None
@@ -871,17 +961,71 @@ class WholeModelObjective:
 
     def eligible(self, result: Mapping[str, Any] | None) -> bool:
         coverage = self.coverage(result)
-        return coverage is None or bool(coverage.get("eligible"))
+        return (coverage is None or bool(coverage.get("eligible"))) and self.exactness_mismatch(result) is None
+
+    def exactness_mismatch(self, result: Mapping[str, Any] | None) -> str | None:
+        """Why ``result`` was graded under a different exactness contract than this run holds, or None.  A
+        result graded under another contract -- looser or stricter -- is shown and never the best: its
+        correctness answered a different question (re-measuring grades it under this one)."""
+        from merlin.perf import exactness as EX
+
+        verdict = (result or {}).get("verdict")
+        if not verdict:
+            return None
+        carried = (getattr(self.screen, "exactness", None) or {}).get("contract")
+        try:
+            current = EX.Contract.from_value(carried, target=str(getattr(self.screen, "target", "") or ""))
+        except EX.ExactnessError as exc:
+            return f"this run's exactness contract cannot be read: {exc}"
+        # A cell's result records its contract beside its verdict; a whole-model verdict carries its own.
+        graded = EX.graded_semantics({"exactness": (result or {}).get("exactness") or verdict.get("exactness")})
+        if graded == current.semantics_sha256:
+            return None
+        return (
+            f"graded under exactness contract {graded[:12]}, while this run holds {current.semantics_sha256[:12]}; "
+            "re-measure these bytes to grade them under this run's contract"
+        )
 
     def noise_margin(self) -> float:
-        """What counts as an improvement: the median batched-vs-solo repeat spread actually measured in
-        THIS store, floored at NOISE_FLOOR. A fixed 0.1% floor undercounted this store's own board noise
-        (repeats of one identical package landing up to 0.4% apart): a candidate crowned on a margin
-        narrower than the noise the board itself produces on a rerun is not a measured improvement, it is
-        the spread. NOISE_FLOOR remains the bound for a store too young to have a repeat -- never zero,
-        or a two-candidate store would crown on a single tied board run."""
-        spread = self.repeat_spread()
-        return max(NOISE_FLOOR, spread) if spread is not None else NOISE_FLOOR
+        """What counts as an improvement ON THIS MACHINE: the largest of NOISE_FLOOR, the median
+        batched-vs-solo repeat spread measured in this store, and the machine's own same-day solo spread
+        of an identical program (:func:`.noise.margin`). A fixed 0.1% floor undercounted one board's own
+        noise (repeats of one identical package landing up to 0.4% apart) and another board moved 2.4%
+        between two solo runs of one ELF: a candidate crowned on a margin narrower than the noise the
+        machine itself produces on a rerun is not a measured improvement, it is the spread. NOISE_FLOOR
+        remains the bound for a store too young to have a repeat -- never zero, or a two-candidate store
+        would crown on a single tied board run."""
+        return float(self.noise()["margin"])
+
+    def machine_noise(self) -> dict[str, Any]:
+        """The screen machine's noise (:func:`.noise.machine_noise`), from every solo reading this store
+        and its reference hold; recomputed only when the store holds a different set of results."""
+        from . import noise as NOISE
+
+        root = getattr(self.screen, "root", None)
+        roots = [Path(root)] if root else []
+        reference = self.screen_reference_path
+        extra = [reference] if reference is not None and reference.is_file() else []
+        paths = [p for r in roots for p in NOISE.result_paths(r)]
+        key = (len(paths), tuple(str(p) for p in extra))
+        cached = getattr(self, "_machine_noise_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        readings = NOISE.solo_readings(roots, extra=extra)
+        device = ((self.screen_reference or {}).get("device") or {}).get("binary_sha256")
+        if not device and readings:
+            device = readings[-1]["device"]
+        document = NOISE.machine_noise(readings, device=device, controls=NOISE.control_readings(roots))
+        self._machine_noise_cache = (key, document)
+        return document
+
+    def noise(self) -> dict[str, Any]:
+        """The margin, which measurement set it, and the machine's noise behind it (flagged when fewer
+        than two same-day solo repeats exist)."""
+        from . import noise as NOISE
+
+        machine = self.machine_noise()
+        return {**NOISE.margin(machine, floor=NOISE_FLOOR, batched_vs_solo=self.repeat_spread()), "machine": machine}
 
     def repeat_spread(self) -> float | None:
         """The median relative difference between a batched result and its solo repeat -- IS the noise
@@ -1019,6 +1163,22 @@ class WholeModelObjective:
             "reference_is_orientation": True,
         }
 
+    def _noise_brief(self) -> dict[str, Any]:
+        try:
+            noise = self.noise()
+        except Exception as exc:  # noqa: BLE001 -- an unreadable store states its noise as unknown, never zero
+            return {"margin": NOISE_FLOOR, "basis": "floor", "established": False, "flag": f"UNKNOWN: {exc}"}
+        machine = noise.get("machine") or {}
+        return {
+            "margin": noise["margin"],
+            "basis": noise["basis"],
+            "established": noise["established"],
+            "flag": noise.get("flag"),
+            "device": machine.get("device"),
+            "same_day": machine.get("same_day"),
+            "cross_day": machine.get("cross_day"),
+        }
+
     # ---- what the agent and the report read
     def summary(self) -> dict[str, Any]:
         bar = (self.screen_reference or {}).get("verdict") or {}
@@ -1043,6 +1203,9 @@ class WholeModelObjective:
                 "certifier_whole_window_cycles": cert_bar.get("whole_window_cycles"),
                 "certifier_reference_status": (self.certifier_reference or {}).get("timing_status"),
                 "note": "each machine is compared only with its own reference; the two are different devices",
+                # THE VENDOR'S CYCLES ARE CONTEXT: another implementation's number, never the target. The
+                # machine's own fact-derived roofline is what a group's headroom is measured against.
+                "role": "context_only",
             },
             "best": None,
             "candidate_provenance": dict(self.labels) or None,
@@ -1059,13 +1222,18 @@ class WholeModelObjective:
             },
             "certifier_history": self.certifier.history() if self.certifier is not None else [],
             "board": _board_status(self.screen),
+            # WHAT COUNTS AS AN IMPROVEMENT ON THIS MACHINE, and how well its noise is known.
+            "noise": self._noise_brief(),
         }
         if best is not None:
             cycles = int(best["objective_cycles"])
             screen_bar = bar.get("whole_window_cycles")
+            coverage = self.coverage(best) or {}
             document["best"] = {
                 "package_sha256": best_digest,
                 "screen_whole_window_cycles": cycles,
+                # WHAT THE PACKAGE AUTHORED of those cycles, beside them -- never a bare count.
+                "package_authored": {k: coverage.get(k) for k in ("groups_answered", "groups_total", "priced_share")},
                 "screen_vendor_also_fails_count": (best.get("verdict") or {}).get("vendor_also_fails_count"),
                 "screen_ratio_to_bar": round(cycles / int(screen_bar), 4) if screen_bar else None,
                 "screen_gap_cycles": cycles - int(screen_bar) if screen_bar else None,

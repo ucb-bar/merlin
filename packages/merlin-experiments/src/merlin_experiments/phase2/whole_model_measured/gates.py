@@ -346,6 +346,22 @@ def isa_gate(
     roles = list((job.get("build_options") or {}).get(PROHIBITED_ROLES) or ())
     if not roles or job.get("role") == J.ROLE_REFERENCE:
         return None
+    sealed = job.get("instruction_policy")
+    unsealed = sealed_policy_problems(sealed, roles)
+    if unsealed:
+        # Refused BEFORE the scan: a scan judges the program against what the roles derive to now, and
+        # only the sealed Phase 0 policy says what they must forbid. With none, a scan that finds
+        # nothing cannot be told apart from a rule that forbids nothing.
+        report = {"clean": None, "summary": {}, "roles": roles, "error": "; ".join(unsealed)}
+        report.update(checked_build=role, scope="whole_elf")
+        return J.refused(
+            job,
+            f"isa_prohibited: the run carries no enforceable sealed instruction policy ({report['error']}); "
+            "no board time",
+            isa_prohibited=report,
+            build=dict(build),
+            pre_measure_check=check,
+        )
     try:
         scan = checker or _default_checker()
         report = dict(scan(build, target=str(job["target"]), roles=roles))
@@ -356,13 +372,66 @@ def isa_gate(
     report["scope"] = "whole_elf"
     if report.get("census") is not None:
         build["isa_census"] = report["census"]
+    weaker = scan_weaker_than_sealed(report, sealed, roles)
+    if weaker and not report.get("error"):
+        report["error"] = weaker
+    status = report.get("status")
+    if report.get("clean") is True and status != "measured" and not report.get("error"):
+        # A clean verdict the scanner did not mark measured is not one this gate can record as such.
+        report["error"] = f"the scan reported clean with status {status!r}, not 'measured'"
     if report.get("clean") is True and not report.get("error"):
+        build["isa_prohibition"] = {
+            "scope": "whole_elf",
+            "status": status,
+            "verdict": "clean",
+            "roles": list(roles),
+            "prohibited": dict(report.get("prohibited") or {}),
+            "sealed_source": dict(sealed.get("sealed_source") or {}) if isinstance(sealed, Mapping) else None,
+        }
         return None
     if report.get("summary"):
         lead = "isa_prohibited: " + ", ".join(sorted(report.get("summary") or {})[:12])
     else:
-        lead = f"isa_prohibited: the program could not be checked ({report.get('error') or 'no clean verdict'})"
+        why = report.get("error") or report.get("detail") or "no clean verdict"
+        lead = f"isa_prohibited: the program could not be checked ({why})"
     return J.refused(job, f"{lead}; no board time", isa_prohibited=report, build=dict(build), pre_measure_check=check)
+
+
+def sealed_policy_problems(policy: Mapping[str, Any] | None, roles: Sequence[str]) -> list[str]:
+    """Why the sealed Phase 0 ``policy`` a job carries cannot hold a program to ``roles``; empty if it can."""
+    from merlin_experiments.phase0.instruction_roles import enforcement_problems
+
+    return enforcement_problems(policy, roles) if roles else []
+
+
+def _selector(value: Any) -> str:
+    """One selector's spelling, normalised to its integer value where it has one ("0x8" and "8" agree)."""
+    try:
+        return str(int(str(value), 0))
+    except ValueError:
+        return str(value)
+
+
+def _selectors(policy: Mapping[str, Any], roles: Sequence[str]) -> set[str]:
+    prohibited = policy.get("prohibited_instructions") if isinstance(policy, Mapping) else None
+    rows = [row for role in roles for row in ((prohibited or {}).get(role) or ())]
+    return {_selector(row.get("selector")) for row in rows if isinstance(row, Mapping)}
+
+
+def scan_weaker_than_sealed(report: Mapping[str, Any], sealed: Mapping[str, Any] | None, roles: Sequence[str]) -> str:
+    """Non-empty when the scan's prohibited set is EMPTY or omits an instruction Phase 0 sealed.
+
+    A scan whose derived prohibited set is smaller than the sealed one is enforcing a weaker rule than
+    the one the experiment was frozen under (a facts tree that lost a role binding, a contract the
+    process read from the wrong place); the program it calls clean was not checked for what is
+    prohibited."""
+    scanned = {_selector(k) for k in (report.get("prohibited") or {})}
+    if not scanned:
+        return "the scan prohibited no instruction (the roles matched nothing in the target's facts)"
+    missing = sorted(_selectors(sealed or {}, roles) - scanned, key=lambda sel: (len(sel), sel))
+    if missing:
+        return f"the scan does not prohibit sealed selector(s) {missing}; it enforces a weaker rule than Phase 0 sealed"
+    return ""
 
 
 # --------------------------------------------------------------- 4. the functional gate
@@ -416,6 +485,8 @@ __all__ = [
     "isa_gate",
     "pre_measure_check",
     "run_capsule_check",
+    "scan_weaker_than_sealed",
     "screen_result_reusable",
     "screen_was_infra",
+    "sealed_policy_problems",
 ]

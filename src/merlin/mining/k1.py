@@ -1385,6 +1385,9 @@ def build_k1_binary(
     # honor package optimization flags while the helper keeps target-owned march/ABI facts pinned.
     _model_flags = _model_compile_flags(pkg, feats, model_opt, honor_pkg_cflags=honor_pkg_cflags)
     _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags, "-c", res.ll_path, "-o", model_o])
+    from ..common import compile_trace as _trace
+
+    _trace.artifact("object", [model_o], pipeline="codegen")
     # 2b. POST-CODEGEN CENSUS: is the model still IN the object? A backend that deletes reachable
     # code still links, still produces a binary, and then reports a spectacular speedup for
     # computing nothing -- smolvla linked a 512 MB ELF whose `forward` was 3,654 bytes with a
@@ -1537,6 +1540,7 @@ def build_k1_binary(
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 cross-compile produced no binary at {binary}")
+    _trace.artifact("link", [binary], pipeline="codegen")
     # The object census above is the strong erasure gate because its whole-object count cannot be
     # inflated by libc/runtime code.  It is NOT the delivered-code measurement: unresolved local
     # calls are only attributed to ``forward`` after relocation (122x difference on tiny_llama).

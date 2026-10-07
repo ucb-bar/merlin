@@ -16,6 +16,7 @@ from typing import Any
 from merlin.benchharness import hash_tree
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox import bwrap as BW
+from merlin.targetgen.sandbox import host_surfaces as HS
 
 from . import campaign as PC
 from . import contracts as CONTRACTS
@@ -332,13 +333,13 @@ def _private_functional_surfaces(argv: list[str], inputs: FrozenFunctionalInputs
         or _sha256_file(inputs.public_marker) != inputs.public_marker_sha256
     ):
         raise StageGateError("functional public manifest projection changed")
-    surfaces = BW.host_input_surfaces(
+    surfaces = HS.host_input_surfaces(
         argv, verified["workspace"], verified["bundle"], repo=verified["repo"], grant_repo=repo_root()
     )
     return [
         *surfaces,
         *BW.snapshot_support_surfaces(verified["workspace"], verified["marker"]),
-        *BW.private_file_surfaces(argv, [Path(inputs.host_provenance["environment"]), verified["bundle_path"]]),
+        *HS.private_file_surfaces(argv, [Path(inputs.host_provenance["environment"]), verified["bundle_path"]]),
     ]
 
 

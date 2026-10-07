@@ -161,17 +161,46 @@ def grade_memory(
 
     The chained oracle digest of each exact group is reported under ``chained`` as INFORMATION: below a
     legitimate bounded difference upstream it differs for a correct run.
+
+    A row may carry its group's EXACTNESS CONTRACT (``exactness``, :meth:`merlin.perf.exactness.Exactness.
+    to_dict`, put there by whoever wrote the map): the group is then held to exactly that contract --
+    exact, its op's own declared bound, or the bound its form's contract states -- instead of the
+    comparison its op implies, and ``contracts`` says which was applied to each group.  ``evidence``
+    holds each graded group's own numbers (largest difference, elements that differ, elements).
     """
     import numpy as np
 
+    from merlin.perf import exactness as EX
     from merlin.perf.layer_bench import reference as ref
+
+    evidence: dict[str, dict[str, int]] = {}
+    contracts: dict[str, str] = {}
+
+    def passes(group: str, row: Mapping[str, Any], got, want, *, builtin_ok: bool) -> bool:
+        """Whether ``got`` passes ``row``'s contract against ``want``; records the numbers and the label."""
+        delta = np.abs(got.astype(np.int64) - want.astype(np.int64)) if got.shape == want.shape else None
+        if delta is not None:
+            evidence[group] = {
+                "max_abs": int(delta.max()) if delta.size else 0,
+                "mismatches": int((delta != 0).sum()),
+                "elements": int(delta.size),
+            }
+        declared = row.get("exactness")
+        if not declared:
+            contracts[group] = "exact" if row.get("compare") == "exact" else f"bounded(<={row.get('bound_lsb')} LSB)"
+            return builtin_ok
+        exactness = EX.Exactness.from_dict(declared)
+        contracts[group] = exactness.label()
+        if delta is None:
+            return False
+        return bool(EX.judge(exactness, **evidence[group])["passed"])
 
     def values(place):
         raw = bytes(read(int(place["address"]), int(place["bytes"])))
         return np.frombuffer(raw, dtype=f"<i{int(place['element_bytes'])}").astype(np.int64)
 
     def bounded(got, lhs, rhs, spec, element_bytes):
-        """``(max_abs, over)``: ``got`` against the RESIDUAL_ADD contract's reference of ``lhs``, ``rhs``."""
+        """``(max_abs, over, want)``: ``got`` against the RESIDUAL_ADD contract's reference of ``lhs``, ``rhs``."""
         total = lhs.astype(np.float32) * np.float32(spec["lhs_scale"]) + rhs.astype(np.float32) * np.float32(
             spec["rhs_scale"]
         )
@@ -180,7 +209,7 @@ def grade_memory(
         if spec["relu"]:
             want = np.maximum(want, 0)
         worst = int(np.abs(got - want).max()) if got.size else 0
-        return worst, int((np.abs(got - want) > int(spec["bound_lsb"])).sum())
+        return worst, int((np.abs(got - want) > int(spec["bound_lsb"])).sum()), want
 
     agree, disagree, unverified = [], [], []
     chained: dict[str, list] = {"agree": [], "disagree": []}
@@ -201,8 +230,10 @@ def grade_memory(
                 got = values(row)
                 spec = row["boundary"]
                 if spec["compare"] == "bounded":
-                    worst, over = bounded(got, held[spec["lhs"]], held[spec["rhs"]], spec, row["element_bytes"])
-                    if over == 0:
+                    lhs, rhs = held[spec["lhs"]], held[spec["rhs"]]
+                    worst, over, want_b = bounded(got, lhs, rhs, spec, row["element_bytes"])
+                    graded_as = {**spec, "exactness": row.get("exactness")}
+                    if passes(group, graded_as, got, want_b, builtin_ok=over == 0):
                         agree.append(group)
                     else:
                         disagree.append({"group": group, "max_abs": worst, "over": over})
@@ -212,11 +243,14 @@ def grade_memory(
                 unverified.append({"group": group, "why": f"the region's reference could not be formed: {why}"})
                 continue
             wrong = np.flatnonzero(want != got) if want.shape == got.shape else np.arange(max(got.size, 1))
-            if wrong.size == 0:
+            graded_as = {"compare": "exact", "exactness": row.get("exactness")}
+            if passes(group, graded_as, got, want, builtin_ok=wrong.size == 0):
                 agree.append(group)
             else:
                 disagree.append(
                     {"group": group, "mismatches": int(wrong.size), "of": int(got.size), "first": int(wrong[0])}
+                    if wrong.size
+                    else {"group": group, "mismatches": 0, "of": int(got.size), "first": None}
                 )
             continue
         if row["compare"] == "merged":
@@ -236,7 +270,7 @@ def grade_memory(
                 want = np.maximum(want, 0)
             worst = int(np.abs(got - want).max()) if got.size else 0
             over = int((np.abs(got - want) > int(row["bound_lsb"])).sum())
-            if over == 0:
+            if passes(group, row, got, want, builtin_ok=over == 0):
                 agree.append(group)
             else:
                 disagree.append({"group": group, "max_abs": worst, "over": over})
@@ -256,11 +290,15 @@ def grade_memory(
             disagree.append({"group": group, "why": f"reference has {want.size} elements, device {got.size}"})
             continue
         wrong = np.flatnonzero(want != got)
-        if wrong.size == 0:
+        if passes(group, row, got, want, builtin_ok=wrong.size == 0):
             agree.append(group)
         else:
+            # The same row as ever; its largest difference and the contract applied are in ``evidence`` and
+            # ``contracts`` (a contract stricter than the op can fail a group with nothing mismatched).
             disagree.append(
                 {"group": group, "mismatches": int(wrong.size), "of": int(got.size), "first": int(wrong[0])}
+                if wrong.size
+                else {"group": group, "mismatches": 0, "of": int(got.size), "first": None}
             )
     return {
         "gate": "local",
@@ -269,4 +307,6 @@ def grade_memory(
         "unverified": unverified,
         "quotable": not disagree and not unverified,
         "chained": {"note": "information only", **chained},
+        "evidence": evidence,
+        "contracts": contracts,
     }

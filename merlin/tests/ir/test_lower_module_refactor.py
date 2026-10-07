@@ -27,6 +27,7 @@ import hashlib
 import json
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 
@@ -145,7 +146,13 @@ def _fingerprint(res) -> dict[str, str]:
 # --------------------------------------------------------------- 1. the refactor changed nothing
 
 
-@pytest.mark.parametrize("case", sorted(CASES))
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(c, marks=selected_driver.requires_support(CASES[c]["target"])) if "target" in CASES[c] else c
+        for c in sorted(CASES)
+    ],
+)
 def test_stage_fingerprints_match_pre_refactor(case):
     """Every stage of every configuration is byte-identical to the pre-refactor pipeline."""
     from merlin.xdsl_dialects.lowering import lower_repeated_rhs_matmul
@@ -157,6 +164,7 @@ def test_stage_fingerprints_match_pre_refactor(case):
         )
 
 
+@selected_driver.requires_support("saturn")
 def test_wrapper_and_generic_entry_agree():
     """lower_repeated_rhs_matmul is now only a payload builder over lower_module."""
     from merlin.xdsl_dialects.lowering import lower_module, lower_repeated_rhs_matmul
@@ -168,6 +176,7 @@ def test_wrapper_and_generic_entry_agree():
     assert via_wrapper == via_generic
 
 
+@selected_driver.requires_support("saturn")
 def test_a_one_shot_matmul_is_staged_resident_on_every_target():
     """What reuse=1 lowers to, and what that costs — the successor to a pin that no longer holds.
 
@@ -291,6 +300,7 @@ def test_multiple_functions_are_rejected():
     assert "func.func" in str(exc.value)
 
 
+@selected_driver.requires_support("saturn")
 def test_the_reference_payload_still_passes_the_guard():
     """The guard must be inert on legitimate payload: accumulator inits and zero points are consumed."""
     from merlin.xdsl_dialects.lowering import lower_module

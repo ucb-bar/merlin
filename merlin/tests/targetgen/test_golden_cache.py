@@ -17,6 +17,7 @@ import os
 import types
 from functools import cache
 
+import external_sources
 import pytest
 from merlin_experiments.phase0 import numerics as NUMERICS
 from merlin_experiments.phase0.declarations import for_target
@@ -169,6 +170,7 @@ class TestTheDeviceIsPartOfTheKey:
 
 
 class TestTheMemoizedProductIsBitIdentical:
+    @external_sources.requires_rtl("atlas")
     def test_the_product_cache_changes_no_value(self, gen):
         """``rnd(dec(a)*dec(b))`` is a pure function of the operand code pair, so memoizing it on that
         pair is identical by construction. Pinned because it sits inside a golden engine, where a

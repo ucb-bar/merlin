@@ -13,6 +13,7 @@ gated).
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.common.paths import repo_root
@@ -60,6 +61,7 @@ def test_curated_reference_contract_resolves_outside_the_answer_surface():
     assert artifacts_dir() / "targets" / "gemmini" not in info.contract_path.parents
 
 
+@external_sources.requires_rtl("atlas")
 def test_generated_oot_target_resolves_via_search_path_outside_the_answer_surface(tmp_path, monkeypatch):
     """The generalizable case: a target defined ONLY as a generated OOT package (no in-tree dir) is
     discovered via the search path and resolves OUTSIDE its answer surface. Generate atlas's package into a
@@ -94,6 +96,7 @@ def test_generated_oot_target_resolves_via_search_path_outside_the_answer_surfac
 def test_onboard_regenerates_manifest_and_routes(tmp_path, monkeypatch, target, kind, endpoint, mesh_key):
     """The same target-agnostic flow onboards a SIMT and two systolic targets — kind/endpoint are DERIVED
     from the regenerated manifest via the family registry, never a per-target branch."""
+    external_sources.require_rtl(target)
     monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
     res = onboard(_real_desc(target), oot_root=tmp_path / target)
     assert res.target == target

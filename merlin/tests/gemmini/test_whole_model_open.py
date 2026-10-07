@@ -795,6 +795,19 @@ def test_chunk_forward_is_a_no_op_when_the_block_already_fits() -> None:
     assert len([op for op in fn.body.blocks[0].ops if op.name == "linalg.generic"]) == 5
 
 
+def test_the_forward_body_size_is_what_auto_chunking_judges() -> None:
+    """The size ``chunk_ops="auto"`` resolves against: the forward's top-level ops, terminator excluded.
+    Ten ops fit in one default chunk, so ``auto`` leaves this forward whole."""
+    module = mq.parse(_chunk_test_module())
+    assert WO.forward_body_size(module) == 10
+    assert WO.resolve_chunk_ops("auto", forward_ops=WO.forward_body_size(module)) is None
+
+
+def test_the_open_build_refuses_a_misspelled_chunk_size_before_building(tmp_path) -> None:
+    with pytest.raises(WO.OpenModelError, match="positive op count"):
+        WO.build(None, tmp_path / "capsule", target=_TARGET, machine="m", header="h", out=tmp_path, chunk_ops="1k")
+
+
 def test_chunk_forward_threads_multiple_live_values_across_an_odd_boundary() -> None:
     """``chunk_ops=3`` lands its naive cuts mid-pair (``body_ops[2]`` is a ``tensor.empty``, pulled
     back to keep it with its own consuming ``linalg.generic``), so the real chunk sizes differ from

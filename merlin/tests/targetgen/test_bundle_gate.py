@@ -21,6 +21,7 @@ import subprocess
 
 import pytest
 
+from merlin.common.paths import repo_root
 from merlin.targetgen import bundle_gate as BG
 from merlin.targetgen import bundle_harness as BH
 from merlin.targetgen import bundle_pack as BP
@@ -334,8 +335,38 @@ class TestTheHarnessReadsItsOutputFromThePlan:
 
 
 _CC = next(
-    (c for c in ("third_party/llvm-install/bin/clang", "clang", "gcc") if os.path.exists(c) or shutil.which(c)), None
+    (
+        c
+        for c in (str(repo_root() / "third_party/llvm-install/bin/clang"), "clang", "gcc")
+        if os.path.exists(c) or shutil.which(c)
+    ),
+    None,
 )
+
+
+def _accepted_warning_flags(cc: str | None, *flags: str) -> list[str]:
+    """The subset of ``flags`` that ``cc`` accepts under ``-Werror``.
+
+    ``-Wno-gcc-install-dir-libstdcxx`` silences a host-layout warning that the pinned LLVM clang raises
+    on hosts with several GCC installs; older clangs reject the option itself as unknown, which
+    ``-Werror`` turns into a build failure. Probing keeps ``-Werror`` meaningful on both compilers.
+    """
+    if cc is None:
+        return []
+    accepted = []
+    for flag in flags:
+        probe = subprocess.run(
+            [cc, "-Werror", flag, "-x", "c", "-fsyntax-only", "-"],
+            input="int x;\n",
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            accepted.append(flag)
+    return accepted
+
+
+_CC_QUIET = _accepted_warning_flags(_CC, "-Wno-gcc-install-dir-libstdcxx")
 
 _STUB = """
 #include <stdint.h>
@@ -407,7 +438,7 @@ class TestTheGateActuallyFails:
                 "-Wall",
                 "-Wextra",
                 "-Werror",
-                "-Wno-gcc-install-dir-libstdcxx",
+                *_CC_QUIET,
                 "-o",
                 str(binary),
                 str(tmp_path / "h.c"),
@@ -943,7 +974,7 @@ class TestTheTrajectoryGateActuallyFails:
                 "-Wall",
                 "-Wextra",
                 "-Werror",
-                "-Wno-gcc-install-dir-libstdcxx",
+                *_CC_QUIET,
                 "-o",
                 str(binary),
                 str(tmp_path / "h.c"),
@@ -1054,7 +1085,7 @@ class TestFreestandingSupportIsDeclaredNotPatchedIn:
                 "-Wall",
                 "-Wextra",
                 "-Werror",
-                "-Wno-gcc-install-dir-libstdcxx",
+                *_CC_QUIET,
                 "-c",
                 str(source),
                 "-o",
@@ -1258,7 +1289,7 @@ class TestAFarConstBlobIsAddressedAbsolutelyNotByRelocation:
                     "-Wall",
                     "-Wextra",
                     "-Werror",
-                    "-Wno-gcc-install-dir-libstdcxx",
+                    *_CC_QUIET,
                     *extra,
                     "-c",
                     str(source),
@@ -1429,7 +1460,7 @@ class TestAConsoleWithNoFloatSupportMustNotBeAskedForOne:
                 "-Wall",
                 "-Wextra",
                 "-Werror",
-                "-Wno-gcc-install-dir-libstdcxx",
+                *_CC_QUIET,
                 "-o",
                 str(binary),
                 str(tmp_path / "h.c"),
@@ -1802,7 +1833,7 @@ class TestALanguageModelsRankingIsPerTokenNotGlobal:
                     "-Wall",
                     "-Wextra",
                     "-Werror",
-                    "-Wno-gcc-install-dir-libstdcxx",
+                    *_CC_QUIET,
                     "-o",
                     str(binary),
                     str(tmp_path / "h.c"),

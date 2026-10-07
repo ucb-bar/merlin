@@ -84,7 +84,10 @@ def structure(package: str | Path, *, spec: Mapping[str, Any], out: str | Path) 
     built = _board_build(package, spec=spec, out=out / "build")
     record, full = built["service_record"], built["build_record"]
     store = Path(str(spec.get("store_base") or ""))
-    calibration = S.fit_calibration(S.collect_pairs([store])) if store.is_dir() else None
+    calibration = None
+    if store.is_dir():
+        pairs = S.collect_pairs([store])
+        calibration = S.fit_calibration(pairs, margin=screen_margin(store, pairs))
     screen = S.structure_screen(
         record["elf"],
         groups={g: e["compare"] for g, e in record["expectations"]["groups"].items()},
@@ -103,6 +106,23 @@ def structure(package: str | Path, *, spec: Mapping[str, Any], out: str | Path) 
     screen["text"] = render_structure(screen)
     _prune(out / "build")
     return screen
+
+
+def screen_margin(store_base: Path, pairs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The noise margin of the board the calibration pairs were measured on (:func:`.noise.margin`), from
+    the solo readings of every store under ``store_base`` -- the error bound its validation holds the
+    refit to. None when the pairs name no one board, which leaves the screen's ranking unvalidated."""
+    from . import noise as NOISE
+    from .objective import NOISE_FLOOR
+
+    devices = {str((pair.get("domain") or {}).get("binary_sha256")) for pair in pairs if pair.get("domain")}
+    if len(devices) != 1:
+        return None
+    roots = [p for p in sorted(Path(store_base).iterdir()) if p.is_dir() and not p.name.startswith("_")]
+    machine = NOISE.machine_noise(
+        NOISE.solo_readings(roots), device=next(iter(devices)), controls=NOISE.control_readings(roots)
+    )
+    return {**NOISE.margin(machine, floor=NOISE_FLOOR), "machine": machine}
 
 
 def group_timing(
@@ -257,6 +277,7 @@ def render_structure(screen: Mapping[str, Any]) -> str:
         f"(not correct: {screen.get('groups_not_correct')})",
         f"- calibration refit from {calibration.get('pairs')} board pairs; a group marked blind is one whose "
         f"board cost this simulator does not see (board/simulator ratio over {calibration.get('blind_ratio')})",
+        _ranking_line(screen.get("ranking")),
         "",
         "| g | kind | route | local | sim cycles | blind | board/sim ratio of its class (median [p10, p90]) |",
         "|---|---|---|---|---|---|---|",
@@ -268,6 +289,15 @@ def render_structure(screen: Mapping[str, Any]) -> str:
             f"{row.get('spike_blind')} | {_ratio(row.get('class_ratio'))} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _ranking_line(ranking: Mapping[str, Any] | None) -> str:
+    """Whether the class ratios below may be read as a board ordering: only a validated refit says so."""
+    ranking = ranking or {}
+    if ranking.get("status") == "validated":
+        return "- screen ranking: VALIDATED against held-out board readings of this store"
+    why = "; ".join(str(r) for r in ranking.get("reasons") or ()) or "no validation was recorded"
+    return f"- screen ranking: UNVALIDATED -- the ratios below are not a board ordering ({why})"
 
 
 def _ratio(ratio: Mapping[str, Any] | None) -> str:

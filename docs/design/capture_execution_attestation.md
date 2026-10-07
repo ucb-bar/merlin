@@ -3,10 +3,12 @@ title: Capture execution attestation boundary
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [phase0_specification, model2mlir, reproducibility]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/capture_execution_attestation.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/capture_selection.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/sealed_generation.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_static.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_python.py
@@ -21,6 +23,10 @@ recorded byte digests. Its `source_closure_verified: false` is a distinct result
 receipt does not prove which loader, importer, framework, checkpoint, dependency or
 ambient file the capture process read. A later digest of today's checkout cannot
 prove what an earlier process executed. Existing captures must retain that status.
+When the receipt records a `quantization-manifest.json`, `verify_capture_receipt`
+also requires the metadata pointer to name those exact bytes and the model MLIR's
+`prov.quantization_manifest_sha256` to bind the manifest; a model that names a
+manifest absent from the receipt fails verification.
 
 Merlin reserves `merlin.capture_execution_attestation.v1` for this separate claim.
 The diagnostic implementation inventories explicitly selected source bytes and reports
@@ -28,7 +34,10 @@ the adjacent materialized receipt. It always writes
 `status: diagnostic_only`, `fresh_execution: false`, and
 `source_closure_verified: false` to a new evidence path outside the capture and
 source trees. This diagnostic does not pass Phase 0 admission. Editing these
-fields or copying an old receipt cannot make a capture admissible.
+fields or copying an old receipt cannot make a capture admissible. The admission
+function `require_verified_execution` accepts only the preselected sealed
+Model2MLIR CPU runners described below; no diagnostic, historical or static-ELF
+receipt passes it.
 
 The separate `merlin.sealed-static-capture.v1` issuer exercises the isolation boundary
 for a self-contained static ELF payload. It copies complete selected source and
@@ -66,8 +75,12 @@ requirements do not grant admission to another Python/model issuer.
 Bubblewrap being installed is insufficient: an ordinary Python virtual environment
 may read dependencies and caches outside the declared source selection. Without
 a sealed runtime/checkpoint root for the selected model capture, the diagnostic
-path must not claim verified source closure. That diagnostic path remains blocked
-on `source_closure_verified: false`; it cannot substitute for preselected sealed execution.
+path must not claim verified source closure. Phase 0's coverage commitment admits
+an application only when its `capture_execution_attestation` passes
+`require_verified_execution` *and* names that application's selected capture and
+materialized-receipt digests; captures without a sealed-M2M attestation remain
+blocked on `source_closure_verified: false`, and the diagnostic path cannot
+substitute for preselected sealed execution.
 
 For a proposed Python capture, run the separate preflight with explicit paths:
 
@@ -135,9 +148,18 @@ The bounded `sealed_m2m` CPU runner has a separate v2 policy for either FP32
 without a recipe or static int8 with an explicitly selected, content-validated
 `quant_recipe_v1` whose numerical engine is `integer_reference`. Its plan names
 the dtype and recipe bytes, selected Model2MLIR revision, workload, Merlin worker
-package, its canonical schema tree, and Python runtime. Issuance copies those
-inputs into a private empty-root process. Replay reconstructs the selected
-command and checks bundled schema membership and bytes. It also checks the
+package, its canonical schema tree, and Python runtime. Issuance copies the selected
+sources into a private empty-root process. The runtime (venv, base Python and
+system libraries) is materialized once per selection identity in a
+content-addressed store and hard-linked into each private guest root; every byte
+is re-hashed against the plan before execution and again on replay. A namespace
+probe runs before anything is snapshotted, and transient `__pycache__` bytecode is
+excluded from the selected M2M package. The float dtype token is `fp32` or `f32`;
+the only worker option a plan may select is an `agreement_tolerance` pair, which
+is bound into the plan and command. Preselected runs also raise the framework's C++
+log floor (`TORCH_CPP_LOG_LEVEL=ERROR`, part of the recorded sandbox policy) so
+timestamped warnings cannot break byte-identical stderr replay. Replay reconstructs
+the selected command and checks bundled schema membership and bytes. It also checks the
 recipe against capture metadata and independent integer-reference agreement.
 Historical FP32 v1 receipts retain their original replay
 policy. Raw replay is not Phase 0 admission; its result explicitly says
@@ -166,18 +188,35 @@ The assessment reports `replay_verified_nonadmissible` and
 run, not authority to upgrade an old capture. The unsigned M2M receipt and a
 copied selected virtual environment remain explicit provenance limits.
 
-For newly selected Phase 0 inputs, `phase0.capture_selection` fixes the plan,
-issuer source, sandbox policy and tool bytes **before** the sealed run exists.
-Independent replay of those exact selected bytes yields a
-`verified_preselected_replay` record. The reviewed admission policy permits the
-sealed CPU v2 and v3 issuers under their respective preselection policies:
-`attest_sealed_m2m` issues
-`verified_sealed_execution` with `source_closure_verified: true`, while
-`require_verified_execution` re-reads the selection, pending sealed receipt,
-materialized receipt and model bytes on each admission. The policy explicitly
-accepts that the receipt is unsigned and the copied virtual environment is not
-an independently pinned dependency set. Neither a raw Model2MLIR receipt nor
-the diagnostic assessment can acquire this status retroactively.
+Admission instead requires selecting the capture *before* it exists. For the v2
+issuer, `phase0.capture_selection.select` writes an owner-only `capture-selection.json`
+(`merlin.phase0.capture_selection.v1`) for a fresh run directory: the sealed plan,
+an explicit `checkpoint: {kind: none}`, the system-library and bubblewrap bytes,
+the issuer source digest and the sandbox policy digest. `issue` reloads it by its
+independently supplied SHA-256, re-derives the plan, refuses an existing run
+directory and runs the sealed issuer; `verify` checks the pending receipt against
+the selection and the copied system libraries, replays the capture, and returns a
+`merlin.phase0.preselected_capture_replay.v1` record (`verified_preselected_replay`,
+itself still `phase0_admission: not_granted`). `attest_sealed_m2m` turns that
+record into a `merlin.capture_execution_attestation.v1` document with
+`status: verified_sealed_execution` and `issuer: merlin.sealed_m2m_cpu.v2`.
+
+The reviewed admission policy permits the sealed CPU v2 and v3 issuers under their
+respective preselection policies; neither a raw Model2MLIR receipt nor the
+diagnostic assessment can acquire this status retroactively.
+
+Admitting these issuers is an explicit operator policy decision, embedded in every
+attestation with its accepted residuals: the sealed receipt is unsigned, and the
+Python runtime closure is the copied selected venv rather than an independently
+pinned dependency set. `require_verified_execution` does not trust the document's
+flags: for each issuer it re-reads the selection, the pending sealed receipt, the
+model and the materialized receipt, requires the receipt to bind the preselected
+plan, policy, bubblewrap and issuer bytes, and compares every digest with the
+attestation. Changing any of those bytes revokes admission. In verified Phase 0
+generation, PyTorch captures made while writing capsules follow the same
+select/issue/verify/attest path (`phase0.sealed_generation`), and a request the
+selected policy cannot express (a declared loader environment, a quantization
+scheme instead of a recipe, an already materialized model) fails closed.
 
 The v3 policy extends this selection to complete pretrained networks and
 multi-program sessions. Its input plan inventories explicitly selected checkpoint

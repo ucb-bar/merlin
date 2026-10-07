@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+import external_sources
 import pytest
 import yaml
 from phase1_feedback import feedback_context, feedback_source
@@ -401,6 +402,7 @@ def test_arm4_wrapper_rejects_non_rtlcheck_or_ambiguous_bundle_override(monkeypa
     assert called == []
 
 
+@external_sources.requires_ext("chipyard")
 def test_arm4_wrapper_allows_an_explicit_identical_bundle_pin(monkeypatch):
     wrapper = _mod("run_rtlchecks_qa_loop")
     called = []
@@ -411,6 +413,7 @@ def test_arm4_wrapper_allows_an_explicit_identical_bundle_pin(monkeypatch):
     assert called[0][called[0].index("--arm") + 1] == "merlin_assisted"
 
 
+@external_sources.requires_ext("chipyard")
 def test_arm4_wrapper_allows_a_generated_realistic_rtlcheck_bundle(monkeypatch):
     wrapper = _mod("run_rtlchecks_qa_loop")
     called = []

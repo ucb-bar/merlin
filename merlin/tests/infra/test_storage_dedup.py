@@ -25,6 +25,8 @@ def rooted(tmp_path, monkeypatch):
     (tmp_path / "out" / "artifacts" / "cache").mkdir(parents=True)
     declared = dict(SC.contract(), scan_roots=[])
     monkeypatch.setattr(SC, "contract", lambda: declared)
+    # Hermetic: whether a live process holds a file is the host's state; it has its own tests.
+    monkeypatch.setattr(SC.storage_ops, "checker_for", lambda enabled: SC.storage_ops._NoCheck())
     return tmp_path / "out"
 
 

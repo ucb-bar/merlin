@@ -7,7 +7,10 @@ flattering reading is the one that got quoted for days. These tests pin the dist
 
 from __future__ import annotations
 
+import host_toolchain
 import pytest
+
+from merlin.common.paths import repo_root
 
 pytestmark = pytest.mark.target("gemmini", "atlas", "radiance")
 
@@ -165,15 +168,33 @@ def _grade_model(*, on_mesh, fallback, tiles):
         CCLI.compile_model = real
 
 
+@host_toolchain.requires_host_lane_package(
+    repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+)
 def test_the_model_not_its_tiles_decides_the_model_capsules_tier():
     """A run with every layer on the host once reported '15 of 15 tiles passed'. The tile record proves
     the SHAPE runs; the capstone is a claim about THIS model. Asserted on the GRADE, not on the source
     text -- a behavioural claim that survives the code being rewritten under it."""
-    _all_tiles_pass = {"n_tiles": 15, "n_passed": 15, "n_failed": 0, "n_unavailable": 0, "n_unsynthesizable": 0}
+    # Every tile cleared the functional screen too: the screen rung is recorded on its own, and this
+    # test is about the CERT rung, so the screen is supplied and then left out of `_passed`.
+    _all_tiles_pass = {
+        "n_tiles": 15,
+        "n_passed": 15,
+        "n_failed": 0,
+        "n_unavailable": 0,
+        "n_unsynthesizable": 0,
+        "n_screened": 15,
+        "n_screen_passed": 15,
+        "n_screen_failed": 0,
+        "n_screen_unavailable": 0,
+    }
 
     def _passed(r):
         return {
-            t: v for t, v in ((k, (o or {}).get("status")) for k, o in (r.get("tiers") or {}).items()) if v == "pass"
+            t: (o or {}).get("status")
+            for t, o in (r.get("tiers") or {}).items()
+            if (o or {}).get("status") == "pass"
+            and (o or {}).get("evidence") != "mesh_tile_verification.per_tile[].screen"
         }
 
     on_host = _grade_model(on_mesh=0, fallback=15, tiles=_all_tiles_pass)

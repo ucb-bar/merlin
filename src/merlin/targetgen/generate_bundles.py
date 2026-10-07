@@ -283,8 +283,10 @@ def _arm_manifest(
         "condition": info.get("condition", variant),
         "source_pins": list(info.get("source_pins") or ()),
         "description": f"{arm} arm for the {te.target} target (generated from target_experiment.yaml)",
-        "allowed": allow,
-        "denied": deny,
+        # Owned copies: release selection rewrites entries in place, and the deny tables above are
+        # shared module state, so an aliased entry would carry one bundle's absolute paths into the next.
+        "allowed": copy.deepcopy(allow),
+        "denied": copy.deepcopy(deny),
         "host_inputs": [
             {"path": str(te.path), "note": "experiment declaration for host-only model grading"},
             *(

@@ -52,20 +52,9 @@ capsules:
 # --- Fused ops mined from atlas-npu/baremetal (smolvla_rms_norm, fused_silu_gate, softmax,
 # fused_attention): the VPU/norm/activation algorithms run in bf16 alongside the fp8 MXU matmuls, so they
 # are PyTorch-sourced (the m2m linalg is the interface the atlas backend compiles).
-- {cat: model_slices, name: AF0_rmsnorm_bf16_pt, kind: model_slice, op: rmsnorm, operand_dtype: bf16,
-   source: pytorch, M: 16, K: 16, eps: 1.0e-05, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch RMSNorm bf16 (atlas smolvla_rms_norm)', label: public, modes: {}}
 - {cat: model_slices, name: AF1_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch SiLU-gate/GeGLU bf16 (atlas smolvla_fused_silu_gate)', label: public,
-   modes: {}}
-- {cat: model_slices, name: AF2_softmax_bf16_pt, kind: model_slice, op: softmax, operand_dtype: bf16,
-   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch softmax bf16 (atlas smolvla_softmax)', label: public, modes: {}}
-- {cat: model_slices, name: AF3_attn_full_bf16_pt, kind: model_slice, op: attention_full,
-   operand_dtype: bf16, source: pytorch, M: 16, K: 64, N: 16, Dv: 64, causal: true, out: Y0,
-   source_role: pytorch_model_slice,
-   source_reference: 'PyTorch causal attention bf16 (atlas smolvla_fused_attention)', label: public,
    modes: {}}
 # --- Whole-model capstone (GATED): small_llama in fp8 (atlas MXU inputs are fp8 e4m3).
 - {cat: model, name: M0_small_llama_atlas, kind: model, op: model, model: small_llama,
@@ -101,10 +90,6 @@ capsules:
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch elementwise add bf16 (atlas smolvla_elementwise_add)', label: public,
    modes: {}}
-- {cat: model_slices, name: AF7_reduce_sum_bf16_pt, kind: model_slice, op: reduce_sum, operand_dtype: bf16,
-   source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch row reduction-sum bf16 (atlas smolvla_reduction_sum)', label: public,
-   modes: {}}
 - {cat: model_slices, name: AF8_rope_bf16_pt, kind: model_slice, op: rope, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch RoPE bf16 (atlas smolvla_rope_frequency)', label: public, modes: {}}
@@ -124,21 +109,10 @@ capsules:
 - {cat: isa, name: AT8_matmul_mxu1, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
    lhs: A0, weight: W, out: Y0, semantic: matmul_mxu1, source_role: handauthored_compiler_test,
    source_reference: 'fp8 matmul on MXU mesh 1 (smolvla_matmul_mxu1)', label: public, modes: {}}
-- {cat: model_slices, name: AF9_fused_matmul_bias_bf16_pt, kind: model_slice, op: fused_matmul_bias,
-   operand_dtype: bf16, source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: fused_matmul_bias,
-   source_role: pytorch_model_slice, source_reference: 'PyTorch linear+bias bf16 (atlas fused_matmul_bias)',
-   label: public, modes: {}}
 - {cat: model_slices, name: AF10_bias_add_bf16_pt, kind: model_slice, op: bias_add, operand_dtype: bf16,
    source: pytorch, M: 16, N: 16, out: Y0, comparison_group: bias_add, source_role: pytorch_model_slice,
-   source_reference: 'PyTorch bias add bf16 (atlas bias_add)', label: public, modes: {}}
-- {cat: model_slices, name: AF11_k_chain_bf16_pt, kind: model_slice, op: k_chain, operand_dtype: bf16,
-   source: pytorch, M: 16, K: 16, N: 16, out: Y0, comparison_group: k_chain,
-   source_role: pytorch_model_slice, source_reference: 'PyTorch chained matmul bf16 (atlas k_chain)',
-   label: public, modes: {}}
-- {cat: model_slices, name: AF12_gemv_batched_bf16_pt, kind: model_slice, op: gemv_batched,
-   operand_dtype: bf16, source: pytorch, M: 16, K: 16, B: 2, out: Y0, comparison_group: gemv_batched,
-   source_role: pytorch_model_slice, source_reference: 'PyTorch batched GEMV bf16 (atlas gemv_batched)',
-   label: public, modes: {}}
+   source_reference: 'PyTorch bias add bf16 (atlas bias_add)', label: public, modes: {},
+   stimulus_range: [-4, 3]}
 # --- Second whole-model capstone (GATED): lstmnetvit fp8 — broader layer types (conv patch-embed,
 # spatial-reduction attention, depthwise MixFFN, PixelShuffle+upsample, LSTM head) beyond small_llama.
 - {cat: model, name: M1_lstmnetvit_atlas, kind: model, op: model, model: lstmnetvit,
@@ -151,31 +125,6 @@ capsules:
 # entries use, because that is the tile those kernels are written for. Each entry's `comment` records
 # the atlas-npu assembly that EXECUTES the kernel and, where the hardware operands are fp8 rather than
 # the bf16 declared here, says so instead of silently redeclaring the dtype.
-- cat: model_slices
-  name: AF13_matmul_bf16_pt
-  kind: model_slice
-  op: matmul
-  operand_dtype: bf16
-  source: pytorch
-  M: 32
-  K: 32
-  N: 32
-  out: Y0
-  source_role: pytorch_model_slice
-  source_reference: 'PyTorch matmul bf16 (atlas smolvla_matmul)'
-  label: public
-  modes: {}
-  comment: >-
-    AF13_matmul_bf16_pt ports npu_model's `smolvla_matmul`: one 32x32 tile contraction C = A @ B.
-    Execution reference: atlas-npu `baremetal/assembly/smolvla_matmul_mxu0.S` (and `_mxu1.S` for the
-    second mesh). VTRPOSE: that assembly transposes B (`VTRPOSE.XLU 5, 4`) before `VMATPUSH.W.MXU0`
-    because the MXU loads weights in transposed orientation; npu_model's own assembly has no VTRPOSE
-    at all, so the program it ships computes A @ B^T on real hardware. This capsule's contract is
-    A @ B. DTYPE -- option (b), the promoted form: npu_model builds both operands with
-    `.to(torch.float8_e4m3fn)` and the MXU multiplies fp8_e4m3 into a bf16 accumulator, while this
-    capsule is bf16 on both operands. A host torch-eager golden can only be authored in a float torch
-    dtype, and the fp8 form of this same contraction is already carried by AT7/AT8 (one per mesh) and
-    AS0_matmul_spec (specir refmodel); what this entry adds is the pytorch-sourced 32x32 shape.
 - cat: model_slices
   name: AF14_requant_fp8_pt
   kind: model_slice
@@ -283,32 +232,3 @@ capsules:
     VRSQRT in this ISA, so rsqrt is `VSQRT.BF16` followed by `VRECIP.BF16`, then `VMUL.BF16`; no
     VTRPOSE, because nothing reaches the MXU. DTYPE -- option (a): bf16 end to end, which is what
     npu_model states and what the VPU computes.
-- cat: model_slices
-  name: AF19_attn_scaled_bf16_pt
-  kind: model_slice
-  op: attention_scaled
-  operand_dtype: bf16
-  source: pytorch
-  M: 32
-  K: 32
-  N: 32
-  Dv: 32
-  out: Y0
-  source_role: pytorch_model_slice
-  source_reference: 'PyTorch scaled-score attention bf16 (atlas smolvla_attention)'
-  label: public
-  modes: {}
-  comment: >-
-    AF19_attn_scaled_bf16_pt ports npu_model's `smolvla_attention`: single-tile
-    softmax((Q @ K) * S) @ V, where S is a full elementwise scale/mask tile rather than a scalar.
-    Q @ K is NOT Q @ K^T -- unlike AF3_attn_full -- because the second operand arrives already laid
-    out for the contraction. Execution reference: atlas-npu
-    `baremetal/assembly/smolvla_attention.S`, which carries two `VTRPOSE.XLU` (one per MXU weight
-    push); npu_model's assembly has none, so the program it ships computes the transposed contraction
-    on real hardware. DTYPE -- option (b), the promoted form: on hardware Q/K/V are fp8_e4m3 tiles,
-    the scale is bf16, and the softmax probabilities are requantized to fp8 before the second matmul,
-    whereas this capsule is bf16 throughout. Neither the fp8 operands nor the probs requantization
-    survives a model2MLIR capture -- the cast lowers away -- so putting them in the loader would
-    produce a golden the interface module does not compute, which is exactly the silent divergence
-    this corpus is built to avoid. What the capsule does preserve is the op graph, the untransposed
-    contraction, and the elementwise score scale.

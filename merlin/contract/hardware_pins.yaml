@@ -1697,8 +1697,24 @@ artifacts:
     target: gemmini
     role: firesim_bitstream
     # Read out of job 649's own HW_CFG_SUMMARY, quoted in the description above -- not inferred.
+    # `alveo_u250_firesim_gemmini_rocket_stock` is the hwdb name the STOCK board is submitted under
+    # (2026-10-01 on): its hwdb entry's bitstream_tar is another copy of these exact bytes (sha256
+    # a9a190b9, 44,668,362 bytes, measured 2026-10-05 at both locations), so it is this device, and a
+    # second entry for it would make one device two.
     hw_configs:
       - resnet50_merlin_warm_measured_full_gemmini_u250_pinned
+      - alveo_u250_firesim_gemmini_rocket_stock
+    # THE ABI HEADER: GENERATED, not asserted. `Controller.scala`'s elaboration-time
+    # `Files.write(headerFilePath, generateHeader())` ran as a side effect of building this config's
+    # host driver (2026-10-01, in a private chipyard tree) and produced these exact bytes; they are also
+    # the curated harness header every run on this device was built against (notes below), which
+    # independently corroborates them. Full-width accumulator readout (ACC_READ_FULL_WIDTH), unlike
+    # `gemmini_rocket_lean_u250_firesim_bitstream`.
+    abi_header_sha256: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+    # The host-side FireSim driver built for this config (no FPGA build): `sims/firesim/sim`'s `driver`
+    # target for TARGET_CONFIG=FireSimGemminiRocketConfig, PLATFORM_CONFIG=BaseXilinxAlveoU250Config, at
+    # firesim da2a1cbcebbb96e21c551ebef513fd95a9d73403 (see gaps). Recorded so a driver swap is visible.
+    driver_sha256: "55d39776ae63d66b0b67503c33f7272f86fd0633e3cdb8d63e032e6c987ea40b"
     notes: >-
       Digest measured 2026-09-14 with sha256sum over the 44,668,362-byte tar. The software ABI these runs
       were built against is the params header 3758ae96 (DIM 16, BANK_NUM 4, BANK_ROWS 4096, ACC_ROWS
@@ -1708,6 +1724,15 @@ artifacts:
       in-repo library receipt resnet50_library_baseline_warm_20260906 ran on
       alveo_u250_firesim_shuttle_gemmini_opu at batch 4 -- neither is a same-design reference for this
       bitstream.
+      THE STOCK HW-CONFIG (2026-10-01). The bitstream's own embedded metadata (the tar's
+      xilinx_alveo_u250/metadata) records firesim-commit da2a1cbcebbb96e21c551ebef513fd95a9d73403-dirty.
+      The driver above was built from a CLEAN checkout of that firesim commit inside a private chipyard
+      tree whose own HEAD is 009e85b05ca817a15fcd6c3fe4eedd86cc2a3617 (the `gemmini_rocket_chipyard`
+      commit). Smoke-tested 2026-10-01 with the vendor-fenced reference program before any candidate
+      ran under the stock hw-config: MEASURED, 30,214,616 whole-window cycles, correctness pass on all
+      71 groups, argmax 21 agreeing with the oracle's 21. The first attempt was refused as infra (the
+      private tree's `firesim-chmod-xdma-perm` sudo script predated the system-installed one); two
+      `deploy/sudo-scripts/*` files were copied from the shared checkout, permission glue only.
     gaps:
       - >-
         No `built_from`: the elaboration sources were not recovered from the tar's design/ directory, so
@@ -1715,6 +1740,11 @@ artifacts:
         byte-identical to a 2026-08-26 FireSimGemminiRocketConfig build in another user's tree (hwdb
         `alveo_u250_firesim_gemmini_rocket`); that copy was not re-hashed here. Recover the chipyard and
         gemmini shas from design/ before claiming RTL lineage.
+      - >-
+        The bitstream was built from a DIRTY firesim checkout whose uncommitted edits cannot be recovered;
+        the stock driver comes from the clean commit, the closest available approximation and not a
+        byte-for-byte guarantee. A smoke-test mismatch against the bitstream's own behaviour would be the
+        first symptom.
 
   gemmini_rocket_lean_u250_firesim_bitstream:
     description: >-
@@ -1725,7 +1755,7 @@ artifacts:
       whose array parameters are `GemminiConfigs.leanConfig` (Configs.scala:244) -- and that config sets
       `acc_read_full_width = false`, where the DEFAULT for the parameter is `true`
       (GemminiConfigs.scala:65). It is therefore a DIFFERENT DEVICE from the one the pinned
-      `gemmini_rocket_u250_firesim_bitstream` describes, which elaborates the stock
+      `firesim_gemmini_rocket_u250` describes, which elaborates the stock
       `FireSimGemminiRocketConfig`, and from `GemminiGsimSerialClkConfig`, which the capsule L3 oracle
       elaborates through `GemminiRocketConfig` and which likewise has the full-width readout.
     path: /scratch2/agustin/chipyard/sims/firesim/deploy/results-build/2025-10-02--04-55-45-alveo_u250_firesim_gemmini_rocket_singlecore_no_nic/cl_xilinx_alveo_u250-firesim-FireSim-FireSimLeanGemminiRocketConfig-BaseXilinxAlveoU250Config/firesim.tar.gz

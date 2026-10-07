@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 
+import external_sources
 import pytest
 
 from merlin.targetgen.rocc import decode as RD
@@ -29,6 +30,7 @@ def _generated_ns() -> dict:
     return ns
 
 
+@external_sources.requires_ext("chipyard")
 def test_generated_module_reproduces_the_decoder_constants():
     ns = _generated_ns()
     isa = RD.isa_constants("gemmini")  # the decoder's derived reference for this target
@@ -44,6 +46,7 @@ def test_generated_module_reproduces_the_decoder_constants():
     assert ns["CONFIG_SUBTYPE"] == isa["CONFIG_SUBTYPE"]
 
 
+@external_sources.requires_ext("chipyard")
 def test_generator_emits_encoding_only_never_ops_or_dialect():
     ns = _generated_ns()
     # the guardrail: encoding symbols present, but NO dialect/op vocabulary
@@ -52,6 +55,7 @@ def test_generator_emits_encoding_only_never_ops_or_dialect():
         assert forbidden not in ns
 
 
+@external_sources.requires_ext("chipyard")
 def test_generated_cpp_header_carries_the_same_single_source_constants():
     from merlin.targetgen.rtl.gen_isa_module import generate_header
 
@@ -66,6 +70,7 @@ def test_generated_cpp_header_carries_the_same_single_source_constants():
     assert "constexpr int K_MVIN = 2;" in h and "constexpr int K_MVOUT = 3;" in h
 
 
+@external_sources.requires_ext("chipyard")
 def test_without_encoding_the_module_still_carries_the_rtl_encoder():
     # facts-only generation (no manifest) still yields the RTL-derived funct table + legal set, just
     # without the manifest ABI bits — honest degradation, not a crash.

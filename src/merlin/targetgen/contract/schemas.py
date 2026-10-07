@@ -23,14 +23,9 @@ def contract_dir(override: str | Path | None = None) -> Path:
     (or, in an installed wheel with no checkout, the bundled ``_data/contract``)."""
     if override:
         return Path(override)
-    import os
+    from merlin.common.paths import contract_dir as _selected
 
-    env = os.environ.get("MERLIN_CONTRACT_DIR")
-    if env:
-        return Path(env)
-    from merlin.common.paths import data_path
-
-    return data_path("contract")
+    return _selected()
 
 
 def load_schema(name: str, *, contract: str | Path | None = None) -> dict[str, Any]:

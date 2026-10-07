@@ -17,6 +17,29 @@ from .search import SearchLimits
 from .snapshot import NativeSnapshot, NativeTargetProfile
 
 
+class NativeCompilationError(RuntimeError):
+    """A target binding's diagnosed native search failure, without fallback."""
+
+    _STATUSES = {
+        "unsupported_semantics",
+        "unqualified_target",
+        "infeasible_candidate",
+        "search_timeout",
+        "resource_limit",
+        "tool_unavailable",
+        "numerical_mismatch",
+        "execution_failure",
+        "compile_error",
+    }
+
+    def __init__(self, status: str, reason: str) -> None:
+        if status not in self._STATUSES or not reason:
+            raise ValueError("native compilation failure needs a known status and reason")
+        self.status = status
+        self.reason = reason
+        super().__init__(f"{status}: {reason}")
+
+
 class NativeTargetBinding(Protocol):
     @staticmethod
     def profile() -> NativeTargetProfile: ...
@@ -43,17 +66,72 @@ def verify_native_publication(
     target_identity: str,
 ) -> None:
     """Check the immutable identity of files before publishing a target result."""
-    binary = staged / "program.bin"
     persisted_path = staged / "manifest.json"
-    if not binary.is_file() or not persisted_path.is_file():
-        raise ValueError("selected target did not emit a native binary and manifest")
+    if not persisted_path.is_file():
+        raise ValueError("selected target did not emit a native manifest")
     persisted = json.loads(persisted_path.read_text())
-    if persisted != json.loads(json.dumps(manifest)) or manifest.get("engine") != engine or (
-        manifest.get("request_digest") != request_digest
-        or manifest.get("target_identity") != target_identity
+    if (
+        persisted != json.loads(json.dumps(manifest))
+        or manifest.get("engine") != engine
+        or (manifest.get("request_digest") != request_digest or manifest.get("target_identity") != target_identity)
+    ):
+        raise ValueError("native emitted artifact identity differs from checked request or target")
+    if manifest.get("artifact_kind") == "program_set":
+        if (staged / "program.bin").exists() or (staged / "execution_plan.json").exists():
+            raise ValueError("program set must not masquerade as one native binary")
+        rows = manifest.get("segments")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("native program set has no segment identities")
+        seen: set[str] = set()
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict) or row.get("index") != index:
+                raise ValueError("native program set has invalid segment order")
+            relative = row.get("path")
+            if (
+                not isinstance(relative, str)
+                or not relative.startswith("segments/")
+                or relative != f"segments/{Path(relative).name}"
+                or Path(relative).is_absolute()
+                or ".." in Path(relative).parts
+                or relative in seen
+            ):
+                raise ValueError("native program set has an unsafe or repeated segment path")
+            seen.add(relative)
+            segment = staged / relative
+            if not segment.is_dir() or segment.is_symlink() or not segment.resolve().is_relative_to(staged.resolve()):
+                raise ValueError("native program set segment is missing or escapes its package")
+            segment_manifest = segment / "manifest.json"
+            if (
+                not segment_manifest.is_file()
+                or row.get("manifest_sha256") != hashlib.sha256(segment_manifest.read_bytes()).hexdigest()
+            ):
+                raise ValueError("native program set segment manifest changed")
+            if not isinstance(row.get("request_digest"), str) or not row["request_digest"]:
+                raise ValueError("native program set segment has no request identity")
+            detail = json.loads(segment_manifest.read_text())
+            if detail.get("artifact_kind") == "program_set" or row.get("binary_sha256") != detail.get("binary_sha256"):
+                raise ValueError("native program set segment binary identity changed")
+            verify_native_publication(
+                segment,
+                detail,
+                engine=engine,
+                request_digest=row["request_digest"],
+                target_identity=target_identity,
+            )
+        if not (staged / "segments").is_dir() or (staged / "segments").is_symlink():
+            raise ValueError("native program set segment root is missing or linked")
+        if {item.name for item in (staged / "segments").iterdir()} != {Path(relative).name for relative in seen}:
+            raise ValueError("native program set has an unaccounted segment")
+        return
+    if manifest.get("artifact_kind") not in {None, "program"}:
+        raise ValueError("unknown native publication kind")
+    binary = staged / "program.bin"
+    if (
+        not binary.is_file()
+        or binary.stat().st_size == 0
         or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
     ):
-        raise ValueError("native emitted artifact identity differs from checked request, target, or binary")
+        raise ValueError("native emitted binary differs from checked manifest")
     plan = staged / "execution_plan.json"
     expected_plan_digest = manifest.get("execution_plan_sha256")
     if plan.exists() != (expected_plan_digest is not None):

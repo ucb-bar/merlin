@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import glob
 
+import external_sources
 import pytest
 import yaml
 from merlin_experiments.phase0.declarations import all_declarations, for_target
@@ -54,6 +55,7 @@ def _profile_with_positive_default() -> str | None:
     return None
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_host_only_capsule_does_not_inherit_the_corpus_wide_demand():
     stem = _profile_with_positive_default()
     if not stem:
@@ -65,6 +67,7 @@ def test_a_host_only_capsule_does_not_inherit_the_corpus_wide_demand():
     assert host["must_accelerate"] is False, "a capsule forbidding the mesh must not be handed a demand to reach it"
 
 
+@external_sources.requires_rtl("gemmini")
 def test_an_authored_demand_cannot_override_the_negative_lane_either():
     """The contradiction is the same whichever half asserted it, so it is reported, not honoured."""
     stem = _profile_with_positive_default()
@@ -84,6 +87,7 @@ def test_an_authored_demand_cannot_override_the_negative_lane_either():
         )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_whole_model_capsule_still_gets_its_own_exemption():
     """The pre-existing structural exemption must not have been displaced by the new one."""
     stem = _profile_with_positive_default()

@@ -9,11 +9,12 @@ CONFIG subtype the target's derived facts don't permit.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.targetgen.rocc import asm as A
 from merlin.targetgen.rocc import decode as RD
 
-pytestmark = pytest.mark.target("gemmini")
+pytestmark = [pytest.mark.target("gemmini"), selected_driver.requires_support("gemmini")]
 
 _MATMUL = [
     ("CONFIG_EX", 0x0, 0),

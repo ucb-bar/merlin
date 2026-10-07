@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 
+import external_sources
 import pytest
 
 from merlin.targetgen.rtl import introspect
@@ -223,6 +224,7 @@ def test_target_declares_its_own_elaboration(target):
     DIFFERENT external checkout from the default — which is precisely the fact a table in shared code
     gets wrong and a per-target declaration cannot.
     """
+    external_sources.require_rtl(target)
     src = introspect.declared_rtl_source(target)
     assert src.target == target and src.config and src.generator
     assert src.origin.is_file()

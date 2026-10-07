@@ -271,6 +271,51 @@ def _datapaths_from_facts(body: dict[str, Any]) -> tuple[str | None, list[dict[s
     return in_dtype, accumulate
 
 
+def _accumulator_only_formats(body: dict[str, Any]) -> dict[str, str]:
+    """``format -> evidence`` for formats the datapath facts ground ONLY as the array's accumulator.
+
+    The compute cell's facts name what it consumes (``input``) and what it accumulates in
+    (``accumulator``). A format named only in the second role is not an operand format of that unit, and
+    a declaration that lists it among the unit's dtypes would admit operands of that format to the
+    unit's contraction -- the accumulator type counted as an operand type.
+    """
+    dps = [d for d in (body.get("datapaths") or []) if isinstance(d, dict) and d.get("dtype")]
+    inputs = {_fmt_name(str(d["dtype"])) for d in dps if d.get("name") == "input"}
+    out: dict[str, str] = {}
+    for d in dps:
+        if d.get("name") == "accumulator":
+            fmt = _fmt_name(str(d["dtype"]))
+            if inputs and fmt not in inputs:
+                out[fmt] = str(d.get("evidence") or d.get("source") or "datapath facts: accumulator")
+    return out
+
+
+def _drop_accumulator_only(unit: dict, declared: list[str], body: dict[str, Any]) -> list[str]:
+    """``declared`` without the formats the facts ground only as this unit's accumulator.
+
+    Recorded on the unit (``dtype_corrections``) and applied to the unit's declared semantic
+    capabilities too, so the correction is visible rather than a silent narrowing.
+    """
+    acc_only = _accumulator_only_formats(body)
+    dropped = [d for d in declared if _fmt_name(d) in acc_only]
+    if not dropped:
+        return declared
+    unit["dtype_corrections"] = [
+        {
+            "dtype": d,
+            "action": "removed_from_operand_dtypes",
+            "reason": "the RTL datapath facts name this format only as the unit's accumulator, not as an "
+            "input it consumes",
+            "evidence": acc_only[_fmt_name(d)],
+        }
+        for d in dropped
+    ]
+    for cap in unit.get("semantic_capabilities") or []:
+        if isinstance(cap, dict) and cap.get("dtypes"):
+            cap["dtypes"] = [d for d in cap["dtypes"] if d not in dropped]
+    return [d for d in declared if d not in dropped]
+
+
 def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
     """The observed RoCC funct field, never a standalone instruction encoding.
 
@@ -450,7 +495,8 @@ def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict
                 fams.append(fam)
         if not fams:
             continue  # evidenced an engine but nothing says what it computes
-        dtypes = _unit_dtypes_for_synthesis(manifest)
+        lane = _lane_formats_for_kind(kind, facts)
+        dtypes = lane[0] if lane else _unit_dtypes_for_synthesis(manifest)
         ops = sorted({_SYNTH_OP_FOR[f] for f in fams if f in _SYNTH_OP_FOR})
         if not ops:
             continue  # a family with no op token binds nothing; claim nothing
@@ -464,6 +510,8 @@ def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict
             "semantic_capabilities": [{"family": f, "dtypes": list(dtypes)} for f in fams],
             "derived_from": f"{ev.source}: {ev.evidence}",
         }
+        if lane:
+            unit["dtypes_derived_from"] = lane[1]
         out.append(unit)
     return out
 
@@ -475,6 +523,28 @@ def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict
 #: evidence. A family absent here synthesizes no unit rather than defaulting to a plausible op --
 #: ``movement`` in particular evidences no engine and licenses no binding.
 _SYNTH_OP_FOR = {"elementwise_map": "elementwise", "contraction": "matmul"}
+
+
+def _lane_formats_for_kind(kind: str, facts: dict) -> tuple[tuple[str, ...], str] | None:
+    """``(formats, evidence)`` the RTL facts name for a synthesized unit of ``kind``, or ``None``.
+
+    A kind whose compute element is a LANE replication (:mod:`merlin.targetgen.families`) is the engine
+    the facts' ``lane_datapaths`` describe: a unit beside the array whose arithmetic is replicated once
+    per lane, with the element format that arithmetic names. Taken only when exactly one such unit
+    resolved a format -- two lane engines naming different formats leave this engine's format open,
+    and the caller keeps its stated fallback rather than picking one.
+    """
+    try:
+        if _families.family_profile(kind).compute_element != "lane_replication":
+            return None
+    except Exception:  # noqa: BLE001 - an unknown kind has no compute-element rule
+        return None
+    lanes = [r for r in (_facts_body(facts).get("lane_datapaths") or []) if isinstance(r, dict) and r.get("dtype")]
+    formats = tuple(dict.fromkeys(_fmt_name(str(r["dtype"])) for r in lanes))
+    if len(formats) != 1:
+        return None
+    rec = lanes[0]
+    return formats, f"rtl_facts.lane_datapaths[{rec.get('unit_module')}] ({rec.get('source')}): {rec.get('evidence')}"
 
 
 def _unit_dtypes_for_synthesis(manifest: dict) -> tuple[str, ...]:
@@ -568,6 +638,8 @@ def derive_manifest(
         # AUGMENT (never drop) any human-reviewed formats the residual declared — a multi-format unit's
         # reviewed matrix can be richer than a single grounded datapath.
         _declared = list(dict.fromkeys([*(_unit.get("dtypes") or []), *_src_known]))
+        if _i == 0:
+            _declared = _drop_accumulator_only(_unit, _declared, body)
         if _declared:
             _unit["dtypes"] = _declared
         if _src_unnamed:
@@ -588,7 +660,8 @@ def derive_manifest(
         pass  # reviewed target-owned interface declaration, not inferred from width
     elif _descriptor_get(descriptor, "facts_source") in {"rtl", "simt"} or any(
         itf.get("name") in {"funct_decode_table", "self_hosted_isa"}
-        for itf in (body.get("interfaces") or []) if isinstance(itf, dict)
+        for itf in (body.get("interfaces") or [])
+        if isinstance(itf, dict)
     ):
         manifest["endpoint_kind"] = "unresolved"
         manifest["endpoint_resolution"] = {

@@ -16,6 +16,10 @@ was once read wrongly:
   default.  :func:`verify_round_model` refuses a round whose own transcript reports another model.
 * **An infra streak stops the run** (:func:`circuit_breaker_check`) instead of burning rounds against a
   broken harness, and says so in a file beside the stage.
+* **An operator stops a run at a session boundary** (:func:`request_stop`): a request file in the run
+  directory, read at the top of every session before anything of it starts.  Signalling the launcher
+  instead interrupts a round mid-flight, and a frozen or killed round is recorded as a failure, not as
+  a stop (on the old line a SIGSTOP that outlasted its round timeout ended a run outright).
 
 :func:`run_sessions` composes these around a declared ``run_round`` callable (the authoring driver),
 so the session loop's stopping and accounting rules are one tested owner whatever drives the rounds.
@@ -23,6 +27,7 @@ so the session loop's stopping and accounting rules are one tested owner whateve
 
 from __future__ import annotations
 
+import getpass
 import json
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -47,6 +52,12 @@ CRASH_LOOP = (5, 60.0)
 #: start the turn at all.  Matched case-insensitively against the driver's own ``errors`` list, never
 #: against transcript content the agent could have produced.
 ACCOUNT_EXHAUSTION_MARKERS = ("hit your weekly limit", "hit your usage limit", "hit your rate limit")
+
+#: An operator's request that a run stop at its NEXT session boundary, in the run directory.
+OPERATOR_STOP_FILE = "stop_requested.json"
+OPERATOR_STOP_SCHEMA = "merlin.phase2.whole_model_measured.stop_request.v1"
+#: The stop kind an operator's request records (never evidence: the run did not converge).
+OPERATOR_STOP = "operator"
 
 
 def _write(path: Path, document: Mapping[str, Any]) -> None:
@@ -229,6 +240,61 @@ def record_session(
     }
 
 
+# --------------------------------------------------------------- the operator's stop request
+def request_stop(
+    run_dir: str | Path, *, why: str, operator: str | None = None, now: float | None = None
+) -> dict[str, Any]:
+    """Ask the run in ``run_dir`` to stop at its next session boundary; return the request on disk.
+
+    The FIRST request stands: a repeated one is returned unchanged, so the reason a run stopped is the
+    reason it was first asked to.  ``why`` is required."""
+    if not str(why or "").strip():
+        raise ValueError("a stop request states why")
+    run_dir = Path(run_dir)
+    if not run_dir.is_dir():
+        raise ValueError(f"no run directory at {run_dir}")
+    path = run_dir / OPERATOR_STOP_FILE
+    if path.is_file() and not path.is_symlink():
+        existing = _load_request(path)
+        return {**existing, "already_requested": True}
+    now = time.time() if now is None else now
+    document = {
+        "schema": OPERATOR_STOP_SCHEMA,
+        "requested_at": _stamp(now),
+        "epoch": now,
+        "operator": operator or getpass.getuser(),
+        "why": str(why).strip(),
+    }
+    _write(path, document)
+    return document
+
+
+def _load_request(path: Path) -> dict[str, Any]:
+    try:
+        request = json.loads(path.read_text(encoding="utf-8") or "{}")
+    except (OSError, ValueError):
+        return {"why": "unreadable request file"}
+    return request if isinstance(request, dict) else {"why": "unreadable request file", "value": request}
+
+
+def operator_stop(request: str | Path | None) -> dict[str, Any] | None:
+    """Stop evidence for the operator's request file ``request``, or None when no request was made.
+
+    An unreadable request still stops the run: someone wrote it to stop the run."""
+    if request is None:
+        return None
+    path = Path(request)
+    if not (path.is_file() or path.is_symlink()):
+        return None
+    document = _load_request(path) if not path.is_symlink() else {"why": "the request file is a link"}
+    return {
+        "kind": OPERATOR_STOP,
+        "reason": f"an operator asked the run to stop at its next session boundary: {document.get('why')}",
+        "request": document,
+        "request_path": str(path),
+    }
+
+
 # --------------------------------------------------------------- what a round actually ran
 def account_exhausted(summaries: Sequence[Path]) -> str | None:
     """The driver's own account-exhaustion message among ``summaries`` (its per-round summary files),
@@ -312,8 +378,10 @@ def run_sessions(
     model: str | None = None,
     clock: Callable[[], float] = time.time,
     crash_loop: tuple[int, float] = CRASH_LOOP,
+    stop_request: Path | None = None,
+    first_session: int = 1,
 ) -> dict[str, Any]:
-    """Run authoring sessions until evidence or budget stops them, and record why.
+    """Run authoring sessions until evidence, budget or an operator stops them, and record why.
 
     A round that ends WITHOUT a clean authoring audit -- the agent timed out, was killed, or the
     driver raised -- is recorded and the next session starts: one bad round is never the run's end
@@ -321,15 +389,22 @@ def run_sessions(
     seconds)`` consecutive failed rounds, each shorter than ``seconds``, which no next session fixes.
 
     ``run_round(session=, stage_root=)`` drives one authoring session and returns ``{"status",
-    "transcript"?, "summaries"?}``.  Before each session: the stagnation mark, the circuit breaker, the
-    plateau record and the bar.  After it: an exhausted account abandons the session it recorded and
-    stops; a transcript that ran another model is refused and stops."""
+    "transcript"?, "summaries"?}``.  Before each session: the operator's ``stop_request`` file (read
+    FIRST, so a stop starts nothing of the session -- not even its plateau row), the stagnation mark,
+    the circuit breaker, the plateau record and the bar.  After it: an exhausted account abandons the
+    session it recorded and stops; a transcript that ran another model is refused and stops.
+
+    ``first_session`` > 1 continues a run a previous launcher of the SAME run directory started (see
+    :func:`.rounds.next_session`): ``max_sessions`` still bounds the run's sessions, not this launch's."""
     stage_root = Path(stage_root)
     started = clock()
     rows: list[dict[str, Any]] = []
     stop: dict[str, Any] | None = None
     consecutive_brief_failures = 0
-    for session in range(1, int(max_sessions) + 1):
+    for session in range(max(1, int(first_session)), int(max_sessions) + 1):
+        stop = operator_stop(stop_request)
+        if stop is not None:
+            break  # A CLEAN STOP AT A SESSION BOUNDARY: the last session finished and was recorded.
         if clock() - started >= float(total_seconds):
             stop = {"reason": "the declared authoring budget is spent", "kind": "budget"}
             break
@@ -400,14 +475,18 @@ def run_sessions(
 __all__ = [
     "ACCOUNT_EXHAUSTION_MARKERS",
     "INFRA_ACCOUNT_EXHAUSTED",
+    "OPERATOR_STOP",
+    "OPERATOR_STOP_FILE",
     "PLATEAU_FILE",
     "abandon_session",
     "account_exhausted",
     "backfill_plateau",
     "bar_reached",
     "circuit_breaker_check",
+    "operator_stop",
     "plateau_anchor",
     "record_session",
+    "request_stop",
     "reset_plateau",
     "run_sessions",
     "verify_round_model",

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from merlin.common.paths import merlin_dir
+from pathlib import Path
+
 from merlin.targetgen import artifact_scale as AS
+from merlin.targetgen import capsule_common
 
 
 def test_an_ordinary_artifact_is_not_refused_and_a_payload_scale_one_says_why(monkeypatch) -> None:
@@ -25,9 +27,11 @@ def test_the_limit_is_declared_once_and_a_bad_override_falls_back(monkeypatch) -
 def test_the_capsule_pipeline_checks_the_artifact_before_anything_reads_it_twice() -> None:
     # Held by source: the pipeline's failure paths are exercised by whole-suite runs, and an
     # unwired guard looks exactly like a corpus of ordinary programs.
-    text = (merlin_dir() / "python/merlin/targetgen/capsule_common.py").read_text(encoding="utf-8")
+    # lower_interface owns the fourth entrypoint now: it writes the artifact for inspection, refuses an
+    # oversized one, and only then memoizes it for the next capsule or returns it to a reader.
+    text = Path(capsule_common.__file__).read_text(encoding="utf-8")
     write, guard = (
-        text.index("fourth_output_name).write_text(p.stdout"),
-        text.index("_artifact_scale.refusal(p.stdout)"),
+        text.index("(generated / artifact_name).write_text(_artifact"),
+        text.index("_artifact_scale.refusal(_artifact)"),
     )
-    assert write < guard < text.index("return pkg, cb, p.stdout")
+    assert write < guard < text.index("memo[memo_key] = ") < text.index("return cb, _artifact")

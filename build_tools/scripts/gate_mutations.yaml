@@ -1,0 +1,117 @@
+# Recorded mutations: for each gate, the change to the world that makes it FAIL.
+#
+# Read `build_tools/scripts/check_mutation_proofs.py` first. The short version:
+#
+#   proof:    a RUNNABLE pytest node -- `<file under merlin/tests/>::<test function>` -- that drives
+#             the gate into its failing direction. It must name its gate structurally, so it cannot
+#             be a reimplementation of the gate's logic that passes while the gate itself is broken.
+#   mutation: what that proof changes.
+#   removes:  WHICH SATISFIERS THAT CHANGE DESTROYS. This is the field people get wrong, and the one
+#             that has already cost an evening: a defective capability line was re-introduced while
+#             the corrected version's RTL citations were left standing in the surrounding comment
+#             block, the gate found the citations, it passed, and the near-conclusion was that the
+#             gate was broken. A mutation that leaves an alternative satisfier in place proves
+#             nothing. Nothing automated can check this for you; writing the sentence is the
+#             mechanism. If you cannot name what the mutation removes, the mutation is not faithful.
+#   execution: optional, `subprocess` -- declares that the proof drives the gate as a child process,
+#             so `--prove` cannot trace the coupling. Printed on every run; use it only when true.
+#
+# A gate that is not here must be listed in `mutation_proof_ratchet.txt`, which may only shrink.
+
+proofs:
+  check_mutation_proofs.py:
+    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_gate_with_no_recorded_mutation_is_reported
+    mutation: >-
+      Audit a two-gate roster in which the second gate appears in neither the registry nor the
+      ratchet, and assert that exactly that gate is reported.
+    removes: >-
+      Both of the two things that let a gate pass this audit: it has no registry entry and no ratchet
+      line. Removing only one leaves the other satisfying the check, which is why the companion test
+      asserts that a roster with nothing wrong produces no failures at all.
+
+  check_silent_defaults.py:
+    proof: merlin/tests/infra/test_silent_defaults_gate_can_fail.py::test_each_shape_reaches_the_verdict
+    mutation: >-
+      Scan six synthetic sources, one per flagged shape -- a numeric, a verdict-string and a boolean
+      `.get` fallback, an `except: pass`, a discarded `subprocess.run`, and a shelled pipeline.
+    removes: >-
+      For each source, the only satisfier there is: the shape is either present in the ast or it is
+      not, and the source contains nothing else that could produce the same finding. The paired
+      CLEAN cases remove the opposite risk, that a scanner reporting everything would pass too.
+
+  check_wiring.py:
+    proof: merlin/tests/infra/test_check_wiring.py::test_new_debt_fails_and_a_stale_entry_fails
+    mutation: >-
+      Build a tree holding one module that nothing in production imports, beside one that a build
+      script does import, and require the gate to exit non-zero naming the orphan as unwired.
+    removes: >-
+      Every caller the orphan could have: no production module, script, entry point or experiment
+      imports it, and it is absent from the ledger. The same test then re-adds a ledger line for the
+      WIRED module to prove a stale entry also fails, and only the honest ledger passes.
+
+  check_conformance_coverage.py:
+    proof: merlin/tests/infra/test_coverage_gates_can_fail.py::test_an_uncovered_gap_on_each_axis_reaches_the_verdict
+    mutation: >-
+      Put one uncovered cell on each measured axis in turn, leaving every other axis clean, and
+      require the gate's accumulator to produce debt for it.
+    removes: >-
+      The two ways a gap can be forgiven: the axis is not ratcheted, and no other axis carries a gap
+      that could be the one producing the debt. Parametrised over the gate's own AXES table rather
+      than a copy, so an axis added to the gate cannot escape the assertion.
+
+  check_claim_set_disjointness.py:
+    proof: merlin/tests/infra/test_coverage_gates_can_fail.py::test_every_status_the_audit_emits_has_a_verdict
+    mutation: >-
+      Classify every status the audit can put on a row, including claim_model_uncaptured, which used
+      to map to no verdict bucket at all and so could not change the exit code.
+    removes: >-
+      The fallback that made the old spelling pass: an unclassified status now resolves to
+      `unmeasured`, never to `clean`, so a status nobody classified cannot arrive as silence.
+
+  check_rtl_facts_schema.py:
+    proof: merlin/tests/infra/test_rtl_facts_schema_gate_can_fail.py::test_an_artifact_whose_body_contradicts_its_family_is_caught
+    mutation: >-
+      Write a facts artifact whose declared family contradicts its own body and require the gate to
+      report it.
+    removes: >-
+      Every satisfier for that artifact: it is not a receipt (which the gate skips), its family IS
+      decidable, and the schema for that family exists -- so the only remaining reason to pass would
+      be a gate that does not compare.
+
+  check_target_package_duplication.py:
+    proof: merlin/tests/infra/test_target_package_duplication_gate_can_fail.py::test_the_same_function_in_two_target_packages_is_flagged
+    mutation: >-
+      Put the same function body in two target packages and require the gate to report the shape.
+    removes: >-
+      All three ways a duplicate is forgiven: the shape is not in the ratchet, the two copies are in
+      DIFFERENT packages, and the function is long enough not to be dismissed as trivial.
+
+  check_schedule_ir_coverage.py:
+    proof: merlin/tests/infra/test_schedule_ir_coverage_gate_can_fail.py::test_a_primitive_with_no_row_is_flagged
+    mutation: >-
+      Present a live primitive that the declared axis register does not mention, and require the gate
+      to report it.
+    removes: >-
+      The only satisfier: the register has no row for that primitive under any spelling, so nothing
+      else in the register can answer for it.
+
+  check_inert_capabilities.py:
+    proof: merlin/tests/infra/test_inert_capabilities.py::test_runtime_inert_flags_a_pass_that_saw_candidates_and_transformed_none
+    mutation: >-
+      Hand the checker a pass report showing candidates seen and zero transformed, the shape of a
+      capability that is declared and never fires.
+    removes: >-
+      Both ways that report could otherwise pass: the pass is not exempt, and the report is present
+      and readable -- the companion test pins that a MISSING report is refused rather than called
+      clean, which is the absence-reads-as-pass half of the same defect.
+
+  check_capability_backing.py:
+    proof: merlin/tests/infra/test_capability_backing.py::test_the_gate_fails_on_a_reintroduced_unbacked_narrowing
+    mutation: >-
+      Point the gate at one synthetic target whose only contract document declares an elementwise map
+      reachable only behind a contraction, justified by prose alone, and run its main with the ledger
+      ignored.
+    removes: >-
+      Every satisfier the claim could have: no ledger line forgives it, the target declares no hardware
+      pin whose read set could hold a cited file, and the comment names no in-repo path, test or
+      module. The same test then adds a module citation to show the gate passes once one resolves.

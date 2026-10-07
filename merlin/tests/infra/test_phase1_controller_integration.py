@@ -80,7 +80,13 @@ def _project(root: Path) -> dict[str, str]:
             "bundle_id": "fixture",
             "allowed": [{"path": str(root / "corpus/isa")}],
             "denied": [],
-            "host_inputs": [{"path": str(root / "corpus/hidden")}, {"path": str(root / "numeric.yaml")}],
+            # Mirrors generate_bundles: the descriptor is always the first host-only input, so
+            # whole-model grading resolves it through the same frozen snapshot as the numeric profile.
+            "host_inputs": [
+                {"path": str(root / "target_experiment.yaml")},
+                {"path": str(root / "corpus/hidden")},
+                {"path": str(root / "numeric.yaml")},
+            ],
         },
     )
     (bundle / "tools.txt").write_text("")

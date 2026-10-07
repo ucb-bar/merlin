@@ -493,9 +493,9 @@ def _abi_opcodes() -> Mapping[str, Any]:
     and per opcode, 456 of them for one ResNet-50, which was 12 of the 21 seconds the statement took.
     Keyed on the file's bytes rather than cached forever, so an edited contract is read again.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import contract_dir
 
-    text = (merlin_dir() / "contract/command_buffer_abi.yaml").read_text(encoding="utf-8")
+    text = (contract_dir() / "command_buffer_abi.yaml").read_text(encoding="utf-8")
     return _parse_abi_opcodes(text)
 
 

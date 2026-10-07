@@ -122,8 +122,9 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`. Also `delivery/` (bundles shipped
   outside the repo), `applications/<target>/`, `audits/` (readiness studies), `protocols/` (frozen
   experiment protocols), `verification/<target>/`, `target-evolution/<target>/`, `source-data/<model>/`,
-  `rvv-development-corpus/<target>/`, `agentic-report/`, `handoff/`, `targetgen-evals/<target>/`, `perf-studies/` (ledgers, calibration,
-  settling, counters, ablations beside the campaign), `archive/` (still cited, no longer active), and
+  `rvv-development-corpus/<target>/`, `agentic-report/`, `handoff/`, `targetgen-evals/<target>/`,
+  `experiments/<target>/dashboard/` (tracking pages drawn from a run's own records), `perf-studies/` (ledgers,
+  calibration, settling, counters, ablations beside the campaign), `archive/` (still cited, no longer active), and
   `probes/` (one-off diagnostics — a standing concern and an afternoon's debugging should not be
   neighbours at the same level).
 

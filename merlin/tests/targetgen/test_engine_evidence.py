@@ -13,6 +13,7 @@ tells a correct contract to delete a real engine.
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 
 from merlin.kernels import engines as E
@@ -240,10 +241,12 @@ class TestAgainstTheRealTargets:
         d = cd.derive_engines(target, contract, F.load_facts(target) or {})
         return d, cd.reconcile_engines(E.facet_families_for(target), d)
 
+    @external_sources.requires_ext("chipyard")
     def test_a_target_whose_declaration_matches_its_rtl_reports_nothing(self):
         _, drift = self._report("gemmini")
         assert drift == [], f"gemmini's 16x16 mesh matches its declaration; got {drift}"
 
+    @external_sources.requires_rtl("atlas")
     def test_atlas_has_a_lane_engine_its_author_never_declared(self):
         """The finding the whole exercise is for.
 

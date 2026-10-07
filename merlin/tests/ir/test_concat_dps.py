@@ -119,7 +119,9 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
         assert "_CONCAT_DPS = len(sys.argv) > 8" in src, "a runner variant has its own gate"
     # ...and the caller passes that slot, so the gate is reachable at all.
     lowering = pipeline.__file__ and open(pipeline.__file__, encoding="utf-8").read()
-    assert "_concat_dps_gate" in lowering and "_fold_wt, _concat_dps_gate" in lowering
+    # Whitespace-insensitive: the formatter puts one argv element per line.
+    compact = "".join(lowering.split())
+    assert "_concat_dps_gate" in lowering and "_fold_wt,_concat_dps_gate" in compact
 
 
 def _rewrite(mlir_text: str, tmp_path) -> tuple[str, int, list[str]]:

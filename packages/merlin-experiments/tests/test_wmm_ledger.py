@@ -113,6 +113,25 @@ def test_the_champion_evidence_comes_from_the_store_and_is_refused_when_it_canno
     solo = L.champion_records(run.objective, a, roles=["loop_descriptor"], **provenance)
     missing = champions.missing_evidence(solo)
     assert "measurements.firesim.control.in_batch" in missing and "certification.gsim.verdict" in missing
+    scanned = {"verdict": "clean", "scope": "whole_elf", "prohibited": {"8": "LOOP_0"}}
+    _land(
+        run.store,
+        a,
+        1000,
+        device={"artifact": "board"},
+        build={"parameter_header_sha256": "h" * 64, "isa_census": {"per_group": {}}, "isa_prohibition": scanned},
+        batch={"batch": "b1", "size": 3, "control": {"ok": True, "ratio": 1.001}},
+    )
+    run.objective.certifier = SimpleNamespace(
+        result=lambda digest: {"timing_status": V.TIMING_MEASURED, "device": {"artifact": "emu"}}
+    )
+    complete = L.champion_records(run.objective, a, roles=["loop_descriptor"], **provenance)
+    assert champions.missing_evidence(complete) == []
+    assert complete["isa_prohibition"]["prohibited_instructions"] == {"8": "LOOP_0"}
+    unscanned = L.champion_records(run.objective, a, roles=[], **provenance)
+    assert "isa_prohibition.verdict" in champions.missing_evidence(unscanned)
+    # A build whose scan recorded no prohibited set (a store written before the gate kept it, or a
+    # rule that matched nothing) is not clean evidence, whatever its census says.
     _land(
         run.store,
         a,
@@ -121,10 +140,7 @@ def test_the_champion_evidence_comes_from_the_store_and_is_refused_when_it_canno
         build={"parameter_header_sha256": "h" * 64, "isa_census": {"per_group": {}}},
         batch={"batch": "b1", "size": 3, "control": {"ok": True, "ratio": 1.001}},
     )
-    run.objective.certifier = SimpleNamespace(
-        result=lambda digest: {"timing_status": V.TIMING_MEASURED, "device": {"artifact": "emu"}}
+    vacuous = L.champion_records(run.objective, a, roles=["loop_descriptor"], **provenance)
+    assert {"isa_prohibition.verdict", "isa_prohibition.prohibited_instructions"} <= set(
+        champions.missing_evidence(vacuous)
     )
-    complete = L.champion_records(run.objective, a, roles=["loop_descriptor"], **provenance)
-    assert champions.missing_evidence(complete) == []
-    unscanned = L.champion_records(run.objective, a, roles=[], **provenance)
-    assert "isa_prohibition.verdict" in champions.missing_evidence(unscanned)

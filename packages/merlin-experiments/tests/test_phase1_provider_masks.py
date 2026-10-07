@@ -15,6 +15,7 @@ from merlin_experiments.phase1.providers import execution as E
 
 from merlin.targetgen import target_experiment
 from merlin.targetgen.sandbox import bwrap as BW
+from merlin.targetgen.sandbox import host_surfaces as HS
 from merlin.targetgen.sandbox import toolchain
 
 
@@ -164,7 +165,7 @@ def _assert_masked(prepared, extra, exposed, *, command_extra=None):
     assert not BW.is_exposed(argv, exposed)
     assert not BW.is_exposed(argv, prepared.hidden / "secret.bin")
     assert BW.is_exposed(argv, prepared.repo / "inputs/public.txt")
-    assert BW.coverage_gap(argv, BW.host_input_surfaces(argv, prepared.ws, prepared.bundle, repo=prepared.repo)) == []
+    assert BW.coverage_gap(argv, HS.host_input_surfaces(argv, prepared.ws, prepared.bundle, repo=prepared.repo)) == []
     return argv
 
 

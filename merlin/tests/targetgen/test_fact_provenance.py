@@ -21,8 +21,11 @@ import json
 import sys
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
+
+pytestmark = pytest.mark.target("muon")
 
 GATE = repo_root() / "build_tools" / "scripts" / "check_fact_provenance.py"
 
@@ -155,8 +158,15 @@ def test_the_ratchet_is_scoped_per_source_so_one_debt_cannot_excuse_another(gate
 
 def test_every_ratchet_entry_is_a_finding_the_gate_actually_produces(gate):
     """A ratchet entry the scan can never emit is worse than no entry: it reads as accounted-for debt
-    while the gate is blind to it. Every entry must correspond to a live finding."""
-    live = {(f["path"], f["source"]) for f in gate.findings() if f["kind"] in ("violation", "ratcheted")}
+    while the gate is blind to it. Every entry must correspond to a live finding.
+
+    Entries are keyed by policy path, exactly as the gate matches them, so a module that moved to a
+    package source root is still the same debt and not a stale line."""
+    live = {
+        (gate._source_layout.policy_path(f["path"]), f["source"])
+        for f in gate.findings()
+        if f["kind"] in ("violation", "ratcheted")
+    }
     stale = set(gate.load_ratchet()) - live
     assert not stale, f"ratchet entries the gate no longer produces (delete them): {sorted(stale)}"
 
@@ -188,6 +198,7 @@ def introspect():
     return get_backend("muon").muon_introspect
 
 
+@selected_driver.requires_support("muon")
 def test_absent_elaboration_yields_unknown_not_a_default(introspect, monkeypatch):
     """The regression. Point every input at a path that cannot exist and confirm nothing is invented.
 
@@ -214,6 +225,7 @@ def test_absent_elaboration_yields_unknown_not_a_default(introspect, monkeypatch
     assert facts["facts"]["registers"]["arch_max"] is None
 
 
+@selected_driver.requires_support("muon")
 def test_the_perf_model_is_recorded_as_a_cross_check_never_as_the_source(introspect):
     """The cyclotron config may confirm a derived fact; it may not supply one."""
     facts = introspect.build_facts()

@@ -18,9 +18,15 @@ ISA. It is NOT a tensor-core result and NOT a certification of the package's han
 
 from __future__ import annotations
 
+import os
+
+import plugin_isolation
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
+
+pytestmark = pytest.mark.target("muon")
 
 PACKAGE = repo_root() / "out/artifacts/targets/radiance/hand_v0"
 
@@ -33,9 +39,13 @@ def backend():
     from merlin.runtime.backends import base
 
     # Scoped to this module: leaving MERLIN_TARGET_PATH set would change target discovery for every
-    # later test in the session, which is how one suite silently reconfigures another.
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("MERLIN_TARGET_PATH", str(PACKAGE))
+    # later test in the session, which is how one suite silently reconfigures another. Restoring the
+    # variable is not enough on its own: plugin ownership is process-immutable, so the loaded backend
+    # is unloaded with it, or every later registry query in the worker refuses the dropped selection.
+    # The package is PREPENDED, so a provider the session already selected stays selected.
+    selection = os.pathsep.join(filter(None, (str(PACKAGE), os.environ.get("MERLIN_TARGET_PATH"))))
+    with plugin_isolation.fresh_plugin_state(), pytest.MonkeyPatch.context() as patch:
+        patch.setenv("MERLIN_TARGET_PATH", selection)
         patch.setattr(base, "_oot_env_seen", None)  # re-run OOT discovery with the env now set
         names = [n for n in base.list_backends() if n.startswith("radiance")]
         if not names:
@@ -146,6 +156,7 @@ def test_the_accumulator_width_is_computed_from_the_operands(backend):
         backend.accumulator_dtype("i32", "i32", 4)
 
 
+@selected_driver.requires_support("muon")
 def test_every_command_partitions_work_the_same_way(backend):
     """The regression that matters: identical per-warp ownership is what makes no barrier safe.
 
@@ -168,6 +179,7 @@ def test_every_command_partitions_work_the_same_way(backend):
     )
 
 
+@selected_driver.requires_support("muon")
 def test_operands_are_volatile_so_the_kernel_cannot_be_folded_away(backend):
     """Constant inputs + constant bounds let a compiler store the answer and execute no arithmetic.
 
@@ -180,6 +192,7 @@ def test_operands_are_volatile_so_the_kernel_cannot_be_folded_away(backend):
         )
 
 
+@selected_driver.requires_support("muon")
 def test_the_simt_control_ops_are_derived_not_spelled(backend):
     """No mnemonic for the target's own control ops: they arrive as .insn forms from the runtime ABI."""
     source = backend.emit_kernel(_matmul_cb()).source
@@ -195,6 +208,7 @@ def test_a_command_buffer_with_no_commit_is_refused(backend):
         backend.emit_kernel(cb)
 
 
+@selected_driver.requires_support("muon")
 def test_the_spawn_count_is_capped_below_the_declared_warp_slots_and_says_so(backend):
     """The cap is a workaround for a measured scaffold defect, so it must stay visible.
 
@@ -213,6 +227,7 @@ def test_the_spawn_count_is_capped_below_the_declared_warp_slots_and_says_so(bac
     assert f"MU_NUM_WARPS {backend.ORACLE_SPAWN_WARPS}u" in emitted.source
 
 
+@selected_driver.requires_support("muon")
 def test_an_explicit_warp_count_overrides_the_cap(backend):
     """The cap is a default, not a ceiling — reproducing the defect must stay possible."""
     emitted = backend.emit_kernel(_matmul_cb(), num_warps=8)
@@ -220,6 +235,7 @@ def test_an_explicit_warp_count_overrides_the_cap(backend):
     assert emitted.warps_capped is False
 
 
+@selected_driver.requires_support("muon")
 def test_completion_is_asserted_before_any_output_is_graded(backend):
     """A budget-starved run must say so, not look like a wrong answer.
 

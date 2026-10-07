@@ -241,9 +241,9 @@ def load_ladder(path: str | Path | None = None) -> Ladder:
     """
     import yaml
 
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import contract_dir
 
-    p = Path(path) if path is not None else merlin_dir() / LADDER_NAME
+    p = Path(path) if path is not None else contract_dir() / Path(LADDER_NAME).relative_to("contract")
     if not p.is_file():
         raise LadderError(f"no measurement ladder at {p}; what each instrument is authoritative for is undeclared")
     memo_key: tuple[str, int, int] | None

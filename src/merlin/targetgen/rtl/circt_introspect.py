@@ -913,6 +913,32 @@ def _datapaths_from_cells(target: str, facts: dict) -> list[str]:
     return [f"datapaths({len(dps)} from cell geometry)"]
 
 
+def _lane_datapaths_from_units(target: str, facts: dict) -> list[str]:
+    """Fill ``facts['lane_datapaths']`` with the element format of each LANE engine beside the compute
+    array (a vector unit): the units that replicate their arithmetic once per lane, with the format that
+    per-lane arithmetic names. Mutates ``facts``; returns the provenance names sourced.
+
+    The array cell reading above says what the ARRAY consumes and accumulates in. A target can carry a
+    second engine with its own element format -- a bf16 vector unit beside an fp8 array -- and without
+    this reading the capability deriver could only guess that engine's formats from the array's, which
+    is how an accumulator format came to be claimed as an operand format. Refusals are recorded in
+    ``datapaths_undeterminable`` like the cell reader's.
+    """
+    from .datapaths import lane_datapaths
+
+    fir = _selected_firrtl(target, facts)
+    if not fir:
+        return []
+    _record_firrtl_reads(facts, fir)
+    lanes, notes = lane_datapaths(facts, fir)
+    if notes:
+        facts.setdefault("datapaths_undeterminable", []).extend(notes)
+    if not lanes:
+        return []
+    facts["lane_datapaths"] = lanes
+    return [f"lane_datapaths({sum(1 for r in lanes if r.get('dtype'))} named from lane replication)"]
+
+
 def _timing_from_discovery(target: str, facts: dict) -> list[str]:
     """Add RTL-DERIVED per-module pipeline depth (:mod:`.timing`). Mutates ``facts``; returns the
     provenance names sourced.
@@ -1158,6 +1184,7 @@ def _build_facts(
     # what it accumulates in on its own ports, and without this a target with no census datapath had its
     # operand/accumulate formats DECLARED by a contract rather than measured.
     sourced += _datapaths_from_cells(target, v1)
+    sourced += _lane_datapaths_from_units(target, v1)
     sourced += _timing_from_discovery(target, v1)
 
     # Decoder comparison field: preserve RTL-observed values over the weaker

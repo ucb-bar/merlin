@@ -17,9 +17,15 @@ Each round goes through the Phase 2 owners this mode shares with the others:
 
 A round that is not authored (a crash, a killed agent, an audit finding, a refused edit) is recorded
 with why, its bytes are not carried forward, and the next session starts from the previous candidate
-(:func:`.sessions.run_sessions`).  Every byte the agent asked to measure is ``pending`` in the store
-until its round ends, then ``authored`` or ``unauthored`` (:data:`.jobs.ATTRIBUTION_FILE`); only
-attributable bytes can become the best, be tagged ``best`` or be exported as a champion.
+(:func:`.sessions.run_sessions`).  A round whose DRIVER was killed (the launcher itself, by SIGKILL or
+the host) never writes its record, so each round keeps an OPEN marker naming what it requested while
+it runs; the next ``start`` closes any marker no live driver owns (:func:`recover_killed_rounds`) --
+its requests are attributed ``unauthored`` instead of staying ``pending`` forever -- and numbers its
+own rounds after it (:func:`next_session`), so a relaunch never collides with a used round workspace.
+
+Every byte the agent asked to measure is ``pending`` in the store until its round ends, then
+``authored`` or ``unauthored`` (:data:`.jobs.ATTRIBUTION_FILE`); only attributable bytes can become the
+best, be tagged ``best`` or be exported as a champion.
 
 The task tells the agent the goal, the rule and the tools -- never how to lower anything.
 """
@@ -45,10 +51,17 @@ from merlin_experiments.phase2.transcript_audit import audit_codex_transcript
 
 from . import fast as FAST
 from . import jobs as J
-from .identity import package_digest
+from .identity import now, package_digest, read_json, write_json_atomic
+from .sessions import ROUND_FAILED
 
 WORKFLOW_ID = "whole_model_measured_v1"
 ROUND_SCHEMA = "merlin.phase2.whole_model_measured.round.v1"
+OPEN_ROUND_SCHEMA = "merlin.phase2.whole_model_measured.open_round.v1"
+#: A round record's suffix, and the marker a round keeps beside it while it runs.
+ROUND_SUFFIX = ".round.json"
+OPEN_SUFFIX = ".open.json"
+#: The status of a round whose driver was killed before it wrote its own record.
+ROUND_KILLED = "round_killed"
 #: The argv sentinel of a host-owned action: the broker never executes it, the workflow answers it.
 HOST_OWNED = "__host_owned_whole_model_measured__"
 #: Edit authority modes a launch profile may name.
@@ -101,6 +114,7 @@ class MeasuredWorkflow(WorkflowPolicy):
         scratch: Path,
         edit_check: Callable[[Path], Mapping[str, Any]],
         round_index: int = 0,
+        open_record: Path | None = None,
     ):
         super().__init__(candidate=candidate, target_experiment=target_experiment, receipt_path=receipt_path)
         self.objective = objective
@@ -109,6 +123,15 @@ class MeasuredWorkflow(WorkflowPolicy):
         self.round_index = int(round_index)
         #: The digests this round asked the screen for, in order (the round record names them).
         self.requested: list[str] = []
+        #: The round's open marker: every request is on disk the moment it is made, so a driver killed
+        #: mid-round leaves behind what it asked for (:func:`recover_killed_rounds`).
+        self.open_record = Path(open_record) if open_record is not None else None
+
+    def _note_request(self, digest: str) -> None:
+        self.requested.append(digest)
+        if self.open_record is not None:
+            marker = read_json(self.open_record) or {}
+            write_json_atomic(self.open_record, {**marker, "requested": list(dict.fromkeys(self.requested))})
 
     def admission(self, name: str) -> ActionAdmission:
         # No per-action cap: the broker's call budget and the round's deadline bound every action.
@@ -138,7 +161,7 @@ class MeasuredWorkflow(WorkflowPolicy):
                 document = objective.measure(candidate, label="agent request", attribution=pending)
             else:
                 document = objective.correctness(candidate, attribution=pending)
-            self.requested.append(str(document.get("package_sha256")))
+            self._note_request(str(document.get("package_sha256")))
             return document
         if action in FAST.FAST_KINDS:
             return FAST.request(
@@ -355,6 +378,20 @@ class RoundDriver:
         (workspace / "TASK.md").write_text(prompt, encoding="utf-8")
         control_dir = stage_root / "control" / f"round_{index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
+        rounds_dir = stage_root / "rounds"
+        rounds_dir.mkdir(parents=True, exist_ok=True)
+        open_marker = rounds_dir / f"round_{index:02d}{OPEN_SUFFIX}"
+        write_json_atomic(
+            open_marker,
+            {
+                "schema": OPEN_ROUND_SCHEMA,
+                "round": index,
+                "run": self.run_dir.name,
+                "started_at": now(),
+                "pid": os.getpid(),
+                "requested": [],
+            },
+        )
         workflow = MeasuredWorkflow(
             candidate=candidate,
             target_experiment=self.target_experiment,
@@ -363,6 +400,7 @@ class RoundDriver:
             scratch=stage_root / "host_checks" / f"round_{index:02d}",
             edit_check=self.edit_check,
             round_index=index,
+            open_record=open_marker,
         )
         broker = PB.Broker(
             HostOnlyPolicy(),
@@ -376,6 +414,9 @@ class RoundDriver:
             max_tool_seconds=self.tool_seconds,
         )
         started = time.monotonic()
+        rc: int | None = None
+        transcript: Path | None = None
+        failure: str | None = None
         try:
             with broker.serving() as (host, port):
                 PB.stage_broker_shim(
@@ -395,6 +436,8 @@ class RoundDriver:
                     timeout_s=self.round_seconds,
                     stage_root=stage_root,
                 )
+        except Exception as exc:  # noqa: BLE001 -- a driver that dies is this round's failure, recorded
+            failure = f"the agent driver raised {type(exc).__name__}: {str(exc)[:500]}"
         finally:
             # The broker's credential leaves with the round; its receipts are sealed read-only.
             config = control_dir / ".perf_broker.json"
@@ -403,9 +446,14 @@ class RoundDriver:
                 config.unlink()
             if receipt_path.is_file() and not receipt_path.is_symlink():
                 receipt_path.chmod(0o444)
-        audit = audit_codex_transcript(
-            Path(transcript), self.target_experiment, candidate, ACTIONS, audit_token_set=self.audit_token_set
-        )
+        audit: Mapping[str, Any] = {"clean": None, "hits": [], "commands_seen": None}
+        if failure is None:
+            try:
+                audit = audit_codex_transcript(
+                    Path(transcript), self.target_experiment, candidate, ACTIONS, audit_token_set=self.audit_token_set
+                )
+            except Exception as exc:  # noqa: BLE001 -- an unauditable round is refused, never authored
+                failure = f"the round's transcript could not be audited: {type(exc).__name__}: {str(exc)[:500]}"
         receipts = join_receipts(receipt_path, audit)
         refusals = [] if receipts["joined"] else [str(receipts["reason"])]
         try:
@@ -413,7 +461,10 @@ class RoundDriver:
         except ValueError as exc:
             edits = {"status": "refused", "reason": str(exc)}
             refusals.append(f"edit authority: {exc}")
-        status = authored_round_status(agent_exit_code=int(rc), audit_clean=audit.get("clean"), refusals=refusals)
+        if failure is None:
+            status = authored_round_status(agent_exit_code=int(rc), audit_clean=audit.get("clean"), refusals=refusals)
+        else:
+            status = {"status": ROUND_FAILED, "stopped_by": None, "why": failure}
         carried = status["status"] == "authored"
         final = None
         if carried:
@@ -444,7 +495,11 @@ class RoundDriver:
             "status": status["status"],
             "stopped_by": status.get("stopped_by"),
             "why": status["why"],
-            "agent_exit_code": int(rc),
+            "agent_exit_code": int(rc) if rc is not None else None,
+            # A negative exit is the signal that ended the agent (-9: SIGKILL, which leaves no evidence of
+            # its own); the round is refused and the next session starts from the previous candidate.
+            **({"agent_signal": -int(rc)} if rc is not None and int(rc) < 0 else {}),
+            **({"agent_failure": failure} if failure is not None else {}),
             "wall_seconds": round(time.monotonic() - started, 1),
             "audit": {k: audit.get(k) for k in ("clean", "hits", "commands_seen")},
             "receipts": receipts,
@@ -455,17 +510,103 @@ class RoundDriver:
             "final_package_sha256": (final or {}).get("package_sha256"),
             "final_timing_status": (final or {}).get("timing_status"),
         }
-        rounds_dir = stage_root / "rounds"
-        rounds_dir.mkdir(parents=True, exist_ok=True)
-        (rounds_dir / f"round_{index:02d}.round.json").write_text(
+        (rounds_dir / f"round_{index:02d}{ROUND_SUFFIX}").write_text(
             json.dumps(record, indent=1, default=str) + "\n", encoding="utf-8"
         )
+        open_marker.unlink(missing_ok=True)  # the record now says everything the marker did
         return {
             "status": status["status"],
-            "transcript": str(transcript),
+            "transcript": str(transcript) if transcript is not None else None,
             "summaries": [str(p) for p in sorted(rounds_dir.glob(f"round_{index:02d}.*summary.json"))],
             "failure": None if carried else status["why"],
         }
+
+
+def _round_index(name: str) -> int | None:
+    """The index of a ``round_<NN>...`` file or directory name, parsed by tokens (None otherwise)."""
+    head, sep, rest = name.partition("_")
+    if head != "round" or not sep:
+        return None
+    digits = rest.split(".", 1)[0]
+    return int(digits) if digits.isdigit() else None
+
+
+def next_session(stage_root: Path) -> int:
+    """The session number a ``start`` on this stage begins at: one past the highest round it has
+    started (a round record, an open marker or a round workspace).  A relaunched ``start`` on the same
+    run otherwise begins at session 1 again, finds round 0's workspace taken, and fails every round."""
+    stage_root = Path(stage_root)
+    seen = [-1]
+    for directory in (stage_root / "rounds", stage_root / "agent_workspaces"):
+        if directory.is_dir():
+            seen += [i for i in (_round_index(p.name) for p in directory.iterdir()) if i is not None]
+    return max(seen) + 2
+
+
+def _driver_alive(pid: Any, run_name: str) -> bool:
+    """Whether ``pid`` is a live process other than this one whose command line names ``run_name``
+    (pids are reused, so liveness alone names no driver)."""
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        return run_name.encode() in Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+
+
+def recover_killed_rounds(
+    stage_root: Path, *, attribute: Callable[[str, Mapping[str, Any]], Mapping[str, Any]], run_name: str
+) -> list[dict[str, Any]]:
+    """Close every round of ``stage_root`` that started and never ended (an open marker without a round
+    record) and that no live driver owns: each digest it requested is attributed ``unauthored`` through
+    ``attribute`` and the round is recorded :data:`ROUND_KILLED`.  Returns the records written.
+
+    Why: a round's requests are ``pending`` until its driver resolves them; a driver killed mid-round
+    (SIGKILL, the host's memory guard) never does, so without this they stay pending forever -- shown,
+    never eligible, and never said to be anyone's."""
+    rounds_dir = Path(stage_root) / "rounds"
+    if not rounds_dir.is_dir():
+        return []
+    recovered = []
+    for marker in sorted(rounds_dir.glob(f"round_*{OPEN_SUFFIX}")):
+        index = _round_index(marker.name)
+        if index is None or marker.is_symlink():
+            continue
+        record_path = rounds_dir / f"round_{index:02d}{ROUND_SUFFIX}"
+        if record_path.exists():
+            marker.unlink(missing_ok=True)  # the round ended; only its marker outlived it
+            continue
+        opened = read_json(marker) or {}
+        if _driver_alive(opened.get("pid"), run_name):
+            continue
+        why = (
+            f"round {index + 1} never ended: its driver (pid {opened.get('pid')}) was killed before it wrote "
+            "the round's record, so no authored round earned these bytes"
+        )
+        change = {"state": J.ATTRIBUTION_UNAUTHORED, "round": index, "why": why}
+        attribution: dict[str, Any] = {}
+        for digest in dict.fromkeys(str(d) for d in opened.get("requested") or ()):
+            try:
+                attribution[digest] = attribute(digest, change).get("state")
+            except J.ServiceError as exc:
+                attribution[digest] = f"not attributed: {exc}"
+        record = {
+            "schema": ROUND_SCHEMA,
+            "round": index,
+            "status": ROUND_KILLED,
+            "stopped_by": None,
+            "why": why,
+            "agent_exit_code": None,
+            "started_at": opened.get("started_at"),
+            "recovered_at": now(),
+            "requested": list(attribution),
+            "attribution": attribution,
+            "carried_forward": False,
+        }
+        write_json_atomic(record_path, record)
+        marker.unlink(missing_ok=True)
+        recovered.append(record)
+    return recovered
 
 
 def round_driver(
@@ -517,12 +658,15 @@ __all__ = [
     "ACTIONS",
     "FROZEN_CONTRACT",
     "MeasuredWorkflow",
+    "ROUND_KILLED",
     "RoundDriver",
     "WHOLE_PACKAGE",
     "WORKFLOW_ID",
     "codex_agent",
     "join_receipts",
+    "next_session",
     "outer_policy_argv",
+    "recover_killed_rounds",
     "render_task",
     "round_driver",
     "whole_package_edits",

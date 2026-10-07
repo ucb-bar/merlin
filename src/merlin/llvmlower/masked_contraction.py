@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 FEATURE = "scalar_contraction_masked_observation"
 MARKER = "__merlin_scalar_contraction_masked_observation__"
+ARGV_INDEX = 21
 
 
 def _edit_pipeline(passes: list[str]) -> list[str]:
@@ -311,7 +312,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
     passes = [p for p in pipeline.split(',') if p]
     if _MC_MARKER not in passes:
         return _MC_ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp, pre_generalize)
-    if len(sys.argv) <= 20 or sys.argv[20] != '1':
+    if len(sys.argv) <= 21 or sys.argv[21] != '1':
         raise ValueError("closed-mask scheduling requires explicit arithmetic effect permission")
     selected = [m for m in _SC_MARKERS if m in passes]
     if len(selected) != 1 or passes.count(_MC_MARKER) != 1:

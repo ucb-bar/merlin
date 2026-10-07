@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import external_sources
 import pytest
 
 from merlin.compile.scheduling import BlockScheduleError
@@ -60,6 +61,7 @@ def test_the_two_derivations_agree_or_refuse_together(target: str):
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_at_least_one_target_resolves_and_at_least_one_refuses():
     """The anti-vacuity guard.
 
@@ -101,6 +103,7 @@ def test_the_comparison_baseline_derives_the_same_geometry_as_the_machine():
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_the_projection_carries_the_machine_it_came_from():
     """A geometry that cannot say which machine produced it cannot be attributed to one, and a
     measurement keyed on it would be reused across two machines that differ."""
@@ -108,6 +111,7 @@ def test_the_projection_carries_the_machine_it_came_from():
     assert geometry.sources.get("machine") == derive("gemmini").digest()
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_perturbed_machine_moves_the_projection():
     """The mutation: if a projected field did not actually come from the machine, changing the machine
     would not change the projection, and the agreement test above would be comparing a constant."""

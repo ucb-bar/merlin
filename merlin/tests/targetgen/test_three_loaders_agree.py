@@ -28,6 +28,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import plugin_isolation
 import pytest
 import yaml
 
@@ -40,6 +41,15 @@ from merlin.targetgen.generate import oot_package
 #: Neutral synthetic name. Distinct from every other test's because backend registration is
 #: process-global and idempotent — a name loaded by another module would make this a no-op.
 GENERATED = "synth_three_loader_npu"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_plugins():
+    """A test here selects its own generated package; plugin ownership is process-immutable, so the
+    backend it loads is unloaded afterwards. Otherwise every later registry query in the worker, in
+    any file, raises ``PluginOwnershipError`` for this synthetic target once the selection is gone."""
+    with plugin_isolation.fresh_plugin_state():
+        yield
 
 
 def _onboard(tmp_path, monkeypatch, target: str):

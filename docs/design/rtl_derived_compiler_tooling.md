@@ -24,7 +24,7 @@ code_refs:
 # The RTL-derived compiler tooling — an honest, exhaustive accounting
 
 This is the reference companion to the reviewer-facing narrative ("Why an RTL-derived compiler converges
-faster"). It catalogs **every** arm-3/arm-4 tool as a concrete `input → what it does → generated artifact`
+faster"). It catalogs **every** EL3/EL4 tool as a concrete `input → what it does → generated artifact`
 chain, tags each by its role in the compiler stack, and states — without spin — where the value is real and
 where it is ceremony. It exists so the claim can be audited fact-by-fact, not taken on trust.
 
@@ -101,7 +101,7 @@ adding compiler value, by definition. Tools are tagged `[precondition]`, `[seman
 ### 5. `rtl_backend.derived_levers` — DSE lever surface `[navigation]`
 - **Input:** live mlc discovery (`TargetProfile`: legal_opcodes, memory_map, dim). **Does:** returns
   `["spatial.dataflow"]` (+`"spatial.accumulator_resident"` if an accumulator exists). **Caveat:** needs
-  *live* mlc (`MERLIN_MLC_DIR`); offline it returns `[]`. Granted to both assisted arms; only arm-4's
+  *live* mlc (`MERLIN_MLC_DIR`); offline it returns `[]`. Granted to both assisted levels; only EL4's
   addendum instructs the agent to call it.
 
 ### 6. `rtl_check_compiler` + `rtl_check_runner` — the compiled FileCheck test `[feedback]`
@@ -122,10 +122,10 @@ adding compiler value, by definition. Tools are tagged `[precondition]`, `[seman
   Bank conflicts, DMA backpressure, pipeline interlocks, X-propagation, real overflow are **verilator-only**.
   Known bug: the kernel-path tiling count is exact even for `resident_reuse` → false rejects.
 
-### 7. `qa_check_rtlchecks` — the arm-4 advisory `[feedback, non-gating]`
+### 7. `qa_check_rtlchecks` — the EL4 advisory `[feedback, non-gating]`
 - **Input:** the redacted round verdict + the compiled FileCheck (tool 6). **Does:** appends a non-gating
   `rtl_checks` block with per-finding `expected`/`got`/`fix_hint`. **This is the one load-bearing,
-  default-config, agent-consumed arm-4 signal.**
+  default-config, agent-consumed EL4 signal.**
 
 ### 8. `isa_tools` (broker) — asm/disasm/lint + arc `debug` `[semantics-check / arc-estimate]`
 - **Real:** the `debug` subcommand runs the command buffer on the CIRCT/arcilator model compiled from RTL

@@ -321,6 +321,7 @@ def test_native_report_routes_descriptor_alias_to_explicit_recipe(tmp_path, monk
         None,
         None,
         None,
+        None,
     )
     monkeypatch.setattr(D, "all_declarations", lambda: (declaration,))
     selected, aliases = _native_report()._declared_rosters()
@@ -348,6 +349,7 @@ def test_native_report_refuses_conflicting_profile_recipes(tmp_path, monkeypatch
         None,
         None,
         None,
+        None,
     )
     monkeypatch.setattr(D, "all_declarations", lambda: (declaration, replace(declaration, recipe=tmp_path / "other")))
     with pytest.raises(SpecError, match="conflicting corpus"):
@@ -371,6 +373,7 @@ def test_native_coverage_marks_current_denominator_and_unknown_historical_target
         descriptor,
         recipe,
         tmp_path / "template.yaml",
+        None,
         None,
         None,
         None,

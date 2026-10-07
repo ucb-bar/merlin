@@ -4,7 +4,8 @@ kind: reference
 status: current
 owner: core
 last_verified: 2026-10-06
-code_refs: [src/merlin/perf/debug_companion.py]
+code_refs: [src/merlin/perf/debug_companion.py, src/merlin/perf/whole_model_group_timing.py,
+            packages/merlin-experiments/src/merlin_experiments/group_inspect.py]
 ---
 
 # Debug companion PC attribution
@@ -32,3 +33,14 @@ hardware cycles without independent counter evidence.
 
 The utility does not compile, run simulators, parse target opcodes, select target
 tools, alter optimization policy or infer a performance improvement.
+
+## Where it is called
+
+`merlin experiment inspect <candidate> --group gN --trace` is the production caller. The group
+program build (`whole_model_group_timing.build_group_programs(..., debug_companion=True)`) links the
+companion from the program's own model, kernels and recipe with the debug option appended to the
+recorded flags; inspect checks both the program object and the final image against it, runs the
+candidate's functional model with its PC histogram on, symbolizes every PC with the `llvm-symbolizer`
+beside the compiler the target's build recipe names, and attributes the histogram. A missing machine,
+companion or symbolizer, or a refused companion, leaves the attribution `UNKNOWN` with the reason. See
+[compile_debugging](../guides/compile_debugging.md).

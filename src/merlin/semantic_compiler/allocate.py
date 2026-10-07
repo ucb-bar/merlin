@@ -37,6 +37,33 @@ class StorageBank:
 
 
 @dataclass(frozen=True)
+class Reservation:
+    """Physical interval unavailable to every typed view of one backing store.
+
+    The target contract names the storage view and supplies the interval in its
+    explicit address unit. Reservations last for this entire candidate. Shorter
+    lifetimes require a qualified temporal model, not an assumed issue order.
+    """
+
+    storage: str
+    start: int
+    extent: int
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.storage, str)
+            or not self.storage
+            or not isinstance(self.start, int)
+            or isinstance(self.start, bool)
+            or self.start < 0
+            or not isinstance(self.extent, int)
+            or isinstance(self.extent, bool)
+            or self.extent <= 0
+        ):
+            raise ValueError("reservation needs a storage, nonnegative start and positive extent")
+
+
+@dataclass(frozen=True)
 class Value:
     id: int
     symbol: str
@@ -49,6 +76,12 @@ class Value:
     input_read_offsets: tuple[int, ...] = ()
     completion_offset: int = 0
     in_place_inputs: tuple[int, ...] = ()
+    # A source input is immutable across the kernel unless its boundary says reusable.
+    preserve_input: bool = True
+
+    def __post_init__(self) -> None:
+        if type(self.preserve_input) is not bool or (self.kind != "input" and not self.preserve_input):
+            raise ValueError("input retention must be a boolean on input values")
 
     def read_offset(self, index: int) -> int:
         return self.input_read_offsets[index] if self.input_read_offsets else 0
@@ -95,6 +128,7 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 input_read_offsets=tuple(metadata["descriptor"]["input_read_offsets"]) if kind == "instruction" else (),
                 completion_offset=int(metadata["descriptor"]["completion_offset"]) if kind == "instruction" else 0,
                 in_place_inputs=tuple(metadata["descriptor"]["in_place_inputs"]) if kind == "instruction" else (),
+                preserve_input=metadata.get("preserve_input", True),
             )
         )
         return value_id
@@ -254,6 +288,23 @@ def _address_unit_problem(graph: CandidateGraph, bank_map: dict[str, StorageBank
     return ""
 
 
+def _reservation_problem(reservations: tuple[Reservation, ...], bank_map: dict[str, StorageBank]) -> str:
+    for index, reservation in enumerate(reservations):
+        bank = bank_map.get(reservation.storage)
+        if bank is None:
+            return "reservation names an unknown storage bank"
+        if reservation.start + reservation.extent > bank.capacity:
+            return "reservation exceeds its physical storage bank"
+        for earlier in reservations[:index]:
+            other = bank_map[earlier.storage]
+            if bank.backing == other.backing and (
+                reservation.start < earlier.start + earlier.extent
+                and earlier.start < reservation.start + reservation.extent
+            ):
+                return "reservations overlap through physical aliases"
+    return ""
+
+
 def _boundary_problem(
     graph: CandidateGraph,
     banks: dict[str, StorageBank],
@@ -293,6 +344,7 @@ def check_assignment(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    reservations: tuple[Reservation, ...] = (),
     fixed_outputs: tuple[int | None, ...] | None = None,
 ) -> tuple[bool, str]:
     """Recompute original geometry/lifetimes without consulting Z3 expressions."""
@@ -300,6 +352,9 @@ def check_assignment(
     unit_problem = _address_unit_problem(graph, bank_map)
     if unit_problem:
         return False, unit_problem
+    reservation_problem = _reservation_problem(reservations, bank_map)
+    if reservation_problem:
+        return False, reservation_problem
     fixed_inputs = fixed_inputs or {}
     boundary_problem = _boundary_problem(graph, bank_map, fixed_inputs, fixed_outputs)
     if boundary_problem:
@@ -324,6 +379,11 @@ def check_assignment(
             return False, "non-integer address"
         if address < 0 or address + value.extent > bank.capacity or address % bank.alignment:
             return False, "out-of-range or misaligned address"
+        for reservation in reservations:
+            if bank.backing != bank_map[reservation.storage].backing:
+                continue
+            if address < reservation.start + reservation.extent and reservation.start < address + value.extent:
+                return False, "assignment overlaps reserved physical storage"
         if value.source_node in fixed_inputs and value.kind == "input":
             if address != fixed_inputs[value.source_node]:
                 return False, "input moved from fixed external address"
@@ -341,30 +401,34 @@ def check_assignment(
         for right in graph.values[left_index + 1 :]:
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
+            a = addresses[left.id]
+            b = addresses[right.id]
+            overlap = a < b + right.extent and b < a + left.extent
+            if overlap and (
+                (left.kind == "input" and left.preserve_input and right.kind == "instruction")
+                or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+            ):
+                return False, "boundary input overlaps an instruction write"
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1:
-                a = addresses[left.id]
-                b = addresses[right.id]
-                if a < b + right.extent and b < a + left.extent:
-                    # Independent replay of the exact-reuse exception. A
-                    # boundary input or value with another user stays live.
-                    allowed = False
-                    for child, parent in ((left, right), (right, left)):
-                        if child.kind != "instruction" or parent.kind != "instruction":
-                            continue
-                        if child.id in graph.outputs or child.extent != parent.extent:
-                            continue
-                        if parent.children.count(child.id) != 1:
-                            continue
-                        port = parent.children.index(child.id)
-                        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
-                            continue
-                        if sum(value.children.count(child.id) for value in graph.values) != 1:
-                            continue
-                        allowed = a == b
-                    if not allowed:
-                        return False, "simultaneously live physical views overlap"
+            if overlap and lo1 <= hi2 and lo2 <= hi1:
+                # Replay the exact-reuse exception without relying on solver constraints.
+                allowed = False
+                for child, parent in ((left, right), (right, left)):
+                    if child.kind != "instruction" or parent.kind != "instruction":
+                        continue
+                    if child.id in graph.outputs or child.extent != parent.extent:
+                        continue
+                    if parent.children.count(child.id) != 1:
+                        continue
+                    port = parent.children.index(child.id)
+                    if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
+                        continue
+                    if sum(value.children.count(child.id) for value in graph.values) != 1:
+                        continue
+                    allowed = a == b
+                if not allowed:
+                    return False, "simultaneously live physical views overlap"
     return True, ""
 
 
@@ -374,6 +438,7 @@ def allocate(
     banks: tuple[StorageBank, ...],
     *,
     fixed_inputs: dict[str, int] | None = None,
+    reservations: tuple[Reservation, ...] = (),
     fixed_outputs: tuple[int | None, ...] | None = None,
     timeout_ms: int = 5000,
 ) -> AllocationResult:
@@ -387,13 +452,19 @@ def allocate(
     unit_problem = _address_unit_problem(graph, bank_map)
     if unit_problem:
         return AllocationResult("unqualified_target", order, {}, unit_problem)
+    reservation_problem = _reservation_problem(reservations, bank_map)
+    if reservation_problem:
+        return AllocationResult("unqualified_target", order, {}, reservation_problem)
     fixed_inputs = fixed_inputs or {}
     boundary_problem = _boundary_problem(graph, bank_map, fixed_inputs, fixed_outputs)
     if boundary_problem:
         return AllocationResult("modeling_failure", order, {}, boundary_problem)
     ranges = live_ranges(graph, order)
-    solver = z3.Solver()
-    solver.set(timeout=timeout_ms)
+    # A plain SAT model may select different valid physical registers on
+    # repeated invocations. Lexicographic minimization fixes one canonical
+    # assignment in value-ID order, so replayed emission has stable bytes.
+    solver = z3.Optimize()
+    solver.set(timeout=timeout_ms, priority="lex")
     variables = {value.id: z3.Int(f"address_{value.id}") for value in graph.values}
     if fixed_outputs is not None:
         for value_id, address in zip(graph.outputs, fixed_outputs):
@@ -405,6 +476,14 @@ def allocate(
             return AllocationResult("unqualified_target", order, {}, "unknown storage bank")
         addr = variables[value.id]
         solver.add(addr >= 0, addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
+        for reservation in reservations:
+            if bank.backing == bank_map[reservation.storage].backing:
+                solver.add(
+                    z3.Or(
+                        addr + value.extent <= reservation.start,
+                        addr >= reservation.start + reservation.extent,
+                    )
+                )
         if value.kind == "input" and value.source_node in fixed_inputs:
             solver.add(addr == fixed_inputs[value.source_node])
         ports = {"out": addr, **{f"in{index}": variables[child] for index, child in enumerate(value.children)}}
@@ -419,14 +498,19 @@ def allocate(
                 continue
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1:
+            preserve_input = (left.kind == "input" and left.preserve_input and right.kind == "instruction") or (
+                right.kind == "input" and right.preserve_input and left.kind == "instruction"
+            )
+            if preserve_input or lo1 <= hi2 and lo2 <= hi1:
                 alternatives = [
                     variables[left.id] + left.extent <= variables[right.id],
                     variables[right.id] + right.extent <= variables[left.id],
                 ]
-                if _qualified_in_place_pair(graph, left, right):
+                if not preserve_input and _qualified_in_place_pair(graph, left, right):
                     alternatives.append(variables[left.id] == variables[right.id])
                 solver.add(z3.Or(*alternatives))
+    for value_id in sorted(variables):
+        solver.minimize(variables[value_id])
     status = solver.check()
     if status == z3.unsat:
         return AllocationResult("infeasible_candidate", order, {}, "bounded placement formula is UNSAT")
@@ -435,7 +519,13 @@ def allocate(
     model = solver.model()
     addresses = {value_id: model[variable].as_long() for value_id, variable in variables.items()}
     checked, reason = check_assignment(
-        graph, order, addresses, banks, fixed_inputs=fixed_inputs, fixed_outputs=fixed_outputs
+        graph,
+        order,
+        addresses,
+        banks,
+        fixed_inputs=fixed_inputs,
+        reservations=reservations,
+        fixed_outputs=fixed_outputs,
     )
     if not checked:
         return AllocationResult("modeling_failure", order, addresses, reason)

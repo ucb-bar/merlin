@@ -58,8 +58,11 @@ def test_a_raw_cli_model_name_passes_through_under_both_providers():
 
 def test_the_loop_threads_the_provider_into_the_cli_invocation():
     """The parameter is useless unless the caller passes it; pin that it does."""
-    src = (repo_root() / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text()
-    assert "claude_model_name(model, provider=_PROVIDER)" in src, (
+    from merlin.common.paths import module_source_path
+
+    # The claudecode branch lives with the other provider launches, and reads the provider from the
+    # run's own configuration rather than a module global set by one entry point.
+    src = module_source_path("merlin_experiments.phase1.providers.execution").read_text()
+    assert "claude_model_name(model, provider=config.provider.provider)" in src, (
         "the claudecode branch must resolve its CLI model name against the run's provider"
     )
-    assert "_PROVIDER = a.provider" in src, "main() must record the provider it was invoked with"

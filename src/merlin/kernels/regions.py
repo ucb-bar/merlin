@@ -478,7 +478,10 @@ REGIONS: dict[str, Region] = {
             "cross-cutting",
             "Optimization heuristics (when to apply what)",
             "The CCA->lever router + escalation ladder; DSE candidate selection.",
-            ("merlin/python/merlin/kernels/action_catalog.py", "merlin/python/merlin/dse_guidance/candidates.py"),
+            (
+                "merlin/python/merlin/kernels/action_catalog.py",
+                "packages/merlin-dse/src/merlin/dse_guidance/candidates.py",
+            ),
             [
                 _ep(
                     "HEURISTIC",
@@ -494,7 +497,10 @@ REGIONS: dict[str, Region] = {
             "Cost model & target capabilities",
             "The cost model + the datatype->compute-unit target-capability manifests (also the INPUT to "
             "agentic target-dialect generation).",
-            ("merlin/python/merlin/dse/cost_model.py", "merlin/python/merlin/targetgen/capability_manifests.py"),
+            (
+                "packages/merlin-dse/src/merlin/dse/cost_model.py",
+                "merlin/python/merlin/targetgen/capability_manifests.py",
+            ),
             [
                 _ep(
                     "DATA",
