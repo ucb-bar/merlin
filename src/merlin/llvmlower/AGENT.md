@@ -423,3 +423,10 @@ The exact product callback proof, full-span ownership and stable monotone
 outward numeric capability are prerequisites. Uncovered rows use the unchanged
 checked path. This feature neither shares preparation across calls nor enables
 normal provider routing automatically.
+
+- `observation_boundary.py` retains explicit typed tensor observations through
+  pure source DAGs, including ordered integer contractions and floating rounding
+  boundaries. Callers distinguish replaced source producers from unchanged
+  parameter inputs. Every additional live source-derived use remains an
+  observation; source/context/use mutations refuse validation. This analysis
+  grants no numeric equivalence, approximation, scheduling or buffer permission.
