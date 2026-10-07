@@ -212,7 +212,7 @@ def _scalar_contraction_spec(op):
     return positions, extents, mul_order, add_order
 
 
-def _scalarize_tensor_contractions(ctx, module, outputs=1, reduction_unroll=0, rows=1):
+def _scalarize_tensor_contractions(ctx, module, outputs=1, reduction_unroll=0, rows=1, selection=None, output_guard=None):
     from torch_mlir import ir as _sc_ir
     todo = []
 
@@ -221,7 +221,8 @@ def _scalarize_tensor_contractions(ctx, module, outputs=1, reduction_unroll=0, r
             for block in region.blocks:
                 for inner in list(block.operations):
                     spec = _scalar_contraction_spec(inner)
-                    eligible = spec is not None and spec[1][-2] % outputs == 0
+                    eligible = (spec is not None and spec[1][-2] % outputs == 0
+                                and (selection is None or any(inner.operation == item for item in selection)))
                     if eligible and rows != 1:
                         positions, extents, _, _ = spec
                         row_axis, col_axis = len(extents) - 3, len(extents) - 2
@@ -286,45 +287,56 @@ def _scalarize_tensor_contractions(ctx, module, outputs=1, reduction_unroll=0, r
                                           create("arith.addi", [indices[-1], offset], [index]).results[0])
                                 lanes.append([*indices[:-2], row, column])
                     out_indices = [[lane[d] for d in positions[2]] for lane in lanes]
-                    initial = [create("tensor.extract", [current, *idx], [scalar]).results[0]
-                               for idx in out_indices]
-                    # SCF -> CF forwards LLVM-typed values; CF -> LLVM keeps the key.
-                    # Use the final branch property's spelling: a retained namespaced
-                    # llvm.loop_annotation is ignored by the installed translator.
-                    attributes = ({"loop_annotation": _sc_ir.Attribute.parse(
-                        "#llvm.loop_annotation<unroll = <count = " + str(reduction_unroll) + " : i32>>")}
-                        if reduction_unroll else {})
-                    lane_count = rows * outputs
-                    loop = create("scf.for", [zero, limits[-1], one, *initial], [scalar] * lane_count,
-                                  attributes=attributes, regions=1)
-                    block = _sc_ir.Block.create_at_start(loop.regions[0], [index, *([scalar] * lane_count)])
-                    with _sc_ir.InsertionPoint(block):
-                        accumulated, shared = [], {}
-                        for lane_number, lane in enumerate(lanes):
-                            all_indices = [*lane, block.arguments[0]]
-                            values = []
-                            for i in range(2):
-                                if rows == 1:
-                                    key = i if len(extents) - 2 not in positions[i] else None
-                                else:
-                                    key = (i,
-                                           lane_number // outputs if len(extents) - 3 in positions[i] else 0,
-                                           lane_number % outputs if len(extents) - 2 in positions[i] else 0)
-                                if key is not None and key in shared:
-                                    value = shared[key]
-                                else:
-                                    value = create("tensor.extract", [old.operands[i], *[all_indices[d] for d in positions[i]]],
-                                                   [scalar]).results[0]
-                                    if key is not None:
-                                        shared[key] = value
-                                values.append(value)
-                            product = create("arith.mulf", [values[d] for d in mul_order], [scalar]).results[0]
-                            operands = [product, block.arguments[lane_number + 1]]
-                            accumulated.append(create("arith.addf", [operands[d] for d in add_order], [scalar]).results[0])
-                        create("scf.yield", accumulated)
-                    for value, idx in zip(loop.results, out_indices):
-                        current = create("tensor.insert", [value, current, *idx], [tensor]).results[0]
-                    return current
+                    def reduction():
+                        initial = [create("tensor.extract", [current, *idx], [scalar]).results[0]
+                                   for idx in out_indices]
+                        # SCF -> CF forwards LLVM-typed values; CF -> LLVM keeps the key.
+                        # Use the final branch property's spelling: a retained namespaced
+                        # llvm.loop_annotation is ignored by the installed translator.
+                        attributes = ({"loop_annotation": _sc_ir.Attribute.parse(
+                            "#llvm.loop_annotation<unroll = <count = " + str(reduction_unroll) + " : i32>>")}
+                            if reduction_unroll else {})
+                        lane_count = rows * outputs
+                        loop = create("scf.for", [zero, limits[-1], one, *initial], [scalar] * lane_count,
+                                      attributes=attributes, regions=1)
+                        block = _sc_ir.Block.create_at_start(loop.regions[0], [index, *([scalar] * lane_count)])
+                        with _sc_ir.InsertionPoint(block):
+                            accumulated, shared = [], {}
+                            for lane_number, lane in enumerate(lanes):
+                                all_indices = [*lane, block.arguments[0]]
+                                values = []
+                                for i in range(2):
+                                    if rows == 1:
+                                        key = i if len(extents) - 2 not in positions[i] else None
+                                    else:
+                                        key = (i,
+                                               lane_number // outputs if len(extents) - 3 in positions[i] else 0,
+                                               lane_number % outputs if len(extents) - 2 in positions[i] else 0)
+                                    if key is not None and key in shared:
+                                        value = shared[key]
+                                    else:
+                                        value = create("tensor.extract", [old.operands[i], *[all_indices[d] for d in positions[i]]],
+                                                       [scalar]).results[0]
+                                        if key is not None:
+                                            shared[key] = value
+                                    values.append(value)
+                                product = create("arith.mulf", [values[d] for d in mul_order], [scalar]).results[0]
+                                operands = [product, block.arguments[lane_number + 1]]
+                                accumulated.append(create("arith.addf", [operands[d] for d in add_order], [scalar]).results[0])
+                            create("scf.yield", accumulated)
+                        destination = current
+                        for value, idx in zip(loop.results, out_indices):
+                            destination = create("tensor.insert", [value, destination, *idx], [tensor]).results[0]
+                        return destination
+                    if output_guard is None:
+                        return reduction()
+                    condition = output_guard(old.operation, lanes, positions[2], create, constant)
+                    guarded = create("scf.if", [condition], [tensor], regions=2)
+                    for branch in range(2):
+                        block = _sc_ir.Block.create_at_start(guarded.regions[branch], [])
+                        with _sc_ir.InsertionPoint(block):
+                            create("scf.yield", [reduction() if branch == 0 else current])
+                    return guarded.results[0]
 
                 result = output_loop(0, old.operands[2], [])
                 replacement = result.owner

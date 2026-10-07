@@ -872,6 +872,8 @@ _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
 )
 from .broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
 from .fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
+from .masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
+from .masked_contraction import STAGE_RUNNER as _MASKED_CONTRACTION_STAGE_RUNNER
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
@@ -1154,6 +1156,8 @@ from torch_mlir.dialects import llvm
     + _ROUND_INTRINSIC_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
+    + _MASKED_CONTRACTION_PRELUDE
+    + _MASKED_CONTRACTION_STAGE_RUNNER
     + _SCALAR_SQUARED_SUM_PRELUDE
     + _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
@@ -1274,6 +1278,8 @@ _RUNNER_ACT_POLY_TAIL = (
     + _ROUND_INTRINSIC_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
+    + _MASKED_CONTRACTION_PRELUDE
+    + _MASKED_CONTRACTION_STAGE_RUNNER
     + _SCALAR_SQUARED_SUM_PRELUDE
     + _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
@@ -1453,11 +1459,17 @@ def lower_to_llvm_ir(
     parallel_chunks: "list | None" = None,
     audit=None,
     data_layout: str | None = None,
+    masked_contraction_effects=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``data_layout`` (the target's LLVM layout string, :mod:`.target_data_layout`) is set on the module
     before translation, so accesses carry the target's alignment; ``None`` keeps LLVM's default.
+
+    ``masked_contraction_effects`` is required only with the explicit closed-mask
+    feature. Its nontrapping/unobserved-flags permission allows omission of dead
+    contraction tiles; all observed arithmetic retains source order and precision.
+    Without the feature the default lowering and emitted objects are unchanged.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
     ``workdir`` and uses :func:`build_rvv_pipeline` so the IR carries fixed-width vector
@@ -1534,6 +1546,15 @@ def lower_to_llvm_ir(
 
     _register_quant_scope()
     feats = normalize(features)
+    from .masked_contraction import FEATURE as _MASKED_FEATURE
+    from .masked_contraction import MaskEffectContract
+
+    if _MASKED_FEATURE in feats:
+        if not isinstance(masked_contraction_effects, MaskEffectContract):
+            raise PipelineError("closed-mask scheduling requires explicit MaskEffectContract")
+        masked_contraction_effects.validate()
+    elif masked_contraction_effects is not None:
+        raise PipelineError("masked arithmetic effects supplied without masked-contraction policy")
     from .llvm_loop_outline import (
         FEATURE as _OUTLINE_LOOPS,
     )
@@ -1769,6 +1790,8 @@ def lower_to_llvm_ir(
         "1" if "fold_uniform_fill_copy" in feats else "0",
         "1" if "specialize_contiguous_copy" in feats else "0",
     ]
+    if masked_contraction_effects is not None:
+        command.append("1")
     recipe_sources.update(prepared_mlir=src, runner=runner)
     recipe = LoweringRecipe(work, features=feats, sources=recipe_sources)
     recipe.command(command)
@@ -1804,6 +1827,13 @@ def lower_to_llvm_ir(
             stage_out.read_text(encoding="utf-8"),
             format="mlir" if omp else "llvm-ir",
         )
+    if _MASKED_FEATURE in feats:
+        from .masked_contraction import require_report as _require_masked_report
+
+        try:
+            _require_masked_report(proc.stdout, work)
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
     if "specialize_contiguous_copy" in feats:
         from .contiguous_suffix_copy import require_report as _require_contiguous_copy_report
 

@@ -3,7 +3,7 @@ title: "Design: compiler abstractions and tools for performance convergence"
 kind: design
 status: draft
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-10-07
 related: [architecture, perf_phase2_wiring, capsule_phase_split, performance_budget_unit]
 code_refs:
   - src/merlin/kernels/cca.py
@@ -28,6 +28,7 @@ code_refs:
   - src/merlin/llvmlower/lowering_recipe.py
   - src/merlin/llvmlower/compilation_recipe.py
   - src/merlin/llvmlower/broadcast_math_hoist.py
+  - src/merlin/llvmlower/masked_contraction.py
   - src/merlin/llvmlower/segmented_input_acceptance.py
   - src/merlin/llvmlower/ordered_fma_groups.py
   - src/merlin/llvmlower/ordered_fma_group_outline.py
@@ -466,3 +467,29 @@ A campaign mixes OOT, host compiler, correctness and infrastructure work. Record
 and event windows, and state when an exact per-optimization allocation is unavailable. The goal
 tracker is a separate observed counter until its accounting semantics are reconciled with the
 driver's raw counters. Token traffic does not establish monetary billing.
+
+
+## Closed observation scheduling for source contractions
+
+The optional `scalar_contraction_masked_observation` pass proves every use of a
+contraction result through exact row-major views, a scalar multiply, and an
+all-parallel select. It reads only a dominating typed boolean mask. A tile may
+skip its reduction when the source discards every output in that tile; partial
+and active tiles retain the original seed, increasing reduction order, separate
+rounded multiply/add, casts and source consumers. Other floating escapes,
+unsupported maps/views, numerical attributes or unavailable dominance refuse.
+
+This policy requires an explicit `MaskEffectContract` with nontrapping arithmetic
+and unobserved floating-point flags. It grants no numerical approximation.
+Tensor SSA and upstream bufferization continue to own alias and lifetime choices.
+Default feature lists and compile command arguments remain unchanged; the
+ordinary scalar contraction output schedule is independently selected.
+
+A future CCA action should retain the complete typed all-use observation proof,
+mask coordinate mapping, tile extents, effect policy and runtime skipped logical
+work. Count arithmetic omitted separately from mask reads, coordinate arithmetic,
+guards, dispatch, loops, allocation, frame and memory work. Those additional costs
+must be priced on the complete source compound; a mask density or instruction
+count alone cannot select a profitable whole-program schedule. Target ISA,
+execution-environment counter instructions and physical address legality remain
+provider responsibilities in the OOT repository.
