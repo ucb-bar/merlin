@@ -116,6 +116,7 @@ def emit_source_attention_frontier(
     separable_source_radius: bool = False,
     prepare_softmax_domain: bool = False,
     integer_reconstruction: bool = False,
+    fuse_integer_reconstruction: bool = False,
     prepare_probability_bins: bool = False,
     prepare_encoded_rows: bool = False,
     prepare_softmax_spans: bool = False,
@@ -136,6 +137,12 @@ def emit_source_attention_frontier(
     stays disjoint from the readout/center arrays, and converts once to f64.
     Product callback completeness/range/source binding remains mandatory.
     External scales, certificates, source arithmetic and refusal stay unchanged.
+
+    Optional fused integer reconstruction retains all completed readout planes
+    until one local integer sum and final conversion. It removes the intermediate
+    i64 buffer; the caller must price the larger live readout storage and changed
+    physical write addresses. Callback ordering/completion and failure-before-
+    publication remain unchanged.
 
     Optional row preparation shares only immutable private alpha/denominator
     metadata across independent columns. It requires the existing stable RNE,
@@ -200,6 +207,10 @@ def emit_source_attention_frontier(
         raise ValueError("encoded row proof requires admitted norm requirements")
     if type(integer_reconstruction) is not bool:
         raise ValueError("explicit boolean integer reconstruction policy required")
+    if type(fuse_integer_reconstruction) is not bool:
+        raise ValueError("explicit boolean fused integer reconstruction policy required")
+    if fuse_integer_reconstruction and not integer_reconstruction:
+        raise ValueError("fused reconstruction requires integer reconstruction proof")
     if type(prepare_softmax_domain) is not bool:
         raise ValueError("explicit boolean softmax domain policy required")
     if type(separable_source_radius) is not bool:
@@ -229,7 +240,7 @@ def emit_source_attention_frontier(
     runtime = data_path("runtime", "c")
     text = (runtime / "templates/source_attention_frontier.c.in").read_text()
     if integer_reconstruction:
-        from .radix_integer_reconstruct import c_header
+        from .radix_integer_reconstruct import c_fused_header, c_header
         from .radix_product_groups import plan_radix_product_groups
 
         proof = plan_radix_product_groups(radix_bits=7, digits=3, reduction_length=max(plan.depth, plan.segment))
@@ -238,7 +249,8 @@ def emit_source_attention_frontier(
         product_bytes = (
             4 * (6 * r * k + 2 * k * d) + 8 * (2 * r * k + k * d + r + k) + 3 * r * k + 3 * k * d + 4 * r * k
         )
-        if h * head_bytes + product_bytes + 140 * k + 13 * h * d + r + 1024 + 8 * r * k > 2**31 - 1:
+        extra_bytes = (4 * (len(proof.groups) - 1) if fuse_integer_reconstruction else 8) * r * k
+        if h * head_bytes + product_bytes + 140 * k + 13 * h * d + r + 1024 + extra_bytes > 2**31 - 1:
             raise ValueError("integer reconstruction workspace exceeds supported bound")
         original = """ for(int i=0;i<m*n;i++)w->center[i]=0;
  for(int degree=0;degree<5;degree++){
@@ -254,11 +266,21 @@ def emit_source_attention_frontier(
  }
  merlin_radix_integer_finish_exact_f64(w->center,w->integer_center,(size_t)m*n);
 """
+        storage = " int32_t readout[ROWS*CHUNK];\n int64_t integer_center[ROWS*CHUNK];"
+        header = c_header(proof)
+        if fuse_integer_reconstruction:
+            replacement = """ const int32_t *planes[MERLIN_RADIX_FUSED_INTEGER_GROUPS];
+ for(int degree=0;degree<MERLIN_RADIX_FUSED_INTEGER_GROUPS;degree++){
+  planes[degree]=w->readout[degree];
+  if(!product(opaque,w->ap,w->bp,w->readout[degree],m,n,k,degree))return 0;
+ }
+ merlin_radix_integer_fused_exact_f64(w->center,planes,(size_t)m*n);
+"""
+            storage = " int32_t readout[MERLIN_RADIX_FUSED_INTEGER_GROUPS][ROWS*CHUNK];"
+            header = c_fused_header(proof)
         if text.count(original) != 1 or text.count(" int32_t readout[ROWS*CHUNK];") != 1:
             raise ValueError("source reconstruction ownership template changed")
-        text = c_header(proof) + text.replace(original, replacement).replace(
-            " int32_t readout[ROWS*CHUNK];", " int32_t readout[ROWS*CHUNK];\n int64_t integer_center[ROWS*CHUNK];"
-        )
+        text = header + text.replace(original, replacement).replace(" int32_t readout[ROWS*CHUNK];", storage)
     if word_interval_enclosure:
         original = "merlin_monotone_bit_polynomial_apply(x,&root_prepared)"
         if text.count(original) != 1:
@@ -446,7 +468,7 @@ def emit_source_attention_frontier(
         )
         required = h * head_bytes + product_bytes + 140 * k + 13 * h * d + r + 1024 + r + k
         if integer_reconstruction:
-            required += 8 * r * k
+            required += extra_bytes
         if required > 2**31 - 1:
             raise ValueError("encoded row workspace exceeds supported bound")
         from .encoded_row_equality import prepare_encoded_row_equality

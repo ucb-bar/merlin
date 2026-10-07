@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`radix_integer_reconstruct.c_fused_header` and the explicit
+`source_attention_frontier` fused reconstruction option keep complete immutable
+integer group planes until one exact local sum and binary64 conversion. Callback
+order, synchronous completion, prefix bounds, private output publication and
+original numerical policy remain mandatory. Account for increased readout
+storage and physical write layout; lower scratch traffic is not a hardware cycle
+prediction. Streaming reconstruction and default emission remain unchanged.
+
 Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream MLIR pipeline → LLVM IR → x86 (verification) / rv64gcv (deployment) objects. This is the llvm-project plane for running entire models (smolVLA) on RVV, complementing the per-kernel `runtime/backends` path.
 
 ## What belongs here
