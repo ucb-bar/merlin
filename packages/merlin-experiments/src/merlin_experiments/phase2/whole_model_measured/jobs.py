@@ -7,7 +7,10 @@ vocabulary those owners share so no two of them spell a state differently.
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -91,6 +94,19 @@ def merge_attribution(
     }
 
 
+#: EVERY EARLIER ATTEMPT OF A JOB, numbered: ``attempts/<n>/`` holds what attempt ``n`` left in the job
+#: directory (its ``result.json`` among it, byte for byte) and ``attempt.json`` saying why it was set aside.
+#: An attempt is moved, never rewritten and never deleted -- a store that once overwrote its champion's
+#: board reading with ``infra_worker_lost`` kept the real reading only by luck, in a directory nothing read.
+ATTEMPTS_DIR = "attempts"
+ATTEMPT_RECORD = "attempt.json"
+ATTEMPT_SCHEMA = "merlin.phase2.whole_model_measured.attempt.v1"
+#: The operator's notes on ONE attempt's result (an infra mark, a corrected citation): kept beside the
+#: result, never written into it, and archived with it.
+ANNOTATIONS_FILE = "annotations.json"
+ANNOTATIONS_SCHEMA = "merlin.phase2.whole_model_measured.annotations.v1"
+RESULT_FILE = "result.json"
+
 #: What a lost attempt left in its job directory is moved aside; these stay, so the retry starts clean.
 KEPT_ACROSS_ATTEMPTS = frozenset(
     {
@@ -98,12 +114,14 @@ KEPT_ACROSS_ATTEMPTS = frozenset(
         "package",
         ".lock",
         ATTRIBUTION_FILE,
+        ATTEMPTS_DIR,
         "pre_measure_check.json",
         "pre_measure_check_result.json",
         "selfcheck_out",
     }
 )
-#: Every name a partial attempt gets archived under, moved aside before its job is retried or rebuilt.
+#: The names earlier stores archived attempts under (one directory per kind, beside the job's files);
+#: still read as history, never written any more.
 ARCHIVED_ATTEMPT_PREFIXES = ("lost_attempt_", "unlinkable_attempt_", "paused_attempt_", "board_lost_attempt_")
 
 INFRA_WORKER_LOST = "infra_worker_lost"
@@ -129,6 +147,8 @@ def result(job: Mapping[str, Any], **fields: Any) -> dict[str, Any]:
         "finished_at": now(),
         "machine": job.get("machine"),
         "builder": job.get("builder"),
+        # WHAT THE MACHINE COULD DO when this was measured, and what it lacked against its peers.
+        "machine_capabilities": job.get("machine_capabilities"),
         **fields,
     }
 
@@ -172,32 +192,122 @@ def failing_summary(document: Mapping[str, Any] | None, *, limit: int = 40) -> l
     return rows[:limit]
 
 
-def archive_attempt(job_dir: Path, prefix: str, count: int, *, keep_extra: Sequence[str] = ()) -> Path:
-    """Move everything a partial attempt left in ``job_dir`` aside, under ``<prefix><count>``.
+def archive_attempt(
+    job_dir: Path,
+    prefix: str,
+    count: int = 0,
+    *,
+    keep_extra: Sequence[str] = (),
+    why: str | None = None,
+    retracted: bool = False,
+) -> Path:
+    """Move everything a partial (or finished) attempt left in ``job_dir`` aside, as ``attempts/<n>/``.
 
-    Never a deletion: the archive is kept for forensics (its build trees are pruned by retention).  The
-    job record, the package snapshot and the screen results stay, so the retry starts clean and nothing
-    the earlier attempt wrote is read as the later one's."""
+    ``prefix`` names WHY (``lost_attempt_``, ``paused_attempt_``, ...: recorded as the attempt's
+    ``kind``); ``count`` is accepted for the callers that used to number by kind and is not needed --
+    attempts are numbered once, in the order they were set aside.  Never a deletion: the archive is kept
+    (its build trees are pruned by retention) and its ``result.json`` is moved, not rewritten, so a
+    finished measurement survives every later attempt (:mod:`.attempts` reads them back).  The job
+    record, the package snapshot and the screen results stay, so the retry starts clean and nothing the
+    earlier attempt wrote is read as the later one's.  ``retracted`` says the attempt's verdict no longer
+    stands (an operator's decision, with ``why``); otherwise a verdict it holds stays the job's until a
+    later attempt reaches one of its own."""
+    del count  # numbering is the attempts directory's own
     job_dir = Path(job_dir)
-    attempt = job_dir / f"{prefix}{count}"
-    while attempt.exists():
-        count += 1
-        attempt = job_dir / f"{prefix}{count}"
+    root = job_dir / ATTEMPTS_DIR
+    root.mkdir(exist_ok=True)
+    taken = [int(p.name) for p in root.iterdir() if p.is_dir() and p.name.isdigit()]
+    index = max(taken, default=-1) + 1
+    attempt = root / str(index)
     attempt.mkdir()
-    for entry in list(job_dir.iterdir()):
+    moved = []
+    for entry in sorted(job_dir.iterdir()):
         if (
-            entry == attempt
-            or entry.name in KEPT_ACROSS_ATTEMPTS
+            entry.name in KEPT_ACROSS_ATTEMPTS
             or entry.name in keep_extra
             or entry.name.startswith(ARCHIVED_ATTEMPT_PREFIXES)
         ):
             continue
         shutil.move(str(entry), str(attempt / entry.name))
+        moved.append(entry.name)
+    held = _read(attempt / RESULT_FILE)
+    record = {
+        "schema": ATTEMPT_SCHEMA,
+        "attempt": index,
+        "kind": str(prefix).rstrip("_") or "attempt",
+        "archived_at": now(),
+        "why": why,
+        "retracted": bool(retracted),
+        "moved": moved,
+        "result": None
+        if held is None
+        else {k: held.get(k) for k in ("timing_status", "objective_cycles", "finished_at", "refusal")},
+    }
+    (attempt / ATTEMPT_RECORD).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return attempt
 
 
+class ResultExists(ServiceError):
+    """A job directory already holds a result; a result is written once and never replaced."""
+
+
+def write_result(job_dir: Path, document: Mapping[str, Any]) -> Path:
+    """Write ``job_dir``'s ``result.json`` ONCE: the bytes land under a temporary name and are LINKED into
+    place, which fails when a result is already there -- so a late worker, a second batch or a resubmit
+    can never overwrite a finished measurement (:class:`ResultExists`).  A new measurement of the same
+    job is a new attempt (:func:`archive_attempt` first)."""
+    path = Path(job_dir) / RESULT_FILE
+    temporary = path.with_name(f".{RESULT_FILE}.{os.getpid()}.{time.monotonic_ns()}")
+    temporary.write_text(json.dumps(dict(document), indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    try:
+        os.link(temporary, path)
+    except FileExistsError as exc:
+        raise ResultExists(f"{path} already holds a result; a result is never overwritten") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
+def preserve_result(job_dir: Path, document: Mapping[str, Any], *, why: str) -> Path:
+    """Keep a result that arrived for a job which already has one, as an attempt of its own (never in place
+    of the existing result): ``attempts/<n>/result.json`` with ``kind: late_result`` and why."""
+    root = Path(job_dir) / ATTEMPTS_DIR
+    root.mkdir(exist_ok=True)
+    taken = [int(p.name) for p in root.iterdir() if p.is_dir() and p.name.isdigit()]
+    attempt = root / str(max(taken, default=-1) + 1)
+    attempt.mkdir()
+    write_result(attempt, document)
+    record = {
+        "schema": ATTEMPT_SCHEMA,
+        "attempt": int(attempt.name),
+        "kind": "late_result",
+        "archived_at": now(),
+        "why": why,
+        "retracted": False,
+        "moved": [],
+        "result": {k: document.get(k) for k in ("timing_status", "objective_cycles", "finished_at", "refusal")},
+    }
+    (attempt / ATTEMPT_RECORD).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return attempt
+
+
+def _read(path: Path) -> dict[str, Any] | None:
+    try:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return document if isinstance(document, dict) else None
+
+
 __all__ = [
+    "ANNOTATIONS_FILE",
     "ARCHIVED_ATTEMPT_PREFIXES",
+    "ATTEMPTS_DIR",
+    "ATTEMPT_RECORD",
+    "RESULT_FILE",
+    "ResultExists",
+    "preserve_result",
+    "write_result",
     "ATTRIBUTION_ONLY",
     "ATTRIBUTION_AUTHORED",
     "ATTRIBUTION_FILE",

@@ -13,16 +13,26 @@ from merlin.llvmlower.radix_product_groups import plan_radix_product_groups
 
 def test_fused_reconstruction_rederives_complete_plan():
     plan = plan_radix_product_groups(radix_bits=7, digits=3, reduction_length=65)
-    for changed in (replace(plan, weighted_absolute_bound=1),
-                    replace(plan, groups=plan.groups[:-1]),
-                    replace(plan, reduction_length=2049)):
+    for changed in (
+        replace(plan, weighted_absolute_bound=1),
+        replace(plan, groups=plan.groups[:-1]),
+        replace(plan, reduction_length=2049),
+    ):
         with pytest.raises(ValueError):
             c_fused_header(changed)
 
 
-@pytest.mark.parametrize("radix_bits,digits,k", [
-    (1, 1, 1), (4, 2, 65), (7, 3, 1), (7, 3, 65), (7, 3, 2048), (8, 1, 127),
-])
+@pytest.mark.parametrize(
+    "radix_bits,digits,k",
+    [
+        (1, 1, 1),
+        (4, 2, 65),
+        (7, 3, 1),
+        (7, 3, 65),
+        (7, 3, 2048),
+        (8, 1, 127),
+    ],
+)
 def test_actual_c_fused_original_prefixes_bounds_aliases_and_effects(tmp_path, radix_bits, digits, k):
     cc = shutil.which("cc")
     if cc is None:
@@ -32,7 +42,7 @@ def test_actual_c_fused_original_prefixes_bounds_aliases_and_effects(tmp_path, r
     (tmp_path / "stream.h").write_text(c_header(plan))
     limits = ",".join(str(g.accumulator_bound) for g in plan.groups)
     weights = ",".join(str(1 << g.exponent) for g in plan.groups)
-    source = r'''#include "fused.h"
+    source = r"""#include "fused.h"
 #include "stream.h"
 #include <fenv.h>
 #include <string.h>
@@ -80,16 +90,31 @@ int test(void) {
   }
   return 0;
 }
-'''.replace("LIMITS", limits).replace("WEIGHTS", weights)
+""".replace("LIMITS", limits).replace("WEIGHTS", weights)
     (tmp_path / "test.c").write_text(source)
     library = tmp_path / f"radix{radix_bits}_digits{digits}_k{k}.so"
     flags = ["-std=c11", "-O2", "-fno-fast-math", "-ffp-contract=off"]
-    subprocess.run([cc, *flags, "-shared", "-fPIC", str(tmp_path / "test.c"),
-                    "-o", str(library), "-lm"], check=True, capture_output=True)
+    subprocess.run(
+        [cc, *flags, "-shared", "-fPIC", str(tmp_path / "test.c"), "-o", str(library), "-lm"],
+        check=True,
+        capture_output=True,
+    )
     assert ctypes.CDLL(str(library)).test() == 0
     (tmp_path / "runner.c").write_text("int test(void);int main(void){return test();}\n")
     executable = tmp_path / "sanitized"
-    subprocess.run([cc, *flags, "-fsanitize=undefined", "-fno-sanitize-recover=undefined",
-                    str(tmp_path / "test.c"), str(tmp_path / "runner.c"), "-o", str(executable), "-lm"],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [
+            cc,
+            *flags,
+            "-fsanitize=undefined",
+            "-fno-sanitize-recover=undefined",
+            str(tmp_path / "test.c"),
+            str(tmp_path / "runner.c"),
+            "-o",
+            str(executable),
+            "-lm",
+        ],
+        check=True,
+        capture_output=True,
+    )
     subprocess.run([str(executable)], check=True, capture_output=True)

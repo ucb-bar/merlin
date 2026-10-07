@@ -79,7 +79,9 @@ def test_the_entry_matches_what_the_generator_already_consumes():
         pytest.skip("synthesized profile is empty")
 
     entry = counterexample_entry(target=target, m=8, k=8, n=8)
-    missing = sorted(set(reference[0]) - set(entry))
+    # `source` selects the PyTorch writer for an entry the direct builder cannot express; a
+    # counterexample is a direct-builder matmul, so it never carries one.
+    missing = sorted(set(reference[0]) - set(entry) - {"source"})
     assert not missing, f"the generator reads keys this entry does not provide: {missing}"
 
 

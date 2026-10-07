@@ -19,6 +19,20 @@ artifacts/targets/<target>/<package_id>/
   gemmini/…, muon/…, saturn_vec/…            per-target packages / OOT repos
 ```
 
+Two generated members sit beside the packages:
+
+```
+artifacts/targets/<target>/champions/<package_id>/   phase-2 champion, exported from a run's `best` tag
+artifacts/targets/<target>/INDEX.yaml                 generated index (`merlin experiment index <target>`)
+```
+
+A champion is the standalone publish layout (payload bytes + `MERLIN_PUBLICATION.md` +
+`.merlin/{manifest.yaml,provenance.yaml,certification.yaml,CHAMPION}`) plus
+`.merlin/{provenance,certification,measurements,isa_prohibition}.json`, written only by
+`merlin.targetgen.champions.export_champion` and retention-pinned (`retention` in
+`merlin/contract/storage.yaml`). Never hand-edit a champion or `INDEX.yaml`; export a new champion or
+regenerate the index.
+
 `<package_id>` carries provenance: `<type>_<target>_v<N>_<ts>` plus a lineage `manifest.yaml`
 (parent / version / depth / lever). Full buildable OOT repos live under `build/generated/`, not here;
 mining/autotune *analysis* lives under `artifacts/kernel-mining/<target>/`.

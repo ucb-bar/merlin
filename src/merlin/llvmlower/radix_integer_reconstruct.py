@@ -84,6 +84,7 @@ static inline void merlin_radix_integer_finish_exact_f64(
 """
     )
 
+
 def c_fused_header(plan: RadixProductPlan) -> str:
     """Combine completed group planes without an intermediate integer buffer.
 

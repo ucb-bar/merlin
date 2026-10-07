@@ -3,9 +3,9 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl, firesim]
-code_refs: [src/merlin/compile_cli.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py]
+code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py]
 ---
 
 # Compiling a whole model onto an accelerator
@@ -120,7 +120,8 @@ counts as a numerical pass. `--no-verify` is not an execution escape hatch.
 Both commands above omit `device`, so their receipt says `execution_route: host_baseline`. A correct
 host baseline is useful for isolating the host ABI, memory map and native runner. It says nothing
 about device dispatch. The `--model-build` CLI has no device-placement flag and does not consume an
-OOT candidate's command buffer.
+OOT candidate's command buffer. Its flag rules live in `merlin.compile.command`; to stop a build at a
+named stage or keep its IR, see [compile_debugging](compile_debugging.md).
 
 ## Candidate model diagnostic is a separate artifact
 

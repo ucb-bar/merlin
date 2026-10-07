@@ -143,7 +143,11 @@ def test_queue_cwd_launcher_forces_firesim_to_use_the_daemon_selected_deploy_dir
     assert "for name in env.sh platforms target-design utils" in text
     assert 'shadow_sim="$shadow_firesim/sim"' in text
     assert '[[ "$(basename "$entry")" == output ]] && continue' in text
-    assert 'shadow_driver_dir="$shadow_sim/output/$driver_rel"' in text
+    # Every already-built driver is mirrored (executables only), never the whole output tree; the
+    # make companion selects the exact configuration, so no accelerator/core pair is named here.
+    assert 'shadow_driver_root="$shadow_sim/output/xilinx_alveo_u250"' in text
+    assert '[[ -x "$source_driver" ]] || continue' in text
+    assert 'link_exact "$source_driver" "$shadow_driver_dir/FireSim-xilinx_alveo_u250"' in text
     assert 'link_exact "$chipyard_root/sims/firesim-staging"' in text
     assert 'source_wrapper="$shadow_firesim/sourceme-manager.sh"' in text
     assert 'source %q "$@"' in text
@@ -161,7 +165,13 @@ def test_queue_make_launcher_fails_closed_around_the_exact_prebuilt_driver():
     launcher = BASELINE.FIRESIM_MAKE_LAUNCHER
     assert launcher.is_file()
     text = launcher.read_text(encoding="utf-8")
-    assert "TARGET_CONFIG=FireSimGemminiAndOPUShuttleConfig" in text
+    # The exact driver is derived from Make's own TARGET_CONFIG/PLATFORM_CONFIG arguments, so the
+    # companion serves every prebuilt target instead of one benchmark-specific configuration.
+    assert "TARGET_CONFIG=*) target_config=${argument#TARGET_CONFIG=} ;;" in text
+    assert "PLATFORM_CONFIG=*) platform_config=${argument#PLATFORM_CONFIG=} ;;" in text
+    assert "${target_config}-${platform_config}" in text
+    assert "exact-config prebuilt driver is absent" in text
+    assert "FireSimGemminiAndOPUShuttleConfig" not in text
     assert 'makefrag_normalized=$(realpath -m -s "$makefrag")' in text
     assert '"$real_make" -q --old-file=firesim_target_symlink_hook' in text
     assert 'exec "$real_make" --old-file=firesim_target_symlink_hook' in text

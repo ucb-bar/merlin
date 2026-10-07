@@ -22,6 +22,7 @@ Usage: demo_prescreen_mutation.py --one-time-verilator-qualification
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import sys
@@ -48,8 +49,18 @@ DEFAULT_PKG = (
     REPO / "out/runs/grade_subset_check/runs" / f"{C.TARGET}-capsule-bench" / "A2_single_tile_matmul" / "generated"
 )
 CAPSULE = REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul/capsule.yaml"
-# rtl_facts_pin = merlin/targets/<target>/contracts/rtl_facts/ (derived from the descriptor's target).
-FACTS = json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
+
+
+@functools.cache
+def _facts() -> dict:
+    """The target's pinned RTL facts, read on first use rather than at import.
+
+    rtl_facts_pin is ``<backend package>/contracts/rtl_facts/`` (derived from the descriptor), and that
+    package may be an out-of-tree support provider. Reading it at import made the opt-in refusal below
+    unreachable in a checkout without it: the module died on a missing file before it could say why
+    it would not run.
+    """
+    return json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
 
 
 # ------------------------------------------------------------------------------------- mutators
@@ -170,11 +181,12 @@ def _authorize_verilator_qualification(explicit_opt_in: bool) -> dict:
 def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
     t0 = time.perf_counter()
     trace = RD.decode_text(mlir, source="mutant", target=C.TARGET)
-    cc = CC.compile_checks(FACTS, capsule)
+    facts = _facts()
+    cc = CC.compile_checks(facts, capsule)
     tr_ok = True
     if fc and cc["trace"]:
-        tr_ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, FACTS, target=C.TARGET), "TRACE")
-    rep = RC.screen(trace, capsule, CC._facts_to_rc(FACTS), target=C.TARGET)
+        tr_ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, facts, target=C.TARGET), "TRACE")
+    rep = RC.screen(trace, capsule, CC._facts_to_rc(facts), target=C.TARGET)
     verdict = "reject" if (tr_ok is False or rep.verdict == "reject") else ("warn" if rep.verdict == "warn" else "ok")
     ms = (time.perf_counter() - t0) * 1e3
     fails = [c.id for c in rep.checks if c.status == "fail"]

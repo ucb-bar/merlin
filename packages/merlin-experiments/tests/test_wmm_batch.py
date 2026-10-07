@@ -128,11 +128,31 @@ def _batched_machine(tmp_path: Path, *, control: dict | None = None) -> dict:
     }
 
 
-def _control(tmp_path: Path, store: Path) -> dict:
+def _device(spec: dict) -> str:
+    from merlin_experiments.phase2.whole_model_measured.machines import machine_from_spec
+
+    return machine_from_spec(spec["timing"]).identity().binary_sha256
+
+
+def _solo(control_dir: Path, *, device_sha256: str, cycles: int = 300, **fields) -> dict:
+    """The control's SOLO board reading, as the board's own result records it."""
+    request = read_json(control_dir / J.BOARD_REQUEST)
+    return {
+        "timing_status": V.TIMING_MEASURED,
+        "verdict": {"whole_window_cycles": cycles},
+        "run": {"uart_log": str(control_dir / "run_local" / "uart.log")},
+        "build": {"elf_sha256": request["builds"]["timing"]["elf_sha256"]},
+        "device": {"binary_sha256": device_sha256},
+        "finished_at": "20261005T120000Z",
+        **fields,
+    }
+
+
+def _control(tmp_path: Path, store: Path, **solo_fields) -> dict:
     """The reference arm's own board request and its SOLO result, as a launch declares the control."""
-    control_dir = _board_job(tmp_path, tmp_path / "control_store", "vendor", machine=_batched_machine(tmp_path))
-    solo_uart = control_dir / "run_local" / "uart.log"
-    solo = {"verdict": {"whole_window_cycles": 300}, "run": {"uart_log": str(solo_uart)}}
+    machine = _batched_machine(tmp_path)
+    control_dir = _board_job(tmp_path, tmp_path / "control_store", "vendor", machine=machine)
+    solo = _solo(control_dir, device_sha256=_device(machine), **solo_fields)
     write_json_atomic(control_dir / "solo_result.json", solo)
     return {
         "board_request": str(control_dir / J.BOARD_REQUEST),
@@ -153,13 +173,82 @@ def test_the_control_check_needs_both_the_cycles_and_every_groups_bytes():
 
 def test_a_batch_waits_for_its_controls_solo_measurement(tmp_path):
     store = tmp_path / "store"
-    spec = _batched_machine(tmp_path, control={"board_request": "x", "solo_result": str(tmp_path / "absent.json")})
+    control = _control(tmp_path, store)
+    solo = Path(control["solo_result"])
+    kept = solo.read_text()
+    solo.unlink()
+    spec = _batched_machine(tmp_path, control=control)
     _board_job(tmp_path, store, "a", machine=spec)
     assert not B.worth_starting(store, {**spec, "batch_wait_seconds": 0}, clock=1e12)
-    (tmp_path / "absent.json").write_text("{}")
+    assert "no readable solo result" in read_json(store / B.CONTROL_PREFLIGHT)["reason"]
+    solo.write_text("{}")  # a file is not a reading
+    assert not B.worth_starting(store, {**spec, "batch_wait_seconds": 0}, clock=1e12)
+    solo.write_text(kept)
     assert B.worth_starting(store, {**spec, "batch_wait_seconds": 0}, clock=1e12)
     write_json_atomic(store / B.BOARD_OUTAGE, {"retry_after_epoch": 2e12})
     assert not B.worth_starting(store, {**spec, "batch_wait_seconds": 0}, clock=1e12)
+
+
+def test_the_control_preflight_refuses_every_reading_that_cannot_judge_this_batch(tmp_path):
+    """Each way a 'solo result' can fail to be a solo board reading of this program on this device is
+    refused by name; only the real one passes."""
+    control = _control(tmp_path, tmp_path / "store")
+    solo_path = Path(control["solo_result"])
+    good = read_json(solo_path)
+    device = good["device"]["binary_sha256"]
+    assert B.control_preflight(control, device_sha256=device)["ok"]
+    for mutation, why in (
+        ({"timing_status": V.TIMING_MEASURED_INVALID}, "not a MEASURED reading"),
+        ({"verdict": {}}, "no whole-window cycle count"),
+        ({"batch": {"size": 3}}, "inside a batch of 3"),
+        ({"build": {"elf_sha256": "f" * 64}}, "the batch links"),
+        ({"device": {"binary_sha256": "e" * 64}}, "another machine"),
+    ):
+        write_json_atomic(solo_path, {**good, **mutation})
+        verdict = B.control_preflight(control, device_sha256=device)
+        assert not verdict["ok"] and why in verdict["reason"], (mutation, verdict)
+        assert verdict["reason"].startswith(B.INFRA_CONTROL_UNMEASURED)
+
+
+def test_a_control_measured_on_another_machine_holds_the_batch_before_any_board_job(tmp_path):
+    store = tmp_path / "store"
+    control = _control(tmp_path, store, device={"binary_sha256": "d" * 64})
+    spec = _batched_machine(tmp_path, control=control)
+    jobs = [_board_job(tmp_path, store, name, machine=spec) for name in ("a", "b")]
+    driver = FakeDriver()
+    B.batch_main(store, driver=driver)
+    assert driver.linked == []  # nothing linked, nothing run
+    for job_dir in jobs:
+        job = read_json(job_dir / "job.json")
+        assert job["state"] == J.BOARD and "no board job was spent" in job["notice"]
+        assert job["control_preflight_holds"] and not (job_dir / "result.json").exists()
+    assert "another machine" in read_json(store / B.CONTROL_PREFLIGHT)["reason"]
+
+
+def test_the_drift_tolerance_is_the_machines_own_and_is_recorded(tmp_path):
+    """A control 3% off its solo reading drifts under the declared 2% -- unless this device's own solo
+    repeats of one program already spread 4% across days, which the batch then records as its basis."""
+    store = tmp_path / "store"
+    control = _control(tmp_path, store, finished_at="20260930T120000Z")
+    spec = _batched_machine(tmp_path, control=control)
+    jobs = [_board_job(tmp_path, store, name, machine=spec) for name in ("a", "b")]
+    B.batch_main(store, driver=FakeDriver(scales={"control": 1.03}))
+    assert all(read_json(j / "job.json").get("control_drifts") for j in jobs)
+    # Solo repeats of the control's program on this device: two the same day, one two days later, 4% off.
+    solo = read_json(Path(control["solo_result"]))
+    for name, day, cycles in (("r1", "20261001", 300), ("r2", "20261001", 301), ("r3", "20261003", 312)):
+        repeat = store / f"repeat_{name}"
+        repeat.mkdir(parents=True)
+        document = {**solo, "verdict": {"whole_window_cycles": cycles}, "finished_at": f"{day}T120000Z"}
+        write_json_atomic(repeat / "result.json", document)
+    for job_dir in jobs:
+        job = read_json(job_dir / "job.json")
+        job.update(solo=False, control_drifts=[])
+        write_json_atomic(job_dir / "job.json", job)
+    B.batch_main(store, driver=FakeDriver(scales={"control": 1.03}))
+    result = read_json(jobs[0] / "result.json")
+    rule = result["batch"]["control"]["tolerance_rule"]
+    assert result["batch"]["control"]["ok"] and rule["basis"] == "cross_day_solo_spread" and rule["declared"] == 0.02
 
 
 def test_a_batch_with_its_control_in_tolerance_finishes_every_candidate_from_its_own_block(tmp_path):
@@ -228,7 +317,7 @@ def test_a_job_whose_board_objects_are_gone_is_rebuilt_not_linked(tmp_path):
     B.batch_main(store, driver=driver)
     job = read_json(job_dir / "job.json")
     assert job["state"] == J.PENDING and job["board_rebuilds"] and not driver.linked
-    assert (job_dir / "unlinkable_attempt_0").is_dir()
+    assert read_json(job_dir / J.ATTEMPTS_DIR / "0" / J.ATTEMPT_RECORD)["kind"] == "unlinkable_attempt"
 
 
 # --------------------------------------------------------------- solo jobs never starve a new group

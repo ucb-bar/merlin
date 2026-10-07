@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+import selected_driver
 
 from merlin.targetgen import isa_asm as A
 from merlin.targetgen.isa_model import IsaModel
@@ -106,6 +107,7 @@ def test_broker_restart_skips_only_atomically_completed_requests(tmp_path):
     assert BR._completed_request_names(tmp_path) == {"req_complete.json"}
 
 
+@selected_driver.requires_support("gemmini")
 def test_rocc_endpoint_executes_the_live_package_imports_end_to_end():
     """Catch stale broker import aliases before an agent spends a round discovering them."""
     BR = _load_broker()

@@ -10,10 +10,13 @@ bakes a compilable co-model kernel with the right datatype for each format.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import load_capsule
+
+pytestmark = selected_driver.requires_support("muon")
 
 _ISA = repo_root() / "merlin" / "contract" / "capsules" / "radiance" / "isa"
 _CONTRACT = repo_root() / "merlin" / "contract"

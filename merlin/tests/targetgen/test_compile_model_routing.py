@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import external_sources
 import pytest
+import selected_driver
 
 # `_mesh_verify` and `run_matmul_on_mesh` resolve `_default_oot_package` in merlin.compile.mesh, where it
 # is defined, so a stand-in package goes there; the name merlin.compile_cli re-exports is never read.
@@ -212,6 +214,7 @@ def test_required_gsim_refuses_conflicting_mesh_simulator(monkeypatch, path):
     assert seen == []
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_synthesizes_and_passes(monkeypatch):
     """Each mesh matmul is synthesized as a real DxD merlin_iface tile and run through certify; a passing
@@ -241,6 +244,7 @@ def test_mesh_verify_synthesizes_and_passes(monkeypatch):
     assert t0["M"] == t0["K"] == t0["N"] >= 1 and t0["cycles"] == 47
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_unavailable_is_fail_closed(monkeypatch):
     """An unavailable oracle is recorded honestly (oracle_unavailable), never a silent pass."""
@@ -274,6 +278,7 @@ def test_mesh_verify_no_default_package_is_not_run(monkeypatch):
     assert res["status"] == "not_run" and res["n_tiles"] == 0 and "package" in res["reason"]
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_compiles_layer_at_real_extent(monkeypatch):
     """A mesh matmul carrying real (M,K,N) extents is synthesized at that shape (rounded up to the mesh
@@ -303,6 +308,7 @@ def test_mesh_verify_compiles_layer_at_real_extent(monkeypatch):
     assert "16x64" in seen["mlir"]  # the interface carries the true layer shape
 
 
+@external_sources.requires_rtl("gemmini")
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
     """run_matmul_on_mesh builds the matmul interface at the operands' real shape and INJECTS A/W as the
@@ -349,6 +355,7 @@ def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
     assert f"{D}x{D}" in seen["mlir"]  # built at the padded, tile-aligned extent
 
 
+@external_sources.requires_rtl("gemmini")
 def test_run_matmul_on_mesh_none_without_package(monkeypatch):
     """No OOT backend package -> None (never a fabricated result)."""
     import merlin.compile_cli as CC
@@ -357,6 +364,7 @@ def test_run_matmul_on_mesh_none_without_package(monkeypatch):
     assert CC.run_matmul_on_mesh("gemmini", [[1]], [[1]]) is None
 
 
+@selected_driver.requires_support("gemmini")
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_unsynthesizable_op_is_honest(monkeypatch):
     """A mesh op with no single-tile synthesizer is recorded, never counted as executed or passed."""

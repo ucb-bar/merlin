@@ -60,6 +60,13 @@ validation_notes: >-
   (for example `{kind: memory, scope: scalar, direction, address_space, width_bytes, addressing}`), so
   scalar memory, vector, and future operation families extend the same registry instead of adding
   parallel capability schemas. `effects` uses the shared Phase-2 optimization-effect vocabulary.
+  A selected target may project a typed MLIR dialect from these same records by declaring
+  `dialect_name`, custom `types`, and a `semantics.mlir_signature` for every record with
+  `{domain: dialect, dialect: <dialect_name>}`. The signature gives explicit operands,
+  results, typed attributes (with mode/binding/policy roles), and MLIR memory effects.
+  Projection refuses a partly typed operation set and produces no name-only lowering.
+  The generated plan remains review flagged; the signature does not establish numerical
+  semantics, physical encoding, or executable instruction lowering.
 
   OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
   `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],

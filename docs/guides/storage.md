@@ -3,7 +3,7 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-10-05
+last_verified: 2026-10-06
 related: [reproducibility, getting_started, gemmini_experiment]
 code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/oot_repo.py,
@@ -13,6 +13,7 @@ code_refs: [src/merlin/common/content_store.py,
             packages/merlin-experiments/src/merlin_experiments/phase1/oot_history.py,
             src/merlin/common/storage_cli.py,
             src/merlin/common/storage_lifecycle.py,
+            src/merlin/common/storage_ops.py,
             merlin/contract/storage.yaml,
             .claude/hooks/guard_artifact_writes.py,
             packages/merlin-experiments/src/merlin/targetgen/sandbox/bwrap.py,
@@ -36,6 +37,9 @@ merlin-storage prune --apply caches       # act on one class
 merlin-storage dedup                      # dry run: bytes held under more than one name
 merlin-storage retain --keep 20           # dry run: what a retention depth would drop
 merlin-storage organize                   # dry run: fold stray dirs into their declared concern
+merlin-storage move SRC DST               # dry run: relocate a tree behind a relative symlink
+merlin-storage dedup --peers PATH...      # dry run: hard-link duplicates to each other, no store
+merlin-storage worktrees [REPO]           # read-only: each worktree's state, merge status, size
 ```
 
 ## Is it bloat, or is it accumulation?
@@ -178,6 +182,37 @@ Two things to know before running it with `--apply`:
   optimisation, never the test. `--min-bytes` (1 MiB by default) keeps the walk off the long tail
   where the saving cannot repay the inode.
 
+## Beyond `out/`: moving a tree, linking peers, surveying worktrees
+
+The commands above reason about the output root. A host also carries checkouts, worktrees, scratch
+trees and a second disk, and three operations reach those (`merlin.common.storage_ops`). Each is a
+dry run until `--apply`, none follows a symlink, and the two that change the disk refuse a path a
+live process holds open:
+
+- **`move SRC DST`** copies `SRC` with `rsync -aH` (symlinks copied as symlinks, hard links kept),
+  verifies the copy with a checksum dry run plus a file/byte count, checks again that no process
+  started using `SRC` during the copy, and only then replaces `SRC` with a **relative** symlink to
+  `DST`, so every path that quoted the old location still resolves. A failure at any step keeps the
+  source; a source that is a symlink, spans a mount point, holds tracked files, or is leased or
+  pinned is refused before anything is copied.
+- **`dedup --peers`** finds the same groups as `dedup` and hard-links each name to the first name
+  holding those bytes on the same filesystem, instead of into the content store. Use it where the
+  store cannot reach (another disk) or should not own the bytes (a tree outside `out/`). Each name
+  is re-digested immediately before its swap, a frozen directory's mode is borrowed and restored
+  exactly, and the kept inode becomes read-only because its mode is now shared.
+- **`worktrees [REPO]`** lists every worktree with `clean`/`dirty` (modified and untracked counts),
+  merged into a base ref (`--base`, default the remote's HEAD or `main`) and commits ahead of it,
+  its size (`du`, without following links), `locked`/`prunable`, and the number of live processes
+  holding it. It runs `git --no-optional-locks`, so surveying another session's tree never refreshes
+  its index.
+
+The open-file check is `lsof` (one listing of this user's processes, queried by path prefix), or
+`fuser` over the walked entries when `lsof` is absent. With neither installed the operation is
+refused rather than assumed safe; `--no-open-file-check` accepts that risk explicitly. Neither tool
+can see another account's processes without privilege, so the check guards against your own
+sessions, not against the whole host. `--deny PATH` (repeatable) names trees a command must not read
+or touch; it is empty unless you pass it.
+
 ## Retention
 
 `merlin-storage retain --keep N` reports which units a retention depth would drop, per group, newest
@@ -286,7 +321,8 @@ Every phase writes to one address per unit, and every later phase cites that add
 | its compiler history | `<phase run>/oot/` (a git repo) | the harness only, via `merlin.common.oot_repo` |
 | a sealed phase-0 release | `out/artifacts/protocols/<target>/phase0-<TS>-<sha7>/` | `merlin experiment corpus prepare` (default `--output`) then `seal` |
 | a phase-2 champion | `out/artifacts/targets/<target>/champions/<package_id>/` | `merlin.targetgen.champions.export_champion` |
-| the target index | `out/artifacts/targets/<target>/INDEX.yaml` | `merlin experiment index <target>` (generated, never edited) |
+| the target index | `out/artifacts/targets/<target>/INDEX.yaml` | `merlin experiment index <target>` (generated, never edited; `--check` exits 1 when stale); also regenerated when a phase-1 run freezes, a phase-2 `best` moves and a champion is exported |
+| a tracking page | `out/artifacts/experiments/<target>/dashboard/` | `merlin experiment dashboard <run> \| --target <target>` (regenerable, read from records; see [experiment_dashboard](experiment_dashboard.md)) |
 
 The suite of a phase run IS the phase, so `aet runs --suite <target>/phase1` and `merlin-storage
 experiments` see phase runs like any other run. `method` names what ran: the experiment id or recipe
@@ -310,7 +346,10 @@ adopts the orchestration's own phase-run directory), loop grading commits the op
 it is about to grade (`merlin_experiments.phase1.oot_history`), the round records in
 `qa_loop_summary.yaml` and `oot_commits.jsonl` carry the commit sha, and the official freeze tags
 `frozen` and records it in `freeze.json` under `oot`. A run that began under the legacy
-`capsule-bench/<arm>/` root resumes there without a history.
+`capsule-bench/<arm>/` root resumes there without a history. Only a sandboxed (`--sandbox bwrap`)
+run keeps one; copy mode is a diagnostic that is never admitted. A commit or tag that fails is
+recorded rather than skipped — as an `error` row in `oot_commits.jsonl`, or under `oot.error` in
+`freeze.json` — so a missing history cannot pass for a run that had nothing to commit.
 
 ```python
 from merlin.common import oot_repo as O
@@ -328,9 +367,31 @@ measurements were taken of, exports the tree, and passes it through the publish 
 `.merlin/{manifest.yaml,provenance.yaml,certification.yaml,CHAMPION}`. It adds
 `.merlin/provenance.json` (phase-1 run and frozen commit, phase-2 run and best commit, corpus seal
 digest, phase-0 evidence digest), `measurements.json` (FireSim cycles with the machine, the parameter
-header and the vendor control run in the same batch), `certification.json` (GSIM) and
-`isa_prohibition.json` (the whole-ELF prohibited-instruction scan). Each required field is checked and
-none is defaulted; a scan that is not clean or a GSIM verdict that is not `pass` refuses the export.
+header and the vendor control run in the same batch, and the `exactness` record -- the contract's
+`contract_sha256` and `label` -- the cycles were graded under), `certification.json` (GSIM) and
+`isa_prohibition.json` (the whole-ELF prohibited-instruction scan, with the non-empty
+`prohibited_instructions` it held the program to). Each required field is checked and none is
+defaulted; a scan that is not clean, a clean scan that prohibited nothing, a measurement with no
+identifiable exactness contract, or a GSIM verdict that is not `pass` refuses the export.
+
+**A lineage older than these records says so instead of borrowing their shape.** Three optional
+provenance blocks cover it, each printed in `MERLIN_PUBLICATION.md` as well as recorded:
+
+- `lineage.legacy` — `{reason, predates: "sealed phase 0", bundle_manifest_sha, bundle_name, run_dirs,
+  dates, hops: [{driver, model, ...}]}` for a lineage graded on an input bundle before phase-0 corpora
+  were sealed. It stands in for `corpus_seal_digest` / `phase0_evidence_digest` only where the caller
+  wrote that digest as an explicit `null` (an absent key is still refused), and the export prints
+  `UNSEALED LEGACY LINEAGE` under the title of `MERLIN_PUBLICATION.md` and in `.merlin/CHAMPION`. It
+  covers those two digests and nothing else: the measurements (exactness record included), the GSIM
+  verdict and the whole-ELF scan keep their rules.
+- `composition` — `champions.composition(parts, base, ...)` writes the note ("composed by three-way
+  merge of cell winners X, Y, Z onto B") from the digests it records; the base must be a package in
+  `best`'s history.
+- a history rebuilt by `oot_repo.reconstruct(path, hops, frozen=, best=, reason=)` from stored package
+  bytes, for runs that predate `oot/`. Each hop is committed only if its bytes still hash to the digest
+  it was graded or measured as; every commit and the repo (`.git/merlin-reconstruction.json`) carry
+  `reconstructed: true`, the export records it under `phase2`, and the reconstruction's `frozen` must
+  be the declared one.
 
 **Retention is declared, not remembered.** `retention.pinned` in `merlin/contract/storage.yaml` names
 the sealed releases and the champions; `merlin-storage retain` and `prune` treat a unit that is,
@@ -338,4 +399,6 @@ contains or lies inside a pinned pattern as protected, exactly like a lifecycle 
 a lifecycle pin as well, so either alone keeps the evidence.
 
 `merlin experiment lineage --target <target>` prints the index; `merlin experiment lineage <run>`
-adds the index rows that cite that run.
+adds the index rows that cite that run. A champion row says `unsealed_legacy`, `reconstructed` and
+`composed` when its provenance carries those blocks, and a legacy champion is found by the run
+directories its legacy block names.

@@ -1,0 +1,38 @@
+# Capability claims that NARROW a target and carry no citation anyone can follow.
+#
+# NEVER ADD A LINE. This ledger may only shrink: cite the RTL source (and put it in the read set of a
+# hardware pin this target declares), the test that pins it, or the derivation that produces it -- or
+# drop the restriction -- and delete the entry. The gate fails on a NEW entry and equally on a STALE
+# one, so an entry that is no longer a gap must be removed in the same change that closes it.
+#
+# Regenerate (and review the diff) with:
+#   python build_tools/scripts/check_capability_backing.py --write-ratchet
+#
+# Format: <target> <axis>:<shape>:<detail>.
+#   axis    `unbacked` (no citation resolves) or `rotted` (backed, but a citation no longer resolves)
+#   shape   which kind of narrowing -- see merlin.targetgen.capability_backing.NARROWING_SHAPES
+#   detail  the family, or the compute unit for `no_semantic_capabilities`
+# Target-scoped because a claim is debt on one target and evidence on another; a flat entry would
+# forgive every target at once.
+#
+# WHAT IS NOT HERE. A narrowing shape this gate does not yet decide (a unit's `ops` enumeration, a
+# `legality` clause, a bare `false` feature flag, a family declared nowhere at all) is listed in
+# `capability_backing.DEFERRED_SHAPES`, not here -- an empty ledger would otherwise read as "every
+# narrowing in this repo is evidenced", which is not what it means.
+#
+# growth-accepted: the gate is new; these are the unbacked narrowing claims it found on the tree,
+# not claims added. They include the shape the gate was written for -- an elementwise map declared
+# reachable only behind a contraction, on prose alone -- which is still declared on one target here.
+atlas unbacked:ranks:contraction
+gemmini unbacked:composed_with:reduction
+gemmini unbacked:unmaterializable:elementwise_map
+gemmini_universal unbacked:composed_with:elementwise_map
+gemmini_universal unbacked:composed_with:reduction
+gemmini_universal unbacked:ranks:contraction
+gemmini_universal unbacked:unmaterializable:elementwise_map
+k1_cpu unbacked:family_dtypes:contraction
+muon unbacked:no_semantic_capabilities:simt_cluster
+toy_npu unbacked:no_semantic_capabilities:pe_array
+voyager_accel unbacked:no_semantic_capabilities:vector_unit
+voyager_accel unbacked:ranks:contraction
+voyager_accel unbacked:unmaterializable:elementwise_map

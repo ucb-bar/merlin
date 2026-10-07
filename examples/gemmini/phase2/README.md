@@ -129,16 +129,81 @@ each machine is run (host locations are environment references); which device ea
 pin registry's. [`whole-model-objective.json`](whole-model-objective.json) is an example objective
 config; replace each `/ABSOLUTE/...` placeholder with artifacts measured on that *same full design*.
 The Lean board remains an explicitly named historical option, not an interchangeable fallback: it
-lacks full-width accumulator readout. Merely selecting the full board here does not establish that
+lacks full-width accumulator readout. The stock `FireSimGemminiRocketConfig` board
+(`stock_u250_board`, batched as `stock_batched_board`) has that readout; its hw-config
+resolves to the pinned bitstream that declares its generated ABI header, and its chipyard
+is the private tree its host driver was built in (`MERLIN_CHIPYARD_GEMMINI_STOCK`). Merely selecting the full board here does not establish that
 its queue configuration is currently available, that it matches a particular Phase 0 RTL snapshot,
 or that a new run passed qualification. Large inputs such as the model capsule are frozen by
 content into each run, never copied.
 
 The example leaves `builder` and `store` unset: run preparation selects Merlin's
-shared builder and creates a target-scoped artifact store. Its `mechanism_policy`
-derives whether verified package passes and fused regions are available from the
-frozen model capsule's host/accelerator closure. Closed models can use both;
-open models can use neither. The prepared, read-only objective records the exact
-decision. This enables mechanisms for the Phase 2 agent, not hand-authored
+shared builder and creates a target-scoped artifact store. Its `chunk_ops: "auto"`
+build option lets an open model's host forward be cut into bounded functions
+when it is large (an unchunked SmolVLA forward compiled for over two hours,
+against about eleven minutes cut at 1,000 ops); a forward that fits in one chunk,
+and every closed model, builds exactly as without it. Its `mechanism_policy`
+derives whether verified package passes are available from the frozen model
+capsule's host/accelerator closure. Fused regions are on by default for a closed
+model, in whole-model and cell programs alike: a package that opts in may answer
+adjacent groups as one kernel, and every member still counts as package-authored
+only while that kernel is linked. Opt out with `fused_regions: false` in the
+objective config (or `--no-fused-regions` on `prepare`/`run`); open models never
+claim one. The prepared, read-only objective records each decision
+(`mechanism_derivation`, `fused_region_decision`). This enables mechanisms for the Phase 2 agent, not hand-authored
 Gemmini transformations, and does not make a diagnostic or unreviewed capsule
 eligible for a verified run.
+
+### Exactness: which forms may differ from their reference
+
+[`exactness.yaml`](exactness.yaml) is this target's reviewed exactness contract. Every form is exact
+unless an entry there names it as `bounded`, with its bound in output LSB (optionally a fraction of the
+elements) and the reason it cannot be bit-exact. The objective config names it (`exactness`), and a
+prepared run carries it by value, so later edits never reach a running campaign. Every grader holds each
+group to exactly its form's contract and records it: the measured verdict (`verdict.exactness`), the
+cell and per-group capsule grades, the whole-model gate, and the champion export (which refuses a
+measurement that recorded none). A verdict reads `bounded(<=N LSB)`, never `exact`, for a bounded group,
+and a result graded under another contract is shown but is never the run's best.
+
+### Operating a measured run
+
+Every command below reads or writes only the run's own records; none signals a
+process or infers anything from a file's age. A run may be named by its own
+directory or by the orchestration directory that points at it.
+
+```sh
+merlin experiment measured launch RUN --profile codex-gpt-6-sol   # detached; output appends to RUN/launch.log
+merlin experiment status RUN                    # launcher, stop request, rounds, stores, holds, bar and best
+merlin experiment measured follow RUN           # one line per change until the run is over
+merlin experiment watch RUN                     # the records summary in the terminal, refreshed
+merlin experiment stop RUN --why "..."          # stops at the next session boundary
+merlin experiment measured resume RUN --why "..." --seed PACKAGE --launch --profile codex-gpt-6-sol
+merlin experiment measured audit-round RUN 3    # replay round 3's audit and compare its recorded status
+merlin experiment measured roofline --run RUN --result ours=RESULT.json --result vendor=RESULT.json
+merlin experiment measured admin STORE outage-retry-now --why "board re-enumerated"
+```
+
+The records these read, beside a run's `run.json` (every one is the run's own; the dashboard reads
+the same files):
+
+- `heartbeat.json` (`merlin.phase2.whole_model_measured.heartbeat.v1`): the launcher's `pid` and kernel
+  `start_ticks`, `last_activity` (`at`, `what`) and `last_measured` (the newest MEASURED or
+  MEASURED_INVALID candidate across the run's stores, every attempt counted). `status` reports the run
+  STALLED when the launcher is gone or nothing was measured within `--stall-hours` (default 6);
+  `measured watch` (the relauncher) records each stall once in `liveness_events.jsonl` and can run
+  `--notify-command`.
+- `machine_capabilities.json`: each section's machine report (its header's flags and values, its
+  declared limits) and what it lacks against the registry's other boards; launches print the warnings.
+- In each store, a job's earlier attempts live under `attempts/<n>/` (`attempt.json` says why) and a
+  `result.json` is written once; `control_preflight.json` says why batches are held.
+
+A cell run is the same mode pointed at one cell's own group programs.
+[`cells.yaml`](cells.yaml) names the ResNet-50 cells by group or by form; the
+seed defaults to the loop's confirmed best (or the target's exported champion):
+
+```sh
+merlin experiment cell prepare LOOP_RUN --cells examples/gemmini/phase2/cells.yaml --cell conv3x3 --why "..."
+merlin experiment cell launch CELL_RUN --profile codex-gpt-6-sol-cell
+merlin experiment cell status CELL_RUN          # or: --target gemmini, every cell run
+merlin experiment cell board --package-job JOB.json --reference-job JOB.json --groups 1,70
+```

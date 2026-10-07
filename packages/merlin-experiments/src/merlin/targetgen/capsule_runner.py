@@ -705,6 +705,108 @@ def run_executables(generated) -> tuple:
     return tuple(found)
 
 
+def graded_prohibited_roles(capsule: dict) -> tuple[str, ...]:
+    """The prohibited instruction roles a graded capsule's program is held to.
+
+    The run's declared policy, from the environment the Phase 1 adapter hands every grader
+    (:data:`merlin.perf.whole_model_gate.ROLES_ENV`), together with the roles the sealed corpus stamped
+    into the capsule's own candidate arm (``performance.arms.candidate.instruction_policy``). Either
+    source alone is enough to make the scan required: a capsule graded outside the adapter keeps the
+    rule its corpus was sealed under."""
+    from merlin.perf.whole_model_gate import ROLES_ENV
+
+    roles = {r.strip() for r in (os.environ.get(ROLES_ENV) or "").split(",") if r.strip()}
+    arm = (((capsule.get("performance") or {}).get("arms") or {}).get("candidate") or {}).get("instruction_policy")
+    if isinstance(arm, dict):
+        roles |= {str(r) for r in arm.get("prohibited_instruction_roles") or () if str(r)}
+    return tuple(sorted(roles))
+
+
+def prohibited_instruction_report(capsule: dict, generated, *, target: str) -> dict | None:
+    """The whole-ELF prohibited-instruction scan of every executable this grade linked, or ``None`` when
+    the capsule's program is held to no role (:func:`graded_prohibited_roles`).
+
+    Every ELF :func:`run_executables` finds is walked in full (:func:`merlin.perf.isa_prohibition.scan_elf`
+    reads every executable section, so an instruction reached only through a function pointer, or never
+    executed, is found exactly like one on the hot path). ``clean`` is ``True`` only when every ELF was
+    measured and none carries a prohibited instruction, ``False`` when any carries one, and ``None``
+    (unmeasured) otherwise -- including a grade that linked no ELF at all, or a target whose facts give
+    the roles no instruction. Unmeasured is never clean."""
+    roles = graded_prohibited_roles(capsule)
+    if not roles:
+        return None
+    from merlin.perf.isa_prohibition import SCHEMA, scan_elf
+
+    elfs = []
+    for path in run_executables(generated):
+        try:
+            with path.open("rb") as handle:
+                if handle.read(4) == b"\x7fELF":
+                    elfs.append(path)
+        except OSError:
+            continue
+    base = {"schema": SCHEMA, "scope": "whole_elf", "roles": list(roles)}
+    if not elfs:
+        return {
+            **base,
+            "status": "unmeasured",
+            "clean": None,
+            "summary": {},
+            "scans": [],
+            "detail": "the grade linked no ELF to scan, so the prohibited-instruction rule was not checked",
+        }
+    scans = [scan_elf(path, target=target, roles=roles) for path in elfs]
+    summary: dict[str, int] = {}
+    for scan in scans:
+        for name, count in (scan.get("summary") or {}).items():
+            summary[name] = summary.get(name, 0) + int(count)
+    measured = all(scan.get("status") == "measured" for scan in scans)
+    return {
+        **base,
+        "status": "measured" if measured else "unmeasured",
+        "clean": False if summary else (True if measured else None),
+        "summary": dict(sorted(summary.items())),
+        "scans": scans,
+        **(
+            {"detail": "; ".join(str(s.get("detail")) for s in scans if s.get("status") != "measured")}
+            if not measured
+            else {}
+        ),
+    }
+
+
+def apply_prohibited_instruction_rule(status: str, failure: dict | None, report: dict | None):
+    """``(status, failure)`` after the instruction rule: a prohibited instruction anywhere in the linked
+    program FAILS the capsule (it is a fact about the submission's bytes), and a passing capsule whose
+    program could not be scanned is ``incomplete`` -- never a pass on an unchecked program."""
+    if report is None:
+        return status, failure
+    if report.get("clean") is False:
+        hits = ", ".join(f"{name} x{count}" for name, count in (report.get("summary") or {}).items())
+        prohibited = {k: v for scan in report.get("scans") or () for k, v in (scan.get("prohibited") or {}).items()}
+        return "fail", {
+            "plane": "instruction_policy",
+            "category": "PROHIBITED_INSTRUCTION",
+            "detail": (
+                f"the linked program carries instruction(s) the experiment prohibits (roles "
+                f"{report.get('roles')}): {hits}. The whole ELF is scanned, so an instruction in code that "
+                f"is never called still counts; emit the work without the prohibited instructions"
+            ),
+            "prohibited_instructions": prohibited,
+            **({"previous_failure": failure} if failure else {}),
+        }
+    if report.get("clean") is not True and status == "pass":
+        return "incomplete", failure or {
+            "plane": "instruction_policy",
+            "category": "PROHIBITION_NOT_MEASURED",
+            "detail": (
+                f"the capsule's program is held to prohibited roles {report.get('roles')}, and the "
+                f"whole-ELF scan could not settle it: {report.get('detail') or 'no measured verdict'}"
+            ),
+        }
+    return status, failure
+
+
 def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
     """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
 
@@ -2260,10 +2362,67 @@ def _batched_tiers_of(target: str | None) -> frozenset[str]:
         return frozenset()
 
 
+def _model_screen_tier(tier: str, sim: str, tile_exec: dict | None) -> TierResult:
+    """The verdict for a whole model's functional SCREEN tier, read from its per-tile tally.
+
+    The screen is the cheapest-first rung each synthesized tile clears before the cert oracle sees it
+    (``mesh_tile_verification``: ``n_screened`` / ``n_screen_passed`` / ``n_screen_failed`` /
+    ``n_screen_unavailable``). Four distinct facts, never collapsed:
+
+      * no tile record at all             -> skipped (not applicable: this grade synthesized nothing)
+      * tiles verified, no screen tally   -> unavailable (a real hole: the cheap rung was not run)
+      * a tally that does not add up      -> unavailable (unaccounted tiles are UNKNOWN, never a pass)
+      * otherwise                         -> fail if any failed, unavailable if any could not run,
+                                             skipped if none were screened, pass if all passed
+    """
+    evidence = "mesh_tile_verification.per_tile[].screen"
+
+    def _result(status: str, reason: str, *, not_applicable: bool = False) -> TierResult:
+        return TierResult(
+            tier,
+            status,
+            True,
+            reason=reason,
+            evidence=evidence,
+            derived_from_rtl=False,
+            cycle_accurate=False,
+            not_applicable=not_applicable,
+        )
+
+    if not isinstance(tile_exec, dict) or not tile_exec:
+        return _result(
+            "skipped", "no tiles were synthesized for this grade, so there was nothing to screen", not_applicable=True
+        )
+    if tile_exec.get("n_screened") is None:
+        return _result(
+            "unavailable",
+            f"tiles were verified but no {sim} screen tally was recorded, so whether they cleared the "
+            f"{tier} screen is UNKNOWN",
+        )
+    n = int(tile_exec["n_screened"])
+    passed = int(tile_exec.get("n_screen_passed") or 0)
+    failed = int(tile_exec.get("n_screen_failed") or 0)
+    unavailable = int(tile_exec.get("n_screen_unavailable") or 0)
+    if passed + failed + unavailable != n:
+        return _result(
+            "unavailable",
+            f"{n} tile(s) screened but only {passed + failed + unavailable} accounted for; the "
+            f"unaccounted tiles' {tier} verdict is UNKNOWN",
+        )
+    if failed:
+        return _result("fail", f"{failed} of {n} tile(s) failed the {sim} screen")
+    if unavailable:
+        return _result("unavailable", f"the {sim} screen could not run on {unavailable} of {n} tile(s)")
+    if n == 0:
+        return _result("skipped", "no tile was screened")
+    return _result("pass", f"all {n} tile(s) passed the {sim} screen")
+
+
 def _model_tier_map(
     declared: list[str],
     target: str | None,
     model_exec: dict | None,
+    tile_exec: dict | None = None,
     *,
     measurement: dict | None = None,
 ) -> "dict[str, TierResult]":
@@ -2325,6 +2484,12 @@ def _model_tier_map(
             evidence=(lambda v: str(v) if v else None)(seen.get("evidence")),
             fidelity=(lambda v: str(v) if v else None)(seen.get("fidelity")),
         )
+    # A declared SCREEN tier (a cheap functional simulator below the RTL tiers, from the target's own
+    # `tier_sim`) is read from the per-tile tally. Dropping it left a declared rung with no record,
+    # which a downstream `tiers[<screen>] == "pass"` check reads as nothing at all.
+    for t, sim in _screen_tiers_of(target):
+        if t in declared and t not in tiers:
+            tiers[t] = _model_screen_tier(t, sim, tile_exec)
     # The counter-derived verdict below belongs to the tier a SIMULATOR answered at, so a batched
     # tier is excluded from the citable-tier selection; without this, declaring the batched tier
     # would silently REPLACE the simulator tier's record with an unavailable one.
@@ -3634,16 +3799,18 @@ def _grade_model_capsule_inline(
     declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
     mesh_exec = out.get("mesh_tile_verification") or {}
     model_exec = out.get("mesh_execution") or {}
+    n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
+    # Set BEFORE the fail-closed branches below, every one of which returns early: a refusal must still
+    # say which tier refused it, and this block used to be attached only on the success path. That
+    # includes the transform-replay refusal: it returned ahead of this block, so every grade it
+    # refused carried no tier record at all.
+    _model_tiers = _model_tier_map(declared, target, model_exec, mesh_exec)
+    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     _transform_verdict = _model_transform_audit_verdict(model_exec)
     if _transform_verdict is not None:
         _status, _category, _detail = _transform_verdict
         result.update(status=_status, failure={"plane": "model", "category": _category, "detail": _detail})
         return result
-    n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
-    # Set BEFORE the fail-closed branches below, every one of which returns early: a refusal must still
-    # say which tier refused it, and this block used to be attached only on the success path.
-    _model_tiers = _model_tier_map(declared, target, model_exec)
-    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     exercised: dict[str, str] = {}
     # THE LANE CONTRACT IS EVALUATED UNCONDITIONALLY. It used to sit inside `if n_tiles:` below, so a
     # capsule whose tile verification produced nothing -- no mesh_verify, no default OOT package, an
@@ -4278,6 +4445,25 @@ def _finalize_capsule_result(
                         f"one of those complete executable artifacts"
                     ),
                 }
+
+    # THE INSTRUCTION RULE, on every graded capsule's linked program (``applies_to:
+    # phase1_capsule_elfs`` in the sealed policy). Before the screened/not-run rules below, so a capsule
+    # that carries a prohibited instruction fails whatever else is true of it, and one whose program
+    # could not be scanned never reads as a pass.
+    _isa = prohibited_instruction_report(capsule, paths.generated, target=eff_target)
+    if _isa is not None:
+        extra = {**(extra or {}), "isa_prohibition": _isa}
+        if no_oracle and _isa.get("clean") is None and status == "pass":
+            # A structure-only smoke built no executable to scan: not gradeable, never a pass, and not
+            # a "fix this" signal the submission could act on.
+            status = "not_gradeable_no_oracle"
+            failure = failure or {
+                "plane": "not_gradeable_no_oracle",
+                "category": "NOT_GRADEABLE_NO_ORACLE",
+                "detail": f"--no-oracle built no linked program, so the prohibited-role scan did not run: {_isa.get('detail')}",
+            }
+        else:
+            status, failure = apply_prohibited_instruction_rule(status, failure, _isa)
 
     if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
         # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)

@@ -146,6 +146,23 @@ def _invalidate_on_failed_check(verdict: Mapping[str, Any], check: Mapping[str, 
     return verdict
 
 
+def _apply_exactness(job: Mapping[str, Any], verdict: Mapping[str, Any], build: Mapping[str, Any]) -> dict[str, Any]:
+    """``verdict`` with every group held to the run's exactness contract (carried by value on the job;
+    the default -- every form exact -- when the run declared none), the contract recorded on it."""
+    from merlin.perf import exactness as EX
+
+    spec = job.get("exactness") or {}
+    contract = EX.Contract.from_value(spec.get("contract"), target=str(job.get("target") or ""))
+    groups = ((build.get("expectations") or {}).get("groups")) or {}
+    resolve = EX.resolver(
+        contract,
+        forms=spec.get("forms"),
+        routes=list(build.get("groups") or ()),
+        op_bounds={str(g): (body or {}).get("bound_lsb") for g, body in groups.items()},
+    )
+    return EX.apply_to_verdict(verdict, resolve, contract=contract)
+
+
 def _apply_limits(job, verdict, expectations, limits, reference):
     if not limits:
         return verdict
@@ -193,6 +210,7 @@ def _single_machine(job, job_dir, package, observed, builder, check) -> dict[str
             else:
                 verdict["excusal"] = "not applied: no same-machine reference run was available"
         verdict = _apply_limits(job, verdict, expectations, (job.get("machine") or {}).get("cannot_express"), reference)
+        verdict = _apply_exactness(job, verdict, build)
     verdict = _invalidate_on_failed_check(verdict, check)
     return J.result(
         job,
@@ -249,6 +267,21 @@ def _contract_measurement(job, job_dir, build, raw) -> dict[str, Any]:
         {str(row.get("group") if isinstance(row, Mapping) else row) for row in grade.get("disagree") or ()},
         key=V._order,
     )
+    # The grade's own numbers for each group (an exactness contract grades from them): the grade's evidence
+    # table when it states one, else what a disagreement row says.  An agreeing group without numbers has
+    # none -- "agrees" under its op's own bound is not "equal".
+    compares = {
+        str(g): str((body or {}).get("compare") or V.COMPARE_EXACT)
+        for g, body in ((build.get("expectations") or {}).get("groups") or {}).items()
+    }
+    evidence = {str(g): dict(v) for g, v in (grade.get("evidence") or {}).items() if isinstance(v, Mapping)}
+    for row in grade.get("disagree") or ():
+        if isinstance(row, Mapping) and row.get("group") is not None and str(row["group"]) not in evidence:
+            evidence[str(row["group"])] = {
+                k: row[v]
+                for k, v in (("max_abs", "max_abs"), ("mismatches", "mismatches"), ("elements", "of"))
+                if row.get(v) is not None
+            }
     cycles = outcome.get("cycles")
     verdict: dict[str, Any] = {
         "schema": V.SCHEMA,
@@ -267,12 +300,22 @@ def _contract_measurement(job, job_dir, build, raw) -> dict[str, Any]:
             "evidence": "the contract measurer's own per-group local grade over a memory dump, and the argmax",
         },
         "groups": [
-            {"group": g, "cycles": c, "correct": g in agree, "state": "correct" if g in agree else "failed"}
+            {
+                "group": g,
+                "cycles": c,
+                "correct": g in agree,
+                "state": "correct" if g in agree else "failed",
+                "compare": compares.get(str(g), V.COMPARE_EXACT),
+                **evidence.get(str(g), {}),
+            }
             for g, c in sorted((outcome.get("per_group_cycles") or {}).items(), key=lambda kv: V._order(kv[0]))
         ],
     }
     if not graded:
         verdict["refusal"] = correctness.get("refusal") or "the contract measurer did not grade the run"
+    else:
+        verdict = _apply_exactness(job, verdict, build)
+        status = verdict["timing_status"]
     return J.result(
         job,
         timing_status=status,
@@ -370,6 +413,7 @@ def paired_finish(
             templates=builds["local"].get("protocol"),
         )
         verdict = _apply_limits(job, verdict, expectations, (spec.get("timing") or {}).get("cannot_express"), reference)
+        verdict = _apply_exactness(job, verdict, builds["local"])
     verdict = _invalidate_on_failed_check(verdict, check)
     return J.result(
         job,
@@ -582,7 +626,13 @@ def worker_main(job_dir: Path) -> int:
             job.update(state=J.BOARD, board_ready_at=now(), board_ready_epoch=time.time())
             write_json_atomic(job_path, job)
         return 0
-    write_json_atomic(job_dir / "result.json", outcome)
+    try:
+        J.write_result(job_dir, outcome)
+    except J.ResultExists:
+        # Something else ended this job while it ran (a supersede, a second worker): its result stands, and
+        # this one is kept beside it as an attempt of its own -- never written over it.
+        J.preserve_result(job_dir, outcome, why=f"worker {os.getpid()} finished after the job already had a result")
+        return 0
     with locked(job_dir):
         job = read_json(job_path) or {}
         job.update(state=J.DONE, finished_at=now(), timing_status=outcome.get("timing_status"))

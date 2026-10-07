@@ -3,6 +3,9 @@ movement floor over the group's own tensors, the larger of the two, refuted by a
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from merlin_experiments.phase2.whole_model_measured import roofline as R
 
@@ -141,3 +144,61 @@ def test_a_census_that_cannot_be_taken_is_recorded_and_never_raised(tmp_path):
     record = {"group": 3, "arm": G.ARM_PACKAGE, "elf": str(tmp_path / "p.elf"), "variant": {}}
     report = G.efficiency_row(record, {"cycles": 250}, {"rooflines": {"3": roofline}}, target="t", out=tmp_path)
     assert "refusal" in report and report["cycles_over_roofline"] == 2.5
+
+
+def _result(path, cycles):
+    rows = [{"group": g, "cycles": c} for g, c in cycles.items()]
+    path.write_text(
+        json.dumps(
+            {
+                "timing_status": "MEASURED",
+                "objective_cycles": sum(cycles.values()),
+                "verdict": {"groups": rows},
+                "device": {"artifact": "board"},
+                "package_sha256": "p" * 64,
+            }  # fmt: skip
+        )
+    )
+    return path
+
+
+def test_the_report_confronts_every_group_with_each_measured_arm(tmp_path, monkeypatch):
+    """Each arm's per-group cycles are its result's own, the device named beside them; a count below a
+    group's roofline refutes that roofline, and the forms are summed only where complete."""
+    shape = {"op": "matmul", "form_text": "fc", "extents": {"M": 1, "K": 2048, "N": 1000}, "reads": {"x": 2048},
+             "writes": {"y": 4000}}  # fmt: skip
+    monkeypatch.setattr(R, "roofline_machine", lambda target, emulator=None: dict(_MACHINE))
+    monkeypatch.setattr(R, "group_shapes", lambda capsule, target: {"71": shape})
+    floor = R.group_roofline(shape, _MACHINE)["roofline_cycles"]
+    results = {
+        "ours": _result(tmp_path / "ours.json", {71: floor + 10}),
+        "vendor": _result(tmp_path / "vendor.json", {71: floor - 1}),
+    }
+    document = R.report("toy", tmp_path / "capsule", results)
+    assert document["schema"] == R.REPORT_SCHEMA and document["refuted_groups"] == ["71"]
+    assert document["measured_on"]["vendor"]["artifact"] == "board"
+    (row,) = document["table"]
+    assert row["ours"] == floor + 10 and row["groups"] == [71]
+
+
+def test_the_command_line_writes_the_report_as_a_product(tmp_path, monkeypatch, capsys):
+    from merlin_experiments.phase2.whole_model_measured import cli
+
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    monkeypatch.setattr(
+        R, "report", lambda target, capsule, results, emulator=None: {"target": target, "arms": sorted(results)}
+    )
+    with pytest.raises(SystemExit, match="--model-capsule"):
+        cli.main(["roofline", "--result", f"ours={tmp_path / 'r.json'}"])
+    assert (
+        cli.main(
+            ["roofline", "--target", "toy", "--model-capsule", str(tmp_path), "--result", f"ours={tmp_path / 'r.json'}"]
+        )
+        == 0
+    )
+    path = Path(capsys.readouterr().out.strip())
+    assert (
+        path.name == "roofline.json"
+        and (tmp_path / "out" / "artifacts" / "perf-studies" / "roofline" / "toy") in path.parents
+    )
+    assert (path.parent / "manifest.yaml").is_file()

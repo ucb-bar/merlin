@@ -15,6 +15,7 @@ When one of these fails the fix is to regenerate, not to edit:
 
 from __future__ import annotations
 
+import external_sources
 import pytest
 import yaml
 
@@ -52,6 +53,7 @@ def test_every_required_cell_is_still_admitted(spec_path):
 def test_recorded_boundaries_still_match_the_target(spec_path):
     """The tile edge and block-scale group are hardware/derivation facts; a drift means the spec's
     alignment axis and extent probes describe a machine that is no longer this one."""
+    external_sources.require_rtl(spec_path.stem)
     doc = _load(spec_path)
     target = doc.get("target") or spec_path.stem
     rec = doc.get("boundaries") or {}
@@ -111,6 +113,7 @@ def test_composite_cells_name_the_primitives_that_evidence_them(spec_path):
     assert not bad, f"composite cell(s) with no recorded primitives: {bad}"
 
 
+@external_sources.requires_rtl("gemmini")
 def test_a_mesh_left_to_rtl_discovery_is_still_a_hardware_boundary() -> None:
     """Provenance must come from wherever the VALUE came from.
 

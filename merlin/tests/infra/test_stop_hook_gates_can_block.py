@@ -96,7 +96,15 @@ def _index_with(tmp_path, path_in_repo: str, content: str) -> dict:
     the real ``.git/index`` -- shared with concurrent sessions in this checkout -- is never touched.
     """
     idx = tmp_path / "throwaway.index"
-    shutil.copy(REPO / ".git" / "index", idx)
+    # Ask git where the index is: in a linked worktree `.git` is a file, not a directory.
+    real = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-path", "index"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    shutil.copy(real, idx)
     env = {"GIT_INDEX_FILE": str(idx)}
     blob = subprocess.run(
         ["git", "hash-object", "-w", "--stdin"],
@@ -122,7 +130,7 @@ def test_a_tracked_answer_key_blocks_the_stop_hook(tmp_path):
     Before the fix this exited 1 with plain text and the session stopped regardless -- on a PUBLIC repo
     whose whole benchmark depends on the goldens staying untracked.
     """
-    leak = "merlin/contract/capsules/conformance/_stop_hook_probe/golden.yaml"
+    leak = "merlin/contract/capsules/_stop_hook_probe/golden.yaml"
     env = _index_with(tmp_path, leak, "answer: 42\n")
     r = _run("build_tools/scripts/check_no_answer_keys.py", "--stop-hook", env_extra=env)
     payload = json.loads(r.stdout)
@@ -134,7 +142,7 @@ def test_a_tracked_answer_key_blocks_the_stop_hook(tmp_path):
 
 def test_a_tracked_answer_key_fails_the_plain_gate(tmp_path):
     """Same violation, pre-commit/CI dialect: non-zero exit."""
-    leak = "merlin/contract/capsules/conformance/_stop_hook_probe/hidden/answers.yaml"
+    leak = "merlin/contract/capsules/_stop_hook_probe/hidden/answers.yaml"
     env = _index_with(tmp_path, leak, "answer: 42\n")
     r = _run("build_tools/scripts/check_no_answer_keys.py", env_extra=env)
     assert r.returncode != 0, f"a tracked answer key exited 0; stdout={r.stdout!r}"

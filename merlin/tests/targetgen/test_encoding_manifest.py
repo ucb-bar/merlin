@@ -7,6 +7,7 @@ guessed encoding: the manifest is proven to reproduce today's numbers exactly.
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.targetgen.rocc import decode as RD
 from merlin.targetgen.rtl import circt_introspect as CI
@@ -20,6 +21,7 @@ def _encoding():
     return RD._semantics("gemmini").encoding_fields(load_capability_manifest("gemmini").encoding)
 
 
+@selected_driver.requires_support("gemmini")
 def test_readout_bits_match_the_decoder_constants():
     enc = _encoding()
     rb = enc["readout_bits"]
@@ -30,12 +32,14 @@ def test_readout_bits_match_the_decoder_constants():
     assert rb["full_c_bit"] == RD.isa_constants("gemmini")["FULL_C_BIT"]
 
 
+@selected_driver.requires_support("gemmini")
 def test_semantic_class_map_matches_funct_class():
     enc = load_capability_manifest("gemmini").encoding
     # the manifest's RTL-code -> compiler-class map IS the decoder's _FUNCT_CLASS (the shared vocabulary)
     assert enc["semantic_class"] == RD.isa_constants("gemmini")["FUNCT_CLASS"]
 
 
+@selected_driver.requires_support("gemmini")
 def test_config_subtype_matches():
     enc = load_capability_manifest("gemmini").encoding
     assert enc["config_subtype"] == RD.isa_constants("gemmini")["CONFIG_SUBTYPE"]
@@ -64,6 +68,7 @@ def test_readout_bits_are_not_declared_in_the_contract_yaml():
     assert "readout_bits" not in (contract.get("encoding") or {})
 
 
+@selected_driver.requires_support("gemmini")
 def test_derived_readout_bits_equal_the_frozen_hex():
     # DERIVED from addr_len alone == the former hand-declared hex, byte-for-byte (discovery, not change).
     enc = _encoding()
@@ -71,6 +76,7 @@ def test_derived_readout_bits_equal_the_frozen_hex():
     assert enc["readout_bits"] == _FROZEN_HEX  # what consumers actually read, via the loader synthesis
 
 
+@selected_driver.requires_support("gemmini")
 def test_readout_bit_roles_follow_the_addr_len_convention():
     # The 3 flag bits are the top 3 bits of the addr_len-wide field; c_acc composes two of them; f1 is 1.0f.
     rb = RD._semantics("gemmini").derived_readout_bits(32)

@@ -78,15 +78,9 @@ def test_dtype_comparison_is_alias_aware():
     assert el._dtype_ok("bf16", ("int8",)) is False
 
 
-def test_a_rank_outside_every_declared_capability_is_withheld():
-    keep, withheld = _split_ineligible([_capsule("AF12_gemv_batched_bf16_pt")], "atlas")
-    assert keep == [] and len(withheld) == 1
-    assert "rank" in withheld[0]["failure"]["detail"]
-
-
 def test_the_measured_corpora_split_as_expected():
     """gemmini withholds exactly its bf16 capsules (no bf16 datapath anywhere in its contract);
-    atlas, which DOES declare bf16, withholds only the rank-3 capsule.
+    atlas withholds nothing, because its corpus holds only operand formats its datapath carries.
 
     The gemmini count is 11, not the 12 it was when this was written: GF0_rmsnorm_bf16_pt was
     removed in c3fcaa64 because its (1,16) gain operand could hold at most 4 distinct values under
@@ -101,8 +95,8 @@ def test_the_measured_corpora_split_as_expected():
     from merlin.targetgen.target_experiment import load_target_experiment
 
     # gemmini withholds its 11 bf16 capsules: no declared capability holds that operand format.
-    # atlas withholds NOTHING -- it declares fp8_e4m3 and bf16, and every capsule in its corpus uses
-    # one of them. This read `("atlas", 1)` and had been failing since a36d9fd0 (2026-08-26, "grade a
+    # atlas withholds NOTHING -- its RTL facts give the compute element fp8_e4m3 operands, and the
+    # bf16-operand capsules its corpus once carried were removed for exactly that reason. This read `("atlas", 1)` and had been failing since a36d9fd0 (2026-08-26, "grade a
     # rank the compiler can lower away"): the one atlas capsule it counted was withheld on RANK, and
     # rank stopped withholding three days after this expectation was written. Withholding is now
     # exactly one fact -- an operand dtype no datapath holds.

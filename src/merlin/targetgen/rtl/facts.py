@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.digest import sha256_file
-from merlin.common.paths import artifacts_dir
+from merlin.common.paths import artifacts_dir, is_external_path_unset
 
 # Re-entrancy guard: ``ensure_facts`` regenerates by importing ``circt_introspect`` (which imports
 # this module) — the guard makes a regeneration that transitively re-asks for the same target fail
@@ -1185,8 +1185,15 @@ def body_if_present(target: str) -> dict[str, Any]:
 
     Twenty-odd consumers spelled this inline as ``(load_facts(t) or {}).get("facts") or {}``. A consumer
     that must not proceed on missing facts should call :func:`facts_body` instead, which refuses with the
-    reason; this one is for code whose own logic already treats an empty body as "nothing derived"."""
-    return (load_facts(target) or {}).get("facts") or {}
+    reason; this one is for code whose own logic already treats an empty body as "nothing derived",
+    including an external checkout this host lacks (:func:`~merlin.common.paths.is_external_path_unset`).
+    Any other failure raises; nothing is cached, so configuring the checkout later is not masked."""
+    try:
+        return (load_facts(target) or {}).get("facts") or {}
+    except Exception as exc:  # noqa: BLE001 - re-raised unless it is the absence named above
+        if not is_external_path_unset(exc):
+            raise
+        return {}
 
 
 def hollowed_facts(old: dict, new: dict) -> list[str]:

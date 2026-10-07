@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import external_sources
 import pytest
 
 from merlin.sched.mach import HAZARD_RESOLUTIONS, ROLE_UNKNOWN, MachError
@@ -130,6 +131,7 @@ def test_a_unit_the_evidence_did_not_classify_keeps_its_unknown_role():
                     machine.units_of(ROLE_UNKNOWN)
 
 
+@external_sources.requires_rtl("gemmini")
 def test_the_census_is_a_named_set_not_a_count():
     """The exit criterion is which quantities are unanswered, not how many.
 
@@ -143,6 +145,7 @@ def test_the_census_is_a_named_set_not_a_count():
     )
 
 
+@external_sources.requires_rtl("gemmini")
 def test_an_address_space_alone_cannot_answer_the_hazard_question():
     """The half-machine a caller gets from an address space says so rather than guessing."""
     machine = machine_from_address_space(derive_address_space("gemmini"))

@@ -188,6 +188,25 @@ def test_group_cli_selects_explicit_definition_before_output(monkeypatch, tmp_pa
         return {"entries": [], "stated": 0, "accelerator_groups": 0, "distinct": 0, "unstated": {}}
 
     monkeypatch.setattr(group_capsules, "entries", entries)
+    # The CLI now cross-checks the stated groups against the routing pass. That pass reads the
+    # target's capability contract, which this synthetic target does not have; it is not what this
+    # test is about, so it reports the same zero groups the stubbed `entries` states.
+    from merlin.xdsl_dialects.lowering import compute_groups
+
+    monkeypatch.setattr(compute_groups, "TargetOracle", lambda _target: object())
+    monkeypatch.setattr(compute_groups, "form_groups", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        compute_groups,
+        "plan",
+        lambda *_args, **_kwargs: {
+            "summary": {
+                "accelerator_groups": 0,
+                "host_groups": 0,
+                "elements_on_host": 0,
+                "device_groups_requiring_input_format_change": {},
+            }
+        },
+    )
     definition = tmp_path / "experiment.yaml"
     facts = tmp_path / "facts.json"
     facts.write_text(json.dumps({"facts": {"target": "fixture"}, "source_consistency": {"status": "verified"}}))

@@ -35,8 +35,10 @@ TOKEN = "OK fusion_guard"
 
 
 def enabled() -> bool:
-    """On unless ``MERLIN_FUSION_GUARD`` is ``0``."""
-    return os.environ.get("MERLIN_FUSION_GUARD", "1") != "0"
+    """On unless deselected (``--no-pass fusion-guard``) or ``MERLIN_FUSION_GUARD`` is ``0``."""
+    from .optional_passes import switched
+
+    return switched("fusion-guard", os.environ.get("MERLIN_FUSION_GUARD", "1") != "0")
 
 
 # Self-contained: executes in the compiler venv (torch_mlir), not Merlin's Python environment. These

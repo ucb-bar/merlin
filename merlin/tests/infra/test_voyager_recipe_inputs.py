@@ -53,6 +53,7 @@ def inputs(tmp_path, monkeypatch):
         None,
         None,
         None,
+        None,
     )
     monkeypatch.setattr(D, "for_target", lambda selector: declaration)
     monkeypatch.setattr(D, "from_definition", lambda path: declaration)

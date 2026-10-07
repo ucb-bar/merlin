@@ -20,6 +20,10 @@ lints them. Resolve roots via `merlin.common.paths` — `out_dir()`/`runs_dir()`
 | Root | Holds | How to create |
 |------|-------|---------------|
 | `out/runs/<target>/<suite>/<run-id>/` | aet experiment runs (logs/ metrics/ artifacts/ generated/ contracts/ + run_record.json) | `merlin.common.artifacts.start_run(...)` |
+| `out/runs/<target>/phase<N>/<TS>_<method>_<sha7>/` | a phase run (engine output; `oot/` = harness-owned git history) | `start_phase_run(target=, phase=, method=)`; `merlin.common.oot_repo` for `oot/` |
+| `out/artifacts/protocols/<target>/phase0-<TS>-<sha7>/` | sealed phase-0 corpus release (pinned) | `merlin experiment corpus prepare` + `seal` |
+| `out/artifacts/targets/<target>/champions/<package_id>/` | phase-2 champion from a `best` tag (pinned) | `merlin.targetgen.champions.export_champion` |
+| `out/artifacts/targets/<target>/INDEX.yaml` | generated per-target index | `merlin experiment index <target>` |
 | `out/artifacts/<topic>/<target>/v<ver>/<leaf>/` | versioned products (+ manifest.yaml, `latest` symlink) | `merlin.common.artifacts.new_product(...)` |
 | `out/artifacts/cache/<ns>/` | large regenerable caches (PURGEABLE) | `merlin.common.artifacts.cache_dir(ns)` |
 | `out/artifacts/recaptures/` | 130 GB model recaptures (PURGEABLE) | `merlin.common.artifacts.recaptures_dir()` |

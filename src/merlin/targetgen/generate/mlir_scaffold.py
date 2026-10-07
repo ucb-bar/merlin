@@ -1,14 +1,14 @@
-"""Generate a complete, idiomatic MLIR/C++ (ODS) dialect from a dialect_plan.
+"""Generate an MLIR/C++ (ODS) dialect from a reviewed dialect plan.
 
 The emitted ODS + C++ + CMake is real, conventional MLIR code (not placeholder comments):
 type and operation definitions for every declaration, a registered dialect with `initialize()`,
-and a name-based lowering pass for every reviewed mapping. The reference ToyNPU signatures add
-assembly formats, traits, and a commit verifier. Everything is wired through
+and a name-based lowering pass for legacy mappings. Fully typed plans instead emit
+checked signatures and effects without asserting a lowering. The reference ToyNPU
+signatures add assembly formats, traits, and a commit verifier. Everything is wired through
 `add_mlir_dialect` / `mlir_tablegen`.
 
 Compiling it requires an MLIR/LLVM build (TableGen + headers); that toolchain is a build
-dependency of the generated repo, documented in lib/Dialect/<D>/README.md. The C++ is written
-to that contract even though this generator cannot itself invoke mlir-tblgen.
+dependency of the generated repo, documented in lib/Dialect/<D>/README.md.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ try:
 except ImportError:  # flat-staged: `common` is a top-level package beside us
     from common.artifacts import Artifact
 
+from . import typed_mlir
 from .target_repo import camel
 
 # The ToyNPU op/type set keeps its stronger hand-written signatures and verifier. Every other
@@ -65,7 +66,8 @@ def _plan_entries(plan: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return entries
 
 
-def _dialect_td(cls: str, dialect: str) -> str:
+def _dialect_td(cls: str, dialect: str, *, default_attribute_printer: bool = True) -> str:
+    attr_parser = "  let useDefaultAttributePrinterParser = 1;\n" if default_attribute_printer else ""
     return f"""//===- {cls}Dialect.td - {dialect} dialect definition -----------*- tablegen -*-===//
 #ifndef {cls.upper()}_DIALECT
 #define {cls.upper()}_DIALECT
@@ -78,7 +80,7 @@ def {cls}_Dialect : Dialect {{
   let summary = "Generated Merlin target dialect for {dialect}.";
   let cppNamespace = "::merlin::{dialect}";
   let useDefaultTypePrinterParser = 1;
-  let useDefaultAttributePrinterParser = 1;
+{attr_parser.rstrip()}
 }}
 
 class {cls}_Op<string mnemonic, list<Trait> traits = []>
@@ -278,7 +280,8 @@ def _dialect_h(cls: str, pkg: str) -> str:
 """
 
 
-def _dialect_cpp(cls: str, pkg: str, dialect: str) -> str:
+def _dialect_cpp(cls: str, pkg: str, dialect: str, *, generated_class_name: bool = False) -> str:
+    dialect_class = f"{cls}Dialect" if generated_class_name else f"{cls}_Dialect"
     return f"""//===- {cls}Dialect.cpp ---------------------------------------------------===//
 #include "{pkg}/Dialect/{cls}/IR/{cls}Dialect.h"
 
@@ -297,7 +300,7 @@ using namespace merlin::{dialect};
 #define GET_OP_CLASSES
 #include "{pkg}/Dialect/{cls}/IR/{cls}Ops.cpp.inc"
 
-void {cls}_Dialect::initialize() {{
+void {dialect_class}::initialize() {{
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "{pkg}/Dialect/{cls}/IR/{cls}OpsTypes.cpp.inc"
@@ -588,6 +591,8 @@ written to that contract; the generator does not invoke `mlir-tblgen` itself.
 
 def generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
     """Return include/ + lib/ MLIR scaffold artifacts."""
+    if any(isinstance(op, dict) and "signature" in op for op in dialect_plan.get("ops", [])):
+        return _typed_generate(dialect_plan)
     target = dialect_plan.get("target", "target")
     dialect = dialect_plan.get("dialect_name", target)
     cls = camel(target)  # e.g. ToyNPU
@@ -653,6 +658,62 @@ def generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
             ),
         ),
         Artifact(f"tests/lit/{dialect}/interface_lowering.mlir", _lowering_lit_test(dialect, lowering)),
+    ]
+
+
+def _typed_generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
+    """Build one MLIR-only typed dialect; no name-only lowering is emitted."""
+    spec = typed_mlir.validate(dialect_plan)
+    cls = spec["class"]
+    dialect = spec["dialect_name"]
+    pkg = f"MerlinTarget{cls}"
+    ir = f"include/{pkg}/Dialect/{cls}/IR"
+    libir = f"lib/Dialect/{cls}/IR"
+    tool = f"merlin-{dialect}-opt"
+    root_cmake = _root_cmake(cls, pkg) + "add_subdirectory(tools)\n"
+    dialect_cpp = _dialect_cpp(cls, pkg, dialect, generated_class_name=True) + "\n" + typed_mlir.type_verifiers(spec)
+    tool_source = f'''#include "{pkg}/Dialect/{cls}/IR/{cls}Dialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+
+int main(int argc, char **argv) {{
+  mlir::DialectRegistry registry;
+  registry.insert<merlin::{dialect}::{cls}Dialect, mlir::func::FuncDialect>();
+  return mlir::asMainReturnCode(mlir::MlirOptMain(argc, argv, "Generated {dialect} dialect\\n", registry));
+}}
+'''
+    return [
+        Artifact("CMakeLists.txt", root_cmake),
+        Artifact(
+            f"{ir}/{cls}Dialect.td",
+            _dialect_td(cls, dialect, default_attribute_printer=False),
+        ),
+        Artifact(f"{ir}/{cls}Types.td", typed_mlir.types_td(spec)),
+        Artifact(f"{ir}/{cls}Ops.td", typed_mlir.ops_td(spec)),
+        Artifact(f"{ir}/{cls}Dialect.h", _dialect_h(cls, pkg)),
+        Artifact(f"{ir}/CMakeLists.txt", _ir_cmake(cls, dialect)),
+        Artifact(f"{libir}/{cls}Dialect.cpp", dialect_cpp),
+        Artifact(f"{libir}/{cls}Ops.cpp", typed_mlir.ops_cpp(spec, pkg)),
+        Artifact(f"{libir}/CMakeLists.txt", _lib_cmake(cls)),
+        Artifact(f"lib/Dialect/{cls}/CMakeLists.txt", "add_subdirectory(IR)\n"),
+        Artifact(
+            "tools/CMakeLists.txt",
+            f"""add_llvm_executable({tool} {tool}.cpp PARTIAL_SOURCES_INTENDED)
+llvm_update_compile_flags({tool})
+target_link_libraries({tool} PRIVATE MLIROptLib MLIR{cls} MLIRFuncDialect)
+mlir_check_all_link_libraries({tool})
+""",
+        ),
+        Artifact(f"tools/{tool}.cpp", tool_source),
+        Artifact(
+            f"lib/Dialect/{cls}/README.md",
+            (
+                f"# {cls} typed MLIR dialect\n\n"
+                "The checked plan generated typed ODS and a parser tool. Computational semantics, "
+                "instruction encoding, and checked source lowering require separate target bindings. "
+                "This package does not claim target execution.\n"
+            ),
+        ),
     ]
 
 

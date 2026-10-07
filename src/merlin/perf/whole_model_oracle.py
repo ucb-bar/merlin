@@ -326,7 +326,15 @@ def grade(uart: str, oracle: Mapping[str, Any]) -> dict[str, Any]:
     the second gate. The chained digests (``GM_GROUP`` against the oracle) are reported as
     ``chained`` -- INFORMATION ONLY: below a legitimate bounded difference upstream they differ for a
     correct run, so they cannot be a gate.
+
+    An oracle a PARTIAL build wrote (``only_groups``) is refused: never quotable, with the reason.
     """
+    from .whole_model_partial import PartialBuildRefused, refuse
+
+    try:
+        refuse(oracle, reader="the whole-model grade")
+    except PartialBuildRefused as exc:
+        return {"gate": "local", "refused": str(exc), "agree": [], "disagree": [], "absent": [], "quotable": False}
     printed: dict[str, dict[str, str]] = {}
     bounded: dict[str, dict[str, str]] = {}
     local: dict[str, dict[str, str]] = {}

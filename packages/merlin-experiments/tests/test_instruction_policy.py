@@ -37,19 +37,48 @@ def test_roles_are_the_closed_vocabulary():
         IR.validate_roles(["sync", "sync"])
 
 
-def test_the_policy_resolves_to_the_targets_own_instructions_and_names_vacuous_roles():
-    policy = IR.resolve_policy(["loop_descriptor", "divergence"], _taxonomy())
-    assert policy["status"] == "resolved"
+def test_the_policy_resolves_to_the_targets_own_instructions():
+    policy = IR.resolve_policy(["loop_descriptor"], _taxonomy())
+    assert policy["status"] == IR.RESOLVED and policy["vacuous_roles"] == []
     assert [row["name"] for row in policy["prohibited_instructions"]["loop_descriptor"]] == ["LOOP_A", "LOOP_B"]
-    assert policy["vacuous_roles"] == ["divergence"]
     assert "phase2_vendor_reference_arm" in policy["exempt"]
+    assert IR.enforcement_problems(policy) == []
     unknown = IR.resolve_policy(["loop_descriptor"], {"status": IR.UNKNOWN, "reason": "no facts"})
     assert unknown["status"] == IR.UNKNOWN and unknown["prohibited_instructions"] == {}
-    assert IR.resolve_policy([], _taxonomy())["status"] == "none_declared"
+    assert IR.resolve_policy([], _taxonomy())["status"] == IR.NONE_DECLARED
     assert IR.candidate_arm_policy(policy) == {
-        "prohibited_instruction_roles": ["loop_descriptor", "divergence"],
+        "prohibited_instruction_roles": ["loop_descriptor"],
         "source": "experiment.policy",
     }
+
+
+def test_a_declared_role_that_matches_no_instruction_makes_the_policy_unknown():
+    """MUTATION: an empty role table. The sealed release once read `resolved` beside
+    `vacuous_roles: [loop_descriptor]` -- a no-FSM rule that forbade nothing, read as enforced."""
+    policy = IR.resolve_policy(["loop_descriptor", "divergence"], _taxonomy())
+    assert policy["status"] == IR.UNKNOWN and policy["vacuous_roles"] == ["divergence"]
+    assert "divergence" in policy["reason"] and "match no instruction" in policy["reason"]
+    empty = {**_taxonomy(), "by_role": {role: [] for role in _taxonomy()["by_role"]}}
+    assert IR.resolve_policy(["loop_descriptor"], empty)["status"] == IR.UNKNOWN
+    with pytest.raises(ValueError, match="prohibits no instruction"):
+        IR.require_enforceable(IR.resolve_policy(["loop_descriptor"], empty))
+
+
+def test_verified_phase0_refuses_a_policy_it_cannot_enforce():
+    from merlin_experiments.phase0.generation import require_enforceable_policy
+
+    vacuous = IR.resolve_policy(["divergence"], _taxonomy())
+    with pytest.raises(ValueError, match="verified Phase 0 cannot resolve"):
+        require_enforceable_policy("verified", ["divergence"], vacuous)
+    require_enforceable_policy("diagnostic", ["divergence"], vacuous)  # diagnostic runs record it, never seal it
+    require_enforceable_policy("verified", ["loop_descriptor"], IR.resolve_policy(["loop_descriptor"], _taxonomy()))
+
+
+def test_enforcement_problems_name_every_reason():
+    policy = IR.resolve_policy(["loop_descriptor"], _taxonomy())
+    assert IR.enforcement_problems(None, ["loop_descriptor"]) == ["no instruction policy was supplied"]
+    assert any("does not declare" in p for p in IR.enforcement_problems(policy, ["loop_descriptor", "sync"]))
+    assert IR.enforcement_problems(policy, []) == []
 
 
 def test_the_taxonomy_is_derived_from_the_rtl_table_and_endpoint_roles(monkeypatch):
@@ -67,6 +96,54 @@ def test_the_taxonomy_is_derived_from_the_rtl_table_and_endpoint_roles(monkeypat
     assert taxonomy["instructions_without_roles"] == [{"selector": "9", "name": "ODD"}]
     monkeypatch.setattr(rocc, "funct_table_for", lambda target: {})
     assert IR.derive_role_taxonomy("synthetic")["status"] == IR.UNKNOWN
+
+
+def test_a_target_no_endpoint_binds_has_an_unknown_taxonomy(monkeypatch):
+    """Every instruction would come back role-less and any prohibition would match nothing."""
+    from merlin.kernels import endpoints
+    from merlin.kernels.decode import rocc
+
+    monkeypatch.setattr(rocc, "funct_table_for", lambda target: {"names": {"8": "LOOP_A"}})
+    monkeypatch.setattr(endpoints, "endpoints_for", lambda target: ())
+    taxonomy = IR.derive_role_taxonomy("synthetic")
+    assert taxonomy["status"] == IR.UNKNOWN and "no compute endpoint" in taxonomy["reason"]
+
+
+def test_a_missing_endpoint_declaration_fails_closed_through_phase0(tmp_path, monkeypatch):
+    """MUTATION: the selected contract carries no compute_endpoints.yaml (the frozen-snapshot case).
+    The taxonomy is UNKNOWN with the reason, the policy is UNKNOWN, and verified Phase 0 refuses it."""
+    from merlin_experiments.phase0.generation import require_enforceable_policy
+
+    from merlin.kernels.decode import rocc
+
+    monkeypatch.setattr(rocc, "funct_table_for", lambda target: {"names": {"8": "LOOP_A"}})
+    monkeypatch.setenv("MERLIN_CONTRACT_DIR", str(tmp_path))  # a contract with no endpoint declaration
+    taxonomy = IR.derive_role_taxonomy("synthetic")
+    assert taxonomy["status"] == IR.UNKNOWN and "EndpointSpecMissing" in taxonomy["reason"]
+    policy = IR.resolve_policy(["loop_descriptor"], taxonomy)
+    assert policy["status"] == IR.UNKNOWN
+    with pytest.raises(ValueError, match="not derived"):
+        require_enforceable_policy("verified", ["loop_descriptor"], policy)
+
+
+def test_a_verified_corpus_with_a_vacuous_policy_is_refused_at_release(tmp_path):
+    from merlin_experiments.corpus.preparation import _require_enforceable_instruction_policy
+    from merlin_experiments.spec import SpecError
+
+    def manifest(policy):
+        (tmp_path / "MANIFEST.yaml").write_text(yaml.safe_dump({"instruction_policy": policy}))
+
+    plan = {"phases": {"0": {"instruction_policy": {"prohibited_instruction_roles": ["loop_descriptor"]}}}}
+    vacuous = {**IR.resolve_policy(["loop_descriptor"], _taxonomy()), "status": "resolved"}
+    vacuous["prohibited_instructions"] = {"loop_descriptor": []}  # the broken release's exact shape
+    manifest(vacuous)
+    with pytest.raises(SpecError, match="unenforceable instruction policy"):
+        _require_enforceable_instruction_policy(plan, tmp_path)
+    manifest(IR.resolve_policy(["loop_descriptor"], _taxonomy()))
+    _require_enforceable_instruction_policy(plan, tmp_path)
+    manifest(None)
+    with pytest.raises(SpecError, match="no instruction policy was supplied"):
+        _require_enforceable_instruction_policy(plan, tmp_path)
 
 
 def test_the_experiment_declares_the_policy_and_every_phase_carries_it(tmp_path: Path):

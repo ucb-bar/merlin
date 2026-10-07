@@ -65,7 +65,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
+from merlin.common.paths import artifacts_dir, contract_dir, runs_dir
 from merlin.common.yaml import load_yaml
 from merlin.kernels.measurement import MeasurementAuthority, authority_for, citable
 from merlin.perf.observations import TIMING_OBSERVATIONS_KEY as _TIMING_OBSERVATIONS_KEY
@@ -1370,7 +1370,8 @@ class Recovery:
 
 
 def registry_dir() -> Path:
-    return merlin_dir() / "contract" / "perf_rules"
+    """The selected contract's rule registry (:func:`merlin.common.paths.contract_dir`), never the checkout's."""
+    return contract_dir() / "perf_rules"
 
 
 @dataclass(frozen=True)
@@ -1442,6 +1443,9 @@ def _as_rule(raw: Mapping[str, Any], source: str) -> Rule:
 def load_registry(directory: "str | Path | None" = None) -> RuleRegistry:
     """Load ``merlin/contract/perf_rules/*.yaml``. Data only: the directory holds no code."""
     root = Path(directory) if directory is not None else registry_dir()
+    if not root.is_dir():
+        # An absent registry is not an empty one: every rule would silently stop firing.
+        raise FileNotFoundError(f"no perf-rule registry at {root}")
     rules: list[Rule] = []
     axes: dict[str, Any] = {}
     opt: dict[str, Any] = {}

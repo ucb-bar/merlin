@@ -280,9 +280,14 @@ def _progress_publisher(
 
 
 def _suite_size(capsules_root: Path) -> int:
-    """How many public capsules exist, so a partial check can say what it did NOT check."""
+    """How many public capsules exist, so a partial check can say what it did NOT check.
+
+    Counted the way the grader DISCOVERS them (:func:`merlin.targetgen.capsule_common.discover_capsules`:
+    every ``capsule.yaml`` below the root, one per directory). A flat listing undercounts a root whose
+    capsules sit in category subdirectories, and the shortfall would read as capsules the check skipped.
+    """
     try:
-        return sum(1 for d in capsules_root.iterdir() if (d / "capsule.yaml").is_file())
+        return len({cy.parent for cy in capsules_root.rglob("capsule.yaml")})
     except OSError:
         return 0
 

@@ -12,6 +12,7 @@ forward as if they were the new grade.  No simulator is launched here.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,10 +43,15 @@ def test_official_refreeze_launches_canonical_grader_with_explicit_inputs(tmp_pa
         RF.subprocess, "run", lambda argv, **kwargs: calls.append((argv, kwargs)) or SimpleNamespace(returncode=7)
     )
     public, hidden, snapshot, descriptor = (tmp_path / name for name in ("public", "hidden", "snapshot", "target.yaml"))
+    # The grader re-verifies the host-lane snapshot against the record the run itself wrote at setup.
+    record = {"path": str(snapshot), "sha256": "f" * 64, "version": 4}
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "environment.yaml").write_text(yaml.safe_dump({"bundle_input_snapshot": record}))
     assert (
         RF.run_official_grade(
             tmp_path,
-            tmp_path / "run",
+            run_dir,
             arm="fixture",
             model="fixture",
             public_root=public,
@@ -66,6 +72,7 @@ def test_official_refreeze_launches_canonical_grader_with_explicit_inputs(tmp_pa
     ):
         assert argv[argv.index(flag) + 1] == str(value)
     assert kwargs["env"]["MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"] == str(snapshot)
+    assert json.loads(kwargs["env"]["MERLIN_MODEL_HOST_LANE_SNAPSHOT_RECORD"]) == record
 
 
 def _round(**over):

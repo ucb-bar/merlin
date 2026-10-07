@@ -122,3 +122,12 @@ allowlist/certification-token policy; sync request policy remains deliberately
 distinct. Public grading roots and descriptor-policy roots are separate explicit
 inputs. Context and schema roots do not freeze independently loaded target/toolchain
 or grading-policy resources. This extraction does not qualify the full controller.
+
+`oot_history.py` owns the run's harness-written compiler history at `<run_dir>/oot`
+(`merlin.common.oot_repo`). Loop grading commits the operator-only snapshot it is about to grade,
+once per graded round, and round records carry that commit sha; the official freeze tags `frozen`
+on the exact submission it hashed. The agent never writes the repo, and it is refused inside the
+agent's writable workspace. Only bwrap runs keep it (copy mode is a tool-free diagnostic). New runs
+live at `out/runs/<target>/phase1/<run-id>/`; a run that began under the legacy
+`capsule-bench/<arm>/` root resumes there and keeps no history. A failed commit is recorded in
+`oot_commits.jsonl` / `freeze.json`, never silent.

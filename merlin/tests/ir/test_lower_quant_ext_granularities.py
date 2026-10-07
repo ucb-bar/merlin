@@ -108,7 +108,12 @@ def test_dequant_f32_scale_to_bf16_result_verifies(kind, attrs, scale_type):
     mod.verify()
     body = next(op for op in mod.walk() if op.name == "linalg.generic").body.blocks[0]
     assert [op.name for op in body.ops] == [
-        "arith.sitofp", "arith.sitofp", "arith.subf", "arith.mulf", "arith.truncf", "linalg.yield"
+        "arith.sitofp",
+        "arith.sitofp",
+        "arith.subf",
+        "arith.mulf",
+        "arith.truncf",
+        "linalg.yield",
     ]
     mul = next(op for op in body.ops if op.name == "arith.mulf")
     assert all(str(value.type) == "f32" for value in mul.operands)
@@ -193,3 +198,17 @@ def test_prune_preserves_constants_captured_by_a_live_linalg_region():
     assert prune_dead_pure_tensor_ops(mod) == 0
     mod.verify()
     assert "arith.constant 3.000000e+00" in str(mod)
+
+
+def test_the_captured_per_channel_spelling_lowers():
+    """The op as the frontend actually emits it (provenance attributes and all), not a hand spelling."""
+    from merlin.common.paths import merlin_dir
+
+    text = (merlin_dir() / "tests" / "data" / "quant_ext" / "captured_dequantize_per_channel.mlir").read_text()
+    mod = parse_mlir_text(text)
+    assert lower_quant_ext(mod) == 1
+    mod.verify()
+    assert "quant_ext." not in str(mod)
+    gen = next(o for o in mod.walk() if o.name == "linalg.generic")
+    assert gen.attributes["prov.transforms"].data == "dequant_per_channel"
+    assert str(gen.indexing_maps.data[1]) == "affine_map<(d0, d1) -> (d1)>"

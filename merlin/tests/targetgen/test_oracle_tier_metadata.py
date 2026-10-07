@@ -11,6 +11,7 @@ from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 from merlin_experiments.phase0.declarations import all_declarations, for_target
 
 from merlin.common.paths import python_import_roots, repo_root
@@ -18,6 +19,8 @@ from merlin.targetgen import capsule_runner as evaluator
 from merlin.targetgen import oracle_policy as policy
 from merlin.targetgen import program_engine_policy as program_policy
 from merlin.targetgen import program_oracle
+
+pytestmark = pytest.mark.target("muon")
 
 
 def _selected(engine="gsim"):
@@ -136,6 +139,7 @@ def test_plugin_requirement_inference_defaults_to_explicit_refusal(isolated, mon
         policy.inferred_oracle_tiers("fixture", "unproved-fixture")
 
 
+@selected_driver.requires_support("muon")
 def test_muon_factory_failure_cannot_silently_add_a_required_tier(monkeypatch):
     from merlin.runtime.backends.base import get_backend
     from merlin.targetgen.corpus_spec import derive_binding, profile_datapath
@@ -205,6 +209,7 @@ def test_program_policy_reexports_exact_legacy_identities():
         assert getattr(program_policy, name) is getattr(program_oracle, name)
 
 
+@selected_driver.requires_support("muon")
 @pytest.mark.parametrize("engine", ["gsim", "verilator", None])
 @pytest.mark.parametrize("also,smoke,skip", list(itertools.product([False, True], repeat=3)))
 def test_support_plugin_metadata_matches_all_existing_tier_switches(monkeypatch, engine, also, smoke, skip):

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from merlin.targetgen.sandbox import bwrap as BW
+from merlin.targetgen.sandbox import host_surfaces as HS
 
 
 @pytest.fixture
@@ -172,7 +173,7 @@ def test_private_snapshot_marker_is_masked_through_runtime_alias(private_bundle,
     exposed = alias / marker.relative_to(source) if source != marker else alias
     argv = ["--ro-bind", str(source), str(alias)]
     assert BW.is_exposed(argv, exposed)
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     masked = BW.apply_answer_masks(argv, surfaces)
     assert not BW.is_exposed(masked, exposed)
     if scope == "root":
@@ -244,7 +245,7 @@ def test_host_provenance_files_are_masked_without_hiding_public_neighbors(tmp_pa
     exposed = destination / private.name if scope == "parent" else destination
     argv = ["--ro-bind", str(source), str(destination)]
     assert BW.is_exposed(argv, exposed)
-    surfaces = BW.private_file_surfaces(argv, [private])
+    surfaces = HS.private_file_surfaces(argv, [private])
     masked = BW.apply_answer_masks(argv, surfaces)
     assert not BW.is_exposed(masked, exposed)
     if scope == "parent":
@@ -261,7 +262,7 @@ def test_host_provenance_file_mask_refuses_invalid_sources(tmp_path, kind):
         referent.write_text("metadata")
         source.symlink_to(referent)
     with pytest.raises(RuntimeError, match="private provenance file cannot be classified"):
-        BW.private_file_surfaces([], [source])
+        HS.private_file_surfaces([], [source])
 
 
 def test_changed_or_removed_private_declaration_refuses_resume(private_bundle):
@@ -357,7 +358,7 @@ def test_final_toolchain_alias_cannot_expose_private_inputs(private_bundle, monk
         SimpleNamespace(target="fixture-target", capsule_corpus=None, corpus_siblings=lambda: []), workspace, bundle
     )
     assert not BW.is_exposed(argv, alias / tail)
-    private = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    private = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     assert BW.coverage_gap(argv, private) == []
 
 
@@ -386,7 +387,7 @@ def test_late_runtime_hardlink_alias_is_masked(private_bundle, tmp_path, locatio
     argv = ["--ro-bind", str(source), str(destination)]
     exposed = destination / "alias.bin" if scope == "directory" else destination
     assert BW.is_exposed(argv, exposed)
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     assert not BW.is_exposed(BW.apply_answer_masks(argv, surfaces), exposed)
 
 
@@ -404,14 +405,14 @@ def test_private_intersecting_root_never_enters_shared_cas(private_bundle, tmp_p
     assert frozen_public.stat().st_nlink == 1
     assert not list((tmp_path / "cas").rglob("*"))
     argv = BW._bundle_mount_args(workspace, bundle, repo)
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     masked = BW.apply_answer_masks(argv, surfaces)
     assert BW.is_exposed(masked, public)
     assert not BW.is_exposed(masked, hidden / "secret.bin")
     # Identical independently owned public bytes are not a private hardlink.
     alias = repo / "runtime-alias"
     argv += ["--ro-bind", str(frozen_public), str(alias)]
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     assert BW.is_exposed(BW.apply_answer_masks(argv, surfaces), alias)
 
 
@@ -433,14 +434,14 @@ def test_verified_relocated_public_grant_preserves_cas_dedup(private_bundle, tmp
     relocated = tmp_path / "relocated"
     destination = relocated / "inputs"
     argv = ["--ro-bind", str(frozen), str(destination)]
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo, grant_repo=relocated)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo, grant_repo=relocated)
     masked = BW.apply_answer_masks(argv, surfaces)
     assert BW.is_exposed(masked, destination / "public.txt")
     assert not BW.is_exposed(masked, destination / "hidden/secret.bin")
     # A second, undeclared destination is not covered by the verified relocation.
     alias = tmp_path / "arbitrary-alias"
     argv += ["--ro-bind", str(frozen / "public.txt"), str(alias)]
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo, grant_repo=relocated)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo, grant_repo=relocated)
     assert not BW.is_exposed(BW.apply_answer_masks(argv, surfaces), alias)
 
 
@@ -500,7 +501,7 @@ def test_runtime_hardlink_scan_does_not_follow_directory_symlinks(private_bundle
 
     monkeypatch.setattr(BW.os, "scandir", record_scan)
     argv = ["--ro-bind", str(runtime), str(repo / "runtime-view")]
-    BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     assert runtime in scans
     assert runtime / "cycle" not in scans
 
@@ -521,7 +522,7 @@ def test_unreadable_runtime_hardlink_scan_refuses(private_bundle, tmp_path, monk
     monkeypatch.setattr(BW.os, "scandir", denied_scan)
     argv = ["--ro-bind", str(runtime), str(repo / "runtime-view")]
     with pytest.raises(RuntimeError, match="hardlink privacy cannot be verified"):
-        BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+        HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
 
 
 def test_nested_private_device_mount_is_scanned_beneath_disjoint_root(private_bundle, tmp_path, monkeypatch):
@@ -548,25 +549,25 @@ def test_nested_private_device_mount_is_scanned_beneath_disjoint_root(private_bu
         return real_scandir(path)
 
     monkeypatch.setattr(Path, "stat", foreign_root)
-    monkeypatch.setattr(BW, "_host_mount_devices", lambda: [(device, mounted)])
+    monkeypatch.setattr(HS, "_host_mount_devices", lambda: [(device, mounted)])
     monkeypatch.setattr(BW.os, "scandir", scan_only_relevant)
     destination = repo / "runtime-view"
     argv = ["--ro-bind", str(runtime), str(destination)]
-    surfaces = BW.host_input_surfaces(argv, workspace, bundle, repo=repo)
+    surfaces = HS.host_input_surfaces(argv, workspace, bundle, repo=repo)
     assert not BW.is_exposed(BW.apply_answer_masks(argv, surfaces), destination / "nested-mount/alias.bin")
 
 
 def test_mount_topology_decodes_escaped_paths(monkeypatch):
     mountinfo = r"10 1 8:2 / /space\040tab\011line\012literal\134040 rw - ext4 /dev/sda2 rw"
     monkeypatch.setattr(Path, "read_text", lambda *args, **kwargs: mountinfo)
-    assert BW._host_mount_devices() == [(os.makedev(8, 2), Path("/space tab\tline\nliteral\\040"))]
+    assert HS._host_mount_devices() == [(os.makedev(8, 2), Path("/space tab\tline\nliteral\\040"))]
 
 
 @pytest.mark.parametrize("mountinfo", ["", "broken", "1 0 8:2 / /bad\\099 rw - ext4 /dev/sda2 rw"])
 def test_malformed_mount_topology_refuses(monkeypatch, mountinfo):
     monkeypatch.setattr(Path, "read_text", lambda *args, **kwargs: mountinfo)
     with pytest.raises(RuntimeError, match="mount topology cannot be verified"):
-        BW._host_mount_devices()
+        HS._host_mount_devices()
 
 
 def test_unavailable_mount_topology_refuses(monkeypatch):
@@ -575,7 +576,7 @@ def test_unavailable_mount_topology_refuses(monkeypatch):
 
     monkeypatch.setattr(Path, "read_text", unreadable)
     with pytest.raises(RuntimeError, match="mount topology cannot be verified"):
-        BW._host_mount_devices()
+        HS._host_mount_devices()
 
 
 @pytest.mark.parametrize("entries", [None, {}, ["private"], [{"path": ""}], [{"path": "../private"}]])

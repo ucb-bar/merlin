@@ -251,6 +251,15 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   never built. Two registered points, because they differ in kind — the plain one only removes the
   traversal, the `_vec` one also reshapes the epilogue tile — and the emitted-code evidence separates
   them.
+- `optional_passes.py` — the one list of optional, target-agnostic transforms (`merlin-compile
+  --list-passes`): stage, exactness, default, and the existing switch each maps to (a feature, a
+  `MERLIN_*` variable, an integer-datapath pass, a capture key). A selection (`--pass`/`--no-pass`,
+  the builder's `lowering_passes`, `MERLIN_PASSES`) flips exactly those switches; an empty one changes
+  nothing. A new optional pass gets an entry there.
+- `int_softmax_table.py` + `_int_softmax_table_rt.py` — the `int-softmax-table` rewrite. The `_rt` file
+  is runner SOURCE (spliced into every runner variant, executed by the compiler's Python), not a module
+  Merlin calls: keep it self-contained and its names `_ist_`-prefixed. It runs on the module as parsed,
+  behind runner argv gate `ARGV_INDEX`, and must report once (`require_report`).
 - `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
 
 ## What does not belong here

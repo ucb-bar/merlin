@@ -111,8 +111,15 @@ def test_a_machine_limit_must_state_its_reason(tmp_path):
 
 
 # --------------------------------------------------------------- the instruction rule
-def _gate_job(**options):
-    return {"package_sha256": "d" * 64, "target": "toy", "build_options": options, "role": J.ROLE_CANDIDATE}
+def _gate_job(*, sealed=True, **options):
+    roles = options.get("prohibited_roles") or ()
+    return {
+        "package_sha256": "d" * 64,
+        "target": "toy",
+        "build_options": options,
+        "role": J.ROLE_CANDIDATE,
+        "instruction_policy": FX.sealed_policy(roles) if roles and sealed else None,
+    }
 
 
 def test_the_instruction_rule_fails_closed_when_the_scan_cannot_run():
@@ -135,17 +142,63 @@ def test_the_instruction_rule_refuses_a_hit_anywhere_in_the_program_and_keeps_a_
     assert seen["roles"] == ["loop_descriptor"] and refused["refusal"].startswith("isa_prohibited: LOOP_WS in program")
     build: dict = {"elf": "/x"}
     census = {"per_group": {"1": {"total": 3}}}
+    prohibited = {"8": "LOOP_0"}
     assert (
         G.isa_gate(
-            _gate_job(prohibited_roles=["r"]),
+            _gate_job(prohibited_roles=["loop_descriptor"]),
             build,
             None,
             "t",
-            checker=lambda b, **k: {"clean": True, "census": census},
+            checker=lambda b, **k: {"clean": True, "census": census, "prohibited": prohibited, "status": "measured"},
         )
         is None
     )
     assert build["isa_census"] == census
+    # A clean build keeps what it was held to: the champion export requires that set, non-empty.
+    assert build["isa_prohibition"]["verdict"] == "clean" and build["isa_prohibition"]["prohibited"] == prohibited
+
+
+def test_the_instruction_rule_refuses_a_clean_verdict_that_checked_nothing():
+    """`clean` over an empty prohibited set, or one that misses a sealed instruction, is no verdict."""
+    for prohibited in ({}, {"9": "OTHER"}):
+        refused = G.isa_gate(
+            _gate_job(prohibited_roles=["loop_descriptor"]),
+            {"elf": "/x"},
+            None,
+            "t",
+            checker=lambda b, p=prohibited, **k: {"clean": True, "summary": {}, "prohibited": p},
+        )
+        assert refused["timing_status"] == V.TIMING_REFUSED and "could not be checked" in refused["refusal"]
+
+
+def test_the_instruction_rule_refuses_a_clean_verdict_the_scan_did_not_mark_measured():
+    """A clean scan is recorded with the status the scanner reported; one it did not report is no verdict."""
+    for status in (None, "unmeasured"):
+        report = {"clean": True, "summary": {}, "prohibited": {"8": "LOOP_0"}}
+        if status is not None:
+            report["status"] = status
+        build: dict = {"elf": "/x"}
+        refused = G.isa_gate(
+            _gate_job(prohibited_roles=["loop_descriptor"]),
+            build,
+            None,
+            "t",
+            checker=lambda b, r=report, **k: dict(r),
+        )
+        assert refused["timing_status"] == V.TIMING_REFUSED and "not 'measured'" in refused["refusal"]
+        assert "isa_prohibition" not in build
+
+
+def test_the_instruction_rule_refuses_a_job_with_no_enforceable_sealed_policy():
+    def scan(build, **kw):
+        raise AssertionError("scanned without a sealed policy")
+
+    refused = G.isa_gate(_gate_job(prohibited_roles=["loop_descriptor"], sealed=False), {}, None, "t", checker=scan)
+    assert refused["timing_status"] == V.TIMING_REFUSED and "sealed instruction policy" in refused["refusal"]
+    vacuous = _gate_job(prohibited_roles=["loop_descriptor"])
+    vacuous["instruction_policy"]["prohibited_instructions"] = {"loop_descriptor": []}
+    refused = G.isa_gate(vacuous, {}, None, "t", checker=scan)
+    assert "prohibits no instruction" in refused["refusal"]
 
 
 def test_the_reference_arm_and_an_undeclared_rule_are_not_scanned():
@@ -214,6 +267,7 @@ def test_a_prohibited_program_is_refused_before_the_machine_runs(tmp_path, monke
         machine=FX.spike_machine(tmp_path),
         builder=builder,
         build_options={"prohibited_roles": ["loop_descriptor"]},
+        instruction_policy=FX.sealed_policy(),
     )
     ran = []
     monkeypatch.setattr(M.SpikeMachine, "run", lambda self, *a, **k: ran.append(1))

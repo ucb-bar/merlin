@@ -21,16 +21,25 @@ infrastructure's and was recorded under a different screen spec is re-screened u
 spec; a DONE job whose builder identity changed, or whose infra-caused refusal predates the current
 spec or builder, is re-measured -- its earlier attempt archived, never deleted -- and carries THIS
 request's builder record forward, so a later request does not reopen it again for nothing.
+
+WHAT HOLDS A BUILD.  A whole-model build writes gigabytes under its job directory and its workers'
+TMPDIR; one that dies of ENOSPC halfway costs its time and leaves a refusal that reads like the
+candidate's.  Below :data:`MIN_BUILD_FREE_BYTES` (or the section's ``min_build_free_bytes``) on either
+filesystem, no worker is started: the store records the hold (``disk_hold.json``, closed into
+``disk_holds.jsonl`` when space returns) and each waiting job says why it waits -- deferred, never
+refused.  The board path has its own floor (:func:`.machines.disk_refusal`).
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -38,6 +47,7 @@ from typing import Any
 
 from merlin.perf import whole_model_verdict as V
 
+from . import attempts as A
 from . import batch as B
 from . import gates as G
 from . import jobs as J
@@ -60,6 +70,34 @@ WORKER_MODULE = "merlin_experiments.phase2.whole_model_measured"
 #: A job whose worker died without writing a result lost its MEASUREMENT, not its verdict: re-queued
 #: this many times, then recorded as lost -- never as a verdict on the candidate.
 WORKER_LOSS_REQUEUES = 1
+
+#: Below this many free bytes on the store's or the workers' TMPDIR filesystem, no build starts.
+MIN_BUILD_FREE_BYTES = 8 * 1024**3
+DISK_HOLD = "disk_hold.json"
+DISK_HOLDS = "disk_holds.jsonl"
+DISK_LOW = "infra_disk_low"
+
+
+def build_free_bytes(path: Path) -> int:
+    """Free bytes on the filesystem that holds (or will hold) ``path``: its nearest existing ancestor, so a
+    TMPDIR not created yet is measured where it will be (the single seam tests replace)."""
+    path = Path(path).absolute()
+    while not path.exists() and path.parent != path:
+        path = path.parent
+    return shutil.disk_usage(path).free
+
+
+def build_disk_refusal(paths: Mapping[str, Path], *, minimum: int) -> str | None:
+    """Why no build may start for lack of disk, or None.  The reason names the filesystem, its free
+    bytes and the floor, so it can be read against the threshold it missed."""
+    for label, path in paths.items():
+        free = build_free_bytes(Path(path))
+        if free < minimum:
+            return (
+                f"{DISK_LOW}: the {label} filesystem at {path} has only {free} byte(s) free, below the "
+                f"{minimum} minimum; builds wait for space (not a verdict)"
+            )
+    return None
 
 
 def spawn(argv: list[str], **kwargs: Any) -> subprocess.Popen:
@@ -128,6 +166,10 @@ class MeasurementService:
         pre_measure_check: Mapping[str, Any] | None = None,
         retain: Any = None,
         certifier_root: Path | None = None,
+        instruction_policy: Mapping[str, Any] | None = None,
+        min_build_free_bytes: int | None = None,
+        machine_capabilities: Mapping[str, Any] | None = None,
+        exactness: Mapping[str, Any] | None = None,
     ) -> None:
         if slots < 1 or max_pending < 1:
             raise J.ServiceError("slots and max_pending must be positive")
@@ -156,8 +198,20 @@ class MeasurementService:
         #: Set by the objective: computes the gate afresh at every candidate request (see :meth:`request`).
         self.coverage_gate_provider: Callable[[], Mapping[str, Any] | None] | None = None
         self.certifier_root = str(certifier_root) if certifier_root else None
+        #: The sealed Phase 0 instruction policy every candidate job carries, so the instruction gate
+        #: holds a program to the rule Phase 0 sealed rather than to whatever the roles derive to today.
+        self.instruction_policy = dict(instruction_policy) if instruction_policy else None
+        self.min_build_free_bytes = int(
+            min_build_free_bytes if min_build_free_bytes is not None else MIN_BUILD_FREE_BYTES
+        )
         # The reference is bound PER JOB, at request time, to the bytes the file holds then.
         self.reference_path = Path(reference) if reference is not None else None
+        #: What this service's machine can do and lacks (:func:`.capabilities.compact`); every job, and so
+        #: every result, carries it.
+        self.machine_capabilities = dict(machine_capabilities) if machine_capabilities else None
+        #: The exactness contract (by value) and the launch's group forms every verdict is graded under
+        #: (:func:`merlin.perf.exactness.apply_to_verdict`); None is the default, every form exact.
+        self.exactness = dict(exactness) if exactness else None
 
     def _reference_binding(self) -> dict[str, Any] | None:
         if self.reference_path is None:
@@ -205,7 +259,10 @@ class MeasurementService:
         else:
             stale = False
         if existing.get("state") == J.SCREEN_FAILED and (exempt or stale):
-            os.replace(job_dir / "result.json", job_dir / "screen_failed_result.json")
+            # The screen's refusal is set aside as an attempt of its own (moved whole, never renamed over).
+            J.archive_attempt(
+                job_dir, "screen_failed_attempt_", why="re-screened: " + ("seed" if exempt else "infra-caused screen")
+            )
             existing.update(
                 state=J.PENDING,
                 screen_exempt=bool(exempt),
@@ -221,7 +278,7 @@ class MeasurementService:
             return existing
         if existing.get("state") != J.DONE:
             return existing
-        document = read_json(job_dir / "result.json") or {}
+        document = A.annotated(read_json(job_dir / "result.json"), job_dir) or {}
         recorded = ((document.get("builder") or {}).get("module_identity") or {}).get("sha256")
         current = (self.builder.get("module_identity") or {}).get("sha256")
         builder_changed = recorded != current
@@ -230,8 +287,12 @@ class MeasurementService:
         stale_infra = infra and (existing.get("pre_measure_check") != self.pre_measure_check or builder_changed)
         if not (builder_changed or stale_infra):
             return existing
-        losses = [p for p in job_dir.iterdir() if p.is_dir() and p.name.startswith("lost_attempt_")]
-        attempt = J.archive_attempt(job_dir, "lost_attempt_", len(losses))
+        attempt = J.archive_attempt(
+            job_dir,
+            "reopened_attempt_",
+            why="re-measured: "
+            + ("the builder changed" if builder_changed else "an infra-caused refusal predates this harness"),
+        )
         RET.prune_archived_attempt(attempt, existing.get("retain"))
         existing.update(
             state=J.PENDING,
@@ -335,7 +396,13 @@ class MeasurementService:
                 )
             prior = read_json(job_dir / J.ATTRIBUTION_FILE)  # who earned these bytes outlives a supersede
             if job_dir.exists():
-                shutil.rmtree(job_dir)  # a superseded job's directory is replaced by the new request
+                # A superseded job's directory is replaced by the new request -- but never its history: its
+                # own result is set aside as an attempt, and every attempt moves into the new directory.
+                if (job_dir / J.RESULT_FILE).is_file():
+                    J.archive_attempt(job_dir, "superseded_attempt_", why="the job was requested again")
+                if (job_dir / J.ATTEMPTS_DIR).is_dir():
+                    shutil.move(str(job_dir / J.ATTEMPTS_DIR), str(staging / J.ATTEMPTS_DIR))
+                shutil.rmtree(job_dir)
             staging.rename(job_dir)
             record = (
                 J.merge_attribution(prior, attribution, at=now(), created=prior is None)
@@ -369,7 +436,10 @@ class MeasurementService:
                 "coverage_gate": self.coverage_gate if role == J.ROLE_CANDIDATE else None,
                 "certifier_root": self.certifier_root,
                 "timeout_seconds": self.timeout_seconds,
+                "instruction_policy": self.instruction_policy if role != J.ROLE_REFERENCE else None,
             }
+            job["machine_capabilities"] = self.machine_capabilities
+            job["exactness"] = self.exactness
             write_json_atomic(job_dir / "job.json", job)
         if job["state"] == J.SCREENING:
             job = self._screen(job_dir, job, exempt=exempt)
@@ -418,8 +488,8 @@ class MeasurementService:
             if failed and not exempt:
                 fresh.update(state=J.SCREEN_FAILED, finished_at=now(), timing_status=V.TIMING_REFUSED)
                 finalize = True
-                write_json_atomic(
-                    job_dir / "result.json",
+                J.write_result(
+                    job_dir,
                     J.refused(
                         fresh,
                         f"screen_failed: the required capsule screen failed ({(check or {}).get('summary')}); "
@@ -487,7 +557,7 @@ class MeasurementService:
             loss = {"at": now(), "worker_pid": job.get("worker_pid"), "exit": _worker_exit(job.get("worker_pid"))}
             losses = list(job.get("worker_losses") or [])
             if len(losses) < WORKER_LOSS_REQUEUES:
-                attempt = J.archive_attempt(job_dir, "lost_attempt_", len(losses))
+                attempt = J.archive_attempt(job_dir, "lost_attempt_", why="its worker exited without a result")
                 RET.prune_archived_attempt(attempt, job.get("retain"))
                 loss["moved_to"] = str(attempt)
                 job.update(
@@ -510,8 +580,8 @@ class MeasurementService:
                     failure=f"{J.INFRA_WORKER_LOST}: measurement lost to host pressure {len(losses) + 1} "
                     "times (its worker exited without a result); not a verdict on these bytes",
                 )
-                write_json_atomic(
-                    job_dir / "result.json",
+                J.write_result(
+                    job_dir,
                     J.refused(job, job["failure"], infra_worker_lost=True, worker_losses=job["worker_losses"]),
                 )
         write_json_atomic(job_dir / "job.json", job)
@@ -527,10 +597,13 @@ class MeasurementService:
                 (job for job in jobs if job.get("state") == J.PENDING),
                 key=lambda job: (-int(job.get("priority") or 0), float(job.get("requested_epoch") or 0)),
             )
+            held = self._disk_hold(pending) if pending and running < self.slots else None
             for job in pending:
-                if running >= self.slots:
+                if running >= self.slots or held:
                     break
                 job_dir = self.root / key_of(job)
+                if str(job.get("notice") or "").startswith(DISK_LOW):
+                    job.pop("notice")
                 with (job_dir / "worker.log").open("ab") as log:
                     process = spawn(
                         [self.python, "-m", WORKER_MODULE, "work", str(job_dir)],
@@ -548,6 +621,31 @@ class MeasurementService:
             if self.machine.get("kind") == "batched":
                 self._dispatch_batch()
         return started
+
+    def _worker_tmpdir(self) -> Path:
+        return Path(self.environment.get("TMPDIR") or os.environ.get("TMPDIR") or tempfile.gettempdir())
+
+    def _disk_hold(self, pending: list[dict[str, Any]]) -> str | None:
+        """The reason builds are held for lack of disk, recorded on the store and on each waiting job;
+        None (closing any open hold) when both filesystems have room."""
+        hold_path = self.root / DISK_HOLD
+        reason = build_disk_refusal(
+            {"store": self.root, "worker TMPDIR": self._worker_tmpdir()}, minimum=self.min_build_free_bytes
+        )
+        if reason is None:
+            hold = read_json(hold_path)
+            if hold is not None:
+                with (self.root / DISK_HOLDS).open("a", encoding="utf-8") as log:
+                    log.write(json.dumps({**hold, "closed_at": now()}, sort_keys=True) + "\n")
+                hold_path.unlink(missing_ok=True)
+            return None
+        hold = read_json(hold_path) or {"opened_at": now(), "minimum_free_bytes": self.min_build_free_bytes}
+        write_json_atomic(hold_path, {**hold, "reason": reason, "checked_at": now()})
+        for job in pending:
+            if job.get("notice") != reason:
+                job["notice"] = reason
+                write_json_atomic(self.root / key_of(job) / "job.json", job)
+        return reason
 
     def _dispatch_batch(self) -> None:
         """Start one batch runner when none is running and the waiting jobs are worth a board job."""
@@ -599,10 +697,12 @@ class MeasurementService:
                 ended_as=outcome,
             )
             write_json_atomic(job_dir / "job.json", job)
-            write_json_atomic(
-                job_dir / "result.json",
-                J.refused(job, f"{outcome}: {reason}", superseded=True, ended_as=outcome, stopped_pids=stopped),
-            )
+            ended = J.refused(job, f"{outcome}: {reason}", superseded=True, ended_as=outcome, stopped_pids=stopped)
+            try:
+                J.write_result(job_dir, ended)
+            except J.ResultExists:
+                # Its worker finished first: that result stands, and the supersede is kept beside it.
+                J.preserve_result(job_dir, ended, why="a supersede that arrived after the job's own result")
         return job
 
     # ---- reading
@@ -610,11 +710,12 @@ class MeasurementService:
         return [job for job in (read_json(p) for p in sorted(self.root.glob("*/job.json"))) if job is not None]
 
     def result(self, digest: str) -> dict[str, Any] | None:
-        """The FIRST run's result for these bytes (replicate 0)."""
-        return read_json(self.root / digest / "result.json")
+        """The FIRST run's result for these bytes (replicate 0): the one that stands across its attempts
+        (:func:`.attempts.effective_result`) -- an infra outcome never hides an earlier verdict."""
+        return A.effective_result(self.root / digest)
 
     def result_by_key(self, key: str | None) -> dict[str, Any] | None:
-        return read_json(self.root / key / "result.json") if key else None
+        return A.effective_result(self.root / key) if key else None
 
     def alias_of(self, digest: str) -> str | None:
         alias = read_json(self.root / "aliases" / f"{digest}.json")
@@ -628,6 +729,14 @@ class MeasurementService:
                 return {**self.measurement_for(target), "aliased_from": digest, "same_program_as": target}
         found = self.result(digest)
         if found is not None:
+            if found.get("from_attempt"):
+                job = read_json(self.root / digest / "job.json") or {}
+                if job.get("state") not in J.TERMINAL:
+                    found = {
+                        **found,
+                        "job_state": job.get("state"),
+                        "notice": f"re-measuring (attempt {found['from_attempt']['attempt']} is the standing result)",
+                    }
             return found
         job = read_json(self.root / digest / "job.json")
         if job is None:
@@ -683,6 +792,8 @@ class MeasurementService:
                     "refusal": (found.get("refusal") or verdict.get("refusal") or "")[:200] or None,
                     "notice": job.get("notice") if job.get("state") in (J.PENDING, J.RUNNING, J.BOARD) else None,
                     "infra_worker_lost": bool(found.get("infra_worker_lost")),
+                    "attempts": A.attempt_count(self.root / key_of(job)),
+                    "from_attempt": (found.get("from_attempt") or {}).get("attempt"),
                     "invalid_reason": verdict.get("invalid_reason"),
                     "failing": J.failing_summary(found),
                 }

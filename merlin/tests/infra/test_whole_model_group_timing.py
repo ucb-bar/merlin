@@ -260,3 +260,38 @@ def test_a_kept_interface_says_when_nothing_was_asked(tmp_path):
     kept = T._kept_interface(lower, 4, tmp_path / "g4")
     assert kept["interface"].endswith("interface.mlir") and len(kept["interface_sha256"]) == 64
     assert T._kept_interface(lower, 5, tmp_path / "g5")["interface"] is None
+
+
+def test_the_debug_companion_is_the_recorded_recipe_plus_debug_information(tmp_path):
+    """Every flag the program was built with is kept, in order; the debug option is appended to them."""
+    from pathlib import Path
+
+    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
+
+    recipe = HarnessBuildRecipe(
+        compiler=Path("/toolchain/bin/cc"),
+        include_roots=(),
+        support_sources=(),
+        link_script=Path("/link.ld"),
+        load_address=0,
+        cflags=("-O2", "-march=one"),
+        ldflags=("-lm",),
+    )
+    seen = []
+
+    def link(directory, chosen):
+        seen.append((directory, chosen))
+        return {"elf": str(directory / "p.elf"), "elf_sha256": "a" * 64, "program_object": str(directory / "p.o")}
+
+    record = T._debug_companion(link, recipe, tmp_path / "program.debug")
+    ((directory, chosen),) = seen
+    assert directory == tmp_path / "program.debug"
+    assert chosen.cflags == ("-O2", "-march=one", T.DEBUG_INFO_OPTION) and chosen.ldflags == recipe.ldflags
+    assert chosen.compiler == recipe.compiler and chosen.link_script == recipe.link_script
+    assert record["compiler"] == "/toolchain/bin/cc" and record["elf"].endswith("p.elf")
+
+    def broken(directory, chosen):
+        raise SystemExit("link failed")
+
+    refused = T._debug_companion(broken, recipe, tmp_path / "again")
+    assert "link failed" in refused["refusal"] and "elf" not in refused

@@ -67,6 +67,8 @@ concerns:
   design-pressure: Design-pressure DSE products, per workload.
   dse: Design-space exploration products, per workload.
   dse-guidance: Guidance derived from DSE, per workload.
+  experiments: Experiment-tracking views drawn from a run's own records -- the self-contained HTML
+    dashboard of a run or a target at experiments/<target>/dashboard/. Regenerable; never evidence.
   handoff: Bundles handed to a collaborator, with the note that goes with them.
   kernel-index: Kernel index, per framework.
   kernel-mining: Mined kernels, per target.
@@ -110,11 +112,16 @@ product_roots:
   perf-preflight: perf-studies/preflight
   perf-counters: perf-studies/counters
   perf-recovery: perf-studies/recovery
+  # Per-group derived rooflines confronted with measured cycles (a measured run's `roofline` report).
+  perf-roofline: perf-studies/roofline
+  # One-group programs of both arms timed on the board in one batch with the reference control.
+  perf-group-board: perf-studies/group-capsules
   # Destinations below that carry a target axis (<concern>/<target>/...); the leaf is not a
   # new_product() version directory, so these are resolved with declared_product_roots(), not
   # new_product().
   phase0-releases: protocols
   target-champions: targets
+  experiment-dashboards: experiments
 
 # Output that retention must never offer to drop, declared as layout rather than as a per-directory
 # pin a writer might forget. Patterns are relative to the out/ root and match one path component per
