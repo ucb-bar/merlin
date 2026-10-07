@@ -10,7 +10,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import data_path
 from merlin.llvmlower.source_attention_frontier import SourceAttentionFrontierPlan, emit_source_attention_frontier
 
 PLAN = SourceAttentionFrontierPlan(
@@ -158,6 +158,14 @@ int retention_stability(void){
             (True, True, False, True, True, True, True, True, True, True, True, True, True, True),
             id="batch_four_composed",
         ),
+        pytest.param(
+            (True, True, False, True, True, True, True, True, True, False, False, False, False, False, True),
+            id="fused_integer_reconstruction",
+        ),
+        pytest.param(
+            (True, True, False, True, True, True, True, True, True, True, True, True, True, True, True),
+            id="fused_integer_reconstruction_composed",
+        ),
     ],
 )
 def native(tmp_path_factory, request):
@@ -185,6 +193,7 @@ def native(tmp_path_factory, request):
             separable_source_radius=request.param[6],
             prepare_softmax_domain=request.param[7],
             integer_reconstruction=request.param[8] if len(request.param) > 8 else False,
+            fuse_integer_reconstruction=request.param[14] if len(request.param) > 14 else False,
             prepare_probability_bins=request.param[9] if len(request.param) > 9 else False,
             prepare_encoded_rows=request.param[10] if len(request.param) > 10 else False,
             prepare_softmax_spans=request.param[11] if len(request.param) > 11 else False,
@@ -194,7 +203,7 @@ def native(tmp_path_factory, request):
         + EXTRA
         + (RETENTION_TEST if request.param[5] else "")
     )
-    headers = merlin_dir() / "runtime/c"
+    headers = data_path("runtime", "c")
     subprocess.run(
         [
             cc,
@@ -333,7 +342,7 @@ def test_runtime_template_uses_canonical_relocated_data(monkeypatch, tmp_path):
     expected = emit_source_attention_frontier(PLAN, symbol="provider")
     runtime = tmp_path / "runtime"
     (runtime / "templates").mkdir(parents=True)
-    for source in (merlin_dir() / "runtime/c/templates").glob("source_attention*.c.in"):
+    for source in data_path("runtime", "c", "templates").glob("source_attention*.c.in"):
         shutil.copyfile(source, runtime / "templates" / source.name)
     monkeypatch.setattr(emitter, "data_path", lambda *parts: runtime)
     assert emit_source_attention_frontier(PLAN, symbol="provider") == expected
@@ -350,7 +359,7 @@ def test_two_distinct_provider_plans_link_without_helper_collisions(tmp_path):
         files.append(str(c))
     so = tmp_path / "both.so"
     subprocess.run(
-        [cc, "-O2", "-shared", "-fPIC", "-I", str(merlin_dir() / "runtime/c"), *files, "-lm", "-o", str(so)], check=True
+        [cc, "-O2", "-shared", "-fPIC", "-I", str(data_path("runtime", "c")), *files, "-lm", "-o", str(so)], check=True
     )
     lib = C.CDLL(str(so))
     for name in ["first", "second"]:
@@ -422,7 +431,7 @@ int probe_bounds(const float*a,const float*al,const float*ah,const float*b,
                 "-shared",
                 "-fPIC",
                 "-I",
-                str(merlin_dir() / "runtime/c"),
+                str(data_path("runtime", "c")),
                 str(source),
                 "-lm",
                 "-o",
@@ -527,4 +536,27 @@ def test_integer_reconstruction_default_identity_and_private_storage():
     assert "int64_t integer_center[ROWS*CHUNK]" in selected
     assert "merlin_radix_integer_begin_from_first_group_exact_i64(w->integer_center" in selected
     assert "merlin_radix_integer_finish_exact_f64(w->center,w->integer_center" in selected
+    assert "w->center[r*n+c]*=w->astep[r]*w->bstep[c]" in selected
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true"])
+def test_fused_integer_reconstruction_requires_boolean(value):
+    with pytest.raises(ValueError, match="boolean fused integer"):
+        emit_source_attention_frontier(PLAN, symbol="provider", fuse_integer_reconstruction=value)
+
+
+def test_fused_integer_reconstruction_requires_complete_integer_plan():
+    with pytest.raises(ValueError, match="requires integer reconstruction"):
+        emit_source_attention_frontier(PLAN, symbol="provider", fuse_integer_reconstruction=True)
+
+
+def test_fused_integer_reconstruction_default_identity_and_complete_storage():
+    options = dict(symbol="provider", integer_reconstruction=True)
+    default = emit_source_attention_frontier(PLAN, **options)
+    assert default == emit_source_attention_frontier(PLAN, **options, fuse_integer_reconstruction=False)
+    selected = emit_source_attention_frontier(PLAN, **options, fuse_integer_reconstruction=True)
+    assert "int32_t readout[MERLIN_RADIX_FUSED_INTEGER_GROUPS][ROWS*CHUNK]" in selected
+    assert "int64_t integer_center[" not in selected
+    assert "product(opaque,w->ap,w->bp,w->readout[degree],m,n,k,degree)" in selected
+    assert "merlin_radix_integer_fused_exact_f64(w->center,planes,(size_t)m*n)" in selected
     assert "w->center[r*n+c]*=w->astep[r]*w->bstep[c]" in selected

@@ -24,6 +24,7 @@ def c_header(plan: RadixProductPlan) -> str:
         digits=plan.digits,
         reduction_length=plan.reduction_length,
     )
+
     if plan != canonical:
         raise ValueError("canonical signed-i32/exact-binary64 radix plan required")
     if any(g.exponent >= 63 for g in plan.groups):
@@ -81,4 +82,48 @@ static inline void merlin_radix_integer_finish_exact_f64(
 }
 #endif
 """
+    )
+
+
+def c_fused_header(plan: RadixProductPlan) -> str:
+    """Combine completed group planes without an intermediate integer buffer.
+
+    This explicit storage schedule requires every canonical group output to be
+    complete and immutable before entry, and the destination to be disjoint
+    from all source planes and their pointer array. Read-only source planes may
+    alias one another. The existing source/range/RNE proof remains mandatory;
+    no partial result may escape between group callbacks. Keeping more readout
+    planes live has an allocation, transfer-layout and cache cost that the
+    caller must qualify independently. The original streaming emitter is
+    unchanged.
+    """
+    # Apply the existing complete-plan admission, including all prefix bounds.
+    c_header(plan)
+    statements = ["    int64_t total = (int64_t)source[0][t];"]
+    statements.extend(
+        f"    total += (int64_t)source[{ordinal}][t] * INT64_C({1 << group.exponent});"
+        for ordinal, group in enumerate(plan.groups[1:], start=1)
+    )
+    statements.append("    dst[t] = (double)total;")
+    return (
+        """#ifndef MERLIN_RADIX_FUSED_INTEGER_RECONSTRUCT_H
+#define MERLIN_RADIX_FUSED_INTEGER_RECONSTRUCT_H
+#include <stdint.h>
+#include <stddef.h>
+#include <float.h>
+#if FLT_RADIX != 2 || DBL_MANT_DIG != 53
+#error exact_radix_reconstruction_requires_binary64
+#endif
+"""
+        + f"#define MERLIN_RADIX_FUSED_INTEGER_GROUPS {len(plan.groups)}\n"
+        + f"#define MERLIN_RADIX_FUSED_INTEGER_MAX_REDUCTION_LENGTH {plan.reduction_length}\n"
+        + """/* Complete canonical signed-i32 planes; every weighted prefix is exact.
+ * Fresh disjoint destination; stable original RNE/+0 source contract.
+ * count==0 performs no memory access, including to the source pointer array. */
+static inline void merlin_radix_integer_fused_exact_f64(
+    double *restrict dst, const int32_t *const *restrict source, size_t count) {
+  for (size_t t = 0; t < count; ++t) {
+"""
+        + "\n".join(statements)
+        + "\n  }\n}\n#endif\n"
     )

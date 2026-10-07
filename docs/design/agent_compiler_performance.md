@@ -287,6 +287,16 @@ ordinary CPU codegen emit constant shifts while the C source retains defined
 negative multiplication semantics. The emitted instruction witness explains
 this difference; a valid mathematical rewrite alone cannot predict its cost.
 
+An explicit completed-plane alternative combines the same canonical integer
+groups in one traversal and performs the same final binary64 conversion. It
+removes intermediate i64 buffer traffic and repeated loop traversals, while
+retaining more immutable i32 readout planes. The compiler must prove no consumer
+observes partial reconstruction, preserve producer callback order and completion,
+and close the revised storage ownership and allocation bound. Price changed
+readout addresses, live storage, register pressure and complete consumer costs.
+This reusable storage schedule does not change representation precision or grant
+an accelerator capability; it is independent of the selected target.
+
 Agent guidance should link each optional transform to the responsible shared
 AST symbol, numeric/layout proof, application count, produced IR/objects and
 complete matched measurement. The existing edit contract and compilation
