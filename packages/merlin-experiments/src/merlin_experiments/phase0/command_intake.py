@@ -25,7 +25,16 @@ from merlin.targetgen.rtl.circt_introspect import (
 from merlin.targetgen.rtl.hw_graph import parse_generic_hw
 from merlin.targetgen.rtl.hw_observations import input_observations
 
-from .rtl_intake import IndependentHardwareIntake, RtlIntakePin, RtlIntakeRefusal, _json, _outside, _pin, _plain
+from .rtl_intake import (
+    IndependentHardwareIntake,
+    RtlIntakePin,
+    RtlIntakeRefusal,
+    _exclusion_prefix,
+    _json,
+    _outside,
+    _pin,
+    _plain,
+)
 
 SCHEMA = "merlin.independent_command_observations.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -155,7 +164,7 @@ def issue_independent_command_intake(
     hardware.verify()
     if not forbidden_roots or not isinstance(forbidden_roots, tuple):
         raise RtlIntakeRefusal("command intake needs explicit protected campaign exclusions")
-    forbidden = tuple(_plain(path, directory=True) for path in forbidden_roots)
+    forbidden = tuple(_exclusion_prefix(path) for path in forbidden_roots)
     root, source, tool = _plain(checkout, directory=True), _plain(isa_source), _plain(circt_opt)
     for path in (root, source, tool):
         _outside(path, forbidden)

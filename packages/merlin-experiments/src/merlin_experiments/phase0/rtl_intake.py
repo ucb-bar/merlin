@@ -59,6 +59,21 @@ def _plain(path: str | Path, *, directory: bool = False) -> Path:
     return selected
 
 
+def _exclusion_prefix(path: str | Path) -> Path:
+    """Keep an ordinary protected prefix even when its tree is absent.
+
+    Exclusions are path declarations, not selected readable input directories.
+    Inspect only path metadata: never create or open an excluded tree, and never
+    resolve a symlink to discover an alternative prefix.
+    """
+    selected = Path(path).absolute()
+    if ".." in selected.parts or any(parent.is_symlink() for parent in (selected, *selected.parents)):
+        raise RtlIntakeRefusal("independent intake refuses indirect protected exclusion prefixes")
+    if selected.exists() and not selected.is_dir():
+        raise RtlIntakeRefusal("protected exclusion prefix must be an ordinary directory or absent")
+    return selected
+
+
 def _outside(path: Path, forbidden: tuple[Path, ...]) -> None:
     if any(path == root or path.is_relative_to(root) for root in forbidden):
         raise RtlIntakeRefusal("independent RTL intake selected a protected implementation or answer path")
@@ -267,7 +282,7 @@ def issue_independent_hardware_intake(
         raise RtlIntakeRefusal("independent hardware intake requires an explicit target")
     if not isinstance(forbidden_roots, tuple) or not forbidden_roots:
         raise RtlIntakeRefusal("protected campaign exclusions must be selected explicitly")
-    forbidden = tuple(_plain(path, directory=True) for path in forbidden_roots)
+    forbidden = tuple(_exclusion_prefix(path) for path in forbidden_roots)
     descriptor_path = _plain(descriptor)
     _outside(descriptor_path, forbidden)
     _descriptor(descriptor_path, target)

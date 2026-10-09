@@ -13,7 +13,16 @@ from merlin.common.paths import module_source_path
 from merlin.targetgen.rtl.hw_arithmetic import local_arithmetic
 from merlin.targetgen.rtl.hw_graph import parse_generic_hw
 
-from .rtl_intake import IndependentHardwareIntake, RtlIntakePin, RtlIntakeRefusal, _json, _outside, _pin, _plain
+from .rtl_intake import (
+    IndependentHardwareIntake,
+    RtlIntakePin,
+    RtlIntakeRefusal,
+    _exclusion_prefix,
+    _json,
+    _outside,
+    _pin,
+    _plain,
+)
 
 SCHEMA = "merlin.independent_local_arithmetic_intake.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -165,7 +174,7 @@ def issue_independent_arithmetic_intake(*, hardware, circt_opt, forbidden_roots,
     hardware.verify()
     if not isinstance(forbidden_roots, tuple) or not forbidden_roots:
         raise RtlIntakeRefusal("local arithmetic needs explicit protected campaign exclusions")
-    forbidden = tuple(_plain(path, directory=True) for path in forbidden_roots)
+    forbidden = tuple(_exclusion_prefix(path) for path in forbidden_roots)
     tool = _plain(circt_opt)
     _outside(tool, forbidden)
     cores = [

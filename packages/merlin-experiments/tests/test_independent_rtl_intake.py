@@ -12,6 +12,8 @@ import pytest
 from merlin_experiments.phase0.rtl_intake import (
     IndependentHardwareIntake,
     RtlIntakeRefusal,
+    _exclusion_prefix,
+    _outside,
     bind_component_hardware,
     issue_independent_hardware_intake,
 )
@@ -89,6 +91,49 @@ def test_actual_replay_derives_source_facts_and_explicit_unknowns(selected):
     assert (selected["output"] / "production/firtool.log").is_file()
     with pytest.raises(RtlIntakeRefusal, match="not independently derived"):
         intake.fact("funct_decode_table.custom_opcode")
+
+
+def test_actual_intake_keeps_absent_exclusion_prefixes(selected):
+    excluded = selected["output"].parent / "future-private" / "answers"
+    assert not excluded.exists()
+    selected["forbidden_roots"] += (excluded,)
+    intake = issue_independent_hardware_intake(**selected)
+    intake.verify()
+    assert not excluded.exists()  # admission must not materialize the tree
+    assert intake.fact("memories.0.bytes") == 4
+    with pytest.raises(RtlIntakeRefusal, match="protected implementation"):
+        _outside(excluded / "later-source.fir", (_exclusion_prefix(excluded),))
+    with pytest.raises(RtlIntakeRefusal, match="protected implementation"):
+        issue_independent_hardware_intake(**{**selected, "output": excluded / "forbidden-output"})
+    assert not excluded.exists()
+
+
+def test_exclusion_prefix_never_opens_contents_or_follows_aliases(tmp_path, monkeypatch):
+    protected = tmp_path / "protected"
+    protected.mkdir()
+    source = protected / "secret.fir"
+    source.write_text("unread protected sentinel")
+
+    def forbidden_read(*args, **kwargs):
+        raise AssertionError("exclusion-prefix admission opened protected bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read)
+    monkeypatch.setattr(Path, "read_text", forbidden_read)
+    assert _exclusion_prefix(protected) == protected
+    absent = protected / "absent-child"
+    assert _exclusion_prefix(absent) == absent
+    with pytest.raises(RtlIntakeRefusal, match="ordinary directory or absent"):
+        _exclusion_prefix(source)
+    alias = tmp_path / "alias"
+    alias.symlink_to(protected, target_is_directory=True)
+    with pytest.raises(RtlIntakeRefusal, match="indirect protected exclusion"):
+        _exclusion_prefix(alias / "still-absent")
+    broken_alias = tmp_path / "broken-alias"
+    broken_alias.symlink_to(tmp_path / "uncreated-directory", target_is_directory=True)
+    with pytest.raises(RtlIntakeRefusal, match="indirect protected exclusion"):
+        _exclusion_prefix(broken_alias)
+    with pytest.raises(RtlIntakeRefusal, match="indirect protected exclusion"):
+        _exclusion_prefix(protected / ".." / "another")
 
 
 def test_constructor_or_saved_receipt_does_not_mint_authority(selected):

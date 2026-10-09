@@ -21,7 +21,7 @@ from merlin.targetgen.frontend_operator_effects import original_operator_effects
 from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 from .command_intake import _tracked_source
-from .rtl_intake import RtlIntakePin, RtlIntakeRefusal, _json, _outside, _pin, _plain
+from .rtl_intake import RtlIntakePin, RtlIntakeRefusal, _exclusion_prefix, _json, _outside, _pin, _plain
 from .software_intake import IndependentSoftwareIntake
 
 SCHEMA = "merlin.independent_operator_schema_intake.v1"
@@ -183,7 +183,7 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
     if type(software) is not IndependentSoftwareIntake or not isinstance(forbidden_roots, tuple) or not forbidden_roots:
         raise RtlIntakeRefusal("operator schema intake needs live minimal semantics and protected exclusions")
     software.verify()
-    forbidden = tuple(_plain(path, directory=True) for path in forbidden_roots)
+    forbidden = tuple(_exclusion_prefix(path) for path in forbidden_roots)
     selection = _plain(selection)
     _outside(selection, forbidden)
     selected = _selection(selection.read_bytes())

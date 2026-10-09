@@ -56,6 +56,9 @@ support provider, ISA header or old fact table; protected campaign exclusions
 are checked before source bytes are read. Public facts must match the complete
 issued projection. Fresh generation binds the issued intake hash into the
 coverage receipt and refuses legacy support/transcription source roles.
+Protected exclusion prefixes remain selected when a tree is absent or pruned;
+they are not readable input directories. Refuse indirect prefixes without
+opening, creating or resolving the excluded tree.
 The intake does not establish historical elaboration origin, numeric ISA
 semantics, simulator/bitstream equivalence, runtime closure or performance;
 those stay unknown until their independent owners qualify them. Saved JSON
