@@ -46,6 +46,12 @@ issuers, followed by the ordinary complete mandatory generator. Its closed reque
 uses `merlin.independent_phase0_run.v1`: exact input paths and SHA256s, explicit
 excluded roots, a selected native schema runtime and public declaration checkout,
 a selected CIRCT reader, and explicit automatic construction/reference/source budgets.
+Opt-in request v2 can select the existing public-native Tensor-argument and
+zero-result schema observers. It additionally pins the exact C++ compiler bytes;
+both observers use that same selected SDK compiler. The request retains the
+original call/result metadata requirements and grants no numerical or physical
+effects from schema observations alone. Request v1 keeps its original schema
+selection scope.
 Automatic v8 retains its convolution-only original source factory; opt-in v9
 also constructs compatible original rank-two matmul and unit-alpha, equal-shape
 add sources. Both preserve the full original call/source-slot roster and every

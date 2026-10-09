@@ -27,6 +27,7 @@ from .rtl_intake import _outside, _plain, issue_independent_hardware_intake
 from .software_intake import issue_independent_software_intake
 
 SCHEMA = "merlin.independent_phase0_run.v1"
+BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -62,7 +63,7 @@ def validate(request):
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] != SCHEMA
+        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA}
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -76,15 +77,40 @@ def validate(request):
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
     operator = request["operator_schemas"]
+    fields = {"schema", "status", "namespace", "python", "canonical_source"}
+    tensor = isinstance(operator, dict) and operator.get("schema") in {
+        S.TENSOR_SELECTION_SCHEMA,
+        S.ZERO_SELECTION_SCHEMA,
+    }
+    zero = isinstance(operator, dict) and operator.get("schema") == S.ZERO_SELECTION_SCHEMA
+    if tensor:
+        fields.add("tensor_arguments")
+    if zero:
+        fields.add("zero_returns")
+    versions = {S.SELECTION_SCHEMA}
+    if request["schema"] == BRIDGE_SCHEMA:
+        versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
-        or set(operator) != {"schema", "status", "namespace", "python", "canonical_source"}
-        or operator["schema"] != S.SELECTION_SCHEMA
+        or set(operator) != fields
+        or operator["schema"] not in versions
         or operator["status"] != "reviewed"
         or not isinstance(operator["canonical_source"], dict)
         or set(operator["canonical_source"]) != {"checkout", "commit", "declarations"}
     ):
         raise ValueError("original schemas require explicit public source/runtime declarations without saved authority")
+    if tensor:
+        selection = operator["tensor_arguments"]
+        if (
+            operator["namespace"] != "aten"
+            or not isinstance(selection, dict)
+            or set(selection) != {"compiler"}
+            or not isinstance(selection["compiler"], dict)
+            or set(selection["compiler"]) != {"path", "sha256"}
+        ):
+            raise ValueError("native Tensor arguments require an exact explicit compiler byte selection")
+    if zero and operator["zero_returns"] != operator["tensor_arguments"]:
+        raise ValueError("native zero returns must select the identical public SDK compiler")
     automatic = request["automatic"]
     if (
         not isinstance(automatic, dict)
@@ -199,6 +225,8 @@ def run(request_path, *, output):
     inputs = {name: _pin(pin, forbidden=forbidden) for name, pin in request["inputs"].items()}
     operator = request["operator_schemas"]
     python = _pin(operator["python"], forbidden=forbidden, runtime=True)
+    compiler_pin = operator.get("tensor_arguments", {}).get("compiler")
+    compiler = _pin(compiler_pin, forbidden=forbidden) if compiler_pin is not None else None
     canonical = operator["canonical_source"]
     checkout = Path(canonical["checkout"])
     _outside(checkout, forbidden)
@@ -210,6 +238,8 @@ def run(request_path, *, output):
     if output.exists() or ".." in output.parts or any(path.is_symlink() for path in (output, *output.parents)):
         raise ValueError("independent Phase 0 needs one fresh ordinary run owner")
     selected_paths = [request_path, *inputs.values(), declarations, python, circt_opt, checkout]
+    if compiler is not None:
+        selected_paths.append(compiler)
     if any(path == output or path.is_relative_to(output) or output.is_relative_to(path) for path in selected_paths):
         raise ValueError("independent Phase 0 owner overlaps its declared inputs")
     output.mkdir(parents=True, mode=0o700)
@@ -262,6 +292,11 @@ def run(request_path, *, output):
             software_intake_sha256=software.sha256,
             canonical_source={"checkout": str(checkout), "commit": canonical["commit"], "path": str(declarations)},
         )
+        if compiler is not None:
+            _pin(compiler_pin, forbidden=forbidden)
+            selection["tensor_arguments"] = {"compiler": str(compiler)}
+            if operator["schema"] == S.ZERO_SELECTION_SCHEMA:
+                selection["zero_returns"] = {"compiler": str(compiler)}
         selection_path = output / "schema-selection.json"
         _write(selection_path, selection)
         schemas = step(
@@ -273,6 +308,8 @@ def run(request_path, *, output):
                 output=output / "schemas",
             ),
         )
+        if compiler is not None:
+            _pin(compiler_pin, forbidden=forbidden)
         arithmetic = step(
             "fresh_public_rtl_arithmetic",
             lambda: issue_independent_arithmetic_intake(
@@ -409,6 +446,8 @@ def run(request_path, *, output):
         _pin(operator["python"], forbidden=forbidden, runtime=True)
         _pin(canonical["declarations"], forbidden=forbidden)
         _pin(request["circt_opt"], forbidden=forbidden)
+        if compiler is not None:
+            _pin(compiler_pin, forbidden=forbidden)
     except Exception as error:
         details = {"type": type(error).__name__, "message": str(error)}
         stderr = getattr(error, "stderr", None)

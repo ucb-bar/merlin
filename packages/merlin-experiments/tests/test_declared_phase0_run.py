@@ -5,6 +5,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase0 import declared_run as D
@@ -161,3 +162,135 @@ def test_arbitrary_generator_error_cannot_be_a_completed_diagnostic(tmp_path, ch
 
     with pytest.raises(RuntimeError, match="unrelated native failure"):
         D._diagnostic_generation(fail, root)
+
+
+def _bridge_request(declared, *, zero=False):
+    request, path = declared
+    request = copy.deepcopy(request)
+    request["schema"] = D.BRIDGE_SCHEMA
+    operator = request["operator_schemas"]
+    operator["schema"] = D.S.ZERO_SELECTION_SCHEMA if zero else D.S.TENSOR_SELECTION_SCHEMA
+    compiler = path.parent / "selected-compiler"
+    compiler.write_bytes(b"explicit diagnostic compiler selection\n")
+    operator["tensor_arguments"] = {
+        "compiler": {"path": str(compiler), "sha256": hashlib.sha256(compiler.read_bytes()).hexdigest()}
+    }
+    if zero:
+        operator["zero_returns"] = copy.deepcopy(operator["tensor_arguments"])
+    path.write_text(json.dumps(request))
+    return request, path, compiler
+
+
+@pytest.mark.parametrize("zero", [False, True])
+def test_bridge_request_preserves_closed_version_and_same_compiler(declared, zero):
+    request, _, _ = _bridge_request(declared, zero=zero)
+    assert D.validate(request) is request
+    request["schema"] = D.SCHEMA
+    with pytest.raises(ValueError):
+        D.validate(request)
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["bare_path", "extra_authority", "other_namespace", "different_zero_compiler", "missing_zero", "extra_facet"],
+)
+def test_bridge_declaration_cannot_import_authority_or_change_sdk_selection(declared, change):
+    request, _, compiler = _bridge_request(declared, zero=True)
+    operator = request["operator_schemas"]
+    if change == "bare_path":
+        operator["tensor_arguments"]["compiler"] = str(compiler)
+    elif change == "extra_authority":
+        operator["tensor_arguments"]["getter_receipt"] = "saved-authority.json"
+    elif change == "other_namespace":
+        operator["namespace"] = "other"
+    elif change == "different_zero_compiler":
+        operator["zero_returns"]["compiler"]["sha256"] = "0" * 64
+    elif change == "missing_zero":
+        del operator["zero_returns"]
+    else:
+        operator["native_effects"] = {"status": "accepted"}
+    with pytest.raises(ValueError):
+        D.validate(request)
+
+
+@pytest.mark.parametrize("change", ["changed", "forbidden", "alias", "parent_component"])
+def test_bridge_compiler_membership_refuses_before_live_issuance(declared, tmp_path, monkeypatch, change):
+    request, path, compiler = _bridge_request(declared)
+    if change == "changed":
+        compiler.write_bytes(b"changed compiler bytes\n")
+    elif change == "forbidden":
+        request["forbidden_roots"].append(str(compiler))
+    elif change == "alias":
+        alias = tmp_path / "compiler-alias"
+        alias.symlink_to(compiler)
+        request["operator_schemas"]["tensor_arguments"]["compiler"]["path"] = str(alias)
+    else:
+        request["operator_schemas"]["tensor_arguments"]["compiler"]["path"] = str(
+            tmp_path / "missing" / ".." / compiler.name
+        )
+    path.write_text(json.dumps(request))
+    monkeypatch.setattr(
+        D, "issue_independent_hardware_intake", lambda **kwargs: pytest.fail("bad compiler reached issuer")
+    )
+    with pytest.raises(ValueError):
+        D.run(path, output=tmp_path / "run")
+    assert not (tmp_path / "run").exists()
+
+
+def _source_stage_diagnostics(monkeypatch, request):
+    # Diagnostic stop fixtures exercise declaration forwarding only. They do
+    # not issue a software/hardware/runtime capability or complete Phase 0.
+    hardware = object()
+    software = SimpleNamespace(
+        sha256="1" * 64,
+        receipt_json=json.dumps({"semantic_basis_sha256": request["inputs"]["semantic_basis"]["sha256"]}),
+    )
+    monkeypatch.setattr(D, "issue_independent_hardware_intake", lambda **kwargs: hardware)
+    monkeypatch.setattr(D, "issue_independent_software_intake", lambda **kwargs: software)
+    return software
+
+
+@pytest.mark.parametrize("zero", [False, True])
+def test_normal_bridge_route_forwards_selection_to_existing_native_issuer(declared, tmp_path, monkeypatch, zero):
+    request, path, compiler = _bridge_request(declared, zero=zero)
+    software = _source_stage_diagnostics(monkeypatch, request)
+    seen = []
+
+    def native_stop(**kwargs):
+        assert kwargs["software"] is software
+        selected = json.loads(kwargs["selection"].read_bytes())
+        assert D.S._selection(kwargs["selection"].read_bytes()) == selected
+        assert selected["tensor_arguments"] == {"compiler": str(compiler)}
+        assert selected["schema"] == request["operator_schemas"]["schema"]
+        if zero:
+            assert selected["zero_returns"] == selected["tensor_arguments"]
+        else:
+            assert "zero_returns" not in selected
+        seen.append(selected)
+        raise RuntimeError("explicit diagnostic stop before native authority issuance")
+
+    monkeypatch.setattr(D.S, "issue_independent_operator_schema_intake", native_stop)
+    with pytest.raises(RuntimeError, match="diagnostic stop"):
+        D.run(path, output=tmp_path / "run")
+    assert len(seen) == 1
+    report = json.loads((tmp_path / "run/report.json").read_bytes())
+    assert report["status"] == "diagnostic_failed"
+    assert report["steps"][-1] == {"name": "fresh_original_public_native_schemas", "status": "failed"}
+    assert report["phases"]["1"]["status"] == report["phases"]["2"]["status"] == "blocked"
+
+
+def test_changed_compiler_after_native_issuer_cannot_advance_to_rtl_observers(declared, tmp_path, monkeypatch):
+    request, path, compiler = _bridge_request(declared, zero=True)
+    _source_stage_diagnostics(monkeypatch, request)
+
+    def changed(**kwargs):
+        compiler.write_bytes(b"replacement during selected native preparation\n")
+        return object()
+
+    monkeypatch.setattr(D.S, "issue_independent_operator_schema_intake", changed)
+    monkeypatch.setattr(
+        D, "issue_independent_arithmetic_intake", lambda **kwargs: pytest.fail("changed compiler advanced")
+    )
+    with pytest.raises(ValueError, match="bytes changed"):
+        D.run(path, output=tmp_path / "run")
+    assert json.loads((tmp_path / "run/report.json").read_bytes())["status"] == "diagnostic_failed"
