@@ -45,6 +45,77 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
     )
 
 
+def _observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=()):
+    """Retain the actual selected decoder and its declared private products.
+
+    A callback return or payload pin supplies attribution only. Original packet
+    membership, observer integrity and execution semantics remain independent.
+    """
+    from merlin.common import invocation_record
+
+    from .readback_policy import BUILD_RECEIPT, require_memory_value_roster
+
+    work = Path(workdir).resolve()
+    product = work / "readback_decode.json"
+    if product.exists() or product.is_symlink():
+        raise ValueError("memory decoder product already exists in its private execution owner")
+    with invocation_record.observe_call(
+        work,
+        stage="coherent_memory_decode",
+        function=reader.decode,
+        arguments={"readback_policy": policy.record()},
+        inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT),
+        outputs=(product,),
+        dependencies=(Path(__file__), *dependencies),
+    ) as observed:
+        outputs, evidence = reader.decode(console)
+        if type(outputs) is not dict or type(evidence) is not dict or evidence.get("status") != "complete":
+            raise ValueError("memory output reader returned no completed full-value admission")
+        require_memory_value_roster(cb, outputs)
+        declared_payload = evidence.get("payload")
+        if declared_payload is not None:
+            if type(declared_payload) is not dict or set(declared_payload) != {"path", "sha256"}:
+                raise ValueError("memory decoder declared an unsupported payload product")
+            payload = Path(declared_payload["path"])
+            if (
+                not payload.is_absolute()
+                or payload.resolve() != payload
+                or any(path.is_symlink() for path in (payload, *payload.parents))
+                or not payload.is_relative_to(work)
+                or not payload.is_file()
+            ):
+                raise ValueError("memory decoder payload escapes its private execution owner")
+            if hashlib.sha256(payload.read_bytes()).hexdigest() != declared_payload["sha256"]:
+                raise ValueError("memory decoder payload differs from its actual declared bytes")
+            observed.outputs = (*observed.outputs, payload)
+        encoded = (
+            json.dumps(
+                {
+                    "outputs": outputs,
+                    "memory_evidence": evidence,
+                    "scope": "actual decoder return and declared products only; observer/runtime/effects UNKNOWN",
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        # The selected observer runs before publication. Exclusive creation also
+        # refuses a file or symlink it creates after the earlier metadata check.
+        with product.open("x", encoding="utf-8") as output:
+            output.write(encoded)
+        observed.returned(stdout=encoded)
+    invocation_record.verify(observed.path)
+    return (
+        outputs,
+        evidence,
+        {
+            "record": {"path": str(observed.path), "sha256": hashlib.sha256(observed.path.read_bytes()).hexdigest()},
+            "product": {"path": str(product), "sha256": hashlib.sha256(product.read_bytes()).hexdigest()},
+            "scope": "source-bound decoder invocation only; no observer, stage, hardware or timer authority",
+        },
+    )
+
+
 def _module_target_abi(llvm_text: str) -> str | None:
     """Read the LLVM module's target-abi flag, without treating IR as ABI authority."""
     references: list[str] = []
@@ -1234,19 +1305,30 @@ def run_on_oracle(
     check_budget()
     outputs, raw = backend.parse_output(console)
     check_budget()
-    memory_evidence = None
+    memory_evidence = memory_observation = None
     if memory:
         from .readback_policy import require_memory_completion, require_memory_value_roster
 
         require_memory_completion(console, outputs)
-        outputs, memory_evidence = memory_readback.decode(console)
-        if (
-            type(outputs) is not dict
-            or type(memory_evidence) is not dict
-            or memory_evidence.get("status") != "complete"
-        ):
-            raise ValueError("memory output reader returned no completed full-value admission")
-        require_memory_value_roster(cb, outputs)
+        if _execution_service is not None:
+            outputs, memory_evidence, memory_observation = _observed_memory_decode(
+                memory_readback,
+                console,
+                cb=cb,
+                elf=elf,
+                workdir=work,
+                policy=readback_policy,
+                dependencies=tuple(Path(path) for path, _ in _execution_service.source_pins),
+            )
+        else:
+            outputs, memory_evidence = memory_readback.decode(console)
+            if (
+                type(outputs) is not dict
+                or type(memory_evidence) is not dict
+                or memory_evidence.get("status") != "complete"
+            ):
+                raise ValueError("memory output reader returned no completed full-value admission")
+            require_memory_value_roster(cb, outputs)
     check_budget()
     if readback_policy is not None:
         from .readback_policy import (
@@ -1309,6 +1391,8 @@ def run_on_oracle(
         result["execution_identity"] = execution_identity
     if memory_evidence is not None:
         result["readback_memory"] = memory_evidence
+    if memory_observation is not None:
+        result["readback_observation"] = memory_observation
     # Counter markers are a target-independent wire protocol.  The event names/codes remain the
     # target's own: this boundary merely preserves readings the runner already paid to collect.  If
     # they exactly cover a structurally derived joint-occupancy block, compute eta; otherwise retain

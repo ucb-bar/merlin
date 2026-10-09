@@ -273,6 +273,9 @@ def test_real_ordinary_oracle_gates_preserve_full_roster_and_selected_transport(
         elf = work / "diagnostic-fixture.elf"
         elf.write_bytes(b"diagnostic link fixture; no ELF or ISA authority")
         selected_elf["sha256"] = file_digest(elf)
+        (work / RB.BUILD_RECEIPT).write_text(
+            json.dumps({"scope": "diagnostic build fixture; no ELF or ISA authority", **selected_elf}) + "\n"
+        )
         return elf
 
     def reopen_build_fixture(*, elf_path, **_kwargs):

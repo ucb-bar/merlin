@@ -366,6 +366,7 @@ SUITES = {
             "runtime/test_out_packet.py",
             "runtime/test_out_b64_profile.py",
             "targetgen/test_invocation_readback_policy.py",
+            "targetgen/test_memory_decode_observation.py",
             "infra/test_elf_build_cache.py",
         ),
         "core_extras": ("xdsl",),
