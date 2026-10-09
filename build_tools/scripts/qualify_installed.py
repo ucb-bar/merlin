@@ -91,6 +91,19 @@ SUITES = {
         "probe_modules": ("merlin.targetgen.original_pointwise_sources",),
         "required_modules": (),
     },
+    "original-reference-roster": {
+        # Full native controls separately require explicit framework/source
+        # selections; clean packaging environments must not discover them.
+        "tests": ("test_original_reference_transfer.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_reference_roster",
+            "merlin_experiments.phase0.original_reference_plan",
+            "merlin_experiments.phase0.original_reference_products",
+            "merlin_experiments.phase0.original_reference_observer",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "source-requirement-ledger": {
         "tests": ("test_source_requirement_ledger.py", "test_declared_phase0_run.py"),
         "test_fixture_imports": True,

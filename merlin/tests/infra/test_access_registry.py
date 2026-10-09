@@ -430,6 +430,27 @@ def test_original_reference_source_and_installed_answers_are_masked(tmp_path, is
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
+@pytest.mark.parametrize("name", ["roster", "plan", "products", "observer"])
+def test_optional_original_reference_answers_are_masked_in_sources_and_installs(
+    tmp_path, isolated_policy, monkeypatch, name
+):
+    name = "original_reference_" + name
+    site = tmp_path / ".venv/lib/python3.12/site-packages"
+    source = _write(tmp_path, f"packages/merlin-experiments/src/merlin_experiments/phase0/{name}.py")
+    installed = _write(site, f"merlin_experiments/phase0/{name}.py")
+    bytecode = _write(site, f"merlin_experiments/phase0/__pycache__/{name}.cpython-312.pyc")
+    public = _write(site, "merlin/targetgen/original_operator_sources.py")
+    monkeypatch.setattr(A, "sys", SimpleNamespace(path=[str(site)], prefix=str(tmp_path / "python"), modules={}))
+    assert f"merlin_experiments.phase0.{name}" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    expected = {source, installed, bytecode, source.parent, installed.parent}
+    assert expected <= {surface.path for surface in surfaces}
+    assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == expected
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
 def test_top_level_private_helpers_are_physically_masked_on_active_python_paths(tmp_path, isolated_policy, monkeypatch):
     site = tmp_path / ".venv/lib/python3.12/site-packages"
     alternate = tmp_path / "alternate/site-packages"

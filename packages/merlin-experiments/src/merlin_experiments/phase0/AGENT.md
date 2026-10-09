@@ -187,6 +187,19 @@ Keep original oracle arithmetic/order and numerical gates. Replay exact proof
 and source/selected-semantic commitments before evaluating or admitting receipts.
 Declared/source widths and their interval proof are not observed hardware effects.
 
+`original_reference_roster`, `original_reference_plan`, `original_reference_products`
+and `original_reference_observer` are registered private grader implementations.
+Select exact live original schema/software/basis identities, complete ordered
+operation/dtype numerical policies and independent signed inputs. Preflight full
+guard/private source, native and reference work/payloads before shaped allocation;
+retain unsupported and denied slots. Execute only the fixed original factory
+observer, then recompute every output against the independent scalar reference.
+Check native frame size, complete typed result membership and exact hexadecimal
+lengths before decoding. Native input hex is likewise checked before decoding.
+Never publish private answers or these modules through author grants. Replaying
+their products establishes bounded source observations, not global numerical
+equivalence, candidate correctness, physical effects or target/phase authority.
+
 Automatic policy v5 explicitly joins the same live operator-schema/minimal-SW
 origin with terminal native public-default observations. `typed_add_sources`
 replays exact original calls and defaults; it is not another issuer. An add

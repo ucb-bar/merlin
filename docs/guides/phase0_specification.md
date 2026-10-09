@@ -19,6 +19,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_roster.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
@@ -96,6 +97,17 @@ numerical comparisons still block readiness. A performance campaign also needs
 independent development, guard and transfer cases and measurement contracts;
 an empty objective list cannot establish performance preparation. This ledger
 is diagnostic data and does not change the existing coverage or handoff gates.
+
+The private original-reference roster separately compares compatible bounded
+original matmul, add and convolution sources with independent scalar references.
+Select explicit operation/ordered-type numerical policies and signed input
+palettes; the original software policy is unchanged. Complete guard and private
+cohorts, allocation/work/transfer budgets and exact source/native products are
+rechecked. Native frames and all raw payload lengths are checked before decoding.
+Missing policies, unsupported original types/forms, overflow and denied slots
+remain required. These observations grant neither global framework equivalence
+nor compiler, hardware or Phase 1 admission. Their reference implementations and
+outputs are private grader surfaces, including installed and bytecode copies.
 
 A Phase 0 handoff needs these checked inputs:
 

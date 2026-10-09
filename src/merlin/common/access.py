@@ -234,6 +234,15 @@ MODULE_ACCESS = (
         "grader",
         aliases=("merlin.targetgen.original_reference_values",),
     ),
+    _module(
+        "merlin_experiments.phase0.original_reference_roster",
+        "grader",
+        aliases=(
+            "merlin_experiments.phase0.original_reference_plan",
+            "merlin_experiments.phase0.original_reference_products",
+            "merlin_experiments.phase0.original_reference_observer",
+        ),
+    ),
     _module("merlin.targetgen.rtl.gen_rocc_replay", "grader"),
     _module("merlin.verify.replay", "grader"),
     _module("merlin.verify.replay_layers", "grader"),
