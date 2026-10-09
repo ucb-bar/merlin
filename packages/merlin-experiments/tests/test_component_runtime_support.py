@@ -204,6 +204,7 @@ def test_real_stock_structural_intake_reopens_complete_context_and_minimal_contr
             support.PrivateRuntimeControlExecutor,
             support.prepare_source_control,
             support.stage_products.collect,
+            support.source_selection.evaluate,
         )
     )
     context = support.PreparedIndependentRuntimeContext(

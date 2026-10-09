@@ -85,10 +85,29 @@ SUITES = {
     "emitted-dataflow": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_emitted_dataflow.py", "test_pointer_entry_abi.py"),
+        "tests": ("test_emitted_dataflow.py", "test_pointer_entry_abi.py", "test_source_observation.py"),
         "core_extras": ("xdsl",),
-        "probe_modules": ("merlin.targetgen.contract.emitted_dataflow",),
+        "probe_modules": ("merlin.targetgen.contract.emitted_dataflow", "merlin.targetgen.contract.source_observation"),
         "required_modules": ("xdsl",),
+    },
+    "source-observation-context": {
+        "native_tools": ("firtool",),
+        "native_test_files": ("test_component_runtime_support.py",),
+        "tests": (
+            "test_component_runtime_source_selection.py",
+            "test_component_runtime_support.py",
+            "test_component_runtime_copy_controls.py",
+            "test_component_runtime_stage_products.py",
+            "test_component_decode_products.py",
+        ),
+        "test_fixture_imports": True,
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase2.component_runtime_source_selection",
+            "merlin_experiments.phase2.component_runtime_support",
+            "merlin.targetgen.contract.source_observation",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
     },
     "host-arithmetic": {
         "include_experiments": False,
@@ -217,6 +236,7 @@ SUITES = {
             "test_component_runtime.py",
             "test_component_runtime_qualification.py",
             "test_component_runtime_support.py",
+            "test_component_runtime_source_selection.py",
             "test_component_runtime_stage_products.py",
             "test_component_runtime_copy_controls.py",
             "test_component_native_deadline.py",
@@ -1050,6 +1070,7 @@ def clean_environment():
 
 NATIVE_TOOL_ENVIRONMENT = {
     "clang": "MERLIN_CLANG",
+    "firtool": "MERLIN_TEST_FIRTOOL",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
 }

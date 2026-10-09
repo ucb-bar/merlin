@@ -31,6 +31,7 @@ from . import component_runtime_controls as controls
 from . import component_runtime_copy_controls as copy_controls
 from . import component_runtime_copy_support as copy_support_owner
 from . import component_runtime_instruction_control as instruction_control
+from . import component_runtime_source_selection as source_selection
 from . import component_runtime_stage_products as stage_products
 from .component_experiment import ComponentView, RuntimeGrant, verify_component_view
 from .component_runtime_authority import IndependentRuntimeServices, _callback_identity
@@ -85,6 +86,7 @@ class PreparedIndependentRuntimeContext:
     readback_policy: RB.ReadbackPolicy = RB.ReadbackPolicy(RB.FULL_VALUES_B64)
     memory_readback: object = None
     copy_control_support: copy_support_owner.RuntimeCopyControlSupport | None = None
+    source_observation: object = None
     services: IndependentRuntimeServices = field(init=False)
 
     def __post_init__(self):
@@ -161,6 +163,7 @@ class PreparedIndependentRuntimeContext:
                 "compiler_commands": self._compiler_commands(),
                 "readback_selection": self._readback_selection(),
                 "copy_control_selection": self._copy_selection(),
+                "source_observation_selection": source_selection.selection(self),
             }
         )
 
@@ -211,6 +214,7 @@ class PreparedIndependentRuntimeContext:
         self.execution_service.verify(descriptor["target"], self.execution_service.simulator)
         self._readback_selection()
         self._copy_selection()
+        source_selection.selection(self)
         required = {
             Path(inspect.getsourcefile(value)).resolve()
             for value in (
@@ -220,6 +224,7 @@ class PreparedIndependentRuntimeContext:
                 PrivateRuntimeControlExecutor,
                 prepare_source_control,
                 stage_products.collect,
+                source_selection.evaluate,
             )
         }
         required.update(
@@ -240,6 +245,12 @@ class PreparedIndependentRuntimeContext:
             required.update((Path(copy_controls.__file__), Path(copy_support_owner.__file__)))
             required.update(path for path, _ in self.copy_control_support.source_pins)
         required.add(self.target_descriptor)
+        if self.source_observation is not None:
+            from merlin.targetgen.contract import source_observation
+
+            required.add(Path(source_observation.__file__))
+            required.update(Path(path) for path, _ in self.source_observation.source_pins)
+            required.update(Path(path) for path, _ in self.source_observation.implementation_pins)
         if self.memory_readback is not None:
             required.add(Path(RB.__file__))
         required.update(path for path in self.contract_root.rglob("*") if path.is_file())
@@ -356,37 +367,7 @@ class PreparedIndependentRuntimeContext:
 
     def _evaluate_source(self, source, lowered, fixture):
         """Return an evaluated rejection as data before the normal gate raises."""
-        try:
-            copy = (
-                self.copy_control_support
-                if fixture is not None and fixture.case_id.partition(".")[0] in copy_support_owner.MECHANISMS
-                else None
-            )
-            if copy is None:
-                proof = controls.verify_primitive_llvm(
-                    source.read_text(),
-                    lowered.read_text(),
-                    entry_symbol=self.build_service.recipe.require_kernel_stack_frame().entry_symbol,
-                )
-            else:
-                program = copy_controls.parse_copy(source.read_text())
-                if program != copy_controls.CopyProgram(copy.shape, copy.dtype, 2, (0, 1)):
-                    raise ValueError("copy control changes the original selected source domain")
-                proof = copy_controls.verify_copy_llvm(
-                    source.read_text(),
-                    lowered.read_text(),
-                    entry_symbol=self.build_service.recipe.require_kernel_stack_frame().entry_symbol,
-                    callee_symbol=copy.callee_symbol,
-                )
-                proof["helper_source"] = {"path": str(copy.helper_source), "sha256": sha256_file(copy.helper_source)}
-            capsule = mapping_file(source.parent / "capsule.yaml", yaml_file=True)
-            if fixture is not None and capsule["numeric_policy"] != mapping_file(
-                fixture.evidence_root / "original_policy.json"
-            ):
-                raise ValueError("original numeric policy was weakened")
-            return {"status": "accepted", "proof": proof}
-        except ValueError as error:
-            return {"status": "refused", "actual_reason": str(error)}
+        return source_selection.evaluate(self, source, lowered, fixture)
 
     def _source_verifier(self, *, source, command_buffer, lowered_mlir, **kwargs):
         source, lowered = _plain(source), _plain(lowered_mlir)
@@ -402,12 +383,12 @@ class PreparedIndependentRuntimeContext:
             arguments={"entry_symbol": self.build_service.recipe.require_kernel_stack_frame().entry_symbol},
             inputs=inputs,
             outputs=(proof_path,),
-            dependencies=(Path(controls.__file__),),
+            dependencies=(Path(controls.__file__), Path(source_selection.__file__)),
         ) as observation:
             evaluated = self._evaluate_source(source, lowered, fixture)
             write_json(proof_path, evaluated)
             observation.returned()
-        if evaluated["status"] == "accepted":
+        if evaluated["status"] in {"accepted", "diagnostic_observed"}:
             return evaluated["proof"]
         reason = evaluated["actual_reason"]
         mechanism = fixture.case_id.partition(".")[0] if fixture is not None else None
