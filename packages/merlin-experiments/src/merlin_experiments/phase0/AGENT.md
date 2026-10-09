@@ -500,3 +500,16 @@ original address roster and old unproved T rows. Strict semantic replay rejects
 missing membership, altered source/depth/types and bool/integer substitutions.
 Known-bit containment never grants address definedness, reachable state/event
 validity, memory history, physical mapping or original mandatory admission.
+
+Original reference selection/roster v3 explicitly adds policy v2 and original
+pointwise source form v2. Declared reference/standard selections v2 and standard
+IR selection/request/roster v2 bind that exact vocabulary to fixed observers.
+Historical versions retain their linear/convolution-only meanings. Preserve all
+original calls and every guard/private slot, ordered storage/rank/defaults, and
+complete logical source/native/reference budgets. Recompute complete outputs
+with original scalar conversion, selected zero-sign comparison and finite RNE.
+Undefined or unsupported numeric forms remain required unavailable rows. Native
+conversion failure, opaque frontend output and stock parser refusal give no
+source credit. These finite private observations do not grant original semantic
+ownership, numerical admission, stress-domain coverage, hardware or runtime
+effects, compiled semantics, or Phase 1 release.

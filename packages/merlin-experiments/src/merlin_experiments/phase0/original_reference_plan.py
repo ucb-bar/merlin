@@ -17,6 +17,7 @@ from .original_call_sources import validate_budget
 
 SCHEMA = "merlin.original_reference_selection.v1"
 BATCH_SCHEMA = "merlin.original_reference_selection.v2"
+POINTWISE_SCHEMA = "merlin.original_reference_selection.v3"
 COHORTS = ("functional_guard", "withheld_transfer")
 
 
@@ -33,13 +34,13 @@ def validate(selection):
         "reference_budget",
         "byteorder",
     }
-    if isinstance(selection, dict) and selection.get("schema") == BATCH_SCHEMA:
+    if isinstance(selection, dict) and selection.get("schema") in {BATCH_SCHEMA, POINTWISE_SCHEMA}:
         selection_fields.add("native_observations")
     if (
         not isinstance(selection, dict)
         or set(selection) != selection_fields
-        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA}
-        or (selection["schema"] == BATCH_SCHEMA and selection["native_observations"] != "batch.v1")
+        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA, POINTWISE_SCHEMA}
+        or (selection["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA} and selection["native_observations"] != "batch.v1")
     ):
         raise ValueError("original references require a closed independently selected contract")
     for key in ("operator_schema_intake_sha256", "semantic_basis_sha256"):
@@ -69,7 +70,7 @@ def validate(selection):
     if not isinstance(policies, list):
         raise ValueError("original reference requires explicitly selected operation-local policies")
     for record in policies:
-        selected = policy(record)
+        selected = policy(record, pointwise=selection["schema"] == POINTWISE_SCHEMA)
         key = (selected.operation, selected.operand_dtypes, selected.readout_dtypes)
         if key in seen:
             raise ValueError("original reference policy selector is duplicated/ambiguous")
@@ -94,14 +95,25 @@ def validate(selection):
 
 
 def transport(selection):
-    return "batch.v1" if validate(selection)["schema"] == BATCH_SCHEMA else "per_member"
+    return "batch.v1" if validate(selection)["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA} else "per_member"
 
 
-def policy(record):
+def policy(record, *, pointwise=False):
     from merlin.targetgen.original_operator_reference import POLICY_SCHEMA
 
     names = {field.name for field in fields(OriginalReferencePolicy)}
-    if not isinstance(record, dict) or set(record) != {"schema", *names} or record["schema"] != POLICY_SCHEMA:
+    if type(pointwise) is not bool:
+        raise ValueError("original reference policy version selection must be an explicit Boolean")
+    schemas = {POLICY_SCHEMA}
+    policy_type = OriginalReferencePolicy
+    if pointwise:
+        from merlin.targetgen.original_pointwise_reference import POLICY_SCHEMA as POINTWISE_POLICY_SCHEMA
+        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+        schemas.add(POINTWISE_POLICY_SCHEMA)
+        if isinstance(record, dict) and record.get("schema") == POINTWISE_POLICY_SCHEMA:
+            policy_type = OriginalPointwiseReferencePolicy
+    if not isinstance(record, dict) or set(record) != {"schema", *names} or record["schema"] not in schemas:
         raise ValueError("original reference policy must retain its complete explicit operation-local schema")
     values = {key: record[key] for key in names}
     if any(
@@ -122,11 +134,11 @@ def policy(record):
         values[key] = tuple(values[key])
     # Unsupported numerical contracts remain required per-call unknown rows.
     # Structural selection validity does not call verify or mint implementation.
-    return OriginalReferencePolicy(**values)
+    return policy_type(**values)
 
 
 def selected_policy(selection, form):
-    rows = [policy(row) for row in selection["policies"]]
+    rows = [policy(row, pointwise=selection["schema"] == POINTWISE_SCHEMA) for row in selection["policies"]]
     rows = [
         row
         for row in rows
@@ -217,8 +229,9 @@ def measure(contract, selection):
         add(role, output_count, 2 * output_bytes)
     for role in ("comparison_reference_decode", "comparison_actual_decode", "mismatch_expected", "mismatch_actual"):
         add(role, output_count, 8 * output_count)
-    products = metadata["scalar_products"]
-    arithmetic = 2 * products + (output_count if metadata["parameters"].get("bias") else 0)
+    from merlin.targetgen.original_operator_reference import _costs
+
+    arithmetic = _costs(metadata)[2]
     for role in ("reference_intermediates_first", "reference_intermediates_comparison"):
         add(role, arithmetic, 8 * arithmetic)
     palette_values = sum(len(palette(selection, row["dtype"])) for row in inputs)

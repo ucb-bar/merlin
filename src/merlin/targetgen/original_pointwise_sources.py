@@ -15,11 +15,13 @@ from .frontend_original_call import call_contracts
 from .original_operator_sources import SOURCE_SCHEMA, OriginalOperatorSource, _argument, _tensor
 
 FORM_SCHEMA = "merlin.original_pointwise_form.v1"
+INTEGER_FORM_SCHEMA = "merlin.original_pointwise_form.v2"
 _DTYPES = {"int8": 8, "float16": 16, "bfloat16": 16, "float32": 32, "float64": 64}
+_INTEGER_DTYPES = {**_DTYPES, "int16": 16, "int32": 32, "int64": 64}
 _OPERATIONS = {"aten.relu.default", "aten.round.default", "aten.clamp.default"}
 
 
-def _binding(call):
+def _binding(call, *, version=1):
     target = call["target"]
     arguments = call["arguments"]
     if (
@@ -41,7 +43,7 @@ def _binding(call):
     rank = original["value"]["rank"]
     if type(rank) is not int or rank < 0:
         raise ValueError("pointwise source needs the original static Tensor rank")
-    dtype = _tensor(arguments[0], rank=rank, dtypes=_DTYPES)
+    dtype = _tensor(arguments[0], rank=rank, dtypes=_INTEGER_DTYPES if version == 2 else _DTYPES)
     result = call["result_roster"][0]
     if (
         result["kind"] != "tensor"
@@ -53,6 +55,8 @@ def _binding(call):
     ):
         raise ValueError("pointwise source must preserve every original input/result storage type and rank")
     parameters = {}
+    if version == 2 and (type(call["result_arity"]) is not int or type(result["rank"]) is not int):
+        raise ValueError("pointwise v2 source needs exact original integer result/rank fields")
     if target == "aten.clamp.default":
         for argument in arguments[1:]:
             value = _argument(argument)
@@ -67,21 +71,23 @@ def _binding(call):
     return dtype, rank, parameters
 
 
-def pointwise_forms(trace, observation, defaults, *, numerical_semantics=None, zero_returns=None):
+def pointwise_forms(trace, observation, defaults, *, numerical_semantics=None, zero_returns=None, version=1):
     """Bind original unary calls without granting their numerical or effect domain."""
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("pointwise forms need their explicit original source version")
     forms = []
     for call in call_contracts(trace, observation, defaults, zero_returns=zero_returns):
         if call["target"] not in _OPERATIONS:
             continue
         form = {
-            "form_schema": FORM_SCHEMA,
+            "form_schema": INTEGER_FORM_SCHEMA if version == 2 else FORM_SCHEMA,
             **call,
             "source_numerical_semantics": copy.deepcopy(numerical_semantics),
         }
         try:
             if call["status"] != "bound":
                 raise ValueError(call["reason"])
-            dtype, rank, parameters = _binding(call)
+            dtype, rank, parameters = _binding(call, version=version)
             form.update(
                 status="supported", operand_dtypes=[dtype], result_dtypes=[dtype], rank=rank, parameters=parameters
             )
@@ -95,7 +101,8 @@ def pointwise_source(form, *, extent, max_tensor_elements):
     """Construct a source only after checking its complete logical geometry cost."""
     if (
         not isinstance(form, dict)
-        or form.get("form_schema") != FORM_SCHEMA
+        or type(form.get("form_schema")) is not str
+        or form.get("form_schema") not in {FORM_SCHEMA, INTEGER_FORM_SCHEMA}
         or form.get("status") != "supported"
         or type(extent) is not int
         or extent < 1
@@ -103,9 +110,11 @@ def pointwise_source(form, *, extent, max_tensor_elements):
         or max_tensor_elements < 1
     ):
         raise ValueError("pointwise source needs a supported original form and explicit positive geometry/budget")
-    dtype, rank, parameters = _binding(form)
+    version = 2 if form["form_schema"] == INTEGER_FORM_SCHEMA else 1
+    dtype, rank, parameters = _binding(form, version=version)
     if (
         form["operand_dtypes"] != [dtype]
+        or (version == 2 and type(form["rank"]) is not int)
         or form["result_dtypes"] != [dtype]
         or form["rank"] != rank
         or json.dumps(form["parameters"], sort_keys=True, allow_nan=False)
@@ -132,7 +141,7 @@ def pointwise_source(form, *, extent, max_tensor_elements):
         "parameters": copy.deepcopy(parameters),
         "source_numerical_semantics": copy.deepcopy(form["source_numerical_semantics"]),
         "tensor_elements": 2 * count,
-        "logical_payload_bytes": 2 * count * (_DTYPES[dtype] // 8),
+        "logical_payload_bytes": 2 * count * ((_INTEGER_DTYPES if version == 2 else _DTYPES)[dtype] // 8),
         "scalar_products": 0,
         "scope": "typed original-form source construction only; numerical/owner/effect/target admission unproved",
     }

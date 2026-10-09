@@ -72,6 +72,14 @@ def test_get_unknown_raises():
         qf.get("totally_unknown_format")
 
 
+def test_plain_signed64_storage_has_no_quantization_or_hardware_claim():
+    fmt = qf.get("int64")
+    assert qf.get("i64") is fmt
+    assert (fmt.kind, fmt.element_bits, fmt.signed, fmt.scale.kind) == ("int_affine", 64, True, "none")
+    assert fmt.pack_bits is None and fmt.exp_bits is None and fmt.mant_bits is None
+    assert fmt.torchao_scheme is None and fmt.quant_ext_type is None and fmt.ggml_type is None
+
+
 def test_validate_entry_rejects_bad_encoding():
     # sign+exp+mant must equal element_bits for a float kind.
     with pytest.raises(ValueError):

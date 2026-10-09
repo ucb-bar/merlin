@@ -307,3 +307,14 @@ missing metadata, container alternatives and incomplete historical slots refuse.
 `frontend_operator_effects` preserves every original result slot and joins this
 optional relation without granting purity, exception behavior or operation
 ownership. The observer never invokes the operator or constructs a compiler.
+
+`original_pointwise_reference` owns opt-in policy v2 for original same-storage
+ReLU, round and finite scalar clamp. Explicit finite f32 RNE and exact signed
+integer choices carry no products or reduction order. Original bounds convert
+to the actual storage before ordered comparisons; preserve selected signed-zero
+ties. Unsupported formats, promotion and unrepresentable bounds refuse before
+shaped evaluation. The original reference traversal records actual pointwise
+stress without inventing cancellation or reduction evidence. Policy v1 and old
+source form v1 remain unchanged; form v2 adds int16/int32/int64. The shared
+plain signed64 storage declaration grants no quantization or target support. These private
+reference implementations stay masked in checkout and installed layouts.

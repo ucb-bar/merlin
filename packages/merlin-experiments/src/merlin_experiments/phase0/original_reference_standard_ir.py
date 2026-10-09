@@ -23,6 +23,7 @@ from .operator_schema_intake import _selection
 from .rtl_intake import RtlIntakePin
 
 SCHEMA = "merlin.original_reference_standard_ir.v1"
+POINTWISE_SCHEMA = "merlin.original_reference_standard_ir.v2"
 _SCOPE = (
     "complete original source/reference/standard-IR ABI observations only; no compiler, runtime or release authority"
 )
@@ -43,6 +44,12 @@ _READERS = (
     "merlin_experiments.phase0.original_standard_ir_observer",
 )
 _ISSUED = weakref.WeakKeyDictionary()
+
+
+def schemas(references):
+    if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA:
+        return POINTWISE_SCHEMA, "merlin.original_standard_ir_request.v2", "merlin.native_original_standard_ir.v2"
+    return SCHEMA, "merlin.original_standard_ir_request.v1", "merlin.native_original_standard_ir.v1"
 
 
 def _paths(owner):
@@ -155,7 +162,7 @@ def _native(references, selected, request, destination, source_pins, deadline):
     schema = references.schema_intake.record()
     python = _selection(Path(schema["selection_path"]).read_bytes())["python"]
     observer = module_source_path(_READERS[-1])
-    reference_observer = module_source_path("merlin_experiments.phase0.original_reference_observer")
+    reference_observer = R._observer(loads(references.selection.read_bytes()))
     argv = [
         python,
         "-I",
@@ -226,7 +233,7 @@ def prepare(*, references, selection, destination):
     R._write(
         request,
         {
-            "schema": "merlin.original_standard_ir_request.v1",
+            "schema": schemas(references)[1],
             "capture_sources": capture,
             "members": request_members,
             "budget": selected["budget"],
@@ -259,7 +266,7 @@ def prepare(*, references, selection, destination):
             )
         rows.append(row)
     document = {
-        "schema": SCHEMA,
+        "schema": schemas(references)[0],
         "scope": _SCOPE,
         "reference_roster_sha256": references.sha256,
         "selection": R._pin(selection),
@@ -378,7 +385,9 @@ def _contract(original, references):
         original["form"],
         source,
         extent=original["extent"],
-        policy=original_reference_plan.policy(original["policy"]),
+        policy=original_reference_plan.policy(
+            original["policy"], pointwise=selected["schema"] == original_reference_plan.POINTWISE_SCHEMA
+        ),
         budget=OriginalReferenceBudget(**selected["reference_budget"]),
         output_byteorder=selected["byteorder"],
     )

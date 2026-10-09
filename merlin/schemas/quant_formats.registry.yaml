@@ -95,6 +95,15 @@ formats:
       `AccumRule.acc`: that field carries a raw MLIR type token (`i32`) because an accumulator is not
       a storage format, whereas a unit's `dtypes` name registry entries -- so a datapath that keeps
       int32 TENSORS in memory needs this entry, and one that merely accumulates into an i32 does not.
+  int64:
+    kind: int_affine
+    element_bits: 64
+    signed: true
+    scale: {kind: none}
+    aliases: [i64]
+    notes: >-
+      Plain signed 64-bit storage. This declaration supplies element encoding only;
+      it grants no quantization scheme, arithmetic policy or hardware capability.
   int4:
     kind: int_affine
     element_bits: 4
