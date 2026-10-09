@@ -80,6 +80,24 @@ def test_request_cannot_import_authority_or_remove_construction_limits(declared,
         D.validate(request)
 
 
+@pytest.mark.parametrize("change", [None, "source_budget", "execution_budget", "saved_status"])
+def test_pointwise_policy_request_keeps_both_limits_and_cannot_import_admission(declared, change):
+    request, _ = declared
+    request = copy.deepcopy(request)
+    request["automatic"]["schema"] = D.A.POINTWISE_POLICY_SCHEMA
+    if change == "source_budget":
+        del request["automatic"]["original_source_budget"]
+    elif change == "execution_budget":
+        del request["automatic"]["execution_budget"]
+    elif change == "saved_status":
+        request["automatic"]["original_operator_admission"] = {"status": "passed"}
+    if change is None:
+        assert D.validate(request) is request
+    else:
+        with pytest.raises(ValueError):
+            D.validate(request)
+
+
 def test_changed_declared_bytes_refuse_before_issuer(declared, tmp_path, monkeypatch):
     request, path = declared
     Path(request["inputs"]["software_source"]["path"]).write_text("replacement")

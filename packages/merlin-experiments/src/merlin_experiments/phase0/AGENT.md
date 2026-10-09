@@ -273,6 +273,16 @@ construction removes only its missing-factory rows. Every original numerical
 admission, operation owner, effect, resource and hardware UNKNOWN remains;
 these loaders still do not count as admitted or checked coverage capsules.
 
+Automatic policy/receipt v10 explicitly selects source record v3, adding
+original unary ReLU, round and scalar-bound clamp sources. Keep exact original
+schema defaults, unaliased ordered tensor/result types, ranks and finite scalar
+bounds. Fresh rank-driven geometry never copies example dimensions. Check the
+complete input/output cost before constructing geometry or loaders, retain
+every requested guard/private slot, and pin the selected version's full readers.
+Historical v8/v9 meanings and every original numerical admission, unsupported
+owner, effect and hardware gap remain unchanged. Factory construction and
+ordinary upstream source parsing grant no whole-domain numerical authority.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins

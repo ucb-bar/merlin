@@ -148,6 +148,14 @@ invocation remains unavailable rather than gaining an evidence exception.
 
 ## Interfaces
 
+`original_pointwise_sources` binds exact original unary schemas and constructs
+independently bounded ReLU, round and scalar-bound clamp loaders. Preserve
+original tensor storage, rank and scalar bound kind/value, including signed
+zero and inverted bounds. Derive fresh prototype dimensions from explicit
+extent and original rank only; bound complete logical input/output counts before
+dimension or loader allocation. These are source factories, not numerical
+references, hardware admission, target lowering or full-domain proofs.
+
 `input_palette.py` describes explicit deterministic input-only stress patterns
 along static tensor axes. Values and numerical landmarks must be exactly
 representable in selected storage; it never computes answers or changes oracle

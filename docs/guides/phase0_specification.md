@@ -22,6 +22,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
   - src/merlin/targetgen/_m2m_capture_worker.py
+  - src/merlin/targetgen/original_pointwise_sources.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/precision_staging.py
 ---
 
@@ -58,6 +59,13 @@ also constructs compatible original rank-two matmul and unit-alpha, equal-shape
 add sources. Both preserve the full original call/source-slot roster and every
 missing owner, numerical reference/comparison and hardware requirement. Selecting
 v9 does not turn constructed loaders into admitted numerical capsules.
+Opt-in automatic v10 selects source record v3 and also constructs original
+ReLU, round and scalar-bound clamp sources. Original storage types, ranks and
+bound values are preserved; prototype dimensions come from independent finite
+extents, rather than the example's dimensions. Complete input/output counts and
+aggregate source budgets apply before loader creation. Unsupported calls and
+denied guard or transfer members remain required. Historical v8/v9 scopes stay
+unchanged, and v10 grants no original numerical or hardware admission.
 Saved receipts cannot replace fresh live issuance. Output must have a fresh owner;
 failed attempts retain their original files and reasons.
 

@@ -72,6 +72,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "original-pointwise": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_original_pointwise_sources.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.targetgen.original_pointwise_sources",),
+        "required_modules": (),
+    },
     "source-requirement-ledger": {
         "tests": ("test_source_requirement_ledger.py", "test_declared_phase0_run.py"),
         "test_fixture_imports": True,
@@ -278,6 +286,7 @@ SUITES = {
             "test_component_typed_add.py",
             "test_component_automatic_unified.py",
             "test_component_original_sources.py",
+            "test_component_pointwise_sources.py",
             "test_declared_phase0_run.py",
             "test_component_packing_sources.py",
             "test_component_hw_arithmetic.py",
