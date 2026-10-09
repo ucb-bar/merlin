@@ -214,6 +214,20 @@ def test_real_stock_structural_intake_reopens_complete_context_and_minimal_contr
         tuple((path, file_digest(path)) for path in sorted(files)),
     )
     assert context.verify() == context.sha256
+    readback_source = Path(support.RB.__file__).resolve()
+    coherent = replace(
+        context,
+        readback_policy=support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1),
+        memory_readback=SelectedMemoryObserver(),
+        source_pins=(*context.source_pins, (readback_source, file_digest(readback_source))),
+    )
+    coherent_identity = coherent.verify()
+    assert coherent_identity != context.verify()
+    coherent.memory_readback.prepared_state["current_elf"] = "test data only"
+    assert coherent.verify() == coherent_identity
+    coherent.memory_readback.selection["selected_format"] += 1
+    with pytest.raises(StageGateError, match="immutable selection changed"):
+        coherent.verify()
     changed_recipe = replace(recipe, load_address=recipe.load_address + 1)
     changed_context = replace(context, build_service=replace(builder, recipe=changed_recipe))
     assert changed_context.verify() != context.verify()
@@ -225,3 +239,137 @@ def test_real_stock_structural_intake_reopens_complete_context_and_minimal_contr
     (contract / "development-answer.json").write_text("{}")
     with pytest.raises(StageGateError, match="only the three shared ABI schemas"):
         context.verify()
+
+
+class SelectedMemoryObserver:
+    """Test source selection only; this object issues no memory/runtime proof."""
+
+    def __init__(self):
+        self.selection = {"scope": "unit source selection only", "selected_format": 1}
+        self.prepared_state = {}
+
+    def prepare(self, **kwargs):
+        raise AssertionError("observer selection tests must not prepare guest execution")
+
+    def decode(self, console):
+        raise AssertionError("observer selection tests must not decode guest output")
+
+    def verify(self):
+        assert self.selection["scope"] == "unit source selection only"
+
+    def record(self):
+        return dict(self.selection)
+
+
+def replacement_decode(console):
+    raise AssertionError("changed decoder must refuse before guest execution")
+
+
+def coherent_context(prepared, **changes):
+    return replace(
+        prepared,
+        readback_policy=support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1),
+        memory_readback=SelectedMemoryObserver(),
+        **changes,
+    )
+
+
+def test_explicit_coherent_readback_is_bound_without_runtime_authority(prepared):
+    context = coherent_context(prepared)
+    selected = context._readback_selection()
+    assert selected["policy"] == support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1).record()
+    assert [row[3] for row in selected["callbacks"]] == [
+        "SelectedMemoryObserver.prepare",
+        "SelectedMemoryObserver.decode",
+        "SelectedMemoryObserver.verify",
+        "SelectedMemoryObserver.record",
+    ]
+    assert prepared._readback_selection()["policy"]["transport"] == support.RB.FULL_VALUES_B64
+    assert context.sha256 != prepared.sha256
+    with pytest.raises(StageGateError, match="remains UNKNOWN"):
+        context.prepare_control("hardware_runtime_binding.positive", Path(context.target_descriptor.parent / "unknown"))
+
+
+@pytest.mark.parametrize(
+    "policy,observer",
+    [
+        (support.RB.ReadbackPolicy(support.RB.FULL_VALUES_B64), SelectedMemoryObserver()),
+        (support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1), None),
+        (None, None),
+    ],
+)
+def test_readback_selection_refuses_inconsistent_policy_observer(prepared, policy, observer):
+    context = replace(prepared, readback_policy=policy, memory_readback=observer)
+    with pytest.raises(StageGateError, match="policy|observer"):
+        context._readback_selection()
+
+
+@pytest.mark.parametrize("omit", ["execution", "context"])
+def test_coherent_observer_requires_both_actual_source_memberships(prepared, omit):
+    observer = SelectedMemoryObserver()
+    changed = (
+        {"execution_service": replace(prepared.execution_service, source_pins=())}
+        if omit == "execution"
+        else {"source_pins": ()}
+    )
+    context = replace(
+        prepared,
+        readback_policy=support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1),
+        memory_readback=observer,
+        **changed,
+    )
+    with pytest.raises(StageGateError, match="source membership"):
+        context._readback_selection()
+
+
+def test_coherent_observer_callback_substitution_refuses(prepared):
+    context = coherent_context(prepared)
+    context._readback_selection()
+    context.memory_readback.decode = replacement_decode
+    with pytest.raises(StageGateError, match="callbacks changed"):
+        context._readback_selection()
+
+
+def test_coherent_selection_drift_refuses_but_per_elf_state_does_not(prepared):
+    context = coherent_context(prepared)
+    original = context._readback_selection()
+    context.memory_readback.prepared_state["current_elf"] = "unit preparation data only"
+    assert context._readback_selection() == original
+    context.memory_readback.selection["selected_format"] += 1
+    with pytest.raises(StageGateError, match="immutable selection changed"):
+        context._readback_selection()
+
+
+def test_prepare_decode_only_reader_is_unsupported_without_stable_selection(prepared):
+    class IncompleteObserver:
+        prepare = SelectedMemoryObserver.prepare
+        decode = SelectedMemoryObserver.decode
+
+    with pytest.raises(StageGateError, match="inspected source owner"):
+        replace(
+            prepared,
+            readback_policy=support.RB.ReadbackPolicy(support.RB.COHERENT_DUMP_V1),
+            memory_readback=IncompleteObserver(),
+        )
+
+
+def test_grade_forwards_exact_selected_memory_observer(prepared, tmp_path, monkeypatch):
+    context = coherent_context(prepared)
+    fixture = context.prepare_control("source_correspondence.positive", tmp_path / "coherent-control")
+    selected = []
+
+    def capture(**arguments):
+        selected.append(arguments)
+        return {"numeric_report": {"status": "pass"}}
+
+    # This test checks ordinary context forwarding only, not native output or a
+    # runtime witness. Actual transport/build tests run with explicit stock tools.
+    monkeypatch.setattr(support, "execute_component", capture)
+    score = context.services.grade(**fixture.grade_arguments)
+    assert score["per_capsule"][0]["numeric"] == "pass"
+    assert len(selected) == 1
+    assert selected[0]["readback_policy"] is context.readback_policy
+    assert selected[0]["memory_readback"] is context.memory_readback
+    assert selected[0]["execution_service"] is context.execution_service
+    with pytest.raises(StageGateError, match="remain UNKNOWN"):
+        context.stage_verifier(result_path=fixture.witness_arguments["result_path"])

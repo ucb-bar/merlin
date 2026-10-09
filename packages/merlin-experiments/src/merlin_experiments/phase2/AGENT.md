@@ -52,6 +52,12 @@ qualification bypass. Preserve original source/output/numeric authority and
 actual native invocation records. Unsupported accelerator effects, physical
 ownership, synchronization, hardware equivalence and timing remain UNKNOWN;
 this context cannot issue a complete runtime witness or measurement roles.
+An explicit coherent readback selection binds the observer's source-owned
+prepare/decode/verify/record methods to the selected functional service and
+context source membership. Reopen and freeze its stable worker/config descriptor;
+per-ELF preparation and output state remain separate. This optional transport
+does not grant semantics or qualification, change original outputs, or replace
+the fixed runtime controls and independently evaluated stage effects.
 
 `component_instruction_policy.py` binds protected preauthor source-symbol
 prohibitions to live independently selected declarations and exact public source

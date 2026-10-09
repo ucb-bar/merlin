@@ -28,7 +28,7 @@ from merlin_experiments.phase1.component_package_execution import ComponentPacka
 from . import component_runtime_controls as controls
 from . import component_runtime_instruction_control as instruction_control
 from .component_experiment import ComponentView, RuntimeGrant, verify_component_view
-from .component_runtime_authority import IndependentRuntimeServices
+from .component_runtime_authority import IndependentRuntimeServices, _callback_identity
 from .component_runtime_control_execution import PrivateRuntimeControlExecutor
 from .component_runtime_fixture import prepare_source_control
 from .component_runtime_qualification import (
@@ -40,6 +40,9 @@ from .component_runtime_qualification import (
 from .contracts import StageGateError, document_sha256, exact_tree_record, mapping_file, sha256_file, write_json
 
 _PREPARED = WeakKeyDictionary()
+_READBACK_CALLBACKS = WeakKeyDictionary()
+_READBACK_SELECTIONS = WeakKeyDictionary()
+_MEMORY_METHODS = ("prepare", "decode", "verify", "record")
 _SUPPORTED_DIAGNOSTICS = {
     "source_correspondence",
     "original_output_roster",
@@ -73,11 +76,64 @@ class PreparedIndependentRuntimeContext:
     container_transport: PreparedContainerTransport | None = None
     compiler_view: ComponentView | None = None
     compiler_runtime: tuple[RuntimeGrant, ...] = ()
+    readback_policy: RB.ReadbackPolicy = RB.ReadbackPolicy(RB.FULL_VALUES_B64)
+    memory_readback: object = None
     services: IndependentRuntimeServices = field(init=False)
 
     def __post_init__(self):
         object.__setattr__(self, "services", IndependentRuntimeServices(self.grade, self.stage_verifier))
         _PREPARED[self] = {}
+        _READBACK_CALLBACKS[self] = (
+            tuple(_callback_identity(getattr(self.memory_readback, name, None)) for name in _MEMORY_METHODS)
+            if self.memory_readback is not None
+            else ()
+        )
+
+    def _readback_selection(self):
+        """Attribute the selected observer; this does not qualify its semantics."""
+        try:
+            policy = RB.selected(self.readback_policy)
+        except ValueError as error:
+            raise StageGateError("runtime readback requires an explicit trusted policy") from error
+        if policy is None:
+            raise StageGateError("runtime readback requires an explicit trusted policy")
+        memory = policy.transport in RB.MEMORY_TRANSPORTS
+        if memory != (self.memory_readback is not None):
+            raise StageGateError("runtime coherent policy and selected memory observer disagree")
+        identities = _READBACK_CALLBACKS.get(self)
+        if identities is None:
+            raise StageGateError("runtime readback selection was not prepared by this context")
+        if memory:
+            current = tuple(_callback_identity(getattr(self.memory_readback, name, None)) for name in _MEMORY_METHODS)
+            if identities != current:
+                raise StageGateError("runtime coherent observer callbacks changed after preparation")
+            execution_pins = {(Path(path), digest) for path, digest in self.execution_service.source_pins}
+            for identity in identities:
+                if (identity[2], identity[3]) not in execution_pins or (
+                    identity[2],
+                    identity[3],
+                ) not in self.source_pins:
+                    raise StageGateError("runtime coherent observer lacks selected execution/context source membership")
+            # The selected reader owns the meaning of its immutable descriptor.
+            # Per-ELF preparation/readback state is deliberately not serialized as
+            # selection. Source identity/configuration attribution is not a role.
+            self.memory_readback.verify()
+            descriptor = self.memory_readback.record()
+            if type(descriptor) is not dict or not descriptor:
+                raise StageGateError("runtime coherent observer lacks an explicit immutable selection")
+            descriptor = _argument_binding(descriptor)
+            digest = document_sha256(descriptor)
+            if self in _READBACK_SELECTIONS and _READBACK_SELECTIONS[self] != digest:
+                raise StageGateError("runtime coherent observer immutable selection changed")
+            _READBACK_SELECTIONS[self] = digest
+        else:
+            descriptor = None
+        return {
+            "policy": policy.record(),
+            "callbacks": [(str(row[2]), row[3], row[4], row[5]) for row in identities],
+            "immutable_selection": descriptor,
+            "scope": "explicit transport attribution only; original outputs and runtime qualification remain required",
+        }
 
     @property
     def sha256(self):
@@ -95,6 +151,7 @@ class PreparedIndependentRuntimeContext:
                 "source_pins": [(str(path), digest) for path, digest in self.source_pins],
                 "instruction_check": self.instruction_check.verify() if self.instruction_check is not None else None,
                 "compiler_commands": self._compiler_commands(),
+                "readback_selection": self._readback_selection(),
             }
         )
 
@@ -128,6 +185,7 @@ class PreparedIndependentRuntimeContext:
             raise StageGateError("independent runtime contract must contain only the three shared ABI schemas")
         self.build_service.verify(descriptor["target"])
         self.execution_service.verify(descriptor["target"], self.execution_service.simulator)
+        self._readback_selection()
         required = {
             Path(inspect.getsourcefile(value)).resolve()
             for value in (
@@ -153,6 +211,8 @@ class PreparedIndependentRuntimeContext:
             required.update(path for path, _ in self.instruction_check.source_pins)
             required.add(Path(instruction_control.__file__))
         required.add(self.target_descriptor)
+        if self.memory_readback is not None:
+            required.add(Path(RB.__file__))
         required.update(path for path in self.contract_root.rglob("*") if path.is_file())
         self._compiler_commands()
         if self.container_transport is not None:
@@ -396,7 +456,8 @@ class PreparedIndependentRuntimeContext:
                         ),
                         execution_service=self.execution_service,
                         source_verifier=self._source_verifier,
-                        readback_policy=RB.ReadbackPolicy(RB.FULL_VALUES_B64),
+                        readback_policy=self.readback_policy,
+                        **({"memory_readback": self.memory_readback} if self.memory_readback is not None else {}),
                         timeout_s=timeout,
                         elf_admission=(
                             self.instruction_check.admission_service() if self.instruction_check is not None else None
