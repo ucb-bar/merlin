@@ -4,6 +4,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`memory_port_intake` observes the complete local typed Seq memory/port roster
+from the same live independently reproduced public core. Fixed native generic
+serialization, explicit parse/metadata budgets and exact reader/tool/invocation
+pins bind each declaration and conditional scalar expression. Saved records
+cannot issue live source authority. These optional facts close no original
+packing, command/resource/axis/allocation or temporal obligation by themselves;
+undefined collision behavior, initial state and physical effects remain missing.
+
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
 minimal software/review/basis, public/native schema source, reader tool and every

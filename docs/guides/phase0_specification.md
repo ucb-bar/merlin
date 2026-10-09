@@ -11,6 +11,7 @@ code_refs:
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/elaboration.py
   - src/merlin/targetgen/rtl/source_selection.py
+  - src/merlin/targetgen/rtl/hw_memory_ports.py
   - src/merlin/targetgen/dialect_source_scope.py
   - src/merlin/targetgen/isa_mode_audit.py
   - src/merlin/targetgen/generate/typed_mlir.py
@@ -68,6 +69,14 @@ denied guard or transfer members remain required. Historical v8/v9 scopes stay
 unchanged, and v10 grants no original numerical or hardware admission.
 Saved receipts cannot replace fresh live issuance. Output must have a fresh owner;
 failed attempts retain their original files and reasons.
+
+The optional live memory-port intake replays the same selected RTL source and
+retains typed local memory declarations, ports and exact scalar expressions.
+It records source latency, collision rules and data/address/mask/clock bindings
+under explicit parse and metadata budgets. State, instance and unsupported
+results remain symbolic stops. Definition-local storage and byte-slice facts
+do not establish command meaning, tensor axes, physical instance routing,
+allocation, capacity use, memory contents or temporal effects.
 
 The command reports diagnostic execution separately from coverage completion.
 An exit code of zero can accompany an incomplete coverage report. This occurs only

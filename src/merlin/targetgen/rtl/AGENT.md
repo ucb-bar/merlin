@@ -65,3 +65,13 @@ property dictionary. Duplicate ownership refuses even when both values agree;
 the reader never chooses one spelling over another. Input signatures retain
 each declared type and must match every original block argument. Supporting
 both generic serializations does not assign new hardware or software roles.
+
+`hw_memory_ports.memory_port_observations` retains every original local
+`seq.firmem` declaration and typed read/write/read-write use. The public Seq
+dialect supplies operand roles, optional enable/mask defaults and collision
+enums. Explicit depth, width, latencies and exact scalar address/data/mask/clock
+bindings remain declarations, with bounded expression metadata only. Original
+state, opaque instance and unsupported producers stay symbolic roots. Retain
+undefined read-under-write and out-of-range address domains; never evaluate
+initial contents or infer command routing, software formats/axes, allocation,
+physical capacity/tails or temporal completion from these local observations.

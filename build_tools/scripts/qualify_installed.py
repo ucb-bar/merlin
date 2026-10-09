@@ -72,6 +72,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "memory-port-inputs": {
+        "native_tools": ("firtool", "circt-opt"),
+        "native_test_files": ("test_memory_port_intake.py",),
+        "tests": ("test_memory_port_intake.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_memory_ports",
+            "merlin_experiments.phase0.memory_port_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "original-pointwise": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
@@ -1151,6 +1162,7 @@ def clean_environment():
 
 
 NATIVE_TOOL_ENVIRONMENT = {
+    "circt-opt": "MERLIN_TEST_CIRCT_OPT",
     "clang": "MERLIN_CLANG",
     "firtool": "MERLIN_TEST_FIRTOOL",
     "iverilog": "MERLIN_TEST_IVERILOG",
