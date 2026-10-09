@@ -50,7 +50,7 @@ class Buffer:
 class Node:
     kind: str  # "dispatch" | "view"
     op: str  # symbol for dispatch, op name for view
-    inputs: list[str]
+    inputs: list[str]  # ordered operand slots (including repeats), then additional region captures
     outputs: list[str]
     prov: dict[str, str] = field(default_factory=dict)
     #: How many regions the source op carries (0 for every flat op). A region-carrying node reads
@@ -234,18 +234,14 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
         args.append(i)
 
     def resolve(values, op) -> list[str]:
-        """Buffer ids for ``values``, order-preserving and de-duplicated, or raise.
+        """Buffer ids for every ordered operand slot, including repeats, or raise.
 
         An unbound value used to be DROPPED (``if id(o) in ids``). A dropped input is a read the
         program does not record, which is the same silent liveness understatement region capture
         causes -- so say so instead."""
         out: list[str] = []
-        seen: set[int] = set()
         for value in values:
             key = id(value)
-            if key in seen:
-                continue
-            seen.add(key)
             bid = ids.get(key)
             if bid is None:
                 raise OutlineError(
@@ -316,8 +312,9 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
             )
         captured = _region_captures(op) if op.regions else []
         kind = "const" if op.name == "arith.constant" else "intermediate"
-        in_ids = resolve(list(op.operands) + captured, op)
-        capture_ids = [bid for bid in resolve(captured, op)] if captured else []
+        in_ids = resolve(op.operands, op)
+        capture_ids = resolve(captured, op)
+        in_ids.extend(bid for bid in capture_ids if bid not in in_ids)
         out_ids = [bind(r, kind) for r in op.results]
         nodes.append(
             Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids, regions=len(op.regions), captures=capture_ids)
