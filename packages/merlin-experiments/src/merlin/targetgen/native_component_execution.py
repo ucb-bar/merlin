@@ -162,7 +162,7 @@ def _bind(capsule: dict, cb: dict, source: Path) -> tuple[dict, dict, dict]:
     for spec, name in zip((*inputs, *outputs), (*leaves, *emitted_outputs), strict=True):
         _match(spec, tensors.get(name))
     values = CG.canonical_input_values(capsule, capsule["__dir__"])
-    if not values:
+    if names and not values:
         if CG.is_independent_float_golden(capsule, capsule["__dir__"]):
             raise NativeComponentExecutionError("independent floating source has no complete selected input projection")
         values = CG.materialized_input_values(capsule)

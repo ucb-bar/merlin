@@ -199,6 +199,7 @@ SUITES = {
             "test_component_native_deadline.py",
             "test_component_memory_transport.py",
             "test_component_pointer_entry.py",
+            "test_component_input_projection.py",
             "test_component_runtime_controls.py",
             "test_component_measurement_qualification.py",
             "test_component_applicability.py",
