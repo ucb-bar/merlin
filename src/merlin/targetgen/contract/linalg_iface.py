@@ -157,8 +157,8 @@ def _ins_outs(op) -> tuple[list, list]:
     return ins, outs
 
 
-def _destination_only_fill(op) -> bool:
-    """A tensor fill may stay initialization only when every use is an outs slot."""
+def _destination_only_tensor(op) -> bool:
+    """A tensor producer is initialization only when every use is an outs slot."""
     from xdsl.dialects.builtin import TensorType
 
     if not op.results or any(not isinstance(value.type, TensorType) for value in op.results):
@@ -169,6 +169,20 @@ def _destination_only_fill(op) -> bool:
             if value in ins or value not in outs:
                 return False
     return True
+
+
+def _initialization_only(op) -> bool:
+    from xdsl.dialects.builtin import TensorType
+
+    if op.name == "tensor.empty":
+        return True
+    if op.name not in ("arith.constant", "tensor.splat", "linalg.fill"):
+        return False
+    # Scalar constants retain exact operand/capture values in the existing
+    # records. Observable tensor values need a distinct payload/result owner.
+    if op.name == "arith.constant" and not any(isinstance(value.type, TensorType) for value in op.results):
+        return True
+    return _destination_only_tensor(op)
 
 
 def _body_op_names(op) -> list[str]:
@@ -741,12 +755,10 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
     # The payload ops we surface are the DIRECT children of the @forward entry block (never the
     # arithmetic ops nested inside a linalg.generic/reduce region body — those are captured per op in
     # ``body_ops``, and walking them as top-level ops would double-count e.g. a softmax's inner
-    # ``math.exp``). Fill results returned or consumed as data are payloads;
-    # destination-only fills retain the established initialization representation.
-    _INIT = ("tensor.empty", "arith.constant", "tensor.splat")
-    _SKIP = _INIT + ("func.return", "linalg.yield")
+    # ``math.exp``). Observable tensor constants, splats and fills are payloads;
+    # scalar constants and destination-only tensor initializers keep their representation.
     payload = [
-        op for op in block.ops if op.name not in _SKIP and not (op.name == "linalg.fill" and _destination_only_fill(op))
+        op for op in block.ops if op.name not in ("func.return", "linalg.yield") and not _initialization_only(op)
     ]
 
     # Map every SSA result value -> (payload-op id, WHICH RESULT of it) for dataflow edges. The

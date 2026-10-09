@@ -121,6 +121,7 @@ SUITES = {
             "infra/test_elf_build_cache.py",
             "targetgen/test_pointer_entry_abi.py",
             "targetgen/test_linalg_fill_inventory.py",
+            "targetgen/test_linalg_constant_inventory.py",
             "targetgen/test_public_mixed_program_plan.py",
         ),
         "core_extras": ("xdsl", "targetgen"),
