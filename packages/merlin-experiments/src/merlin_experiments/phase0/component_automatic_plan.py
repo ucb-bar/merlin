@@ -81,7 +81,17 @@ def _unknown(kind, selector, reason):
 
 
 def derive(
-    policy, *, spec, review, basis, relations, effects=None, arithmetic=None, logical_interactions=False, typed_add=None
+    policy,
+    *,
+    spec,
+    review,
+    basis,
+    relations,
+    effects=None,
+    arithmetic=None,
+    logical_interactions=False,
+    typed_add=None,
+    packing=None,
 ):
     """Construct a complete required class roster without invented permissions.
 
@@ -285,11 +295,24 @@ def derive(
                     "semantic_basis": links,
                 }
             )
+    if packing is not None:
+        from .component_packing_sources import append_sources
+
+        append_sources(
+            facts=packing,
+            spec=spec,
+            movement_owners=movement,
+            owner_links=owner_links,
+            program=_program,
+            unknown=_unknown,
+            obligations=obligations,
+            unknowns=unknowns,
+        )
     unique_unknowns = {row["id"]: row for row in unknowns}
     declaration = {
         key: value
         for key, value in policy.items()
-        if key not in {"schema", "operator_schema_intake_sha256", "arithmetic_intake_sha256"}
+        if key not in {"schema", "operator_schema_intake_sha256", "arithmetic_intake_sha256", "packing_intake_sha256"}
     }
     declaration.update(schema=BUDGETED_PLAN_SCHEMA, effects=[], obligations=obligations)
     return declaration, sorted(unique_unknowns.values(), key=lambda row: row["id"])

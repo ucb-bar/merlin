@@ -26,3 +26,10 @@ merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/F
 Answer-bearing replay generation lives in the experiments distribution under the
 stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
 initializer and the structure-only tooling; extensions never overwrite it.
+
+`hw_packing.equal_partitions` follows only typed extracts and contiguous
+concatenations to a complete local input bitvector or opaque instance output.
+Equal slices must cover that entire root without gaps or overlaps. Input/module
+names, bit widths and slice counts never assign scalar signedness, tensor axes,
+memory capacity, instruction routing, allocation or physical-tail semantics.
+Registers, memories and other operations terminate the local observation.

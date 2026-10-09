@@ -314,3 +314,17 @@ only that logical result correspondence. Historical missing metadata is not
 retrofitted; every operation/numeric/non-schema/physical obligation remains
 separate. Ordinary automatic verification must replay both selected facets;
 saved JSON, a removed facet or a changed version cannot issue live authority.
+
+Automatic policy/receipt v6 requires an exact live same-HW `packing_intake`;
+optional schema/arithmetic observations keep their original explicit identities.
+The fixed native generic serialization and full typed partition replay issue
+local bit-packing facts only. Canonical reviewed operand storage width can select
+conditional copy probes at the observed scalar count and neighboring lengths,
+on both fresh source tensor orientations. Ordinary work/payload budgets precede
+data/reference allocation and every denied member remains required in both
+cohorts. Complete small-source oracles prove those original copies, not any
+accelerator allocation, capacity, address range, alignment or physical tail.
+Retain all original mandatory UNKNOWNs plus each missing scalar-to-command/axis
+mapping and incomplete packing-domain obligation. Opaque instance outputs cannot
+select original-input probes, and absent/broken partitions cannot mint a boundary.
+Historical v1–v5 policies cannot acquire packing observations from saved JSON.
