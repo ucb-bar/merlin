@@ -1289,6 +1289,9 @@ def run_on_oracle(
     console_path.write_bytes(console if type(console) is bytes else console.encode("utf-8"))
     check_budget()
     verify_execution()
+    process_consumption = (
+        None if _execution_service is None else _execution_service.consumption(elf=elf, console=console)
+    )
     if admission is not None:
         _elf_admission.revalidate(elf=elf, result=admission, target=target)
     if memory and oracle_revalidate() != memory_engine:
@@ -1363,6 +1366,11 @@ def run_on_oracle(
 
     outputs = _backends.decode_float_readback(outputs, declared_output_dtypes(cb))
     verify_execution()
+    if (
+        _execution_service is not None
+        and _execution_service.consumption(elf=elf, console=console) != process_consumption
+    ):
+        raise ValueError("functional native consumption changed during output decoding")
     # WHICH BUILD of the simulator answered — recorded beside the oracle's declared kind, not inferred
     # afterwards. The tier record identifies the ELF, the RTL pins and the tools, and identified the one
     # remaining input to the verdict not at all: the prebuilt simulator binary. Derived, never assumed:
@@ -1389,6 +1397,8 @@ def run_on_oracle(
         result["elf_admission"] = admission
     if execution_identity is not None:
         result["execution_identity"] = execution_identity
+    if process_consumption is not None:
+        result["process_consumption"] = process_consumption
     if memory_evidence is not None:
         result["readback_memory"] = memory_evidence
     if memory_observation is not None:
@@ -1481,4 +1491,9 @@ def run_on_oracle(
         result["timing_observations"] = _obs
         result["timing_capability"] = _cap
     check_budget()
+    if (
+        _execution_service is not None
+        and _execution_service.consumption(elf=elf, console=console) != process_consumption
+    ):
+        raise ValueError("functional native consumption changed during output publication")
     return result

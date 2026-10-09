@@ -419,3 +419,85 @@ def test_spoofed_callable_owner_is_not_an_actual_selected_function(kind):
     with pytest.raises(ValueError, match="actual Python function or bound method"):
         service.run_elf("unused", simulator="native_control", timeout=1)
     assert called == []
+
+
+def _recorded_fixture(tmp_path, monkeypatch, *, parser=_parse):
+    from dataclasses import replace
+
+    from merlin.common.paths import module_source_path
+    from merlin.targetgen.contract.process_execution import RecordedProcessExecution
+
+    cb, build, original = _fixture(tmp_path, monkeypatch, _full_console())
+    executable = Path(sys.executable).resolve(strict=True)
+    source = module_source_path("merlin.targetgen.contract.process_execution")
+    pins = (*original.source_pins, *((str(path), file_digest(path)) for path in (executable, source)))
+    process = RecordedProcessExecution(
+        executable,
+        ("-I", "-B", "{elf}"),
+        tmp_path,
+        (("PATH", "/usr/bin:/bin"), ("LC_ALL", "C")),
+        tmp_path / "process",
+        "stdout",
+        pins,
+    )
+    execution = replace(original, runner=process.run_elf, parser=parser, source_pins=pins, process_transport=process)
+    return cb, build, execution, process
+
+
+def test_selected_process_ordinary_full_outputs_join_actual_native_invocation(tmp_path, monkeypatch):
+    cb, build, execution, process = _recorded_fixture(tmp_path, monkeypatch)
+    actual = _invoke(tmp_path, cb, build, execution)
+    assert actual["outputs"] == {"out": [[1, 2]]}
+    joined = actual["process_consumption"]
+    assert joined["elf"]["path"] == actual["elf"]
+    record = invocation_record.verify(Path(joined["record"]["path"]))
+    assert record["argv"] == [str(process.executable), "-I", "-B", actual["elf"]]
+    assert record["inputs"] == [joined["elf"]]
+    assert Path(joined["stdout"]["path"]).read_text() == _full_console()
+    assert actual["oracle"]["derived_from_rtl"] is False
+
+
+@pytest.mark.parametrize("changed", ["elf", "stdout", "stderr"])
+def test_ordinary_process_rechecks_actual_members_after_parser(tmp_path, monkeypatch, changed):
+    def parse(console):
+        if changed == "elf":
+            path = tmp_path / "run" / "native.py"
+        else:
+            path = next((tmp_path / "process").rglob(changed + ".bin"))
+        path.write_bytes(b"changed original member after native execution")
+        return _parse(console)
+
+    cb, build, execution, _ = _recorded_fixture(tmp_path, monkeypatch, parser=parse)
+    with pytest.raises(
+        ValueError, match="changed requested ELF|input, dependency or product changed|full-value build identity changed"
+    ):
+        _invoke(tmp_path, cb, build, execution)
+    assert (tmp_path / "run" / "oracle_console.log").read_text() == _full_console()
+
+
+def test_selected_process_refuses_a_legacy_runner_before_execution(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    cb, build, execution, process = _recorded_fixture(tmp_path, monkeypatch)
+    execution = replace(execution, runner=_run_native)
+    with pytest.raises(ValueError, match="exact fixed runner"):
+        _invoke(tmp_path, cb, build, execution)
+    assert not process.record_root.exists()
+
+
+def test_selected_process_cannot_omit_fixed_source_membership(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    cb, build, execution, process = _recorded_fixture(tmp_path, monkeypatch)
+    execution = replace(execution, source_pins=execution.source_pins[:-1])
+    with pytest.raises(ValueError, match="pinned inspected source owner|source membership"):
+        _invoke(tmp_path, cb, build, execution)
+    assert not process.record_root.exists()
+
+
+def test_absent_process_selection_preserves_legacy_diagnostic_shape(tmp_path, monkeypatch):
+    cb, build, execution = _fixture(tmp_path, monkeypatch, _full_console())
+    actual = _invoke(tmp_path, cb, build, execution)
+    assert actual["outputs"] == {"out": [[1, 2]]}
+    assert "process_consumption" not in actual
+    assert "process_transport" not in execution.verify("fixture", execution.simulator)

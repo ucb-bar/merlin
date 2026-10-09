@@ -16,6 +16,7 @@ from pathlib import Path
 from types import FunctionType, MethodType
 
 from .build_service import file_digest
+from .process_execution import RecordedProcessExecution
 
 
 def _callback_selection(callback):
@@ -59,6 +60,7 @@ class FunctionalExecutionService:
     parser: Callable
     source_pins: tuple[tuple[str, str], ...]
     engine_json: str
+    process_transport: RecordedProcessExecution | None = None
     _callback_selections: tuple = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -103,13 +105,31 @@ class FunctionalExecutionService:
         engine = loads(self.engine_json)
         if type(engine) is not dict or not engine:
             raise ValueError("functional execution requires an explicit selected-engine citation")
-        return {
+        record = {
             "target": target,
             "simulator": simulator,
             "engine": engine,
             "source_pins": [{"path": path, "sha256": digest} for path, digest in self.source_pins],
             "scope": "functional transport only; ISA semantics and hardware/cost authority unqualified",
         }
+        if self.process_transport is not None:
+            process = self.process_transport
+            if (
+                type(process) is not RecordedProcessExecution
+                or type(self.runner) is not MethodType
+                or self.runner.__self__ is not process
+                or self.runner.__func__ is not RecordedProcessExecution.run_elf
+                or not set(process.source_pins).issubset(self.source_pins)
+            ):
+                raise ValueError("functional recorded process requires its exact fixed runner and source membership")
+            record["process_transport"] = process.verify()
+        return record
+
+    def consumption(self, *, elf, console):
+        self.verify(self.target, self.simulator)
+        if self.process_transport is None:
+            return None
+        return self.process_transport.consumption(elf=elf, console=console)
 
     def run_elf(self, elf, *, simulator, timeout, **kwargs):
         before = self.verify(self.target, simulator)

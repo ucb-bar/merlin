@@ -81,6 +81,18 @@ stdlib partial bindings, rechecking them before and after running and parsing.
 This shallow selection check proves neither mutable reachable state, import
 closure nor source-to-bytecode correspondence.
 
+An explicit `RecordedProcessExecution` fixes the native executable, direct ELF
+operand, working directory, environment and stdout or merged-stream selection.
+The functional service requires its exact fixed runner and source membership;
+ordinary execution reopens the actual closed process and captured bytes before
+and after parsing/output validation. Saved receipts, unrelated subprocesses or
+matching console values cannot replace that execution. Legacy callbacks retain
+their diagnostic route. Exact argv/input attribution does not prove loader or
+ISA semantics, transitive dependencies, isolation, callback/source equivalence,
+descendant cleanup, runtime qualification, effects, hardware or timing. The
+native timeout bounds the selected subprocess; it is not an OS deadline or a
+process-tree cleanup guarantee, and captured output has no aggregate byte limit.
+
 The build-only renderer must be an actual Python function or bound method whose
 inspected file and current bytes belong to the selected source roster. Unwrap
 only exact stdlib `functools.partial`, never supplied wrapper/source attributes.

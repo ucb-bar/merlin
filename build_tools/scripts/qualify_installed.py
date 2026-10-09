@@ -72,6 +72,18 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "recorded-process-consumption": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_recorded_process_execution.py", "test_explicit_execution_service.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.contract.process_execution",
+            "merlin.targetgen.contract.execution_service",
+            "merlin.targetgen.contract.compile",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "compiler-library-route": {
         "tests_root": ".",
         "test_fixture_imports": True,
