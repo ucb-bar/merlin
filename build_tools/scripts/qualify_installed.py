@@ -72,6 +72,31 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "source-performance-inputs": {
+        "native_tools": ("firtool",),
+        "native_test_files": (
+            "test_component_source_performance.py",
+            "test_declared_source_performance.py",
+        ),
+        "tests": ("test_component_source_performance.py", "test_declared_source_performance.py"),
+        "test_fixture_imports": True,
+        "support_files": (
+            "test_declared_phase0_run.py",
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_coverage.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.component_source_performance",
+            "merlin_experiments.phase0.declared_run",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "memory-port-inputs": {
         "native_tools": ("firtool", "circt-opt"),
         "native_test_files": ("test_memory_port_intake.py",),

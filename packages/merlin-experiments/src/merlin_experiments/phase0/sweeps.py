@@ -893,7 +893,9 @@ def _capture_shape_sweeps(
                 {
                     "family": f"{family}.capture_shape.remainder",
                     "status": "skipped_inapplicable",
-                    "reason": "captured contraction demands excluded by the existing K grid, dtype, or declared cohort cap",
+                    "reason": (
+                        "captured contraction demands excluded by the existing K grid, dtype, or declared cohort cap"
+                    ),
                     "performance_basis_sha256": basis_sha256,
                     "remainder": remainder,
                 }
@@ -943,6 +945,7 @@ def expand_sweeps(
     requirement_sha256: str | None = None,
     selected_performance_basis: dict | None = None,
     performance_basis_sha256: str | None = None,
+    source_preparation: str | None = None,
 ) -> list[dict]:
     """Return the profile's capsule entries with any ``sweeps:`` block expanded.
 
@@ -974,22 +977,36 @@ def expand_sweeps(
             raise ValueError("selected evidence target differs from binding target")
         if trait_facts is None:
             trait_facts = evidence.performance_facts
-    sweeps = _scope_requirement_sweeps(
-        profile.get("sweeps") or [],
-        selected_requirement,
-        requirement_sha256,
-        skipped,
-        blocked_unimplemented,
+    if source_preparation is not None:
+        from . import component_source_performance as source_performance
+
+        source_performance.require_selection(source_preparation, source_components=binding.tile_dim is None)
+        if not isinstance(trait_facts, dict):
+            raise ValueError("source preparation requires explicit pending gate facts without target discovery")
+    sweeps = (
+        profile.get("sweeps") or []
+        if source_preparation is not None
+        else _scope_requirement_sweeps(
+            profile.get("sweeps") or [],
+            selected_requirement,
+            requirement_sha256,
+            skipped,
+            blocked_unimplemented,
+        )
     )
-    sweeps = _capture_shape_sweeps(
-        sweeps,
-        binding,
-        selected_performance_basis,
-        performance_basis_sha256,
-        selected_requirement,
-        requirement_sha256,
-        skipped,
-        evidence,
+    sweeps = (
+        sweeps
+        if source_preparation is not None
+        else _capture_shape_sweeps(
+            sweeps,
+            binding,
+            selected_performance_basis,
+            performance_basis_sha256,
+            selected_requirement,
+            requirement_sha256,
+            skipped,
+            evidence,
+        )
     )
     if not sweeps:
         return entries
@@ -999,7 +1016,7 @@ def expand_sweeps(
     legacy_traits_supplied = traits is not None
 
     tile = int(getattr(binding, "tile_dim", 0) or 0)
-    if tile < 1:
+    if tile < 1 and source_preparation is None:
         raise ValueError("sweeps need a tile edge; the binding reports none")
 
     seen = {e.get("name") for e in entries if isinstance(e, dict)}
@@ -1011,6 +1028,13 @@ def expand_sweeps(
         sweep_id = str(sweep.get("id") or "").strip()
         if not sweep_id:
             raise ValueError("every sweep needs an `id` (it prefixes the generated names)")
+        if source_preparation is not None:
+            refusal = source_performance.sweep_refusal(sweep)
+            if refusal is not None:
+                if blocked_unimplemented is None:
+                    raise ValueError(refusal)
+                blocked_unimplemented.append({"family": sweep_id, "status": "source_unavailable", "reason": refusal})
+                continue
         withdrawal = (profile.get("_performance_withdrawals") or {}).get(sweep_id)
         if withdrawal is not None:
             if skipped is not None:
@@ -1086,7 +1110,7 @@ def expand_sweeps(
                 facts = _performance_facts(target)
             ok, decision = evaluate_gate(performance["gate"], facts)
             gate_decision = decision
-            if not ok:
+            if not ok and source_preparation is None:
                 if skipped is not None:
                     skipped.append(
                         {
@@ -1152,9 +1176,13 @@ def expand_sweeps(
         axes = sweep.get("axes") or {}
         if not isinstance(axes, dict) or not axes:
             raise ValueError(f"sweep {sweep_id!r} declares no axes")
-        encodings = target_encodings(
-            str(getattr(binding, "target", "") or ""),
-            **({"contract": evidence.contract} if evidence is not None else {}),
+        encodings = (
+            []
+            if source_preparation is not None
+            else target_encodings(
+                str(getattr(binding, "target", "") or ""),
+                **({"contract": evidence.contract} if evidence is not None else {}),
+            )
         )
 
         # Resolve each axis to concrete extents, preserving declaration order so
@@ -1341,7 +1369,9 @@ def expand_sweeps(
                 seen.add(entry["name"])
                 if is_performance:
                     try:
-                        if "_performance_oracles" in profile:
+                        if source_preparation is not None:
+                            entry = source_performance.materialize(entry, binding, point=combo, gate=gate_decision)
+                        elif "_performance_oracles" in profile:
                             _materialize_performance_entry(
                                 entry, binding, oracle_selection=profile["_performance_oracles"]
                             )

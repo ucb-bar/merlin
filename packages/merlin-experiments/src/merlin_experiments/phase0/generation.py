@@ -357,6 +357,7 @@ def generate_target(
     operator_schema_intake=None,
     arithmetic_intake=None,
     packing_intake=None,
+    source_preparation: str | None = None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
@@ -379,6 +380,9 @@ def generate_target(
     source_components = (
         component_only and hardware_intake is not None and software_intake is not None and capability_contract is None
     )
+    from .component_source_performance import require_selection
+
+    require_selection(source_preparation, source_components=source_components)
     if source_components and evidence_input is not None:
         raise ValueError("fresh source-only components require live source replay, not exported backend evidence")
     if source_components and component_coverage is None:
@@ -575,6 +579,7 @@ def generate_target(
         requirement_sha256=hashlib.sha256(requirement_bytes).hexdigest() if requirement_bytes is not None else None,
         selected_performance_basis=selected_performance_basis,
         performance_basis_sha256=performance_basis_sha256,
+        source_preparation=source_preparation,
         **({"evidence": evidence} if evidence is not None else {}),
     )
     assert_no_claim_capsules(entries, held_out_models(te))
@@ -652,6 +657,7 @@ def generate_target(
             software_intake=software_intake,
             automatic_derivation=automatic_derivation,
             source_components=source_components,
+            source_preparation=source_preparation,
         )
     semantics = (profile.get("datapath") or {}).get("numerical_semantics")
     if semantics is not None:
@@ -686,7 +692,16 @@ def generate_target(
                 binding=binding,
                 host_capabilities=evidence.host_capabilities,
             )
-            screened.append(diagnostic_entry(entry, decision) if entry_refusal_is_final(entry, decision) else entry)
+            source_development = (
+                source_preparation is not None
+                and entry.get("op") == "component_program"
+                and entry.get("cat") == "_perf"
+            )
+            screened.append(
+                diagnostic_entry(entry, decision)
+                if entry_refusal_is_final(entry, decision) and not source_development
+                else entry
+            )
         entries = screened
     from .sealed_generation import bind_source
 
@@ -802,7 +817,9 @@ def generate_target(
                 final = entry_refusal_is_final(e, decision)
                 if evidence_mode != "diagnostic" and final:
                     raise ValueError("SW operation admission: " + decision["reason"])
-                if final:
+                if final and not (
+                    source_preparation is not None and e.get("op") == "component_program" and e.get("cat") == "_perf"
+                ):
                     e = diagnostic_entry(e, decision)
             if evidence is None:
                 w = write_staged(
@@ -894,6 +911,11 @@ def generate_target(
                 if (
                     observed["status"] == "unsupported"
                     and Path(w).parent.name != "_diagnostic"
+                    and not (
+                        source_preparation is not None
+                        and e.get("op") == "component_program"
+                        and e.get("cat") == "_perf"
+                    )
                     and (e.get("component_coverage") or {}).get("cohort") != "withheld_transfer"
                 ):
                     diagnostic = out_root / "_diagnostic" / Path(w).name
@@ -914,6 +936,7 @@ def generate_target(
                                     "source_software": software_intake,
                                     "source_hardware": hardware_intake,
                                     "directory": Path(w),
+                                    "source_preparation": source_preparation,
                                 }
                                 if source_components
                                 else {}
@@ -1077,6 +1100,7 @@ def generate_target(
                 f"{disjointness['overlapping_hidden_capsules']} hidden capsule(s) repeat a public program",
             )
         )
+    source_contract_record = None
     if component_coverage_report is not None:
         from .component_coverage import finalize, public_summary, write_report
 
@@ -1095,6 +1119,24 @@ def generate_target(
                 out_root, component_coverage_report, software=software_intake, hardware=hardware_intake
             )
         write_report(out_root, component_coverage_report)
+        if source_preparation is not None:
+            from .component_source_performance import prepare_source_contracts
+
+            source_contracts = prepare_source_contracts(
+                root=out_root,
+                coverage=component_coverage_report,
+                hardware=hardware_intake,
+                software=software_intake,
+            )
+            source_contract_path = artifact_root / "coverage" / "source-performance-contracts.json"
+            source_contract_path.write_text(json.dumps(source_contracts, sort_keys=True, indent=2) + "\n")
+            source_contract_record = {
+                "path": str(source_contract_path),
+                "sha256": hashlib.sha256(source_contract_path.read_bytes()).hexdigest(),
+                "scope": "source/reference only; hardware guards and measurement unqualified",
+                "source_checked_counts": source_contracts["source_checked_counts"],
+            }
+            performance_record["source_performance_preparation"] = source_contract_record
         performance_record["component_coverage"] = public_summary(component_coverage_report)
         if component_coverage_report["status"] != "complete":
             failures.append(
@@ -1219,6 +1261,8 @@ def generate_target(
         }
         if component_coverage_report is not None:
             receipt["component_coverage"] = public_summary(component_coverage_report)
+        if source_contract_record is not None:
+            receipt["source_performance_preparation"] = source_contract_record
         (coverage_root / "generation.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         manifest_path = out_root / "MANIFEST.yaml"
         manifest = yaml.safe_load(manifest_path.read_text()) or {}

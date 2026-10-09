@@ -29,6 +29,21 @@ must still exist. Missing producer or performance corpus/measurement selections
 remain blockers. Data-only owner attribution exposes the dependency cycle; it
 does not fix that cycle, reinterpret legacy coverage, or enable author handoff.
 
+`component_source_performance` is an explicit source-preparation v1 option of
+ordinary generation. Prepare independent literal-shape development DAGs through
+the same whole-roster aggregate budget as original guards/private transfers,
+before shaped input/reference allocation. Reopen every typed node owner and
+complete original reference; retain unavailable requests and unsupported families.
+Hardware gates, oracle placeholders, guard admission, candidate verdicts and
+calibrated measurement remain pending. The source-contract receipt is data only,
+not a fresh-author release or a replacement for historical coverage verification.
+Declared request v4 pins the original nonempty objective and literal sweep files
+explicitly, closes them before live issuance, and joins every written development,
+guard and private transfer commitment to fixed full-reference replay. No supplied
+factory, receipt, target encoding or accepted status is an input. Legacy request
+versions stay closed; v4 still retains all missing requirements and blocked later
+phases, with hardware guards and measured baselines unestablished.
+
 Keep numerical function bodies and ordering stable during structural work. Inputs
 are external: never bundle profiles, holdouts, or generated goldens in this package.
 All runs require an explicit output destination; never default writes to the

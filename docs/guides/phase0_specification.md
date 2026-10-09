@@ -18,6 +18,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/component_source_performance.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_roster.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
@@ -97,6 +98,26 @@ numerical comparisons still block readiness. A performance campaign also needs
 independent development, guard and transfer cases and measurement contracts;
 an empty objective list cannot establish performance preparation. This ledger
 is diagnostic data and does not change the existing coverage or handoff gates.
+
+Opt-in request v4 adds `source_performance`, with an explicit preparation schema
+and exact objective and literal-sweep file pins, and requires
+`release_purpose: performance_campaign`. Objectives must be nonempty reviewed
+declarations; their families must match the independent tensor DAG sweeps.
+Ordinary generation applies one complete allocation budget across development,
+guard and private transfer cases before constructing tensors or references.
+The fixed source consumer checks every typed node's original operation owner,
+ordered input/output ABI and complete independent references. Unsupported or
+budget-denied requests remain in the roster. No target encoding or tile-relative
+extent is inferred in this mode.
+
+The resulting source-performance contract owns the added development membership;
+the requirement ledger retains its historical projection over the original
+coverage obligations. Both preserve all missing requirements. Checked source
+cases establish neither hardware-admitted guards, candidate execution, calibrated
+timing nor a Phase 1 release. The installed `source-performance-inputs` suite
+checks these producer and consumer boundaries with independent synthetic sources;
+its zero-skip scope is the two new test files, while supporting test prerequisites
+and skips are reported separately. This qualification is not accelerator execution.
 
 The private original-reference roster separately compares compatible bounded
 original matmul, add and convolution sources with independent scalar references.

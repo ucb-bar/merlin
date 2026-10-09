@@ -29,6 +29,7 @@ from .software_intake import issue_independent_software_intake
 SCHEMA = "merlin.independent_phase0_run.v1"
 BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
 REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
+PERFORMANCE_SCHEMA = "merlin.independent_phase0_run.v4"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -61,12 +62,14 @@ def _pin(value, *, forbidden, runtime=False):
 def validate(request):
     """Close source and policy declarations before any authority is issued."""
     fields = {"schema", "target", "inputs", "operator_schemas", "circt_opt", "forbidden_roots", "automatic"}
-    if isinstance(request, dict) and request.get("schema") == REQUIREMENT_SCHEMA:
+    if isinstance(request, dict) and request.get("schema") in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
         fields.add("release_purpose")
+    if isinstance(request, dict) and request.get("schema") == PERFORMANCE_SCHEMA:
+        fields.add("source_performance")
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA}
+        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -79,11 +82,26 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
-    if request["schema"] == REQUIREMENT_SCHEMA:
+    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
         from .source_requirement_ledger import PURPOSES
 
         if request["release_purpose"] not in PURPOSES:
             raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
+    if request["schema"] == PERFORMANCE_SCHEMA:
+        from .component_source_performance import SCHEMA as source_schema
+
+        selection = request["source_performance"]
+        if (
+            request["release_purpose"] != "performance_campaign"
+            or not isinstance(selection, dict)
+            or set(selection) != {"schema", "objectives", "sweeps"}
+            or selection["schema"] != source_schema
+            or any(
+                not isinstance(selection[key], dict) or set(selection[key]) != {"path", "sha256"}
+                for key in ("objectives", "sweeps")
+            )
+        ):
+            raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
     tensor = isinstance(operator, dict) and operator.get("schema") in {
@@ -96,7 +114,7 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA}:
+    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -133,6 +151,107 @@ def validate(request):
     validate_execution_budget(automatic["execution_budget"])
     validate_source_budget(automatic["original_source_budget"])
     return request
+
+
+def _source_performance_inputs(selection, *, forbidden):
+    """Read closed original declarations, never a saved source qualification."""
+    import yaml
+
+    from merlin.targetgen.phase_policy import PerformanceObjective
+
+    from .component_source_performance import sweep_refusal
+    from .sweeps import _validate_performance_block
+
+    paths = {key: _pin(selection[key], forbidden=forbidden) for key in ("objectives", "sweeps")}
+    objectives, template = (yaml.safe_load(paths[key].read_bytes()) for key in ("objectives", "sweeps"))
+    if (
+        not isinstance(objectives, dict)
+        or set(objectives) != {"schema", "status", "objectives"}
+        or objectives["schema"] != DECLARATION
+        or objectives["status"] != "reviewed"
+        or not isinstance(objectives["objectives"], list)
+        or not objectives["objectives"]
+        or not isinstance(template, dict)
+        or set(template) != {"sweeps"}
+        or not isinstance(template["sweeps"], list)
+        or not template["sweeps"]
+    ):
+        raise ValueError("source performance requires nonempty reviewed original objectives and literal sweeps")
+    families = set()
+    for row in objectives["objectives"]:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"family", "operations", "objective"}
+            or not isinstance(row["family"], str)
+            or not row["family"]
+            or row["family"] in families
+            or not isinstance(row["operations"], list)
+            or not row["operations"]
+            or any(not isinstance(name, str) or not name for name in row["operations"])
+            or len(set(row["operations"])) != len(row["operations"])
+            or not isinstance(row["objective"], dict)
+            or set(row["objective"]) != {"metric", "unit", "direction", "basis"}
+        ):
+            raise ValueError("source performance objectives need unique declared families and original owner policies")
+        PerformanceObjective(**row["objective"], provenance=("source-objectives:" + selection["objectives"]["sha256"],))
+        families.add(row["family"])
+    sweeps = set()
+    for row in template["sweeps"]:
+        if not isinstance(row, dict) or sweep_refusal(row) is not None:
+            raise ValueError("source performance accepts only original literal tensor DAG sweeps")
+        base = row["base"]
+        if (
+            not isinstance(row.get("id"), str)
+            or not row["id"]
+            or row["id"] in sweeps
+            or not isinstance(row.get("name"), str)
+            or not row["name"]
+            or base.get("cat") != "_perf"
+            or base.get("label") != "dev"
+            or _validate_performance_block(base.get("performance"), owner="original source sweep")["family"]
+            != row["id"]
+        ):
+            raise ValueError("source performance needs exact original development family membership")
+        sweeps.add(row["id"])
+    if families != sweeps:
+        raise ValueError("source performance objective and sweep family rosters differ")
+    return paths, objectives["objectives"], template
+
+
+def _verify_source_performance_products(root, coverage, paths, *, target, hardware, software):
+    """Join actual complete development/guard/private products to fixed replay."""
+    import yaml
+
+    from .component_coverage import public_summary
+    from .component_source_performance import prepare_source_contracts
+
+    contract_path = root / "_evidence/coverage/source-performance-contracts.json"
+    contracts = prepare_source_contracts(root=root, coverage=coverage, hardware=hardware, software=software)
+    if json.loads(contract_path.read_bytes()) != contracts:
+        raise ValueError("declared source performance products differ from full source/reference replay")
+    actual = {
+        row["member"]: row["original"]["member_sha256"]
+        for row in contracts["requested_members"]
+        if row["state"] == "source_checked"
+    }
+    receipt = json.loads((root / "_evidence/coverage/generation.json").read_bytes())
+    commitments = receipt["capsule_commitments"]
+    manifest = yaml.safe_load((root / "MANIFEST.yaml").read_bytes())
+    if (
+        receipt["target"] != target
+        or receipt.get("component_coverage") != public_summary(coverage)
+        or receipt["capsules_written"] != len(actual)
+        or len(commitments) != len(actual)
+        or {row["member"]: row["sha256"] for row in commitments} != actual
+        or len(paths) != len(actual)
+        or {str(path) for path in paths} != {str(root / member) for member in actual}
+        or manifest.get("phase0_evidence", {}).get("generation_receipt")
+        != str(root / "_evidence/coverage/generation.json")
+        or receipt.get("source_performance_preparation", {}).get("sha256")
+        != hashlib.sha256(contract_path.read_bytes()).hexdigest()
+    ):
+        raise ValueError("declared source performance lost complete requested or written membership")
+    return len(actual), contracts, contract_path
 
 
 def _diagnostic_generation(operation, root):
@@ -241,11 +360,24 @@ def run(request_path, *, output):
     _plain(checkout, directory=True)
     declarations = _pin(canonical["declarations"], forbidden=forbidden)
     circt_opt = _pin(request["circt_opt"], forbidden=forbidden)
+    performance_paths, objectives, sweep_template = {}, [], {"sweeps": []}
+    if request["schema"] == PERFORMANCE_SCHEMA:
+        performance_paths, objectives, sweep_template = _source_performance_inputs(
+            request["source_performance"], forbidden=forbidden
+        )
     output = Path(output).absolute()
     _outside(output, forbidden)
     if output.exists() or ".." in output.parts or any(path.is_symlink() for path in (output, *output.parents)):
         raise ValueError("independent Phase 0 needs one fresh ordinary run owner")
-    selected_paths = [request_path, *inputs.values(), declarations, python, circt_opt, checkout]
+    selected_paths = [
+        request_path,
+        *inputs.values(),
+        declarations,
+        python,
+        circt_opt,
+        checkout,
+        *performance_paths.values(),
+    ]
     if compiler is not None:
         selected_paths.append(compiler)
     if any(path == output or path.is_relative_to(output) or output.is_relative_to(path) for path in selected_paths):
@@ -369,11 +501,11 @@ def run(request_path, *, output):
                     "schema": DECLARATION,
                     "status": "reviewed",
                     "hardware": identity,
-                    "objectives": [],
+                    "objectives": objectives,
                 },
             },
         )
-        _write(template, {"sweeps": []})
+        _write(template, sweep_template)
         generated = output / "generated"
         paths, gate_refusal = step(
             "ordinary_complete_mandatory_generation",
@@ -394,15 +526,31 @@ def run(request_path, *, output):
                     arithmetic_intake=arithmetic,
                     packing_intake=packing,
                     output_root=generated,
+                    **({"source_preparation": request["source_performance"]["schema"]} if performance_paths else {}),
                 ),
                 generated,
             ),
         )
         coverage_path = generated / "_evidence" / "coverage" / "component-coverage.json"
         coverage = json.loads(coverage_path.read_bytes())
-        references = _verify_diagnostic_products(
-            generated, coverage, paths, target=request["target"], hardware=hardware, software=software
-        )
+        if performance_paths:
+            references, contracts, contract_path = _verify_source_performance_products(
+                generated, coverage, paths, target=request["target"], hardware=hardware, software=software
+            )
+            report["source_performance_preparation"] = {
+                "path": str(contract_path),
+                "sha256": hashlib.sha256(contract_path.read_bytes()).hexdigest(),
+                "original_selections": copy.deepcopy(request["source_performance"]),
+                "source_checked_counts": contracts["source_checked_counts"],
+                "requested_members": len(contracts["requested_members"]),
+                "hardware_guard_link": "not_established",
+                "measured_baseline": "not_established",
+                "release_authority": "not_issued",
+            }
+        else:
+            references = _verify_diagnostic_products(
+                generated, coverage, paths, target=request["target"], hardware=hardware, software=software
+            )
         unknowns = [row for row in coverage["obligations"] if row["mandatory"] and row["state"] == "unavailable"]
         original = coverage["automatic_derivation"]["original_call_sources"]
         source_rows = [member for row in original["members"] for member in row["source_members"]]
@@ -446,7 +594,7 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
-        if request["schema"] == REQUIREMENT_SCHEMA:
+        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
             from .source_requirement_ledger import prepare_requirement_ledger
 
             ledger = step(
@@ -466,6 +614,11 @@ def run(request_path, *, output):
                 "sha256": hashlib.sha256(ledger_path.read_bytes()).hexdigest(),
                 "scope": "diagnostic data only; candidate verdicts remain pending and no release is issued",
             }
+            if performance_paths:
+                report["source_requirement_ledger"]["performance_projection_scope"] = (
+                    "historical original coverage obligations only; the separately checked "
+                    "source_performance_preparation owns the added development roster"
+                )
         # A changed declaration never inherits successful live issuance.
         if request_path.read_bytes() != request_bytes:
             raise ValueError("declared Phase 0 request changed during execution")
@@ -476,6 +629,8 @@ def run(request_path, *, output):
         _pin(request["circt_opt"], forbidden=forbidden)
         if compiler is not None:
             _pin(compiler_pin, forbidden=forbidden)
+        for key in performance_paths:
+            _pin(request["source_performance"][key], forbidden=forbidden)
     except Exception as error:
         details = {"type": type(error).__name__, "message": str(error)}
         stderr = getattr(error, "stderr", None)

@@ -85,16 +85,22 @@ def bind_entries(
     software_intake=None,
     automatic_derivation=None,
     source_components=False,
+    source_preparation=None,
 ):
     """Bind reviewed objectives and the actual selected generator/source identity."""
     if type(source_components) is not bool or (source_components and (evidence is None or evidence.contract)):
         raise ValueError("source component identity requires an explicit source-only mode without a backend contract")
+    from . import component_source_performance as source_performance
+
+    source_performance.require_selection(source_preparation, source_components=source_components)
     if evidence is None or evidence.software_spec.get("status") != "reviewed":
         raise ValueError("component generation requires selected reviewed software and hardware evidence")
     spec = evidence.software_spec
     recipe_document = yaml.safe_load(Path(recipe).read_bytes())
     if not isinstance(recipe_document, dict):
         raise ValueError("component objective recipe must be an explicit mapping")
+    if source_preparation is not None and (recipe_document.get("capsules") or recipe_document.get("sweeps")):
+        raise ValueError("source performance requests must come from the selected independent shared template")
     recipe_declaration = recipe_document.get("component_performance")
     legacy_declaration = spec.get("component_performance")
     if recipe_declaration is not None and legacy_declaration is not None:
@@ -123,7 +129,11 @@ def bind_entries(
     rows = declaration["objectives"]
     if not isinstance(rows, list):
         raise ValueError("component objectives must be an explicit list")
+    if source_preparation is not None and not rows:
+        raise ValueError("source performance preparation requires nonempty reviewed objectives")
     families = {(entry.get("performance") or {}).get("family") for entry in entries}
+    if source_preparation is not None:
+        families.update(row["family"] for row in profile["_performance_template"]["families"])
     selected = {}
     provenance = (
         f"software-spec:{snapshots[0].sha256}",
@@ -199,6 +209,15 @@ def bind_entries(
         from .component_source_binding import identity as source_identity
 
         identity["source_semantics_admission"] = source_identity(software_intake, hardware=hardware_intake)
+    if source_preparation is not None:
+        if execution_budget is None:
+            raise ValueError("source performance preparation requires complete aggregate execution budgets")
+        identity["source_performance_preparation"] = {
+            "schema": source_preparation,
+            "pending_gate_facts": evidence.performance_facts,
+            "hardware_admission": "not_established",
+            "measurement_admission": "not_established",
+        }
     if execution_budget is not None:
         from .component_execution_budget import validate
 
@@ -263,6 +282,22 @@ def bind_entries(
             raise ValueError("component objective identity is generated, never authored by the sweep")
         performance["component_generation_sha256"] = digest(identity)
         family = performance["family"]
+        if source_preparation is not None:
+            if family not in selected or entry.get("op") != "component_program":
+                raise ValueError("source development family needs its exact reviewed objective and tensor DAG")
+            from merlin.targetgen import component_program
+
+            program = component_program.analyze(
+                entry["program"],
+                operand_dtype=corpus_spec.dtype_info(evidence.datapath["operand_dtype"])[1],
+                accumulator_dtype=corpus_spec.dtype_info(evidence.datapath["accum_dtype"])[1],
+            )
+            node_owners = source_performance.node_owners(program, software=software_intake)
+            if any(row["owner"] not in selected[family]["operations"] for row in node_owners):
+                raise ValueError("component objective must declare every actual DAG node owner")
+            performance["objective"] = copy.deepcopy(selected[family]["objective"])
+            bound.append(value)
+            continue
         if family in selected:
             op = entry.get("op")
             semantic_family = from_op(op or "")
@@ -277,7 +312,7 @@ def bind_entries(
     return bound, identity
 
 
-def require_written(capsule, *, source_software=None, source_hardware=None, directory=None):
+def require_written(capsule, *, source_software=None, source_hardware=None, directory=None, source_preparation=None):
     """Require the selected original-source or concrete target admission scope."""
     screen = capsule.get("software_screen") or {}
     coverage = capsule.get("component_coverage") or {}
@@ -291,9 +326,18 @@ def require_written(capsule, *, source_software=None, source_hardware=None, dire
             )
         return
     if source_software is not None or source_hardware is not None:
+        from . import component_source_performance as source_performance
         from .component_source_binding import screen_written
 
-        if directory is None or coverage.get("cohort") not in {"functional_guard", "withheld_transfer"}:
+        source_performance.require_selection(source_preparation, source_components=True)
+        development = (
+            source_preparation is not None
+            and (capsule.get("phase") == "dev" or capsule.get("label") == "dev")
+            and (capsule.get("performance") or {}).get("source_preparation", {}).get("schema") == source_preparation
+        )
+        if directory is None or (
+            coverage.get("cohort") not in {"functional_guard", "withheld_transfer"} and not development
+        ):
             raise ValueError(
                 "source-only admission requires original bounded coverage members, not performance support"
             )
