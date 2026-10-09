@@ -4,19 +4,27 @@ import subprocess
 from pathlib import Path
 
 
-def parse_generic_hw(text: str):
+def parse_generic_hw(text: str, *, reject_dense_literals: bool = False):
     """Parse a lossless generic HW module without requiring discovery tooling.
 
     xDSL's unregistered-attribute parser stops at ``>``; CIRCT's HW parameter
     declarations may also carry a trailing type. Preserve that type in the opaque
     attribute representation rather than deleting external modules or parameters.
     The graph is for analysis only; never serialize it as replacement hardware.
+    The explicit scalar-observation mode rejects builtin dense literals before
+    xDSL expands a shaped splat. The historical parser remains unchanged by
+    default; the mode is not a general parser or process resource sandbox.
     """
     from xdsl.context import Context
     from xdsl.dialects.builtin import Builtin, UnregisteredAttr
     from xdsl.parser import Parser
 
     class HardwareParser(Parser):
+        def _parse_builtin_dense_attr(self):
+            if reject_dense_literals:
+                self.raise_error("scalar HW observation refuses dense literals before materialization")
+            return super()._parse_builtin_dense_attr()
+
         def _parse_dialect_type_or_attribute_body(self, attr_name, is_type, is_opaque, starting_opaque_pos):
             attribute = super()._parse_dialect_type_or_attribute_body(
                 attr_name, is_type, is_opaque, starting_opaque_pos

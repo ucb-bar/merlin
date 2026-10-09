@@ -72,6 +72,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "combinational-observations": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "native_tools": ("firtool", "iverilog", "vvp"),
+        "native_test_files": ("test_hw_combinational_observations.py",),
+        "tests": ("test_hw_combinational_observations.py", "test_hw_input_observations.py", "test_hw_packing.py"),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_graph"),
+        "required_modules": ("xdsl",),
+    },
     "direct-kernel-counters": {
         "include_experiments": False,
         "tests_root": "merlin/tests/runtime",
@@ -1071,8 +1081,10 @@ def clean_environment():
 NATIVE_TOOL_ENVIRONMENT = {
     "clang": "MERLIN_CLANG",
     "firtool": "MERLIN_TEST_FIRTOOL",
+    "iverilog": "MERLIN_TEST_IVERILOG",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
+    "vvp": "MERLIN_TEST_VVP",
 }
 
 

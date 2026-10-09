@@ -33,3 +33,12 @@ Equal slices must cover that entire root without gaps or overlaps. Input/module
 names, bit widths and slice counts never assign scalar signedness, tensor axes,
 memory capacity, instruction routing, allocation or physical-tail semantics.
 Registers, memories and other operations terminate the local observation.
+
+`hw_combinational.prepare_combinational_observation` evaluates only a complete
+selected scalar combinational module with explicit source/node/bit/case budgets.
+All original inputs and outputs are retained; unreachable unsupported operations
+also refuse. The scalar parser mode rejects dense literals before shaped-splat
+materialization. Two-state local values and carry bits never assign address
+spaces, allocation/capacity, memory ports, tensor axes, protocol or timing roles.
+Source method probes require their own native/public source correspondence and
+cannot replace the selected full RTL or its mandatory unknown obligations.
