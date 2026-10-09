@@ -69,8 +69,8 @@ def actual_report(tmp_path, *, native="pass"):
 def test_actual_pytest_native_subset_executes_while_other_skip_is_separately_retained(tmp_path):
     xml, report = actual_report(tmp_path), {}
     Q.check_native_test_report("component-convergence", xml, report)
-    assert report["suite_test_counts"] == {"tests": 5, "skipped": 1}
-    assert report["native_test_counts"] == {"tests": 4, "skipped": 0}
+    assert report["suite_test_counts"] == {"tests": 7, "skipped": 1}
+    assert report["native_test_counts"] == {"tests": 6, "skipped": 0}
     assert report["other_test_counts"] == {"tests": 1, "skipped": 1}
     assert report["missing_native_test_files"] == []
     assert report["test_skips"]["native"] == []
@@ -92,10 +92,11 @@ def test_actual_pytest_skipped_or_omitted_native_subset_refuses_and_retains_deno
         assert report["missing_native_test_files"] == [
             "test_component_compile_role_transport.py",
             "test_component_native_deadline.py",
+            "test_component_pointer_entry.py",
         ]
         assert report["native_test_counts"] == {"tests": 0, "skipped": 0}
     else:
-        assert report["native_test_counts"] == {"tests": 2, "skipped": 2}
+        assert report["native_test_counts"] == {"tests": 3, "skipped": 3}
         assert "selected translator absent" in report["test_skips"]["native"][0]["message"]
 
 
@@ -123,7 +124,7 @@ def test_mutating_actual_child_report_cannot_substitute_a_native_identity(tmp_pa
 
 def test_compile_only_retains_zero_skip_scope_for_every_original_declared_test_file(tmp_path):
     configured = Q.SUITES["compile-only"]
-    assert configured["native_test_files"] == configured["tests"]
+    assert set(configured["native_test_files"]) < set(configured["tests"])
     assert configured["native_test_files"] == (
         "targetgen/test_compile_only_transport.py",
         "targetgen/test_shared_execution_deadline.py",
@@ -131,11 +132,12 @@ def test_compile_only_retains_zero_skip_scope_for_every_original_declared_test_f
         "targetgen/test_stack_frame_preflight.py",
         "targetgen/test_explicit_execution_service.py",
         "infra/test_build_only_service.py",
+        "targetgen/test_zero_input_abi.py",
     )
     xml, report = tmp_path / "synthetic.xml", {}
     root = ET.Element("testsuites")
     suite = ET.SubElement(root, "testsuite")
-    for filename in configured["native_test_files"]:
+    for filename in configured["tests"]:
         ET.SubElement(
             suite,
             "testcase",
@@ -147,8 +149,10 @@ def test_compile_only_retains_zero_skip_scope_for_every_original_declared_test_f
         )
     ET.ElementTree(root).write(xml)
     Q.check_native_test_report("compile-only", xml, report)
-    assert report["native_test_counts"] == {"tests": 6, "skipped": 0}
-    ET.SubElement(suite[-1], "skipped", {"message": "unit prerequisite removed"})
+    assert report["native_test_counts"] == {"tests": 7, "skipped": 0}
+    assert report["other_test_counts"] == {"tests": 5, "skipped": 0}
+    native_case = next(case for case in suite if case.get("file") == "targetgen/test_zero_input_abi.py")
+    ET.SubElement(native_case, "skipped", {"message": "unit prerequisite removed"})
     ET.ElementTree(root).write(xml)
     with pytest.raises(Q.QualificationFailed, match="zero skips"):
         Q.check_native_test_report("compile-only", xml, {})
@@ -160,6 +164,7 @@ def test_component_roster_imports_and_archives_only_explicit_new_owners():
     assert configured["native_test_files"] == (
         "test_component_compile_role_transport.py",
         "test_component_native_deadline.py",
+        "test_component_pointer_entry.py",
     )
     assert {
         "test_component_compile_admission.py",
