@@ -47,6 +47,13 @@ identity data only, with no name/width role selector. Saved or copied records
 mint no live identity, and no command/resource/axis/capacity/effect/temporal or
 whole-mapping requirement is admitted. Prior H/T source meanings remain intact.
 
+Explicit `array_limits` selects transition-connectivity intake v2. It adds fixed
+whole-roster aggregate budgets and pinned typed array readers, retaining every
+original operand and unsupported domain. Omission keeps v1's source scope and
+record fields. Array scalar dependency order follows original public CIRCT
+semantics; conditional index validity remains separate from execution, memory
+history, decoder roles and admission. Frozen v1/C packets are never upgraded.
+
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
 minimal software/review/basis, public/native schema source, reader tool and every

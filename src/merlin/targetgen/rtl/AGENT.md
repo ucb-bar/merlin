@@ -115,3 +115,12 @@ names and widths never classify a command interface or decoded resource role.
 State, memory reads, opaque and unsupported producers stop traversal. Structural
 root contact grants no event validity, state reachability, capacity, software
 axis, physical effect, temporal closure or whole memory mapping requirement.
+
+`hw_array_selection` preflights all rooted creation/get occurrences against
+explicit operation, element and aggregate-bit budgets before scalar expansion.
+Only exact single-level signless scalar arrays created in the same block are
+supported. CIRCT lexical creation operands are MSB first; runtime index zero
+selects the last operand. Opt-in C tracing exposes scalar dependencies only;
+non-power-of-two index domains remain conditional stops and out-of-range local
+values refuse. Nested and opaque aggregates remain stops. No default widening,
+invented fill, state history, resource role or old source record upgrade occurs.

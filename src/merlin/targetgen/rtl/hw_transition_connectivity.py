@@ -13,6 +13,7 @@ from xdsl.dialects.builtin import IntegerType
 from xdsl.ir import BlockArgument, OpResult
 
 from .hw_address_transitions import address_state_transitions
+from .hw_array_selection import ArraySelectionLimits, preflight_array_selections, typed_array_selection
 from .hw_combinational import _expression
 from .hw_hierarchy_bindings import _binding, _static_signature
 from .hw_memory_ports import _COMBINATIONAL
@@ -47,10 +48,14 @@ class TransitionConnectivityLimits:
             raise ValueError("transition connectivity requires explicit positive metadata limits")
 
 
-def transition_operand_connectivity(parsed, *, root, local_limits, hierarchy_limits, transition_limits, limits):
+def transition_operand_connectivity(
+    parsed, *, root, local_limits, hierarchy_limits, transition_limits, limits, array_limits=None
+):
     """Follow all original state operands; never select a port by a role hint."""
     if type(limits) is not TransitionConnectivityLimits:
         raise ValueError("transition connectivity requires explicit original traversal limits")
+    if array_limits is not None and type(array_limits) is not ArraySelectionLimits:
+        raise ValueError("array connectivity requires explicit whole-roster aggregate limits")
     transfers = address_state_transitions(
         parsed, root=root, local_limits=local_limits, hierarchy_limits=hierarchy_limits, limits=transition_limits
     )
@@ -107,6 +112,16 @@ def transition_operand_connectivity(parsed, *, root, local_limits, hierarchy_lim
             raise ValueError("transition connectivity lacks exact original named port/index/type correspondence")
         incoming[index] = instance
         children[parent, instance] = index
+
+    array_cost = None
+    if array_limits is not None:
+        original_modules = [frame["module"] for frame in frames if frame["stop"] is None]
+        array_cost = preflight_array_selections(
+            {module: definitions[module][2] for module in set(original_modules)},
+            original_modules,
+            limits=array_limits,
+            scalar_bits=limits.scalar_bits,
+        )
 
     def width(value):
         if str(value.type) == "!seq.clock":
@@ -179,6 +194,31 @@ def transition_operand_connectivity(parsed, *, root, local_limits, hierarchy_lim
                 row.update(kind="state_result")
             elif _name(op) in {"seq.firmem.read_port", "seq.firmem.read_write_port"}:
                 row.update(kind="memory_read_result", memory_ordinal=ordinals[op.operands[0].owner])
+            elif _name(op) == "hw.array_get" and array_limits is not None:
+                try:
+                    selection = typed_array_selection(op, scalar_bits=limits.scalar_bits, limits=array_limits)
+                except ValueError as error:
+                    row.update(kind="unsupported_result", reason=str(error))
+                else:
+                    charge("bit_work", selection.index_width + len(selection.elements) * selection.element_width)
+                    operands = [trace(frame, value, depth + 1) for value in (selection.index, *selection.elements)]
+                    row.update(
+                        operands=operands,
+                        array_selection={
+                            "creation_ordinal": ordinals[op.operands[0].owner],
+                            "original_array_type": str(op.operands[0].type),
+                            "element_count": len(selection.elements),
+                            "runtime_index_to_creation_operand": list(reversed(range(len(selection.elements)))),
+                            "index_width": selection.index_width,
+                            "defined_index_maximum": len(selection.elements) - 1,
+                            "full_original_index_domain_defined": selection.full_index_domain_defined,
+                            "relation": "structural scalar dependencies only; no state or memory history",
+                        },
+                    )
+                    if selection.full_index_domain_defined:
+                        row.update(kind="combinational", expression="hw.array_get", parameter=len(selection.elements))
+                    else:
+                        row.update(kind="unsupported_result", reason="original index domain has out-of-range branches")
             elif _name(op) in _COMBINATIONAL and bits is not None:
                 if op.regions or len(op.results) != 1:
                     raise ValueError("transition combinational producer has unsupported regions/results")
@@ -215,7 +255,7 @@ def transition_operand_connectivity(parsed, *, root, local_limits, hierarchy_lim
         for transfer, ordinal, role, value in selected
     ]
     assert len(operands) == expected["operand_bindings"]
-    return {
+    record = {
         "schema": SCHEMA,
         "root": root,
         "source_frames": frames,
@@ -232,3 +272,6 @@ def transition_operand_connectivity(parsed, *, root, local_limits, hierarchy_lim
         "clock_events_evaluated": False,
         "command_axis_capacity_or_temporal_admission": False,
     }
+    if array_limits is not None:
+        record.update(array_selection_limits=asdict(array_limits), array_selection_cost=array_cost)
+    return record

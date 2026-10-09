@@ -72,6 +72,29 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "typed-array-inputs": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_array_selection.py",
+            "packages/merlin-experiments/tests/test_transition_array_connectivity.py",
+            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_array_selection",
+            "merlin.targetgen.rtl.hw_transition_connectivity",
+            "merlin_experiments.phase0.transition_connectivity_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "integer-comparison-inputs": {
         "tests_root": ".",
         "collect_selected_tests": True,

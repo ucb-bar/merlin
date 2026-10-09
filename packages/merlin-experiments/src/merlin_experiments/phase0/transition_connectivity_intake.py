@@ -12,6 +12,7 @@ from merlin.common.jsonio import strict_json_equal
 from merlin.common.paths import module_source_path
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
 from merlin.targetgen.rtl.hw_address_transitions import AddressTransitionLimits
+from merlin.targetgen.rtl.hw_array_selection import ArraySelectionLimits
 from merlin.targetgen.rtl.hw_graph import parse_generic_hw
 from merlin.targetgen.rtl.hw_hierarchy_bindings import HierarchyBindingLimits
 from merlin.targetgen.rtl.hw_memory_ports import MemoryPortLimits
@@ -25,6 +26,7 @@ from .address_transition_intake import verify_record as verify_transition_record
 from .rtl_intake import RtlIntakePin, RtlIntakeRefusal, _exclusion_prefix, _json, _outside, _pin, _plain
 
 SCHEMA = "merlin.independent_transition_connectivity_intake.v1"
+ARRAY_SCHEMA = "merlin.independent_transition_connectivity_intake.v2"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _READERS = (
     __name__,
@@ -41,6 +43,7 @@ _READERS = (
     "merlin.targetgen.contract.mlir_source_admission",
     "xdsl.parser",
 )
+_ARRAY_READERS = (*_READERS, "merlin.targetgen.rtl.hw_array_selection", "xdsl.dialects.hw")
 _UNKNOWN = (
     "historical_elaboration_and_bitstream_correspondence",
     "native_tool_and_reader_runtime_dependency_closure",
@@ -55,7 +58,7 @@ def _one(pins, role):
     return selected[0]
 
 
-def _derive(transitions, memory, *, source_bytes, limits):
+def _derive(transitions, memory, *, source_bytes, limits, array_limits=None):
     if type(source_bytes) is not int or source_bytes <= 0 or type(limits) is not TransitionConnectivityLimits:
         raise RtlIntakeRefusal("transition connectivity intake requires explicit positive source and metadata limits")
     generic = _one([RtlIntakePin(**row) for row in memory["source_pins"]], "generic-core-hw")
@@ -78,11 +81,14 @@ def _derive(transitions, memory, *, source_bytes, limits):
         hierarchy_limits=HierarchyBindingLimits(**transitions["facts"]["hierarchy_limits"]),
         transition_limits=AddressTransitionLimits(**transitions["limits"]),
         limits=limits,
+        array_limits=array_limits,
     )
 
 
 def verify_record(record):
     """Recompute original typed connectivity; exported records grant no authority."""
+    schema = record.get("schema") if isinstance(record, dict) else None
+    array_mode = schema == ARRAY_SCHEMA
     if (
         not isinstance(record, dict)
         or set(record)
@@ -96,13 +102,22 @@ def verify_record(record):
             "facts",
             "unknowns",
         }
-        or record["schema"] != SCHEMA
+        | ({"array_limits"} if array_mode else set())
+        or type(schema) is not str
+        or schema not in {SCHEMA, ARRAY_SCHEMA}
         or record["unknowns"] != list(_UNKNOWN)
         or not isinstance(record["limits"], dict)
         or set(record["limits"]) != set(TransitionConnectivityLimits.__dataclass_fields__)
     ):
         raise RtlIntakeRefusal("transition connectivity intake requires its complete closed original record")
     limits = TransitionConnectivityLimits(**record["limits"])
+    array_limits = None
+    if array_mode:
+        if not isinstance(record["array_limits"], dict) or set(record["array_limits"]) != set(
+            ArraySelectionLimits.__dataclass_fields__
+        ):
+            raise RtlIntakeRefusal("array connectivity requires its complete explicit aggregate budgets")
+        array_limits = ArraySelectionLimits(**record["array_limits"])
     pins = [RtlIntakePin(**row) for row in record["source_pins"]]
     if len({(pin.role, pin.path) for pin in pins}) != len(pins) or {pin.role for pin in pins} != {
         "typed-transition-intake",
@@ -113,7 +128,7 @@ def verify_record(record):
     for pin in pins:
         pin.verify()
     if {pin.path for pin in pins if pin.role == "connectivity-reader"} != {
-        str(module_source_path(name)) for name in _READERS
+        str(module_source_path(name)) for name in (_ARRAY_READERS if array_mode else _READERS)
     }:
         raise RtlIntakeRefusal("transition connectivity intake lost its fixed original reader closure")
     transition_pin, hardware_pin = _one(pins, "typed-transition-intake"), _one(pins, "hardware-intake")
@@ -129,7 +144,8 @@ def verify_record(record):
     ):
         raise RtlIntakeRefusal("transition connectivity intake lost its exact same live source identities")
     if not strict_json_equal(
-        _derive(transitions, memory, source_bytes=record["source_bytes"], limits=limits), record["facts"]
+        _derive(transitions, memory, source_bytes=record["source_bytes"], limits=limits, array_limits=array_limits),
+        record["facts"],
     ):
         raise RtlIntakeRefusal("transfer connectivity facts differ from the complete original source bindings")
     return record
@@ -176,7 +192,7 @@ class IndependentTransitionConnectivityIntake:
     def public_facts(self):
         record = self.record()
         return {
-            "schema": SCHEMA,
+            "schema": record["schema"],
             "transition_intake_sha256": self.transitions.sha256,
             "hardware_intake_sha256": self.transitions.hierarchy.memory.hardware.sha256,
             "facts": record["facts"],
@@ -184,7 +200,9 @@ class IndependentTransitionConnectivityIntake:
         }
 
 
-def issue_independent_transition_connectivity_intake(*, transitions, source_bytes, limits, forbidden_roots, output):
+def issue_independent_transition_connectivity_intake(
+    *, transitions, source_bytes, limits, forbidden_roots, output, array_limits=None
+):
     """Follow all original slots; no command-role, path or input selectors."""
     if type(transitions) is not IndependentAddressTransitionIntake:
         raise RtlIntakeRefusal(
@@ -197,13 +215,18 @@ def issue_independent_transition_connectivity_intake(*, transitions, source_byte
         raise RtlIntakeRefusal(
             "transition connectivity intake requires explicit complete-roster source/metadata budgets"
         )
+    if array_limits is not None and type(array_limits) is not ArraySelectionLimits:
+        raise RtlIntakeRefusal("array connectivity requires explicit whole-roster aggregate limits")
     forbidden = tuple(_exclusion_prefix(path) for path in forbidden_roots)
     pins = [
         _pin("typed-transition-intake", _one(transitions.source_pins, "transition-intake-receipt").path, forbidden),
         _pin(
             "hardware-intake", _one(transitions.hierarchy.memory.hardware.source_pins, "intake-receipt").path, forbidden
         ),
-        *[_pin("connectivity-reader", module_source_path(name), forbidden) for name in _READERS],
+        *[
+            _pin("connectivity-reader", module_source_path(name), forbidden)
+            for name in (_ARRAY_READERS if array_limits is not None else _READERS)
+        ],
     ]
     destination = Path(output).absolute()
     if destination.exists() or ".." in destination.parts or any(path.is_symlink() for path in destination.parents):
@@ -218,7 +241,7 @@ def issue_independent_transition_connectivity_intake(*, transitions, source_byte
     if any(Path(pin.path).is_relative_to(destination) for pin in (*pins, *parent_pins)):
         raise RtlIntakeRefusal("transition connectivity output cannot contain its protected inputs")
     record = {
-        "schema": SCHEMA,
+        "schema": ARRAY_SCHEMA if array_limits is not None else SCHEMA,
         "transition_intake_sha256": transitions.sha256,
         "hardware_intake_sha256": transitions.hierarchy.memory.hardware.sha256,
         "source_pins": [pin.record() for pin in pins],
@@ -229,9 +252,12 @@ def issue_independent_transition_connectivity_intake(*, transitions, source_byte
             json.loads(transitions.hierarchy.memory.receipt_json),
             source_bytes=source_bytes,
             limits=limits,
+            array_limits=array_limits,
         ),
         "unknowns": list(_UNKNOWN),
     }
+    if array_limits is not None:
+        record["array_limits"] = asdict(array_limits)
     destination.mkdir(parents=True, mode=0o700)
     receipt = destination / "intake.json"
     receipt.write_bytes(_json(record))
