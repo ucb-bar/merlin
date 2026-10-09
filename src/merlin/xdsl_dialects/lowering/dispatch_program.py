@@ -157,6 +157,49 @@ def _nested_call_symbols(op) -> list[str]:
     return found
 
 
+def _check_dispatch_definition(module, call, dispatch) -> None:
+    """Join table intent to its actual typed definition, without execution proof."""
+    from xdsl.dialects.builtin import IntegerAttr, StringAttr
+
+    definitions = [op for op in module.body.block.ops if op.name == "func.func" and op.sym_name.data == dispatch.symbol]
+    if len(definitions) != 1 or len(definitions[0].body.blocks) != 1:
+        raise OutlineError(f"dispatch {dispatch.symbol!r} needs one actual defined function")
+    function = definitions[0]
+    signature = function.function_type
+    if (
+        tuple(value.type for value in call.operands) != signature.inputs.data
+        or tuple(value.type for value in call.results) != signature.outputs.data
+        or len(call.operands) != dispatch.n_operands
+        or [str(value.type) for value in call.results] != dispatch.result_types
+    ):
+        raise OutlineError(f"dispatch {dispatch.symbol!r} disagrees with its actual ordered call/function ABI")
+    for name, selected in (("merlin.placement", dispatch.placement), ("merlin.group", dispatch.group)):
+        values = [table[name] for table in (function.attributes, function.properties) if name in table]
+        if selected is None:
+            agrees = not values
+        elif name == "merlin.placement":
+            agrees = (
+                type(selected) is str
+                and bool(selected.strip())
+                and bool(values)
+                and all(isinstance(value, StringAttr) and value.data == selected for value in values)
+            )
+        else:
+            agrees = (
+                type(selected) is int
+                and selected >= 0
+                and bool(values)
+                and all(isinstance(value, IntegerAttr) and value.value.data == selected for value in values)
+            )
+        if not agrees:
+            raise OutlineError(f"dispatch {dispatch.symbol!r} {name} disagrees with its actual function")
+    call_placements = [
+        table["merlin.placement"] for table in (call.attributes, call.properties) if "merlin.placement" in table
+    ]
+    if any(not isinstance(value, StringAttr) or value.data != dispatch.placement for value in call_placements):
+        raise OutlineError(f"dispatch {dispatch.symbol!r} placement disagrees with its actual call")
+
+
 def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> DispatchProgram:
     """Flatten the outlined driver into a serializable dispatch program."""
     if not HAS_XDSL:
@@ -243,6 +286,9 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
                 )
             if callee != d.symbol:
                 raise OutlineError(f"dispatch table symbol {d.symbol!r} disagrees with driver call {callee!r}")
+            if type(d.index) is not int or d.index != n_calls:
+                raise OutlineError("dispatch table indices must enumerate actual call order exactly")
+            _check_dispatch_definition(module, op, d)
             n_calls += 1
             in_ids = resolve(op.operands, op)
             out_ids = [bind(r, "intermediate") for r in op.results]

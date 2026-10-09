@@ -29,7 +29,7 @@ from .global_plan_emission import (
     dispatch_digest,
     verify_global_plan_emission,
 )
-from .outline import OutlineResult, _external_declarations
+from .outline import DispatchInfo, OutlineResult, _external_declarations
 
 
 def plan_dispatch_fusion(
@@ -149,25 +149,66 @@ def _expanded_driver(module, entry, external_symbols=()):
     )
 
 
+def _same_dispatch_wiring(expected, observed):
+    """Compare actual SSA wiring while permitting freshly assigned buffer ids."""
+    if expected.entry != observed.entry or expected.args != observed.args or len(expected.nodes) != len(observed.nodes):
+        return False
+    mapping = {}
+
+    def bind(left, right):
+        a, b = expected.buffers[left], observed.buffers[right]
+        if (a.shape, a.dtype, a.kind, a.arg_index) != (b.shape, b.dtype, b.kind, b.arg_index):
+            return False
+        if left in mapping or right in mapping.values():
+            return False
+        mapping[left] = right
+        return True
+
+    left_args = {spec.arg_index: name for name, spec in expected.buffers.items() if spec.kind == "arg"}
+    right_args = {spec.arg_index: name for name, spec in observed.buffers.items() if spec.kind == "arg"}
+    if left_args.keys() != right_args.keys() or not all(
+        bind(name, right_args[index]) for index, name in left_args.items()
+    ):
+        return False
+    for left, right in zip(expected.nodes, observed.nodes, strict=True):
+        if (
+            (left.kind, left.op, left.prov, left.regions) != (right.kind, right.op, right.prov, right.regions)
+            or [mapping.get(name) for name in left.inputs] != right.inputs
+            or (None if left.captures is None else [mapping.get(name) for name in left.captures]) != right.captures
+            or len(left.outputs) != len(right.outputs)
+            or not all(bind(a, b) for a, b in zip(left.outputs, right.outputs, strict=True))
+        ):
+            return False
+    return (
+        set(mapping) == set(expected.buffers)
+        and set(mapping.values()) == set(observed.buffers)
+        and [mapping.get(name) for name in expected.results] == observed.results
+    )
+
+
 class OutlinedGlobalPlanEmitter:
     """Concrete shared emitter for contiguous regions of a whole outlined model.
 
     ``module`` is populated only after SSA, component wiring, and inlined IR equivalence pass.
     Target codegen consumes it with its usual linalg pipeline. This provides a compiler emission
     seam for global fusion while keeping instruction selection in the target compiler.
+    ``emitted_outline`` reopens the actual call/function/table intent. Placement
+    labels select an endpoint; they do not establish execution or its resources.
+    Existing selected endpoints cannot be changed by this structural adapter.
     """
 
     def __init__(self, outlined: OutlineResult):
         self.outlined = outlined
         self.module = None
         self.proof = None
+        self.emitted_outline = None
 
     def emit_global_plan(self, program: DispatchProgram, plan: GlobalPlan) -> GlobalPlanEmission:
         from xdsl.dialects.builtin import ModuleOp, StringAttr
         from xdsl.dialects.func import CallOp, FuncOp, ReturnOp
         from xdsl.ir import Block, Region
 
-        self.module = self.proof = None
+        self.module = self.proof = self.emitted_outline = None
         actual = build_dispatch_program(self.outlined, entry=program.entry)
         if dispatch_digest(actual) != dispatch_digest(program):
             raise ValueError("fusion plan must bind the exact unpruned outlined model graph")
@@ -183,6 +224,23 @@ class OutlinedGlobalPlanEmitter:
                         "a target representation emitter"
                     )
         functions = {op.sym_name.data: op for op in self.outlined.module.body.block.ops if op.name == "func.func"}
+        placements = {}
+
+        def select_placement(symbol, placement):
+            function = functions[symbol]
+            # This logical fusion adapter cannot silently move an existing
+            # selected endpoint. A different endpoint needs its own emitter.
+            existing = [
+                table["merlin.placement"]
+                for table in (function.attributes, function.properties)
+                if "merlin.placement" in table
+            ]
+            if any(not isinstance(value, StringAttr) or value.data != placement for value in existing):
+                raise ValueError(f"fusion placement for {symbol!r} differs from its original function")
+            if symbol in placements and placements[symbol] != placement:
+                raise ValueError(f"fusion selects conflicting placements for shared function {symbol!r}")
+            placements[symbol] = placement
+
         original = functions[program.entry]
         source = original.body.blocks[0]
         source_ops = [op for op in source.ops if op.name != "func.return"]
@@ -204,11 +262,16 @@ class OutlinedGlobalPlanEmitter:
             indices = item.nodes
             inputs = [value.buffer for value in item.inputs]
             outputs = [value.buffer for value in item.outputs]
+            for index in indices:
+                if program.nodes[index].kind == "dispatch":
+                    select_placement(program.nodes[index].op, item.placement)
             if len(indices) == 1:
                 node, op = program.nodes[indices[0]], source_ops[indices[0]]
                 if item.implementation != node.op:
                     raise ValueError("singleton implementation differs from its outlined operation")
                 cloned = op.clone(value_mapper=driver_map)
+                if node.kind == "dispatch" and functions[node.op].body.blocks:
+                    cloned.attributes["merlin.placement"] = StringAttr(item.placement)
                 block.add_op(cloned)
                 driver_map.update(zip(op.results, cloned.results, strict=True))
                 nodes.append(replace(node, inputs=list(node.inputs), outputs=list(node.outputs)))
@@ -231,6 +294,7 @@ class OutlinedGlobalPlanEmitter:
                     Region([body]),
                 )
                 fused.sym_visibility = StringAttr("private")
+                fused.attributes["merlin.placement"] = StringAttr(item.placement)
                 fused_functions.append(fused)
                 functions[item.implementation] = fused
                 call = CallOp(
@@ -238,6 +302,7 @@ class OutlinedGlobalPlanEmitter:
                     [driver_map[values[name]] for name in inputs],
                     [values[name].type for name in outputs],
                 )
+                call.attributes["merlin.placement"] = StringAttr(item.placement)
                 block.add_op(call)
                 driver_map.update(zip((values[name] for name in outputs), call.results, strict=True))
                 nodes.append(Node("dispatch", item.implementation, inputs, outputs, captures=[]))
@@ -252,10 +317,18 @@ class OutlinedGlobalPlanEmitter:
         block.add_op(ReturnOp(*(driver_map[values[name]] for name in program.results)))
         driver = FuncOp(program.entry, original.function_type, Region([block]))
         driver.attributes.update(original.attributes)
+        retained_functions = []
+        for function in self.outlined.module.body.block.ops:
+            if function is original:
+                continue
+            cloned = function.clone()
+            if function.name == "func.func" and function.body.blocks and function.sym_name.data in placements:
+                cloned.attributes["merlin.placement"] = StringAttr(placements[function.sym_name.data])
+            retained_functions.append(cloned)
         module = ModuleOp(
             [
                 driver,
-                *[op.clone() for op in self.outlined.module.body.block.ops if op is not original],
+                *retained_functions,
                 *fused_functions,
             ]
         )
@@ -287,7 +360,51 @@ class OutlinedGlobalPlanEmitter:
         errors = verify_global_plan_emission(program, plan, emission)
         if errors:
             raise ValueError("invalid outlined global fusion: " + "; ".join(errors))
+        definitions = {op.sym_name.data: op for op in module.body.block.ops if op.name == "func.func"}
+        original_dispatches = {row.symbol: row for row in self.outlined.dispatches}
+        emitted_ops = [op for op in driver.body.block.ops if op.name != "func.return"]
+        dispatches, intent = [], []
+        for item, row in zip(selected, receipts, strict=True):
+            index = row.node_indices[0]
+            node, operation = nodes[index], emitted_ops[index]
+            if node.kind != "dispatch":
+                continue
+            function = definitions[node.op]
+            opaque = not function.body.blocks
+            intent.append(
+                {
+                    "plan_id": item.id,
+                    "symbol": node.op,
+                    "placement": item.placement,
+                    "definition": "external_implementation_UNKNOWN" if opaque else "defined",
+                }
+            )
+            if opaque:
+                continue  # A declared external ABI cannot prove an implementation or endpoint.
+            if operation.attributes.get("merlin.placement") != StringAttr(item.placement):
+                raise ValueError("emitted driver call lost its selected placement")
+            if function.attributes.get("merlin.placement") != StringAttr(item.placement):
+                raise ValueError("emitted function lost its selected placement")
+            group = function.attributes.get("merlin.group")
+            original_dispatch = original_dispatches.get(node.op)
+            dispatches.append(
+                DispatchInfo(
+                    len(dispatches),
+                    node.op,
+                    function.name if original_dispatch is None else original_dispatch.root_op,
+                    len(operation.operands),
+                    [str(value.type) for value in operation.results],
+                    node.prov,
+                    group=None if group is None else group.value.data,
+                    placement=item.placement,
+                    stages=[] if original_dispatch is None else list(original_dispatch.stages),
+                )
+            )
+        emitted_outline = OutlineResult(module, dispatches, self.outlined.external_symbols)
+        if not _same_dispatch_wiring(dispatch, build_dispatch_program(emitted_outline, entry=program.entry)):
+            raise ValueError("emitted function/call/table differs from the selected dispatch graph")
         self.module = module
+        self.emitted_outline = emitted_outline
         self.proof = {
             "schema": "outlined_global_fusion_proof_v1",
             "logical_dispatch_digest": dispatch_digest(program),
@@ -302,6 +419,10 @@ class OutlinedGlobalPlanEmitter:
             "emitted_dispatches": dispatch.n_dispatches,
             "timing": "UNKNOWN",
             "physical_movement": "UNKNOWN",
+            "placement_intent": intent,
+            "execution_placement": "UNKNOWN",
+            "resource_legality": "UNKNOWN",
+            "synchronization": "UNKNOWN",
             "external_declarations": list(self.outlined.external_symbols),
             "external_implementation_closure": "UNKNOWN" if self.outlined.external_symbols else "not_required",
             "full_model_simulated": False,

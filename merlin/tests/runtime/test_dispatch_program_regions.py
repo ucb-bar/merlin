@@ -102,6 +102,8 @@ def _build(text: str, n_dispatches: int, *, tagged: bool = False):
     from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program
     from merlin.xdsl_dialects.lowering.outline import DispatchInfo, OutlineResult
 
+    module = parse_mlir_text(text)
+    functions = {op.sym_name.data: op for op in module.body.block.ops if op.name == "func.func"}
     suffix = "__rmatmul_{}" if tagged else ""
     table = [
         DispatchInfo(
@@ -109,12 +111,14 @@ def _build(text: str, n_dispatches: int, *, tagged: bool = False):
             symbol=f"forward$kernel_{i}" + (suffix.format(i) if tagged else ""),
             root_op="linalg.matmul",
             n_operands=1,
-            result_types=["tensor<64x64xf32>"],
+            result_types=[str(value) for value in functions[symbol].function_type.outputs]
+            if (symbol := f"forward$kernel_{i}" + (suffix.format(i) if tagged else "")) in functions
+            else [],  # An intentionally unconsumed table entry has no source definition.
             prov={"prov.region_id": f"matmul_{i}"} if tagged else {},
         )
         for i in range(n_dispatches)
     ]
-    return build_dispatch_program(OutlineResult(module=parse_mlir_text(text), dispatches=table))
+    return build_dispatch_program(OutlineResult(module=module, dispatches=table))
 
 
 # ---- 1. under-recorded reads ---------------------------------------------------------------
