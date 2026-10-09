@@ -20,6 +20,12 @@ data or references are allocated. Eager logical payload and operand extents are
 not physical allocations, bus traffic, capacity bounds or timing/ranking facts.
 Unknown grammar and arithmetic limits remain explicit before analysis expansion.
 
+`compiled_static_features` reuses the complete typed emitted LLVM observer and
+structural ELF reader for bounded site/access-width histograms and linked code
+extents. Counts are before native optimization. They are neither executed
+instruction counts nor physical traffic, staging, capacity or cycle features.
+Unsupported bodies refuse; experiments owns actual compile-consumption joins.
+
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
 qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,

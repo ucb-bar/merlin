@@ -72,6 +72,22 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "compiled-static-features": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "merlin/tests/targetgen/test_compiled_static_features.py",
+            "packages/merlin-experiments/tests/test_component_compiled_features.py",
+        ),
+        "support_files": ("packages/merlin-experiments/tests/compiled_feature_control.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.compiled_static_features",
+            "merlin_experiments.phase2.component_compiled_features",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "typed-index-ranges": {
         "tests_root": ".",
         "collect_selected_tests": True,

@@ -589,3 +589,12 @@ physical/timing prerequisites; no callback, supplied labels or saved summary can
 issue a stage witness or runtime role. The actual producer record belongs to the
 original grade owner, outside the case it is reopening; its product belongs to
 that exact case. Returned data cannot mutate the context's retained observations.
+
+`component_compiled_features` reopens exact original integer source/ABI/corpus
+membership and selected ordinary native translation, object, link and symbol
+observations before deriving static features. Whole file/member and source
+arithmetic budgets precede analysis; huge tensor extents allocate no values.
+Feature products live outside the original compile roster. This explicit first
+version refuses transformed object routes and unsupported emitted bodies.
+Emitted sites, access widths and linked bytes do not grant instruction semantics,
+physical traffic, correctness, isolation, runtime roles or calibrated feedback.
