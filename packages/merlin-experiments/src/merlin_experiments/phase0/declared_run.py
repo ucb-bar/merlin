@@ -30,6 +30,7 @@ SCHEMA = "merlin.independent_phase0_run.v1"
 BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
 REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
 PERFORMANCE_SCHEMA = "merlin.independent_phase0_run.v4"
+REFERENCE_SCHEMA = "merlin.independent_phase0_run.v5"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -62,14 +63,20 @@ def _pin(value, *, forbidden, runtime=False):
 def validate(request):
     """Close source and policy declarations before any authority is issued."""
     fields = {"schema", "target", "inputs", "operator_schemas", "circt_opt", "forbidden_roots", "automatic"}
-    if isinstance(request, dict) and request.get("schema") in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
+    if isinstance(request, dict) and request.get("schema") in {
+        REQUIREMENT_SCHEMA,
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+    }:
         fields.add("release_purpose")
-    if isinstance(request, dict) and request.get("schema") == PERFORMANCE_SCHEMA:
+    if isinstance(request, dict) and request.get("schema") in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
         fields.add("source_performance")
+    if isinstance(request, dict) and request.get("schema") == REFERENCE_SCHEMA:
+        fields.add("original_references")
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}
+        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -82,12 +89,12 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
-    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
+    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
         from .source_requirement_ledger import PURPOSES
 
         if request["release_purpose"] not in PURPOSES:
             raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
-    if request["schema"] == PERFORMANCE_SCHEMA:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
         from .component_source_performance import SCHEMA as source_schema
 
         selection = request["source_performance"]
@@ -102,6 +109,14 @@ def validate(request):
             )
         ):
             raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
+    if request["schema"] == REFERENCE_SCHEMA:
+        selection = request["original_references"]
+        if (
+            type(selection) is not dict
+            or set(selection) != {"reference", "standard_ir"}
+            or any(type(pin) is not dict or set(pin) != {"path", "sha256"} for pin in selection.values())
+        ):
+            raise ValueError("original reference flow requires two closed explicit source selections")
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
     tensor = isinstance(operator, dict) and operator.get("schema") in {
@@ -114,7 +129,7 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
+    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -361,10 +376,15 @@ def run(request_path, *, output):
     declarations = _pin(canonical["declarations"], forbidden=forbidden)
     circt_opt = _pin(request["circt_opt"], forbidden=forbidden)
     performance_paths, objectives, sweep_template = {}, [], {"sweeps": []}
-    if request["schema"] == PERFORMANCE_SCHEMA:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
         performance_paths, objectives, sweep_template = _source_performance_inputs(
             request["source_performance"], forbidden=forbidden
         )
+    reference_inputs, standard_ir = None, None
+    if request["schema"] == REFERENCE_SCHEMA:
+        from .original_reference_flow import read_selection
+
+        reference_inputs = read_selection(request["original_references"], forbidden=forbidden)
     output = Path(output).absolute()
     _outside(output, forbidden)
     if output.exists() or ".." in output.parts or any(path.is_symlink() for path in (output, *output.parents)):
@@ -377,6 +397,7 @@ def run(request_path, *, output):
         circt_opt,
         checkout,
         *performance_paths.values(),
+        *(reference_inputs.paths if reference_inputs is not None else ()),
     ]
     if compiler is not None:
         selected_paths.append(compiler)
@@ -533,6 +554,20 @@ def run(request_path, *, output):
         )
         coverage_path = generated / "_evidence" / "coverage" / "component-coverage.json"
         coverage = json.loads(coverage_path.read_bytes())
+        if reference_inputs is not None:
+            from . import original_reference_flow
+            from .component_semantic_basis import ComponentSemanticBasis
+
+            standard_ir = step(
+                "fresh_original_reference_and_standard_ir",
+                lambda: original_reference_flow.prepare(
+                    reference_inputs,
+                    schema_intake=schemas,
+                    semantic_basis=ComponentSemanticBasis.from_recipe(recipe, routing={}),
+                    destination=output / "original-references",
+                ),
+            )
+            report["original_reference_preparation"] = original_reference_flow.summary(standard_ir)
         if performance_paths:
             references, contracts, contract_path = _verify_source_performance_products(
                 generated, coverage, paths, target=request["target"], hardware=hardware, software=software
@@ -594,7 +629,7 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
-        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA}:
+        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
             from .source_requirement_ledger import prepare_requirement_ledger
 
             ledger = step(
@@ -605,6 +640,7 @@ def run(request_path, *, output):
                     hardware=hardware,
                     software=software,
                     purpose=request["release_purpose"],
+                    **({"standard_ir": standard_ir} if standard_ir is not None else {}),
                 ),
             )
             ledger_path = output / "source-requirement-ledger.json"
@@ -631,6 +667,9 @@ def run(request_path, *, output):
             _pin(compiler_pin, forbidden=forbidden)
         for key in performance_paths:
             _pin(request["source_performance"][key], forbidden=forbidden)
+        if reference_inputs is not None:
+            reference_inputs.verify()
+            standard_ir.verify()
     except Exception as error:
         details = {"type": type(error).__name__, "message": str(error)}
         stderr = getattr(error, "stderr", None)

@@ -187,7 +187,7 @@ class SourceRequirementLedger:
         return json.loads(self.document_json)
 
 
-def prepare_requirement_ledger(*, root, coverage, hardware, software, purpose):
+def prepare_requirement_ledger(*, root, coverage, hardware, software, purpose, standard_ir=None):
     """Reopen actual sources, budgets and complete references before attribution."""
     from .component_execution_budget import verify as verify_budget
     from .component_source_binding import verify_prepared_sources
@@ -291,16 +291,20 @@ def prepare_requirement_ledger(*, root, coverage, hardware, software, purpose):
         else "diagnostic_source_inputs_checked",
         "scope": "source/candidate ownership diagnostic; exposes dependency cycle without declaring it fixed",
     }
-    document["sha256"] = digest(document)
+    if standard_ir is not None:
+        from .original_reference_requirements import join
+
+        document = join(document, coverage=coverage, hardware=hardware, software=software, standard_ir=standard_ir)
+    document["sha256"] = digest({key: value for key, value in document.items() if key != "sha256"})
     return SourceRequirementLedger(json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
-def verify_requirement_ledger(ledger, *, root, coverage, hardware, software, purpose):
+def verify_requirement_ledger(ledger, *, root, coverage, hardware, software, purpose, standard_ir=None):
     """Recompute actual evidence; frozen data cannot grant or defer acceptance."""
     if type(ledger) is not SourceRequirementLedger:
         raise ValueError("requirement comparison needs the exact diagnostic data type")
     actual = prepare_requirement_ledger(
-        root=root, coverage=coverage, hardware=hardware, software=software, purpose=purpose
+        root=root, coverage=coverage, hardware=hardware, software=software, purpose=purpose, standard_ir=standard_ir
     )
     if actual.record() != ledger.record():
         raise ValueError("requirement source/reference evidence or full denominator changed")

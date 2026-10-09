@@ -95,6 +95,28 @@ SUITES = {
         ),
         "required_modules": ("xdsl", "jsonschema"),
     },
+    "original-reference-flow": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "test_declared_original_reference_flow.py",
+            "test_original_reference_requirement_join.py",
+        ),
+        "support_files": (
+            "test_declared_phase0_run.py",
+            "original_reference_fixtures.py",
+            "test_original_reference_standard_ir.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_reference_flow",
+            "merlin_experiments.phase0.original_reference_requirements",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "independent-feature-arms": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,
