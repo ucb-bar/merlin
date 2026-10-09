@@ -16,8 +16,10 @@ from .frontend_original_call import call_contracts, default_value
 from .software_spec import validate_numerical_semantics
 
 FORM_SCHEMA = "merlin.original_conv2d_form.v1"
+MATMUL_FORM_SCHEMA = "merlin.original_matmul_form.v1"
 SOURCE_SCHEMA = "merlin.original_operator_source.v1"
 _FLOAT_DTYPES = {"float16": 16, "bfloat16": 16, "float32": 32, "float64": 64}
+_MATMUL_DTYPES = _FLOAT_DTYPES | {"int8": 8}
 
 
 def _argument(binding):
@@ -35,19 +37,20 @@ def _pair(value, *, positive):
     return value * 2 if len(value) == 1 else value
 
 
-def _tensor(binding, *, rank):
+def _tensor(binding, *, rank, dtypes=None):
+    dtypes = _FLOAT_DTYPES if dtypes is None else dtypes
     value = _argument(binding)
     if (
         not isinstance(value, dict)
         or value.get("kind") != "ssa"
         or value["value"]["kind"] != "tensor"
         or value["value"]["rank"] != rank
-        or value["value"]["dtype"] not in _FLOAT_DTYPES
+        or value["value"]["dtype"] not in dtypes
         or value["value"]["storage_dtype"] != value["value"]["dtype"]
         or value["value"]["layout"] != "torch.strided"
         or value["value"]["device"] != "cpu"
     ):
-        raise ValueError("conv2d source requires a complete direct strided CPU floating tensor binding")
+        raise ValueError("original source requires a complete direct strided CPU supported tensor binding")
     return value["value"]["dtype"]
 
 
@@ -125,10 +128,12 @@ def policy_compatibility(form, numerical_semantics):
     """Check selected policy types only, never issue numerical/correspondence proof."""
     try:
         if form["status"] != "supported":
-            raise ValueError("original conv2d form is unsupported")
+            raise ValueError("original operator form is unsupported")
+        if any(dtype not in _FLOAT_DTYPES for dtype in [*form["operand_dtypes"], *form["result_dtypes"]]):
+            raise ValueError("original integer source requires an independent arithmetic/overflow policy relation")
         policy = validate_numerical_semantics(copy.deepcopy(numerical_semantics))
         if policy["model"]["engine"] != "specir_fp_reduce":
-            raise ValueError("original floating conv2d cannot use an integer surrogate numerical engine")
+            raise ValueError("original floating source cannot use an integer surrogate numerical engine")
         if any(_dtype(dtype) != _dtype(policy["operand_dtype"]) for dtype in form["operand_dtypes"]) or any(
             _dtype(dtype) != _dtype(policy["readout_dtype"]) for dtype in form["result_dtypes"]
         ):
@@ -247,6 +252,111 @@ def conv2d_source(form, *, extent, max_tensor_elements):
         "class Model(torch.nn.Module):\n"
         f"    def forward(self, {signature}):\n"
         f"        return torch.ops.aten.conv2d.default({', '.join(arguments)})\n\n"
+        "def get_model_and_inputs():\n"
+        f"    return Model(), ({examples},)\n"
+    )
+    return OriginalOperatorSource(loader, json.dumps(metadata, sort_keys=True, allow_nan=False))
+
+
+def _matmul_types(call):
+    arguments = call["arguments"]
+    if (
+        call["target"] != "aten.matmul.default"
+        or [arg["name"] for arg in arguments] != ["self", "other"]
+        or [arg["type"] for arg in arguments] != ["Tensor", "Tensor"]
+        or any(arg["alias"] is not None for arg in arguments)
+        or len(call["schema_returns"]) != 1
+        or call["schema_returns"][0]["type"] != "Tensor"
+        or call["schema_returns"][0]["alias"] is not None
+        or len(call["result_roster"]) != 1
+        or call["result_arity"] != 1
+    ):
+        raise ValueError("matmul source has no exact complete direct Tensor schema/result roster")
+    dtypes = [_tensor(arg, rank=2, dtypes=_MATMUL_DTYPES) for arg in arguments]
+    if _argument(arguments[0])["value"]["id"] == _argument(arguments[1])["value"]["id"]:
+        raise ValueError("matmul source factory does not implement shared operand identity constraints")
+    result = call["result_roster"][0]
+    if (
+        result["kind"] != "tensor"
+        or result["rank"] != 2
+        or result["dtype"] != dtypes[0]
+        or dtypes[1] != dtypes[0]
+        or result["storage_dtype"] != result["dtype"]
+        or result["layout"] != "torch.strided"
+        or result["device"] != "cpu"
+    ):
+        raise ValueError("matmul original input/output dtype or rank is incompatible")
+    return dtypes, [result["dtype"]]
+
+
+def matmul_forms(trace, observation, defaults, *, numerical_semantics=None, zero_returns=None):
+    """Select rank-two original matmul, preserving signed i8 readout as i8.
+
+    These are ordinary source forms, not a widening contraction policy. No
+    reduction order, overflow domain or numerical correspondence is granted.
+    """
+    forms = []
+    for call in call_contracts(trace, observation, defaults, zero_returns=zero_returns):
+        if call["target"] != "aten.matmul.default":
+            continue
+        form = {
+            "form_schema": MATMUL_FORM_SCHEMA,
+            **call,
+            "source_numerical_semantics": copy.deepcopy(numerical_semantics),
+        }
+        try:
+            if call["status"] != "bound":
+                raise ValueError(call["reason"])
+            operands, results = _matmul_types(call)
+            form.update(status="supported", operand_dtypes=operands, result_dtypes=results, parameters={})
+        except (KeyError, TypeError, ValueError) as error:
+            form.update(status="unknown", reason=str(error))
+        forms.append(form)
+    return forms
+
+
+def matmul_source(form, *, extent, max_tensor_elements):
+    """Construct typed original matmul using independent bounded geometry."""
+    if (
+        not isinstance(form, dict)
+        or form.get("form_schema") != MATMUL_FORM_SCHEMA
+        or form.get("status") != "supported"
+        or type(extent) is not int
+        or extent < 1
+        or type(max_tensor_elements) is not int
+        or max_tensor_elements < 1
+    ):
+        raise ValueError("matmul source requires an actual supported form and explicit positive geometry/budget")
+    operands, results = _matmul_types(form)
+    if form["operand_dtypes"] != operands or form["result_dtypes"] != results or form["parameters"] != {}:
+        raise ValueError("matmul source changed the complete original type/argument/result binding")
+    dtype = results[0]
+    inputs = [
+        {"name": "X", "dtype": dtype, "shape": [extent, extent + 1]},
+        {"name": "W", "dtype": dtype, "shape": [extent + 1, extent + 2]},
+    ]
+    outputs = [{"name": "Y", "kind": "tensor", "dtype": dtype, "shape": [extent, extent + 2]}]
+    elements = sum(math.prod(row["shape"]) for row in [*inputs, *outputs])
+    if elements > max_tensor_elements:
+        raise ValueError("matmul source exceeds the explicit complete tensor-element budget before allocation")
+    metadata = {
+        "schema": SOURCE_SCHEMA,
+        "target": form["target"],
+        "inputs": inputs,
+        "outputs": outputs,
+        "parameters": {},
+        "source_numerical_semantics": copy.deepcopy(form["source_numerical_semantics"]),
+        "tensor_elements": elements,
+        "logical_payload_bytes": elements * (_MATMUL_DTYPES[dtype] // 8),
+        "scalar_products": math.prod(outputs[0]["shape"]) * (extent + 1),
+        "scope": "typed original-form source construction only; no numerical, operation-owner or hardware admission",
+    }
+    examples = ", ".join(f"torch.zeros({row['shape']!r}, dtype=torch.{dtype})" for row in inputs)
+    loader = (
+        "import torch\n\n"
+        "class Model(torch.nn.Module):\n"
+        "    def forward(self, X, W):\n"
+        "        return torch.ops.aten.matmul.default(X, W)\n\n"
         "def get_model_and_inputs():\n"
         f"    return Model(), ({examples},)\n"
     )

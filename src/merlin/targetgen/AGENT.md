@@ -260,7 +260,9 @@ against opt-in v2 native scalar and flat-list defaults. Historical v1 defaults
 retain their scalar-only vocabulary. Unsupported zero-return bridges preserve
 their original result slots as unknown. `original_operator_sources` constructs
 ordinary typed CPU floating conv2d sources with exact original arguments and
-independently bounded fresh geometry. Construction and declared policy dtype
+rank-two int8 or floating matmul sources retaining the original result dtype.
+Fresh geometry is independently bounded; original int8 matmul never acquires
+a widening contraction readout. Construction and declared policy dtype
 compatibility grant no numerical comparison, operation correspondence, coverage
 or hardware qualification; incompatible original policies remain unknown.
 
