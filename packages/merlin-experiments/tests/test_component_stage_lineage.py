@@ -94,6 +94,11 @@ def diagnostic_stage(tmp_path, monkeypatch):
     launch = CL.QualifiedComponentLaunch(inputs, tmp_path / "qualification.json", "4" * 64, "fixture", "low", object())
     monkeypatch.setattr(CL.QualifiedComponentLaunch, "verify", lambda self: None)
     monkeypatch.setattr(CL.ComponentLaunchInputs, "verify", lambda self, **kwargs: None)
+    # This routing fixture bypasses transport admission and never runs a tool.
+    # Real outer-sandbox/origin checks are exercised by the separate launch controls.
+    monkeypatch.setattr(
+        CL.ComponentLaunchInputs, "sandbox_binary", property(lambda self: Path("/diagnostic/outer-sandbox"))
+    )
     monkeypatch.setattr(CS, "ComponentOnlyPolicy", policy)
     monkeypatch.setattr(CS, "strict_tool_policy", lambda *args, **kwargs: ())
     monkeypatch.setattr(CS.SI, "prepare_component_prompt_inputs", lambda *args, **kwargs: {})

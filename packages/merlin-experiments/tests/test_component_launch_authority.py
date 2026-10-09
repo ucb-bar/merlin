@@ -64,6 +64,10 @@ def test_positive_assembly_reuses_issued_owners_without_running_a_compiler_or_au
     assert inputs.policy.baseline_admission is fixture.admission
     assert inputs.policy.independent_runtime is fixture.support
     assert inputs.policy.component_corpus is fixture.admission.corpus
+    assert inputs.sandbox_binary == fixture.origin.inputs.author_sandbox.source
+    assert inputs.sandbox_binary != next(
+        row.source for row in inputs.control_runtime if row.destination == "/usr/bin/bwrap"
+    )
     assert set(fixture.declaration.parent.iterdir()) == before | {fixture.declaration}
     assert not inputs.stage_root.exists()
     analytical = next(arguments for role, arguments in fixture.calls if role == "analytical")
@@ -76,6 +80,34 @@ def test_positive_assembly_reuses_issued_owners_without_running_a_compiler_or_au
         launch.load_component_launch_inputs(
             fixture.declaration, phase1_origin=fixture.origin, measurement_support=fixture.support,
         )
+
+
+@pytest.mark.parametrize("change", ["missing", "source", "destination", "control", "bytes", "origin"])
+def test_phase2_outer_sandbox_cannot_substitute_its_fresh_origin_selection(diagnostic_launch, change):
+    from dataclasses import replace
+
+    fixture = diagnostic_launch
+    inputs = launch.load_component_launch_inputs(
+        _write_diagnostic(fixture), phase1_origin=fixture.origin, measurement_support=fixture.support,
+    )
+    selected = fixture.origin.inputs.author_sandbox
+    if change == "missing":
+        fixture.origin.inputs.author_sandbox = None
+    elif change == "source":
+        cloned = selected.source.with_name("cloned-outer")
+        cloned.write_bytes(selected.source.read_bytes())
+        grants = tuple(replace(row, source=cloned) if row == selected else row for row in inputs.control_runtime)
+        inputs = replace(inputs, control_runtime=grants)
+    elif change == "destination":
+        fixture.origin.inputs.author_sandbox = replace(selected, destination="/usr/bin/bwrap")
+    elif change == "control":
+        inputs = replace(inputs, control_runtime=tuple(row for row in inputs.control_runtime if row != selected))
+    elif change == "bytes":
+        selected.source.write_text("changed outer bytes")
+    else:
+        inputs = replace(inputs, qualification=replace(inputs.qualification, compiler_origin=None))
+    with pytest.raises(StageGateError, match="sandbox|source bytes changed"):
+        inputs.sandbox_binary
 
 
 @pytest.mark.parametrize("field", ["candidate", "corpus", "view", "descriptor", "source_root", "contract_root",

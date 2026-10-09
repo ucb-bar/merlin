@@ -523,3 +523,8 @@ lifecycle and refusal sealing retain their original gates.
 `component_launch_probe` retains the fixed actual private-file/network-denial
 observation, with the reachable host listener and exact native marker. The
 existing launch qualifier alone consumes it; it issues no saved-report authority.
+
+`ComponentLaunchInputs.sandbox_binary` reopens the exact fresh compiler origin
+and inherits its explicitly pinned outer author sandbox. A nested tool helper's
+destination name cannot select the launcher; changed or incomplete original
+control membership refuses. Launch declarations cannot supply another owner.

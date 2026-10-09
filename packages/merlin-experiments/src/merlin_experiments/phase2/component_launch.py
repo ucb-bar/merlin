@@ -95,11 +95,20 @@ class ComponentLaunchInputs:
 
     @property
     def sandbox_binary(self) -> Path:
-        selected = [row for row in self.control_runtime if row.destination == "/usr/bin/bwrap"]
-        if len(selected) != 1:
-            raise C.StageGateError("component control closure must pin /usr/bin/bwrap")
-        selected[0].verify()
-        return selected[0].source
+        from merlin_experiments.phase1.component_origin import FreshCompilerOrigin
+
+        origin = self.qualification.compiler_origin
+        if type(origin) is not FreshCompilerOrigin:
+            raise C.StageGateError("component outer sandbox requires its exact fresh Phase 1 origin")
+        origin.verify(candidate=self.edit_authority.seed)
+        selected = origin.inputs.author_sandbox
+        if type(selected) is not RuntimeGrant:
+            raise C.StageGateError("component launch lacks the original explicitly pinned outer sandbox")
+        selected.verify()
+        matches = [row for row in self.control_runtime if row.destination == selected.destination]
+        if self.control_runtime != origin.inputs.control_runtime or matches != [selected]:
+            raise C.StageGateError("component outer sandbox differs from its exact fresh authoring closure")
+        return selected.source
 
     def verify(self, *, require_baseline: bool = False) -> None:
         self.verify_ipc_path()

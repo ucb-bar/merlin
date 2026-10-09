@@ -75,7 +75,7 @@ def diagnostic_launch(package, short_ipc_directory, monkeypatch):
     tools = root / "tools"
     tools.mkdir()
     grants = []
-    for name in ("bwrap", "codex", "python3"):
+    for name in ("bwrap", "author-bwrap", "codex", "python3"):
         path = tools / name
         path.write_text("# diagnostic executable bytes\n")
         grants.append(RuntimeGrant(path, "/usr/bin/" + name, sha256_file(path)))
@@ -91,6 +91,9 @@ def diagnostic_launch(package, short_ipc_directory, monkeypatch):
     fresh_inputs = SimpleNamespace(execution_support=functional, hardware=hardware, runtime=grants,
                                    control_runtime=grants, codex_binary=tools / "codex",
                                    codex_destination="/usr/bin/codex",
+                                   author_sandbox=next(
+                                       row for row in grants if row.destination == "/usr/bin/author-bwrap"
+                                   ),
                                    auth_source=auth, target_experiment=target, output=root / "fresh-evidence")
     origin = _unissued(FreshCompilerOrigin, inputs=fresh_inputs, candidate=authority.seed,
                        receipt_sha256=identity, _issuer=object())
