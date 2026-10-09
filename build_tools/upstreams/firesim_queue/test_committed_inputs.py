@@ -52,6 +52,13 @@ def queue(tmp_path, monkeypatch):
         check=True,
         capture_output=True,
     )
+    subprocess.run(
+        ["/usr/bin/patch", "--batch", "--fuzz=0", "-p1", "-i", str(OWNER / "deployment-overlay.patch")],
+        cwd=install,
+        check=True,
+        capture_output=True,
+    )
+    assert digest(install / "firesim_queue.py") == "2caf88d819c5c58bd84f2c8dcc3cd8d722f1c9bb5b28a60bb7326c469cdc6c42"
     shutil.copyfile(REPO / "src/merlin/common/pinned_files.py", install / "pinned_files.py")
     monkeypatch.setenv("FIRESIM_QUEUE_ROOT", str(tmp_path / "queue"))
     monkeypatch.setenv("FIRESIM_QUEUE_HWDB_SNAPSHOT_ROOT", str(tmp_path / "private"))

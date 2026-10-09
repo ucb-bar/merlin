@@ -1,0 +1,27 @@
+--- a/firesim_queue.py
++++ b/firesim_queue.py
+@@ -1886,0 +1887,14 @@
++    # The public CLI and platform utilities resolve ../platforms from deploy.
++    # Preserve that original sibling under the private overlay parent.
++    platform_source = (deploy.parent / "platforms").resolve(strict=True)
++    if not platform_source.is_dir():
++        raise RuntimeError("FireSim platform source sibling is not a directory")
++    platform_destination = workdir / "platforms"
++    if platform_destination.is_symlink():
++        if platform_destination.resolve(strict=True) != platform_source:
++            raise RuntimeError("FireSim overlay platform sibling identity differs")
++    elif platform_destination.exists():
++        raise RuntimeError("FireSim overlay platform sibling already exists")
++    else:
++        platform_destination.symlink_to(platform_source, target_is_directory=True)
++
+@@ -1888 +1902 @@
+-    private = {"workloads", "logs", "results-workload"}
++    private = {"workloads", "logs", "results-workload", "generated-topology-diagrams"}
+@@ -1892 +1906 @@
+-    for name in ("logs", "results-workload"):
++    for name in ("logs", "results-workload", "generated-topology-diagrams"):
+@@ -2053 +2067,2 @@
+-            f"firesim -c {per_yaml} {hwdb_arg}{sub}"
++            f"{shlex.quote(str(run_dir / 'firesim')) if run_dir != deploy else 'firesim'} "
++            f"-c {per_yaml} {hwdb_arg}{sub}"
