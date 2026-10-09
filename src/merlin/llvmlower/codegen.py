@@ -10,7 +10,7 @@ from merlin.common import compile_trace
 from merlin.common import proc as _proc
 from merlin.common.paths import runtime_dir
 
-from .toolchain import clang
+from .toolchain import clang, host_llc
 
 # A bounded per-compile wall clock. A pathological schedule (e.g. an outer-product contraction at a
 # large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a
@@ -71,8 +71,14 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
     if not outputs:
         _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
         return
-    with invocation_record.observe(Path(outputs[0]).parent, stage="object", argv=cmd,
-                                   inputs=inputs, outputs=outputs, dependencies=(Path(__file__),)) as record:
+    with invocation_record.observe(
+        Path(outputs[0]).parent,
+        stage="object",
+        argv=cmd,
+        inputs=inputs,
+        outputs=outputs,
+        dependencies=(Path(__file__),),
+    ) as record:
         result = _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
         record.complete(result)
 
@@ -87,8 +93,12 @@ def compile_ll(
 ) -> Path:
     """Compile LLVM IR, optionally under a tighter per-call diagnostic limit."""
     flags = RISCV_FLAGS if target == "riscv" else X86_FLAGS
-    _run([clang(), *flags, *extra_flags, "-c", ll_path, "-o", out_obj], timeout_s=timeout_s,
-         inputs=(ll_path,), outputs=(out_obj,))
+    _run(
+        [clang(), *flags, *extra_flags, "-c", ll_path, "-o", out_obj],
+        timeout_s=timeout_s,
+        inputs=(ll_path,),
+        outputs=(out_obj,),
+    )
     compile_trace.artifact("object", [out_obj], pipeline="codegen")
     return Path(out_obj)
 
@@ -102,7 +112,15 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     out_so = Path(out_so)
     model_o = out_so.with_suffix(".o")
     rt_o = out_so.with_name("mlir_runtime_host.o")
-    _run([clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o])
+    selected_llc = host_llc()
+    if selected_llc is None:
+        _run([clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o])
+    else:
+        _run(
+            [selected_llc, "-O2", "-filetype=obj", "-relocation-model=pic", ll_path, "-o", model_o],
+            inputs=(ll_path,),
+            outputs=(model_o,),
+        )
     compile_trace.artifact("object", [model_o], pipeline="codegen")
     _run(["cc", "-O2", "-fPIC", "-c", str(mlir_runtime_c()), "-o", rt_o])
     _run(["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so])

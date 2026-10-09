@@ -102,6 +102,17 @@ def clang() -> Path:
     return _resolve_clang(llvm_install(), _env, _iree_bin)
 
 
+def host_llc() -> Path | None:
+    """An explicit LLVM IR object producer for the host shared-library path.
+
+    No selection keeps the historical clang compilation. A selected missing
+    tool is an error when invoked, never permission to discover another tool.
+    C-runtime compilation and shared-library linking retain their own tools.
+    """
+    selected = _env("MERLIN_LLVM_LLC")
+    return Path(selected) if selected else None
+
+
 def clang_for(root: Path, environ: Mapping[str, str]) -> Path:
     """What :func:`clang` answers in a process rooted at checkout ``root`` with ``environ``.
 
