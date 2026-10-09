@@ -255,6 +255,15 @@ result dtype; int8 addition never inherits a contraction's int32 accumulator.
 The fixed native `torch_schema_defaults_observer` observes defaults only.
 These source premises grant no numerical domain, purity or target support.
 
+`frontend_original_call` binds the complete original argument/result roster
+against opt-in v2 native scalar and flat-list defaults. Historical v1 defaults
+retain their scalar-only vocabulary. Unsupported zero-return bridges preserve
+their original result slots as unknown. `original_operator_sources` constructs
+ordinary typed CPU floating conv2d sources with exact original arguments and
+independently bounded fresh geometry. Construction and declared policy dtype
+compatibility grant no numerical comparison, operation correspondence, coverage
+or hardware qualification; incompatible original policies remain unknown.
+
 - `toy_npu` is the bundled reference target. Generated skeletons and support plugins are not
   qualified compiler submissions; consult target contracts and qualification records for status.
 

@@ -6,10 +6,12 @@ from .frontend_operator_effects import _argument_values
 from .frontend_use_def import original_use_def_semantics
 
 
-def defaults_request(trace, observation):
+def defaults_request(trace, observation, *, version=1):
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("original defaults require an explicitly supported request version")
     relation = original_use_def_semantics(trace)
     return {
-        "schema": "merlin.original_schema_defaults_request.v1",
+        "schema": "merlin.original_schema_defaults_request.v" + str(version),
         "graph_sha256": relation.graph_sha256,
         "rows": [
             {"target": row["target"], "schema": row["schema"]}
