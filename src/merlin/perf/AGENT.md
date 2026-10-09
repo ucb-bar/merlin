@@ -32,6 +32,12 @@ extents. Counts are before native optimization. They are neither executed
 instruction counts nor physical traffic, staging, capacity or cycle features.
 Unsupported bodies refuse; experiments owns actual compile-consumption joins.
 
+`component_measurement_stream` checks one bounded, explicitly ordered raw event
+frame containing every original complete-cost stage. Counter wrap and control
+changes are retained. Event labels do not establish actual stage boundaries;
+there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
+timer, observer, resource, runtime and held qualification remain independent.
+
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
 qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,

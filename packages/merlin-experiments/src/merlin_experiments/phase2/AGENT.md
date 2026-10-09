@@ -615,3 +615,19 @@ deadline, process isolation or cleanup guarantee. The existing analytical featur
 provider may still require execution; static counts need independent qualification
 before this route can avoid that cost. Direct source-file pins are not transitive
 dependency, callback bytecode or simulator/runtime semantic qualification.
+
+`component_measurement_execution` invokes the existing ordinary source/build/full
+numerical path for one fresh compiler arm, then reopens exact selected source,
+LLVM/object/link/ELF/support, actual process console and ordered raw stage events.
+Full explicit native environment mappings are checked against actual invocations;
+returned products retain only identities and key rosters, withholding values.
+Original input trees are selected before execution. The fixed consumer reparses
+the actual full serial stream, rederives the original ABI/input projection and
+recomputes the complete original numerical comparison. Edited saved outputs,
+metrics or reports cannot replace those products. Coherent-memory consumption
+is unsupported in this raw serial slice and requires its separate original owner.
+Bounded reads precede decoding. Missing/moved events refuse accounting even when
+original outputs match. Source-produced labels and raw getters cannot certify
+actual complete-cost boundaries, cold/warm state, timer integrity, runtime14,
+stage11, measurement14 or held ranking/error/coverage. OOT support owns those
+semantics; this data-only collector supplies no issuer or author grant.
