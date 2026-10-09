@@ -1,0 +1,29 @@
+{
+  "new_files": [
+    "deploy/util/local_transport.py"
+  ],
+  "original_modified_files": [
+    {
+      "path": "deploy/runtools/firesim_topology_with_passes.py",
+      "sha256": "5bf648c57ed97cd7e7e77f80abe57b7cdff29e66734ebfd048cc88cbf01b98d9"
+    },
+    {
+      "path": "deploy/runtools/run_farm.py",
+      "sha256": "9eba804cf98b04c9c6cec5d84232afb3cf78d182c8028279002bc0ecbed00078"
+    },
+    {
+      "path": "deploy/runtools/run_farm_deploy_managers.py",
+      "sha256": "f4b7f30919dad11dc6a902440bc4fce5dc56f86725090edb507ae840342d2acd"
+    },
+    {
+      "path": "deploy/runtools/runtime_config.py",
+      "sha256": "ac825d8cb358201ca5bb2048b0b2c36e4bc545dfce1d32e41e4607e65d44bc32"
+    },
+    {
+      "path": "deploy/runtools/utils.py",
+      "sha256": "52f238afef68a11b7f3edbee4a440b1e444260cdd56acb4917c198afddfd6115"
+    }
+  ],
+  "public_commit": "b084672c2f8cf32e55d78f73a001074c23f8a2b8",
+  "scope": "patch source-byte precondition only; no manager/dependency/runtime authority"
+}

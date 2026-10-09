@@ -1,0 +1,322 @@
+--- a/deploy/runtools/firesim_topology_with_passes.py
++++ b/deploy/runtools/firesim_topology_with_passes.py
+@@ -9,7 +9,8 @@
+ import datetime
+ import sys
+ import yaml
+-from fabric.api import env, parallel, execute, run, local, warn_only  # type: ignore
++from fabric.api import env, parallel, execute, local, warn_only  # type: ignore
++from util.local_transport import run
+ from colorama import Fore, Style  # type: ignore
+ from functools import reduce
+ from tempfile import TemporaryDirectory
+--- a/deploy/runtools/run_farm.py
++++ b/deploy/runtools/run_farm.py
+@@ -6,8 +6,8 @@
+ import abc
+ import os
+ from datetime import timedelta
+-from fabric.api import run, env, prefix, put, cd, warn_only, local, settings, hide  # type: ignore
+-from fabric.contrib.project import rsync_project  # type: ignore
++from fabric.api import env, prefix, cd, warn_only, local, settings, hide  # type: ignore
++from util.local_transport import run, put, rsync_project, configure_host
+ from os.path import join as pjoin
+ import pprint
+ from collections import defaultdict
+@@ -759,6 +759,7 @@
+                 self.metasimulation_enabled,
+             )
+             inst.set_host(ip_addr)
++            configure_host(inst, host_spec)
+             assert (
+                 not ip_addr in self.run_farm_hosts_dict
+             ), f"Duplicate host name found in 'run_farm_hosts': {ip_addr}"
+--- a/deploy/runtools/run_farm_deploy_managers.py
++++ b/deploy/runtools/run_farm_deploy_managers.py
+@@ -6,8 +6,8 @@
+ import logging
+ import abc
+ import json
+-from fabric.api import prefix, local, run, env, cd, warn_only, put, settings, hide  # type: ignore
+-from fabric.contrib.project import rsync_project  # type: ignore
++from fabric.api import prefix, local, env, cd, warn_only, settings, hide  # type: ignore
++from util.local_transport import run, put, rsync_project
+ from os.path import join as pjoin
+ import os
+ from pathlib import Path
+--- a/deploy/runtools/runtime_config.py
++++ b/deploy/runtools/runtime_config.py
+@@ -12,8 +12,8 @@
+ import os
+ import sys
+ from fabric.operations import _stdoutString  # type: ignore
+-from fabric.api import prefix, settings, local, run  # type: ignore
+-from fabric.contrib.project import rsync_project  # type: ignore
++from fabric.api import prefix, settings, local  # type: ignore
++from util.local_transport import run, rsync_project, bind_run_farm
+ from os.path import join as pjoin
+ from os.path import basename, expanduser
+ from pathlib import Path
+@@ -1176,6 +1176,8 @@
+             self.innerconf.default_plusarg_passthrough,
+         )
+ 
++        bind_run_farm(self.run_farm)
++
+     def launch_run_farm(self) -> None:
+         """directly called by top-level launchrunfarm command."""
+         self.run_farm.launch_run_farm()
+--- a/deploy/runtools/utils.py
++++ b/deploy/runtools/utils.py
+@@ -8,7 +8,8 @@
+ from os import fspath
+ from os.path import realpath
+ from pathlib import Path
+-from fabric.api import run, warn_only, hide, get, local, settings  # type: ignore
++from fabric.api import warn_only, hide, local, settings  # type: ignore
++from util.local_transport import run, get
+ import hashlib
+ from tempfile import TemporaryDirectory
+ 
+--- /dev/null
++++ b/deploy/util/local_transport.py
+@@ -0,0 +1,239 @@
++"""Explicit local manager commands; default hosts retain Fabric SSH dispatch.
++
++This is trusted operator transport, not a sandbox or hardware qualification.
++Local commands use a declared environment and a noninteractive Bash without
++startup files. PTYs, stdin/stream callbacks and credentialed transfers refuse.
++The command timeout bounds the direct process only, not descendant ownership.
++"""
++
++import math
++import shlex
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++from fabric import api as ssh
++from fabric.contrib.project import rsync_project as ssh_rsync
++from fabric.operations import _prefix_commands, _prefix_env_vars, _stdoutString
++from fabric.state import output
++
++_farm = None
++_hosts = {}
++
++
++def configure_host(instance, specification):
++    from runtools.run_farm import Inst
++
++    if type(instance) is not Inst:
++        raise TypeError("local transport requires the original manager host object")
++    mode = specification.get("command_transport", "ssh")
++    if mode not in ("ssh", "local"):
++        raise ValueError("unsupported command transport")
++    selection = None
++    if mode == "local":
++        if instance.get_host() != "localhost":
++            raise ValueError("local command transport requires literal localhost")
++        environment = specification.get("local_command_environment")
++        deadline = specification.get("local_command_timeout_seconds")
++        if (
++            type(environment) is not dict
++            or not {"PATH", "HOME"}.issubset(environment)
++            or any(
++                type(key) is not str or type(value) is not str or not key or "=" in key or "\0" in key or "\0" in value
++                for key, value in environment.items()
++            )
++            or set(environment).intersection({"BASH_ENV", "ENV", "SSH_AUTH_SOCK", "SSH_AGENT_PID"})
++        ):
++            raise ValueError("local commands require an explicit noncredentialed environment")
++        if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline <= 0:
++            raise ValueError("local commands require a positive finite direct-process timeout")
++        selection = (tuple(sorted(environment.items())), float(deadline))
++    elif "local_command_environment" in specification or "local_command_timeout_seconds" in specification:
++        raise ValueError("local command settings require explicit local transport")
++    instance._local_command_selection = selection
++    if selection is not None:
++        instance.run_farm._local_command_transport_requested = True
++
++
++def bind_run_farm(farm):
++    global _farm, _hosts
++    if not getattr(farm, "_local_command_transport_requested", False):
++        _farm, _hosts = None, {}
++        return
++    hosts = {}
++    for instance in farm.get_all_bound_host_nodes():
++        if getattr(instance, "_local_command_selection", None) is not None:
++            if instance.get_host() != "localhost" or instance.get_host() in hosts:
++                raise ValueError("local manager host membership is unsupported or duplicated")
++            hosts[instance.get_host()] = (instance, instance._local_command_selection)
++    _farm, _hosts = farm, hosts
++
++
++def _selection():
++    if _hosts:
++        bound = _farm.get_all_bound_host_nodes()
++        if not any(instance.get_host() == ssh.env.host_string for instance in bound):
++            raise ValueError("local transport invocation is absent from the original run-farm host roster")
++    selected = _hosts.get(ssh.env.host_string)
++    if selected is None:
++        return None
++    instance, selection = selected
++    if (
++        _farm.lookup_by_host(ssh.env.host_string) is not instance
++        or instance not in _farm.get_all_bound_host_nodes()
++        or instance.get_host() != "localhost"
++        or instance._local_command_selection != selection
++    ):
++        raise ValueError("original local manager host membership or selection changed")
++    return dict(selection[0]), selection[1]
++
++
++def _result(command, actual, completed, *, warn_only=False, quiet=False):
++    out = _stdoutString((completed.stdout or b"").decode("utf-8", errors="strict").rstrip("\r\n"))
++    out.stderr = (completed.stderr or b"").decode("utf-8", errors="strict").rstrip("\r\n")
++    out.return_code = completed.returncode
++    out.failed = completed.returncode not in ssh.env.ok_ret_codes
++    out.succeeded = not out.failed
++    out.command, out.real_command = command, actual
++    if not quiet:
++        if out and output.stdout:
++            print(out)
++        if out.stderr and output.stderr:
++            print(out.stderr, file=sys.stderr)
++    if out.failed and not (warn_only or quiet or ssh.env.warn_only):
++        raise RuntimeError(f"local manager command returned {out.return_code}: {command}")
++    return out
++
++
++def run(command, *args, **kwargs):
++    selection = _selection()
++    if selection is None:
++        return ssh.run(command, *args, **kwargs)
++    if args or type(command) is not str:
++        raise ValueError("unsupported local command signature")
++    supported = {"shell", "pty", "combine_stderr", "quiet", "warn_only", "timeout"}
++    if set(kwargs) - supported or kwargs.get("pty", False) or kwargs.get("shell", True) is not True:
++        raise ValueError("unsupported local command terminal, stream or shell semantics")
++    environment, deadline = selection
++    requested = kwargs.get("timeout", deadline)
++    if type(requested) not in (int, float) or not math.isfinite(requested) or requested <= 0:
++        raise ValueError("local direct-process timeout must be positive and finite")
++    combined = kwargs.get("combine_stderr", True)
++    if combined is None:
++        combined = ssh.env.combine_stderr
++    wrapped = _prefix_env_vars(_prefix_commands(command, "remote"))
++    argv = ["/bin/bash", "--noprofile", "--norc", "-c", wrapped]
++    completed = subprocess.run(
++        argv,
++        env=environment,
++        stdin=subprocess.DEVNULL,
++        stdout=subprocess.PIPE,
++        stderr=subprocess.STDOUT if combined else subprocess.PIPE,
++        timeout=min(deadline, requested),
++        check=False,
++    )
++    return _result(
++        command, shlex.join(argv), completed, warn_only=kwargs.get("warn_only", False), quiet=kwargs.get("quiet", False)
++    )
++
++
++class _Transfer(list):
++    failed = False
++    succeeded = True
++
++
++def _path(value, *, remote=False):
++    if type(value) is not str or not value or any(token in value for token in ("\0", "\n", ":", "~", "*", "?", "[")):
++        raise ValueError("local file transfer requires one explicit local path")
++    path = Path(value)
++    if remote and not path.is_absolute() and ssh.env.cwd:
++        directories = shlex.split(ssh.env.cwd)
++        if len(directories) != 1:
++            raise ValueError("unsupported local transfer directory context")
++        path = Path(directories[0]) / path
++    return path
++
++
++def _copy(source, destination, *, mirror_local_mode=False, mode=None):
++    if type(mirror_local_mode) is not bool or (
++        mode is not None and (type(mode) is not int or mode < 0 or mode > 0o777)
++    ):
++        raise ValueError("unsupported local transfer mode")
++    if not source.is_file() or source.is_symlink():
++        raise ValueError("local transfer source must be one regular file")
++    if destination.is_dir():
++        destination = destination / source.name
++    if destination.is_symlink():
++        raise ValueError("local transfer destination aliases a different file")
++    shutil.copyfile(source, destination)
++    if mirror_local_mode:
++        shutil.copymode(source, destination)
++    if mode is not None:
++        destination.chmod(mode)
++    return _Transfer([str(destination)])
++
++
++def get(remote_path, local_path=None, *args, **kwargs):
++    if _selection() is None:
++        return ssh.get(remote_path, local_path, *args, **kwargs)
++    if args or kwargs or local_path is None:
++        raise ValueError("unsupported local get signature")
++    return _copy(_path(remote_path, remote=True), _path(local_path))
++
++
++def put(local_path=None, remote_path=None, *args, **kwargs):
++    if _selection() is None:
++        return ssh.put(local_path, remote_path, *args, **kwargs)
++    if args or set(kwargs) - {"mirror_local_mode", "mode"} or local_path is None or remote_path is None:
++        raise ValueError("unsupported local put signature")
++    return _copy(_path(local_path), _path(remote_path, remote=True), **kwargs)
++
++
++def rsync_project(
++    remote_dir,
++    local_dir=None,
++    exclude=(),
++    delete=False,
++    extra_opts="",
++    ssh_opts="",
++    capture=False,
++    upload=True,
++    default_opts="-pthrvz",
++):
++    selection = _selection()
++    if selection is None:
++        return ssh_rsync(remote_dir, local_dir, exclude, delete, extra_opts, ssh_opts, capture, upload, default_opts)
++    if local_dir is None or default_opts != "-pthrvz" or ssh_opts not in ("", "-o StrictHostKeyChecking=no"):
++        raise ValueError("unsupported local rsync selection")
++    extra = shlex.split(extra_opts)
++    if any(option not in ("-L", "-p", "--inplace", "-z") for option in extra):
++        raise ValueError("unsupported local rsync option")
++    environment, deadline = selection
++    tool = shutil.which("rsync", path=environment["PATH"])
++    if tool is None:
++        raise RuntimeError("selected local environment has no rsync")
++    if isinstance(exclude, str):
++        exclude = (exclude,)
++    argv = [tool, default_opts, *extra]
++    if delete:
++        argv.append("--delete")
++    for item in exclude:
++        if type(item) is not str or "\0" in item:
++            raise ValueError("unsupported local rsync exclusion")
++        argv.extend(("--exclude", item))
++    # Keep trailing slashes, whose semantics are implemented by stock rsync.
++    _path(local_dir)
++    if not _path(remote_dir).is_absolute() or ssh.env.command_prefixes or ssh.env.lcwd:
++        raise ValueError("local rsync requires an absolute destination without shell prefix context")
++    source, destination = (local_dir, remote_dir) if upload else (remote_dir, local_dir)
++    argv.extend(("--", source, destination))
++    completed = subprocess.run(
++        argv,
++        env=environment,
++        stdin=subprocess.DEVNULL,
++        capture_output=True,
++        timeout=deadline,
++        check=False,
++    )
++    return _result(shlex.join(argv), shlex.join(argv), completed)
