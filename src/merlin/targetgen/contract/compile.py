@@ -554,13 +554,15 @@ def link_elf(
         harness = _render(cb, **kwargs, **blob_kwargs, **policy_kwargs)
     else:
         _explicit_prepack_inputs(inputs, prepack_authorizations)
-    if _compact_caller is None and prepack_authorizations is None and _build_service is None:
-        inputs = inputs or _recorded_operands(cb) or None
+    # Preserve an explicitly empty source-input roster; only absent input data
+    # may use the historical recorded-operand fallback.
+    if _compact_caller is None and prepack_authorizations is None and _build_service is None and inputs is None:
+        inputs = _recorded_operands(cb)
     if _compile_only_linkage is not None:
         pass
     elif _compact_caller is not None:
         pass
-    elif inputs or prepack_authorizations is not None:
+    elif inputs is not None or prepack_authorizations is not None:
         if not _accepts_keyword(_render, "inputs"):
             raise NotImplementedError(
                 f"backend for target {target!r} declares a render_harness that cannot take `inputs`, so "
@@ -878,7 +880,8 @@ def compile_lowered_to_elf(
         return link_elf(cb, obj, work, target=target, inputs=inputs, warm_profile=warm_profile)
     # Coalesced ONCE. The harness embeds these operands, so a key computed from the caller's argument
     # while the build used the recorded ones would key two different executables the same way.
-    inputs = inputs or _recorded_operands(cb) or None
+    if inputs is None:
+        inputs = _recorded_operands(cb)
     try:
         key = _bc.build_identity(
             target=target,

@@ -3,22 +3,23 @@
 Only trusted host adapters construct these objects. A serialized candidate
 request is not a renderer, recipe, or filesystem authorization.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import importlib.util
 import inspect
-from pathlib import Path
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
-from typing import Callable
 
 
 def file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
-        while chunk := stream.read(1024*1024):
+        while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -75,6 +76,7 @@ class BuildOnlyService:
     reference or emulator. Source pins are obligations supplied by the trusted
     adapter; they do not grant paths to a sandbox or qualify emitted numerics.
     """
+
     target: str
     recipe: object
     renderer: Callable
@@ -82,19 +84,26 @@ class BuildOnlyService:
 
     def verify(self, target: str) -> None:
         from .build_recipe import HarnessBuildRecipe
-        if (type(self) is not BuildOnlyService or self.target != target
-                or type(self.recipe) is not HarnessBuildRecipe or not callable(self.renderer)
-                or not self.source_pins or len(dict(self.source_pins)) != len(self.source_pins)):
+
+        if (
+            type(self) is not BuildOnlyService
+            or self.target != target
+            or type(self.recipe) is not HarnessBuildRecipe
+            or not callable(self.renderer)
+            or not self.source_pins
+            or len(dict(self.source_pins)) != len(self.source_pins)
+        ):
             raise ValueError("build-only service must be a typed target-bound host capability")
         for path, expected in self.source_pins:
             item = Path(path)
-            if (not item.is_absolute() or item.resolve() != item or not item.is_file()
-                    or file_digest(item) != expected):
+            if not item.is_absolute() or item.resolve() != item or not item.is_file() or file_digest(item) != expected:
                 raise ValueError("build-only source/tool pin changed: " + str(path))
 
     def render(self, cb, *, target, inputs, warm_profile=None, readback_policy=None, blobs=None):
         self.verify(target)
-        if inputs is None or not isinstance(inputs, dict) or not inputs:
+        # An explicit empty map denotes a zero-input program. Its renderer must
+        # still check the complete argument/output boundary against that map.
+        if not isinstance(inputs, dict):
             raise ValueError("build-only service requires explicit logical inputs")
         kwargs = {"inputs": inputs}
         # A generic **kwargs forwarding wrapper is not proof that the PURE

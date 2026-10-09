@@ -83,6 +83,9 @@ tensor storage, rendering numerical readback or executing the ELF. The shared
 linker accepts it only with an explicit pure build service and no input values,
 packing, warm profile or readback authority. Link success proves no output-store,
 index, resource, numerical or physical obligation.
+An explicit empty original input tuple or logical input map represents a zero-input
+program; it is distinct from absent input data. The original output roster stays
+nonempty and complete, with every output pointer and tensor type checked.
 
 `pointer_storage` declares original logical pointer storage only from explicit
 software choices and original static tensor types. No contiguous/noalias/order,

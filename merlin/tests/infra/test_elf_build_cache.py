@@ -119,6 +119,17 @@ def test_identical_inputs_give_one_key(key_of):
     assert key_of() is not None and key_of() == key_of()
 
 
+def test_explicit_zero_input_roster_does_not_reuse_an_absent_input_build(key_of, store, tmp_path):
+    absent, explicit = key_of(inputs=None), key_of(inputs={})
+    assert absent is not None and explicit is not None and absent != explicit
+    work = tmp_path / "built"
+    _build(work)
+    BC.store(absent, work, ELF)
+    assert BC.reuse(tmp_path / "zero_input", explicit, ELF) is None
+    assert not (tmp_path / "zero_input" / ELF).exists()
+    assert BC.reuse(tmp_path / "same_absent", absent, ELF) is not None
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

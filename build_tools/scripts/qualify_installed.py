@@ -99,6 +99,7 @@ SUITES = {
             "targetgen/test_stack_frame_preflight.py",
             "targetgen/test_explicit_execution_service.py",
             "infra/test_build_only_service.py",
+            "targetgen/test_zero_input_abi.py",
         ),
         "tests_root": "merlin/tests",
         "tests": (
@@ -108,6 +109,8 @@ SUITES = {
             "targetgen/test_stack_frame_preflight.py",
             "targetgen/test_explicit_execution_service.py",
             "infra/test_build_only_service.py",
+            "targetgen/test_zero_input_abi.py",
+            "infra/test_elf_build_cache.py",
         ),
         "core_extras": ("xdsl", "targetgen"),
         "probe_modules": (

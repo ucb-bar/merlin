@@ -37,14 +37,18 @@ class CompileOnlyTensor:
 
 @dataclass(frozen=True)
 class CompileOnlySourceAbi:
-    """Immutable original input/output roster; a declaration, not proof authority."""
+    """Immutable original roster, including zero inputs; not proof authority."""
 
     inputs: tuple[CompileOnlyTensor, ...]
     outputs: tuple[CompileOnlyTensor, ...]
 
     def record(self):
-        for slots in (self.inputs, self.outputs):
-            if type(slots) is not tuple or not slots or any(type(slot) is not CompileOnlyTensor for slot in slots):
+        for role, slots in (("input", self.inputs), ("output", self.outputs)):
+            if (
+                type(slots) is not tuple
+                or (role == "output" and not slots)
+                or any(type(slot) is not CompileOnlyTensor for slot in slots)
+            ):
                 raise ValueError("compile-only source ABI needs complete immutable input/output slots")
             if len({slot.name for slot in slots}) != len(slots):
                 raise ValueError("compile-only source ABI repeats an original input/output")

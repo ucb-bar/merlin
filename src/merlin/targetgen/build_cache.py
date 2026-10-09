@@ -448,7 +448,7 @@ def build_identity(
             "target": target,
             "program_sha256": hashlib.sha256(lowered_mlir_text.encode("utf-8")).hexdigest(),
             "command_buffer": _digest_of(cb),
-            "inputs": _digest_of(inputs) if inputs else "",
+            "inputs": _digest_of(inputs) if inputs is not None else "",
             "recipe": recipe_rec,
             "toolchain": tool,
             "build_path": _build_path_digest(files),
