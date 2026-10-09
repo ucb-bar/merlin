@@ -17,6 +17,7 @@ from .software_spec import validate_numerical_semantics
 
 FORM_SCHEMA = "merlin.original_conv2d_form.v1"
 MATMUL_FORM_SCHEMA = "merlin.original_matmul_form.v1"
+ADD_FORM_SCHEMA = "merlin.original_add_form.v1"
 SOURCE_SCHEMA = "merlin.original_operator_source.v1"
 _FLOAT_DTYPES = {"float16": 16, "bfloat16": 16, "float32": 32, "float64": 64}
 _MATMUL_DTYPES = _FLOAT_DTYPES | {"int8": 8}
@@ -357,6 +358,126 @@ def matmul_source(form, *, extent, max_tensor_elements):
         "class Model(torch.nn.Module):\n"
         "    def forward(self, X, W):\n"
         "        return torch.ops.aten.matmul.default(X, W)\n\n"
+        "def get_model_and_inputs():\n"
+        f"    return Model(), ({examples},)\n"
+    )
+    return OriginalOperatorSource(loader, json.dumps(metadata, sort_keys=True, allow_nan=False))
+
+
+def _add_types(call):
+    arguments = call["arguments"]
+    if (
+        call["target"] != "aten.add.Tensor"
+        or [arg["name"] for arg in arguments] != ["self", "other", "alpha"]
+        or [arg["type"] for arg in arguments[:2]] != ["Tensor", "Tensor"]
+        or arguments[2]["type"] not in {"number", "Scalar"}
+        or any(arg["alias"] is not None for arg in arguments)
+        or len(call["schema_returns"]) != 1
+        or call["schema_returns"][0]["type"] != "Tensor"
+        or call["schema_returns"][0]["alias"] is not None
+        or len(call["result_roster"]) != 1
+        or call["result_arity"] != 1
+    ):
+        raise ValueError("add source has no exact complete direct Tensor schema/result roster")
+    alpha = _argument(arguments[2])
+    if type(alpha) is not int or alpha != 1:
+        raise ValueError("original add source requires exact integer unit alpha")
+    dtypes = [_tensor(arg, rank=2, dtypes=_MATMUL_DTYPES) for arg in arguments[:2]]
+    if _argument(arguments[0])["value"]["id"] == _argument(arguments[1])["value"]["id"]:
+        raise ValueError("add source factory does not implement shared operand identity constraints")
+    result = call["result_roster"][0]
+    if (
+        result["kind"] != "tensor"
+        or result["rank"] != 2
+        or result["dtype"] != dtypes[0]
+        or dtypes[1] != dtypes[0]
+        or result["storage_dtype"] != result["dtype"]
+        or result["layout"] != "torch.strided"
+        or result["device"] != "cpu"
+    ):
+        raise ValueError("add original input/output dtype or rank is incompatible")
+    return dtypes, [result["dtype"]]
+
+
+def original_add_forms(trace, observation, defaults, *, numerical_semantics=None, zero_returns=None):
+    """Bind typed original equal-shape add independently from numeric admission."""
+    values = {value["id"]: value for node in trace["graphs"]["original"]["nodes"] for value in node["results"]}
+    forms = []
+    for call in call_contracts(trace, observation, defaults, zero_returns=zero_returns):
+        if call["target"] != "aten.add.Tensor":
+            continue
+        form = {
+            "form_schema": ADD_FORM_SCHEMA,
+            **call,
+            "source_numerical_semantics": copy.deepcopy(numerical_semantics),
+        }
+        try:
+            if call["status"] != "bound":
+                raise ValueError(call["reason"])
+            operands, results = _add_types(call)
+            ids = [_argument(arg)["value"]["id"] for arg in call["arguments"][:2]]
+            ids += [call["result_roster"][0]["id"]]
+            shapes = [values[identity].get("shape") for identity in ids]
+            if any(
+                not isinstance(shape, list)
+                or len(shape) != 2
+                or any(type(extent) is not int or extent < 1 for extent in shape)
+                for shape in shapes
+            ) or any(shape != shapes[0] for shape in shapes[1:]):
+                raise ValueError("original add broadcasting or incomplete shape relation is unsupported")
+            # Original extents prove only the equal-shape form. They are never
+            # retained as geometry or used to choose any generated dimensions.
+            form.update(
+                status="supported",
+                operand_dtypes=operands,
+                result_dtypes=results,
+                parameters={"alpha": 1, "broadcasting": "none"},
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            form.update(status="unknown", reason=str(error))
+        forms.append(form)
+    return forms
+
+
+def add_source(form, *, extent, max_tensor_elements):
+    """Construct exact typed unit-alpha add with fresh rectangular geometry."""
+    if (
+        not isinstance(form, dict)
+        or form.get("form_schema") != ADD_FORM_SCHEMA
+        or form.get("status") != "supported"
+        or type(extent) is not int
+        or extent < 1
+        or type(max_tensor_elements) is not int
+        or max_tensor_elements < 1
+    ):
+        raise ValueError("add source requires an actual supported form and explicit positive geometry/budget")
+    operands, results = _add_types(form)
+    parameters = {"alpha": 1, "broadcasting": "none"}
+    if form["operand_dtypes"] != operands or form["result_dtypes"] != results or form["parameters"] != parameters:
+        raise ValueError("add source changed the complete original type/argument/result binding")
+    dtype, shape = results[0], [extent, extent + 1]
+    inputs = [{"name": name, "dtype": dtype, "shape": shape} for name in ("X", "W")]
+    outputs = [{"name": "Y", "kind": "tensor", "dtype": dtype, "shape": shape}]
+    elements = 3 * math.prod(shape)
+    if elements > max_tensor_elements:
+        raise ValueError("add source exceeds the explicit complete tensor-element budget before allocation")
+    metadata = {
+        "schema": SOURCE_SCHEMA,
+        "target": form["target"],
+        "inputs": inputs,
+        "outputs": outputs,
+        "parameters": parameters,
+        "source_numerical_semantics": copy.deepcopy(form["source_numerical_semantics"]),
+        "tensor_elements": elements,
+        "logical_payload_bytes": elements * (_MATMUL_DTYPES[dtype] // 8),
+        "scalar_products": math.prod(shape),
+        "scope": "typed original-form source construction only; no numerical, operation-owner or hardware admission",
+    }
+    examples = ", ".join(f"torch.zeros({row['shape']!r}, dtype=torch.{dtype})" for row in inputs)
+    loader = (
+        "import torch\n\nclass Model(torch.nn.Module):\n"
+        "    def forward(self, X, W):\n"
+        "        return torch.ops.aten.add.Tensor(X, W, alpha=1)\n\n"
         "def get_model_and_inputs():\n"
         f"    return Model(), ({examples},)\n"
     )

@@ -45,7 +45,12 @@ executes the existing RTL, software, native operator-schema, arithmetic and pack
 issuers, followed by the ordinary complete mandatory generator. Its closed request
 uses `merlin.independent_phase0_run.v1`: exact input paths and SHA256s, explicit
 excluded roots, a selected native schema runtime and public declaration checkout,
-a selected CIRCT reader, and automatic v8 construction/reference/source budgets.
+a selected CIRCT reader, and explicit automatic construction/reference/source budgets.
+Automatic v8 retains its convolution-only original source factory; opt-in v9
+also constructs compatible original rank-two matmul and unit-alpha, equal-shape
+add sources. Both preserve the full original call/source-slot roster and every
+missing owner, numerical reference/comparison and hardware requirement. Selecting
+v9 does not turn constructed loaders into admitted numerical capsules.
 Saved receipts cannot replace fresh live issuance. Output must have a fresh owner;
 failed attempts retain their original files and reasons.
 

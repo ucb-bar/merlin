@@ -12,11 +12,23 @@ import json
 from pathlib import Path
 
 from merlin.targetgen.frontend_original_call import call_contracts
-from merlin.targetgen.original_operator_sources import conv2d_forms, conv2d_source, policy_compatibility
+from merlin.targetgen.original_operator_sources import (
+    ADD_FORM_SCHEMA,
+    FORM_SCHEMA,
+    MATMUL_FORM_SCHEMA,
+    add_source,
+    conv2d_forms,
+    conv2d_source,
+    matmul_forms,
+    matmul_source,
+    original_add_forms,
+    policy_compatibility,
+)
 
 from . import original_schema_defaults as D
 
 SCHEMA = "merlin.original_call_sources.v1"
+LINEAR_SCHEMA = "merlin.original_call_sources.v2"
 BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
@@ -49,7 +61,16 @@ def validate_budget(budget):
     return budget
 
 
-def _sources(calls, forms, *, budget, total, requested):
+def _forms(trace, schemas, defaults, *, numerical_semantics, version):
+    factories = [conv2d_forms] if version == 1 else [conv2d_forms, matmul_forms, original_add_forms]
+    return [
+        form
+        for factory in factories
+        for form in factory(trace, schemas, defaults, numerical_semantics=numerical_semantics)
+    ]
+
+
+def _sources(calls, forms, *, budget, total, requested, version=1):
     """Derive the entire requested source roster before any loader allocation."""
     indexed = {form["node"]: form for form in forms}
     result = []
@@ -62,7 +83,18 @@ def _sources(calls, forms, *, budget, total, requested):
                 form = indexed.get(call["node"])
                 if form is None:
                     raise ValueError("original operator has no implemented typed original-form source factory")
-                source = conv2d_source(form, extent=extent, max_tensor_elements=budget["max_tensor_elements"])
+                factory = (
+                    conv2d_source
+                    if version == 1
+                    else {
+                        FORM_SCHEMA: conv2d_source,
+                        MATMUL_FORM_SCHEMA: matmul_source,
+                        ADD_FORM_SCHEMA: add_source,
+                    }[form["form_schema"]]
+                )
+                if version == 2 and form["status"] != "supported":
+                    raise ValueError(form["reason"])
+                source = factory(form, extent=extent, max_tensor_elements=budget["max_tensor_elements"])
                 metadata = source.metadata()
                 costs = {key: metadata[key] for key in ("tensor_elements", "scalar_products")}
                 costs["source_bytes"] = len(source.loader.encode())
@@ -87,15 +119,17 @@ def _sources(calls, forms, *, budget, total, requested):
     return result
 
 
-def observe(*, schema_record, basis, numerical_semantics, budget, destination):
+def observe(*, schema_record, basis, numerical_semantics, budget, destination, version=1):
     """Write source-only original forms through the selected normal observer."""
     validate_budget(budget)
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("original source observation requires an explicit supported factory version")
     destination = Path(destination)
     rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
     for ordinal, row in enumerate(rows):
         trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
         calls = call_contracts(trace, schemas, defaults)
-        forms = conv2d_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics)
+        forms = _forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, version=version)
         row.update(
             calls=calls,
             forms=forms,
@@ -108,7 +142,7 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination):
     requested = sum(len(row["calls"]) for row in rows) * len(_COHORTS)
     for ordinal, row in enumerate(rows):
         for index, (member, loader) in enumerate(
-            _sources(row["calls"], row["forms"], budget=budget, total=total, requested=requested)
+            _sources(row["calls"], row["forms"], budget=budget, total=total, requested=requested, version=version)
         ):
             if loader is not None:
                 path = destination / str(ordinal) / ("source-" + str(index) + ".py")
@@ -116,15 +150,20 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination):
                 path.chmod(0o600)
                 member["source"] = {"path": str(path), "sha256": member["source_sha256"]}
             row["source_members"].append(member)
-    record = {"schema": SCHEMA, "budget": budget, "members": rows}
+    record = {"schema": SCHEMA if version == 1 else LINEAR_SCHEMA, "budget": budget, "members": rows}
     return verify(record, schema_record=schema_record, basis=basis, numerical_semantics=numerical_semantics)
 
 
 def verify(record, *, schema_record, basis, numerical_semantics):
     """Reconstruct every original binding and fresh loader from actual defaults."""
-    if not isinstance(record, dict) or set(record) != {"schema", "budget", "members"} or record["schema"] != SCHEMA:
+    if (
+        not isinstance(record, dict)
+        or set(record) != {"schema", "budget", "members"}
+        or record["schema"] not in {SCHEMA, LINEAR_SCHEMA}
+    ):
         raise ValueError("original call sources require their closed observation version")
     budget = validate_budget(record["budget"])
+    version = 1 if record["schema"] == SCHEMA else 2
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
@@ -143,9 +182,9 @@ def verify(record, *, schema_record, basis, numerical_semantics):
             raise ValueError("original call source member fields changed")
         trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
         calls = call_contracts(trace, schemas, defaults)
-        forms = conv2d_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics)
+        forms = _forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, version=version)
         compatibility = [{"node": form["node"], **policy_compatibility(form, numerical_semantics)} for form in forms]
-        expected = _sources(calls, forms, budget=budget, total=total, requested=requested)
+        expected = _sources(calls, forms, budget=budget, total=total, requested=requested, version=version)
         if row["calls"] != calls or row["forms"] != forms or row["policy_compatibility"] != compatibility:
             raise ValueError("original typed bindings/forms/policy differ from actual original schema replay")
         if len(row["source_members"]) != len(expected):

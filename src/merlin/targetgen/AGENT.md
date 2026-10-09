@@ -261,6 +261,12 @@ retain their scalar-only vocabulary. Unsupported zero-return bridges preserve
 their original result slots as unknown. `original_operator_sources` constructs
 ordinary typed CPU floating conv2d sources with exact original arguments and
 rank-two int8 or floating matmul sources retaining the original result dtype.
+The independent original add factory accepts only complete same-type rank-two
+equal-shape, unit-alpha forms. Original extents prove that shape relation only;
+fresh source geometry comes from the explicit extent, and signed int8 results
+retain int8 rather than a contraction accumulator type. Broadcasting, promotion
+and shared operand identities remain unsupported. The historical policy-bound
+integer `frontend_typed_add` form keeps its original meaning.
 Fresh geometry is independently bounded; original int8 matmul never acquires
 a widening contraction readout. Construction and declared policy dtype
 compatibility grant no numerical comparison, operation correspondence, coverage

@@ -254,6 +254,16 @@ owner/reference/comparison requirements. Unimplemented forms and budget-denied
 members remain mandatory. These private source-only loaders never import a
 workload, golden compiler or original example dimensions as factory geometry.
 
+Automatic policy/receipt v9 explicitly selects original-call source record v2,
+which adds rank-two typed matmul and equal-shape unit-alpha add construction.
+Historical v8 and source record v1 remain convolution-only. Preserve exact
+ordered original argument/result types and all source-policy choices; int8
+readout remains int8. Fresh geometry and complete aggregate costs use the same
+explicit independent budgets and private guard/transfer roster. Successful
+construction removes only its missing-factory rows. Every original numerical
+admission, operation owner, effect, resource and hardware UNKNOWN remains;
+these loaders still do not count as admitted or checked coverage capsules.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins

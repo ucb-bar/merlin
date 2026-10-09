@@ -89,13 +89,13 @@ def validate(request):
     if (
         not isinstance(automatic, dict)
         or set(automatic) != {"schema", "status", "budget", "execution_budget", "original_source_budget"}
-        or automatic["schema"] != A.ORIGINAL_POLICY_SCHEMA
+        or automatic["schema"] not in {A.ORIGINAL_POLICY_SCHEMA, A.LINEAR_POLICY_SCHEMA}
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)
         or set(automatic["budget"]) != {"max_members", "max_interaction_cells"}
         or any(type(value) is not int or value < 1 for value in automatic["budget"].values())
     ):
-        raise ValueError("full original Phase 0 needs explicit automatic v8 construction budgets")
+        raise ValueError("full original Phase 0 needs explicit supported automatic construction budgets")
     validate_execution_budget(automatic["execution_budget"])
     validate_source_budget(automatic["original_source_budget"])
     return request
