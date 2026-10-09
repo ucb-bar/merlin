@@ -162,6 +162,16 @@ Keep original oracle arithmetic/order and numerical gates. Replay exact proof
 and source/selected-semantic commitments before evaluating or admitting receipts.
 Declared/source widths and their interval proof are not observed hardware effects.
 
+Automatic policy v5 explicitly joins the same live operator-schema/minimal-SW
+origin with terminal native public-default observations. `typed_add_sources`
+replays exact original calls and defaults; it is not another issuer. An add
+factory requires explicitly reviewed ordered operand/result types matching the
+original SSA, unit alpha and no broadcasting. Ordinary bounded generation
+uses the existing integer bounds, execution budget, renderer and full oracle;
+source preparation never establishes unconstrained original numerical domains
+or physical admission. v1-v4 retain their original behavior and cannot acquire
+this facet by re-signing a saved receipt. Original missing obligations remain.
+
 `component_graph_variants` owns the closed independent bounded topology family:
 fixed generic contraction/fork/ordered-join stages, selected extents/depth/fanout,
 and complete logical-epoch/fresh-SSA pairs. Derive exact source costs from bounded

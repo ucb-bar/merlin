@@ -248,6 +248,13 @@ one grade must not be attributed to different hardware revisions — and a large
 
 ## Notes for future agents
 
+`frontend_typed_add` binds original captured/public/registered schemas, actual
+default observations, and every operand/result SSA type before selecting the
+narrow unit-alpha, signed-integer, rank-two equal-shape form. It preserves the
+result dtype; int8 addition never inherits a contraction's int32 accumulator.
+The fixed native `torch_schema_defaults_observer` observes defaults only.
+These source premises grant no numerical domain, purity or target support.
+
 - `toy_npu` is the bundled reference target. Generated skeletons and support plugins are not
   qualified compiler submissions; consult target contracts and qualification records for status.
 

@@ -42,6 +42,10 @@ def _program(factory):
     elif factory == "movement":
         nodes = [{"name": "P", "op": "copy", "inputs": ["A"]}]
         outputs = [{"name": "Y", "value": "P"}]
+    elif factory == "elementwise_add":
+        inputs.append({"name": "B", "role": "input", "shape": [axis("M"), axis("K")], "dtype": "operand"})
+        nodes = [{"name": "P", "op": "add", "inputs": ["A", "B"]}]
+        outputs = [{"name": "Y", "value": "P"}]
     else:
         count = 2 if factory == "shared_input_multiple_consumers" else 1
         inputs += [
@@ -55,8 +59,10 @@ def _program(factory):
     return {"inputs": inputs, "nodes": nodes, "outputs": outputs}
 
 
-def _factory(owner):
+def _factory(owner, *, typed=False):
     selected = {"movement": "copy", "contraction": "matmul"}
+    if typed and "add" in owner.get("ops", []):
+        selected["elementwise_add"] = "add"
     eligible = [
         family
         for family, operation in selected.items()
@@ -74,7 +80,9 @@ def _unknown(kind, selector, reason):
     }
 
 
-def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=None, logical_interactions=False):
+def derive(
+    policy, *, spec, review, basis, relations, effects=None, arithmetic=None, logical_interactions=False, typed_add=None
+):
     """Construct a complete required class roster without invented permissions.
 
     One and two are fresh bounded semantic extents, independent of target or
@@ -88,6 +96,7 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
         owner_links.setdefault(link["owner"], []).append(link)
     unknowns, cases, present = [], {}, set()
     examples = {row["id"]: row for row in basis.semantics()}
+    typed_forms = dict(typed_add or [])
     for member, relation in relations:
         present.update(relation.interaction_classes)
         for operation in relation.operations:
@@ -105,7 +114,42 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
                     )
                 )
             for owner in selected:
-                factory = _factory(owners[owner])
+                factory = _factory(owners[owner], typed=typed_add is not None)
+                if factory == "elementwise_add":
+                    forms = [form for form in typed_forms.get(member, []) if form["target"] == operation]
+                    signature = owners[owner].get("signature", {})
+
+                    def dtype(value):
+                        return (
+                            "int" + value[1:]
+                            if isinstance(value, str) and value.startswith("i") and value[1:].isdigit()
+                            else value
+                        )
+
+                    inputs = [dtype(value) for value in signature.get("ordered_operand_dtypes", [])]
+                    outputs = [dtype(value) for value in signature.get("ordered_result_dtypes", [])]
+                    if not forms or any(
+                        form["status"] != "supported"
+                        or form.get("operand_dtypes") != inputs
+                        or form.get("result_dtypes") != outputs
+                        or signature.get("broadcasting") != form.get("broadcasting")
+                        for form in forms
+                    ):
+                        unknowns.append(
+                            _unknown(
+                                "source_operator_form",
+                                operation,
+                                "original typed add premises or reviewed ordered signature are unsupported",
+                            )
+                        )
+                        continue
+                    unknowns.append(
+                        _unknown(
+                            "numeric_domain",
+                            operation,
+                            "bounded cases leave the original input-value and overflow domain unqualified",
+                        )
+                    )
                 if factory is None:
                     unknowns.append(
                         _unknown(
@@ -114,7 +158,7 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
                     )
                 else:
                     cases.setdefault((factory, owner), set()).add(member)
-                    if _SOURCE_FORMS.get(operation) != factory:
+                    if factory != "elementwise_add" and _SOURCE_FORMS.get(operation) != factory:
                         unknowns.append(
                             _unknown(
                                 "source_operator_form",
@@ -222,7 +266,9 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
                 "M": {"kind": "extent", "values": extents},
                 "K": {"kind": "extent", "values": [1] if guard else [2]},
             }
-            if factory not in {"movement", "may_alias_result"} | _LOGICAL_COPY_INTERACTIONS:
+            if factory == "elementwise_add":
+                axes["K"]["values"] = [1, 2] if guard else [2]
+            elif factory not in {"movement", "may_alias_result"} | _LOGICAL_COPY_INTERACTIONS:
                 axes["N"] = {"kind": "extent", "values": extents}
             obligations.append(
                 {
