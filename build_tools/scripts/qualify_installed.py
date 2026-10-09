@@ -155,6 +155,7 @@ SUITES = {
         "tests": (
             "test_component_generation.py",
             "test_component_automatic.py",
+            "test_component_source_binding.py",
             "test_component_operator_schemas.py",
             "test_component_hw_arithmetic.py",
             "test_component_automatic_composition.py",

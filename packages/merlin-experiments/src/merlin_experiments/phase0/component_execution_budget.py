@@ -108,6 +108,8 @@ def source_for_entry(entry, *, binding):
         raise ValueError(entry["_component_source_unavailable"])
     if entry.get("source") not in {None, "mlir", "direct"} or entry.get("pytorch_ref") or entry.get("spec_ref"):
         raise ValueError("execution budget has no derived cost for the selected frontend/reference path")
+    if binding.tile_dim is None and entry.get("op") != "component_program":
+        raise ValueError("source-only execution budget supports explicit tensor DAGs without hardware geometry")
     regime, selected = corpus_spec.entry_binding(entry, binding)
     if regime != "int":
         raise ValueError("execution budget has no independent cost for this numerical engine")

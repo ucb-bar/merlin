@@ -248,3 +248,19 @@ in one ordinary derivation. Replay both complete source records and retain all
 logical outputs, numeric-path requirements and physical/unsupported effect gaps.
 Missing, substituted or supplied-but-unselected observations refuse. A saved
 record cannot drop either selected facet and obtain authority from re-signing.
+
+`component_source_binding` prepares ordinary automatic tensor DAG originals from
+the same live independent HW/minimal SW before a backend has been authored.
+Source-only evidence selects no backend contract, provider, ISA classes, physical
+oracle tier or tile geometry. Literal extents remain checked positive integers;
+tile-relative extents and unimplemented reference/readout policies refuse.
+Reopen the complete standard source against its original typed DAG and every
+independent operation owner, retaining the original physical software screen.
+Bind the explicit versioned source-semantic mode and every member screen to the
+live selectors. `source_generated` members and `source_prepared` statuses mean
+only original source preparation, never concrete hardware-admitted coverage or
+an established Phase 2 guard. Legacy coverage verification refuses this scope,
+including a re-signed complete status. Keep every automatic unsupported numeric,
+effect, resource/axis and private-transfer obligation in the denominator. A
+minimal descriptor with no selected corpus must not discover legacy siblings;
+the ordinary registry destination/overlap protections remain in effect.

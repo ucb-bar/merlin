@@ -119,10 +119,13 @@ def _require_distinct_corpus_destinations(te, *, output_root: str | Path, eviden
     selected = getattr(te, "capsule_corpus", None)
     if selected:
         sources.append(Path(selected))
-    for method_name in ("graded_roots", "perf_roots", "hidden_roots"):
-        method = getattr(te, method_name, None)
-        if callable(method):
-            sources.extend(method())
+        # Minimal independent hardware descriptors select no input corpus.
+        # Their legacy sibling methods require a primary corpus and must not
+        # discover or dereference a nonexistent historical selection.
+        for method_name in ("graded_roots", "perf_roots", "hidden_roots"):
+            method = getattr(te, method_name, None)
+            if callable(method):
+                sources.extend(method())
     sources = sorted({Path(source).expanduser().resolve() for source in sources})
     # A frozen run executes from its own sealed source snapshot below the evidence root, and that
     # snapshot deliberately EXCLUDES the capsule corpus. A corpus path resolved inside it names
@@ -372,6 +375,15 @@ def generate_target(
         if type(software_intake) is not IndependentSoftwareIntake or software_intake.hardware is not hardware_intake:
             raise ValueError("component hardware and minimal software must share exact independently issued inputs")
         software_intake.verify()
+    source_components = (
+        component_only and hardware_intake is not None and software_intake is not None and capability_contract is None
+    )
+    if source_components and evidence_input is not None:
+        raise ValueError("fresh source-only components require live source replay, not exported backend evidence")
+    if source_components and component_coverage is None:
+        raise ValueError(
+            "fresh source-only components require automatic mandatory coverage, not authored teaching samples"
+        )
     if operator_schema_intake is not None and (
         not component_only or software_intake is None or component_coverage is None
     ):
@@ -417,7 +429,7 @@ def generate_target(
     # a profile can be reused with an explicitly supplied out-of-tree target.
     explicit_descriptor = descriptor is not None
     descriptor = Path(descriptor).expanduser().resolve() if descriptor is not None else _descriptor_for(target)
-    if evidence_input is None:
+    if evidence_input is None and not source_components:
         _ensure_contract_on_path(descriptor)
     te = load_target_experiment(descriptor)
     _require_distinct_corpus_destinations(te, output_root=output_root, evidence_root=evidence_root)
@@ -481,6 +493,7 @@ def generate_target(
                 prohibited_roles=tuple(prohibited_instruction_roles or ()),
                 hardware_intake=hardware_intake,
                 software_intake=software_intake,
+                source_components=source_components,
             )
         if evidence_mode != "diagnostic" and evidence.status != "verified":
             raise ValueError(
@@ -517,7 +530,12 @@ def generate_target(
         if evidence is not None
         else {}
     )
-    binding = CS.derive_binding(te, profile.get("datapath", {}), **selected)
+    if source_components:
+        from .component_source_binding import derive
+
+        binding = derive(software_intake, hardware=hardware_intake, datapath=profile.get("datapath", {}))
+    else:
+        binding = CS.derive_binding(te, profile.get("datapath", {}), **selected)
     declared_roles = validate_roles(prohibited_instruction_roles)
     instruction_policy = _instruction_policy(hardware_target, declared_roles, evidence, rtl_facts)
     if declared_roles:
@@ -592,6 +610,10 @@ def generate_target(
                 operator_schema_intake=operator_schema_intake,
                 arithmetic_intake=arithmetic_intake,
             )
+            if source_components and automatic_derivation is None:
+                raise ValueError(
+                    "source-only admission requires automatic original-source obligations with unknown domains"
+                )
             execution_budget = component_plan.to_dict().get("execution_budget")
             coverage_entries, component_coverage_report = expand(component_plan, binding=binding, evidence=evidence)
             if automatic_derivation is not None:
@@ -625,6 +647,7 @@ def generate_target(
             hardware_intake=hardware_intake,
             software_intake=software_intake,
             automatic_derivation=automatic_derivation,
+            source_components=source_components,
         )
     semantics = (profile.get("datapath") or {}).get("numerical_semantics")
     if semantics is not None:
@@ -880,7 +903,18 @@ def generate_target(
                     from .component_generation import require_written
 
                     try:
-                        require_written(actual)
+                        require_written(
+                            actual,
+                            **(
+                                {
+                                    "source_software": software_intake,
+                                    "source_hardware": hardware_intake,
+                                    "directory": Path(w),
+                                }
+                                if source_components
+                                else {}
+                            ),
+                        )
                     except ValueError as exc:
                         failures.append((e.get("name", "?"), str(exc)))
                         refused_generated.append(Path(w))
@@ -1050,6 +1084,12 @@ def generate_target(
             generation_identity=component_identity,
             semantic_basis=semantic_basis,
         )
+        if source_components:
+            from .component_source_binding import verify_prepared_sources
+
+            verify_prepared_sources(
+                out_root, component_coverage_report, software=software_intake, hardware=hardware_intake
+            )
         write_report(out_root, component_coverage_report)
         performance_record["component_coverage"] = public_summary(component_coverage_report)
         if component_coverage_report["status"] != "complete":

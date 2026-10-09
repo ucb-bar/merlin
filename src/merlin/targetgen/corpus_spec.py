@@ -73,7 +73,7 @@ class CorpusBinding:
     """Per-target axes DERIVED from the descriptor (nothing hand-set per target)."""
 
     target: str
-    tile_dim: int
+    tile_dim: int | None  # None for source-only components with no hardware geometry grant
     operand_dtype: str  # canonical token, e.g. "int8" / "fp8_e4m3"
     accum_dtype: str  # canonical token, e.g. "i32" / "bf16"
     integer: bool  # numeric regime (drives compare policy + golden engine)

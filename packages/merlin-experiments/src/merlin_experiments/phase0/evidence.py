@@ -411,6 +411,7 @@ def select_evidence(
     prohibited_roles=(),
     hardware_intake=None,
     software_intake=None,
+    source_components: bool = False,
 ) -> EvidenceSelection:
     """Observe selected source bytes once; never extract facts or modify a checkout.
 
@@ -439,6 +440,10 @@ def select_evidence(
                 "fresh software evidence requires the exact independent minimal source and hardware intake"
             )
         software_intake.verify_selected_source(software_spec)
+    if source_components is not False:
+        from .component_source_binding import require_live_selection
+
+        require_live_selection(source_components, software_intake, hardware_intake, capability_contract_path)
 
     sources: dict[Path, EvidenceSource] = {}
     diagnostics: list[dict[str, Any]] = []
@@ -680,7 +685,12 @@ def select_evidence(
                         observe(leaf, f"software-reference:{role}")
                 else:
                     observe(path, f"software-reference:{role}", required=True)
-        contract = capability_contract(software_doc, base_contract=contract)
+        if source_components:
+            from .component_source_binding import backend_unknown
+
+            diagnostics.append(backend_unknown(software_doc, contract=contract))
+        else:
+            contract = capability_contract(software_doc, base_contract=contract)
         datapath = numerical_datapath(software_doc)
     if provider is not None and capability_contract_path is not None:
         _record_scaling_contradictions(

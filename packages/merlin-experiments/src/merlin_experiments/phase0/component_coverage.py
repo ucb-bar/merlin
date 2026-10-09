@@ -23,6 +23,7 @@ BUDGETED_REPORT_SCHEMA = "merlin.phase0.component_coverage.v2"
 
 class CoverageState(StrEnum):
     GENERATED = "generated"
+    SOURCE_GENERATED = "source_generated"
     VERIFIED_REFUSAL = "verified_refusal"
     UNAVAILABLE = "unavailable"
 
@@ -63,6 +64,8 @@ def finalize(report, *, root, written, failures, generation_identity, semantic_b
                 continue
             capsule = yaml.safe_load((directory / "capsule.yaml").read_bytes())
             screen = capsule.get("software_screen") or {}
+            source_screen = capsule.get("source_semantics_screen") or {}
+            source_mode = generation_identity.get("source_semantics_admission")
             program = _selected_program(capsule, directory)
             try:
                 golden = golden_store.load_golden(directory)
@@ -103,6 +106,17 @@ def finalize(report, *, root, written, failures, generation_identity, semantic_b
                 member["source_mechanism_witness"] = source_witness
                 if row["expectation"] == "unsupported_program" and screen.get("status") == "unsupported":
                     state = CoverageState.VERIFIED_REFUSAL.value
+                elif row["expectation"] == "admitted_program" and source_mode is not None:
+                    if (
+                        any(source_screen.get(key) != value for key, value in source_mode.items())
+                        or source_screen.get("status") != "source_admitted"
+                        or source_screen.get("program_sha256") != hashlib.sha256(program.read_bytes()).hexdigest()
+                        or source_screen.get("output_roster")
+                        != [item["name"] for item in capsule["component_program"]["outputs"]]
+                        or member["name"] in failed
+                    ):
+                        raise ValueError("source-only member lacks its exact original semantic admission")
+                    state = CoverageState.SOURCE_GENERATED.value
                 elif (
                     row["expectation"] == "admitted_program"
                     and screen.get("status") == "admitted"
@@ -121,24 +135,31 @@ def finalize(report, *, root, written, failures, generation_identity, semantic_b
                     golden_source=golden.get("golden_source"),
                     output_roster=sorted(golden["outputs"]),
                     software_screen_sha256=digest(screen),
-                    reason=screen.get("reason"),
+                    **({"source_semantics_screen_sha256": digest(source_screen)} if source_mode is not None else {}),
+                    reason=source_screen.get("scope") if source_mode is not None else screen.get("reason"),
                 )
             except (OSError, ValueError) as exc:
                 state = CoverageState.UNAVAILABLE.value
                 member.update(state=state, reason=str(exc))
             states.append(state)
-        expected = "verified_refusal" if row["expectation"] == "unsupported_program" else "generated"
+        expected = (
+            "verified_refusal"
+            if row["expectation"] == "unsupported_program"
+            else "source_generated"
+            if generation_identity.get("source_semantics_admission") is not None
+            else "generated"
+        )
         row["state"] = (
             expected if states and all(state == expected for state in states) and not row["errors"] else "unavailable"
         )
     from .component_graph_relations import finalize as finalize_relations
 
     finalize_relations(report, root=root)
-    report["status"] = (
-        "complete"
-        if not failures and all(row["state"] != "unavailable" for row in report["obligations"] if row["mandatory"])
-        else "incomplete"
-    )
+    complete = not failures and all(row["state"] != "unavailable" for row in report["obligations"] if row["mandatory"])
+    if generation_identity.get("source_semantics_admission") is not None:
+        report["status"] = "source_prepared" if complete else "source_prepared_incomplete"
+    else:
+        report["status"] = "complete" if complete else "incomplete"
     report["sha256"] = digest(report)
     return report
 
@@ -198,6 +219,12 @@ def verify_report(root, report=None, *, verify_sources=True):
     if report.get("software_intake_sha256") != (report.get("generation_identity") or {}).get("software_intake_sha256"):
         raise ValueError("component coverage independent software binding changed")
     report["sha256"] = stated
+    if (
+        report["generation_identity"].get("source_semantics_admission") is not None
+        or any(row["state"] == "source_generated" for row in report["obligations"])
+        or any(member["state"] == "source_generated" for row in report["obligations"] for member in row["members"])
+    ):
+        raise ValueError("source-only preparation is not concrete hardware-admitted component coverage")
     if "automatic_derivation" in report:
         from .component_automatic import verify
 
@@ -261,6 +288,20 @@ def verify_report(root, report=None, *, verify_sources=True):
             ):
                 raise ValueError("component coverage member bytes changed")
             capsule = yaml.safe_load((directory / "capsule.yaml").read_bytes())
+            screen = capsule.get("software_screen") or {}
+            if capsule.get("source_semantics_screen") is not None or not (
+                (
+                    member["state"] == "generated"
+                    and row["expectation"] == "admitted_program"
+                    and screen.get("status") == "admitted"
+                )
+                or (
+                    member["state"] == "verified_refusal"
+                    and row["expectation"] == "unsupported_program"
+                    and screen.get("status") == "unsupported"
+                )
+            ):
+                raise ValueError("component coverage concrete admission differs from the original member expectation")
             from .component_integer_bounds import verify_selected_capsule
 
             verify_selected_capsule(
@@ -293,7 +334,7 @@ def build_guard_link(report):
             for row in report["obligations"]
             if row["cohort"] == "functional_guard"
             for member in row["members"]
-            if member["state"] != "unavailable"
+            if member["state"] in {"generated", "verified_refusal"}
         ],
         "qualification": "generated full outputs and declared refusals; candidate numerical acceptance unestablished",
     }

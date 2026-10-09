@@ -84,8 +84,11 @@ def bind_entries(
     hardware_intake=None,
     software_intake=None,
     automatic_derivation=None,
+    source_components=False,
 ):
     """Bind reviewed objectives and the actual selected generator/source identity."""
+    if type(source_components) is not bool or (source_components and (evidence is None or evidence.contract)):
+        raise ValueError("source component identity requires an explicit source-only mode without a backend contract")
     if evidence is None or evidence.software_spec.get("status") != "reviewed":
         raise ValueError("component generation requires selected reviewed software and hardware evidence")
     spec = evidence.software_spec
@@ -192,6 +195,10 @@ def bind_entries(
         "generator_sources": [_source(path) for path in sorted(source_paths)],
         "families": selected,
     }
+    if source_components:
+        from .component_source_binding import identity as source_identity
+
+        identity["source_semantics_admission"] = source_identity(software_intake, hardware=hardware_intake)
     if execution_budget is not None:
         from .component_execution_budget import validate
 
@@ -270,8 +277,8 @@ def bind_entries(
     return bound, identity
 
 
-def require_written(capsule):
-    """Keep unknown work and unreviewed placement out of the component corpus."""
+def require_written(capsule, *, source_software=None, source_hardware=None, directory=None):
+    """Require the selected original-source or concrete target admission scope."""
     screen = capsule.get("software_screen") or {}
     coverage = capsule.get("component_coverage") or {}
     if coverage.get("expectation") == "unsupported_program":
@@ -282,6 +289,17 @@ def require_written(capsule):
                 + ": "
                 + str(screen.get("reason"))
             )
+        return
+    if source_software is not None or source_hardware is not None:
+        from .component_source_binding import screen_written
+
+        if directory is None or coverage.get("cohort") not in {"functional_guard", "withheld_transfer"}:
+            raise ValueError(
+                "source-only admission requires original bounded coverage members, not performance support"
+            )
+        capsule["source_semantics_screen"] = screen_written(
+            capsule, directory, software=source_software, hardware=source_hardware
+        )
         return
     if screen.get("status") != "admitted":
         raise ValueError("component generated program lacks reviewed concrete software/hardware admission")

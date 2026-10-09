@@ -43,16 +43,16 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
     target-derived tile edge as the top-level K and N.
     """
     tile = getattr(binding, "tile_dim", None)
-    if not tile:
-        return entry
     out = None
     for key in _EXTENT_KEYS:
         value = entry.get(key)
+        if isinstance(value, bool):
+            raise ValueError(f"sweep extent {value!r} is a bool, not an extent")
         if not isinstance(value, str):
             continue
         if out is None:
             out = dict(entry)
-        out[key] = resolve_extent(value, int(tile))
+        out[key] = resolve_extent(value, tile)
     matmuls = (out or entry).get("matmuls")
     if isinstance(matmuls, list) and any(
         isinstance(mm, dict) and isinstance(mm.get(key), str) for mm in matmuls for key in _EXTENT_KEYS
@@ -61,7 +61,7 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
             out = dict(entry)
         out["matmuls"] = [
             {
-                key: (resolve_extent(value, int(tile)) if key in _EXTENT_KEYS and isinstance(value, str) else value)
+                key: (resolve_extent(value, tile) if key in _EXTENT_KEYS and isinstance(value, str) else value)
                 for key, value in mm.items()
             }
             if isinstance(mm, dict)
@@ -148,7 +148,7 @@ def resolve_encoding(token, encodings: list[str]) -> str:
     return encodings[idx]
 
 
-def resolve_extent(token, tile: int) -> int:
+def resolve_extent(token, tile: int | None) -> int:
     """Resolve a sweep extent token against *tile* (the binding's tile edge).
 
     Accepts a plain int, or a tile-relative expression of the form
@@ -169,6 +169,8 @@ def resolve_extent(token, tile: int) -> int:
         return token
     if not isinstance(token, str):
         raise ValueError(f"sweep extent {token!r} is neither an int nor a tile expression")
+    if type(tile) is not int or tile < 1:
+        raise ValueError("tile-relative extent requires independently selected tile geometry")
 
     text = token.strip()
     mult_text, star, rest = text.partition("*")
