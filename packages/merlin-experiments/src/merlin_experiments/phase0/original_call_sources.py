@@ -51,6 +51,15 @@ _LIMITS = {
 _COHORTS = (("functional_guard", 1), ("functional_guard", 2), ("withheld_transfer", 3))
 
 
+def required_source_cohorts():
+    """Ordered original teaching-source membership; never hardware tail evidence.
+
+    This is the same fixed roster used by historical source records. A later
+    reference/IR join must preserve every slot rather than choose its own subset.
+    """
+    return _COHORTS
+
+
 def reader_modules(version):
     if type(version) is not int or version not in {1, 2, 3}:
         raise ValueError("original source readers need an explicit supported factory version")
@@ -92,7 +101,7 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
     indexed = {form["node"]: form for form in forms}
     result = []
     for call in calls:
-        for cohort, extent in _COHORTS:
+        for cohort, extent in required_source_cohorts():
             row = {"node": call["node"], "target": call["target"], "cohort": cohort, "extent": extent}
             try:
                 if requested > budget["max_sources"]:
@@ -157,7 +166,7 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination, v
             source_members=[],
         )
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
-    requested = sum(len(row["calls"]) for row in rows) * len(_COHORTS)
+    requested = sum(len(row["calls"]) for row in rows) * len(required_source_cohorts())
     for ordinal, row in enumerate(rows):
         for index, (member, loader) in enumerate(
             _sources(row["calls"], row["forms"], budget=budget, total=total, requested=requested, version=version)
@@ -185,7 +194,7 @@ def verify(record, *, schema_record, basis, numerical_semantics):
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
-    requested = sum(len(row["calls"]) for row in record["members"]) * len(_COHORTS)
+    requested = sum(len(row["calls"]) for row in record["members"]) * len(required_source_cohorts())
     for row in record["members"]:
         if set(row) != {
             "graph_path",

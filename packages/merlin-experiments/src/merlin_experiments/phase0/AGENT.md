@@ -4,6 +4,15 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`original_reference_standard_ir` joins every required original source cohort to
+its independently checked reference, actual ordinary upstream conversion,
+complete ordered tensor ABI and a selected stock parser. Explicit aggregate
+source/reference and parser limits precede construction. Replay actual products,
+source and process pins with JSON scalar types preserved; completed parser
+refusals and interrupted deadlines remain distinct. Unsupported original slots
+stay required. This private data checks neither compiled body semantics nor
+candidate execution, numerical stress, physical effects or Phase 1 release.
+
 `memory_port_intake` observes the complete local typed Seq memory/port roster
 from the same live independently reproduced public core. Fixed native generic
 serialization, explicit parse/metadata budgets and exact reader/tool/invocation

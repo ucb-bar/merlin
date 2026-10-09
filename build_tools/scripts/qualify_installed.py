@@ -72,6 +72,18 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "original-standard-ir-inputs": {
+        "tests": ("test_original_reference_standard_ir.py",),
+        "support_files": ("original_reference_fixtures.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_reference_standard_ir",
+            "merlin_experiments.phase0.original_standard_ir_plan",
+            "merlin_experiments.phase0.original_standard_ir_products",
+            "merlin_experiments.phase0.original_standard_ir_observer",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "renderer-source-owner": {
         "include_experiments": False,
         "tests_root": "merlin/tests/infra",
