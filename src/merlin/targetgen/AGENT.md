@@ -257,3 +257,11 @@ its existing template registry. `corpus_builder.py` enforces common declaration
 preservation across operation builders: palettes, epilogues, stimulus ranges,
 oracle applicability and semantic coverage. These owners contain no target
 schedule or workload-specific optimization.
+
+`torch_zero_return_observer` observes the selected public native dispatcher's
+zero-result schema and its actual empty-stack Python bridge. Admission also
+requires fresh, complete original FX result metadata explicitly observing None;
+missing metadata, container alternatives and incomplete historical slots refuse.
+`frontend_operator_effects` preserves every original result slot and joins this
+optional relation without granting purity, exception behavior or operation
+ownership. The observer never invokes the operator or constructs a compiler.

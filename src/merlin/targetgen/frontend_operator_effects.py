@@ -21,6 +21,7 @@ class OriginalOperatorEffects:
     witnesses_json: str
     unknowns_json: str
     tensor_bindings_json: str = "[]"
+    zero_returns_json: str = "[]"
 
     def witnesses(self):
         return json.loads(self.witnesses_json)
@@ -30,6 +31,9 @@ class OriginalOperatorEffects:
 
     def tensor_bindings(self):
         return json.loads(self.tensor_bindings_json)
+
+    def zero_returns(self):
+        return json.loads(self.zero_returns_json)
 
     def public_semantics(self):
         return {"graph_sha256": self.graph_sha256, "effect_classes": list(self.effect_classes)}
@@ -125,6 +129,76 @@ def original_tensor_argument_requests(trace, observation):
     return {"schema": "merlin.original_tensor_argument_request.v1", "graph_sha256": relation.graph_sha256, "rows": rows}
 
 
+def original_zero_return_requests(trace, observation):
+    """Select only exact original calls whose observed schema has no results.
+
+    Missing metadata stays in the request as missing; no result or effect meaning
+    comes from an operator name. Historical None slots remain unchanged.
+    """
+    relation = original_use_def_semantics(trace)
+    graph = trace["graphs"]["original"]
+    observed = {row["target"]: row for row in observation["rows"]}
+    rows = []
+    for node in graph["nodes"]:
+        found = observed.get(node["target"])
+        if (
+            node["op"] == "call_function"
+            and found
+            and found["status"] == "observed"
+            and graph.get("operator_schemas", {}).get(node["target"]) == found["schema"]
+            and found["returns"] == []
+        ):
+            rows.append(
+                {
+                    "node": node["id"],
+                    "target": node["target"],
+                    "schema": found["schema"],
+                    "results": node["results"],
+                    "result_metadata": node.get("result_metadata"),
+                }
+            )
+    return {"schema": "merlin.original_zero_return_request.v1", "graph_sha256": relation.graph_sha256, "rows": rows}
+
+
+def _zero_return_rows(trace, observation, zero_returns):
+    if zero_returns is None:
+        return {}
+    from .torch_zero_return_observer import _metadata_is_none
+
+    request = original_zero_return_requests(trace, observation)
+    if (
+        set(zero_returns) != {"schema", "graph_sha256", "rows", "runtime", "scope"}
+        or zero_returns["schema"] != "merlin.native_zero_return_observation.v1"
+        or zero_returns["graph_sha256"] != request["graph_sha256"]
+        or not isinstance(zero_returns["rows"], list)
+        or len(zero_returns["rows"]) != len(request["rows"])
+    ):
+        raise ValueError("zero-return observations need the complete exact original request roster")
+    found = {}
+    for expected, row in zip(request["rows"], zero_returns["rows"], strict=True):
+        if row.get("request") != expected or row.get("status") not in {"observed", "unknown"}:
+            raise ValueError("zero-return observation changed an original call or complete metadata roster")
+        if row["status"] == "observed":
+            native = row.get("native")
+            if (
+                set(row) != {"request", "status", "native"}
+                or not isinstance(native, dict)
+                or set(native) != {"schema", "return_count", "empty_stack_is_none"}
+                or native["schema"] != expected["schema"]
+                or type(native["return_count"]) is not int
+                or native["return_count"] != 0
+                or native["empty_stack_is_none"] is not True
+                or not _metadata_is_none(expected)
+            ):
+                raise ValueError("zero-return binding is not the actual supported native None relation")
+        elif set(row) != {"request", "status", "reason"} or not isinstance(row["reason"], str):
+            raise ValueError("unobserved zero return must retain its actual refusal")
+        if expected["node"] in found:
+            raise ValueError("zero-return observation repeats an original call")
+        found[expected["node"]] = row
+    return found
+
+
 def _tensor_argument_rows(trace, observation, tensor_arguments):
     if tensor_arguments is None:
         return {}
@@ -199,7 +273,7 @@ def _bindings(node, arguments, values, scalar_rows):
     return selected, paths
 
 
-def original_operator_effects(trace, observation, *, tensor_arguments=None):
+def original_operator_effects(trace, observation, *, tensor_arguments=None, zero_returns=None):
     """Replay all original uses before joining each exact observed schema row.
 
     Narrow support covers direct Tensor arguments and direct Tensor returns.
@@ -222,6 +296,7 @@ def original_operator_effects(trace, observation, *, tensor_arguments=None):
         raise ValueError("schema observation must cover the complete exact original call roster")
     observed = {row["target"]: row for row in rows}
     scalar_rows = _tensor_argument_rows(trace, observation, tensor_arguments)
+    zero_rows = _zero_return_rows(trace, observation, zero_returns)
     values = {result["id"]: result for node in graph["nodes"] for result in node["results"]}
     witnesses, unknowns = [], []
     for node in graph["nodes"]:
@@ -239,7 +314,11 @@ def original_operator_effects(trace, observation, *, tensor_arguments=None):
             bindings, paths = _bindings(node, arguments, values, scalar_rows)
             inputs = [_alias(row) for row in arguments]
             outputs = [_alias(row) for row in returns]
-            if len(node["results"]) != len(returns) or any(
+            zero = zero_rows.get(node["id"])
+            if returns == [] and zero is not None:
+                if zero["status"] != "observed":
+                    raise ValueError("original zero-result correspondence is unobserved: " + zero["reason"])
+            elif len(node["results"]) != len(returns) or any(
                 row["type"] != "Tensor" or result["kind"] != "tensor" for row, result in zip(returns, node["results"])
             ):
                 raise ValueError("original result roster is not the exact supported direct Tensor returns")
@@ -281,4 +360,5 @@ def original_operator_effects(trace, observation, *, tensor_arguments=None):
         json.dumps(witnesses, sort_keys=True, separators=(",", ":")),
         json.dumps(unknowns, sort_keys=True, separators=(",", ":")),
         json.dumps(list(scalar_rows.values()), sort_keys=True, separators=(",", ":")),
+        json.dumps(list(zero_rows.values()), sort_keys=True, separators=(",", ":")),
     )

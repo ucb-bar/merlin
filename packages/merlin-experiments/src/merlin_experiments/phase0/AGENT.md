@@ -294,3 +294,13 @@ including a re-signed complete status. Keep every automatic unsupported numeric,
 effect, resource/axis and private-transfer obligation in the denominator. A
 minimal descriptor with no selected corpus must not discover legacy siblings;
 the ordinary registry destination/overlap protections remain in effect.
+
+Operator-schema intake/selection v3 retains the v2 scalar facet and adds a fixed
+public-native zero-result bridge from the same independently selected SDK and
+source/header preparation. `zero_return_intake` pins actual build, complete
+original call/result/metadata requests, native observations and their replay.
+An exact zero-return schema plus newly observed original Python None can close
+only that logical result correspondence. Historical missing metadata is not
+retrofitted; every operation/numeric/non-schema/physical obligation remains
+separate. Ordinary automatic verification must replay both selected facets;
+saved JSON, a removed facet or a changed version cannot issue live authority.

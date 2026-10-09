@@ -403,6 +403,11 @@ def verify(record, *, report, verify_sources=True):
                         if "tensor_arguments" in schema_members[source.path]
                         else None
                     ),
+                    zero_returns=(
+                        json.loads(Path(schema_members[source.path]["zero_returns"]["observation"]).read_bytes())
+                        if "zero_returns" in schema_members[source.path]
+                        else None
+                    ),
                 ),
             )
             for (member, _), source in zip(relations, basis.graph_sources, strict=True)
