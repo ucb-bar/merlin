@@ -95,9 +95,17 @@ SUITES = {
     "emitted-dataflow": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_emitted_dataflow.py", "test_pointer_entry_abi.py", "test_source_observation.py"),
+        "native_tools": ("mlir-opt",),
+        "native_test_files": ("test_emitted_control_flow.py",),
+        "tests": (
+            "test_emitted_control_flow.py", "test_emitted_dataflow.py",
+            "test_pointer_entry_abi.py", "test_source_observation.py",
+        ),
         "core_extras": ("xdsl",),
-        "probe_modules": ("merlin.targetgen.contract.emitted_dataflow", "merlin.targetgen.contract.source_observation"),
+        "probe_modules": (
+            "merlin.targetgen.contract.emitted_control_flow", "merlin.targetgen.contract.emitted_dataflow",
+            "merlin.targetgen.contract.source_observation",
+        ),
         "required_modules": ("xdsl",),
     },
     "source-observation-context": {
@@ -1082,6 +1090,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "clang": "MERLIN_CLANG",
     "firtool": "MERLIN_TEST_FIRTOOL",
     "iverilog": "MERLIN_TEST_IVERILOG",
+    "mlir-opt": "MERLIN_TEST_MLIR_OPT",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
     "vvp": "MERLIN_TEST_VVP",
