@@ -33,22 +33,6 @@ def test_missing_runtime_inputs_refuse_before_either_readiness_or_paid_author(tm
     assert not inputs.output.exists() and not inputs.candidate.exists()
 
 
-def test_pre_author_mount_freezes_only_original_candidate_and_preserves_other_policy():
-    original = ("bwrap", "--ro-bind", "/public", "/component-inputs", "--bind", "/initial", "/candidate")
-    assert T._readonly_candidate(original) == (
-        "bwrap",
-        "--ro-bind",
-        "/public",
-        "/component-inputs",
-        "--ro-bind",
-        "/initial",
-        "/candidate",
-    )
-    assert original[4] == "--bind"
-    with pytest.raises(StageGateError, match="single original"):
-        T._readonly_candidate((*original, "--bind", "/private", "/private"))
-
-
 @pytest.mark.parametrize("change", ["none", "source", "destination", "control", "bytes"])
 def test_outer_launcher_requires_exact_selected_identity_with_no_inner_fallback(tmp_path, change):
     outer, inner = tmp_path / "outer", tmp_path / "inner"

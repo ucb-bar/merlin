@@ -44,6 +44,30 @@ def test_view_copies_only_explicit_reviewed_members_without_source_paths(tmp_pat
     assert not (view.root / "private-answer.txt").exists()
 
 
+@pytest.mark.parametrize("writable", [True, False])
+def test_explicit_readonly_execution_preserves_the_author_namespace(tmp_path, writable):
+    view = _view(tmp_path)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    tool = tmp_path / "tool"
+    tool.write_text("owned inventory member, not an execution proof")
+    runtime = (C.RuntimeGrant(tool, "/usr/bin/tool", hashlib.sha256(tool.read_bytes()).hexdigest()),)
+    options = dict(runtime=runtime, bwrap_binary=tmp_path / "selected-outer")
+    writable_policy = C.strict_tool_policy(view, candidate, **options)
+    policy = C.strict_tool_policy(view, candidate, candidate_writable=writable, **options)
+    slot = writable_policy.index("--bind")
+    assert policy[:slot] == writable_policy[:slot]
+    assert policy[slot] == ("--bind" if writable else "--ro-bind")
+    assert policy[slot + 1 :] == writable_policy[slot + 1 :]
+    assert "--share-net" not in policy and "--unshare-all" in policy
+
+
+@pytest.mark.parametrize("writable", [None, 0, 1, "false", {}])
+def test_saved_or_coerced_write_selections_do_not_grant_a_namespace(tmp_path, writable):
+    with pytest.raises(StageGateError, match="explicit bool"):
+        C.strict_tool_policy(None, tmp_path, runtime=(), candidate_writable=writable)
+
+
 def test_view_refreezes_exact_approved_library_selection(tmp_path, monkeypatch):
     root = tmp_path / "installed"
     (root / "merlin").mkdir(parents=True)

@@ -185,3 +185,8 @@ failed attempts as refused evidence, never mint authority from saved records.
 Neither origin nor lineage proves
 numeric correctness, target runtime independence or performance. The handwritten
 implementation and its adapter remain protected final reference inputs only.
+
+Shared-tool readiness selects the existing `strict_tool_policy` with
+`candidate_writable=False`; do not rewrite a constructed mount argument list.
+Native client readiness keeps its disposable copy for temporary mountpoints and
+read-only original source members, then rechecks complete source membership.

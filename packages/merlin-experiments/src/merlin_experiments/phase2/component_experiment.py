@@ -236,12 +236,17 @@ def strict_tool_policy(
     runtime: tuple[RuntimeGrant, ...],
     candidate_destination: str = "/candidate",
     bwrap_binary: Path | None = None,
+    candidate_writable: bool = True,
 ) -> tuple[str, ...]:
     """Networkless tool subprocess policy; no broad checkout/home/system binds.
 
     Runtime files are explicitly reviewed. This policy is not an authenticated
     model-client transport or evidence that the host supports namespaces.
+    Read-only execution can select the same closed namespace without granting
+    the executed program writes to its original source/product workspace.
     """
+    if type(candidate_writable) is not bool:
+        raise StageGateError("candidate write selection must be an explicit bool")
     verify_component_view(view)
     candidate = Path(candidate)
     if candidate.is_symlink() or not candidate.is_dir():
@@ -296,7 +301,7 @@ def strict_tool_policy(
         "--ro-bind",
         str(view.root),
         "/component-inputs",
-        "--bind",
+        "--bind" if candidate_writable else "--ro-bind",
         str(candidate),
         candidate_destination,
         "--chdir",

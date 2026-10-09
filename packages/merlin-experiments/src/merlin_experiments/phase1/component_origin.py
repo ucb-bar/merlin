@@ -29,7 +29,7 @@ from merlin_experiments.phase2.component_experiment import (
 from .component_compile_admission import verify_compile_roster
 from .component_generation_admission import verify_bounded_generation
 from .component_package_execution import selected_compiler_transport
-from .component_tool_readiness import _readonly_candidate, probe_native_author_tools, probe_shared_tools
+from .component_tool_readiness import probe_native_author_tools, probe_shared_tools
 
 _ISSUED: dict[object, tuple] = {}
 _DRIVER = '''"""Structure-only OOT entrypoint. Author the compiler in this package."""
@@ -434,14 +434,13 @@ def run_fresh_component_phase1(
     shutil.copytree(inputs.candidate, initial)
     _readonly(initial)
     initial_hash = _tree(initial)["sha256"]
-    policy = _readonly_candidate(
-        strict_tool_policy(
-            inputs.view,
-            inputs.candidate,
-            runtime=inputs.runtime,
-            candidate_destination=str(inputs.candidate),
-            bwrap_binary=inputs.sandbox_binary,
-        )
+    policy = strict_tool_policy(
+        inputs.view,
+        inputs.candidate,
+        runtime=inputs.runtime,
+        candidate_destination=str(inputs.candidate),
+        bwrap_binary=inputs.sandbox_binary,
+        candidate_writable=False,
     )
     _probe_shared_tools(inputs, policy)
     probe_native_author_tools(inputs)

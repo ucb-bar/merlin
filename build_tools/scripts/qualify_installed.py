@@ -212,6 +212,7 @@ SUITES = {
             "test_component_normal_execution.py",
             "test_component_cca.py",
             "test_component_experiment.py",
+            "test_fesvr_filesystem_containment.py",
             "test_component_final_policy.py",
             "test_numerical_readback.py",
             "test_protected_final_evaluation.py",

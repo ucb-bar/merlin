@@ -59,8 +59,14 @@ alone does not prove that inputs were generated. Keep the existing Phase 0
 derivation/evidence verifier authoritative.
 
 `strict_tool_policy` constructs a networkless, clear-environment subprocess
-boundary with explicit runtime-file mounts, a read-only minimal view and one
-writable candidate. It does not mount a whole checkout, home or system tree.
+boundary with explicit runtime-file mounts and a read-only minimal view. Authoring
+keeps its candidate writable; readiness and runtime execution can explicitly
+select `candidate_writable=False`. The selection requires a boolean and retains
+the same inventory and source-symlink checks. It does not mount a whole checkout,
+home or system tree. A native host syscall proxy can read any mounted file even
+for a freestanding ELF: execution must select only its immutable ELF/data
+workspace and public tool dependencies, with private grader/reference files
+outside every mount. Process containment alone grants no target runtime role.
 `run_isolation_probe` refuses failed/unavailable execution. A successful probe
 does not qualify a model-client authoring transport or establish that every
 private surface was checked. A formal campaign needs actual sandbox probes,

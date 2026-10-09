@@ -528,3 +528,9 @@ existing launch qualifier alone consumes it; it issues no saved-report authority
 and inherits its explicitly pinned outer author sandbox. A nested tool helper's
 destination name cannot select the launcher; changed or incomplete original
 control membership refuses. Launch declarations cannot supply another owner.
+
+`strict_tool_policy` requires an explicit boolean for optional read-only
+execution; the default authoring workspace stays writable. A target host syscall
+proxy can read all mounted paths. Runtime execution grants only an exact
+immutable ELF/data workspace plus inventoried public tools, never its build,
+grader or reference tree. Namespace controls alone issue no runtime role.

@@ -15,15 +15,6 @@ from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import strict_tool_policy, verify_component_view
 
 
-def _readonly_candidate(policy):
-    """Keep shared-tool diagnostics from seeding the inert author workspace."""
-    selected = list(policy)
-    if selected.count("--bind") != 1:
-        raise C.StageGateError("fresh readiness needs the single original candidate mount")
-    selected[selected.index("--bind")] = "--ro-bind"
-    return tuple(selected)
-
-
 def probe_native_author_tools(inputs):
     """Observe the same admitted commands inside the actual native tool profile.
 
