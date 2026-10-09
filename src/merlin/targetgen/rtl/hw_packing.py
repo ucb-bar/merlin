@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from xdsl.ir import BlockArgument, OpResult
 
-from .hw_observations import _inputs, _instance_output, _integer, _name, _width
+from .hw_observations import _inputs, _instance_output, _integer, _module_name, _name, _width
 
 SCHEMA = "merlin.hw_local_equal_partitions.v1"
 
@@ -89,7 +89,7 @@ def equal_partitions(module):
                     }
                 partitions.append(
                     {
-                        "module": op.attributes["sym_name"].data,
+                        "module": _module_name(op),
                         "root": identity,
                         "packed_width": root_width,
                         "slice_width": width,

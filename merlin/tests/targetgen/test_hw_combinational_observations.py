@@ -231,11 +231,11 @@ circuit NativeUnit :
     node data = bits(word, 3, 0)
     node metadata = bits(word, 5, 4)
     node sum = add(pad(data, 5), bits(inc, 4, 0))
-    bank <= metadata
-    row <= data
-    updated <= cat(metadata, bits(sum, 3, 0))
-    carry <= mux(mode, bits(sum, 2, 2), bits(sum, 4, 4))
-    flag <= and(mode, eq(data, UInt<4>(15)))
+    connect bank, metadata
+    connect row, data
+    connect updated, cat(metadata, bits(sum, 3, 0))
+    connect carry, mux(mode, bits(sum, 2, 2), bits(sum, 4, 4))
+    connect flag, and(mode, eq(data, UInt<4>(15)))
 """)
     environment = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
     hardware, verilog, bench, executable = (

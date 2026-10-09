@@ -21,31 +21,47 @@ def _width(value):
     return value.type.width.data if isinstance(value.type, IntegerType) else None
 
 
+def _attribute(op, name):
+    if name in op.attributes and name in op.properties:
+        raise ValueError("HW source has ambiguous attribute/property ownership")
+    return op.attributes.get(name, op.properties.get(name))
+
+
+def _module_name(op):
+    name = _attribute(op, "sym_name")
+    if not isinstance(name, StringAttr):
+        raise ValueError("HW module has no complete explicit symbol name")
+    return name.data
+
+
 def _integer(op, name):
-    value = op.attributes.get(name, op.properties.get(name))
+    value = _attribute(op, name)
     return value.value.data if isinstance(value, IntegerAttr) else None
 
 
 def _inputs(op):
-    typ = op.attributes.get("module_type")
+    typ = _attribute(op, "module_type")
     if not isinstance(typ, UnregisteredAttr) or typ.attr_name.data != "hw.modty":
         raise ValueError("HW module has no lossless explicit module type")
     entries = _hw_port_entries("(" + typ.value.data + ")")
     if entries is None:
         raise ValueError("HW module port entries could not be read completely")
-    names = []
+    names, types = [], []
     for entry in entries:
-        head, separator, _ = entry.partition(":")
+        head, separator, type_text = entry.partition(":")
         words = head.split()
         if not separator or len(words) != 2 or words[0] not in {"input", "output", "inout"}:
             raise ValueError("HW module contains an unreadable port")
         if words[0] in {"input", "inout"}:
             names.append(words[1])
+            types.append(type_text.strip())
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise ValueError("HW module has no single analysis block")
     block = op.regions[0].block
     if len(block.args) != len(names) or len(set(names)) != len(names):
         raise ValueError("HW module input names do not exactly match arguments")
+    if any(declared != str(value.type) for declared, value in zip(types, block.args, strict=True)):
+        raise ValueError("HW module declared input types differ from original SSA")
     return dict(zip(block.args, names, strict=True))
 
 
@@ -54,7 +70,7 @@ def _instance_output(value):
     if not isinstance(value, OpResult) or _name(value.owner) != "hw.instance" or _width(value) is None:
         return None
     op = value.owner
-    names, module, instance = (op.attributes.get(key) for key in ("resultNames", "moduleName", "instanceName"))
+    names, module, instance = (_attribute(op, key) for key in ("resultNames", "moduleName", "instanceName"))
     if (
         not isinstance(names, ArrayAttr)
         or len(names.data) != len(op.results)
@@ -132,7 +148,7 @@ def input_observations(module):
                     instance_records.setdefault(boundary, set()).add(value % (1 << _width(signal)))
         out.append(
             {
-                "module": op.attributes["sym_name"].data,
+                "module": _module_name(op),
                 "inputs": [{"name": name, "width": _width(arg)} for arg, name in inputs.items()],
                 "observations": [
                     {"input": name, "offset": low, "width": width, "equality_constants": sorted(values)}

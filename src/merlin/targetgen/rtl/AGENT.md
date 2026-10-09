@@ -59,3 +59,9 @@ followed across its instance or promoted to reachable state/effects. Original
 undefined branches need a separate source validity premise; a local two-state
 address or a declared memory depth does not establish allocation, tensor
 capacity, temporal reuse, physical transfer correctness or timing authority.
+
+Generic HW field readers accept a field in either its original attribute or
+property dictionary. Duplicate ownership refuses even when both values agree;
+the reader never chooses one spelling over another. Input signatures retain
+each declared type and must match every original block argument. Supporting
+both generic serializations does not assign new hardware or software roles.

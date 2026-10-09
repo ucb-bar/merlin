@@ -79,7 +79,7 @@ SUITES = {
         "native_test_files": ("test_hw_combinational_observations.py", "test_hw_instance_inputs.py"),
         "tests": (
             "test_hw_combinational_observations.py", "test_hw_instance_inputs.py", "test_hw_input_observations.py",
-            "test_hw_packing.py", "test_mlir_source_admission.py",
+            "test_hw_packing.py", "test_hw_field_ownership.py", "test_mlir_source_admission.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (

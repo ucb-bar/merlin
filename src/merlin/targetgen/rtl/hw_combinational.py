@@ -25,7 +25,7 @@ from xdsl.dialects.builtin import (
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
 
 from .hw_graph import parse_generic_hw
-from .hw_observations import _integer, _name
+from .hw_observations import _attribute, _integer, _name
 from .ports import _hw_port_entries
 
 
@@ -146,7 +146,7 @@ def _width(value, limits):
 
 
 def _ports(module, block, output, limits):
-    typ = module.attributes.get("module_type")
+    typ = _attribute(module, "module_type")
     if not isinstance(typ, UnregisteredAttr) or typ.attr_name.data != "hw.modty":
         raise ValueError("combinational observation requires the complete original module type")
     entries = _hw_port_entries("(" + typ.value.data + ")")
@@ -234,13 +234,13 @@ def prepare_combinational_observation(
         op
         for op in parsed.walk()
         if _name(op) == "hw.module"
-        and isinstance(op.attributes.get("sym_name"), StringAttr)
-        and op.attributes["sym_name"].data == module
+        and isinstance(_attribute(op, "sym_name"), StringAttr)
+        and _attribute(op, "sym_name").data == module
     ]
     if len(matches) != 1:
         raise ValueError("combinational observation requires one explicitly selected module")
     selected = matches[0]
-    parameters = selected.attributes.get("parameters")
+    parameters = _attribute(selected, "parameters")
     if parameters is not None and (not isinstance(parameters, ArrayAttr) or parameters.data):
         raise ValueError("combinational observation refuses unresolved module parameters")
     if len(selected.regions) != 1 or len(selected.regions[0].blocks) != 1:

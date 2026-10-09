@@ -25,7 +25,7 @@ from .hw_combinational import (
     _width,
 )
 from .hw_graph import parse_generic_hw
-from .hw_observations import _name
+from .hw_observations import _attribute, _name
 from .ports import _hw_port_entries
 
 
@@ -58,12 +58,6 @@ class PreparedInstanceInputObservation:
 
     def evaluate(self, cases):
         return self.expression.evaluate(cases)
-
-
-def _attribute(op, name):
-    if name in op.attributes and name in op.properties:
-        raise ValueError("instance source has ambiguous attribute/property ownership")
-    return op.attributes.get(name, op.properties.get(name))
 
 
 def _signature(op):

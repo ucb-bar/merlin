@@ -141,15 +141,15 @@ circuit Parent :
     input inready : UInt<1>
     output word : UInt<6>
     output ready : UInt<1>
-    word <= inword
-    ready <= inready
+    connect word, inword
+    connect ready, inready
   module Consumer :
     input enable : UInt<1>
     input addr : UInt<4>
     output outenable : UInt<1>
     output outaddr : UInt<4>
-    outenable <= enable
-    outaddr <= addr
+    connect outenable, enable
+    connect outaddr, addr
   module Parent :
     input word : UInt<6>
     input ready : UInt<1>
@@ -161,15 +161,15 @@ circuit Parent :
     output addr : UInt<4>
     inst source of Producer
     inst sink of Consumer
-    source.inword <= word
-    source.inready <= ready
+    connect source.inword, word
+    connect source.inready, ready
     node low = bits(source.word,3,0)
     node selected = eq(bits(source.word,5,4), UInt<2>(0))
     node dma = and(and(source.ready, not(blocked)), selected)
-    sink.enable <= or(exec,dma)
-    sink.addr <= mux(exec,external,bits(sub(low,step),3,0))
-    enable <= sink.outenable
-    addr <= sink.outaddr
+    connect sink.enable, or(exec,dma)
+    connect sink.addr, mux(exec,external,bits(sub(low,step),3,0))
+    connect enable, sink.outenable
+    connect addr, sink.outaddr
 """)
     environment = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
