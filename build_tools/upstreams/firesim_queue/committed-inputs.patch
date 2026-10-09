@@ -1,0 +1,412 @@
+--- a/firesim_queue.py
++++ b/firesim_queue.py
+@@ -818,0 +819,276 @@
++# Optional exact file handoff. Installed by the queue operator, never selected
++# through a submitter import string or PYTHONPATH. The standalone helper is
++# source-byte pinned; no package import or runtime authority is implied.
++PINNED_FILES_SOURCE_SHA256 = "081a7014eeff604cda30570fff61329f09484f63a35ba33fa2f1662772bd644e"
++_PINNED_FILE_API = None
++
++
++def _pinned_file_api():
++    global _PINNED_FILE_API
++    import types
++
++    path = pathlib.Path(__file__).resolve().with_name("pinned_files.py")
++    raw = path.read_bytes()
++    if hashlib.sha256(raw).hexdigest() != PINNED_FILES_SOURCE_SHA256:
++        raise RuntimeError("installed pinned-file helper source changed")
++    if _PINNED_FILE_API is not None:
++        return _PINNED_FILE_API
++    name = "_firesim_queue_reviewed_pinned_files"
++    module = types.ModuleType(name)
++    module.__file__ = str(path)
++    sys.modules[name] = module
++    exec(compile(raw, str(path), "exec"), module.__dict__)
++    _PINNED_FILE_API = module
++    return module
++
++
++def _relative_input_name(value):
++    if (
++        type(value) is not str
++        or not value
++        or "\\" in value
++        or value.startswith("/")
++        or any(x in ("", ".", "..") for x in value.split("/"))
++    ):
++        raise RuntimeError("input membership requires a normalized relative path")
++    return value
++
++
++def _local_input_path(value):
++    from urllib.parse import urlsplit, unquote
++
++    if type(value) is not str:
++        raise RuntimeError("HWDB input URI must be a string")
++    if value.startswith("file:"):
++        uri = urlsplit(value)
++        if uri.scheme != "file" or uri.netloc or uri.query or uri.fragment:
++            raise RuntimeError("only explicit local HWDB input URIs are supported")
++        value = unquote(uri.path)
++    path = pathlib.Path(value)
++    if not path.is_absolute() or path.resolve() != path or path.is_symlink():
++        raise RuntimeError("input source must be an explicit canonical local file")
++    return path
++
++
++def _committed_hwdb(raw, hw_config):
++    import yaml
++
++    # Aliases and duplicate keys make exact URI membership ambiguous.
++    if any(isinstance(event, yaml.events.AliasEvent) for event in yaml.parse(raw)):
++        raise RuntimeError("HWDB aliases are unsupported for committed inputs")
++
++    class UniqueLoader(yaml.SafeLoader):
++        pass
++
++    def unique_mapping(loader, node, deep=False):
++        result = {}
++        for key_node, value_node in node.value:
++            key = loader.construct_object(key_node, deep=deep)
++            if type(key) is not str or key in result:
++                raise RuntimeError("HWDB contains duplicate or non-string keys")
++            result[key] = loader.construct_object(value_node, deep=deep)
++        return result
++
++    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, unique_mapping)
++    body = yaml.load(raw, Loader=UniqueLoader)
++    if type(body) is not dict or set(body) != {hw_config} or type(body[hw_config]) is not dict:
++        raise RuntimeError("committed inputs require the exact one-entry HWDB")
++    return body
++
++
++def _committed_declaration(files, slots, uris, *, stage_from, bootbinary, hw_config, hwdb_raw):
++    if not files and not slots and not uris:
++        return None
++    api = _pinned_file_api()
++    if not files or not slots or not uris or not stage_from or not hw_config:
++        raise RuntimeError("committed input, slot, URI, ELF and HWDB memberships are required")
++    _relative_input_name(bootbinary)
++    if "/" in bootbinary:
++        raise RuntimeError("staged ELF name must be a basename")
++    pins = tuple(api.PinnedFile(_local_input_path(path), digest) for path, digest in files)
++    api.verify_files(pins)
++    staged = _local_input_path(stage_from)
++    if staged not in {item.path for item in pins}:
++        raise RuntimeError("staged ELF is absent from committed input membership")
++    checked_slots = []
++    for directory, elf_name in slots:
++        checked_slots.append([_relative_input_name(directory), _relative_input_name(elf_name)])
++        if "/" in elf_name:
++            raise RuntimeError("slot ELF name must be a basename")
++    if len({x[0] for x in checked_slots}) != len(checked_slots):
++        raise RuntimeError("consumed slot membership repeats a directory")
++    body = _committed_hwdb(hwdb_raw, hw_config)[hw_config]
++    checked_uris = []
++    paths = {staged}
++    for field, uri, archive_name in uris:
++        if field not in ("bitstream_tar", "driver_tar") or body.get(field) != uri:
++            raise RuntimeError("HWDB URI does not match its exact declared field")
++        path = _local_input_path(uri)
++        _relative_input_name(archive_name)
++        if "/" in archive_name or path == staged:
++            raise RuntimeError("archive membership must be distinct from the staged ELF")
++        paths.add(path)
++        checked_uris.append([field, uri, archive_name])
++    if (
++        len({x[0] for x in checked_uris}) != len(checked_uris)
++        or len({x[2] for x in checked_uris}) != len(checked_uris)
++        or len(paths) != len(checked_uris) + 1
++        or paths != {item.path for item in pins}
++        or {x[0] for x in checked_uris} != {"bitstream_tar", "driver_tar"}
++    ):
++        raise RuntimeError("ELF and both local HWDB archive memberships must be exact and unique")
++    return {"files": [[str(x.path), x.sha256] for x in pins], "slots": checked_slots, "uris": checked_uris}
++
++
++def _archive_members(path):
++    import tarfile
++
++    result = {}
++    with tarfile.open(path, "r:*") as archive:
++        seen = set()
++        for member in archive:
++            name = member.name
++            while name.startswith("./"):
++                name = name[2:]
++            if name in ("", ".") and member.isdir():
++                continue
++            name = _relative_input_name(name.rstrip("/") if member.isdir() else name)
++            if name in seen or not (member.isdir() or member.isfile()):
++                raise RuntimeError("archive links, special files and repeated members are unsupported")
++            seen.add(name)
++            if member.isfile():
++                digest = hashlib.sha256()
++                source = archive.extractfile(member)
++                if source is None:
++                    raise RuntimeError("archive regular member cannot be reopened")
++                with source:
++                    while chunk := source.read(1024 * 1024):
++                        digest.update(chunk)
++                result[name] = digest.hexdigest()
++    if not result:
++        raise RuntimeError("archive has no complete regular-file membership")
++    return result
++
++
++def _private_committed_inputs(selection, snapshot_root, job_id, original_hwdb, hw_config, stage_from):
++    import yaml
++
++    api = _pinned_file_api()
++    pins = tuple(api.PinnedFile(pathlib.Path(path), digest) for path, digest in selection["files"])
++    private_root = snapshot_root / f"job-{job_id}-inputs"
++    private = api.snapshot_files(pins, private_root)
++    by_source = {source.path: target for source, target in zip(pins, private)}
++    body = _committed_hwdb(original_hwdb.read_bytes(), hw_config)
++    archives = []
++    all_member_names = set()
++    for field, uri, basename in selection["uris"]:
++        pin = by_source[_local_input_path(uri)]
++        members = _archive_members(pin.path)
++        reserved = {x[2] for x in selection["uris"]} | {x[1] for x in selection["slots"]}
++        if all_member_names.intersection(members) or reserved.intersection(members):
++            raise RuntimeError("different selected archives overwrite the same member")
++        all_member_names.update(members)
++        archives.append(
++            {
++                "field": field,
++                "source_uri": uri,
++                "private_uri": pin.path.as_uri(),
++                "basename": basename,
++                "sha256": pin.sha256,
++                "members": members,
++            }
++        )
++        body[hw_config][field] = pin.path.as_uri()
++    effective = private_root / "effective-hwdb.yaml"
++    with effective.open("xb") as stream:
++        stream.write(yaml.safe_dump(body, sort_keys=False).encode())
++        stream.flush()
++        os.fsync(stream.fileno())
++    effective.chmod(0o444)
++    effective_pin = api.PinnedFile(effective, hashlib.sha256(effective.read_bytes()).hexdigest())
++    state = {
++        "private_files": private,
++        "effective": effective_pin,
++        "staged": by_source[pathlib.Path(stage_from)],
++        "archives": archives,
++        "slots": selection["slots"],
++        "original_hwdb": api.PinnedFile(original_hwdb, hashlib.sha256(original_hwdb.read_bytes()).hexdigest()),
++        "root": private_root,
++    }
++    return state
++
++
++def _private_runtime_input(state, path):
++    api = _pinned_file_api()
++    pin = api.PinnedFile(path, hashlib.sha256(path.read_bytes()).hexdigest())
++    state["runtime"] = api.snapshot_files((pin,), state["root"] / "runtime-input")[0]
++    return state["runtime"].path
++
++
++def _verify_committed_inputs(state, staged, simulation_dir, phase, *, consumed):
++    api = _pinned_file_api()
++    if simulation_dir.resolve() != simulation_dir or simulation_dir.is_symlink() or not simulation_dir.is_dir():
++        raise RuntimeError("simulation root is absent or aliases another path")
++    files = list(state["private_files"]) + [
++        state["effective"],
++        state["original_hwdb"],
++        api.PinnedFile(staged, state["staged"].sha256),
++    ]
++    if "runtime" in state:
++        files.append(state["runtime"])
++    if consumed:
++        for directory, elf_name in state["slots"]:
++            slot = simulation_dir / directory
++            if (
++                slot.resolve() != slot
++                or slot.is_symlink()
++                or not slot.is_dir()
++                or not slot.is_relative_to(simulation_dir.resolve())
++            ):
++                raise RuntimeError("consumed slot is absent or aliases its declared location")
++            files.append(api.PinnedFile(slot / elf_name, state["staged"].sha256))
++            for archive in state["archives"]:
++                files.append(api.PinnedFile(slot / archive["basename"], archive["sha256"]))
++                for name, digest in archive["members"].items():
++                    files.append(api.PinnedFile(slot / name, digest))
++    api.verify_files(tuple(files))
++    observation = {
++        "phase": phase,
++        "consumed": consumed,
++        "scope": "declared_file_and_slot_bytes_only",
++        "files": [{"path": str(x.path), "sha256": x.sha256} for x in files],
++        "original_hwdb_sha256": state["original_hwdb"].sha256,
++        "effective_hwdb_sha256": state["effective"].sha256,
++        "archives": state["archives"],
++        "slots": state["slots"],
++    }
++    path = state["root"] / f"observed-{phase}.json"
++    with path.open("x") as stream:
++        json.dump(observation, stream, sort_keys=True, indent=2)
++        stream.flush()
++        os.fsync(stream.fileno())
++    path.chmod(0o444)
++
++
++def _record_committed_refusal(state, phase, error, *, job_id=None):
++    try:
++        if state is not None:
++            path = state["root"] / f"refused-{phase}.json"
++        elif job_id is not None:
++            path = _prepare_hwdb_snapshot_root() / f"job-{job_id}-refused-{phase}.json"
++        else:
++            return
++        with path.open("x") as stream:
++            json.dump(
++                {
++                    "phase": phase,
++                    "scope": "declared_file_and_slot_bytes_only",
++                    "outcome": "refused",
++                    "detail": str(error)[:2048],
++                },
++                stream,
++            )
++        path.chmod(0o444)
++    except (OSError, RuntimeError) as observation_error:
++        # Diagnostic publication cannot suppress mandatory native teardown.
++        print(f"[daemon] committed refusal observation unavailable: {observation_error}", file=sys.stderr)
+@@ -903,0 +1180,12 @@
++    committed_inputs = None
++    try:
++        committed_inputs = _committed_declaration(
++            getattr(args, "committed_file", None),
++            getattr(args, "consumed_slot", None),
++            getattr(args, "hwdb_local_uri", None), stage_from=stage_from,
++            bootbinary=bootbinary, hw_config=getattr(args, "hw_config", None),
++            hwdb_raw=hwdb_raw if hwdb_config_artifact else b"")
++    except Exception as exc:
++        print(f"error: invalid committed input selection: {exc}", file=sys.stderr)
++        return 2
++
+@@ -937,0 +1226 @@
++        "committed_inputs": committed_inputs,
+@@ -1664,0 +1954,4 @@
++    committed_selection = kind_args.get("committed_inputs")
++    committed_state = None
++    staged_input = None
++    effective_hwdb_sha256 = hwdb_config_artifact_sha256
+@@ -1695,9 +1988,6 @@
+-    simulation_dir.mkdir(exist_ok=True)
+-    _render_per_job_runtime_yaml(
+-        template_yaml,
+-        per_job_yaml,
+-        workload,
+-        suffix_tag,
+-        hw_config=kind_args.get("hw_config"),
+-        simulation_dir=str(simulation_dir),
+-    )
++    if committed_selection is None:
++        simulation_dir.mkdir(exist_ok=True)
++        _render_per_job_runtime_yaml(
++            template_yaml, per_job_yaml, workload, suffix_tag,
++            hw_config=kind_args.get("hw_config"),
++            simulation_dir=str(simulation_dir))
+@@ -1779 +2069 @@
+-        if observed != hwdb_config_artifact_sha256:
++        if observed != effective_hwdb_sha256:
+@@ -1782 +2072 @@
+-                f"{hwdb_config_artifact_sha256}, observed {observed}"
++                f"{effective_hwdb_sha256}, observed {observed}"
+@@ -1899,0 +2190,29 @@
++                if committed_selection is not None:
++                    try:
++                        if type(committed_selection) is not dict or set(committed_selection) != {"files", "slots", "uris"}:
++                            raise RuntimeError("invalid closed committed input declaration")
++                        checked = _committed_declaration(
++                            committed_selection["files"], committed_selection["slots"],
++                            committed_selection["uris"], stage_from=stage_from,
++                            bootbinary=bootbinary, hw_config=kind_args.get("hw_config"),
++                            hwdb_raw=hwdb_raw)
++                        if checked != committed_selection or checked is None:
++                            raise RuntimeError("committed input membership changed")
++                        if simulation_dir.resolve() != simulation_dir or simulation_dir.is_symlink():
++                            raise RuntimeError("simulation root aliases another path")
++                        simulation_dir.mkdir(exist_ok=True)
++                        committed_state = _private_committed_inputs(
++                            checked, snapshot_root, job_id, per_job_hwdb,
++                            kind_args["hw_config"], stage_from)
++                        per_job_hwdb = committed_state["effective"].path
++                        produced_runtime = committed_state["root"] / "runtime-produced.yaml"
++                        _render_per_job_runtime_yaml(template_yaml, produced_runtime,
++                            workload, suffix_tag, hw_config=kind_args.get("hw_config"),
++                            simulation_dir=str(simulation_dir))
++                        per_job_yaml = _private_runtime_input(committed_state, produced_runtime)
++                        effective_hwdb_sha256 = committed_state["effective"].sha256
++                        stage_from = str(committed_state["staged"].path)
++                    except Exception as exc:
++                        overall_rc = 1
++                        final_state = "FAILED"
++                        raise RuntimeError(f"committed input preparation refused: {exc}") from exc
+@@ -1904,0 +2224,2 @@
++                        if committed_state is not None and stage_dst.resolve() != stage_dst:
++                            raise OSError("staged ELF destination aliases another path")
+@@ -1905,0 +2227 @@
++                        staged_input = stage_dst
+@@ -1915,0 +2238,9 @@
++
++                if committed_state is not None:
++                    try:
++                        _verify_committed_inputs(committed_state, staged_input,
++                            simulation_dir, "before_leading_kill", consumed=False)
++                    except Exception as exc:
++                        overall_rc = 1
++                        final_state = "FAILED"
++                        raise RuntimeError(f"committed input check refused: {exc}") from exc
+@@ -1945,0 +2277,8 @@
++                if committed_state is not None:
++                    try:
++                        _verify_committed_inputs(committed_state, staged_input,
++                            simulation_dir, "before_infrasetup", consumed=False)
++                    except Exception as exc:
++                        overall_rc = 1
++                        final_state = "FAILED"
++                        raise RuntimeError(f"committed input check refused: {exc}") from exc
+@@ -1962,0 +2302,8 @@
++                if committed_state is not None:
++                    try:
++                        _verify_committed_inputs(committed_state, staged_input,
++                            simulation_dir, "before_runworkload", consumed=True)
++                    except Exception as exc:
++                        overall_rc = 1
++                        final_state = "FAILED"
++                        raise RuntimeError(f"consumed input check refused: {exc}") from exc
+@@ -1974,0 +2322,5 @@
++                if committed_selection is not None:
++                    overall_rc = overall_rc or 1
++                    if final_state == "DONE":
++                        final_state = "FAILED"
++                    _record_committed_refusal(committed_state, "lifecycle", exc, job_id=job_id)
+@@ -1989 +2341,4 @@
+-                        _verify_hwdb_snapshot("before_trailing_kill")
++                        # Optional byte refusal must not suppress mandatory kill.
++                        # Its immutable selections are checked after teardown.
++                        if committed_state is None:
++                            _verify_hwdb_snapshot("before_trailing_kill")
+@@ -2003,0 +2359,6 @@
++                        if committed_state is not None:
++                            try:
++                                _verify_committed_inputs(committed_state, staged_input,
++                                    simulation_dir, "after_teardown", consumed=True)
++                            except Exception as exc:
++                                raise RuntimeError(f"consumed input changed after teardown: {exc}") from exc
+@@ -2004,0 +2366 @@
++                        _record_committed_refusal(committed_state, "teardown", exc)
+@@ -3660,0 +4023,6 @@
++    p_rwf.add_argument("--committed-file", nargs=2, action="append", metavar=("PATH", "SHA256"),
++        help="opt-in exact staged ELF and both local HWDB archive file pins")
++    p_rwf.add_argument("--consumed-slot", nargs=2, action="append", metavar=("RELATIVE_DIR", "ELF_NAME"),
++        help="opt-in explicit consumed slot directory and renamed ELF basename")
++    p_rwf.add_argument("--hwdb-local-uri", nargs=3, action="append", metavar=("FIELD", "URI", "ARCHIVE_NAME"),
++        help="opt-in exact local bitstream_tar/driver_tar URI and slot archive basename")
