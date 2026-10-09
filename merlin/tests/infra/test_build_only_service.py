@@ -2,8 +2,12 @@
 
 import builtins
 import hashlib
+import importlib.util
+import json
+import subprocess
 import sys
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -11,6 +15,13 @@ import pytest
 from merlin.targetgen.contract import compile as compiler
 from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 from merlin.targetgen.contract.build_service import BuildOnlyService, load_build_package
+
+
+def _owned_renderer(path):
+    spec = importlib.util.spec_from_file_location("own_source_renderer_control", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.renderer
 
 
 def service(tmp_path):
@@ -23,7 +34,9 @@ def service(tmp_path):
         "fixture",
         recipe,
         lambda cb, **kwargs: "C text",
-        ((str(source), hashlib.sha256(source.read_bytes()).hexdigest()),),
+        tuple(
+            (str(path), hashlib.sha256(path.read_bytes()).hexdigest()) for path in (source, Path(__file__).resolve())
+        ),
     )
 
 
@@ -98,6 +111,113 @@ def test_package_reuse_refuses_changed_source(tmp_path):
                 sys.modules.pop(name, None)
 
 
+@pytest.mark.parametrize("selected_owner", [False, True])
+def test_actual_process_requires_renderer_owner_before_callback(tmp_path, selected_owner):
+    """The real child cannot execute an unselected callback's harmless side effect."""
+    from merlin.targetgen.contract import build_service
+
+    support = tmp_path / "selected.py"
+    support.write_text("REVIEWED = True\n")
+    source = tmp_path / "renderer.py"
+    marker = tmp_path / "renderer-ran"
+    source.write_text(
+        "from pathlib import Path\n"
+        "def renderer(cb, *, inputs):\n"
+        f"    Path({str(marker)!r}).write_text('executed')\n"
+        "    return 'C text'\n"
+    )
+    script = tmp_path / "control.py"
+    script.write_text(
+        "from pathlib import Path\n"
+        "import sys, importlib.util, json\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest\n"
+        "from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe\n"
+        f"source = Path({str(source)!r})\n"
+        "spec = importlib.util.spec_from_file_location('own_renderer', source)\n"
+        "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n"
+        f"paths = [Path({str(support)!r})] + ([source] if {selected_owner!r} else [])\n"
+        "recipe = HarnessBuildRecipe(source, (), (), source, 0)\n"
+        "pins = tuple((str(p), file_digest(p)) for p in paths)\n"
+        "service = BuildOnlyService('control', recipe, module.renderer, pins)\n"
+        "try:\n"
+        "    actual = service.render({}, target='control', inputs={})\n"
+        "except ValueError as error:\n"
+        "    print(json.dumps({'outcome':'refused', 'reason':str(error)}))\n"
+        "else:\n"
+        "    print(json.dumps({'outcome':'rendered', 'actual':actual}))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", str(script), str(Path(build_service.__file__).resolve().parents[3])],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+    )
+    observation = json.loads(result.stdout)
+    assert marker.exists() is selected_owner
+    if selected_owner:
+        assert observation == {"outcome": "rendered", "actual": "C text"}
+    else:
+        assert observation["outcome"] == "refused"
+        assert "pinned inspected source owner" in observation["reason"]
+
+
+def test_unselected_renderer_refuses_before_object_tool(tmp_path, monkeypatch):
+    cap = service(tmp_path)
+    cap = replace(cap, source_pins=cap.source_pins[:1])
+    monkeypatch.setattr(compiler, "llvm_mlir_to_object", lambda *a, **k: pytest.fail("compiled"))
+    with pytest.raises(ValueError, match="pinned inspected source owner"):
+        compiler.compile_lowered_to_elf({}, "llvm", tmp_path, target="fixture", inputs={}, _build_service=cap)
+
+
+def test_exact_partial_and_bound_method_keep_actual_function_ownership(tmp_path):
+    class Renderer:
+        def render(self, cb, *, inputs):
+            return "C text"
+
+    cap = service(tmp_path)
+    for renderer in (Renderer().render, partial(Renderer().render), partial(partial(Renderer().render))):
+        assert replace(cap, renderer=renderer).render({}, target="fixture", inputs={}) == "C text"
+
+
+@pytest.mark.parametrize("kind", ["callable_object", "partial_subclass", "builtin"])
+def test_arbitrary_wrapper_or_source_labels_cannot_supply_function_ownership(tmp_path, kind):
+    cap = service(tmp_path)
+
+    class Wrapped:
+        __wrapped__ = cap.renderer
+        source_owner = __file__
+
+        def __call__(self, *args, **kwargs):
+            pytest.fail("unselected wrapper ran")
+
+    class ExtendedPartial(partial):
+        pass
+
+    renderer = {"callable_object": Wrapped(), "partial_subclass": ExtendedPartial(cap.renderer), "builtin": len}[kind]
+    with pytest.raises(ValueError, match="actual Python function or bound method"):
+        replace(cap, renderer=renderer).render({}, target="fixture", inputs={})
+
+
+def test_changed_renderer_owner_and_indirect_filename_refuse_before_call(tmp_path):
+    cap = service(tmp_path)
+    source = tmp_path / "actual_renderer.py"
+    source.write_text("def renderer(cb, *, inputs):\n    return 'original'\n")
+    renderer = _owned_renderer(source)
+    cap = replace(cap, renderer=renderer, source_pins=((str(source), hashlib.sha256(source.read_bytes()).hexdigest()),))
+    assert cap.render({}, target="fixture", inputs={}) == "original"
+    source.write_text("def renderer(cb, *, inputs):\n    return 'changed'\n")
+    with pytest.raises(ValueError, match="pin changed"):
+        cap.render({}, target="fixture", inputs={})
+    cap = replace(cap, source_pins=((str(source), hashlib.sha256(source.read_bytes()).hexdigest()),))
+    alias = tmp_path / "linked.py"
+    alias.symlink_to(source)
+    with pytest.raises(ValueError, match="pinned inspected source owner"):
+        replace(cap, renderer=_owned_renderer(alias)).render({}, target="fixture", inputs={})
+
+
 def test_build_translation_refuses_non_llvm_before_tool(tmp_path, monkeypatch):
     cap = service(tmp_path)
     monkeypatch.setattr(compiler.subprocess, "run", lambda *a, **k: pytest.fail("translation ran"))
@@ -167,7 +287,10 @@ def test_explicit_public_object_budget_bounds_translation_and_compile(tmp_path, 
     monkeypatch.setattr(codegen, "compile_ll", compile_ll)
     result = compiler.llvm_mlir_to_object(
         "builtin.module { llvm.func @fixture_entry() { llvm.return } }",
-        tmp_path / "build", target="fixture", _build_service=cap, build_timeout_s=2,
+        tmp_path / "build",
+        target="fixture",
+        _build_service=cap,
+        build_timeout_s=2,
     )
     assert result.is_file()
     assert [part for part, _seconds in seen] == ["translate", "compile"]
@@ -182,14 +305,18 @@ def test_explicit_public_object_budget_refuses_translator_timeout(tmp_path, monk
     cap = service(tmp_path)
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: Path("/fixture/mlir-translate"))
     monkeypatch.setattr(
-        compiler.subprocess, "run",
+        compiler.subprocess,
+        "run",
         lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(args[0], kwargs["timeout"])),
     )
     monkeypatch.setattr(codegen, "compile_ll", lambda *args, **kwargs: pytest.fail("compiled after timeout"))
     with pytest.raises(TimeoutError, match="translation budget expired"):
         compiler.llvm_mlir_to_object(
             "builtin.module { llvm.func @fixture_entry() { llvm.return } }",
-            tmp_path / "build", target="fixture", _build_service=cap, build_timeout_s=1,
+            tmp_path / "build",
+            target="fixture",
+            _build_service=cap,
+            build_timeout_s=1,
         )
 
 
@@ -200,6 +327,7 @@ def test_explicit_object_compiler_limit_is_tighter_than_global_default(tmp_path,
 
     seen = []
     monkeypatch.setattr(codegen, "clang", lambda: Path("/fixture/clang"))
+
     def observed(command, **kwargs):
         seen.append(kwargs["timeout"])
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")

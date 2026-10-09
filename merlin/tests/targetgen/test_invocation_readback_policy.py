@@ -46,7 +46,8 @@ def _service(tmp_path, renderer):
         load_address=0,
         cflags=("-march=rv64gc", "-mabi=lp64d"),
     )
-    return BuildOnlyService("fixture", recipe, renderer, ((str(source), file_digest(source)),)), source
+    pins = tuple((str(path), file_digest(path)) for path in (source, Path(__file__).resolve()))
+    return BuildOnlyService("fixture", recipe, renderer, pins), source
 
 
 def test_policy_is_strictly_versioned_and_does_not_modify_capsule():
@@ -123,6 +124,8 @@ def test_memory_build_receipt_rechecks_selected_transport_and_header_bytes(monke
         with pytest.raises(ValueError, match="receipt"):
             verified()
         path.write_bytes(original)
+
+
 @pytest.mark.parametrize("transport", [None, FULL_VALUES_B64, FULL_VALUES_BIN])
 def test_console_reader_uses_explicit_policy_not_filename(tmp_path, transport):
     path = tmp_path / "console.bin"

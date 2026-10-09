@@ -12,8 +12,9 @@ import inspect
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from types import ModuleType
+from types import FunctionType, MethodType, ModuleType
 
 
 def file_digest(path: Path) -> str:
@@ -96,8 +97,25 @@ class BuildOnlyService:
             raise ValueError("build-only service must be a typed target-bound host capability")
         for path, expected in self.source_pins:
             item = Path(path)
-            if not item.is_absolute() or item.resolve() != item or not item.is_file() or file_digest(item) != expected:
+            if (
+                not item.is_absolute()
+                or any(parent.is_symlink() for parent in (item, *item.parents))
+                or item.resolve() != item
+                or not item.is_file()
+                or file_digest(item) != expected
+            ):
                 raise ValueError("build-only source/tool pin changed: " + str(path))
+        renderer = self.renderer
+        while type(renderer) is partial:
+            renderer = renderer.func
+        if type(renderer) not in (FunctionType, MethodType):
+            raise ValueError("build-only renderer must be an actual Python function or bound method")
+        owner = inspect.getsourcefile(renderer)
+        declared = dict(self.source_pins)
+        if owner is None or not Path(owner).is_absolute() or str(Path(owner)) not in declared:
+            raise ValueError("build-only renderer has no pinned inspected source owner")
+        if file_digest(Path(owner)) != declared[str(Path(owner))]:
+            raise ValueError("build-only renderer inspected source owner changed")
 
     def render(self, cb, *, target, inputs, warm_profile=None, readback_policy=None, blobs=None):
         self.verify(target)

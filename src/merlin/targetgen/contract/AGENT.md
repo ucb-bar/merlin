@@ -76,6 +76,14 @@ Its source pins establish attribution and drift checks. Independently evaluated
 semantic, physical-effect and hardware-runtime qualification belongs to the
 private experiments owner, and cannot be issued by this transport.
 
+The build-only renderer must be an actual Python function or bound method whose
+inspected file and current bytes belong to the selected source roster. Unwrap
+only exact stdlib `functools.partial`, never supplied wrapper/source attributes.
+Validate before invocation and recheck afterward. The ordinary model adapter
+pins its forwarding wrapper as well as its selected provider files. Direct file
+membership does not prove bytecode, closure/import dependencies, genericity or
+independent runtime qualification.
+
 The optional `LinkedElfAdmissionService` executes after linking and before any
 simulator dispatch. Reopen its actual report and exact ELF bytes before and after
 execution. Refusal is completed evaluation data with `execution=not_attempted`,

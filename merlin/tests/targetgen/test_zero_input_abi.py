@@ -53,7 +53,9 @@ def _storage():
 
 
 def _service(tmp_path, renderer):
-    owner = Path(__file__).resolve()
+    from merlin.common.paths import module_source_path
+
+    owners = (Path(__file__).resolve(), module_source_path("merlin.runtime.direct_kernel_harness"))
     recipe = HarnessBuildRecipe(
         Path("/usr/bin/cc"),
         (),
@@ -62,7 +64,9 @@ def _service(tmp_path, renderer):
         0,
         ("-march=rv64gc", "-mabi=lp64d"),
     )
-    return BuildOnlyService("zero_input_fixture", recipe, renderer, ((str(owner), file_digest(owner)),))
+    return BuildOnlyService(
+        "zero_input_fixture", recipe, renderer, tuple((str(owner), file_digest(owner)) for owner in owners)
+    )
 
 
 def test_original_zero_argument_tensor_signature_and_output_only_linkage():

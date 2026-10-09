@@ -96,7 +96,9 @@ def native_case(tmp_path, monkeypatch):
         "independent-native",
         recipe,
         lambda *_args, **_kwargs: HARNESS,
-        ((str(provider), RB.file_sha256(provider)), (str(Path(compiler).resolve()), RB.file_sha256(Path(compiler)))),
+        tuple(
+            (str(path), RB.file_sha256(path)) for path in (provider, Path(compiler).resolve(), Path(__file__).resolve())
+        ),
     )
     policy = RB.ReadbackPolicy(RB.FULL_VALUES_B64)
     recipe_record, pins = RB.selected_build_inputs(service.target, recipe, service)

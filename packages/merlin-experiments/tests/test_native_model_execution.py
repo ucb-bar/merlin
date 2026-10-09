@@ -46,6 +46,7 @@ def test_logical_leaf_binding_preserves_dtype_shape_and_values():
 
 def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_path, monkeypatch):
     from merlin.runtime.backends import base as backends
+    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
 
     source = tmp_path / "backend.py"
     source.write_text("# pinned renderer source\n")
@@ -57,9 +58,12 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
 
     backend = SimpleNamespace(__file__=str(source), build_source_paths=lambda: (), render_harness=legacy_render)
     monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
-    monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: object())
+    recipe = HarnessBuildRecipe(tmp_path / "unused", (), (), tmp_path / "unused.ld", 0)
+    monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: recipe)
     cb, inputs = {}, {"arg0": [1]}
-    assert _build_service_for("synthetic", source_owned_mutables=()).renderer(cb, inputs=inputs) == "legacy"
+    assert _build_service_for("synthetic", source_owned_mutables=()).render(
+        cb, target="synthetic", inputs=inputs
+    ) == "legacy"
     assert observed == [(cb, "synthetic", inputs, None)]
 
     def scratch_render(cb, *, target, inputs, source_owned_mutables):
@@ -67,7 +71,9 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
         return "scratch"
 
     backend.render_harness = scratch_render
-    assert _build_service_for("synthetic", source_owned_mutables=("tmp0",)).renderer(cb, inputs=inputs) == "scratch"
+    assert _build_service_for("synthetic", source_owned_mutables=("tmp0",)).render(
+        cb, target="synthetic", inputs=inputs
+    ) == "scratch"
     assert observed[-1] == (cb, "synthetic", inputs, ("tmp0",))
 
 

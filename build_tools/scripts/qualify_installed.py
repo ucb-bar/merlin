@@ -72,6 +72,25 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "renderer-source-owner": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/infra",
+        "tests": ("test_build_only_service.py",),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.targetgen.contract.build_service",),
+        "required_modules": ("xdsl",),
+    },
+    "renderer-provider-inputs": {
+        "tests": (
+            "test_native_model_execution.py",
+            "test_native_readback.py",
+            "test_numerical_readback.py",
+            "test_phase1_codegen_scalability.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": ("merlin.targetgen.native_model_execution",),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "address-transition-inputs": {
         "native_tools": ("firtool", "circt-opt"),
         "native_test_files": ("test_address_transition_intake.py",),

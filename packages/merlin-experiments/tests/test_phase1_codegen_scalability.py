@@ -252,7 +252,10 @@ def test_neutral_straight_line_and_bounded_loop_have_measured_objects(tmp_path):
         )
         service = BuildOnlyService(
             "fixture", recipe, lambda *_args, **_kwargs: "",
-            ((str(source), hashlib.sha256(source.read_bytes()).hexdigest()),),
+            tuple(
+                (str(path), hashlib.sha256(path.read_bytes()).hexdigest())
+                for path in (source, Path(__file__).resolve())
+            ),
         )
         # Clang's imported module-flag carrier is outside the selected xDSL
         # scanner's grammar. The recipe above binds ABI/ISA for this neutral

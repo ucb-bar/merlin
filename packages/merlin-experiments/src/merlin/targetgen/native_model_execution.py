@@ -370,7 +370,7 @@ def _build_service_for(target: str, *, source_owned_mutables: tuple[str, ...] | 
     providers = list(root.rglob("*.py"))
     extra = backend.build_source_paths() if callable(getattr(backend, "build_source_paths", None)) else ()
     recipe = backends.harness_build_recipe(target)
-    declared = [*providers, *map(Path, extra), *getattr(recipe, "header_dependencies", ())]
+    declared = [Path(__file__).resolve(), *providers, *map(Path, extra), *getattr(recipe, "header_dependencies", ())]
     if not declared or any(
         not p.is_absolute() or p.is_symlink() or p.resolve() != p or not p.is_file() for p in declared
     ):

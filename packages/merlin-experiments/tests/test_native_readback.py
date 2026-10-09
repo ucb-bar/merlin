@@ -42,7 +42,7 @@ def actual_build(request, tmp_path, monkeypatch):
     monkeypatch.setattr(HarnessBuildRecipe, "with_effective_abi", lambda self: self)
     service = BuildOnlyService(
         "independent-native", recipe, lambda *_a, **_k: "synthetic renderer",
-        ((str(provider), RB.file_sha256(provider)),),
+        tuple((str(path), RB.file_sha256(path)) for path in (provider, Path(__file__).resolve())),
     )
     policy = RB.ReadbackPolicy(request.param)
     selected = RB.selected_build_inputs(service.target, recipe.with_effective_abi(), service, policy=policy)
