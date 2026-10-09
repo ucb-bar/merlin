@@ -160,6 +160,7 @@ def _exercise_fixed_runtime_instruction_control(check, hardware, root, config):
             runtime_support.execute_component,
             runtime_support.PrivateRuntimeControlExecutor,
             runtime_support.prepare_source_control,
+            runtime_support.stage_products.collect,
         )
     )
     files.add(Path(runtime_support.instruction_control.__file__))

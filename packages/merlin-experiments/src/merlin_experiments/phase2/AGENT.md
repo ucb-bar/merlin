@@ -563,3 +563,15 @@ controls establish that no process filesystem is needed. The authoring default
 retains `/proc`; removal reduces visible paths without qualifying observer
 integrity, hardware effects or timing. Do not substitute a guest output for
 trusted parent-owned observations.
+
+
+`component_runtime_stage_products` retains only the prepared context's actual
+original source/compiler/result and same-ELF coherent decode products. A finite
+report must be produced by explicitly selected source bytes, consume those exact
+source/ELF/decoder/packet inputs, and retain the complete four-emission and eleven-
+effect denominators. Its dispositions remain data-only diagnostics. Stage refusal
+records preserve all fourteen runtime controls and unresolved observer/resource/
+physical/timing prerequisites; no callback, supplied labels or saved summary can
+issue a stage witness or runtime role. The actual producer record belongs to the
+original grade owner, outside the case it is reopening; its product belongs to
+that exact case. Returned data cannot mutate the context's retained observations.

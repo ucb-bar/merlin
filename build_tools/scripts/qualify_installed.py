@@ -199,6 +199,7 @@ SUITES = {
             "test_component_runtime.py",
             "test_component_runtime_qualification.py",
             "test_component_runtime_support.py",
+            "test_component_runtime_stage_products.py",
             "test_component_runtime_copy_controls.py",
             "test_component_native_deadline.py",
             "test_component_memory_transport.py",
@@ -265,6 +266,7 @@ SUITES = {
         "probe_modules": (
             "merlin_experiments.phase0.component_coverage",
             "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase2.component_runtime_stage_products",
             "merlin_experiments.phase0.component_automatic_plan",
             "merlin_experiments.phase0.arithmetic_intake",
             "merlin_experiments.phase0.component_arithmetic_obligations",

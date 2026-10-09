@@ -203,6 +203,7 @@ def test_real_stock_structural_intake_reopens_complete_context_and_minimal_contr
             support.execute_component,
             support.PrivateRuntimeControlExecutor,
             support.prepare_source_control,
+            support.stage_products.collect,
         )
     )
     context = support.PreparedIndependentRuntimeContext(
@@ -365,8 +366,10 @@ def test_grade_forwards_exact_selected_memory_observer(prepared, tmp_path, monke
     # This test checks ordinary context forwarding only, not native output or a
     # runtime witness. Actual transport/build tests run with explicit stock tools.
     monkeypatch.setattr(support, "execute_component", capture)
-    score = context.services.grade(**fixture.grade_arguments)
-    assert score["per_capsule"][0]["numeric"] == "pass"
+    # A forwarding stub has no actual result/build/decode products. It must
+    # refuse registration as an ordinary grade, despite its supplied pass flag.
+    with pytest.raises(StageGateError, match="canonical admitted membership"):
+        context.services.grade(**fixture.grade_arguments)
     assert len(selected) == 1
     assert selected[0]["readback_policy"] is context.readback_policy
     assert selected[0]["memory_readback"] is context.memory_readback

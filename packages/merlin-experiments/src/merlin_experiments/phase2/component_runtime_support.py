@@ -10,7 +10,9 @@ the fixed fourteen-control runtime qualifier rather than issuing authority.
 from __future__ import annotations
 
 import contextlib
+import copy
 import inspect
+import uuid
 from dataclasses import asdict, dataclass, field
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
@@ -29,6 +31,7 @@ from . import component_runtime_controls as controls
 from . import component_runtime_copy_controls as copy_controls
 from . import component_runtime_copy_support as copy_support_owner
 from . import component_runtime_instruction_control as instruction_control
+from . import component_runtime_stage_products as stage_products
 from .component_experiment import ComponentView, RuntimeGrant, verify_component_view
 from .component_runtime_authority import IndependentRuntimeServices, _callback_identity
 from .component_runtime_control_execution import PrivateRuntimeControlExecutor
@@ -42,6 +45,7 @@ from .component_runtime_qualification import (
 from .contracts import StageGateError, document_sha256, exact_tree_record, mapping_file, sha256_file, write_json
 
 _PREPARED = WeakKeyDictionary()
+_GRADED = WeakKeyDictionary()
 _READBACK_CALLBACKS = WeakKeyDictionary()
 _READBACK_SELECTIONS = WeakKeyDictionary()
 _MEMORY_METHODS = ("prepare", "decode", "verify", "record")
@@ -86,6 +90,7 @@ class PreparedIndependentRuntimeContext:
     def __post_init__(self):
         object.__setattr__(self, "services", IndependentRuntimeServices(self.grade, self.stage_verifier))
         _PREPARED[self] = {}
+        _GRADED[self] = {}
         _READBACK_CALLBACKS[self] = (
             tuple(_callback_identity(getattr(self.memory_readback, name, None)) for name in _MEMORY_METHODS)
             if self.memory_readback is not None
@@ -214,6 +219,7 @@ class PreparedIndependentRuntimeContext:
                 execute_component,
                 PrivateRuntimeControlExecutor,
                 prepare_source_control,
+                stage_products.collect,
             )
         }
         required.update(
@@ -465,6 +471,7 @@ class PreparedIndependentRuntimeContext:
             ):
                 raise StageGateError("active compiler executor differs from the prepared command transport/grants")
             declaration = mapping_file(capsule / "capsule.yaml", yaml_file=True)
+            original_candidate = exact_tree_record(package)
             output = root / declaration["name"]
             context = (
                 qualified_package_execution(
@@ -548,13 +555,30 @@ class PreparedIndependentRuntimeContext:
                                 evidence_files=((buffer_path, sha256_file(buffer_path)),),
                             ) from error
                 raise
+            if exact_tree_record(package) != original_candidate:
+                raise StageGateError("ordinary diagnostic compiler changed during grading")
+            products = stage_products.collect(
+                ordinary_result=output / "result.json",
+                capsule=capsule,
+                candidate=package,
+                target_descriptor=self.target_descriptor,
+                coherent=self.memory_readback is not None,
+                grade_owner=root,
+            )
             row = {
                 "capsule": declaration["name"],
                 "status": "pass" if result["numeric_report"]["status"] == "pass" else "fail",
                 "numeric": result["numeric_report"]["status"],
                 "scope": "ordinary source/build/full-output diagnostic; physical runtime unqualified",
+                "ordinary_products": products,
             }
-            write_json(output / "capsule_result.json", row)
+            summary = output / "capsule_result.json"
+            write_json(summary, row)
+            _GRADED[self][summary] = {
+                "summary": stage_products.member(summary),
+                "products": copy.deepcopy(products),
+                "finite": (),
+            }
             rows.append(row)
         self.verify()
         return {
@@ -565,9 +589,64 @@ class PreparedIndependentRuntimeContext:
 
     def stage_verifier(self, *, result_path, **kwargs):
         self.verify()
+        state = self._graded_state(result_path)
         result = mapping_file(_plain(result_path))
         if result.get("status") != "pass" or result.get("numeric") != "pass":
             raise StageGateError("source/native diagnostic did not pass its original numerical gate")
-        raise StageGateError(
-            "independent accelerator ISA/effects/ownership/synchronization/hardware-runtime proofs remain UNKNOWN"
+        finite = tuple(
+            stage_products.attach(
+                collected=state["products"],
+                product_path=Path(row["product"]["path"]),
+                producer_record=Path(row["producer"]["path"]),
+                context_sources=self.source_pins,
+            )
+            for row in state["finite"]
         )
+        if finite != state["finite"]:
+            raise StageGateError("finite stage observation changed after actual attachment")
+        diagnostics = Path(result_path).parent / ("stage_refusal_" + uuid.uuid4().hex + ".json")
+        with invocation_record.observe_call(
+            Path(result_path).parent,
+            stage="ordinary_stage_refusal_observation",
+            function=stage_products.write_refusal_report,
+            arguments={"scope": "observation only"},
+            inputs=(
+                Path(result_path),
+                Path(state["products"]["ordinary_result"]["path"]),
+                Path(state["products"]["original_source"]["path"]),
+                *(Path(row[name]["path"]) for row in finite for name in ("product", "producer")),
+            ),
+            outputs=(diagnostics,),
+            dependencies=(Path(stage_products.__file__),),
+        ) as observed:
+            stage_products.write_refusal_report(
+                diagnostics=diagnostics, products=state["products"], finite=finite, required_controls=CONTROL_CASES
+            )
+            observed.returned()
+        invocation_record.verify(observed.path)
+        raise StageGateError(
+            "independent accelerator ISA/effects/ownership/synchronization/hardware-runtime proofs remain UNKNOWN; "
+            "actual diagnostics: " + str(diagnostics)
+        )
+
+    def _graded_state(self, result_path):
+        path = _plain(result_path)
+        state = _GRADED.get(self, {}).get(path)
+        if state is None:
+            raise StageGateError("stage proofs remain UNKNOWN: no actual context-owned ordinary grade")
+        stage_products.reopen(state["summary"])
+        stage_products.verify_collected(state["products"])
+        return state
+
+    def attach_stage_observation(self, *, result_path, product_path, producer_record):
+        """Retain produced finite data; never invoke a caller's stage factory."""
+        self.verify()
+        state = self._graded_state(result_path)
+        actual = stage_products.attach(
+            collected=state["products"],
+            product_path=product_path,
+            producer_record=producer_record,
+            context_sources=self.source_pins,
+        )
+        state["finite"] = (*state["finite"], copy.deepcopy(actual))
+        return actual
