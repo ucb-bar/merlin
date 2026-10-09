@@ -24,6 +24,12 @@ validation, coverage and leases. It never selects evaluator adapters. Use core
 `materialize_public_cohort` with an explicit ceiling; default evaluated selection is
 `merlin_experiments.corpus.admission.public_capsules_for`, not a lazy core export.
 
+`linalg_iface` inventories returned/data-consumed tensor fills as payloads; fills
+used only as destination initialization keep their prior representation. Ordered
+`returns` bind actual SSA inputs/results, including repeated and multiple results;
+unsupported multi-block joins stay unavailable. This structural inventory grants
+no semantic owner, lowering implementation or correctness/resource/runtime proof.
+
 `build_recipe.named_object_paths` shares deterministic object naming across
 contract and layer builds. Equal basenames from caller and provider sources must
 never overwrite one object; imported objects are reserved and link order is

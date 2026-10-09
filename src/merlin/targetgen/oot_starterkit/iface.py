@@ -37,7 +37,7 @@ def is_linalg_on_tensors(mlir_text: str) -> bool:
 
 def parse_linalg(mlir_text: str) -> dict[str, Any]:
     """Parse `linalg-on-tensors` MLIR text -> a structural workload inventory
-    {level, entry, args, results, ops:[{kind, op, family, prov, ins, outs, results, extents,
+    {level, entry, args, results, returns, ops:[{kind, op, family, prov, ins, outs, results, extents,
     body_ops, reduction_dims}]}.
 
     Thin pass-through to the contract reader (:func:`merlin.targetgen.contract.linalg_iface`).

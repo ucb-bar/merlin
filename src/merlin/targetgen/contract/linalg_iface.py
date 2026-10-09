@@ -117,7 +117,7 @@ def _prov(op) -> dict[str, str]:
     return out
 
 
-def _scalar_const(value) -> float | None:
+def _scalar_const(value) -> int | float | None:
     """The compile-time scalar constant behind ``value`` when it is an ``arith.constant`` or a
     ``tensor.splat`` of one (e.g. a per-tensor scale ``x * 4.0`` splats a constant), else None.
     Lets a lowering bake the scalar into the kernel instead of treating it as a runtime operand."""
@@ -131,6 +131,8 @@ def _scalar_const(value) -> float | None:
         v = attrs.get("value")
         data = getattr(getattr(v, "value", None), "data", None)
         if data is not None:
+            if type(data) is int:
+                return data
             try:
                 return float(data)
             except (TypeError, ValueError):
@@ -153,6 +155,20 @@ def _ins_outs(op) -> tuple[list, list]:
     if not ins and not outs:
         ins = list(op.operands)
     return ins, outs
+
+
+def _destination_only_fill(op) -> bool:
+    """A tensor fill may stay initialization only when every use is an outs slot."""
+    from xdsl.dialects.builtin import TensorType
+
+    if not op.results or any(not isinstance(value.type, TensorType) for value in op.results):
+        return False
+    for value in op.results:
+        for use in value.uses:
+            ins, outs = _ins_outs(use.operation)
+            if value in ins or value not in outs:
+                return False
+    return True
 
 
 def _body_op_names(op) -> list[str]:
@@ -662,6 +678,7 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
             "entry": "forward",
             "args": [{"index": 0, "shape": [16, 16], "dtype": "bf16"}, ...],  # @forward operands
             "results": [{"shape": [16, 16], "dtype": "bf16"}, ...],  # @forward results
+            "returns": [{"source": ("op", 0), "result_index": 0, ...}],  # actual ordered values
             "ops": [  # payload ops, in order
                 {
                     "id": 0,
@@ -689,6 +706,7 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
 
     ``scalar_body`` exposes body arguments, captures from the enclosing function, ordered
     operations and exact yield edges. ``effects=None`` means purity was not established by xDSL.
+    ``returns=None`` means this reader did not establish a single-block return join.
     """
     from xdsl.ir import BlockArgument
 
@@ -723,11 +741,13 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
     # The payload ops we surface are the DIRECT children of the @forward entry block (never the
     # arithmetic ops nested inside a linalg.generic/reduce region body — those are captured per op in
     # ``body_ops``, and walking them as top-level ops would double-count e.g. a softmax's inner
-    # ``math.exp``). Structural init ops (tensor.empty / arith.constant / linalg.fill / tensor.splat)
-    # are destinations/constants: referenced as operand ``source``s but not lowered as commands.
-    _INIT = ("tensor.empty", "arith.constant", "linalg.fill", "tensor.splat")
+    # ``math.exp``). Fill results returned or consumed as data are payloads;
+    # destination-only fills retain the established initialization representation.
+    _INIT = ("tensor.empty", "arith.constant", "tensor.splat")
     _SKIP = _INIT + ("func.return", "linalg.yield")
-    payload = [op for op in block.ops if op.name not in _SKIP]
+    payload = [
+        op for op in block.ops if op.name not in _SKIP and not (op.name == "linalg.fill" and _destination_only_fill(op))
+    ]
 
     # Map every SSA result value -> (payload-op id, WHICH RESULT of it) for dataflow edges. The
     # result position is load-bearing for a multi-result op: an arg-reduce generic yields (value,
@@ -801,11 +821,21 @@ def parse_linalg_mlir(text: str, *, ctx=None) -> dict[str, Any]:
             rec["extents"] = ext
         ops_out.append(rec)
 
+    result_types = _fn_result_types(fn)
+    terminator = block.ops.last
+    returns = None
+    if len(fn.body.blocks) == 1 and terminator is not None and _op_name(terminator) == "func.return":
+        if len(terminator.operands) != len(result_types) or any(
+            value.type != expected for value, expected in zip(terminator.operands, result_types, strict=True)
+        ):
+            raise ValueError("entry func.return differs from its complete ordered result signature")
+        returns = [_operand_rec(value) for value in terminator.operands]
     return {
         "level": LEVEL,
         "entry": entry,
         "args": [{"index": i, "shape": _shape(a.type), "dtype": _dtype(a.type)} for i, a in enumerate(func_args)],
-        "results": [{"shape": _shape(t), "dtype": _dtype(t)} for t in _fn_result_types(fn)],
+        "results": [{"shape": _shape(t), "dtype": _dtype(t)} for t in result_types],
+        "returns": returns,
         "ops": ops_out,
     }
 
