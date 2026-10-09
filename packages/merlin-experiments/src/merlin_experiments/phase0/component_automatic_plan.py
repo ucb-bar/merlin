@@ -92,6 +92,7 @@ def derive(
     logical_interactions=False,
     typed_add=None,
     packing=None,
+    retain_historical_gaps=False,
 ):
     """Construct a complete required class roster without invented permissions.
 
@@ -309,6 +310,30 @@ def derive(
             unknowns=unknowns,
         )
     unique_unknowns = {row["id"]: row for row in unknowns}
+    if retain_historical_gaps:
+        # A selected combined policy prepares additional bounded source forms;
+        # it cannot erase missing owners or numeric/physical obligations from
+        # its independently selected logical, typed and packing scopes. Replay
+        # each scope over these same originals, never a saved missing-row list.
+        if not logical_interactions or effects is None or arithmetic is None or typed_add is None or packing is None:
+            raise ValueError("unified source preparation needs every original selected facet")
+        for selected_typed, selected_packing in ((None, None), (typed_add, None), (None, packing)):
+            _, missing = derive(
+                policy,
+                spec=spec,
+                review=review,
+                basis=basis,
+                relations=relations,
+                effects=effects,
+                arithmetic=arithmetic,
+                logical_interactions=True,
+                typed_add=selected_typed,
+                packing=selected_packing,
+            )
+            for row in missing:
+                if row["id"] in unique_unknowns and unique_unknowns[row["id"]] != row:
+                    raise ValueError("unified source facets disagree on an original missing obligation")
+                unique_unknowns[row["id"]] = row
     declaration = {
         key: value
         for key, value in policy.items()

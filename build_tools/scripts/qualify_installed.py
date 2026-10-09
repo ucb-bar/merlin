@@ -173,6 +173,7 @@ SUITES = {
             "test_component_operator_schemas.py",
             "test_component_zero_returns.py",
             "test_component_typed_add.py",
+            "test_component_automatic_unified.py",
             "test_component_packing_sources.py",
             "test_component_hw_arithmetic.py",
             "test_component_automatic_composition.py",

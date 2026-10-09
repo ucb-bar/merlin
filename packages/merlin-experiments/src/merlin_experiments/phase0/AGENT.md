@@ -224,6 +224,16 @@ metadata cannot replace source factories or erase required missing classes.
 Current automatic replay requires original source paths; relocated source
 closures and automatic resource-role expansion are explicitly unqualified.
 
+Optional automatic policy v7 jointly selects the same live software/schema,
+hardware/arithmetic and hardware/packing observations. Typed source/default
+premises, logical effects and conditional storage probes reach one ordinary
+bounded generator; no source labels or saved rows grant these facets. Recompute
+the mandatory missing-row union of v4 logical, v5 typed and v6 packing scopes
+over the identical original sources. Successful narrow source preparation must
+not erase any original unsupported owner, numeric domain, allocation or physical
+obligation. Historical v1-v6 meanings remain unchanged; v7 is not a global
+target requirement or functional/runtime/resource/performance qualification.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins
