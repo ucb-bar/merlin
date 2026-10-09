@@ -72,18 +72,34 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "original-reference": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_original_operator_reference.py",),
+        "core_extras": (),
+        "probe_modules": (
+            "merlin.targetgen.original_operator_reference",
+            "merlin.targetgen.original_reference_values",
+        ),
+        "required_modules": (),
+    },
     "combinational-observations": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
         "native_tools": ("firtool", "iverilog", "vvp"),
         "native_test_files": ("test_hw_combinational_observations.py", "test_hw_instance_inputs.py"),
         "tests": (
-            "test_hw_combinational_observations.py", "test_hw_instance_inputs.py", "test_hw_input_observations.py",
-            "test_hw_packing.py", "test_hw_field_ownership.py", "test_mlir_source_admission.py",
+            "test_hw_combinational_observations.py",
+            "test_hw_instance_inputs.py",
+            "test_hw_input_observations.py",
+            "test_hw_packing.py",
+            "test_hw_field_ownership.py",
+            "test_mlir_source_admission.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
-            "merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_instance_inputs",
+            "merlin.targetgen.rtl.hw_combinational",
+            "merlin.targetgen.rtl.hw_instance_inputs",
             "merlin.targetgen.rtl.hw_graph",
             "merlin.targetgen.contract.mlir_source_admission",
         ),
@@ -105,14 +121,19 @@ SUITES = {
         "native_tools": ("mlir-opt",),
         "native_test_files": ("test_emitted_control_flow.py",),
         "tests": (
-            "test_emitted_control_flow.py", "test_emitted_dataflow.py",
-            "test_emitted_control_flow_bounds.py", "test_mlir_source_admission.py",
-            "test_pointer_entry_abi.py", "test_source_observation.py",
+            "test_emitted_control_flow.py",
+            "test_emitted_dataflow.py",
+            "test_emitted_control_flow_bounds.py",
+            "test_mlir_source_admission.py",
+            "test_pointer_entry_abi.py",
+            "test_source_observation.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
-            "merlin.targetgen.contract.emitted_control_flow", "merlin.targetgen.contract.emitted_dataflow",
-            "merlin.targetgen.contract.mlir_source_admission", "merlin.targetgen.contract.source_observation",
+            "merlin.targetgen.contract.emitted_control_flow",
+            "merlin.targetgen.contract.emitted_dataflow",
+            "merlin.targetgen.contract.mlir_source_admission",
+            "merlin.targetgen.contract.source_observation",
         ),
         "required_modules": ("xdsl",),
     },

@@ -155,6 +155,8 @@ def test_packaged_phase_tools_keep_host_only_directory_masks(tmp_path, isolated_
     [
         "src/merlin/targetgen/golden_provenance.py",
         "src/merlin/targetgen/capsule_inputs.py",
+        "src/merlin/targetgen/original_operator_reference.py",
+        "src/merlin/targetgen/original_reference_values.py",
         "packages/merlin-experiments/src/merlin_experiments/source_snapshot.py",
         "packages/merlin-experiments/src/merlin_experiments/measured_launch.py",
         "packages/merlin-experiments/src/merlin_experiments/corpus/admission.py",
@@ -405,6 +407,24 @@ def test_installed_and_shadowed_evaluators_and_bytecode_are_masked(tmp_path, iso
     assert expected <= {surface.path for surface in surfaces}
     assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
     # Broad toolchain bind exposes installed bytes even when checkout imports shadow them.
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == expected
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
+@pytest.mark.parametrize("name", ["original_operator_reference", "original_reference_values"])
+def test_original_reference_source_and_installed_answers_are_masked(tmp_path, isolated_policy, monkeypatch, name):
+    site = tmp_path / ".venv/lib/python3.12/site-packages"
+    source = _write(tmp_path, f"src/merlin/targetgen/{name}.py", "raise AssertionError('never import')\n")
+    installed = _write(site, f"merlin/targetgen/{name}.py", "raise AssertionError('never import')\n")
+    bytecode = _write(site, f"merlin/targetgen/__pycache__/{name}.cpython-312.pyc")
+    public = _write(site, "merlin/targetgen/original_operator_sources.py")
+    monkeypatch.setattr(A, "sys", SimpleNamespace(path=[str(site)], prefix=str(tmp_path / "python"), modules={}))
+    assert f"merlin.targetgen.{name}" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    expected = {source, installed, bytecode}
+    assert expected <= {surface.path for surface in surfaces}
+    assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
     unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
     assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == expected
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []

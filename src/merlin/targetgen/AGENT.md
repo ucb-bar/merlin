@@ -248,6 +248,16 @@ one grade must not be attributed to different hardware revisions — and a large
 
 ## Notes for future agents
 
+`original_operator_reference` and `original_reference_values` are private grader
+implementations for explicitly selected bounded original matmul, add and conv2d
+sources. Reopen the exact original source form, storage types, arguments, numerical
+policy and finite work/payload budgets before decoding inputs or computing any
+reference. Compare every output element with the selected tolerance and zero-sign
+contract. Unsupported formats, arithmetic or source factories refuse. These
+evaluators remain masked in both checkouts and installed packages; source factories
+alone stay public. Bounded software comparisons confer no arbitrary framework,
+target, runtime or phase admission.
+
 `frontend_typed_add` binds original captured/public/registered schemas, actual
 default observations, and every operand/result SSA type before selecting the
 narrow unit-alpha, signed-integer, rank-two equal-shape form. It preserves the

@@ -229,6 +229,11 @@ MODULE_ACCESS = (
         aliases=("merlin.targetgen.golden_provenance", "merlin.targetgen.capsule_inputs"),
     ),
     _module("merlin.targetgen.numeric_falsifiability", "grader"),
+    _module(
+        "merlin.targetgen.original_operator_reference",
+        "grader",
+        aliases=("merlin.targetgen.original_reference_values",),
+    ),
     _module("merlin.targetgen.rtl.gen_rocc_replay", "grader"),
     _module("merlin.verify.replay", "grader"),
     _module("merlin.verify.replay_layers", "grader"),
