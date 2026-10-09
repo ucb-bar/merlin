@@ -26,6 +26,8 @@ from .software_intake import IndependentSoftwareIntake
 
 SCHEMA = "merlin.independent_operator_schema_intake.v1"
 SELECTION_SCHEMA = "merlin.independent_operator_schema_selection.v1"
+TENSOR_SCHEMA = "merlin.independent_operator_schema_intake.v2"
+TENSOR_SELECTION_SCHEMA = "merlin.independent_operator_schema_selection.v2"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _UNKNOWN = (
     "installed_framework_build_source_correspondence",
@@ -39,10 +41,14 @@ _UNKNOWN = (
 
 def _selection(raw):
     selected = yaml.safe_load(raw)
+    fields = {"schema", "status", "software_intake_sha256", "namespace", "python", "canonical_source"}
+    tensor = isinstance(selected, dict) and selected.get("schema") == TENSOR_SELECTION_SCHEMA
+    if tensor:
+        fields.add("tensor_arguments")
     if (
         not isinstance(selected, dict)
-        or set(selected) != {"schema", "status", "software_intake_sha256", "namespace", "python", "canonical_source"}
-        or selected["schema"] != SELECTION_SCHEMA
+        or set(selected) != fields
+        or selected["schema"] not in {SELECTION_SCHEMA, TENSOR_SELECTION_SCHEMA}
         or selected["status"] != "reviewed"
         or not isinstance(selected["namespace"], str)
         or not selected["namespace"].isidentifier()
@@ -50,30 +56,42 @@ def _selection(raw):
         or set(selected["canonical_source"]) != {"checkout", "commit", "path"}
     ):
         raise RtlIntakeRefusal("operator schemas need a closed protected public source selection")
+    if tensor and (
+        selected["namespace"] != "aten"
+        or not isinstance(selected["tensor_arguments"], dict)
+        or set(selected["tensor_arguments"]) != {"compiler"}
+        or not isinstance(selected["tensor_arguments"]["compiler"], str)
+    ):
+        raise RtlIntakeRefusal("Tensor argument conversion needs the explicit supported public API/compiler selection")
     return selected
 
 
 def verify_record(record):
     """Reopen diagnostics only; saved JSON cannot recreate live issuer authority."""
+    tensor = record.get("schema") == TENSOR_SCHEMA
+    fields = {
+        "schema",
+        "software_intake_sha256",
+        "selection_path",
+        "observer_path",
+        "tracked_source",
+        "source_pins",
+        "members",
+        "unknowns",
+    }
+    if tensor:
+        fields.add("tensor_argument_getter")
     if (
-        set(record)
-        != {
-            "schema",
-            "software_intake_sha256",
-            "selection_path",
-            "observer_path",
-            "tracked_source",
-            "source_pins",
-            "members",
-            "unknowns",
-        }
-        or record.get("schema") != SCHEMA
+        set(record) != fields
+        or record.get("schema") not in {SCHEMA, TENSOR_SCHEMA}
         or record["unknowns"] != list(_UNKNOWN)
     ):
         raise RtlIntakeRefusal("operator schema intake has the wrong record schema")
     for row in record["source_pins"]:
         RtlIntakePin(**row).verify()
     selected = _selection(Path(record["selection_path"]).read_bytes())
+    if tensor != (selected["schema"] == TENSOR_SELECTION_SCHEMA):
+        raise RtlIntakeRefusal("operator schema receipt version differs from its original public selection")
     source = selected["canonical_source"]
     git = _tracked_source(Path(source["checkout"]), Path(source["path"]), source["commit"])
     if git != record["tracked_source"] or selected["software_intake_sha256"] != record["software_intake_sha256"]:
@@ -81,8 +99,19 @@ def verify_record(record):
     observer = module_source_path("merlin.targetgen.torch_schema_observer")
     if record["observer_path"] != str(observer):
         raise RtlIntakeRefusal("operator schema replay requires its actual selected fixed reader")
+    if tensor:
+        from .tensor_argument_intake import verify_getter
+
+        getter = verify_getter(record["tensor_argument_getter"])
+        if (
+            getter["checkout"] != source["checkout"]
+            or getter["commit"] != source["commit"]
+            or getter["python"] != selected["python"]
+            or getter["compiler"] != str(Path(selected["tensor_arguments"]["compiler"]).resolve(strict=True))
+        ):
+            raise RtlIntakeRefusal("Tensor argument APIs differ from selected schema runtime/public sources")
     for member in record["members"]:
-        if set(member) != {
+        member_fields = {
             "graph_path",
             "request",
             "observation",
@@ -90,7 +119,10 @@ def verify_record(record):
             "public_semantics",
             "witnesses",
             "unknowns",
-        }:
+        }
+        if tensor:
+            member_fields |= {"tensor_arguments", "tensor_bindings"}
+        if set(member) != member_fields:
             raise RtlIntakeRefusal("operator schema members need the complete closed original observation record")
         actual = I.verify(Path(member["invocation"]))
         # The fixed observer reads only the exact protected request and source.
@@ -110,11 +142,22 @@ def verify_record(record):
         }
         if json.loads(Path(member["request"]).read_bytes()) != request:
             raise RtlIntakeRefusal("operator schema request differs from complete original source calls")
-        effects = original_operator_effects(trace, observation)
+        tensor_arguments = None
+        if tensor:
+            from .tensor_argument_intake import verify_arguments
+
+            tensor_arguments = verify_arguments(
+                trace=trace,
+                schema_observation=observation,
+                getter=getter,
+                member=member["tensor_arguments"],
+            )
+        effects = original_operator_effects(trace, observation, tensor_arguments=tensor_arguments)
         if (
             effects.public_semantics() != member["public_semantics"]
             or effects.witnesses() != member["witnesses"]
             or effects.unknowns() != member["unknowns"]
+            or (tensor and effects.tensor_bindings() != member["tensor_bindings"])
         ):
             raise RtlIntakeRefusal("operator effect relations differ from exact original argument/result replay")
     return record
@@ -168,8 +211,13 @@ class IndependentOperatorSchemaIntake:
         if len(found) != 1:
             raise RtlIntakeRefusal("operator schemas do not observe this exact selected original graph")
         row = found[0]
+        tensor_arguments = (
+            json.loads(Path(row["tensor_arguments"]["observation"]).read_bytes()) if "tensor_arguments" in row else None
+        )
         return original_operator_effects(
-            json.loads(Path(graph_path).read_bytes()), json.loads(Path(row["observation"]).read_bytes())
+            json.loads(Path(graph_path).read_bytes()),
+            json.loads(Path(row["observation"]).read_bytes()),
+            tensor_arguments=tensor_arguments,
         )
 
 
@@ -229,6 +277,29 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
     if any(Path(pin.path).is_relative_to(destination) for pin in (*pins, *software.source_pins)):
         raise RtlIntakeRefusal("operator schema output may not contain protected source inputs")
     destination.mkdir(parents=True, mode=0o700)
+    getter = None
+    if selected["schema"] == TENSOR_SELECTION_SCHEMA:
+        from .tensor_argument_intake import prepare_getter
+
+        getter = prepare_getter(
+            python=python,
+            compiler=selected["tensor_arguments"]["compiler"],
+            checkout=checkout,
+            commit=source["commit"],
+            forbidden=forbidden,
+            output=destination / "tensor-getter",
+        )
+        pins += [
+            _pin("observed-tensor-argument-sdk-dependency", Path(path), forbidden)
+            for path in getter["dependency_paths"]
+        ]
+        pins += [
+            _pin("tensor-argument-reader", module_source_path(name), forbidden)
+            for name in (
+                "merlin.targetgen.torch_tensor_argument_observer",
+                "merlin_experiments.phase0.tensor_argument_intake",
+            )
+        ]
     members = []
     for index, graph_pin in enumerate(pin for pin in software.source_pins if pin.role == "independent-example-graph"):
         trace = json.loads(Path(graph_pin.path).read_bytes())
@@ -259,7 +330,18 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
         observed = json.loads(completed.stdout)
         for name in ("torch_module", "native_schema_parser", "yaml_module"):
             pins.append(_pin("observed-framework-runtime", observed["runtime"][name], forbidden))
-        effects = original_operator_effects(trace, observed)
+        tensor_member = None
+        tensor_arguments = None
+        if getter is not None:
+            from .tensor_argument_intake import observe_arguments
+
+            tensor_root = destination / ("tensor-arguments-" + str(index))
+            tensor_root.mkdir()
+            tensor_member = observe_arguments(
+                trace=trace, schema_observation=observed, getter=getter, output=tensor_root
+            )
+            tensor_arguments = json.loads(Path(tensor_member["observation"]).read_bytes())
+        effects = original_operator_effects(trace, observed, tensor_arguments=tensor_arguments)
         invocation = next(
             path
             for path in destination.glob("invocations/*/invocation.json")
@@ -276,13 +358,15 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
                 "unknowns": effects.unknowns(),
             }
         )
+        if getter is not None:
+            members[-1].update(tensor_arguments=tensor_member, tensor_bindings=effects.tensor_bindings())
         pins.append(graph_pin)
     pins += [
         _pin("operator-schema-native-evidence", path, forbidden) for path in destination.rglob("*") if path.is_file()
     ]
     pins = tuple({(pin.role, pin.path): pin for pin in pins}.values())
     record = {
-        "schema": SCHEMA,
+        "schema": TENSOR_SCHEMA if getter is not None else SCHEMA,
         "software_intake_sha256": software.sha256,
         "selection_path": str(selection),
         "observer_path": str(observer),
@@ -291,6 +375,8 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
         "members": members,
         "unknowns": list(_UNKNOWN),
     }
+    if getter is not None:
+        record["tensor_argument_getter"] = getter
     receipt = destination / "intake.json"
     receipt.write_bytes(_json(record))
     authority = IndependentOperatorSchemaIntake(

@@ -398,6 +398,11 @@ def verify(record, *, report, verify_sources=True):
                 original_operator_effects(
                     json.loads(Path(source.path).read_bytes()),
                     json.loads(Path(schema_members[source.path]["observation"]).read_bytes()),
+                    tensor_arguments=(
+                        json.loads(Path(schema_members[source.path]["tensor_arguments"]["observation"]).read_bytes())
+                        if "tensor_arguments" in schema_members[source.path]
+                        else None
+                    ),
                 ),
             )
             for (member, _), source in zip(relations, basis.graph_sources, strict=True)

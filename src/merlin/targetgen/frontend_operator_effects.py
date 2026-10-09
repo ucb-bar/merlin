@@ -8,6 +8,7 @@ aliasing, allocation ownership or a claim that schemas enumerate all effects.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 
 from .frontend_use_def import original_use_def_semantics
@@ -19,12 +20,16 @@ class OriginalOperatorEffects:
     effect_classes: tuple[str, ...]
     witnesses_json: str
     unknowns_json: str
+    tensor_bindings_json: str = "[]"
 
     def witnesses(self):
         return json.loads(self.witnesses_json)
 
     def unknowns(self):
         return json.loads(self.unknowns_json)
+
+    def tensor_bindings(self):
+        return json.loads(self.tensor_bindings_json)
 
     def public_semantics(self):
         return {"graph_sha256": self.graph_sha256, "effect_classes": list(self.effect_classes)}
@@ -50,7 +55,7 @@ def _alias(row):
     return before, alias["write"]
 
 
-def _bindings(node, arguments, values):
+def _argument_values(node, arguments):
     positional = [index for index, row in enumerate(arguments) if not row["kwarg_only"]]
     if len(node["args"]) > len(positional):
         raise ValueError("original source positional arguments exceed the observed schema")
@@ -67,18 +72,134 @@ def _bindings(node, arguments, values):
     for index, row in enumerate(arguments):
         if index not in selected and not row["has_default"]:
             raise ValueError("original source required argument has no concrete binding")
+    return selected, paths
+
+
+def scalar_literal(value):
+    """Keep source kind, exact integer value and floating signed zero separate."""
+    if type(value) is bool:
+        return {"type": "bool", "value": value}
+    if type(value) is int:
+        return {"type": "int", "value": str(value)}
+    if type(value) is float and math.isfinite(value):
+        return {"type": "float", "value_hex": value.hex()}
+    raise ValueError("only exact finite original Python numeric literals are supported")
+
+
+def original_tensor_argument_requests(trace, observation):
+    """Select original scalar slots without interpreting operation names as policy."""
+    relation = original_use_def_semantics(trace)
+    observed = {row["target"]: row for row in observation["rows"]}
+    graph = trace["graphs"]["original"]
+    rows = []
+    for node in graph["nodes"]:
+        found = observed.get(node["target"])
+        if (
+            node["op"] != "call_function"
+            or not found
+            or found["status"] != "observed"
+            or graph.get("operator_schemas", {}).get(node["target"]) != found["schema"]
+        ):
+            continue
+        try:
+            values, paths = _argument_values(node, found["arguments"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        for index, argument in enumerate(found["arguments"]):
+            if argument["type"] != "Tensor" or argument["alias"] is not None or index not in values:
+                continue
+            try:
+                literal = scalar_literal(values[index])
+            except ValueError:
+                continue
+            rows.append(
+                {
+                    "node": node["id"],
+                    "target": node["target"],
+                    "schema": found["schema"],
+                    "argument_index": index,
+                    "argument_path": paths[index],
+                    "literal": literal,
+                }
+            )
+    return {"schema": "merlin.original_tensor_argument_request.v1", "graph_sha256": relation.graph_sha256, "rows": rows}
+
+
+def _tensor_argument_rows(trace, observation, tensor_arguments):
+    if tensor_arguments is None:
+        return {}
+    request = original_tensor_argument_requests(trace, observation)
+    if (
+        set(tensor_arguments) != {"schema", "graph_sha256", "rows", "runtime", "scope"}
+        or tensor_arguments["schema"] != "merlin.native_tensor_argument_observation.v1"
+        or tensor_arguments["graph_sha256"] != request["graph_sha256"]
+        or not isinstance(tensor_arguments["rows"], list)
+        or len(tensor_arguments["rows"]) != len(request["rows"])
+    ):
+        raise ValueError("Tensor argument observations need the complete exact original request roster")
+    found = {}
+    for expected, row in zip(request["rows"], tensor_arguments["rows"], strict=True):
+        if row.get("request") != expected or row.get("status") not in {"observed", "unknown"}:
+            raise ValueError("Tensor argument observation changed an original operator, slot or literal")
+        if row["status"] == "observed":
+            native = row.get("native")
+            if (
+                set(row) != {"request", "status", "native"}
+                or not isinstance(native, dict)
+                or set(native)
+                != {
+                    "schema",
+                    "argument_name",
+                    "source_allows_number",
+                    "wrapped_number",
+                    "shape",
+                    "dtype",
+                    "element_bytes",
+                    "literal",
+                    "disjoint_from_prior_live_boxes",
+                }
+                or native["schema"] != expected["schema"]
+                or native["source_allows_number"] is not True
+                or native["wrapped_number"] is not True
+                or native["shape"] != []
+                or native["literal"] != expected["literal"]
+                or not isinstance(native["dtype"], str)
+                or not native["dtype"]
+                or type(native["element_bytes"]) is not int
+                or native["element_bytes"] <= 0
+                or native["disjoint_from_prior_live_boxes"] is not True
+            ):
+                raise ValueError("Tensor literal binding is not the actual supported native wrapped scalar relation")
+        elif set(row) != {"request", "status", "reason"} or not isinstance(row["reason"], str):
+            raise ValueError("unobserved Tensor argument must retain its actual refusal")
+        identity = expected["node"], expected["argument_path"]
+        if identity in found:
+            raise ValueError("Tensor argument observation repeats an original slot")
+        found[identity] = row
+    return found
+
+
+def _bindings(node, arguments, values, scalar_rows):
+    selected, paths = _argument_values(node, arguments)
+    for index, row in enumerate(arguments):
         value = selected.get(index)
         if row["type"] == "Tensor":
             if not isinstance(value, dict) or set(value) != {"node_id", "value_id"} or value["value_id"] not in values:
-                raise ValueError("schema tensor argument has no exact original tensor value")
-            if values[value["value_id"]]["kind"] != "tensor":
+                scalar = scalar_rows.get((node["id"], paths.get(index)))
+                if scalar is None or row["alias"] is not None:
+                    raise ValueError("schema tensor argument has no exact original tensor value")
+                if scalar["status"] != "observed":
+                    raise ValueError("original Tensor scalar conversion is unobserved: " + scalar["reason"])
+                if scalar["native"]["argument_name"] != row["name"]:
+                    raise ValueError("native Tensor argument name differs from the original observed schema")
+            elif values[value["value_id"]]["kind"] != "tensor":
                 raise ValueError("schema tensor argument disagrees with original value kind")
         elif row["alias"] is not None:
             raise ValueError("non-scalar tensor aliases require an unsupported container binding")
     return selected, paths
 
 
-def original_operator_effects(trace, observation):
+def original_operator_effects(trace, observation, *, tensor_arguments=None):
     """Replay all original uses before joining each exact observed schema row.
 
     Narrow support covers direct Tensor arguments and direct Tensor returns.
@@ -100,6 +221,7 @@ def original_operator_effects(trace, observation):
     ):
         raise ValueError("schema observation must cover the complete exact original call roster")
     observed = {row["target"]: row for row in rows}
+    scalar_rows = _tensor_argument_rows(trace, observation, tensor_arguments)
     values = {result["id"]: result for node in graph["nodes"] for result in node["results"]}
     witnesses, unknowns = [], []
     for node in graph["nodes"]:
@@ -114,7 +236,7 @@ def original_operator_effects(trace, observation):
             continue
         try:
             arguments, returns = found["arguments"], found["returns"]
-            bindings, paths = _bindings(node, arguments, values)
+            bindings, paths = _bindings(node, arguments, values, scalar_rows)
             inputs = [_alias(row) for row in arguments]
             outputs = [_alias(row) for row in returns]
             if len(node["results"]) != len(returns) or any(
@@ -158,4 +280,5 @@ def original_operator_effects(trace, observation):
         tuple(sorted({row["kind"] for row in witnesses})),
         json.dumps(witnesses, sort_keys=True, separators=(",", ":")),
         json.dumps(unknowns, sort_keys=True, separators=(",", ":")),
+        json.dumps(list(scalar_rows.values()), sort_keys=True, separators=(",", ":")),
     )

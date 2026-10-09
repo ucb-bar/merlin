@@ -228,6 +228,22 @@ ownership, lifetime, completion, non-schema purity, hardware axis/resource roles
 or installed-framework historical source correspondence. Retain those mandatory
 gaps and unsupported effect classes. Policy/receipt v1 remains unchanged.
 
+Operator-schema intake/selection v2 adds fixed native Tensor argument conversion
+for exact finite original Python numeric literals in direct, unaliased schema
+slots. The public API derives its numeric-as-Tensor guard from the original
+dispatcher operator; callers cannot supply a guard or an operator-name table.
+Bind the complete original node/path/schema/literal request and actual wrapped
+number/dtype/value observation. Preserve original literal kind and floating
+signed zero; ordinary scalar tensors can have different promotion. All compared
+native scalar objects remain simultaneously live. Private storage observations
+describe that framework invocation only. They grant no accelerator allocation,
+numeric operation ownership, non-schema purity or complete effect-domain proof.
+Pin the exact public API Git blobs, unmodified public header packaging replay,
+native SDK/getter build, actual non-system dependencies and effective process
+environments. Full installed framework/SDK and loader history stays UNKNOWN.
+V1 preserves its Tensor-literal refusals; v2 cannot erase unreviewed operation,
+numerical, unsupported container/alias/result or resource/effect obligations.
+
 `hw_arithmetic` follows exact typed sign extension, multiplication, low input
 slicing and modular addition to original HW output ordinals. Names and widths
 alone assign no roles; state, instances, muxes and unimplemented arithmetic stop
