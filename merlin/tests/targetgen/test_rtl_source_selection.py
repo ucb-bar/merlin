@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 from merlin.targetgen.rtl import circt_introspect, source_selection
 from merlin.targetgen.rtl.extract_module import extract
@@ -157,7 +157,7 @@ def test_genericization_receipt_is_independent_of_launch_directory(tmp_path, mon
     tool.write_text("selected tool bytes\n")
     selected = {"target": "demo", "_generic_hw_output": "generated/core.generic.mlir"}
     discovery = ModuleType("mlc.discover.irgraph")
-    discovery.HwGraph = lambda module: module
+    discovery.HwGraph = lambda module: SimpleNamespace(modules={})
     discovery.to_generic = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "mlc.discover.irgraph", discovery)
 

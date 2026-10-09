@@ -72,6 +72,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "hw-discovery-inputs": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_hw_discovery_graph.py",),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.targetgen.rtl.hw_graph",),
+        "required_modules": ("xdsl",),
+    },
     "original-standard-ir-inputs": {
         "tests": ("test_original_reference_standard_ir.py",),
         "support_files": ("original_reference_fixtures.py",),
