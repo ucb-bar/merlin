@@ -16,3 +16,9 @@ OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
+
+The public plan inventory verifies the actual terminating return against its
+original declared function result types before exposing ordered value bindings.
+Arguments, repeated returns and individual result indices retain their identity;
+unsupported multi-block joins refuse. This boundary check is structural only and
+does not establish body semantics, effects, lowering or runtime authority.

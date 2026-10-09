@@ -112,6 +112,7 @@ SUITES = {
             "targetgen/test_zero_input_abi.py",
             "infra/test_elf_build_cache.py",
             "targetgen/test_linalg_fill_inventory.py",
+            "targetgen/test_public_mixed_program_plan.py",
         ),
         "core_extras": ("xdsl", "targetgen"),
         "probe_modules": (

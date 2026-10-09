@@ -4,6 +4,8 @@ import hashlib
 import json
 from copy import deepcopy
 
+import pytest
+
 from merlin.targetgen.oot_starterkit.plan import (
     main,
     source_operation_inventory,
@@ -92,6 +94,57 @@ def test_exact_direct_source_inventory_includes_init_and_pins_bytes():
     renamed = source_operation_inventory(SOURCE.replace("@forward", "@model_entry"))
     assert renamed["entry"] == "model_entry"
     assert renamed["source_op_count"] == 2
+
+
+@pytest.mark.parametrize("declaration", ["tensor<3xi32>", "tensor<2xi64>", "(tensor<2xi32>, tensor<2xi32>)", "()"])
+def test_source_return_signature_disagreement_refuses_inventory_and_plan(declaration):
+    from xdsl.utils.exceptions import VerifyException
+
+    source = SOURCE.replace("@forward() -> tensor<2xi32>", "@forward() -> " + declaration)
+    cb = _buffer()
+    cb["params"]["global_program_plan"]["source_sha256"] = hashlib.sha256(source.encode()).hexdigest()
+    with pytest.raises(VerifyException, match="function output types"):
+        source_operation_inventory(source)
+    result = validate_mixed_program_plan(source, cb)
+    assert not result["ok"]
+    assert "function output types" in " ".join(result["findings"])
+
+
+def test_ordered_returns_keep_original_arguments_repeats_and_result_indices():
+    source = """module {
+      func.func @forward(%original: tensor<2xi32>) ->
+        (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) {
+        %first, %second = "independent.pair"(%original) :
+          (tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
+        func.return %second, %original, %first, %second, %original :
+          tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>
+      }
+    }"""
+    inventory = source_operation_inventory(source)
+    assert inventory["arguments"] == [{"shape": [2], "dtype": "i32"}]
+    assert inventory["source_op_count"] == 1
+    assert [row["source"] for row in inventory["returns"]] == [
+        {"op_index": 0, "result_index": 1},
+        {"arg_index": 0},
+        {"op_index": 0, "result_index": 0},
+        {"op_index": 0, "result_index": 1},
+        {"arg_index": 0},
+    ]
+    assert all(row["shape"] == [2] and row["dtype"] == "i32" for row in inventory["returns"])
+    reversed_inventory = source_operation_inventory(
+        source.replace(
+            "func.return %second, %original, %first, %second, %original",
+            "func.return %original, %second, %first, %original, %second",
+        )
+    )
+    assert reversed_inventory["arguments"] == inventory["arguments"]
+    assert reversed_inventory["returns"] == [inventory["returns"][i] for i in [1, 0, 2, 4, 3]]
+
+
+def test_actual_empty_return_remains_a_structural_zero_result_inventory():
+    inventory = source_operation_inventory("module { func.func @forward() { func.return } }")
+    assert inventory["arguments"] == [] and inventory["returns"] == []
+    assert inventory["source_op_count"] == 0
 
 
 def test_public_preflight_accepts_structural_plan_without_claiming_execution():

@@ -50,6 +50,10 @@ def _parsed_source(source: bytes):
     returns = [op for op in block.ops if op.name == "func.return"]
     if len(returns) != 1 or block.last_op is not returns[0]:
         raise ValueError("source requires one terminating func.return")
+    # Parsing alone accepts a return whose count or types disagree with the
+    # declared function result ABI. Verify that exact boundary before exposing
+    # its ordered value identities; this grants no body/effect equivalence.
+    returns[0].verify()
     return entry, block, operations, returns[0]
 
 
