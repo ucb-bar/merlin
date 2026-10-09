@@ -122,20 +122,12 @@ def _source(form, extent, budget):
     factory = {"aten.matmul.default": S.matmul_source, "aten.conv2d.default": S.conv2d_source}.get(form["target"])
     if form["target"] == "aten.add.Tensor":
         factory = getattr(S, "add_source", None)
-    from .original_pointwise_reference import OPERATIONS
-
-    if form["target"] in OPERATIONS:
-        from .original_pointwise_sources import pointwise_source
-
-        factory = pointwise_source
     if factory is None:
         raise ValueError("original reference lacks an independently supported original source factory")
     return factory(form, extent=extent, max_tensor_elements=budget.max_tensor_elements)
 
 
 def _costs(metadata):
-    from .original_pointwise_reference import OPERATIONS, reference_steps
-
     inputs, outputs = metadata["inputs"], metadata["outputs"]
     rows = inputs + outputs
     elements = sum(math.prod(row["shape"]) for row in rows)
@@ -145,15 +137,9 @@ def _costs(metadata):
         products = count * inputs[0]["shape"][1]
     elif metadata["target"] == "aten.conv2d.default":
         products = count * math.prod(inputs[1]["shape"][1:])
-    elif metadata["target"] in OPERATIONS:
-        products = 0
     else:
         products = count
-    steps = (
-        reference_steps(metadata)
-        if metadata["target"] in OPERATIONS
-        else 2 * products + (count if metadata["parameters"].get("bias") else 0)
-    )
+    steps = 2 * products + (count if metadata["parameters"].get("bias") else 0)
     if (
         metadata["tensor_elements"] != elements
         or metadata["logical_payload_bytes"] != payload
@@ -198,10 +184,6 @@ class OriginalReferenceContract:
         if type(self.source) is not S.OriginalOperatorSource or self.source != expected:
             raise ValueError("original reference source/form binding changed")
         metadata = expected.metadata()
-        from .original_pointwise_reference import OriginalPointwiseReferencePolicy, validate_parameters
-
-        if type(self.policy) is OriginalPointwiseReferencePolicy:
-            validate_parameters(metadata["parameters"], self.policy)
         current_formats = _json(
             {
                 dtype: format_record(dtype)
@@ -243,7 +225,7 @@ class OriginalReferenceContract:
 
     def evaluate(self, inputs: tuple[TypedReferenceTensor, ...]) -> tuple[TypedReferenceTensor, ...]:
         metadata, values = self._inputs(inputs)
-        return _evaluate(metadata, values, _arithmetic(self.policy), self.output_byteorder)
+        return _evaluate(metadata, values, _Arithmetic(self.policy), self.output_byteorder)
 
     def observe_stress(self, inputs: tuple[TypedReferenceTensor, ...]) -> dict:
         """Observe realized inputs/products/partial sums in the same reference.
@@ -253,7 +235,7 @@ class OriginalReferenceContract:
         framework reduction order, candidate semantics or hardware effects.
         """
         metadata, values = self._inputs(inputs)
-        arithmetic = _arithmetic(self.policy, stress=True)
+        arithmetic = _StressArithmetic(self.policy)
         for row in values:
             for value in row:
                 arithmetic.counts["positive_inputs"] += value > 0
@@ -261,9 +243,7 @@ class OriginalReferenceContract:
                 arithmetic.counts["zero_inputs"] += value == 0
         output = _evaluate(metadata, values, arithmetic, self.output_byteorder)
         return {
-            "schema": "merlin.original_reference_stress.v2"
-            if "pointwise_values" in arithmetic.counts
-            else "merlin.original_reference_stress.v1",
+            "schema": "merlin.original_reference_stress.v1",
             "contract_sha256": self.sha256,
             "input_sha256": [_sha(tensor.data) for tensor in inputs],
             "output_sha256": [_sha(tensor.data) for tensor in output],
@@ -393,17 +373,7 @@ class _StressArithmetic(_Arithmetic):
         return observed
 
 
-def _arithmetic(policy, *, stress=False):
-    if type(policy) is OriginalReferencePolicy:
-        return _StressArithmetic(policy) if stress else _Arithmetic(policy)
-    from .original_pointwise_reference import pointwise_arithmetic
-
-    return pointwise_arithmetic(policy, stress=stress)
-
-
 def _evaluate(metadata, values, arithmetic, byteorder):
-    from .original_pointwise_reference import OPERATIONS
-
     if metadata["target"] == "aten.matmul.default":
         m, k = metadata["inputs"][0]["shape"]
         n = metadata["inputs"][1]["shape"][1]
@@ -414,8 +384,6 @@ def _evaluate(metadata, values, arithmetic, byteorder):
         ]
     elif metadata["target"] == "aten.add.Tensor":
         result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
-    elif metadata["target"] in OPERATIONS:
-        result = [arithmetic.pointwise(metadata["target"], value, metadata["parameters"]) for value in values[0]]
     else:
         result = _conv(metadata, values, arithmetic)
     output = metadata["outputs"][0]
@@ -475,12 +443,7 @@ def _conv(metadata, values, arithmetic):
 
 def prepare_original_reference(form, source, *, extent, policy, budget, output_byteorder):
     """Bind one independently selected source/policy, never mint phase authority."""
-    from .original_pointwise_reference import OriginalPointwiseReferencePolicy
-
-    if (
-        type(policy) not in {OriginalReferencePolicy, OriginalPointwiseReferencePolicy}
-        or type(budget) is not OriginalReferenceBudget
-    ):
+    if type(policy) is not OriginalReferencePolicy or type(budget) is not OriginalReferenceBudget:
         raise ValueError("original reference requires explicit typed policy and evaluation budget")
     policy.verify()
     budget.verify()

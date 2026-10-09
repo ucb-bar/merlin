@@ -72,6 +72,132 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "compiled-static-features": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "merlin/tests/targetgen/test_compiled_static_features.py",
+            "packages/merlin-experiments/tests/test_component_compiled_features.py",
+        ),
+        "support_files": ("packages/merlin-experiments/tests/compiled_feature_control.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.compiled_static_features",
+            "merlin_experiments.phase2.component_compiled_features",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "typed-index-ranges": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_index_ranges.py",
+            "packages/merlin-experiments/tests/test_index_range_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_index_ranges",
+            "merlin_experiments.phase0.index_range_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "original-semantic-cases": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "packages/merlin-experiments/tests/test_original_semantic_review.py",
+            "merlin/tests/targetgen/test_original_reference_stress.py",
+            "merlin/tests/targetgen/test_original_operator_reference.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/test_original_reference_standard_ir.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_semantic_review",
+            "merlin_experiments.phase0.original_semantic_review_plan",
+            "merlin.targetgen.original_operator_reference",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "typed-array-inputs": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_array_selection.py",
+            "packages/merlin-experiments/tests/test_transition_array_connectivity.py",
+            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_array_selection",
+            "merlin.targetgen.rtl.hw_transition_connectivity",
+            "merlin_experiments.phase0.transition_connectivity_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "integer-comparison-inputs": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_integer_comparisons.py",
+            "merlin/tests/targetgen/test_hw_combinational_observations.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_combinational",
+            "merlin.targetgen.rtl.hw_transition_connectivity",
+            "merlin_experiments.phase0.transition_connectivity_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "original-reference-flow": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "test_declared_original_reference_flow.py",
+            "test_original_reference_requirement_join.py",
+        ),
+        "support_files": (
+            "test_declared_phase0_run.py",
+            "original_reference_fixtures.py",
+            "test_original_reference_standard_ir.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_reference_flow",
+            "merlin_experiments.phase0.original_reference_requirements",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "independent-feature-arms": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,
@@ -82,6 +208,26 @@ SUITES = {
             "merlin_experiments.phase2.component_feature_inputs",
             "merlin_experiments.phase2.component_feature_arms",
             "merlin_experiments.phase2.component_analytical",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "transition-connectivity": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_transition_connectivity",
+            "merlin_experiments.phase0.transition_connectivity_intake",
         ),
         "required_modules": ("xdsl", "jsonschema"),
     },
@@ -1769,6 +1915,10 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
             if digest(retained) != source_sha256:
                 raise QualificationFailed(f"copied source input differs from committed archive: {name}")
             report["source_inputs"][name] = {"path": str(retained), "sha256": source_sha256}
+        if source_inputs:
+            input_root = str(tests / "source-inputs")
+            runner.environment["MERLIN_TEST_SOURCE_INPUTS_ROOT"] = input_root
+            report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
         runner.run(
