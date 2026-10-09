@@ -108,3 +108,10 @@ expiry. Completed in-process work is checked at stage boundaries; Python callbac
 are not preempted. Partial console and interrupted records remain diagnostics,
 never completed values or a timer qualification. Unselected calls retain their
 existing timeout behavior.
+
+`compile_only.require_pointer_entry` checks the actual nonvariadic external C
+entry, void result, plain pointer parameters and matching block signature.
+Compile-only and explicit component numerical execution share this boundary;
+matching arity alone cannot admit an integer parameter or another convention.
+Parameter/result attributes without a supported calling contract refuse.
+Preserved standard metadata supplies no body, device or effect proof.

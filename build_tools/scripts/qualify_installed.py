@@ -119,6 +119,7 @@ SUITES = {
             "infra/test_build_only_service.py",
             "targetgen/test_zero_input_abi.py",
             "infra/test_elf_build_cache.py",
+            "targetgen/test_pointer_entry_abi.py",
             "targetgen/test_linalg_fill_inventory.py",
             "targetgen/test_public_mixed_program_plan.py",
         ),
@@ -159,7 +160,11 @@ SUITES = {
     },
     "component-convergence": {
         "native_tools": ("clang", "mlir-translate", "riscv-gcc"),
-        "native_test_files": ("test_component_compile_role_transport.py", "test_component_native_deadline.py"),
+        "native_test_files": (
+            "test_component_compile_role_transport.py",
+            "test_component_native_deadline.py",
+            "test_component_pointer_entry.py",
+        ),
         "tests": (
             "test_component_generation.py",
             "test_component_automatic.py",
@@ -192,6 +197,7 @@ SUITES = {
             "test_component_runtime_copy_controls.py",
             "test_component_native_deadline.py",
             "test_component_memory_transport.py",
+            "test_component_pointer_entry.py",
             "test_component_runtime_controls.py",
             "test_component_measurement_qualification.py",
             "test_component_applicability.py",

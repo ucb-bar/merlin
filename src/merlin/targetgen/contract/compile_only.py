@@ -136,27 +136,34 @@ class CompileOnlyLinkage:
         )
 
 
-def prepare_linkage(*, cb, lowered_mlir, entry_symbol, original_abi):
-    """Check pointer ABI structure; stock translation still verifies LLVM semantics."""
-    from xdsl.context import Context
-    from xdsl.dialects import builtin, llvm
+def require_pointer_entry(lowered_mlir, *, entry_symbol, pointer_arity):
+    """Require the actual plain C pointer signature used by the shared harness.
+
+    This checks the emitted declaration, not source equivalence, body effects,
+    device placement or runtime support. Opaque operations remain unqualified;
+    the ordinary stock translator still verifies its complete input artifact.
+    """
+    from xdsl.dialects import llvm
     from xdsl.dialects.builtin import NoneAttr
     from xdsl.parser import Parser
+    from xdsl.utils.exceptions import ParseError, VerifyException
 
-    if type(original_abi) is not CompileOnlySourceAbi:
-        raise ValueError("compile-only linkage requires a typed independently derived original ABI")
-    bindings = original_abi.bind(cb)
-    context = Context(allow_unregistered=True)
-    context.load_dialect(builtin.Builtin)
-    context.load_dialect(llvm.LLVM)
-    module = Parser(context, lowered_mlir).parse_module()
+    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+
+    if not _symbol_name(entry_symbol) or type(pointer_arity) is not int or pointer_arity < 1:
+        raise ValueError("emitted entry requires an explicit symbol and positive pointer ABI arity")
+    try:
+        module = Parser(make_llvm_context(), lowered_mlir).parse_module()
+        module.verify()
+    except (ParseError, VerifyException) as error:
+        raise ValueError("emitted entry has malformed LLVM pointer ABI IR") from error
     entries = [
         operation
         for operation in module.walk()
-        if type(operation) is llvm.FuncOp and operation.sym_name.data == entry_symbol
+        if isinstance(operation, llvm.FuncOp) and operation.sym_name.data == entry_symbol
     ]
     if len(entries) != 1:
-        raise ValueError("compile-only emitted LLVM has no unique selected entry")
+        raise ValueError("emitted LLVM has no unique selected entry")
     entry = entries[0]
     if (
         not entry.body.blocks
@@ -164,13 +171,24 @@ def prepare_linkage(*, cb, lowered_mlir, entry_symbol, original_abi):
         or type(entry.function_type.output) is not llvm.LLVMVoidType
         or entry.CConv.convention.data != "ccc"
         or entry.linkage.linkage.data != "external"
-        or len(entry.function_type.inputs) != bindings["pointer_arity"]
+        or len(entry.function_type.inputs) != pointer_arity
+        or tuple(value.type for value in entry.body.blocks[0].args) != tuple(entry.function_type.inputs)
         or any(
             type(value) is not llvm.LLVMPointerType or type(value.addr_space) is not NoneAttr
             for value in entry.function_type.inputs
         )
+        or any(attributes.data for attributes in entry.arg_attrs or ())
+        or any(attributes.data for attributes in entry.res_attrs or ())
     ):
-        raise ValueError("compile-only entry does not define the selected ordinary C pointer ABI")
+        raise ValueError("emitted entry does not define the selected ordinary C pointer ABI")
+
+
+def prepare_linkage(*, cb, lowered_mlir, entry_symbol, original_abi):
+    """Check pointer ABI structure; stock translation still verifies LLVM semantics."""
+    if type(original_abi) is not CompileOnlySourceAbi:
+        raise ValueError("compile-only linkage requires a typed independently derived original ABI")
+    bindings = original_abi.bind(cb)
+    require_pointer_entry(lowered_mlir, entry_symbol=entry_symbol, pointer_arity=bindings["pointer_arity"])
     linkage = CompileOnlyLinkage(
         entry_symbol,
         bindings["pointer_arity"],

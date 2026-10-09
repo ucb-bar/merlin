@@ -222,8 +222,8 @@ def execute_component(
     memory_readback=None,
 ) -> dict:
     from merlin.targetgen import package_runtime as P
-    from merlin.targetgen.bundle_harness import emitted_entry_arity
     from merlin.targetgen.contract.compile import run_on_oracle
+    from merlin.targetgen.contract.compile_only import require_pointer_entry
 
     from . import capsule_golden as CG
 
@@ -346,10 +346,16 @@ def execute_component(
         deadline.remaining()
         unchanged()
         entry = build_service.recipe.require_kernel_stack_frame().entry_symbol
-        if (cb.get("kernel_abi") or {}).get("kind") != "whole_program" or emitted_entry_arity(
-            artifact, entry_symbol=entry
-        ) != len((cb.get("kernel_abi") or {}).get("args") or ()):
+        if (cb.get("kernel_abi") or {}).get("kind") != "whole_program":
             raise NativeComponentExecutionError("independent native artifact has no exact whole-program entry ABI")
+        try:
+            require_pointer_entry(
+                artifact, entry_symbol=entry, pointer_arity=len((cb.get("kernel_abi") or {}).get("args") or ())
+            )
+        except ValueError as error:
+            raise NativeComponentExecutionError(
+                "independent native artifact changes its C pointer entry ABI"
+            ) from error
         bound, inputs, bindings = _bind(capsule, cb, source)
         deadline.remaining()
         expected = CG.golden(capsule, capsule_dir)
