@@ -68,6 +68,12 @@ def test_saved_or_coerced_write_selections_do_not_grant_a_namespace(tmp_path, wr
         C.strict_tool_policy(None, tmp_path, runtime=(), candidate_writable=writable)
 
 
+@pytest.mark.parametrize("selection", [None, 0, 1, "false", {}])
+def test_process_filesystem_selection_is_not_coerced(tmp_path, selection):
+    with pytest.raises(StageGateError, match="explicit bool"):
+        C.strict_tool_policy(None, tmp_path, runtime=(), mount_proc=selection)
+
+
 def test_view_refreezes_exact_approved_library_selection(tmp_path, monkeypatch):
     root = tmp_path / "installed"
     (root / "merlin").mkdir(parents=True)

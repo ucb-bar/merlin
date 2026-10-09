@@ -67,6 +67,11 @@ home or system tree. A native host syscall proxy can read any mounted file even
 for a freestanding ELF: execution must select only its immutable ELF/data
 workspace and public tool dependencies, with private grader/reference files
 outside every mount. Process containment alone grants no target runtime role.
+Execution may select `mount_proc=False` to omit the process filesystem when its
+actual native controls show that it is unnecessary. Authoring retains its
+existing default. This narrows guest-visible paths; it does not establish
+observer integrity or protect writable observer sinks. Trusted completion,
+effect and timer observations still need independent parent-owned boundaries.
 `run_isolation_probe` refuses failed/unavailable execution. A successful probe
 does not qualify a model-client authoring transport or establish that every
 private surface was checked. A formal campaign needs actual sandbox probes,

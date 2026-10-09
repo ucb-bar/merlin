@@ -30,8 +30,11 @@ def test_compiler_namespace_receives_single_input_and_isolated_output_not_privat
     view = ComponentView(tmp_path / "public", "1" * 64, "2" * 64, "3" * 64)
     package = P.Package(candidate, {"language": "python"}, tool)
     monkeypatch.setattr(P, "_resolve_argv", lambda *a: ["/usr/bin/python3", str(tool), str(a[2]), str(a[3])])
-    monkeypatch.setattr(E, "strict_tool_policy",
-                        lambda *_a, **_k: (str(sandbox), "--unshare-all", "--bind", str(candidate), str(candidate)))
+    def readonly_policy(*_args, **options):
+        assert options["candidate_writable"] is False
+        return (str(sandbox), "--unshare-all", "--ro-bind", str(candidate), str(candidate))
+
+    monkeypatch.setattr(E, "strict_tool_policy", readonly_policy)
     observed = []
 
     def run(command, **kwargs):

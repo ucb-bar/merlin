@@ -237,6 +237,7 @@ def strict_tool_policy(
     candidate_destination: str = "/candidate",
     bwrap_binary: Path | None = None,
     candidate_writable: bool = True,
+    mount_proc: bool = True,
 ) -> tuple[str, ...]:
     """Networkless tool subprocess policy; no broad checkout/home/system binds.
 
@@ -244,9 +245,13 @@ def strict_tool_policy(
     model-client transport or evidence that the host supports namespaces.
     Read-only execution can select the same closed namespace without granting
     the executed program writes to its original source/product workspace.
+    Execution that needs no process filesystem can omit it explicitly. This
+    reduces guest-visible paths; it does not qualify observer integrity.
     """
     if type(candidate_writable) is not bool:
         raise StageGateError("candidate write selection must be an explicit bool")
+    if type(mount_proc) is not bool:
+        raise StageGateError("process filesystem selection must be an explicit bool")
     verify_component_view(view)
     candidate = Path(candidate)
     if candidate.is_symlink() or not candidate.is_dir():
@@ -287,13 +292,10 @@ def strict_tool_policy(
         "--setenv",
         "PYTHONNOUSERSITE",
         "1",
-        "--proc",
-        "/proc",
-        "--dev",
-        "/dev",
-        "--tmpfs",
-        "/tmp",
     ]
+    if mount_proc:
+        argv += ["--proc", "/proc"]
+    argv += ["--dev", "/dev", "--tmpfs", "/tmp"]
     for grant in runtime:
         grant.verify()
         argv += ["--ro-bind", str(grant.source), grant.destination]

@@ -534,3 +534,8 @@ execution; the default authoring workspace stays writable. A target host syscall
 proxy can read all mounted paths. Runtime execution grants only an exact
 immutable ELF/data workspace plus inventoried public tools, never its build,
 grader or reference tree. Namespace controls alone issue no runtime role.
+Execution may explicitly select `mount_proc=False` when its actual native
+controls establish that no process filesystem is needed. The authoring default
+retains `/proc`; removal reduces visible paths without qualifying observer
+integrity, hardware effects or timing. Do not substitute a guest output for
+trusted parent-owned observations.

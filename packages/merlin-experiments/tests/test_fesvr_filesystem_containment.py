@@ -254,7 +254,8 @@ def _outputs(result):
     return outputs
 
 
-def test_same_public_host_proxy_elf_retains_outputs_but_cannot_read_excluded_file(tmp_path):
+@pytest.mark.parametrize("mount_proc", [True, False])
+def test_same_public_host_proxy_elf_retains_outputs_but_cannot_read_excluded_file(tmp_path, mount_proc):
     (outer, compiler, engine, dtc, public, public_tests, platform, build_citation), commits = _selected()
     public_members = _public_source(
         tmp_path,
@@ -338,8 +339,10 @@ def test_same_public_host_proxy_elf_retains_outputs_but_cannot_read_excluded_fil
         candidate_destination=str(workspace),
         bwrap_binary=outer,
         candidate_writable=False,
+        mount_proc=mount_proc,
     )
     assert "--bind" not in policy and "--share-net" not in policy
+    assert ("--proc" in policy) is mount_proc
     snapshot = {p.name: sha256_file(p) for p in workspace.iterdir()}
     scoped = _run(
         tmp_path,
@@ -387,6 +390,7 @@ def test_same_public_host_proxy_elf_retains_outputs_but_cannot_read_excluded_fil
                     {"source": str(row.source), "destination": row.destination, "sha256": row.sha256} for row in runtime
                 ],
                 "command": [*policy, "--", "/usr/bin/diagnostic-engine", "-p1", str(elf)],
+                "mount_proc": mount_proc,
                 "original_output_roster": {
                     "admitted": [1, len(admitted_payload)],
                     "excluded": [1, len(excluded_payload)],

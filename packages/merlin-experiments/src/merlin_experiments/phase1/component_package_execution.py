@@ -120,11 +120,9 @@ class ComponentPackageExecutor:
                     runtime=self.runtime,
                     candidate_destination=str(self.candidate),
                     bwrap_binary=selected[0].source,
+                    candidate_writable=False,
                 )
             )
-            # The compiler cannot modify its package or any evaluator evidence.
-            mount = policy.index("--bind")
-            policy[mount] = "--ro-bind"
             policy += [
                 "--ro-bind",
                 str(input_mlir),
