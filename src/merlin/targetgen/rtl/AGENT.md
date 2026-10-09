@@ -50,6 +50,12 @@ spaces, allocation/capacity, memory ports, tensor axes, protocol or timing roles
 Source method probes require their own native/public source correspondence and
 cannot replace the selected full RTL or its mandatory unknown obligations.
 
+Integer comparison expressions retain the original i64 predicate and operand
+widths. Signed predicates interpret the same bounded signless source bits as
+two's-complement values. Local known-bit truth never grants four-state, reachable
+range, command, memory history or admission semantics. Old pinned equality
+records remain tied to their original readers; they are not upgraded in place.
+
 Bounded scalar observations call the shared `contract.mlir_source_admission`
 lexer guard before xDSL parsing: explicit source bytes, 64 syntax levels, scalar
 width bounded by the requested limit or 64-bit metadata, and no aggregate

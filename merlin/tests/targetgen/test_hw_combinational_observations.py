@@ -89,7 +89,7 @@ def test_changed_projection_changes_actual_complete_output_and_single_carry_is_n
     [
         _source().replace('"comb.add"', '"seq.firreg"'),
         _source().replace('"comb.add"', '"comb.xor"'),
-        _source().replace("predicate = 0 : i64", "predicate = 1 : i64"),
+        _source().replace("predicate = 0 : i64", "predicate = 99 : i64"),
         _source().replace("lowBit = 4 : i32} : (i6) -> i2", "lowBit = 5 : i32} : (i6) -> i2"),
         _source().replace("value = -1 : i4", "value = -1 : i3"),
         _source().replace("{twoState}", "{twoState = 1 : i1}"),

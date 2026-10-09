@@ -21,6 +21,7 @@ from xdsl.dialects.builtin import (
     UnitAttr,
     UnregisteredAttr,
 )
+from xdsl.dialects.comb import ICMP_COMPARISON_OPERATIONS
 
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
 
@@ -122,8 +123,8 @@ class PreparedCombinationalObservation:
                     value = args[0] - args[1]
                 elif expression.kind == "comb.mux":
                     value = args[1] if args[0] else args[2]
-                elif expression.kind == "comb.icmp":  # Preparation admits equality only.
-                    value = int(args[0] == args[1])
+                elif expression.kind == "comb.icmp":
+                    value = _compare(args, widths[expression.operands[0]], expression.parameter)
                 else:
                     raise ValueError("unsupported prepared combinational expression")
                 values.append(value & ((1 << expression.width) - 1))
@@ -132,6 +133,34 @@ class PreparedCombinationalObservation:
                 {port.name: values[index] for port, index in zip(self.outputs, self.output_values, strict=True)}
             )
         return tuple(result)
+
+
+def _compare(args, width, predicate):
+    # Older prepared equality expressions used None. Fresh preparation keeps
+    # the original predicate; pinned source records are never upgraded here.
+    if predicate is None:
+        predicate = ICMP_COMPARISON_OPERATIONS.index("eq")
+    if type(predicate) is not int or not 0 <= predicate < len(ICMP_COMPARISON_OPERATIONS):
+        raise ValueError("unsupported prepared integer comparison predicate")
+    name = ICMP_COMPARISON_OPERATIONS[predicate]
+    left, right = args
+    if name in {"slt", "sle", "sgt", "sge"}:
+        sign, domain = 1 << (width - 1), 1 << width
+        left = left - domain if left & sign else left
+        right = right - domain if right & sign else right
+    if name == "eq":
+        return int(left == right)
+    if name == "ne":
+        return int(left != right)
+    if name in {"slt", "ult"}:
+        return int(left < right)
+    if name in {"sle", "ule"}:
+        return int(left <= right)
+    if name in {"sgt", "ugt"}:
+        return int(left > right)
+    if name in {"sge", "uge"}:
+        return int(left >= right)
+    raise ValueError("unsupported prepared integer comparison predicate")
 
 
 def _width(value, limits):
@@ -174,8 +203,6 @@ def _ports(module, block, output, limits):
 
 
 def _expression(op, widths, width, *, conditional_logic=False):
-    from xdsl.dialects.comb import ICMP_COMPARISON_OPERATIONS
-
     kind, parameter = _name(op), None
     expected = {"hw.constant": {"value"}, "comb.extract": {"lowBit"}, "comb.icmp": {"predicate", "twoState"}}
     allowed = expected.get(kind, {"twoState"}) | {"op_name__", "sv.namehint"}
@@ -204,8 +231,16 @@ def _expression(op, widths, width, *, conditional_logic=False):
     elif kind == "comb.mux":
         valid = widths == [1, width, width]
     elif kind == "comb.icmp":
+        predicate = _attribute(op, "predicate")
+        parameter = _integer(op, "predicate")
         valid = len(widths) == 2 and widths[0] == widths[1] and width == 1
-        valid = valid and _integer(op, "predicate") == ICMP_COMPARISON_OPERATIONS.index("eq")
+        valid = (
+            valid
+            and isinstance(predicate, IntegerAttr)
+            and predicate.type == IntegerType(64)
+            and parameter is not None
+            and 0 <= parameter < len(ICMP_COMPARISON_OPERATIONS)
+        )
     else:
         valid = False
     if not valid:
