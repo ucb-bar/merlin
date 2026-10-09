@@ -72,6 +72,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "direct-kernel-counters": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/runtime",
+        "native_tools": ("clang",),
+        "native_test_files": ("test_direct_kernel_counter.py", "test_direct_kernel_invocation.py"),
+        "tests": ("test_direct_kernel_counter.py", "test_direct_kernel_invocation.py", "test_direct_kernel_harness.py"),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.runtime.direct_kernel_counter", "merlin.runtime.direct_kernel_harness"),
+        "required_modules": ("xdsl",),
+    },
     "emitted-dataflow": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",

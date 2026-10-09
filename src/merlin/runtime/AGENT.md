@@ -44,6 +44,12 @@ the per-backend adapters under `backends/`.
   completion count. Reuses source input storage and separate output histories;
   alias interfaces refuse. Histories and counts do not establish effect, source,
   platform or timing authority.
+- `direct_kernel_counter.py` — opt-in raw uint64 counter/control-state samples
+  around every selected entry/completion boundary and empty calibration bracket.
+  Complete sample objects and counts require the coherent reader; explicit
+  budgets apply before storage rendering. Accessor implementations remain in
+  selected runtime support. No counter units, integrity, cold/warm status,
+  calibrated overhead or complete-stage cost authority follows from these data.
 - `out_bin.py` — separate opt-in byte-oriented full-value framing. It consumes
   exact length-delimited raw payloads without text-decoding their NUL/non-UTF-8
   contents, checks the transport checksum, and requires END/DONE and a closed

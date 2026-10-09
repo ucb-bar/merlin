@@ -95,7 +95,7 @@ def _raw(spec, values, *, count, width, dtype, byte_order):
 
 
 def render_direct_kernel(
-    cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None, invocation_plan=None
+    cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None, invocation_plan=None, counter_plan=None
 ):
     """Render complete pointer-call storage with explicitly selected readback.
 
@@ -160,6 +160,13 @@ def render_direct_kernel(
     expected_outputs = {name for name, (_, access, _) in slots.items() if access != "read"}
     if set(inputs) != expected_inputs or set(outputs) != expected_outputs:
         raise ValueError("direct kernel ABI omits or adds an input/output pointer")
+    counter_roster = None
+    if counter_plan is not None:
+        from .direct_kernel_counter import DirectKernelCounterPlan
+
+        if type(counter_plan) is not DirectKernelCounterPlan or not memory:
+            raise ValueError("counter capture requires an explicit typed plan and complete coherent object reader")
+        counter_roster = counter_plan.bind(cb, abi=abi, invocation_plan=invocation_plan)
     declarations = [
         "#include <stdint.h>",
         '#include "htif.h"',
@@ -183,27 +190,55 @@ def render_direct_kernel(
     if invocation_plan is not None:
         declarations.append(f"volatile unsigned char {invocation_plan.count_symbol}[8]={{0}};")
         declarations.extend(f"unsigned char {history.symbol}[{history.byte_extent}]={{0}};" for history in histories)
+    if counter_roster is not None:
+        declarations.extend(counter_plan.declarations(counter_roster))
     body = (
         ["int main(unsigned long context_id){", "  if(context_id) return 0;"]
         if abi.main_convention == "primary_context_id"
         else ["int main(void){"]
     )
     body.append("  console_init();")
+    if counter_roster is not None:
+        body.extend(
+            [
+                "  uint64_t counter_start,counter_end,counter_state_before,counter_state_after;",
+                "  for(uint64_t counter_index=0;"
+                f"counter_index<UINT64_C({counter_plan.calibration_count});counter_index++){{",
+                *counter_plan.begin("    "),
+                *counter_plan.end("    "),
+                *counter_plan.store(
+                    kind="calibration", index="counter_index", byte_order=abi.byte_order, indent="    "
+                ),
+                "  }",
+            ]
+        )
     call = f"{abi.entry_symbol}({', '.join('tensor_' + str(index) for index in range(len(args)))});"
     if invocation_plan is None:
+        if counter_roster is not None:
+            body.extend(counter_plan.begin("  "))
         body.append("  " + call)
         if abi.completion_symbol:
             body.append(f"  {abi.completion_symbol}();")
+        if counter_roster is not None:
+            body.extend(counter_plan.end("  "))
+            body.extend(counter_plan.store(kind="call", index="0", byte_order=abi.byte_order, indent="  "))
+            body.extend(counter_plan.count("1", byte_order=abi.byte_order, indent="  "))
     else:
         body.extend(
             [
                 "  uint64_t invocation_completed=0;",
                 f"  for(uint64_t invocation=0;invocation<UINT64_C({invocation_plan.count});invocation++){{",
-                "    " + call,
             ]
         )
+        if counter_roster is not None:
+            body.extend(counter_plan.begin("    "))
+        body.append("    " + call)
         if abi.completion_symbol:
             body.append(f"    {abi.completion_symbol}();")
+        if counter_roster is not None:
+            body.extend(counter_plan.end("    "))
+            body.extend(counter_plan.store(kind="call", index="invocation", byte_order=abi.byte_order, indent="    "))
+            body.extend(counter_plan.count("invocation+1", byte_order=abi.byte_order, indent="    "))
         for history in histories:
             index = slots[history.emitted_tensor][0]
             width = history.bytes_per_invocation
