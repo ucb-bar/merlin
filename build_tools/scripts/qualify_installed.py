@@ -72,6 +72,36 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "logical-source-demand": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/dse",
+        "tests": ("test_component_source_demand.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.perf.component_source_demand",),
+        "required_modules": (),
+    },
+    "source-demand-inputs": {
+        "native_tools": ("firtool",),
+        "native_test_files": ("test_component_source_demand_contracts.py",),
+        "tests": ("test_component_source_demand_contracts.py",),
+        "test_fixture_imports": True,
+        "support_files": (
+            "test_component_source_performance.py",
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_coverage.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.component_source_demand",
+            "merlin_experiments.phase0.component_source_demand",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "hierarchical-memory-inputs": {
         "native_tools": ("firtool", "circt-opt"),
         "native_test_files": ("test_hierarchical_memory_intake.py",),

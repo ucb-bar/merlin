@@ -52,6 +52,17 @@ factory, receipt, target encoding or accepted status is an input. Legacy request
 versions stay closed; v4 still retains all missing requirements and blocked later
 phases, with hardware guards and measured baselines unestablished.
 
+`component_source_demand` is a separate explicit private v1 source-contract
+consumer. Replay the same live source selectors and every complete original
+reference before deriving core logical demand for the exact selected schedules.
+Require all source-checked development, guard and private-transfer members;
+preserve denied requests, original IDs and missing producers. Explicit document,
+per-member and aggregate metadata limits precede expansion. Its source/member/
+generation joins use exact closed JSON scalar/container types, refusing numeric
+type substitutions even when Python considers their values equal. They issue
+no public view, tool, source release, physical allocation,
+measured applicability or cold/warm feedback authority.
+
 Keep numerical function bodies and ordering stable during structural work. Inputs
 are external: never bundle profiles, holdouts, or generated goldens in this package.
 All runs require an explicit output destination; never default writes to the

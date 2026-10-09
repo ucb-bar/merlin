@@ -12,6 +12,14 @@ Exact membership cannot imply range or repetition transfer. These declarations
 and complete-cost arithmetic do not issue hardware/timer authority; experiments
 owns source/runtime provenance, actual controls and held qualification.
 
+`component_source_demand` derives bounded logical payload, work, dependency and
+last-needed intervals from the original checked functionalized tensor program
+under an explicit complete topological schedule. Alias relations share logical
+values; updates retain fresh SSA epochs and complete publication. No shaped
+data or references are allocated. Eager logical payload and operand extents are
+not physical allocations, bus traffic, capacity bounds or timing/ranking facts.
+Unknown grammar and arithmetic limits remain explicit before analysis expansion.
+
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
 qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,
