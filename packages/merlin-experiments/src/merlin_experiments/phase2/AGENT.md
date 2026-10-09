@@ -70,6 +70,13 @@ per-ELF preparation and output state remain separate. This optional transport
 does not grant semantics or qualification, change original outputs, or replace
 the fixed runtime controls and independently evaluated stage effects.
 
+`component_decode_products` reopens the actual same-ELF execution, original
+console, recorded decoder return and declared full packet through their ordinary
+invocation products. Matching disconnected hashes or a summary cannot replace
+these joins. It retains observation-only data: packet grammar, original ELF
+object membership, full call histories, observer integrity, effects, hardware
+binding and timers still need independently evaluated source/runtime owners.
+
 `component_instruction_policy.py` binds protected preauthor source-symbol
 prohibitions to live independently selected declarations and exact public source
 routing predicates. `component_instruction_audit.py` walks every declared linked
