@@ -4,6 +4,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`declared_run` executes a fresh independent diagnostic from a closed explicit
+source request. Pin original descriptor, public hardware production selection,
+minimal software/review/basis, public/native schema source, reader tool and every
+construction budget before issuance. Invoke the existing live issuers and ordinary
+generator; saved receipts cannot replace them. Preserve the complete mandatory
+UNKNOWN denominator and private original guard/transfer membership. A successful
+diagnostic does not issue numerical, runtime or Phase 1 release qualification.
+
 Keep numerical function bodies and ordering stable during structural work. Inputs
 are external: never bundle profiles, holdouts, or generated goldens in this package.
 All runs require an explicit output destination; never default writes to the

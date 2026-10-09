@@ -3,7 +3,7 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [generating_capsules, adding_a_target, integrations]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -16,6 +16,7 @@ code_refs:
   - src/merlin/targetgen/generate/typed_mlir.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
@@ -29,6 +30,52 @@ Phase 0 combines selected hardware evidence, a software specification, and workl
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
 to `merlin-experiments`; target-specific inputs belong to examples or selected OOT support.
+
+## Run a complete independent diagnostic before authoring
+
+Select public hardware source, a minimal software contract and independent public
+examples before compiler authoring. Freeze source identities, excluded answer
+roots, reader/runtime selections and finite construction budgets. Example graphs
+identify semantic and interaction classes; their dimensions, frequencies and
+model identities must not select generated cases or performance objectives.
+
+The installed command
+`python -m merlin_experiments.phase0.declared_run --request <request.json> --output <fresh-owner>`
+executes the existing RTL, software, native operator-schema, arithmetic and packing
+issuers, followed by the ordinary complete mandatory generator. Its closed request
+uses `merlin.independent_phase0_run.v1`: exact input paths and SHA256s, explicit
+excluded roots, a selected native schema runtime and public declaration checkout,
+a selected CIRCT reader, and automatic v8 construction/reference/source budgets.
+Saved receipts cannot replace fresh live issuance. Output must have a fresh owner;
+failed attempts retain their original files and reasons.
+
+The command reports diagnostic execution separately from coverage completion.
+An exit code of zero can accompany an incomplete coverage report. This occurs only
+after the ordinary generator's exact mandatory-incomplete refusal and replay of
+the complete denominator, source semantics, written membership and full reference
+output rosters. `phases["1"].handoff_accepted` remains false. Generated source files
+and integer source references do not admit original floating operators, numerical
+domains, target execution or a Phase 1 release.
+
+A Phase 0 handoff needs these checked inputs:
+
+- Complete original operator bindings, argument defaults, input/result types and
+  source correspondence. Unsupported original calls remain mandatory.
+- Generated bounded cases and independent complete references for the selected
+  numerical contracts, including numerical stress and exceptional-value policy.
+- RTL-derived resource and axis mappings sufficient to construct tails and
+  capacity boundaries, with explicit gaps when structural facts lack meaning.
+- Concrete source cases for required effects and interactions, including aliases,
+  updates, transfers and publication order, with private transfer membership
+  separated from public author inputs.
+- A frozen corpus whose complete mandatory roster and source/reference bytes
+  verify through the ordinary handoff owner. Missing, denied or unimplemented
+  obligations remain in the denominator.
+
+Candidate compilation, source-to-ELF correspondence and physical ownership,
+synchronization and execution qualification belong to Phase 1. Measured costs and
+held performance calibration belong to Phase 2. Phase 0 must prepare their inputs
+without claiming those later verdicts or requiring a preexisting target backend.
 
 ## Bind the selected configuration to its elaborated source
 
