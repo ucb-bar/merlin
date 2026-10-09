@@ -12,12 +12,6 @@ Exact membership cannot imply range or repetition transfer. These declarations
 and complete-cost arithmetic do not issue hardware/timer authority; experiments
 owns source/runtime provenance, actual controls and held qualification.
 
-`component_measurement_plan` retains the complete development roster and selects
-bounded existing distinguishing measurements for overlapping intervals. Disjoint
-intervals may defer development measurement only; unsupported or new joint cells
-require independent requalification. Arithmetic owner/status inputs do not issue
-qualification. Correctness, held and final rosters cannot select this pruning.
-
 `component_source_demand` derives bounded logical payload, work, dependency and
 last-needed intervals from the original checked functionalized tensor program
 under an explicit complete topological schedule. Alias relations share logical
@@ -25,18 +19,6 @@ values; updates retain fresh SSA epochs and complete publication. No shaped
 data or references are allocated. Eager logical payload and operand extents are
 not physical allocations, bus traffic, capacity bounds or timing/ranking facts.
 Unknown grammar and arithmetic limits remain explicit before analysis expansion.
-
-`compiled_static_features` reuses the complete typed emitted LLVM observer and
-structural ELF reader for bounded site/access-width histograms and linked code
-extents. Counts are before native optimization. They are neither executed
-instruction counts nor physical traffic, staging, capacity or cycle features.
-Unsupported bodies refuse; experiments owns actual compile-consumption joins.
-
-`component_measurement_stream` checks one bounded, explicitly ordered raw event
-frame containing every original complete-cost stage. Counter wrap and control
-changes are retained. Event labels do not establish actual stage boundaries;
-there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
-timer, observer, resource, runtime and held qualification remain independent.
 
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration

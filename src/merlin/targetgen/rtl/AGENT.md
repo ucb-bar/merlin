@@ -27,13 +27,6 @@ Answer-bearing replay generation lives in the experiments distribution under the
 stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
 initializer and the structure-only tooling; extensions never overwrite it.
 
-`hw_graph` projects uniquely owned legacy attributes into properties on a private
-analysis clone for the selected discovery reader. Preserve every original field,
-SSA edge and ordered typed module port; refuse ambiguous ownership, duplicate
-symbols and incomplete graph identities. Original native source bytes and the
-lossless parser representation remain unchanged. Representation compatibility
-does not establish instruction roles, geometry or execution authority.
-
 `hw_packing.equal_partitions` follows only typed extracts and contiguous
 concatenations to a complete local input bitvector or opaque instance output.
 Equal slices must cover that entire root without gaps or overlaps. Input/module
@@ -49,12 +42,6 @@ materialization. Two-state local values and carry bits never assign address
 spaces, allocation/capacity, memory ports, tensor axes, protocol or timing roles.
 Source method probes require their own native/public source correspondence and
 cannot replace the selected full RTL or its mandatory unknown obligations.
-
-Integer comparison expressions retain the original i64 predicate and operand
-widths. Signed predicates interpret the same bounded signless source bits as
-two's-complement values. Local known-bit truth never grants four-state, reachable
-range, command, memory history or admission semantics. Old pinned equality
-records remain tied to their original readers; they are not upgraded in place.
 
 Bounded scalar observations call the shared `contract.mlir_source_admission`
 lexer guard before xDSL parsing: explicit source bytes, 64 syntax levels, scalar
@@ -106,29 +93,3 @@ register result SSA; reset retains primitive priority. No clock event is evaluat
 and no reset history, initialization, reachable range, decoded command, tensor
 axis, allocation/capacity or temporal premise is granted. Original declared-depth
 range statements remain unproved, including enabled out-of-range branches.
-
-`hw_transition_connectivity.transition_operand_connectivity` retains every
-original state operand slot and crosses only exact named port/index/type
-bindings in the already bounded rooted source hierarchy. Repeated callees keep
-distinct occurrence identities. Complete declared root ports are identity data;
-names and widths never classify a command interface or decoded resource role.
-State, memory reads, opaque and unsupported producers stop traversal. Structural
-root contact grants no event validity, state reachability, capacity, software
-axis, physical effect, temporal closure or whole memory mapping requirement.
-
-`hw_array_selection` preflights all rooted creation/get occurrences against
-explicit operation, element and aggregate-bit budgets before scalar expansion.
-Only exact single-level signless scalar arrays created in the same block are
-supported. CIRCT lexical creation operands are MSB first; runtime index zero
-selects the last operand. Opt-in C tracing exposes scalar dependencies only;
-non-power-of-two index domains remain conditional stops and out-of-range local
-values refuse. Nested and opaque aggregates remain stops. No default widening,
-invented fill, state history, resource role or old source record upgrade occurs.
-
-`hw_index_ranges` rejoins every original native address port to its exact local
-memory declaration, SSA and signless type before symbolic unsigned type-domain
-proofs. Explicit complete row/type/depth/proof budgets precede proof expansion;
-no exponential endpoints are materialized. Domain containment is conditional
-on defined known bits and unsigned indexing. Noncontained domains remain
-unproved; address definedness, state/clock validity, memory history, physical
-capacity, roles and effects remain required. Original T records stay unchanged.

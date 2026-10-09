@@ -1,1 +1,0 @@
-/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/mvin_mvout.c

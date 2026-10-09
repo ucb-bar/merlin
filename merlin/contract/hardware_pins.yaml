@@ -1,4 +1,5 @@
 # Pinned external hardware sources — which RTL revision each piece of work is against.
+# Angle-bracket workspace labels are non-executable provenance placeholders, not file paths.
 #
 # WHY THIS FILE EXISTS. A session certified a microkernel against the only saturn revision that
 # contains the outer-product unit, while the revision named for the tapeout does not contain that unit
@@ -557,7 +558,7 @@ pins:
       new fields encode identically; a program that reaches for them is defined here and not there.
     repo_canonical: https://github.com/ucb-bar/gemmini
     repo_observed_note: >-
-      NOT the checkout `gemmini_rtl` reads. Observed at /scratch/jack/chipyard/generators/gemmini, a
+      NOT the checkout `gemmini_rtl` reads. Observed at <external-workspace>/chipyard/generators/gemmini, a
       tree owned by another user and READ ONLY from merlin. The root env var is deliberately a NEW one:
       pointing $MERLIN_CHIPYARD at this tree would silently re-attribute every existing gemmini claim to
       a WS-only device, so that must not be how this pin is reached. Unset by default, and `verify`
@@ -610,7 +611,7 @@ pins:
     # lands in a revision.
     content_check: false
     # DECLARED LOCAL EDITS -- the digests of the bytes a derivation about this target would actually
-    # read, measured 2026-09-09 at /scratch/jack/chipyard/generators/gemmini. This is what makes
+    # read, measured 2026-09-09 at <external-workspace>/chipyard/generators/gemmini. This is what makes
     # "8c3f9923 plus exactly these bytes" a nameable revision; it is NOT a claim that any of them match
     # upstream, and every one of them differs from 8c3f9923's. The first two are UNTRACKED: they belong
     # to no revision anywhere, which is why a result citing this pin must cite the digest and never the
@@ -633,7 +634,7 @@ pins:
       - candidate second systolic capsule-bench target (not yet wired; see gaps)
     notes: >-
       WHAT WAS VERIFIED BY CONTENT RATHER THAN BELIEVED, 2026-09-09. The configuration's own contract
-      file (/scratch/jack/experiments/universal_resnet50_gemmini_20260906/hardware/UNIVERSAL_GEMMINI_U250.yaml,
+      file (<external-workspace>/experiments/universal_resnet50_gemmini_20260906/hardware/UNIVERSAL_GEMMINI_U250.yaml,
       sha256 5d4aa1e286d83783f782bf0beac1f5042324432b18bd774faf076f9e40c06497) carries
       `status: source_config_frozen_not_elaborated_not_built`, and the sibling PROVENANCE.yaml lists
       "RTL elaboration" and "simulator invocation" under `explicitly_not_performed`. BOTH ARE STALE.
@@ -646,7 +647,7 @@ pins:
       THE ISA HEADERS ARE NOT PINNED HERE, ON PURPOSE, AND THIS IS THE OPEN BLOCKER. `gemmini_rtl` has a
       sibling `gemmini_isa_headers` pin because every dtype claim about that target is read out of the
       generated header. This configuration HAS NO GENERATED HEADER: searched the whole of
-      /scratch/jack on 2026-09-09 and every gemmini_params.h there belongs to some other config. The
+      <external-workspace> on 2026-09-09 and every gemmini_params.h there belongs to some other config. The
       nested submodule in THIS checkout is at 7c540b3a (the gitlink it records) with both headers locally
       modified, and its gemmini_params.h (sha256 0b9c7b43...) declares BANK_ROWS 2048 / ACC_ROWS 512 and
       `#define ACC_READ_FULL_WIDTH` -- i.e. HALF this device's scratchpad, HALF its accumulator, and a
@@ -656,7 +657,7 @@ pins:
       to name. Recorded as UNKNOWN rather than filled in with the plausible candidate: a header whose
       #define set matches this config's declared `expected_generated_header` byte-for-byte does exist
       (sha256 d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5, 149 copies under
-      /scratch/jack, differing from merlin's own gemmini_params.h by exactly the one line
+      <external-workspace>, differing from merlin's own gemmini_params.h by exactly the one line
       `#define ACC_READ_FULL_WIDTH`), but it was written 2026-08-30, a week before this configuration
       was authored, and nothing ties it to this elaboration. Shape agreement is not provenance.
     gaps:
@@ -707,7 +708,7 @@ pins:
       source root and is only reachable through it.
     repo_canonical: https://github.com/ucb-bar/chipyard
     repo_observed_note: >-
-      Observed at /scratch/jack/chipyard, another user's tree, READ ONLY from merlin. Same new root env
+      Observed at <external-workspace>/chipyard, another user's tree, READ ONLY from merlin. Same new root env
       var as the generator pin, unset by default.
     commit: "e27c6561c0066c1f60bf4eb4885a38391c850ac0"
     targets: [gemmini_universal]
@@ -999,7 +1000,7 @@ artifacts:
       SimJTAG, leaving exactly four blackboxes (plusarg_reader, the two IOCells, EICG_wrapper), all
       pass-throughs or tie-offs. Measured against the identical ELF: GSIM 3.31 s vs Verilator 86.83 s,
       both pass.
-    path: /scratch/agustin/projects/gsim-work/gemmini-soc/ChipTop.fir
+    path: <historical-build-workspace>/projects/gsim-work/gemmini-soc/ChipTop.fir
     digest: 890d4677c8b09134b323f2ced9da65f6c9779cfd7effa749159e8688a83af2aa
     built_from:
       - gemmini_rtl
@@ -1119,7 +1120,7 @@ artifacts:
     role: gsim_firrtl
     notes: >-
       COPIED OUT OF PURGEABLE SCRATCH ON PURPOSE. Until 2026-09-04 these bytes existed only at
-      /scratch/agustin/tmp/gsim_cert_serialclk_v1/, a location the layout convention marks purgeable, and
+      <historical-build-workspace>/tmp/gsim_cert_serialclk_v1/, a location the layout convention marks purgeable, and
       the emulator certifying gemmini capsules was the only surviving evidence of what it modelled. The
       elaboration, its model manifest (f822a628) and the equivalence certificate now sit beside the
       emulator in its engine home, so the home answers "which hardware is this?" without reference to a
@@ -1431,7 +1432,7 @@ artifacts:
     notes: >-
       RE-PINNED 2026-10-01 to the canonical engine location `merlin.targetgen.gsim_emulator` resolves
       (`<build>/rtl_engines/gemmini/gsim/emulator`). The previous path,
-      /scratch/agustin/tmp/gsim_recert_20260904/emu_gemmini_gsim_recert, was deleted in the 2026-10-01
+      <historical-build-workspace>/tmp/gsim_recert_20260904/emu_gemmini_gsim_recert, was deleted in the 2026-10-01
       scratch cleanup. The bytes did not change: the file at the new path has this same digest
       (1a3de02a), so every capture keyed on it remains about this binary.
     built_from:
@@ -1522,7 +1523,7 @@ artifacts:
     notes: >-
       RE-PINNED 2026-10-01 to the manifest beside the canonical emulator
       (`<build>/rtl_engines/gemmini/gsim/model_manifest.json`). The previous path,
-      /scratch/agustin/tmp/gsim_cert_serialclk_v1/gsim_generated_model_manifest.json, was deleted in
+      <historical-build-workspace>/tmp/gsim_cert_serialclk_v1/gsim_generated_model_manifest.json, was deleted in
       the 2026-10-01 scratch cleanup. The bytes did not change: the file at the new path has this same
       digest (f822a628).
     built_from:
@@ -1597,7 +1598,7 @@ artifacts:
       `targetgen.rtl.introspect.find_artifacts` requires and the FireSim elaboration does not have).
       Declared because the configuration's own contract says it was never elaborated and that is false:
       this file exists, and a claim about this device has to name WHICH elaboration it came from.
-    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig.fir
+    path: <external-workspace>/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig.fir
     digest: "92183c97a38d6f3ed4bed7169ceb8d17710eae06b1a773b7a5eef4a34964148a"
     built_from:
       - gemmini_universal_rtl
@@ -1616,7 +1617,7 @@ artifacts:
       because `find_artifacts` refuses without it -- an extraction pointed at a .fir with no hierarchy
       raises rather than proceeding -- so it is part of what makes the elaboration usable at all, and
       nothing else records which hierarchy a fact set was walked against.
-    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/top_module_hierarchy.json
+    path: <external-workspace>/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/top_module_hierarchy.json
     digest: "56a000c3a985438ecc4704208d1d80c9af1fda0d9c4371a1b97db7f0c3267735"
     built_from:
       - gemmini_universal_rtl
@@ -1632,7 +1633,7 @@ artifacts:
       `explicitly_not_performed: [RTL elaboration, simulator invocation]`, and because a cert produced by
       it must name it: a path and an mtime cannot tell this binary from the default-config simulator
       sitting in the same directory.
-    path: /scratch/jack/chipyard/sims/verilator/simulator-chipyard.harness-UniversalResNet50GemminiRocketConfig
+    path: <external-workspace>/chipyard/sims/verilator/simulator-chipyard.harness-UniversalResNet50GemminiRocketConfig
     digest: "0069d3816ec60f704cf8968bfe4595684b1216ebe435de259514ad7723238ebc"
     built_from:
       - gemmini_universal_verilator_firrtl
@@ -1653,7 +1654,7 @@ artifacts:
       instantiates the FireSim bridge extmodules (FASED, TSI, UART, TracerV, RationalClock, BlockDev,
       PeekPoke), which are implemented by the FireSim driver rather than by RTL, so it cannot be handed
       to gsim or Verilator as-is. Recorded so the FPGA claim and the simulator claim cannot be conflated.
-    path: /scratch/jack/chipyard/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig.fir
+    path: <external-workspace>/chipyard/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig.fir
     digest: "ee0966a41993123812c8b4e329bbfdc8cf106d7a82a5594bc127aa85baaaa5a8"
     built_from:
       - gemmini_universal_rtl

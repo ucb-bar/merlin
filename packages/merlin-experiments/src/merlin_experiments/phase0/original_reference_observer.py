@@ -12,11 +12,9 @@ import sys
 from pathlib import Path
 
 
-def observe(loader, metadata, stimulus, *, version=1):
+def observe(loader, metadata, stimulus):
     import torch
 
-    if type(version) is not int or version not in {1, 2}:
-        raise ValueError("original reference observer needs its explicit storage version")
     spec = importlib.util.spec_from_file_location("selected_original_factory", loader)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -33,10 +31,7 @@ def observe(loader, metadata, stimulus, *, version=1):
             or str(example.dtype) != "torch." + row["dtype"]
         ):
             raise ValueError("original reference observer changed original input storage/ABI")
-        dtypes = {"float32", "int8"}
-        if version == 2 and metadata["target"] in {"aten.relu.default", "aten.round.default", "aten.clamp.default"}:
-            dtypes |= {"int16", "int32", "int64"}
-        if row["dtype"] not in dtypes:
+        if row["dtype"] not in {"float32", "int8"}:
             raise ValueError("original reference observer does not implement this original binary dtype")
         encoded = source["data_hex"]
         if (

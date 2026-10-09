@@ -76,23 +76,6 @@ Its source pins establish attribution and drift checks. Independently evaluated
 semantic, physical-effect and hardware-runtime qualification belongs to the
 private experiments owner, and cannot be issued by this transport.
 
-The functional transport freezes exact function/code, bound-method owner and
-stdlib partial bindings, rechecking them before and after running and parsing.
-This shallow selection check proves neither mutable reachable state, import
-closure nor source-to-bytecode correspondence.
-
-An explicit `RecordedProcessExecution` fixes the native executable, direct ELF
-operand, working directory, environment and stdout or merged-stream selection.
-The functional service requires its exact fixed runner and source membership;
-ordinary execution reopens the actual closed process and captured bytes before
-and after parsing/output validation. Saved receipts, unrelated subprocesses or
-matching console values cannot replace that execution. Legacy callbacks retain
-their diagnostic route. Exact argv/input attribution does not prove loader or
-ISA semantics, transitive dependencies, isolation, callback/source equivalence,
-descendant cleanup, runtime qualification, effects, hardware or timing. The
-native timeout bounds the selected subprocess; it is not an OS deadline or a
-process-tree cleanup guarantee, and captured output has no aggregate byte limit.
-
 The build-only renderer must be an actual Python function or bound method whose
 inspected file and current bytes belong to the selected source roster. Unwrap
 only exact stdlib `functools.partial`, never supplied wrapper/source attributes.
@@ -140,12 +123,3 @@ Compile-only and explicit component numerical execution share this boundary;
 matching arity alone cannot admit an integer parameter or another convention.
 Parameter/result attributes without a supported calling contract refuse.
 Preserved standard metadata supplies no body, device or effect proof.
-
-Ordinary component execution and compile-only transport accept an optional exact
-`CompilerLibraryContract` and canonical root together. Reopen their reviewed
-member bytes before commands and at subsequent stage boundaries; retain the
-same selection and actual member dependencies in transport reports and static
-proofs. The fresh author view and qualified grader must use that same live
-selection. An absent pair preserves the original import restrictions. Approved
-direct imports and source-byte attribution do not establish semantic generality,
-transitive dependency isolation, runtime correctness, effects or hardware timing.

@@ -5,8 +5,6 @@ phase1 replays controller, CLI, RTL-feedback and private model-gate tests with c
 runtime-admission checks cross-process simulator reservations without launching native simulators.
 device-shim replays native C-interface ABI and numerical shim tests from the installed core.
 phase0-inputs replays explicit recipe loading and declaration resolution, not hardware derivation.
-source-preparation-qualification replays versioned source domain selection and real native
-dependency/clone/output controls with synthetic author/runtime facets; it cannot qualify an experiment.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -74,318 +72,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
-    "source-preparation-qualification": {
-        "tests_root": "packages/merlin-experiments/tests",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "native_tools": ("clang",),
-        "native_test_files": (
-            "test_source_preparation_qualification.py",
-            "test_component_qualification.py",
-            "test_source_preparation_release.py",
-        ),
-        "tests": (
-            "test_source_preparation_qualification.py",
-            "test_component_qualification.py",
-            "test_source_preparation_release.py",
-        ),
-        "support_files": (
-            "test_source_requirement_ledger.py",
-            "test_component_source_binding.py",
-            "test_component_automatic.py",
-            "test_component_generation.py",
-            "test_component_minimal_spec.py",
-            "test_component_execution_budget.py",
-            "test_independent_rtl_intake.py",
-            "test_component_coverage.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase1.component_qualification",
-            "merlin_experiments.phase1.component_qualification_domain",
-            "merlin_experiments.phase1.component_qualification_evidence",
-            "merlin_experiments.phase0.source_preparation_release",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "source-preparation-release": {
-        "tests_root": "packages/merlin-experiments/tests",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "tests": (
-            "test_source_preparation_release.py",
-            "test_source_preparation_semantic_join.py",
-            "test_component_origin.py",
-            "test_fresh_phase1_generation_budget.py",
-        ),
-        "support_files": (
-            "test_source_requirement_ledger.py",
-            "test_component_source_binding.py",
-            "test_component_automatic.py",
-            "test_component_generation.py",
-            "test_component_minimal_spec.py",
-            "test_component_execution_budget.py",
-            "test_independent_rtl_intake.py",
-            "test_component_coverage.py",
-            "test_original_semantic_review.py",
-            "test_original_reference_standard_ir.py",
-            "test_original_reference_requirement_join.py",
-            "original_reference_fixtures.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase0.source_preparation_release",
-            "merlin_experiments.phase1.component_generation_admission",
-            "merlin_experiments.phase1.component_origin",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "development-measurement-scheduling": {
-        "tests_root": ".",
-        "collect_selected_tests": True,
-        "tests": (
-            "merlin/tests/targetgen/test_component_measurement_plan.py",
-            "packages/merlin-experiments/tests/test_component_measurement_scheduling.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.perf.component_measurement_plan",
-            "merlin_experiments.phase2.component_measurement_scheduling",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "compiled-static-features": {
-        "tests_root": ".",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "tests": (
-            "merlin/tests/targetgen/test_compiled_static_features.py",
-            "packages/merlin-experiments/tests/test_component_compiled_features.py",
-        ),
-        "support_files": ("packages/merlin-experiments/tests/compiled_feature_control.py",),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.perf.compiled_static_features",
-            "merlin_experiments.phase2.component_compiled_features",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "typed-index-ranges": {
-        "tests_root": ".",
-        "collect_selected_tests": True,
-        "source_inputs": (
-            "examples/*/target/docs/*.md",
-            "examples/*/target/examples/*.mlir",
-            "examples/*/target/contracts/*.yaml",
-            "examples/*/target/evidence_concepts.yaml",
-        ),
-        "tests": (
-            "merlin/tests/targetgen/test_hw_index_ranges.py",
-            "packages/merlin-experiments/tests/test_index_range_intake.py",
-            "merlin/tests/targetgen/test_targetgen_toy.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.rtl.hw_index_ranges",
-            "merlin_experiments.phase0.index_range_intake",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "original-semantic-cases": {
-        "tests_root": ".",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "tests": (
-            "packages/merlin-experiments/tests/test_original_semantic_review.py",
-            "merlin/tests/targetgen/test_original_reference_stress.py",
-            "merlin/tests/targetgen/test_original_operator_reference.py",
-        ),
-        "support_files": (
-            "packages/merlin-experiments/tests/test_original_reference_standard_ir.py",
-            "packages/merlin-experiments/tests/original_reference_fixtures.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase0.original_semantic_review",
-            "merlin_experiments.phase0.original_semantic_review_plan",
-            "merlin.targetgen.original_operator_reference",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "typed-array-inputs": {
-        "tests_root": ".",
-        "collect_selected_tests": True,
-        "source_inputs": (
-            "examples/*/target/docs/*.md",
-            "examples/*/target/examples/*.mlir",
-            "examples/*/target/contracts/*.yaml",
-            "examples/*/target/evidence_concepts.yaml",
-        ),
-        "tests": (
-            "merlin/tests/targetgen/test_hw_array_selection.py",
-            "packages/merlin-experiments/tests/test_transition_array_connectivity.py",
-            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
-            "merlin/tests/targetgen/test_targetgen_toy.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.rtl.hw_array_selection",
-            "merlin.targetgen.rtl.hw_transition_connectivity",
-            "merlin_experiments.phase0.transition_connectivity_intake",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "integer-comparison-inputs": {
-        "tests_root": ".",
-        "collect_selected_tests": True,
-        "source_inputs": (
-            "examples/*/target/docs/*.md",
-            "examples/*/target/examples/*.mlir",
-            "examples/*/target/contracts/*.yaml",
-            "examples/*/target/evidence_concepts.yaml",
-        ),
-        "tests": (
-            "merlin/tests/targetgen/test_hw_integer_comparisons.py",
-            "merlin/tests/targetgen/test_hw_combinational_observations.py",
-            "merlin/tests/targetgen/test_targetgen_toy.py",
-            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.rtl.hw_combinational",
-            "merlin.targetgen.rtl.hw_transition_connectivity",
-            "merlin_experiments.phase0.transition_connectivity_intake",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "original-reference-flow": {
-        "tests_root": "packages/merlin-experiments/tests",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "tests": (
-            "test_declared_original_reference_flow.py",
-            "test_original_reference_requirement_join.py",
-        ),
-        "support_files": (
-            "test_declared_phase0_run.py",
-            "original_reference_fixtures.py",
-            "test_original_reference_standard_ir.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase0.original_reference_flow",
-            "merlin_experiments.phase0.original_reference_requirements",
-            "merlin_experiments.phase0.declared_run",
-            "merlin_experiments.phase0.source_requirement_ledger",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "independent-feature-arms": {
-        "tests_root": "packages/merlin-experiments/tests",
-        "test_fixture_imports": True,
-        "tests": ("test_component_feature_arms.py",),
-        "support_files": ("feature_arm_control.py",),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase2.component_feature_inputs",
-            "merlin_experiments.phase2.component_feature_arms",
-            "merlin_experiments.phase2.component_analytical",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "transition-connectivity": {
-        "tests_root": ".",
-        "collect_selected_tests": True,
-        "source_inputs": (
-            "examples/*/target/docs/*.md",
-            "examples/*/target/examples/*.mlir",
-            "examples/*/target/contracts/*.yaml",
-            "examples/*/target/evidence_concepts.yaml",
-        ),
-        "tests": (
-            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
-            "merlin/tests/targetgen/test_targetgen_toy.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.rtl.hw_transition_connectivity",
-            "merlin_experiments.phase0.transition_connectivity_intake",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "recorded-process-consumption": {
-        "include_experiments": False,
-        "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_recorded_process_execution.py", "test_explicit_execution_service.py"),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.contract.process_execution",
-            "merlin.targetgen.contract.execution_service",
-            "merlin.targetgen.contract.compile",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "compiler-library-route": {
-        "tests_root": ".",
-        "test_fixture_imports": True,
-        "collect_selected_tests": True,
-        "tests": (
-            "merlin/tests/targetgen/test_compiler_library.py",
-            "merlin/tests/targetgen/test_compile_only_transport.py",
-            "packages/merlin-experiments/tests/test_component_compile_role_transport.py",
-            "packages/merlin-experiments/tests/test_component_runtime_support.py",
-            "packages/merlin-experiments/tests/test_component_origin.py",
-            "packages/merlin-experiments/tests/test_component_copy_proof.py",
-            "packages/merlin-experiments/tests/test_component_library_execution.py",
-        ),
-        "support_files": (
-            "packages/merlin-experiments/tests/test_component_compile_sources.py",
-            "packages/merlin-experiments/tests/test_independent_software_intake.py",
-            "packages/merlin-experiments/tests/test_component_semantic_basis.py",
-            "packages/merlin-experiments/tests/test_independent_rtl_intake.py",
-            "packages/merlin-experiments/tests/test_component_coverage.py",
-            "packages/merlin-experiments/tests/test_component_generation.py",
-            "packages/merlin-experiments/tests/test_component_minimal_spec.py",
-            "packages/merlin-experiments/tests/test_phase0_freeze.py",
-        ),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin.targetgen.compiler_library",
-            "merlin.targetgen.compile_only_execution",
-            "merlin.targetgen.native_component_execution",
-            "merlin_experiments.phase1.component_origin",
-            "merlin_experiments.phase2.component_runtime_support",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "functional-callback-selection": {
-        "include_experiments": False,
-        "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_explicit_execution_service.py",),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": ("merlin.targetgen.contract.execution_service",),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
-    "hw-discovery-inputs": {
-        "include_experiments": False,
-        "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_hw_discovery_graph.py",),
-        "core_extras": ("xdsl",),
-        "probe_modules": ("merlin.targetgen.rtl.hw_graph",),
-        "required_modules": ("xdsl",),
-    },
-    "original-standard-ir-inputs": {
-        "tests": ("test_original_reference_standard_ir.py",),
-        "support_files": ("original_reference_fixtures.py",),
-        "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": (
-            "merlin_experiments.phase0.original_reference_standard_ir",
-            "merlin_experiments.phase0.original_standard_ir_plan",
-            "merlin_experiments.phase0.original_standard_ir_products",
-            "merlin_experiments.phase0.original_standard_ir_observer",
-        ),
-        "required_modules": ("xdsl", "jsonschema"),
-    },
     "renderer-source-owner": {
         "include_experiments": False,
         "tests_root": "merlin/tests/infra",
@@ -1871,7 +1557,6 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
         "selected_tests": list(SUITES[suite]["tests"]),
         "support_files": list(support_files),
         "test_fixture_imports": bool(SUITES[suite].get("test_fixture_imports")),
-        "test_collection_policy": "selected_roster" if SUITES[suite].get("collect_selected_tests") else "copied_tree",
         "source_inputs": {},
         "tests_root": tests_root.as_posix(),
         "core_extras": list(SUITES[suite]["core_extras"]),
@@ -1997,10 +1682,6 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
             if digest(retained) != source_sha256:
                 raise QualificationFailed(f"copied source input differs from committed archive: {name}")
             report["source_inputs"][name] = {"path": str(retained), "sha256": source_sha256}
-        if source_inputs:
-            input_root = str(tests / "source-inputs")
-            runner.environment["MERLIN_TEST_SOURCE_INPUTS_ROOT"] = input_root
-            report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
         runner.run(
@@ -2017,15 +1698,7 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
                 "--import-mode=importlib",
                 "-o",
                 "tmp_path_retention_policy=all",
-                *(
-                    [
-                        "-o",
-                        "pythonpath="
-                        + " ".join(dict.fromkeys((str(tests), *(str((tests / name).parent) for name in test_files)))),
-                    ]
-                    if SUITES[suite].get("test_fixture_imports")
-                    else []
-                ),
+                *(["-o", "pythonpath=" + str(tests)] if SUITES[suite].get("test_fixture_imports") else []),
                 # This venv is fresh and unique; pytest must not clean shared user temp roots.
                 "--basetemp",
                 external / "test-tmp",
@@ -2041,11 +1714,7 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
                     if report["native_tools"]
                     else []
                 ),
-                *(
-                    [tests / name for name in SUITES[suite]["tests"]]
-                    if SUITES[suite].get("collect_selected_tests")
-                    else [tests]
-                ),
+                tests,
             ],
             external,
         )

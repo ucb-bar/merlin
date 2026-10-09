@@ -4,32 +4,6 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
-`source_preparation_release` replays the complete original source ledger and
-optional finite semantic cases into a live versioned input owner. Preserve all
-mandatory blockers, original declaration roles/cohorts and pending candidate
-predicates. Fresh Phase1 consumes completion through its explicit selector while
-retaining runtime, compile roster, library, transport and isolation gates.
-Source completion is never candidate correctness or hardware qualification;
-historical coverage keeps its separate reader and meaning.
-
-`original_semantic_review` binds protected operation-local public schema/default,
-form, storage and numerical-policy choices to complete original reference and
-upstream source-ABI cases. The same reference traversal observes actual signs,
-rounding, cancellation and wrap events under complete logical work/payload
-budgets. Missing owners, denied cases and unrealized required stress remain
-unavailable in the original cohort roster. Clean tracked implementation context
-is a reviewed premise, not compiled-body or universal equivalence proof. These
-private finite cases issue no hardware, runtime or Phase 1 release authority.
-
-`original_reference_standard_ir` joins every required original source cohort to
-its independently checked reference, actual ordinary upstream conversion,
-complete ordered tensor ABI and a selected stock parser. Explicit aggregate
-source/reference and parser limits precede construction. Replay actual products,
-source and process pins with JSON scalar types preserved; completed parser
-refusals and interrupted deadlines remain distinct. Unsupported original slots
-stay required. This private data checks neither compiled body semantics nor
-candidate execution, numerical stress, physical effects or Phase 1 release.
-
 `memory_port_intake` observes the complete local typed Seq memory/port roster
 from the same live independently reproduced public core. Fixed native generic
 serialization, explicit parse/metadata budgets and exact reader/tool/invocation
@@ -55,21 +29,6 @@ identity. The source primitive's reset priority and same-SSA hold arms establish
 no valid event history, initialization, reachable address range, command/resource
 role, tensor axis, physical capacity or temporal closure. No whole mapping or
 existing mandatory UNKNOWN requirement is admitted by this optional data record.
-
-`transition_connectivity_intake` binds all typed original state operand slots
-to exact rooted source connectivity from the same live address-state intake.
-Closed records replay every original slot, frame, port binding and symbolic
-stop; JSON bool/int/float substitutions refuse. Original root-input contact is
-identity data only, with no name/width role selector. Saved or copied records
-mint no live identity, and no command/resource/axis/capacity/effect/temporal or
-whole-mapping requirement is admitted. Prior H/T source meanings remain intact.
-
-Explicit `array_limits` selects transition-connectivity intake v2. It adds fixed
-whole-roster aggregate budgets and pinned typed array readers, retaining every
-original operand and unsupported domain. Omission keeps v1's source scope and
-record fields. Array scalar dependency order follows original public CIRCT
-semantics; conditional index validity remains separate from execution, memory
-history, decoder roles and admission. Frozen v1/C packets are never upgraded.
 
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
@@ -493,23 +452,3 @@ Retain all original mandatory UNKNOWNs plus each missing scalar-to-command/axis
 mapping and incomplete packing-domain obligation. Opaque instance outputs cannot
 select original-input probes, and absent/broken partitions cannot mint a boundary.
 Historical v1–v5 policies cannot acquire packing observations from saved JSON.
-
-`index_range_intake` requires live original T/native hardware identity and fixed
-reader pins. Its separate conditional type-domain/depth facts retain the entire
-original address roster and old unproved T rows. Strict semantic replay rejects
-missing membership, altered source/depth/types and bool/integer substitutions.
-Known-bit containment never grants address definedness, reachable state/event
-validity, memory history, physical mapping or original mandatory admission.
-
-Original reference selection/roster v3 explicitly adds policy v2 and original
-pointwise source form v2. Declared reference/standard selections v2 and standard
-IR selection/request/roster v2 bind that exact vocabulary to fixed observers.
-Historical versions retain their linear/convolution-only meanings. Preserve all
-original calls and every guard/private slot, ordered storage/rank/defaults, and
-complete logical source/native/reference budgets. Recompute complete outputs
-with original scalar conversion, selected zero-sign comparison and finite RNE.
-Undefined or unsupported numeric forms remain required unavailable rows. Native
-conversion failure, opaque frontend output and stock parser refusal give no
-source credit. These finite private observations do not grant original semantic
-ownership, numerical admission, stress-domain coverage, hardware or runtime
-effects, compiled semantics, or Phase 1 release.
