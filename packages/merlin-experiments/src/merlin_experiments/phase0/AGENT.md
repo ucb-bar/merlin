@@ -234,6 +234,18 @@ not erase any original unsupported owner, numeric domain, allocation or physical
 obligation. Historical v1-v6 meanings remain unchanged; v7 is not a global
 target requirement or functional/runtime/resource/performance qualification.
 
+Optional automatic policy v8 additionally observes every original typed call
+with versioned native scalar/list defaults. `original_schema_defaults` is the
+shared fixed invocation/replay owner; v1 typed-add record meanings stay intact.
+`original_call_sources` constructs bounded typed original convolution loaders
+using independent guard/transfer extents and explicit complete-roster budgets.
+Keep original types, argument values, result identities and selected numerical
+policy unchanged. Source construction does not count as an admitted numerical
+capsule: retain all v7 missing rows and each exact original call's missing
+owner/reference/comparison requirements. Unimplemented forms and budget-denied
+members remain mandatory. These private source-only loaders never import a
+workload, golden compiler or original example dimensions as factory geometry.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins

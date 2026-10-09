@@ -32,6 +32,7 @@ LOGICAL_POLICY_SCHEMA = "merlin.component_automatic_policy.v4"
 TYPED_POLICY_SCHEMA = "merlin.component_automatic_policy.v5"
 PACKING_POLICY_SCHEMA = "merlin.component_automatic_policy.v6"
 UNIFIED_POLICY_SCHEMA = "merlin.component_automatic_policy.v7"
+ORIGINAL_POLICY_SCHEMA = "merlin.component_automatic_policy.v8"
 RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v1"
 EFFECT_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v2"
 ARITHMETIC_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v3"
@@ -39,6 +40,7 @@ LOGICAL_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v4"
 TYPED_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v5"
 PACKING_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v6"
 UNIFIED_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v7"
+ORIGINAL_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v8"
 _FIELDS = {
     "schema",
     "status",
@@ -71,6 +73,12 @@ def _closed_policy(policy):
         TYPED_POLICY_SCHEMA: {"operator_schema_intake_sha256"},
         ARITHMETIC_POLICY_SCHEMA: {"arithmetic_intake_sha256"},
         PACKING_POLICY_SCHEMA: {"packing_intake_sha256"},
+        ORIGINAL_POLICY_SCHEMA: {
+            "operator_schema_intake_sha256",
+            "arithmetic_intake_sha256",
+            "packing_intake_sha256",
+            "original_source_budget",
+        },
         UNIFIED_POLICY_SCHEMA: {
             "operator_schema_intake_sha256",
             "arithmetic_intake_sha256",
@@ -102,6 +110,7 @@ def _closed_policy(policy):
             TYPED_POLICY_SCHEMA,
             PACKING_POLICY_SCHEMA,
             UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
         }
         or policy["status"] != "reviewed"
     ):
@@ -109,6 +118,10 @@ def _closed_policy(policy):
             "automatic coverage requires the closed reviewed preauthor policy without authored obligations"
         )
     validate_budget(policy["execution_budget"])
+    if policy["schema"] == ORIGINAL_POLICY_SCHEMA:
+        from .original_call_sources import validate_budget as validate_original_budget
+
+        validate_original_budget(policy["original_source_budget"])
     budget = policy["budget"]
     if (
         not isinstance(budget, dict)
@@ -128,6 +141,7 @@ def _selected_effects(policy):
             TYPED_POLICY_SCHEMA,
             PACKING_POLICY_SCHEMA,
             UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
         }
         and "operator_schema_intake_sha256" in policy
     )
@@ -135,7 +149,14 @@ def _selected_effects(policy):
 
 def _selected_arithmetic(policy):
     return policy["schema"] == ARITHMETIC_POLICY_SCHEMA or (
-        policy["schema"] in {LOGICAL_POLICY_SCHEMA, TYPED_POLICY_SCHEMA, PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA}
+        policy["schema"]
+        in {
+            LOGICAL_POLICY_SCHEMA,
+            TYPED_POLICY_SCHEMA,
+            PACKING_POLICY_SCHEMA,
+            UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
+        }
         and "arithmetic_intake_sha256" in policy
     )
 
@@ -175,6 +196,7 @@ def require_basis_selection(path, *, recipe, software_intake):
         TYPED_POLICY_SCHEMA,
         PACKING_POLICY_SCHEMA,
         UNIFIED_POLICY_SCHEMA,
+        ORIGINAL_POLICY_SCHEMA,
     }:
         return
     if type(software_intake) is not IndependentSoftwareIntake:
@@ -216,6 +238,7 @@ def resolve(
         TYPED_POLICY_SCHEMA,
         PACKING_POLICY_SCHEMA,
         UNIFIED_POLICY_SCHEMA,
+        ORIGINAL_POLICY_SCHEMA,
     }:
         if arithmetic_intake is not None or operator_schema_intake is not None or packing_intake is not None:
             raise ValueError("independent source observations require an explicit versioned automatic policy")
@@ -268,7 +291,7 @@ def resolve(
     elif arithmetic_intake is not None:
         raise ValueError("local arithmetic requires the explicit versioned automatic policy")
     packing_record = None
-    if policy["schema"] in {PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA}:
+    if policy["schema"] in {PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA}:
         from .packing_intake import IndependentPackingIntake
 
         if type(packing_intake) is not IndependentPackingIntake or packing_intake.hardware is not hardware_intake:
@@ -279,7 +302,7 @@ def resolve(
     elif packing_intake is not None:
         raise ValueError("local packing requires the explicit versioned automatic policy")
     typed_record = None
-    if policy["schema"] in {TYPED_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA}:
+    if policy["schema"] in {TYPED_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA}:
         from . import typed_add_sources as T
 
         typed_record = T.observe(
@@ -287,6 +310,17 @@ def resolve(
             basis=semantic_basis,
             numerical_semantics=spec["numerical_semantics"],
             destination=Path(output_root) / "coverage" / "automatic-typed-add",
+        )
+    original_record = None
+    if policy["schema"] == ORIGINAL_POLICY_SCHEMA:
+        from . import original_call_sources as O
+
+        original_record = O.observe(
+            schema_record=schema_record,
+            basis=semantic_basis,
+            numerical_semantics=spec["numerical_semantics"],
+            budget=policy["original_source_budget"],
+            destination=Path(output_root) / "coverage" / "automatic-original-calls",
         )
     declaration, unknowns = P.derive(
         policy,
@@ -297,11 +331,19 @@ def resolve(
         effects=effects,
         arithmetic=arithmetic_record["facts"] if arithmetic_record is not None else None,
         logical_interactions=policy["schema"]
-        in {LOGICAL_POLICY_SCHEMA, TYPED_POLICY_SCHEMA, PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA},
+        in {
+            LOGICAL_POLICY_SCHEMA,
+            TYPED_POLICY_SCHEMA,
+            PACKING_POLICY_SCHEMA,
+            UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
+        },
         typed_add=T.forms(typed_record, basis=semantic_basis) if typed_record is not None else None,
         packing=packing_record["facts"] if packing_record is not None else None,
-        retain_historical_gaps=policy["schema"] == UNIFIED_POLICY_SCHEMA,
+        retain_historical_gaps=policy["schema"] in {UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA},
     )
+    if original_record is not None:
+        unknowns = O.merge_unknowns(unknowns, original_record, basis=semantic_basis, unknown=P._unknown)
     destination = Path(output_root) / "coverage" / "automatic-selection"
     if any(member.is_symlink() for member in (destination, *destination.parents)):
         raise ValueError("automatic selection output must have an ordinary explicit path")
@@ -347,11 +389,21 @@ def resolve(
                 "merlin.targetgen.frontend_typed_add",
                 "merlin.targetgen.torch_schema_defaults_observer",
                 "merlin_experiments.phase0.typed_add_sources",
+                "merlin_experiments.phase0.original_schema_defaults",
             )
         ]
+    if original_record is not None:
+        sources += [
+            _pin(member, "original-call-observation")
+            for member in sorted((Path(output_root) / "coverage" / "automatic-original-calls").rglob("*"))
+            if member.is_file()
+        ]
+        sources += [_pin(module_source_path(name), "original-call-reader") for name in O.READER_MODULES]
     record = {
         "schema": (
-            UNIFIED_RECEIPT_SCHEMA
+            ORIGINAL_RECEIPT_SCHEMA
+            if policy["schema"] == ORIGINAL_POLICY_SCHEMA
+            else UNIFIED_RECEIPT_SCHEMA
             if policy["schema"] == UNIFIED_POLICY_SCHEMA
             else PACKING_RECEIPT_SCHEMA
             if policy["schema"] == PACKING_POLICY_SCHEMA
@@ -384,6 +436,8 @@ def resolve(
         record["typed_add_sources"] = typed_record
     if packing_record is not None:
         record["packing_intake"] = packing_record
+    if original_record is not None:
+        record["original_call_sources"] = original_record
     record["sha256"] = digest(record)
     receipt_path = destination / "derivation.json"
     receipt_path.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
@@ -411,6 +465,7 @@ def verify(record, *, report, verify_sources=True):
         TYPED_RECEIPT_SCHEMA,
         PACKING_RECEIPT_SCHEMA,
         UNIFIED_RECEIPT_SCHEMA,
+        ORIGINAL_RECEIPT_SCHEMA,
     } or digest({k: v for k, v in record.items() if k != "sha256"}) != record.get("sha256"):
         raise ValueError("automatic component derivation identity changed")
     identity = report["generation_identity"]
@@ -441,6 +496,8 @@ def verify(record, *, report, verify_sources=True):
         raise ValueError("packing derivation requires its explicit original versioned policy")
     if (policy["schema"] == UNIFIED_POLICY_SCHEMA) != (record["schema"] == UNIFIED_RECEIPT_SCHEMA):
         raise ValueError("unified derivation requires its explicit original versioned policy")
+    if (policy["schema"] == ORIGINAL_POLICY_SCHEMA) != (record["schema"] == ORIGINAL_RECEIPT_SCHEMA):
+        raise ValueError("original call derivation requires its explicit original versioned policy")
     basis_pin = one("semantic-basis-roster")
     basis = ComponentSemanticBasis.load(
         _read(basis_pin),
@@ -488,6 +545,7 @@ def verify(record, *, report, verify_sources=True):
             TYPED_RECEIPT_SCHEMA,
             PACKING_RECEIPT_SCHEMA,
             UNIFIED_RECEIPT_SCHEMA,
+            ORIGINAL_RECEIPT_SCHEMA,
         } or not {
             "operator_schema_intake",
             "operator_effect_semantics",
@@ -503,6 +561,7 @@ def verify(record, *, report, verify_sources=True):
                 TYPED_POLICY_SCHEMA,
                 PACKING_POLICY_SCHEMA,
                 UNIFIED_POLICY_SCHEMA,
+                ORIGINAL_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(schema_record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -545,6 +604,7 @@ def verify(record, *, report, verify_sources=True):
         TYPED_POLICY_SCHEMA,
         PACKING_POLICY_SCHEMA,
         UNIFIED_POLICY_SCHEMA,
+        ORIGINAL_POLICY_SCHEMA,
     } or set(record) & {
         "operator_schema_intake",
         "operator_effect_semantics",
@@ -557,6 +617,7 @@ def verify(record, *, report, verify_sources=True):
         TYPED_RECEIPT_SCHEMA,
         PACKING_RECEIPT_SCHEMA,
         UNIFIED_RECEIPT_SCHEMA,
+        ORIGINAL_RECEIPT_SCHEMA,
     }:
         from .arithmetic_intake import verify_record
 
@@ -571,6 +632,7 @@ def verify(record, *, report, verify_sources=True):
                 TYPED_POLICY_SCHEMA,
                 PACKING_POLICY_SCHEMA,
                 UNIFIED_POLICY_SCHEMA,
+                ORIGINAL_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(selected, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -583,7 +645,7 @@ def verify(record, *, report, verify_sources=True):
     elif _selected_arithmetic(policy) or "arithmetic_intake" in record:
         raise ValueError("historical automatic policy cannot acquire local arithmetic authority")
     packing = None
-    if policy["schema"] in {PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA}:
+    if policy["schema"] in {PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA}:
         from .packing_intake import verify_record
 
         if "packing_intake" not in record:
@@ -609,7 +671,7 @@ def verify(record, *, report, verify_sources=True):
     elif "packing_intake" in record or any(row["role"] == "packing-source-reader" for row in sources):
         raise ValueError("historical automatic policy cannot acquire local packing authority")
     typed_record = None
-    if policy["schema"] in {TYPED_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA}:
+    if policy["schema"] in {TYPED_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA}:
         from . import typed_add_sources as T
 
         if "typed_add_sources" not in record:
@@ -622,6 +684,24 @@ def verify(record, *, report, verify_sources=True):
         )
     elif "typed_add_sources" in record:
         raise ValueError("historical automatic policy cannot acquire typed add source premises")
+    original_record = None
+    if policy["schema"] == ORIGINAL_POLICY_SCHEMA:
+        from . import original_call_sources as O
+
+        if "original_call_sources" not in record:
+            raise ValueError("original call derivation lost its complete actual native/source roster")
+        original_record = O.verify(
+            record["original_call_sources"],
+            schema_record=schema_record,
+            basis=basis,
+            numerical_semantics=spec["numerical_semantics"],
+        )
+        if original_record["budget"] != policy["original_source_budget"] or {
+            row["path"] for row in sources if row["role"] == "original-call-reader"
+        } != {str(module_source_path(name)) for name in O.READER_MODULES}:
+            raise ValueError("original call derivation changed its explicit source budget or readers")
+    elif "original_call_sources" in record or any(row["role"].startswith("original-call-") for row in sources):
+        raise ValueError("historical automatic policy cannot acquire original typed source preparation")
     declaration, unknowns = P.derive(
         policy,
         spec=spec,
@@ -631,11 +711,19 @@ def verify(record, *, report, verify_sources=True):
         effects=effects,
         arithmetic=arithmetic,
         logical_interactions=policy["schema"]
-        in {LOGICAL_POLICY_SCHEMA, TYPED_POLICY_SCHEMA, PACKING_POLICY_SCHEMA, UNIFIED_POLICY_SCHEMA},
+        in {
+            LOGICAL_POLICY_SCHEMA,
+            TYPED_POLICY_SCHEMA,
+            PACKING_POLICY_SCHEMA,
+            UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
+        },
         typed_add=T.forms(typed_record, basis=basis) if typed_record is not None else None,
         packing=packing,
-        retain_historical_gaps=policy["schema"] == UNIFIED_POLICY_SCHEMA,
+        retain_historical_gaps=policy["schema"] in {UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA},
     )
+    if original_record is not None:
+        unknowns = O.merge_unknowns(unknowns, original_record, basis=basis, unknown=P._unknown)
     if (
         yaml.safe_load(_read(record["derived_plan"])) != declaration
         or report["declaration"] != declaration

@@ -77,8 +77,8 @@ def selected(tmp_path):
         "    input x : SInt<8>\n    input y : SInt<8>\n    input z : SInt<32>\n"
         "    input packed : UInt<32>\n    output q : SInt<20>\n"
         + "".join(f"    output p{index} : UInt<8>\n" for index in range(4))
-        + "    node product = mul(x, y)\n    q <= add(product, z)\n"
-        + "".join(f"    p{index} <= bits(packed, {index * 8 + 7}, {index * 8})\n" for index in range(4))
+        + "    node product = mul(x, y)\n    connect q, add(product, z)\n"
+        + "".join(f"    connect p{index}, bits(packed, {index * 8 + 7}, {index * 8})\n" for index in range(4))
     )
     bundle = produce_selection(
         target="test_unit",

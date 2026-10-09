@@ -337,7 +337,14 @@ def derive(
     declaration = {
         key: value
         for key, value in policy.items()
-        if key not in {"schema", "operator_schema_intake_sha256", "arithmetic_intake_sha256", "packing_intake_sha256"}
+        if key
+        not in {
+            "schema",
+            "operator_schema_intake_sha256",
+            "arithmetic_intake_sha256",
+            "packing_intake_sha256",
+            "original_source_budget",
+        }
     }
     declaration.update(schema=BUDGETED_PLAN_SCHEMA, effects=[], obligations=obligations)
     return declaration, sorted(unique_unknowns.values(), key=lambda row: row["id"])

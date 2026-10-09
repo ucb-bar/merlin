@@ -1,0 +1,209 @@
+"""Observe original typed calls and construct independently bounded source forms.
+
+Every original call stays in the private denominator. Fresh loaders use fixed
+guard/transfer extents rather than example dimensions. Their existence grants
+no numerical capsule coverage, software correspondence or target capability.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+from merlin.targetgen.frontend_original_call import call_contracts
+from merlin.targetgen.original_operator_sources import conv2d_forms, conv2d_source, policy_compatibility
+
+from . import original_schema_defaults as D
+
+SCHEMA = "merlin.original_call_sources.v1"
+BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
+READER_MODULES = (
+    __name__,
+    "merlin_experiments.phase0.original_schema_defaults",
+    "merlin.targetgen.frontend_original_call",
+    "merlin.targetgen.original_operator_sources",
+    "merlin.targetgen.frontend_typed_add",
+    "merlin.targetgen.torch_schema_defaults_observer",
+)
+_LIMITS = {
+    "max_sources",
+    "max_tensor_elements",
+    "max_scalar_products",
+    "max_source_bytes",
+    "max_total_tensor_elements",
+    "max_total_scalar_products",
+    "max_total_source_bytes",
+}
+_COHORTS = (("functional_guard", 1), ("functional_guard", 2), ("withheld_transfer", 3))
+
+
+def validate_budget(budget):
+    if (
+        not isinstance(budget, dict)
+        or set(budget) != {"schema", *_LIMITS}
+        or budget["schema"] != BUDGET_SCHEMA
+        or any(type(budget[key]) is not int or budget[key] < 1 for key in _LIMITS)
+    ):
+        raise ValueError("original source forms need complete explicit finite construction budgets")
+    return budget
+
+
+def _sources(calls, forms, *, budget, total, requested):
+    """Derive the entire requested source roster before any loader allocation."""
+    indexed = {form["node"]: form for form in forms}
+    result = []
+    for call in calls:
+        for cohort, extent in _COHORTS:
+            row = {"node": call["node"], "target": call["target"], "cohort": cohort, "extent": extent}
+            try:
+                if requested > budget["max_sources"]:
+                    raise ValueError("complete original call source roster exceeds its declared member budget")
+                form = indexed.get(call["node"])
+                if form is None:
+                    raise ValueError("original operator has no implemented typed original-form source factory")
+                source = conv2d_source(form, extent=extent, max_tensor_elements=budget["max_tensor_elements"])
+                metadata = source.metadata()
+                costs = {key: metadata[key] for key in ("tensor_elements", "scalar_products")}
+                costs["source_bytes"] = len(source.loader.encode())
+                if any(costs[key] > budget["max_" + key] for key in costs):
+                    raise ValueError("original typed source exceeds its explicit per-member construction budget")
+                # Retain failed requested members without charging a loader
+                # that will not be constructed or executing any tensor code.
+                if any(total[key] + costs[key] > budget["max_total_" + key] for key in costs):
+                    raise ValueError("original typed source exceeds its complete-roster construction budget")
+                for key, count in costs.items():
+                    total[key] += count
+                row.update(
+                    status="source_constructed",
+                    metadata=metadata,
+                    costs=costs,
+                    source_sha256=hashlib.sha256(source.loader.encode()).hexdigest(),
+                )
+                result.append((row, source.loader))
+            except (KeyError, TypeError, ValueError) as error:
+                row.update(status="unknown", reason=str(error))
+                result.append((row, None))
+    return result
+
+
+def observe(*, schema_record, basis, numerical_semantics, budget, destination):
+    """Write source-only original forms through the selected normal observer."""
+    validate_budget(budget)
+    destination = Path(destination)
+    rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
+    for ordinal, row in enumerate(rows):
+        trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
+        calls = call_contracts(trace, schemas, defaults)
+        forms = conv2d_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics)
+        row.update(
+            calls=calls,
+            forms=forms,
+            policy_compatibility=[
+                {"node": form["node"], **policy_compatibility(form, numerical_semantics)} for form in forms
+            ],
+            source_members=[],
+        )
+    total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
+    requested = sum(len(row["calls"]) for row in rows) * len(_COHORTS)
+    for ordinal, row in enumerate(rows):
+        for index, (member, loader) in enumerate(
+            _sources(row["calls"], row["forms"], budget=budget, total=total, requested=requested)
+        ):
+            if loader is not None:
+                path = destination / str(ordinal) / ("source-" + str(index) + ".py")
+                path.write_text(loader)
+                path.chmod(0o600)
+                member["source"] = {"path": str(path), "sha256": member["source_sha256"]}
+            row["source_members"].append(member)
+    record = {"schema": SCHEMA, "budget": budget, "members": rows}
+    return verify(record, schema_record=schema_record, basis=basis, numerical_semantics=numerical_semantics)
+
+
+def verify(record, *, schema_record, basis, numerical_semantics):
+    """Reconstruct every original binding and fresh loader from actual defaults."""
+    if not isinstance(record, dict) or set(record) != {"schema", "budget", "members"} or record["schema"] != SCHEMA:
+        raise ValueError("original call sources require their closed observation version")
+    budget = validate_budget(record["budget"])
+    if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
+        raise ValueError("original call sources changed their complete protected graph membership")
+    total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
+    requested = sum(len(row["calls"]) for row in record["members"]) * len(_COHORTS)
+    for row in record["members"]:
+        if set(row) != {
+            "graph_path",
+            "request",
+            "observation",
+            "invocation",
+            "calls",
+            "forms",
+            "policy_compatibility",
+            "source_members",
+        }:
+            raise ValueError("original call source member fields changed")
+        trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
+        calls = call_contracts(trace, schemas, defaults)
+        forms = conv2d_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics)
+        compatibility = [{"node": form["node"], **policy_compatibility(form, numerical_semantics)} for form in forms]
+        expected = _sources(calls, forms, budget=budget, total=total, requested=requested)
+        if row["calls"] != calls or row["forms"] != forms or row["policy_compatibility"] != compatibility:
+            raise ValueError("original typed bindings/forms/policy differ from actual original schema replay")
+        if len(row["source_members"]) != len(expected):
+            raise ValueError("original source preparation lost a requested guard or private transfer member")
+        for index, (member, (wanted, loader)) in enumerate(zip(row["source_members"], expected, strict=True)):
+            if loader is not None:
+                pin = member.get("source")
+                if not isinstance(pin, dict) or set(pin) != {"path", "sha256"}:
+                    raise ValueError("original typed source lost its exact loader identity")
+                path = Path(pin["path"])
+                if path != Path(row["observation"]).parent / ("source-" + str(index) + ".py"):
+                    raise ValueError("original typed source changed its exact construction owner path")
+                if any(item.is_symlink() for item in (path, *path.parents)) or not path.is_file():
+                    raise ValueError("original typed source requires an ordinary explicit loader path")
+                if path.read_bytes() != loader.encode() or pin["sha256"] != wanted["source_sha256"]:
+                    raise ValueError("original typed source differs from its independently reconstructed loader")
+                wanted["source"] = pin
+            if member != wanted:
+                raise ValueError("original typed source metadata or missing member differs from original replay")
+    return record
+
+
+def required_unknowns(record, *, basis, unknown):
+    """Source construction never removes original admission requirements."""
+    result = []
+    for original, row in zip(json.loads(basis.declaration_json)["members"], record["members"], strict=True):
+        by_node = {}
+        for member in row["source_members"]:
+            by_node.setdefault(member["node"], []).append(member)
+        for call in row["calls"]:
+            selector = {"member": original["id"], "node": call["node"], "target": call["target"]}
+            if call["status"] != "bound":
+                result.append(unknown("original_call_binding", selector, call["reason"]))
+            for member in by_node.get(call["node"], []):
+                if member["status"] == "unknown":
+                    result.append(
+                        unknown(
+                            "original_operator_factory",
+                            {**selector, "cohort": member["cohort"], "extent": member["extent"]},
+                            member["reason"],
+                        )
+                    )
+            result.append(
+                unknown(
+                    "original_operator_admission",
+                    selector,
+                    "original typed source needs protected owner correspondence, independent complete reference "
+                    "and comparison; source construction grants no capsule coverage",
+                )
+            )
+    return result
+
+
+def merge_unknowns(historical, record, *, basis, unknown):
+    """Retain historical scopes and each exact original call's missing admission."""
+    rows = {row["id"]: row for row in historical}
+    for row in required_unknowns(record, basis=basis, unknown=unknown):
+        if row["id"] in rows and rows[row["id"]] != row:
+            raise ValueError("original call source scopes disagree on a required missing obligation")
+        rows[row["id"]] = row
+    return sorted(rows.values(), key=lambda row: row["id"])
