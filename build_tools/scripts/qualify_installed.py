@@ -72,6 +72,25 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "source-requirement-ledger": {
+        "tests": ("test_source_requirement_ledger.py", "test_declared_phase0_run.py"),
+        "test_fixture_imports": True,
+        "support_files": (
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_coverage.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "original-reference": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",

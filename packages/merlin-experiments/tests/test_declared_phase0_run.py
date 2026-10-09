@@ -294,3 +294,30 @@ def test_changed_compiler_after_native_issuer_cannot_advance_to_rtl_observers(de
     with pytest.raises(ValueError, match="bytes changed"):
         D.run(path, output=tmp_path / "run")
     assert json.loads((tmp_path / "run/report.json").read_bytes())["status"] == "diagnostic_failed"
+
+
+@pytest.mark.parametrize("purpose", ["source_diagnostic", "source_preparation", "performance_campaign"])
+def test_requirement_request_is_explicit_and_does_not_change_legacy_fields(declared, purpose):
+    request, _ = declared
+    request = copy.deepcopy(request)
+    request.update(schema=D.REQUIREMENT_SCHEMA, release_purpose=purpose)
+    assert D.validate(request) == request
+    for old in (D.SCHEMA, D.BRIDGE_SCHEMA):
+        request["schema"] = old
+        with pytest.raises(ValueError, match="closed explicit"):
+            D.validate(request)
+
+
+@pytest.mark.parametrize("change", ["absent", "unknown", "saved_ready"])
+def test_requirement_request_refuses_absent_purpose_or_saved_readiness(declared, change):
+    request, _ = declared
+    request = copy.deepcopy(request)
+    request.update(schema=D.REQUIREMENT_SCHEMA, release_purpose="source_preparation")
+    if change == "absent":
+        del request["release_purpose"]
+    elif change == "unknown":
+        request["release_purpose"] = "ready"
+    else:
+        request["source_requirement_ledger"] = {"status": "ready"}
+    with pytest.raises(ValueError):
+        D.validate(request)

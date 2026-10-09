@@ -28,6 +28,7 @@ from .software_intake import issue_independent_software_intake
 
 SCHEMA = "merlin.independent_phase0_run.v1"
 BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
+REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -60,10 +61,12 @@ def _pin(value, *, forbidden, runtime=False):
 def validate(request):
     """Close source and policy declarations before any authority is issued."""
     fields = {"schema", "target", "inputs", "operator_schemas", "circt_opt", "forbidden_roots", "automatic"}
+    if isinstance(request, dict) and request.get("schema") == REQUIREMENT_SCHEMA:
+        fields.add("release_purpose")
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA}
+        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA}
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -76,6 +79,11 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
+    if request["schema"] == REQUIREMENT_SCHEMA:
+        from .source_requirement_ledger import PURPOSES
+
+        if request["release_purpose"] not in PURPOSES:
+            raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
     tensor = isinstance(operator, dict) and operator.get("schema") in {
@@ -88,7 +96,7 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] == BRIDGE_SCHEMA:
+    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA}:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -438,6 +446,26 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
+        if request["schema"] == REQUIREMENT_SCHEMA:
+            from .source_requirement_ledger import prepare_requirement_ledger
+
+            ledger = step(
+                "checked_source_requirement_ledger",
+                lambda: prepare_requirement_ledger(
+                    root=generated,
+                    coverage=coverage,
+                    hardware=hardware,
+                    software=software,
+                    purpose=request["release_purpose"],
+                ),
+            )
+            ledger_path = output / "source-requirement-ledger.json"
+            _write(ledger_path, ledger.record())
+            report["source_requirement_ledger"] = {
+                "path": str(ledger_path),
+                "sha256": hashlib.sha256(ledger_path.read_bytes()).hexdigest(),
+                "scope": "diagnostic data only; candidate verdicts remain pending and no release is issued",
+            }
         # A changed declaration never inherits successful live issuance.
         if request_path.read_bytes() != request_bytes:
             raise ValueError("declared Phase 0 request changed during execution")

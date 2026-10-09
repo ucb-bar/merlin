@@ -12,6 +12,15 @@ generator; saved receipts cannot replace them. Preserve the complete mandatory
 UNKNOWN denominator and private original guard/transfer membership. A successful
 diagnostic does not issue numerical, runtime or Phase 1 release qualification.
 
+`source_requirement_ledger` is an explicit request-v3 diagnostic. Preserve every
+original requirement ID and bind actual source/ref/testcase bytes to fixed
+Phase0 producers, independently recomputing complete original outputs only
+after budget replay. Candidate verdicts belong to Phase1 and remain pending;
+the corresponding source cases and RTL command/axis/capacity/effect premises
+must still exist. Missing producer or performance corpus/measurement selections
+remain blockers. Data-only owner attribution exposes the dependency cycle; it
+does not fix that cycle, reinterpret legacy coverage, or enable author handoff.
+
 Keep numerical function bodies and ordering stable during structural work. Inputs
 are external: never bundle profiles, holdouts, or generated goldens in this package.
 All runs require an explicit output destination; never default writes to the

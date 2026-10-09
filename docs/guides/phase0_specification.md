@@ -17,6 +17,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
@@ -67,6 +68,17 @@ the complete denominator, source semantics, written membership and full referenc
 output rosters. `phases["1"].handoff_accepted` remains false. Generated source files
 and integer source references do not admit original floating operators, numerical
 domains, target execution or a Phase 1 release.
+
+Opt-in request v3 additionally requires `release_purpose`: `source_diagnostic`,
+`source_preparation` or `performance_campaign`. It produces a private requirement
+ledger that preserves every original requirement ID, rechecks source budgets and
+recomputes complete independent reference outputs. Source prerequisites retain
+their Phase 0 owner; candidate compilation and physical execution verdicts retain
+their Phase 1 owner and remain unevaluated. Missing source cases, RTL premises and
+numerical comparisons still block readiness. A performance campaign also needs
+independent development, guard and transfer cases and measurement contracts;
+an empty objective list cannot establish performance preparation. This ledger
+is diagnostic data and does not change the existing coverage or handoff gates.
 
 A Phase 0 handoff needs these checked inputs:
 
