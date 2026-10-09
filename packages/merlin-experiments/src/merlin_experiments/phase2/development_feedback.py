@@ -28,6 +28,14 @@ from .contracts import write_json as _write_json
 SWEEP_WORKERS_ENV = "MERLIN_PERF_SWEEP_WORKERS"
 
 
+def _measurement_selection(value):
+    from .component_measurement_scheduling import DevelopmentMeasurementPlan
+
+    if type(value) is not DevelopmentMeasurementPlan:
+        raise StageGateError("development measurement selection requires its live qualified plan")
+    return value
+
+
 def sweep_workers() -> int:
     """The declared sweep fan-out, or 1. Refuses a value it cannot read rather than guessing one."""
     raw = (os.environ.get(SWEEP_WORKERS_ENV) or "").strip()
@@ -107,12 +115,17 @@ class DevelopmentGsimFeedback:
         workspace: Path,
         timeout_s: int,
         hardware_counters: bool = False,
+        measurement_plan=None,
     ) -> Mapping[str, Any]:
         """Retry an unavailable instrument once, never a verdict or certificate rejection.
 
         Both attempts use the same frozen bytes and original wall deadline. All raw outcomes stay
         host-private, so an infrastructure retry neither teaches the agent nor selects a faster result.
         """
+        if measurement_plan is not None:
+            _measurement_selection(measurement_plan)
+            measurement_plan.verify(self, package=package, arm=arm, member=member)
+            timeout_s = min(timeout_s, measurement_plan.member_timeout_s)
         deadline = time.monotonic() + timeout_s
         attempts = []
         for index in range(2):
@@ -129,7 +142,10 @@ class DevelopmentGsimFeedback:
                 workspace=destination,
                 timeout_s=remaining,
                 hardware_counters=hardware_counters,
+                **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
             )
+            if measurement_plan is not None and time.monotonic() > deadline:
+                raise StageGateError("selected development measurement exceeded its original deadline")
             measurement = raw.get("measurement") or {}
             qualification = measurement.get("gsim_qualification") or {}
             outcome = (measurement.get("execution_outcome") or {}).get("gsim") or {}
@@ -166,15 +182,24 @@ class DevelopmentGsimFeedback:
         workspace: Path,
         timeout_s: int,
         hardware_counters: bool = False,
+        measurement_plan=None,
     ) -> Mapping[str, Any]:
         from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
 
+        if measurement_plan is not None:
+            _measurement_selection(measurement_plan)
         try:
             require_probe_execution(member.descriptor)
         except ValueError as exc:
             raise StageGateError(str(exc)) from exc
         if self.executor is not None:
-            return self.executor(
+            if measurement_plan is not None:
+                deadline = time.monotonic() + min(timeout_s, measurement_plan.member_timeout_s)
+                measurement_plan.verify(self, package=package, arm=arm, member=member)
+                timeout_s = deadline - time.monotonic()
+                if timeout_s <= 0:
+                    raise StageGateError("selected development measurement exhausted its dispatch budget")
+            result = self.executor(
                 arm=arm,
                 package=package,
                 package_sha256=package_sha256,
@@ -187,6 +212,9 @@ class DevelopmentGsimFeedback:
                 rtl_identity=self.rtl_identity,
                 hardware_counters=hardware_counters,
             )
+            if measurement_plan is not None:
+                measurement_plan.verify(self, package=package, arm=arm, member=member)
+            return result
         raise StageGateError("development GSIM feedback requires an explicit host executor")
 
     @staticmethod
@@ -710,7 +738,15 @@ class DevelopmentGsimFeedback:
         return row
 
     def _prefetch_wave(
-        self, wave, *, candidate: Path, candidate_before: str, call_root: Path, deadline: float, workers: int
+        self,
+        wave,
+        *,
+        candidate: Path,
+        candidate_before: str,
+        call_root: Path,
+        deadline: float,
+        workers: int,
+        measurement_plan=None,
     ) -> dict:
         """Measure a wave of members concurrently and return ``{(index, arm): redacted row}``.
 
@@ -741,8 +777,9 @@ class DevelopmentGsimFeedback:
                 decision=decision,
                 workspace=call_root / FM.ARM_WORKSPACE.format(index=index, arm=arm),
                 timeout_s=remaining,
+                **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
             )
-            return self._redact_execution(
+            result = self._redact_execution(
                 raw,
                 decision,
                 arm=arm,
@@ -750,6 +787,9 @@ class DevelopmentGsimFeedback:
                 capsule=member.capsule,
                 required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()),
             )
+            if measurement_plan is not None:
+                measurement_plan.verify(self, package=package, arm=arm, member=member)
+            return result
 
         jobs: dict = {}
         rows: dict = {}
@@ -757,7 +797,7 @@ class DevelopmentGsimFeedback:
             # LONGEST FIRST inside the wave, so the tail of the wave is its cheap members and the
             # makespan is not set by a slow member that was submitted last.
             for index, member in sorted(wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
-                if (member.family, member.capsule) not in self._baseline_cache:
+                if measurement_plan is not None or (member.family, member.capsule) not in self._baseline_cache:
                     jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
                 jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
             for future in concurrent.futures.as_completed(jobs):
@@ -850,8 +890,13 @@ class DevelopmentGsimFeedback:
             dispersion,
         )
 
-    def evaluate(self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int) -> dict[str, Any]:
+    def evaluate(
+        self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int, measurement_plan=None
+    ) -> dict[str, Any]:
         candidate = Path(candidate).resolve(strict=True)
+        if measurement_plan is not None:
+            _measurement_selection(measurement_plan)
+            measurement_plan.verify(self, candidate=candidate)
         if self._baseline_cache is None:
             self._baseline_cache = {}
         call_root = self.work_root / f"round_{round_index:02d}" / f"call_{call_index:03d}"
@@ -871,15 +916,22 @@ class DevelopmentGsimFeedback:
         shutil.copytree(candidate, measured_candidate, symlinks=True)
         candidate_before = str(hash_tree(measured_candidate)["sha256"])
         candidate = measured_candidate
-        members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
-        if not members:
+        original_members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
+        if not original_members:
             raise StageGateError("development GSIM feedback has zero frozen tuning members")
+        members = original_members
+        if measurement_plan is not None:
+            from .contracts import document_sha256
+
+            by_id = {document_sha256([member.family, member.capsule]): member for member in original_members}
+            members = [by_id[identity] for identity in measurement_plan.selected]
         cells: list[dict[str, Any]] = []
         started = time.monotonic()
         # CHEAPEST MEASURED MEMBER FIRST. A candidate behind on every member measured so far is
         # behind; paying for the corpus's slowest members to confirm it spends the budget on a
         # conclusion already reached.
-        members, order_basis = FM.order_members_by_cost(members, self.member_cost)
+        if measurement_plan is None:
+            members, _order_basis = FM.order_members_by_cost(members, self.member_cost)
         stopped_after: int | None = None
         # WAVES, so a declared fan-out does not cost the early stop its meaning. The first wave is
         # exactly the prefix the stop rule needs before it may fire, which makes wave 0's decision
@@ -911,9 +963,12 @@ class DevelopmentGsimFeedback:
                         call_root=call_root,
                         deadline=deadline,
                         workers=workers,
+                        **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
                     )
                 )
-            baseline = self._baseline_cache.get(key) or self._take_prefetched(index, "baseline")
+            baseline = (self._baseline_cache.get(key) if measurement_plan is None else None) or self._take_prefetched(
+                index, "baseline"
+            )
             if baseline is None:
                 raw = self._execute(
                     arm="baseline",
@@ -923,6 +978,7 @@ class DevelopmentGsimFeedback:
                     decision=decision,
                     workspace=call_root / FM.ARM_WORKSPACE.format(index=index, arm="baseline"),
                     timeout_s=remaining,
+                    **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
                 )
                 baseline = self._redact_execution(
                     raw,
@@ -932,7 +988,10 @@ class DevelopmentGsimFeedback:
                     capsule=member.capsule,
                     required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()),
                 )
-                self._baseline_cache[key] = baseline
+                if measurement_plan is None:
+                    self._baseline_cache[key] = baseline
+            if measurement_plan is not None:
+                measurement_plan.verify(self, package=self.baseline, arm="baseline", member=member)
             remaining = timeout_s - int(time.monotonic() - started)
             if remaining <= 0:
                 raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
@@ -946,6 +1005,7 @@ class DevelopmentGsimFeedback:
                     decision=decision,
                     workspace=call_root / FM.ARM_WORKSPACE.format(index=index, arm="candidate"),
                     timeout_s=remaining,
+                    **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
                 )
                 candidate_row = self._redact_execution(
                     raw,
@@ -955,6 +1015,8 @@ class DevelopmentGsimFeedback:
                     capsule=member.capsule,
                     required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()),
                 )
+            if measurement_plan is not None:
+                measurement_plan.verify(self, package=candidate, arm="candidate", member=member)
             comparable = baseline["correct"] and candidate_row["correct"]
             bcycles, ccycles = baseline["gsim_cycles"], candidate_row["gsim_cycles"]
             # UTILIZATION against a ceiling this machine's own RTL derives. Cycles alone say nothing
@@ -971,7 +1033,11 @@ class DevelopmentGsimFeedback:
                     return None
                 return (ideal / cycles) if cycles > 0 else None
 
-            achievable, achievable_basis, matched_dispersion = self._matched_achievable(member)
+            achievable, achievable_basis, matched_dispersion = (
+                self._matched_achievable(member)
+                if measurement_plan is None
+                else (None, "selected development measurements cannot establish attainment", None)
+            )
             achievable_ideal = (spec_macs / achievable) if (spec_macs and achievable) else None
 
             def _share(cycles: Any) -> float | None:
@@ -1017,7 +1083,7 @@ class DevelopmentGsimFeedback:
             # SAME work and it is already behind on all of it. The converse is false -- a candidate
             # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
             # winning prefix buys nothing and the full sweep is measured.
-            if self._refuted_so_far(cells, index, len(members)):
+            if measurement_plan is None and self._refuted_so_far(cells, index, len(members)):
                 stopped_after = index + 1
                 break
         for member in members[stopped_after:] if stopped_after is not None else ():
@@ -1032,6 +1098,12 @@ class DevelopmentGsimFeedback:
                     ),
                 )
             )
+        if measurement_plan is not None:
+            selected_ids = set(measurement_plan.selected)
+            for member in original_members:
+                if document_sha256([member.family, member.capsule]) not in selected_ids:
+                    cells.append(FM.unmeasured_cell(member, reason=measurement_plan.reason(member)))
+            measurement_plan.verify(self, candidate=candidate)
         # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
         # difference now would mean the measurement mutated its own input rather than that the agent
         # kept working. That is a real defect and still refuses.
@@ -1039,9 +1111,26 @@ class DevelopmentGsimFeedback:
         # that depends on it is recomputed. Doing it only at prepare time would leave round 0 -- the
         # round that sets the agent's whole plan -- scored against phase 1's corpus, which is the
         # case that was actually wrong.
-        self._refresh_achievable()
-        members_by_identity = {(member.family, member.capsule): member for member in members}
+        if measurement_plan is None:
+            self._refresh_achievable()
+        members_by_identity = {(member.family, member.capsule): member for member in original_members}
         for row in cells:
+            if measurement_plan is not None:
+                if row.get("measured"):
+                    for field in (
+                        "achievable_macs_per_cycle",
+                        "baseline_share_of_achievable",
+                        "candidate_share_of_achievable",
+                        "factor_to_achievable",
+                        "ideal_cycles_at_achievable",
+                        "cycles_saved",
+                        "gap_closed",
+                    ):
+                        row[field] = None
+                    row["achievable_basis"] = "selected development measurements cannot establish attainment"
+                    row["verdict"] = "undeterminable"
+                    row["verdict_reason"] = row["achievable_basis"]
+                continue
             if not row.get("measured") or not row.get("declared_macs"):
                 continue  # an unmeasured cell keeps its nulls
             member = members_by_identity[(row["family"], row["capsule"])]
@@ -1085,16 +1174,31 @@ class DevelopmentGsimFeedback:
                 "cells": cells,
                 "stopping": self._stopping(
                     cells, label=f"round_{round_index:02d}/call_{call_index:03d}", elapsed_s=time.monotonic() - started
-                ),
+                )
+                if measurement_plan is None
+                else {
+                    "status": "undeterminable",
+                    "reason": "selected development measurements cannot establish convergence",
+                    "verdicts": [],
+                },
                 "summary": {
                     "members": len(cells),
                     "comparable": len(comparable),
                     "all_correct": all(row["comparable"] for row in cells if row["measured"]),
                     "peak_macs_per_cycle": self.peak_macs_per_cycle,
                     "peak_basis": self.peak_basis,
-                    "achievable_macs_per_cycle": self.achievable_macs_per_cycle,
-                    "achievable_basis": self.achievable_basis,
-                    "recoverable": FM.recoverable_cycles(cells),
+                    "achievable_macs_per_cycle": self.achievable_macs_per_cycle if measurement_plan is None else None,
+                    "achievable_basis": self.achievable_basis
+                    if measurement_plan is None
+                    else "selected development measurements cannot establish attainment",
+                    "recoverable": FM.recoverable_cycles(cells)
+                    if measurement_plan is None
+                    else {
+                        "status": "unavailable",
+                        "reason": "selected development measurements do not price the complete original corpus",
+                        "ranked": [],
+                        "corpus_total_cycles": None,
+                    },
                 },
             }
         )

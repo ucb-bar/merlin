@@ -72,6 +72,20 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "development-measurement-scheduling": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "tests": (
+            "merlin/tests/targetgen/test_component_measurement_plan.py",
+            "packages/merlin-experiments/tests/test_component_measurement_scheduling.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.component_measurement_plan",
+            "merlin_experiments.phase2.component_measurement_scheduling",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "compiled-static-features": {
         "tests_root": ".",
         "test_fixture_imports": True,

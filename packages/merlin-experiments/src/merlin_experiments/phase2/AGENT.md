@@ -598,3 +598,20 @@ Feature products live outside the original compile roster. This explicit first
 version refuses transformed object routes and unsupported emitted bodies.
 Emitted sites, access widths and linked bytes do not grant instruction semantics,
 physical traffic, correctness, isolation, runtime roles or calibrated feedback.
+
+`component_measurement_scheduling` is an optional development-only selection.
+Its fixed analytical producer requires the actual live independent measurement,
+runtime and held applicability owners before issuing a plan; saved products and
+constructed plans refuse. The certified evaluator reopens current source/tool,
+compiler/member/context and actual applicability products at dispatch and after
+execution/parsing. Old redacted baseline cache entries cannot replace those joins.
+Every original unmeasured member retains nulls and a reason; selected feedback
+cannot establish corpus attainment, recoverable totals, plateau or promotion.
+Default correctness/held/final behavior and all original evidence minima remain.
+The bounded subprocess controls prove dispatch/consumption only; test verifier
+replacement never populates the production registry. Current unissued physical
+roles still block plan preparation. Late-result rejection is not an OS hard
+deadline, process isolation or cleanup guarantee. The existing analytical feature
+provider may still require execution; static counts need independent qualification
+before this route can avoid that cost. Direct source-file pins are not transitive
+dependency, callback bytecode or simulator/runtime semantic qualification.

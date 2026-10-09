@@ -44,10 +44,14 @@ from .portfolio_launch import acquire_host_resource_lease
 class ComponentAnalyticalResults(dict):
     """Legacy interval-pair mapping plus answer-free complete-cost reports."""
 
-    def __init__(self, intervals, reports, screening=None):
+    def __init__(self, intervals, reports, screening=None, *, observations=None, execution_root=None):
         super().__init__(intervals)
         self.reports = reports
         self.screening = screening
+        # Private inputs for fixed development scheduling; the broker projection
+        # remains the original intervals/reports and contains no artifact paths.
+        self.observations = observations
+        self.execution_root = execution_root
 
 
 def _verify_artifacts(observation):
@@ -288,7 +292,7 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
     lease = None if delegated_lease else acquire_host_resource_lease(call_root, lease_path=binding.lease_path)
     if lease is None and not delegated_lease:
         raise StageGateError("component analytical shared engine lease is busy")
-    intervals, reports, opportunities = {}, {}, []
+    intervals, reports, opportunities, observations = {}, {}, [], {}
     try:
 
         def one(member):
@@ -393,12 +397,14 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                     _paired_status(pair, "legality_status"),
                     _paired_status(pair, "functional_status"),
                 ),
+                pair,
             )
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for identity, pair, detail, opportunity in pool.map(one, corpus.capsules):
+            for identity, pair, detail, opportunity, observed in pool.map(one, corpus.capsules):
                 intervals[identity], reports[identity] = pair, detail
                 opportunities.append(opportunity)
+                observations[identity] = observed
         if time.monotonic() > deadline or str(hash_tree(measured)["sha256"]) != candidate_sha:
             raise StageGateError("component analytical evaluation timed out or changed frozen compiler bytes")
         binding.validate(calibration)
@@ -427,7 +433,9 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                 }
             )
         )
-        return ComponentAnalyticalResults(intervals, reports, screening)
+        return ComponentAnalyticalResults(
+            intervals, reports, screening, observations=observations, execution_root=call_root
+        )
     finally:
         if lease is not None:
             fcntl.flock(lease.fileno(), fcntl.LOCK_UN)
