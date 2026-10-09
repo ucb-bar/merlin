@@ -15,6 +15,7 @@ from pathlib import Path
 
 from merlin.common import invocation_record
 from merlin.common.digest import sha256_file
+from merlin.targetgen.compiler_library import selected_library_record
 from merlin.targetgen.contract.build_service import BuildOnlyService
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor, prepare_linkage
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
@@ -106,6 +107,8 @@ def compile_source_only(
     elf_admission,
     readelf,
     timeout_s,
+    compiler_library=None,
+    compiler_library_root=None,
 ):
     """Compile through the ordinary package pipeline; retain exact actual products.
 
@@ -144,6 +147,12 @@ def compile_source_only(
         "readelf": _pin(readelf),
         "original_abi": original_abi.record(),
     }
+    library = selected_library_record(compiler_library, compiler_library_root)
+    library_sources = (
+        tuple(compiler_library_root / member.path for member in compiler_library.members) if library else ()
+    )
+    if library is not None:
+        frozen["compiler_library"] = library
     build_service.verify(target)
     admission = elf_admission.verify(target)
     output.mkdir(parents=True, mode=0o700)
@@ -166,6 +175,8 @@ def compile_source_only(
     deadline = time.monotonic() + timeout_s
 
     def remaining():
+        if selected_library_record(compiler_library, compiler_library_root) != library:
+            raise ValueError("compile-only selected compiler library changed")
         left = deadline - time.monotonic()
         if left <= 0:
             raise TimeoutError("compile-only total transport budget expired")
@@ -178,7 +189,14 @@ def compile_source_only(
         package = P.load_package(package_dir, contract=contract_root)
         if package.manifest.get("target") != target:
             raise ValueError("compile-only package differs from the selected target")
-        P.integrity_scan(package)
+        P.integrity_scan(
+            package,
+            **(
+                {"compiler_library": compiler_library, "compiler_library_root": compiler_library_root}
+                if library
+                else {}
+            ),
+        )
         P.build_package(package, timeout=remaining())
         generated = output / "generated"
         products = tuple(
@@ -192,7 +210,10 @@ def compile_source_only(
             arguments={"target": target, "timeout_s": timeout_s},
             inputs=(source,),
             outputs=products,
-            dependencies=tuple(Path(row["path"]) for kind in ("package", "contract") for row in frozen[kind].values()),
+            dependencies=(
+                *tuple(Path(row["path"]) for kind in ("package", "contract") for row in frozen[kind].values()),
+                *library_sources,
+            ),
         ) as observation:
             cb, artifact = CC.lower_interface(
                 package, source, generated, contract=contract_root, timeout=timeout_s, invoke=invoke
@@ -242,6 +263,11 @@ def compile_source_only(
             "contract": _tree(contract_root),
             "readelf": _pin(readelf),
             "original_abi": original_abi.record(),
+            **(
+                {"compiler_library": selected_library_record(compiler_library, compiler_library_root)}
+                if library
+                else {}
+            ),
         }:
             raise ValueError("compile-only original sources/tools changed during compilation")
         build_service.verify(target)
@@ -265,10 +291,14 @@ def compile_source_only(
         (output / "compile_only_result.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
 
 
-def verify_compile_only_report(path, *, build_service, elf_admission):
+def verify_compile_only_report(
+    path, *, build_service, elf_admission, compiler_library=None, compiler_library_root=None
+):
     """Reopen actual transport evidence; no JSON can issue a semantic qualification."""
     path = _plain(path)
     report = json.loads(path.read_text())
+    if report["inputs"].get("compiler_library") != selected_library_record(compiler_library, compiler_library_root):
+        raise ValueError("compile-only report differs from the explicit compiler library selection")
     if (
         report.get("schema") != "merlin.compile_only_transport.v1"
         or report.get("compilation_status") != "linked"

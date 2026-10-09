@@ -377,3 +377,56 @@ def test_grade_forwards_exact_selected_memory_observer(prepared, tmp_path, monke
     assert selected[0]["execution_service"] is context.execution_service
     with pytest.raises(StageGateError, match="remain UNKNOWN"):
         context.stage_verifier(result_path=fixture.witness_arguments["result_path"])
+
+
+def _library_context(prepared, tmp_path):
+    from merlin.targetgen.compiler_library import freeze_compiler_library
+
+    root = tmp_path / "library"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/portable.py").write_text("def identity(value):\n    return value\n")
+    library = freeze_compiler_library(
+        root,
+        review_id="diagnostic forwarding only; no runtime authority",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    paths = [Path(support.library_owner.__file__).resolve(), *(root / member.path for member in library.members)]
+    return replace(
+        prepared,
+        compiler_library=library,
+        compiler_library_root=root,
+        source_pins=(*prepared.source_pins, *((path, file_digest(path)) for path in paths)),
+    )
+
+
+def test_context_forwards_only_exact_pinned_compiler_library(prepared, tmp_path, monkeypatch):
+    context = _library_context(prepared, tmp_path)
+    selection = context._library_selection()
+    fixture = context.prepare_control("source_correspondence.positive", tmp_path / "control")
+    calls = []
+
+    def capture(**kwargs):
+        calls.append(kwargs)
+        return {"numeric_report": {"status": "pass"}}
+
+    monkeypatch.setattr(support, "execute_component", capture)
+    with pytest.raises(StageGateError, match="canonical admitted membership"):
+        context.services.grade(**fixture.grade_arguments)
+    assert len(calls) == 1 and calls[0]["compiler_library"] is context.compiler_library
+    assert calls[0]["compiler_library_root"] == context.compiler_library_root
+    assert context._library_selection() == selection
+    changed = context.compiler_library_root / "merlin/portable.py"
+    changed.write_text("def identity(value):\n    return 0\n")
+    with pytest.raises(ValueError, match="bytes changed"):
+        context._library_selection()
+
+
+def test_context_library_cannot_use_unlisted_implementation(prepared, tmp_path):
+    context = _library_context(prepared, tmp_path)
+    omitted = context.compiler_library_root / "merlin/portable.py"
+    with pytest.raises(StageGateError, match="source membership"):
+        replace(
+            context, source_pins=tuple(pin for pin in context.source_pins if pin[0] != omitted)
+        )._library_selection()

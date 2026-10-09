@@ -24,6 +24,7 @@ from merlin.common import invocation_record
 from merlin.common.paths import data_path
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.compile_only_execution import compile_source_only, verify_compile_only_report
+from merlin.targetgen.compiler_library import freeze_compiler_library
 from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor, prepare_linkage
@@ -224,6 +225,106 @@ def actual_transport(tmp_path, monkeypatch):
     return arguments, build, gate
 
 
+def _reviewed_library_candidate(arguments, tmp_path, *, imported="portable"):
+    root = tmp_path / "reviewed-library"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/portable.py").write_text("def identity(value):\n    return value\n")
+    library = freeze_compiler_library(
+        root,
+        review_id="explicit diagnostic source review; no semantic authority",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    driver = arguments["package_dir"] / "driver.py"
+    driver.write_text(
+        "import sys\n"
+        + f"sys.path.insert(0, {str(root)!r})\n"
+        + f"from merlin.{imported} import identity\n"
+        + driver.read_text().replace("text = Path(source).read_text()", "text = identity(Path(source).read_text())")
+    )
+    return library, root
+
+
+def test_real_ordinary_compile_uses_only_explicit_reviewed_library(actual_transport, tmp_path):
+    arguments, build, gate = actual_transport
+    library, root = _reviewed_library_candidate(arguments, tmp_path)
+    with P.scoped_package_executor(_ActualCommandExecutor()):
+        report = compile_source_only(**arguments, compiler_library=library, compiler_library_root=root)
+    reopened = verify_compile_only_report(
+        arguments["output_root"] / "compile_only_result.json",
+        build_service=build,
+        elf_admission=gate,
+        compiler_library=library,
+        compiler_library_root=root,
+    )
+    assert reopened == json.loads(json.dumps(report)) and report["compilation_status"] == "linked"
+    assert report["inputs"]["compiler_library"]["contract_sha256"] == library.sha256
+    lowering = [
+        invocation_record.verify(Path(row["path"]))
+        for row in report["invocations"]
+        if row["stage"] == "compile_only_source_lowering"
+    ]
+    assert len(lowering) == 1
+    assert {str(root / member.path) for member in library.members} <= {
+        pin["path"] for pin in lowering[0]["dependencies"]
+    }
+    with pytest.raises(ValueError, match="explicit compiler library"):
+        verify_compile_only_report(
+            arguments["output_root"] / "compile_only_result.json", build_service=build, elf_admission=gate
+        )
+
+
+def test_completed_library_report_refuses_later_member_mutation(actual_transport, tmp_path):
+    arguments, build, gate = actual_transport
+    library, root = _reviewed_library_candidate(arguments, tmp_path)
+    with P.scoped_package_executor(_ActualCommandExecutor()):
+        compile_source_only(**arguments, compiler_library=library, compiler_library_root=root)
+    (root / "merlin/portable.py").write_text("def identity(value):\n    return 0\n")
+    with pytest.raises(ValueError, match="bytes changed"):
+        verify_compile_only_report(
+            arguments["output_root"] / "compile_only_result.json",
+            build_service=build,
+            elf_admission=gate,
+            compiler_library=library,
+            compiler_library_root=root,
+        )
+
+
+@pytest.mark.parametrize("defect", ["unselected", "sibling", "changed"])
+def test_real_library_refusal_precedes_any_ordinary_compiler_command(actual_transport, tmp_path, defect):
+    arguments, _, _ = actual_transport
+    library, root = _reviewed_library_candidate(
+        arguments, tmp_path, imported="sibling" if defect == "sibling" else "portable"
+    )
+    if defect == "changed":
+        (root / "merlin/portable.py").write_text("def identity(value):\n    return 0\n")
+    selected = {} if defect == "unselected" else {"compiler_library": library, "compiler_library_root": root}
+    with P.scoped_package_executor(_ActualCommandExecutor()):
+        with pytest.raises((P.CertFailure, ValueError), match="imports|bytes changed"):
+            compile_source_only(**arguments, **selected)
+    assert not list(arguments["output_root"].rglob("invocation.json"))
+
+
+def test_library_change_during_actual_lowering_refuses_before_object(actual_transport, tmp_path):
+    arguments, _, _ = actual_transport
+    library, root = _reviewed_library_candidate(arguments, tmp_path)
+
+    class MutatingCommand(_ActualCommandExecutor):
+        def run_entrypoint(self, *args, **kwargs):
+            result = super().run_entrypoint(*args, **kwargs)
+            (root / "merlin/portable.py").write_text("def identity(value):\n    return 0\n")
+            return result
+
+    with P.scoped_package_executor(MutatingCommand()):
+        with pytest.raises(ValueError, match="bytes changed"):
+            compile_source_only(**arguments, compiler_library=library, compiler_library_root=root)
+    assert not (arguments["output_root"] / "build").exists()
+    records = [json.loads(path.read_text()) for path in arguments["output_root"].rglob("invocation.json")]
+    assert any(row["stage"] == "parse" for row in records)
+    assert not any(row["stage"] in {"object", "elf"} for row in records)
+
+
 def _compile(arguments):
     with P.scoped_package_executor(_ActualCommandExecutor()):
         return compile_source_only(**arguments)
@@ -343,9 +444,14 @@ def test_real_declared_package_build_obeys_total_transport_budget(actual_transpo
         def build_package(self, package, *, timeout=1800):
             process = invocation_record.run(
                 [*package.manifest["build"]["command"], str(output)],
-                directory=output, stage="declared_package_build", cwd=package.directory,
-                dependencies=(script,), outputs=(output / "started", output / "finished"),
-                capture_output=True, text=True, timeout=timeout,
+                directory=output,
+                stage="declared_package_build",
+                cwd=package.directory,
+                dependencies=(script,),
+                outputs=(output / "started", output / "finished"),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
             )
             process.check_returncode()
 

@@ -24,6 +24,7 @@ from merlin_experiments.phase2.contracts import StageGateError
 from merlin.common import invocation_record
 from merlin.common.paths import data_path
 from merlin.targetgen import package_runtime as P
+from merlin.targetgen.compiler_library import freeze_compiler_library
 from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
@@ -127,11 +128,27 @@ def transport(tmp_path, monkeypatch):
     )
     build = BuildOnlyService("structural_control", recipe, unused_renderer, pins)
     gate = LinkedElfAdmissionService("structural_control", diagnostic_gate, ((str(owner), file_digest(owner)),))
-    origin = SimpleNamespace(inputs=SimpleNamespace(
-        hardware=SimpleNamespace(target="structural_control"), view=SimpleNamespace(root=tmp_path / "view"), runtime=(),
-        compiler_transport=None,
-        corpus_root=tmp_path / "numeric-corpus",
-    ))
+    view = tmp_path / "view"
+    library_root = view / "compiler"
+    (library_root / "merlin").mkdir(parents=True)
+    (library_root / "merlin/__init__.py").write_text("")
+    (library_root / "merlin/portable.py").write_text("VALUE = 1\n")
+    library = freeze_compiler_library(
+        library_root,
+        review_id="unit transport isolation; no semantic authority",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    origin = SimpleNamespace(
+        inputs=SimpleNamespace(
+            hardware=SimpleNamespace(target="structural_control"),
+            view=SimpleNamespace(root=view),
+            runtime=(),
+            library=library,
+            compiler_transport=None,
+            corpus_root=tmp_path / "numeric-corpus",
+        )
+    )
     monkeypatch.setattr(R, "_selection", lambda **kwargs: {"scope": "unit provenance facets isolated, no authority"})
     monkeypatch.setattr(R, "qualified_package_execution", lambda **kwargs: P.scoped_package_executor(ActualCommands()))
     return dict(

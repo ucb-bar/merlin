@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library
+from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library, selected_library_record
 from merlin.targetgen.package_runtime import CertFailure, _py_imports_merlin, integrity_scan
 
 
@@ -106,3 +106,17 @@ def test_library_policy_cannot_combine_with_exemption_or_partial_binding(tmp_pat
         integrity_scan(package, compiler_library=library, compiler_library_root=root)
     with pytest.raises(CertFailure, match="together"):
         integrity_scan(package, compiler_library=library)
+
+
+def test_transport_library_selection_requires_the_original_explicit_pair(tmp_path):
+    root, library = _library(tmp_path)
+    assert selected_library_record(None, None) is None
+    record = selected_library_record(library, root)
+    assert record == {"root": str(root), "contract_sha256": library.sha256, "contract": library.record()}
+    for contract, source in ((library, None), (None, root), (library.record(), root), (library, str(root))):
+        with pytest.raises(CompilerLibraryError, match="together"):
+            selected_library_record(contract, source)
+    alias = tmp_path / "alias"
+    alias.symlink_to(root, target_is_directory=True)
+    with pytest.raises(CompilerLibraryError, match="canonical"):
+        selected_library_record(library, alias)

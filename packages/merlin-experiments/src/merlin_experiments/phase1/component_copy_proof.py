@@ -80,6 +80,8 @@ class ComponentCopyProof:
     receipt: Path
     result_json: bytes
     pins: tuple[tuple[str, str], ...]
+    compiler_library: object = None
+    compiler_library_root: Path | None = None
 
     def _identity(self):
         return (
@@ -92,6 +94,8 @@ class ComponentCopyProof:
             self.receipt,
             self.result_json,
             self.pins,
+            id(self.compiler_library),
+            self.compiler_library_root,
         )
 
     def verify(self):
@@ -114,6 +118,8 @@ class ComponentCopyProof:
             self.transport_report,
             build_service=self.build_service,
             elf_admission=self.instruction_check.admission_service(),
+            compiler_library=self.compiler_library,
+            compiler_library_root=self.compiler_library_root,
         )
         original, emitted, object_record = _joined_artifacts(self.transport_report, report)
         if (
@@ -147,7 +153,16 @@ class ComponentCopyProof:
 
 
 def prove_component_copy(
-    *, selection, member, transport_report, build_service, instruction_check, output_root, timeout_s
+    *,
+    selection,
+    member,
+    transport_report,
+    build_service,
+    instruction_check,
+    output_root,
+    timeout_s,
+    compiler_library=None,
+    compiler_library_root=None,
 ):
     """Run a fixed emitted-code checker, not an operator or candidate callback."""
     if type(selection) is not IndependentPointerStorageSelection:
@@ -155,7 +170,11 @@ def prove_component_copy(
     storage = selection.bind_member(member)
     report_path = Path(transport_report).resolve(strict=True)
     report = verify_compile_only_report(
-        report_path, build_service=build_service, elf_admission=instruction_check.admission_service()
+        report_path,
+        build_service=build_service,
+        elf_admission=instruction_check.admission_service(),
+        compiler_library=compiler_library,
+        compiler_library_root=compiler_library_root,
     )
     if (
         report["inputs"]["source"] != _pin(member.source)
@@ -209,6 +228,8 @@ def prove_component_copy(
         receipt,
         C.canonical_json(result),
         pins,
+        compiler_library,
+        compiler_library_root,
     )
     _ISSUED[proof] = proof._identity()
     proof.verify()

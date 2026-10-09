@@ -208,6 +208,9 @@ class FreshPhase1Inputs:
         if type(self.library) is not CompilerLibraryContract or self.library.sha256 != self.view.library_sha256:
             raise C.StageGateError("fresh Phase 1 compiler library differs from its reviewed public grant")
         self.library.verify(self.view.root / "compiler")
+        context = self.execution_support.qualification.context
+        if context.compiler_library is not self.library or context.compiler_library_root != self.view.root / "compiler":
+            raise C.StageGateError("fresh Phase 1 public library differs from the qualified grader selection")
         manifest = verify_component_view(self.view)
         self.hardware.verify_public_fact_view(self.view)
         self.software.verify_public_fact_view(self.view)

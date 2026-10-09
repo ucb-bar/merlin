@@ -232,3 +232,15 @@ def freeze_compiler_library(
     )
     contract.verify(root)
     return contract
+
+
+def selected_library_record(contract: CompilerLibraryContract | None, root: Path | None) -> dict | None:
+    """Reopen an explicit host selection; this record grants no semantic authority."""
+    if contract is None and root is None:
+        return None
+    if type(contract) is not CompilerLibraryContract or not isinstance(root, Path):
+        raise CompilerLibraryError("compiler library requires the exact explicit contract and root together")
+    if not root.is_absolute() or root.resolve() != root or any(path.is_symlink() for path in (root, *root.parents)):
+        raise CompilerLibraryError("compiler library selection requires a canonical unlinked root")
+    contract.verify(root)
+    return {"root": str(root), "contract_sha256": contract.sha256, "contract": contract.record()}

@@ -220,8 +220,11 @@ def execute_component(
     timeout_s: int,
     elf_admission=None,
     memory_readback=None,
+    compiler_library=None,
+    compiler_library_root=None,
 ) -> dict:
     from merlin.targetgen import package_runtime as P
+    from merlin.targetgen.compiler_library import selected_library_record
     from merlin.targetgen.contract.compile import run_on_oracle
     from merlin.targetgen.contract.compile_only import require_pointer_entry
 
@@ -281,6 +284,10 @@ def execute_component(
     if output.exists() or any(output.is_relative_to(root) for root in (package_dir, capsule_dir, contract_root)):
         raise NativeComponentExecutionError("independent native evidence destination must be fresh and separate")
     frozen = {"package": _tree(package_dir), "capsule": _tree(capsule_dir), "contract": _tree(contract_root)}
+    library = selected_library_record(compiler_library, compiler_library_root)
+    library_sources = (
+        tuple(compiler_library_root / member.path for member in compiler_library.members) if library else ()
+    )
     build_service.verify(target)
     execution_before = execution_service.verify(target, execution_service.simulator)
     output.mkdir(parents=True, mode=0o700)
@@ -294,11 +301,14 @@ def execute_component(
         "readback_policy": readback_policy.record(),
         **({"memory_reader_source_pins": sorted(set(reader_pins))} if memory else {}),
         "inputs": frozen,
+        **({"compiler_library": library} if library is not None else {}),
     }
 
     frozen_projection = None
 
     def unchanged():
+        if selected_library_record(compiler_library, compiler_library_root) != library:
+            raise NativeComponentExecutionError("independent native selected compiler library changed")
         current = {"package": _tree(package_dir), "capsule": _tree(capsule_dir), "contract": _tree(contract_root)}
         if current != frozen:
             raise NativeComponentExecutionError("independent native source/candidate/contract membership changed")
@@ -320,7 +330,14 @@ def execute_component(
         if package.manifest.get("target") != target:
             raise NativeComponentExecutionError("independent native package differs from selected target")
         deadline.remaining()
-        P.integrity_scan(package)
+        P.integrity_scan(
+            package,
+            **(
+                {"compiler_library": compiler_library, "compiler_library_root": compiler_library_root}
+                if library
+                else {}
+            ),
+        )
         P.build_package(package, timeout=deadline.remaining())
         deadline.remaining()
         generated.mkdir()
@@ -335,7 +352,10 @@ def execute_component(
             arguments={"target": target, "contract_root": str(contract_root), "timeout_s": timeout_s},
             inputs=(source,),
             outputs=products,
-            dependencies=tuple(Path(row["path"]) for kind in ("package", "contract") for row in frozen[kind].values()),
+            dependencies=(
+                *tuple(Path(row["path"]) for kind in ("package", "contract") for row in frozen[kind].values()),
+                *library_sources,
+            ),
         ) as observation:
 
             def invoke(*args, **kwargs):

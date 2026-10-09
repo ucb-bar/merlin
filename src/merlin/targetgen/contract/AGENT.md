@@ -128,3 +128,12 @@ Compile-only and explicit component numerical execution share this boundary;
 matching arity alone cannot admit an integer parameter or another convention.
 Parameter/result attributes without a supported calling contract refuse.
 Preserved standard metadata supplies no body, device or effect proof.
+
+Ordinary component execution and compile-only transport accept an optional exact
+`CompilerLibraryContract` and canonical root together. Reopen their reviewed
+member bytes before commands and at subsequent stage boundaries; retain the
+same selection and actual member dependencies in transport reports and static
+proofs. The fresh author view and qualified grader must use that same live
+selection. An absent pair preserves the original import restrictions. Approved
+direct imports and source-byte attribution do not establish semantic generality,
+transitive dependency isolation, runtime correctness, effects or hardware timing.

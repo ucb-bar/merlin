@@ -19,6 +19,7 @@ from pathlib import Path
 from weakref import WeakKeyDictionary
 
 from merlin.common import invocation_record
+from merlin.targetgen import compiler_library as library_owner
 from merlin.targetgen import package_runtime
 from merlin.targetgen.contract import readback_policy as RB
 from merlin.targetgen.contract.build_service import BuildOnlyService
@@ -87,6 +88,8 @@ class PreparedIndependentRuntimeContext:
     memory_readback: object = None
     copy_control_support: copy_support_owner.RuntimeCopyControlSupport | None = None
     source_observation: object = None
+    compiler_library: library_owner.CompilerLibraryContract | None = None
+    compiler_library_root: Path | None = None
     services: IndependentRuntimeServices = field(init=False)
 
     def __post_init__(self):
@@ -164,8 +167,21 @@ class PreparedIndependentRuntimeContext:
                 "readback_selection": self._readback_selection(),
                 "copy_control_selection": self._copy_selection(),
                 "source_observation_selection": source_selection.selection(self),
+                "compiler_library_selection": self._library_selection(),
             }
         )
+
+    def _library_selection(self):
+        selection = library_owner.selected_library_record(self.compiler_library, self.compiler_library_root)
+        if selection is not None:
+            members = {self.compiler_library_root / member.path for member in self.compiler_library.members}
+            members.add(Path(library_owner.__file__).resolve())
+            if not members <= set(dict(self.source_pins)):
+                raise StageGateError("runtime compiler library omits exact selected source membership")
+            for path in members:
+                if sha256_file(path) != dict(self.source_pins)[path]:
+                    raise StageGateError("runtime compiler library source selection changed")
+        return selection
 
     def _copy_selection(self):
         support = self.copy_control_support
@@ -215,6 +231,7 @@ class PreparedIndependentRuntimeContext:
         self._readback_selection()
         self._copy_selection()
         source_selection.selection(self)
+        self._library_selection()
         required = {
             Path(inspect.getsourcefile(value)).resolve()
             for value in (
@@ -496,6 +513,14 @@ class PreparedIndependentRuntimeContext:
                         source_verifier=self._source_verifier,
                         readback_policy=self.readback_policy,
                         **({"memory_readback": self.memory_readback} if self.memory_readback is not None else {}),
+                        **(
+                            {
+                                "compiler_library": self.compiler_library,
+                                "compiler_library_root": self.compiler_library_root,
+                            }
+                            if self.compiler_library is not None
+                            else {}
+                        ),
                         timeout_s=timeout,
                         elf_admission=(
                             self.instruction_check.admission_service() if self.instruction_check is not None else None

@@ -168,7 +168,11 @@ class ComponentCompileRoleEvaluation:
                 raise C.StageGateError("source-only evaluation substituted a different member transport")
             if row["compilation_status"] == "linked":
                 report = verify_compile_only_report(
-                    report_path, build_service=self.build_service, elf_admission=admission
+                    report_path,
+                    build_service=self.build_service,
+                    elf_admission=admission,
+                    compiler_library=self.compiler_origin.inputs.library,
+                    compiler_library_root=self.compiler_origin.inputs.view.root / "compiler",
                 )
                 if (
                     report["inputs"]["source"]["sha256"] != member.source_sha256
@@ -277,6 +281,8 @@ def evaluate_component_compile_roles(
                     elf_admission=admission,
                     readelf=readelf,
                     timeout_s=remaining,
+                    compiler_library=compiler_origin.inputs.library,
+                    compiler_library_root=compiler_origin.inputs.view.root / "compiler",
                 )
                 status = report["compilation_status"]
             except Exception as error:  # noqa: BLE001 -- retain every original unavailable member
@@ -294,6 +300,8 @@ def evaluate_component_compile_roles(
                         instruction_check=instruction_check,
                         output_root=proofs_root / member.name,
                         timeout_s=deadline - time.monotonic(),
+                        compiler_library=compiler_origin.inputs.library,
+                        compiler_library_root=compiler_origin.inputs.view.root / "compiler",
                     )
                     proofs.append(proof)
                     for name, value in proof.verify()["facets"].items():
