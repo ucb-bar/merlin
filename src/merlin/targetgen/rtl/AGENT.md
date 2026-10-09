@@ -84,3 +84,12 @@ identities for repeated callees. State, memory reads, external, parameterized
 and unsupported producers remain explicit stops. Structural occurrence paths
 and byte slices never establish command operands, decoded roles, tensor axes,
 allocation/capacity use, collision validity, physical tails or temporal effects.
+
+`hw_address_transitions.address_state_transitions` joins every original rooted
+memory address endpoint to its exact typed local FirReg next/clock/reset/value
+roster. Bounded local expressions stop at state, memory reads, instance outputs
+and unsupported producers. Hold mux conditions require the exact same original
+register result SSA; reset retains primitive priority. No clock event is evaluated
+and no reset history, initialization, reachable range, decoded command, tensor
+axis, allocation/capacity or temporal premise is granted. Original declared-depth
+range statements remain unproved, including enabled out-of-range branches.

@@ -20,6 +20,16 @@ binding and preserve state, memory-read, external, parameterized and unsupported
 stops. Data-only observations close no command/resource/axis/capacity, temporal,
 packing-domain or whole-mapping requirement; old intake/gate meanings remain.
 
+`address_transition_intake` derives exact local typed FirReg transfer expressions
+from every address of the same live rooted hierarchy. Complete original address,
+state and operand membership is bounded before local DAG work; retained source
+records replay those joins with exact JSON types and pinned comparison code.
+Saved records and copied objects cannot mint live
+identity. The source primitive's reset priority and same-SSA hold arms establish
+no valid event history, initialization, reachable address range, command/resource
+role, tensor axis, physical capacity or temporal closure. No whole mapping or
+existing mandatory UNKNOWN requirement is admitted by this optional data record.
+
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
 minimal software/review/basis, public/native schema source, reader tool and every

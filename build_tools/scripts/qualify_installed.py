@@ -72,6 +72,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "address-transition-inputs": {
+        "native_tools": ("firtool", "circt-opt"),
+        "native_test_files": ("test_address_transition_intake.py",),
+        "tests": ("test_address_transition_intake.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_address_transitions",
+            "merlin_experiments.phase0.address_transition_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "logical-source-demand": {
         "include_experiments": False,
         "tests_root": "merlin/tests/dse",
