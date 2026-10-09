@@ -12,6 +12,14 @@ cannot issue live source authority. These optional facts close no original
 packing, command/resource/axis/allocation or temporal obligation by themselves;
 undefined collision behavior, initial state and physical effects remain missing.
 
+`hierarchical_memory_intake` extends the same live native memory source with
+bounded rooted instance occurrences and exact combinational port connectivity.
+The root comes from original hardware production; no caller role or path hints
+select a mapping. Closed reader/source records recompute every original memory
+binding and preserve state, memory-read, external, parameterized and unsupported
+stops. Data-only observations close no command/resource/axis/capacity, temporal,
+packing-domain or whole-mapping requirement; old intake/gate meanings remain.
+
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
 minimal software/review/basis, public/native schema source, reader tool and every

@@ -72,6 +72,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "hierarchical-memory-inputs": {
+        "native_tools": ("firtool", "circt-opt"),
+        "native_test_files": ("test_hierarchical_memory_intake.py",),
+        "tests": ("test_hierarchical_memory_intake.py", "test_memory_port_intake.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_hierarchy_bindings",
+            "merlin_experiments.phase0.hierarchical_memory_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "original-schema-batch": {
         "tests": ("test_original_reference_transfer.py",),
         "core_extras": ("xdsl", "targetgen"),

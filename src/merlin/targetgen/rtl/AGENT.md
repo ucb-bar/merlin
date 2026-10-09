@@ -75,3 +75,12 @@ state, opaque instance and unsupported producers stay symbolic roots. Retain
 undefined read-under-write and out-of-range address domains; never evaluate
 initial contents or infer command routing, software formats/axes, allocation,
 physical capacity/tails or temporal completion from these local observations.
+
+`hw_hierarchy_bindings.hierarchical_memory_bindings` preflights the complete
+rooted occurrence, memory and port-binding roster before hierarchical expansion.
+Follow only exact original named port/index/type bindings and supported scalar
+combinational SSA through defined module outputs. Preserve distinct occurrence
+identities for repeated callees. State, memory reads, external, parameterized
+and unsupported producers remain explicit stops. Structural occurrence paths
+and byte slices never establish command operands, decoded roles, tensor axes,
+allocation/capacity use, collision validity, physical tails or temporal effects.

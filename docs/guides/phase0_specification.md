@@ -12,6 +12,8 @@ code_refs:
   - src/merlin/targetgen/rtl/elaboration.py
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/hw_memory_ports.py
+  - src/merlin/targetgen/rtl/hw_hierarchy_bindings.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/hierarchical_memory_intake.py
   - src/merlin/targetgen/dialect_source_scope.py
   - src/merlin/targetgen/isa_mode_audit.py
   - src/merlin/targetgen/generate/typed_mlir.py
@@ -81,6 +83,15 @@ under explicit parse and metadata budgets. State, instance and unsupported
 results remain symbolic stops. Definition-local storage and byte-slice facts
 do not establish command meaning, tensor axes, physical instance routing,
 allocation, capacity use, memory contents or temporal effects.
+
+The optional hierarchical intake consumes that same live memory source and
+checks the complete rooted instance, memory and port roster against explicit
+metadata bounds before expansion. Exact named port/index/type bindings allow
+combinational tracing through defined module bodies. Repeated instances keep
+distinct occurrence identities. State, memory reads, external or parameterized
+bodies and unsupported expressions remain explicit stops. Occurrence paths and
+local byte-slice joins provide source connectivity; they grant no command roles,
+software axes, physical capacity, initialization or temporal execution claims.
 
 The command reports diagnostic execution separately from coverage completion.
 An exit code of zero can accompany an incomplete coverage report. This occurs only
