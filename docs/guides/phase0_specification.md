@@ -23,6 +23,9 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/component_source_performance.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_roster.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_flow.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_requirements.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_standard_ir.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/original_schema_batch.py
   - src/merlin/targetgen/torch_schema_batch_observer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
@@ -30,6 +33,8 @@ code_refs:
   - src/merlin/targetgen/spec_fact_drift.py
   - src/merlin/targetgen/_m2m_capture_worker.py
   - src/merlin/targetgen/original_pointwise_sources.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/component_qualification.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/component_final_qualification.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/precision_staging.py
 ---
 
@@ -152,6 +157,50 @@ Missing policies, unsupported original types/forms, overflow and denied slots
 remain required. These observations grant neither global framework equivalence
 nor compiler, hardware or Phase 1 admission. Their reference implementations and
 outputs are private grader surfaces, including installed and bytecode copies.
+
+Opt-in request v5 connects those original observers to the ordinary diagnostic.
+It retains the v4 performance preparation and adds `original_references`, with
+exact `reference` and `standard_ir` file pins. The reference file uses
+`merlin.declared_original_reference_selection.v1`; the standard-IR file uses
+`merlin.declared_original_standard_ir_selection.v1`. Select the complete original
+guard and private cohorts, numerical policies, input palettes and explicit
+construction, reference and process budgets. The standard-IR selection additionally
+names a clean upstream capture checkout and its exact commit, a pinned stock
+parser, and bounded source, payload and parser limits.
+
+These selections contain inputs, not saved live identities or accepted verdicts.
+The run issues fresh observers, compares every supported original output, performs
+ordinary upstream conversion and checks the complete ordered source ABI. Its
+requirement ledger joins those finite comparison and ABI facets to the unchanged
+original requirement IDs. Unsupported and budget-denied source slots remain
+required; checked slots do not establish compiled-body correspondence, numerical
+domain completeness, physical effects or a Phase 1 release. Request v1-v4 keep
+their original scope and reject the new fields.
+
+The installed `original-reference-flow` qualification suite checks this versioned
+selection and requirement join outside the checkout. Complete native controls also
+need explicitly selected public framework declarations and runtime, an upstream
+capture checkout, a C++ compiler, FIRRTL tools and a stock MLIR parser. An installed
+qualification that skips unavailable native prerequisites is not evidence that
+those controls executed. Preserve successful execution records, exact effective
+environments and complete source/product pins separately from expected refusals
+and interrupted attempts.
+
+### Count capsules separately from obligations and execution
+
+Report unique capsule IDs by cohort: public development, functional guards and
+private transfer cases. Count mandatory obligations and requested original
+call/cohort slots separately; one obligation can require several source cases,
+and a requested slot can remain unavailable. Source generation and checked
+references do not count as qualified candidate executions.
+
+Phase 1's component qualification grades every mandatory guard and transfer
+member. Phase 2 tunes the selected public development corpus and reuses the
+original guard and transfer roster for final descendant qualification. Reuse
+protects correctness after optimization; it does not make private transfer
+cases available as tuning feedback. Record missing performance families and
+unavailable members alongside the counts, rather than presenting a small source
+snapshot as the final experiment corpus.
 
 A Phase 0 handoff needs these checked inputs:
 
