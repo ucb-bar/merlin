@@ -224,3 +224,24 @@ It does not cover arbitrary view layouts or grant physical pointer equality,
 ownership, lifetime, completion, non-schema purity, hardware axis/resource roles
 or installed-framework historical source correspondence. Retain those mandatory
 gaps and unsupported effect classes. Policy/receipt v1 remains unchanged.
+
+`hw_arithmetic` follows exact typed sign extension, multiplication, low input
+slicing and modular addition to original HW output ordinals. Names and widths
+alone assign no roles; state, instances, muxes and unimplemented arithmetic stop
+the proof. `arithmetic_intake` binds a fresh native generic serialization of the
+same live structural hardware source, complete reader/evidence bytes and effective
+process environment. Its issued local bit-vector expressions never establish a
+contraction, selected instruction path, reduction count/order, resource ownership
+or tensor-axis map. Automatic policy v3 binds this exact live intake and retains
+conditional compatible signed-integer numeric requirements plus the unrecognized
+arithmetic domain as mandatory missing obligations in the ordinary generator.
+Original numerical policies, bounded source counts, independent complete outputs
+and unknown resource/axis obligations remain unchanged. No local result width is
+silently promoted into an accumulator/K constraint or a whole-operation grant;
+v1/v2 remain readable without new arithmetic authority.
+Policy v3 may also select the exact optional independent operator-schema intake;
+that selection requires the original same live minimal SW/HW and both identities
+in one ordinary derivation. Replay both complete source records and retain all
+logical outputs, numeric-path requirements and physical/unsupported effect gaps.
+Missing, substituted or supplied-but-unselected observations refuse. A saved
+record cannot drop either selected facet and obtain authority from re-signing.

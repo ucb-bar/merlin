@@ -63,7 +63,7 @@ def _unknown(kind, selector, reason):
     }
 
 
-def derive(policy, *, spec, review, basis, relations, effects=None):
+def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=None):
     """Construct a complete required class roster without invented permissions.
 
     One and two are fresh bounded semantic extents, independent of target or
@@ -118,6 +118,10 @@ def derive(policy, *, spec, review, basis, relations, effects=None):
                 )
             )
     contraction = {owner for factory, owner in cases if factory == "contraction"}
+    if arithmetic is not None:
+        from .component_arithmetic_obligations import required_unknowns
+
+        unknowns.extend(required_unknowns(arithmetic, spec=spec, contraction_owners=contraction))
     for interaction in present:
         if interaction == "shared_input_multiple_consumers" and len(contraction) == 1:
             owner = next(iter(contraction))
@@ -213,7 +217,9 @@ def derive(policy, *, spec, review, basis, relations, effects=None):
             )
     unique_unknowns = {row["id"]: row for row in unknowns}
     declaration = {
-        key: value for key, value in policy.items() if key not in {"schema", "operator_schema_intake_sha256"}
+        key: value
+        for key, value in policy.items()
+        if key not in {"schema", "operator_schema_intake_sha256", "arithmetic_intake_sha256"}
     }
     declaration.update(schema=BUDGETED_PLAN_SCHEMA, effects=[], obligations=obligations)
     return declaration, sorted(unique_unknowns.values(), key=lambda row: row["id"])

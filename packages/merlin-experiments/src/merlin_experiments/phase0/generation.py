@@ -352,6 +352,7 @@ def generate_target(
     hardware_intake=None,
     software_intake=None,
     operator_schema_intake=None,
+    arithmetic_intake=None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
@@ -375,6 +376,8 @@ def generate_target(
         not component_only or software_intake is None or component_coverage is None
     ):
         raise ValueError("independent operator schemas require explicit minimal software and component coverage")
+    if arithmetic_intake is not None and (not component_only or hardware_intake is None or component_coverage is None):
+        raise ValueError("local arithmetic requires independent hardware and explicit component coverage")
     if component_only:
         from .component_generation import require_inputs
 
@@ -587,6 +590,7 @@ def generate_target(
                 software_intake=software_intake,
                 output_root=artifact_root,
                 operator_schema_intake=operator_schema_intake,
+                arithmetic_intake=arithmetic_intake,
             )
             execution_budget = component_plan.to_dict().get("execution_budget")
             coverage_entries, component_coverage_report = expand(component_plan, binding=binding, evidence=evidence)

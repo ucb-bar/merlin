@@ -27,8 +27,10 @@ from .software_intake import REVIEW_SCHEMA, IndependentSoftwareIntake, _bindings
 
 SCHEMA = "merlin.component_automatic_policy.v1"
 EFFECT_POLICY_SCHEMA = "merlin.component_automatic_policy.v2"
+ARITHMETIC_POLICY_SCHEMA = "merlin.component_automatic_policy.v3"
 RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v1"
 EFFECT_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v2"
+ARITHMETIC_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v3"
 _FIELDS = {
     "schema",
     "status",
@@ -56,15 +58,21 @@ def _read(pin):
 
 
 def _closed_policy(policy):
-    fields = _FIELDS | (
-        {"operator_schema_intake_sha256"}
-        if isinstance(policy, dict) and policy.get("schema") == EFFECT_POLICY_SCHEMA
-        else set()
-    )
+    additions = {
+        EFFECT_POLICY_SCHEMA: {"operator_schema_intake_sha256"},
+        ARITHMETIC_POLICY_SCHEMA: {"arithmetic_intake_sha256"},
+    }
+    fields = _FIELDS | additions.get(policy.get("schema") if isinstance(policy, dict) else None, set())
+    if (
+        isinstance(policy, dict)
+        and policy.get("schema") == ARITHMETIC_POLICY_SCHEMA
+        and "operator_schema_intake_sha256" in policy
+    ):
+        fields |= {"operator_schema_intake_sha256"}
     if (
         not isinstance(policy, dict)
         or set(policy) != fields
-        or policy["schema"] not in {SCHEMA, EFFECT_POLICY_SCHEMA}
+        or policy["schema"] not in {SCHEMA, EFFECT_POLICY_SCHEMA, ARITHMETIC_POLICY_SCHEMA}
         or policy["status"] != "reviewed"
     ):
         raise ValueError(
@@ -108,7 +116,11 @@ def _relations(basis):
 def require_basis_selection(path, *, recipe, software_intake):
     """Reject substituted graph selection before opening any example source."""
     document = yaml.safe_load(Path(path).read_bytes())
-    if not isinstance(document, dict) or document.get("schema") not in {SCHEMA, EFFECT_POLICY_SCHEMA}:
+    if not isinstance(document, dict) or document.get("schema") not in {
+        SCHEMA,
+        EFFECT_POLICY_SCHEMA,
+        ARITHMETIC_POLICY_SCHEMA,
+    }:
         return
     if type(software_intake) is not IndependentSoftwareIntake:
         raise ValueError("automatic coverage needs the live protected minimal software intake")
@@ -127,12 +139,26 @@ def require_basis_selection(path, *, recipe, software_intake):
 
 
 def resolve(
-    path, *, evidence, semantic_basis, hardware_intake, software_intake, output_root, operator_schema_intake=None
+    path,
+    *,
+    evidence,
+    semantic_basis,
+    hardware_intake,
+    software_intake,
+    output_root,
+    operator_schema_intake=None,
+    arithmetic_intake=None,
 ):
     """Resolve old explicit plans or the new independently derived normal v2 plan."""
     raw = Path(path).read_bytes()
     selected = yaml.safe_load(raw)
-    if not isinstance(selected, dict) or selected.get("schema") not in {SCHEMA, EFFECT_POLICY_SCHEMA}:
+    if not isinstance(selected, dict) or selected.get("schema") not in {
+        SCHEMA,
+        EFFECT_POLICY_SCHEMA,
+        ARITHMETIC_POLICY_SCHEMA,
+    }:
+        if arithmetic_intake is not None or operator_schema_intake is not None:
+            raise ValueError("independent source observations require an explicit versioned automatic policy")
         return ComponentCoveragePlan.load(path, evidence=evidence, semantic_basis=semantic_basis), None
     if type(software_intake) is not IndependentSoftwareIntake or software_intake.hardware is not hardware_intake:
         raise ValueError("automatic coverage needs the live protected minimal software and identical hardware intake")
@@ -150,7 +176,9 @@ def resolve(
         raise ValueError("automatic graph sources differ from exact protected independent example membership")
     relations = _relations(semantic_basis)
     effects, schema_record = None, None
-    if policy["schema"] == EFFECT_POLICY_SCHEMA:
+    if policy["schema"] == EFFECT_POLICY_SCHEMA or (
+        policy["schema"] == ARITHMETIC_POLICY_SCHEMA and "operator_schema_intake_sha256" in policy
+    ):
         from .operator_schema_intake import IndependentOperatorSchemaIntake
 
         if (
@@ -167,8 +195,28 @@ def resolve(
         ]
     elif operator_schema_intake is not None:
         raise ValueError("operator effects require the explicit versioned automatic policy")
+    arithmetic_record = None
+    if policy["schema"] == ARITHMETIC_POLICY_SCHEMA:
+        from .arithmetic_intake import IndependentArithmeticIntake
+
+        if (
+            type(arithmetic_intake) is not IndependentArithmeticIntake
+            or arithmetic_intake.hardware is not hardware_intake
+        ):
+            raise ValueError("automatic arithmetic needs the identical live independent hardware intake")
+        arithmetic_record = arithmetic_intake.record()
+        if policy["arithmetic_intake_sha256"] != arithmetic_intake.sha256:
+            raise ValueError("automatic arithmetic differs from protected actual typed SSA observations")
+    elif arithmetic_intake is not None:
+        raise ValueError("local arithmetic requires the explicit versioned automatic policy")
     declaration, unknowns = P.derive(
-        policy, spec=spec, review=review, basis=semantic_basis, relations=relations, effects=effects
+        policy,
+        spec=spec,
+        review=review,
+        basis=semantic_basis,
+        relations=relations,
+        effects=effects,
+        arithmetic=arithmetic_record["facts"] if arithmetic_record is not None else None,
     )
     destination = Path(output_root) / "coverage" / "automatic-selection"
     if any(member.is_symlink() for member in (destination, *destination.parents)):
@@ -192,10 +240,17 @@ def resolve(
             "merlin.targetgen.frontend_trace",
             "merlin_experiments.phase0.component_semantic_basis",
             "merlin_experiments.phase0.minimal_software",
+            "merlin_experiments.phase0.component_arithmetic_obligations",
         )
     ]
     record = {
-        "schema": EFFECT_RECEIPT_SCHEMA if schema_record is not None else RECEIPT_SCHEMA,
+        "schema": (
+            ARITHMETIC_RECEIPT_SCHEMA
+            if arithmetic_record is not None
+            else EFFECT_RECEIPT_SCHEMA
+            if schema_record is not None
+            else RECEIPT_SCHEMA
+        ),
         "hardware_intake_sha256": hardware_intake.sha256,
         "software_intake_sha256": software_intake.sha256,
         "sources": sources,
@@ -209,6 +264,8 @@ def resolve(
         record["operator_effect_semantics"] = [
             {"member": member, **effect.public_semantics()} for member, effect in effects
         ]
+    if arithmetic_record is not None:
+        record["arithmetic_intake"] = arithmetic_record
     record["sha256"] = digest(record)
     receipt_path = destination / "derivation.json"
     receipt_path.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
@@ -228,7 +285,7 @@ def resolve(
 
 def verify(record, *, report, verify_sources=True):
     """Reopen all selected originals and recompute the complete required roster."""
-    if record.get("schema") not in {RECEIPT_SCHEMA, EFFECT_RECEIPT_SCHEMA} or digest(
+    if record.get("schema") not in {RECEIPT_SCHEMA, EFFECT_RECEIPT_SCHEMA, ARITHMETIC_RECEIPT_SCHEMA} or digest(
         {k: v for k, v in record.items() if k != "sha256"}
     ) != record.get("sha256"):
         raise ValueError("automatic component derivation identity changed")
@@ -286,14 +343,22 @@ def verify(record, *, report, verify_sources=True):
     _bindings(review, spec, basis)
     relations = _relations(basis)
     effects = None
-    if record["schema"] == EFFECT_RECEIPT_SCHEMA:
+    selected_effects = policy["schema"] == EFFECT_POLICY_SCHEMA or (
+        policy["schema"] == ARITHMETIC_POLICY_SCHEMA and "operator_schema_intake_sha256" in policy
+    )
+    if selected_effects:
         from merlin.targetgen.frontend_operator_effects import original_operator_effects
 
         from .operator_schema_intake import verify_record
 
+        if record["schema"] not in {EFFECT_RECEIPT_SCHEMA, ARITHMETIC_RECEIPT_SCHEMA} or not {
+            "operator_schema_intake",
+            "operator_effect_semantics",
+        }.issubset(record):
+            raise ValueError("automatic derivation lost its selected original operator effect observation")
         schema_record = verify_record(record["operator_schema_intake"])
         if (
-            policy["schema"] != EFFECT_POLICY_SCHEMA
+            policy["schema"] not in {EFFECT_POLICY_SCHEMA, ARITHMETIC_POLICY_SCHEMA}
             or hashlib.sha256(
                 (json.dumps(schema_record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
             ).hexdigest()
@@ -318,10 +383,32 @@ def verify(record, *, report, verify_sources=True):
             {"member": member, **effect.public_semantics()} for member, effect in effects
         ]:
             raise ValueError("automatic effects differ from native source/argument/result replay")
-    elif policy["schema"] != SCHEMA or set(record) & {"operator_schema_intake", "operator_effect_semantics"}:
+    elif policy["schema"] not in {SCHEMA, ARITHMETIC_POLICY_SCHEMA} or set(record) & {
+        "operator_schema_intake",
+        "operator_effect_semantics",
+    }:
         raise ValueError("historical automatic policy cannot acquire new effect authority")
+    arithmetic = None
+    if record["schema"] == ARITHMETIC_RECEIPT_SCHEMA:
+        from .arithmetic_intake import verify_record
+
+        if "arithmetic_intake" not in record:
+            raise ValueError("automatic derivation lost its selected original arithmetic observation")
+        selected = verify_record(record["arithmetic_intake"])
+        if (
+            policy["schema"] != ARITHMETIC_POLICY_SCHEMA
+            or hashlib.sha256(
+                (json.dumps(selected, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+            ).hexdigest()
+            != policy["arithmetic_intake_sha256"]
+            or selected["hardware_intake_sha256"] != record["hardware_intake_sha256"]
+        ):
+            raise ValueError("automatic arithmetic receipt differs from exact protected original hardware")
+        arithmetic = selected["facts"]
+    elif policy["schema"] == ARITHMETIC_POLICY_SCHEMA or "arithmetic_intake" in record:
+        raise ValueError("historical automatic policy cannot acquire local arithmetic authority")
     declaration, unknowns = P.derive(
-        policy, spec=spec, review=review, basis=basis, relations=relations, effects=effects
+        policy, spec=spec, review=review, basis=basis, relations=relations, effects=effects, arithmetic=arithmetic
     )
     if (
         yaml.safe_load(_read(record["derived_plan"])) != declaration
