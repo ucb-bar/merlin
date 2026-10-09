@@ -21,6 +21,10 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_engine_protocol.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_engine_probe.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_state_control.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/component_tool_readiness.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch.py
+  - build_tools/upstreams/native/circt-state-dependencies.patch
 ---
 
 # Independent component feedback authority
@@ -145,6 +149,25 @@ and layout, rejects escaping or overlapping mappings and destination collisions,
 and pins every file before grants are constructed. A system destination does not
 establish source independence or complete loader closure; actual tool execution
 and separate admission remain required.
+
+Fresh Phase 1 selects and pins its outer author sandbox explicitly. It cannot
+substitute the nested native tool sandbox by destination name. Before authoring,
+shared readiness uses a read-only inert candidate, and native readiness executes
+the admitted commands through the selected client's actual tool profile. A
+disposable exact scaffold copy accommodates temporary sandbox mountpoints;
+original source files remain read-only, and new persistent files, directories or
+symlinks refuse readiness. Complete original inputs and both scaffold copies are
+rechecked before a model request. These credential-free controls establish tool
+readiness only, not a fresh compiler origin or functional runtime qualification.
+Phase 2 reopens that exact fresh origin and inherits its original outer sandbox
+selection and complete control membership. A launch declaration or a nested
+helper's destination name cannot supply a replacement launcher.
+
+The opt-in [native dependency patch](../../build_tools/upstreams/native/circt-state-dependencies.md)
+prepares clocked termination operands in one exact public Arc lowering revision.
+It requires explicit source-hash checking and selection. It supplies no runtime
+default or author grant. Assertion behavior, reset, program loading, complete
+RTL equivalence and timer authority remain separate required controls.
 
 The analytical declaration contains only `calibration_adapter`, `qualification`,
 `objective`, `max_workers`, `memory_per_worker_bytes`, `engine_slots`, `output` and

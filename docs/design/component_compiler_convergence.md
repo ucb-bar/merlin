@@ -12,6 +12,9 @@ code_refs:
   - src/merlin/targetgen/frontend_operator_effects.py
   - src/merlin/targetgen/torch_schema_observer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_schema_intake.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/arithmetic_intake.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/component_arithmetic_obligations.py
+  - src/merlin/targetgen/rtl/hw_arithmetic.py
   - src/merlin/targetgen/compiler_library.py
   - src/merlin/targetgen/package_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/component_experiment.py
@@ -132,6 +135,19 @@ Container, wildcard and changing aliases, actual physical alias/ownership,
 non-schema effects, whole-effect completeness and hardware axis/resource roles
 remain mandatory gaps. Schema equality does not prove the installed framework's
 historical build correspondence. Policy v1 keeps its previous unknowns.
+
+Automatic policy v3 binds a separate live arithmetic intake to the same original
+hardware. A fixed native generic serialization and typed SSA reader follow exact
+sign extension, multiplication, low input slices and modular addition to original
+module outputs. Local relations retain conditional numerical compatibility gaps;
+they do not establish a selected contraction, reduction count or order, instruction
+semantics, physical resource role or tensor-axis map. Unrecognized outputs and
+cross-state or cross-instance behavior remain mandatory unknowns. Source numerical
+policies and complete independent output checks remain unchanged.
+When schema effects are also selected, v3 binds their exact live intake in the
+same ordinary derivation. Both complete source records are replayed; removing
+either selected facet or its required unknowns cannot be repaired by re-signing
+metadata. Policies v1 and v2 retain their original behavior.
 
 Keep the selected software spec minimal: semantic and numerical behavior plus
 operation support that the selected RTL cannot determine. Extract hardware
