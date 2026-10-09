@@ -85,6 +85,26 @@ SUITES = {
         ),
         "required_modules": ("xdsl", "jsonschema"),
     },
+    "transition-connectivity": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "packages/merlin-experiments/tests/test_transition_connectivity_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_transition_connectivity",
+            "merlin_experiments.phase0.transition_connectivity_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "recorded-process-consumption": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
@@ -1769,6 +1789,10 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
             if digest(retained) != source_sha256:
                 raise QualificationFailed(f"copied source input differs from committed archive: {name}")
             report["source_inputs"][name] = {"path": str(retained), "sha256": source_sha256}
+        if source_inputs:
+            input_root = str(tests / "source-inputs")
+            runner.environment["MERLIN_TEST_SOURCE_INPUTS_ROOT"] = input_root
+            report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
         runner.run(

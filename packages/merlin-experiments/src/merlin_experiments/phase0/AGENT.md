@@ -39,6 +39,14 @@ no valid event history, initialization, reachable address range, command/resourc
 role, tensor axis, physical capacity or temporal closure. No whole mapping or
 existing mandatory UNKNOWN requirement is admitted by this optional data record.
 
+`transition_connectivity_intake` binds all typed original state operand slots
+to exact rooted source connectivity from the same live address-state intake.
+Closed records replay every original slot, frame, port binding and symbolic
+stop; JSON bool/int/float substitutions refuse. Original root-input contact is
+identity data only, with no name/width role selector. Saved or copied records
+mint no live identity, and no command/resource/axis/capacity/effect/temporal or
+whole-mapping requirement is admitted. Prior H/T source meanings remain intact.
+
 `declared_run` executes a fresh independent diagnostic from a closed explicit
 source request. Pin original descriptor, public hardware production selection,
 minimal software/review/basis, public/native schema source, reader tool and every

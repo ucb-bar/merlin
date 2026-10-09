@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
+import pytest
+
 from merlin.common import schemas
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.targetgen import pipeline
 from merlin.validation.generated_target import check_generated_target
 
-REPO = repo_root()
+REPO = (
+    Path(os.environ["MERLIN_TEST_SOURCE_INPUTS_ROOT"])
+    if "MERLIN_TEST_SOURCE_INPUTS_ROOT" in os.environ
+    else repo_root()
+)
 TOY_DOCS = REPO / "examples/toy_npu/target/docs"
 TOY_EXAMPLES = REPO / "examples/toy_npu/target/examples"
 
@@ -24,6 +31,12 @@ REQUIRED_METRICS = {
     "evictions",
     "accumulator_commits",
 }
+
+
+@pytest.fixture(autouse=True)
+def _selected_fixture_provider(monkeypatch):
+    if "MERLIN_TEST_SOURCE_INPUTS_ROOT" in os.environ:
+        monkeypatch.setenv("MERLIN_TARGET_PATH", str(REPO / "examples/toy_npu/target"))
 
 
 def _build(out: Path):

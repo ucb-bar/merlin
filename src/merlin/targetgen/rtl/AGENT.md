@@ -100,3 +100,12 @@ register result SSA; reset retains primitive priority. No clock event is evaluat
 and no reset history, initialization, reachable range, decoded command, tensor
 axis, allocation/capacity or temporal premise is granted. Original declared-depth
 range statements remain unproved, including enabled out-of-range branches.
+
+`hw_transition_connectivity.transition_operand_connectivity` retains every
+original state operand slot and crosses only exact named port/index/type
+bindings in the already bounded rooted source hierarchy. Repeated callees keep
+distinct occurrence identities. Complete declared root ports are identity data;
+names and widths never classify a command interface or decoded resource role.
+State, memory reads, opaque and unsupported producers stop traversal. Structural
+root contact grants no event validity, state reachability, capacity, software
+axis, physical effect, temporal closure or whole memory mapping requirement.
