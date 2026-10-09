@@ -5,6 +5,44 @@
 -    return success();
 +  if (initial) {
 +    lowerValue(op.getClock(), Phase::New);
-+    lowerValue(op.getCondition(), phase);
++    lowerValue(op.getCondition(), Phase::Old);
 +    return success();
 +  }
+@@ -1274 +1277 @@
+-  Value cond = lowerValue(op.getCondition(), phase);
++  Value cond = lowerValue(op.getCondition(), Phase::Old);
+--- /dev/null
++++ b/test/Dialect/Arc/clocked-terminate-old-state.mlir
+@@ -0,0 +1,32 @@
++// RUN: circt-opt %s --arc-lower-state | FileCheck %s
++// The condition samples queue validity before this edge consumes or produces it.
++// CHECK-LABEL: arc.model @QueueSampler
++// CHECK: %[[QUEUE:.*]] = arc.alloc_state
++// CHECK: %[[OLD:.*]] = arc.state_read %[[QUEUE]]
++// CHECK: %[[BAD:.*]] = arc.call @QueueInvalid(%[[OLD]],
++// CHECK: scf.if %[[BAD]] {
++// CHECK: arc.terminate
++// CHECK: arc.state_write %[[QUEUE]]
++arc.define @QueueNext(%consume: i1, %queued: i1, %enqueue: i1) -> i1 {
++  %false = hw.constant false
++  %true = hw.constant true
++  %drained = comb.mux %consume, %false, %queued : i1
++  %next = comb.mux %enqueue, %true, %drained : i1
++  arc.output %next : i1
++}
++arc.define @QueueInvalid(%queued: i1, %reset: i1, %response: i1) -> i1 {
++  %true = hw.constant true
++  %empty = comb.xor %queued, %true : i1
++  %active = comb.xor %reset, %true : i1
++  %bad = comb.and %empty, %active, %response : i1
++  arc.output %bad : i1
++}
++hw.module @QueueSampler(in %clock: !seq.clock, in %reset: i1,
++                       in %enqueue: i1, in %consume: i1, in %response: i1,
++                       out queued: i1) {
++  sim.clocked_terminate %clock, %bad, failure, quiet
++  %q = arc.state @QueueNext(%consume, %q, %enqueue) clock %clock
++       reset %reset latency 1 : (i1, i1, i1) -> i1
++  %bad = arc.call @QueueInvalid(%q, %reset, %response) : (i1, i1, i1) -> i1
++  hw.output %q : i1
++}
