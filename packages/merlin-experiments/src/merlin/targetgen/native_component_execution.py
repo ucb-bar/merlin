@@ -296,6 +296,8 @@ def execute_component(
         "inputs": frozen,
     }
 
+    frozen_projection = None
+
     def unchanged():
         current = {"package": _tree(package_dir), "capsule": _tree(capsule_dir), "contract": _tree(contract_root)}
         if current != frozen:
@@ -304,6 +306,10 @@ def execute_component(
         if execution_service.verify(target, execution_service.simulator) != execution_before:
             raise NativeComponentExecutionError("independent native functional transport changed")
         verify_reader()
+        if any(_digest(_plain(Path(row["path"]))) != row for row in record.get("emission", {}).values()):
+            raise NativeComponentExecutionError("independent native emitted source products changed")
+        if frozen_projection is not None and (bound, inputs) != frozen_projection:
+            raise NativeComponentExecutionError("independent native bound source projection changed")
 
     try:
         capsule = CC.load_capsule(capsule_dir, contract=contract_root)
@@ -357,6 +363,7 @@ def execute_component(
                 "independent native artifact changes its C pointer entry ABI"
             ) from error
         bound, inputs, bindings = _bind(capsule, cb, source)
+        frozen_projection = copy.deepcopy((bound, inputs))
         deadline.remaining()
         expected = CG.golden(capsule, capsule_dir)
         deadline.remaining()
@@ -393,6 +400,7 @@ def execute_component(
         deadline.remaining()
         if type(record["source_correspondence"]) is not dict:
             raise NativeComponentExecutionError("independent native source verifier returned no closed observation")
+        unchanged()
 
         def selected_execution():
             unchanged()

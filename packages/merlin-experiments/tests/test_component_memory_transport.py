@@ -198,6 +198,11 @@ class DiagnosticMemoryReader:
         self.prepared = kwargs
         if self.fault == "changed_elf":
             elf_path.write_bytes(b"changed diagnostic artifact")
+        elif self.fault == "changed_buffer":
+            kwargs["cb"]["kernel_abi"]["outputs"].reverse()
+        elif self.fault == "changed_emission":
+            emitted = kwargs["workdir"].parent / "generated" / "lowered.llvm.mlir"
+            emitted.write_text(emitted.read_text() + "\n// changed during memory preparation\n")
         return {"memory_readback": {"elf_sha256": file_digest(elf_path)}}
 
     def run(self, _elf, **kwargs):
@@ -234,6 +239,8 @@ class DiagnosticMemoryReader:
     [
         None,
         "changed_elf",
+        "changed_buffer",
+        "changed_emission",
         "changed_engine",
         "missing_output",
         "partial_values",
@@ -299,9 +306,62 @@ def test_real_ordinary_oracle_gates_preserve_full_roster_and_selected_transport(
             native.execute_component(**args)
     record = json.loads((output / "result.json").read_bytes())
     assert record["status"] == "unavailable" and "numeric_report" not in record
-    if fault == "changed_elf":
+    if fault in {"changed_elf", "changed_buffer", "changed_emission"}:
         assert reader.calls == ["prepare"]
     elif fault in {"changed_engine", "mixed_serial", "missing_done", "duplicate_done"}:
         assert reader.calls == ["prepare", "run"]
     else:
         assert reader.calls == ["prepare", "run", "decode"]
+
+
+@pytest.mark.parametrize("changed", ["lowered_source", "bound_buffer", "input_projection"])
+def test_source_observer_cannot_disconnect_actual_emission_before_build(prepared, tmp_path, monkeypatch, changed):
+    """Real original package lowering; a changed observed product never reaches build."""
+    fixture = prepared.prepare_control("source_correspondence.positive", tmp_path / "original")
+    output = tmp_path / "ordinary"
+    args = _arguments(prepared, fixture, output, transport=RB.FULL_VALUES_B64)
+    selected = args["source_verifier"]
+
+    def changed_source_observer(**kwargs):
+        proof = selected(**kwargs)
+        if changed == "lowered_source":
+            source = kwargs["lowered_mlir"]
+            original = source.read_text()
+            assert "llvm.func" in original
+            source.write_text(original + "\n// source product changed after observation\n")
+        elif changed == "input_projection":
+            projection = kwargs["input_projection"]
+            values = json.loads(projection.read_bytes())
+            assert values["inputs"]
+            selected_input = next(iter(values["inputs"].values()))
+            selected_input["values"][0] = 99.0
+            projection.write_text(json.dumps(values) + "\n")
+        else:
+            outputs = kwargs["command_buffer"]["kernel_abi"]["outputs"]
+            assert outputs == ["out0", "out1", "out2"]
+            outputs.reverse()
+        return proof
+
+    args["source_verifier"] = changed_source_observer
+    attempts = []
+
+    def forbidden_build(*_args, **_kwargs):
+        attempts.append("build")
+        raise AssertionError("changed source product reached build or execution")
+
+    monkeypatch.setattr(compiler, "run_on_oracle", forbidden_build)
+    candidate = args["package_dir"]
+    executor = PrivateRuntimeControlExecutor(candidate, output, exact_tree_record(candidate)["sha256"])
+    with (
+        P.scoped_package_executor(executor),
+        pytest.raises(
+            native.NativeComponentExecutionError, match="(emitted source products|bound source projection) changed"
+        ),
+    ):
+        native.execute_component(**args)
+    assert attempts == [] and not (output / "build").exists()
+    result = json.loads((output / "result.json").read_bytes())
+    assert result["status"] == "unavailable" and "numeric_report" not in result
+    records = [json.loads(path.read_bytes()) for path in output.rglob("invocation.json")]
+    assert any(row["kind"] == "subprocess" and row["status"] == "completed" for row in records)
+    assert not any(row["stage"] == "component_native_execution" for row in records)
