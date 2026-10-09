@@ -114,6 +114,12 @@ class PreparedCombinationalObservation:
                     value = args[0]
                     for arg in args[1:]:
                         value &= arg
+                elif expression.kind in {"comb.or", "comb.xor"}:
+                    value = args[0]
+                    for arg in args[1:]:
+                        value = value | arg if expression.kind == "comb.or" else value ^ arg
+                elif expression.kind == "comb.sub":
+                    value = args[0] - args[1]
                 elif expression.kind == "comb.mux":
                     value = args[1] if args[0] else args[2]
                 elif expression.kind == "comb.icmp":  # Preparation admits equality only.
@@ -167,7 +173,7 @@ def _ports(module, block, output, limits):
     return tuple(inputs), tuple(outputs)
 
 
-def _expression(op, widths, width):
+def _expression(op, widths, width, *, conditional_logic=False):
     from xdsl.dialects.comb import ICMP_COMPARISON_OPERATIONS
 
     kind, parameter = _name(op), None
@@ -191,6 +197,10 @@ def _expression(op, widths, width):
         valid = bool(widths) and sum(widths) == width
     elif kind in {"comb.add", "comb.and"}:
         valid = len(widths) >= 2 and all(bits == width for bits in widths)
+    elif conditional_logic and kind in {"comb.or", "comb.xor"}:
+        valid = len(widths) >= 2 and all(bits == width for bits in widths)
+    elif conditional_logic and kind == "comb.sub":
+        valid = widths == [width, width]
     elif kind == "comb.mux":
         valid = widths == [1, width, width]
     elif kind == "comb.icmp":

@@ -76,14 +76,15 @@ SUITES = {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
         "native_tools": ("firtool", "iverilog", "vvp"),
-        "native_test_files": ("test_hw_combinational_observations.py",),
+        "native_test_files": ("test_hw_combinational_observations.py", "test_hw_instance_inputs.py"),
         "tests": (
-            "test_hw_combinational_observations.py", "test_hw_input_observations.py",
+            "test_hw_combinational_observations.py", "test_hw_instance_inputs.py", "test_hw_input_observations.py",
             "test_hw_packing.py", "test_mlir_source_admission.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
-            "merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_graph",
+            "merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_instance_inputs",
+            "merlin.targetgen.rtl.hw_graph",
             "merlin.targetgen.contract.mlir_source_admission",
         ),
         "required_modules": ("xdsl",),

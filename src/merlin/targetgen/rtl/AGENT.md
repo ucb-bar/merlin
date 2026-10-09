@@ -49,3 +49,13 @@ width bounded by the requested limit or 64-bit metadata, and no aggregate
 literals. This addresses preparse integer and nesting allocation failures; it
 does not change the historical generic reader or replace a process resource
 lease, exact operation typing, source correspondence or original obligations.
+
+`hw_instance_inputs.prepare_instance_input_observation` follows only selected
+original instance input ports through typed bounded combinational SSA. The
+complete callee and actual instance input/output signatures are checked and
+retained. Module arguments and direct instance results remain independent
+symbolic roots; state and unknown expressions refuse. No opaque result is
+followed across its instance or promoted to reachable state/effects. Original
+undefined branches need a separate source validity premise; a local two-state
+address or a declared memory depth does not establish allocation, tensor
+capacity, temporal reuse, physical transfer correctness or timing authority.
