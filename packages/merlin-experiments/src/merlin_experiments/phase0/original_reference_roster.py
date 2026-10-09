@@ -32,6 +32,7 @@ from .rtl_intake import RtlIntakePin
 
 SCHEMA = "merlin.original_reference_roster.v1"
 BATCH_SCHEMA = "merlin.original_reference_roster.v2"
+POINTWISE_SCHEMA = "merlin.original_reference_roster.v3"
 _ISSUED = weakref.WeakKeyDictionary()
 _UNKNOWN = (
     "original_numerical_domain",
@@ -49,7 +50,10 @@ _READERS = (
     P.__name__,
     D.__name__,
     "merlin_experiments.phase0.original_reference_observer",
+    "merlin_experiments.phase0.original_pointwise_reference_observer",
     "merlin.targetgen.original_operator_reference",
+    "merlin.targetgen.original_pointwise_reference",
+    "merlin.targetgen.original_pointwise_sources",
     "merlin.targetgen.original_reference_values",
     "merlin.targetgen.original_operator_sources",
     "merlin.targetgen.frontend_original_call",
@@ -62,6 +66,7 @@ _READERS = (
     "merlin.common.schemas",
     "merlin.common.yaml",
     "merlin.common.strict_json",
+    "merlin.common.jsonio",
 )
 
 
@@ -96,6 +101,21 @@ def _sources(selection):
         schemas_dir() / "quant_formats.registry.yaml",
         schemas_dir() / "quant_format.schema.yaml",
     ]
+
+
+def record_schema(selection):
+    if selection["schema"] == P.POINTWISE_SCHEMA:
+        return POINTWISE_SCHEMA
+    return BATCH_SCHEMA if P.transport(selection) == "batch.v1" else SCHEMA
+
+
+def _observer(selection):
+    name = (
+        "original_pointwise_reference_observer"
+        if selection["schema"] == P.POINTWISE_SCHEMA
+        else "original_reference_observer"
+    )
+    return module_source_path("merlin_experiments.phase0." + name)
 
 
 def _paths(owner):
@@ -156,6 +176,10 @@ def _drafts(defaults, *, schema, basis, selection):
             for factory in (S.matmul_forms, S.original_add_forms, S.conv2d_forms)
             for form in factory(trace, schemas, observed)
         ]
+        if selection["schema"] == P.POINTWISE_SCHEMA:
+            from merlin.targetgen.original_pointwise_sources import pointwise_forms
+
+            forms += pointwise_forms(trace, schemas, observed, version=2)
         indexed = {form["node"]: form for form in forms}
         for call in call_contracts(trace, schemas, observed):
             for cohort in P.COHORTS:
@@ -177,11 +201,17 @@ def _drafts(defaults, *, schema, basis, selection):
                             raise ValueError(form["reason"])
                         selected = P.selected_policy(selection, form)
                         form["source_numerical_semantics"] = selected.record()
-                        factory = {
+                        factories = {
                             "aten.matmul.default": S.matmul_source,
                             "aten.add.Tensor": S.add_source,
                             "aten.conv2d.default": S.conv2d_source,
-                        }[form["target"]]
+                        }
+                        if selection["schema"] == P.POINTWISE_SCHEMA:
+                            from merlin.targetgen.original_pointwise_reference import OPERATIONS
+                            from merlin.targetgen.original_pointwise_sources import pointwise_source
+
+                            factories.update(dict.fromkeys(OPERATIONS, pointwise_source))
+                        factory = factories[form["target"]]
                         source = factory(
                             form, extent=extent, max_tensor_elements=selection["source_budget"]["max_tensor_elements"]
                         )
@@ -318,7 +348,7 @@ def _native(invocation, *, argv, inputs):
 
 
 def _evaluate(member, contract, *, selection, python, owner):
-    observer = module_source_path("merlin_experiments.phase0.original_reference_observer")
+    observer = _observer(selection)
     paths = _paths(owner)
     paths["source"].write_text(contract.source.loader)
     paths["source"].chmod(0o600)
@@ -441,7 +471,7 @@ def prepare(*, schema_intake, basis, selection, destination):
             pin.verify()
         schema_intake.verify()
     record = {
-        "schema": BATCH_SCHEMA if P.transport(selected) == "batch.v1" else SCHEMA,
+        "schema": record_schema(selected),
         "operator_schema_intake_sha256": schema_intake.sha256,
         "software_intake_sha256": schema_intake.software.sha256,
         "semantic_basis_sha256": basis.source.sha256,

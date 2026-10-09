@@ -5,6 +5,8 @@ phase1 replays controller, CLI, RTL-feedback and private model-gate tests with c
 runtime-admission checks cross-process simulator reservations without launching native simulators.
 device-shim replays native C-interface ABI and numerical shim tests from the installed core.
 phase0-inputs replays explicit recipe loading and declaration resolution, not hardware derivation.
+source-preparation-qualification replays versioned source domain selection and real native
+dependency/clone/output controls with synthetic author/runtime facets; it cannot qualify an experiment.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -72,6 +74,86 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "source-preparation-qualification": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "native_tools": ("clang",),
+        "native_test_files": (
+            "test_source_preparation_qualification.py",
+            "test_component_qualification.py",
+            "test_source_preparation_release.py",
+        ),
+        "tests": (
+            "test_source_preparation_qualification.py",
+            "test_component_qualification.py",
+            "test_source_preparation_release.py",
+        ),
+        "support_files": (
+            "test_source_requirement_ledger.py",
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+            "test_component_coverage.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase1.component_qualification",
+            "merlin_experiments.phase1.component_qualification_domain",
+            "merlin_experiments.phase1.component_qualification_evidence",
+            "merlin_experiments.phase0.source_preparation_release",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "source-preparation-release": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "test_source_preparation_release.py",
+            "test_source_preparation_semantic_join.py",
+            "test_component_origin.py",
+            "test_fresh_phase1_generation_budget.py",
+        ),
+        "support_files": (
+            "test_source_requirement_ledger.py",
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+            "test_component_coverage.py",
+            "test_original_semantic_review.py",
+            "test_original_reference_standard_ir.py",
+            "test_original_reference_requirement_join.py",
+            "original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.source_preparation_release",
+            "merlin_experiments.phase1.component_generation_admission",
+            "merlin_experiments.phase1.component_origin",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "development-measurement-scheduling": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "tests": (
+            "merlin/tests/targetgen/test_component_measurement_plan.py",
+            "packages/merlin-experiments/tests/test_component_measurement_scheduling.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.component_measurement_plan",
+            "merlin_experiments.phase2.component_measurement_scheduling",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "compiled-static-features": {
         "tests_root": ".",
         "test_fixture_imports": True,

@@ -4,6 +4,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`source_preparation_release` replays the complete original source ledger and
+optional finite semantic cases into a live versioned input owner. Preserve all
+mandatory blockers, original declaration roles/cohorts and pending candidate
+predicates. Fresh Phase1 consumes completion through its explicit selector while
+retaining runtime, compile roster, library, transport and isolation gates.
+Source completion is never candidate correctness or hardware qualification;
+historical coverage keeps its separate reader and meaning.
+
 `original_semantic_review` binds protected operation-local public schema/default,
 form, storage and numerical-policy choices to complete original reference and
 upstream source-ABI cases. The same reference traversal observes actual signs,
@@ -492,3 +500,16 @@ original address roster and old unproved T rows. Strict semantic replay rejects
 missing membership, altered source/depth/types and bool/integer substitutions.
 Known-bit containment never grants address definedness, reachable state/event
 validity, memory history, physical mapping or original mandatory admission.
+
+Original reference selection/roster v3 explicitly adds policy v2 and original
+pointwise source form v2. Declared reference/standard selections v2 and standard
+IR selection/request/roster v2 bind that exact vocabulary to fixed observers.
+Historical versions retain their linear/convolution-only meanings. Preserve all
+original calls and every guard/private slot, ordered storage/rank/defaults, and
+complete logical source/native/reference budgets. Recompute complete outputs
+with original scalar conversion, selected zero-sign comparison and finite RNE.
+Undefined or unsupported numeric forms remain required unavailable rows. Native
+conversion failure, opaque frontend output and stock parser refusal give no
+source credit. These finite private observations do not grant original semantic
+ownership, numerical admission, stress-domain coverage, hardware or runtime
+effects, compiled semantics, or Phase 1 release.

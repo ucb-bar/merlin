@@ -15,6 +15,7 @@ from .command_intake import _git
 from .original_call_sources import required_source_cohorts
 
 SCHEMA = "merlin.original_standard_ir_selection.v1"
+POINTWISE_SCHEMA = "merlin.original_standard_ir_selection.v2"
 _BUDGET = {
     "max_members",
     "max_source_bytes",
@@ -41,7 +42,8 @@ def validate(selected, references):
             "budget",
             "execution_budget",
         }
-        or selected["schema"] != SCHEMA
+        or selected["schema"]
+        != (POINTWISE_SCHEMA if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA else SCHEMA)
         or selected["reference_roster_sha256"] != references.sha256
         or type(selected["capture_commit"]) is not str
         or len(selected["capture_commit"]) != 40

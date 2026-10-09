@@ -1,9 +1,10 @@
 """Fixed complete replay of private original-reference products and decisions."""
 
 import math
+import operator
 from pathlib import Path
 
-from merlin.common.paths import module_source_path
+from merlin.common.jsonio import canonical_json
 from merlin.common.strict_json import loads
 from merlin.targetgen.original_reference_values import TypedReferenceTensor, format_record
 
@@ -11,6 +12,11 @@ from . import original_reference_plan as P
 from .operator_schema_intake import _selection
 
 SCHEMA = "merlin.original_reference_roster.v1"
+
+
+def _pointwise_equal(expected, actual):
+    """Compare finite JSON without merging bool/int/float or signed-zero fields."""
+    return canonical_json(expected) == canonical_json(actual)
 
 
 def _decode_outputs(rows):
@@ -67,6 +73,7 @@ def verify(record, *, schema_intake, basis, selection):
 
     schema = R._originals(schema_intake, basis)
     selected = P.validate(loads(R._plain(selection).read_bytes()))
+    equal = _pointwise_equal if selected["schema"] == P.POINTWISE_SCHEMA else operator.eq
     if (
         set(record)
         != {
@@ -82,7 +89,7 @@ def verify(record, *, schema_intake, basis, selection):
             "source_pins",
             "scope",
         }
-        or record.get("schema") != (R.BATCH_SCHEMA if P.transport(selected) == "batch.v1" else SCHEMA)
+        or record.get("schema") != R.record_schema(selected)
         or record["selection"] != R._pin(selection)
         or record["operator_schema_intake_sha256"] != schema_intake.sha256
         or selected["operator_schema_intake_sha256"] != schema_intake.sha256
@@ -109,13 +116,13 @@ def verify(record, *, schema_intake, basis, selection):
         transport=P.transport(selected),
     )
     rows, contracts, totals = R._drafts(record["defaults"], schema=schema, basis=basis, selection=selected)
-    if len(rows) != len(record["members"]) or totals != record["totals"]:
+    if len(rows) != len(record["members"]) or not equal(totals, record["totals"]):
         raise ValueError("original references lost required original slots or complete preallocation decisions")
     python = _selection(Path(schema["selection_path"]).read_bytes())["python"]
-    observer = module_source_path("merlin_experiments.phase0.original_reference_observer")
+    observer = R._observer(selected)
     for index, (expected, actual) in enumerate(zip(rows, record["members"], strict=True)):
         if index not in contracts:
-            if actual != expected:
+            if not equal(actual, expected):
                 raise ValueError("original unavailable reference obligation was changed or dropped")
             continue
         contract = contracts[index]
@@ -130,7 +137,7 @@ def verify(record, *, schema_intake, basis, selection):
         ):
             raise ValueError("original reference source differs from original exact typed factory")
         inputs = R._stimulus(contract, selected)
-        if loads(paths["inputs"].read_bytes()) != [R._tensor_record(tensor) for tensor in inputs]:
+        if not equal(loads(paths["inputs"].read_bytes()), [R._tensor_record(tensor) for tensor in inputs]):
             raise ValueError("original reference changed complete original typed input stress")
         try:
             reference = contract.evaluate(inputs)
@@ -139,7 +146,7 @@ def verify(record, *, schema_intake, basis, selection):
                 raise ValueError("unavailable reference retained unexpected downstream products") from error
             expected.update(state="reference_unavailable", reason=str(error), products=products)
         else:
-            if loads(paths["reference"].read_bytes()) != [R._tensor_record(tensor) for tensor in reference]:
+            if not equal(loads(paths["reference"].read_bytes()), [R._tensor_record(tensor) for tensor in reference]):
                 raise ValueError("original reference answers differ from complete independent replay")
             argv = [
                 python,
@@ -166,13 +173,13 @@ def verify(record, *, schema_intake, basis, selection):
                         raise ValueError("unavailable comparison retained an unexpected verdict product") from error
                     expected.update(state="comparison_unavailable", reason=str(error))
                 else:
-                    if "comparison" not in products or loads(paths["comparison"].read_bytes()) != comparison:
+                    if "comparison" not in products or not equal(loads(paths["comparison"].read_bytes()), comparison):
                         raise ValueError("original complete comparison differs from independent replay")
                     expected.update(
                         state="reference_checked" if comparison["passed"] else "comparison_refuted",
                         reason="complete bounded native/source-reference comparison; domain remains unqualified",
                     )
             expected["products"] = products
-        if expected != actual:
+        if not equal(expected, actual):
             raise ValueError("original reference observation/status/required premises differ from actual replay")
     return record

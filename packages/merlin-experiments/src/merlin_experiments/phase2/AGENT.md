@@ -598,3 +598,36 @@ Feature products live outside the original compile roster. This explicit first
 version refuses transformed object routes and unsupported emitted bodies.
 Emitted sites, access widths and linked bytes do not grant instruction semantics,
 physical traffic, correctness, isolation, runtime roles or calibrated feedback.
+
+`component_measurement_scheduling` is an optional development-only selection.
+Its fixed analytical producer requires the actual live independent measurement,
+runtime and held applicability owners before issuing a plan; saved products and
+constructed plans refuse. The certified evaluator reopens current source/tool,
+compiler/member/context and actual applicability products at dispatch and after
+execution/parsing. Old redacted baseline cache entries cannot replace those joins.
+Every original unmeasured member retains nulls and a reason; selected feedback
+cannot establish corpus attainment, recoverable totals, plateau or promotion.
+Default correctness/held/final behavior and all original evidence minima remain.
+The bounded subprocess controls prove dispatch/consumption only; test verifier
+replacement never populates the production registry. Current unissued physical
+roles still block plan preparation. Late-result rejection is not an OS hard
+deadline, process isolation or cleanup guarantee. The existing analytical feature
+provider may still require execution; static counts need independent qualification
+before this route can avoid that cost. Direct source-file pins are not transitive
+dependency, callback bytecode or simulator/runtime semantic qualification.
+
+`component_measurement_execution` invokes the existing ordinary source/build/full
+numerical path for one fresh compiler arm, then reopens exact selected source,
+LLVM/object/link/ELF/support, actual process console and ordered raw stage events.
+Full explicit native environment mappings are checked against actual invocations;
+returned products retain only identities and key rosters, withholding values.
+Original input trees are selected before execution. The fixed consumer reparses
+the actual full serial stream, rederives the original ABI/input projection and
+recomputes the complete original numerical comparison. Edited saved outputs,
+metrics or reports cannot replace those products. Coherent-memory consumption
+is unsupported in this raw serial slice and requires its separate original owner.
+Bounded reads precede decoding. Missing/moved events refuse accounting even when
+original outputs match. Source-produced labels and raw getters cannot certify
+actual complete-cost boundaries, cold/warm state, timer integrity, runtime14,
+stage11, measurement14 or held ranking/error/coverage. OOT support owns those
+semantics; this data-only collector supplies no issuer or author grant.
