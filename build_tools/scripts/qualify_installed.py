@@ -72,6 +72,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "functional-callback-selection": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_explicit_execution_service.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": ("merlin.targetgen.contract.execution_service",),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "hw-discovery-inputs": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",

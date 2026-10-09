@@ -76,6 +76,11 @@ Its source pins establish attribution and drift checks. Independently evaluated
 semantic, physical-effect and hardware-runtime qualification belongs to the
 private experiments owner, and cannot be issued by this transport.
 
+The functional transport freezes exact function/code, bound-method owner and
+stdlib partial bindings, rechecking them before and after running and parsing.
+This shallow selection check proves neither mutable reachable state, import
+closure nor source-to-bytecode correspondence.
+
 The build-only renderer must be an actual Python function or bound method whose
 inspected file and current bytes belong to the selected source roster. Unwrap
 only exact stdlib `functools.partial`, never supplied wrapper/source attributes.

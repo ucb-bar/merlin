@@ -10,10 +10,45 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
+from types import FunctionType, MethodType
 
 from .build_service import file_digest
+
+
+def _callback_selection(callback):
+    """Shallow actual callable selection; reachable state and imports are unproved."""
+    original, wrappers = callback, []
+    while type(callback) is partial:
+        if any(type(key) is not str for key in callback.keywords):
+            return None
+        wrappers.append((callback, callback.func, callback.args, tuple(sorted(callback.keywords.items()))))
+        callback = callback.func
+    if type(callback) not in (FunctionType, MethodType):
+        return None
+    method = type(callback) is MethodType
+    function = callback.__func__ if method else callback
+    return original, function, callback.__self__ if method else None, function.__code__, tuple(wrappers)
+
+
+def _same_callback(current, selected):
+    if current is None or selected is None or any(a is not b for a, b in zip(current[:4], selected[:4], strict=True)):
+        return False
+    if len(current[4]) != len(selected[4]):
+        return False
+    for actual, original in zip(current[4], selected[4], strict=True):
+        if any(a is not b for a, b in zip(actual[:3], original[:3], strict=True)):
+            return False
+        if len(actual[3]) != len(original[3]):
+            return False
+        if any(
+            key != old_key or value is not old_value
+            for (key, value), (old_key, old_value) in zip(actual[3], original[3], strict=True)
+        ):
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -24,6 +59,16 @@ class FunctionalExecutionService:
     parser: Callable
     source_pins: tuple[tuple[str, str], ...]
     engine_json: str
+    _callback_selections: tuple = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        # Invalid callback forms remain constructible for ordinary validation
+        # diagnostics; no such callback can pass verify or be invoked here.
+        object.__setattr__(
+            self,
+            "_callback_selections",
+            tuple(_callback_selection(callback) for callback in (self.runner, self.parser)),
+        )
 
     def verify(self, target: str, simulator: str) -> dict:
         if (
@@ -44,8 +89,13 @@ class FunctionalExecutionService:
                 or file_digest(member) != expected
             ):
                 raise ValueError("functional execution source/tool pin changed: " + str(path))
-        for callback in (self.runner, self.parser):
-            owner = inspect.getsourcefile(callback) if callable(callback) else None
+        for callback, selected in zip((self.runner, self.parser), self._callback_selections, strict=True):
+            current = _callback_selection(callback)
+            if current is None:
+                raise ValueError("functional execution callback must be an actual Python function or bound method")
+            if not _same_callback(current, selected):
+                raise ValueError("functional execution selected callback implementation or partial bindings changed")
+            owner = inspect.getsourcefile(current[1])
             if owner is None or (str(Path(owner).resolve()), file_digest(Path(owner))) not in self.source_pins:
                 raise ValueError("functional execution callback has no pinned inspected source owner")
         from merlin.common.strict_json import loads
@@ -69,8 +119,11 @@ class FunctionalExecutionService:
         return result
 
     def parse_output(self, console):
-        self.verify(self.target, self.simulator)
-        return self.parser(console)
+        before = self.verify(self.target, self.simulator)
+        result = self.parser(console)
+        if self.verify(self.target, self.simulator) != before:
+            raise ValueError("functional execution selection changed during parsing")
+        return result
 
     @property
     def oracle(self) -> dict:

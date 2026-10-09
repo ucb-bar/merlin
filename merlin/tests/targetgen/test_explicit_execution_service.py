@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -223,3 +224,198 @@ def test_admission_report_and_linked_bytes_must_reopen_unchanged(tmp_path):
     Path(result["report_path"]).write_text("{}")
     with pytest.raises(ValueError, match="report has no unchanged"):
         service.revalidate(elf=elf, result=result, target="fixture")
+
+
+def _owned_service(runner, parser):
+    owner = Path(__file__).resolve()
+    return FunctionalExecutionService(
+        "fixture",
+        "native_control",
+        runner,
+        parser,
+        ((str(owner), file_digest(owner)),),
+        '{"kind":"owned-control"}',
+    )
+
+
+@pytest.mark.parametrize("role", ["runner", "parser"])
+def test_same_source_code_replacement_refuses_before_callback_invocation(role):
+    observed = []
+
+    def run(elf, *, simulator, timeout):
+        observed.append("run")
+        return "original"
+
+    def replacement(elf, *, simulator, timeout):
+        observed.append("changed")
+        return "changed"
+
+    def parse(console):
+        observed.append("parse")
+        return console
+
+    def changed_parse(console):
+        observed.append("changed")
+        return "changed"
+
+    service = _owned_service(run, parse)
+    if role == "runner":
+        run.__code__ = replacement.__code__
+    else:
+        parse.__code__ = changed_parse.__code__
+    with pytest.raises(ValueError, match="selected callback implementation"):
+        if role == "runner":
+            service.run_elf("unused", simulator="native_control", timeout=1)
+        else:
+            service.parse_output("original")
+    assert observed == []
+
+
+def test_actual_runner_cannot_replace_same_file_parser_before_complete_decoding(tmp_path, monkeypatch):
+    cb, build, original = _fixture(tmp_path, monkeypatch, _full_console())
+    parsed = []
+
+    def parse(console):
+        parsed.append(1)
+        return _parse(console)
+
+    def changed_parse(console):
+        parsed.append(2)
+        return ({"out": [[9, 9]]}, {})
+
+    def run(elf, *, simulator, timeout):
+        console = _run_native(elf, simulator=simulator, timeout=timeout)
+        parse.__code__ = changed_parse.__code__
+        return console
+
+    execution = _owned_service(run, parse)
+    with pytest.raises(ValueError, match="selected callback implementation"):
+        _invoke(tmp_path, cb, build, execution)
+    assert parsed == []
+    assert (tmp_path / "run" / "native.py").is_file()
+    records = [
+        invocation_record.verify(path)
+        for path in (tmp_path / "run").rglob("invocation.json")
+        if json.loads(path.read_text())["kind"] == "subprocess"
+    ]
+    assert len(records) == 1 and records[0]["stage"] == "functional_engine"
+    assert Path(records[0]["stdout"]["path"]).read_text() == _full_console()
+
+
+def test_parser_rechecks_actual_same_source_runner_code_after_return():
+    def run(elf, *, simulator, timeout):
+        return "original"
+
+    def changed_run(elf, *, simulator, timeout):
+        return "changed"
+
+    def parse(console):
+        run.__code__ = changed_run.__code__
+        return console
+
+    service = _owned_service(run, parse)
+    with pytest.raises(ValueError, match="selected callback implementation"):
+        service.parse_output("original")
+
+
+def test_exact_bound_owner_is_selected_but_legitimate_instance_state_remains_mutable():
+    class Owner:
+        def __init__(self):
+            self.count = 0
+
+        def run(self, elf, *, simulator, timeout):
+            self.count += 1
+            return "original"
+
+        def parse(self, console):
+            return console
+
+    original, other = Owner(), Owner()
+    service = _owned_service(original.run, original.parse)
+    assert service.parse_output(service.run_elf("unused", simulator="native_control", timeout=1)) == "original"
+    assert original.count == 1
+    object.__setattr__(service, "runner", other.run)
+    with pytest.raises(ValueError, match="selected callback implementation"):
+        service.run_elf("unused", simulator="native_control", timeout=1)
+    assert other.count == 0
+
+
+@pytest.mark.parametrize("change", ["value", "added", "removed", "non_string"])
+def test_exact_partial_keyword_bindings_refuse_drift(change):
+    def run(elf, *, simulator, timeout, marker):
+        return marker
+
+    def parse(console):
+        return console
+
+    selected = partial(run, marker="original")
+    service = _owned_service(selected, parse)
+    assert service.run_elf("unused", simulator="native_control", timeout=1) == "original"
+    if change == "value":
+        selected.keywords["marker"] = "changed"
+    elif change == "added":
+        selected.keywords["new"] = 1
+    elif change == "removed":
+        selected.keywords.clear()
+    else:
+        selected.keywords[1] = "not a Python keyword"
+    with pytest.raises(ValueError, match="callback"):
+        service.run_elf("unused", simulator="native_control", timeout=1)
+
+
+def test_partial_mutation_during_runner_refuses_after_actual_callback():
+    calls = []
+
+    def run(elf, *, simulator, timeout, marker):
+        calls.append(marker)
+        selected.keywords["marker"] = "changed"
+        return marker
+
+    def parse(console):
+        return console
+
+    selected = partial(run, marker="original")
+    service = _owned_service(selected, parse)
+    with pytest.raises(ValueError, match="partial bindings changed"):
+        service.run_elf("unused", simulator="native_control", timeout=1)
+    assert calls == ["original"]
+
+
+def test_partial_arguments_remain_selected_without_comparing_reachable_state():
+    storage = []
+
+    def run(values, elf, *, simulator, timeout):
+        values.append(elf)
+        return elf
+
+    def parse(console):
+        return console
+
+    service = _owned_service(partial(run, storage), partial(parse))
+    assert service.run_elf("unused", simulator="native_control", timeout=1) == "unused"
+    assert storage == ["unused"]
+    service.verify("fixture", "native_control")
+
+
+@pytest.mark.parametrize("kind", ["callable_object", "partial_subclass"])
+def test_spoofed_callable_owner_is_not_an_actual_selected_function(kind):
+    called = []
+
+    def run(elf, *, simulator, timeout):
+        called.append(1)
+        return "original"
+
+    class PretendFunction:
+        __code__ = run.__code__
+
+        def __call__(self, *args, **kwargs):
+            return run(*args, **kwargs)
+
+    class PretendPartial(partial):
+        pass
+
+    callback = PretendFunction() if kind == "callable_object" else PretendPartial(run)
+    service = _owned_service(callback, _parse)
+    with pytest.raises(ValueError, match="actual Python function or bound method"):
+        service.run_elf("unused", simulator="native_control", timeout=1)
+    assert called == []
