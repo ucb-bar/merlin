@@ -11,7 +11,7 @@ import pytest
 from merlin.common.paths import runtime_dir
 from merlin.runtime.direct_kernel_harness import DirectKernelAbi, render_direct_kernel
 from merlin.runtime.out_b64 import OutB64Decoder
-from merlin.targetgen.contract.readback_policy import FULL_VALUES_B64, ReadbackPolicy
+from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
 
 
 @pytest.fixture
@@ -103,3 +103,21 @@ def test_incomplete_or_lossy_bindings_refuse_before_compilation(program, defect)
             readback_policy=ReadbackPolicy(FULL_VALUES_B64),
             abi=DirectKernelAbi("copy_control", None, 8, "little", "void"),
         )
+
+
+def test_explicit_coherent_harness_keeps_original_storage_call_and_completion(program):
+    cb, inputs = program
+    abi = DirectKernelAbi("copy_control", "complete_control", 8, "little", "void")
+    serial = render_direct_kernel(cb, inputs=inputs, readback_policy=ReadbackPolicy(FULL_VALUES_B64), abi=abi)
+    memory = render_direct_kernel(cb, inputs=inputs, readback_policy=ReadbackPolicy(COHERENT_DUMP_V1), abi=abi)
+    for line in serial.splitlines():
+        if line.startswith("static unsigned char tensor_"):
+            assert line in memory
+    assert "copy_control(tensor_0, tensor_1, tensor_2, tensor_3);" in memory
+    assert memory.index("complete_control();") < memory.index('htif_puts("DONE')
+    assert "out_b64.h" not in memory and "OUT_" not in memory
+    assert memory.count('htif_puts("DONE\\n");') == 1
+    for defect in ("coherent_packet_v1", None, {"transport": COHERENT_DUMP_V1}):
+        policy = ReadbackPolicy(defect) if isinstance(defect, str) else defect
+        with pytest.raises(ValueError, match="complete B64 or coherent"):
+            render_direct_kernel(cb, inputs=inputs, readback_policy=policy, abi=abi)

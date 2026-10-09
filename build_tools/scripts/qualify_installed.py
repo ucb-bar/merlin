@@ -181,6 +181,7 @@ SUITES = {
             "test_component_runtime_qualification.py",
             "test_component_runtime_support.py",
             "test_component_native_deadline.py",
+            "test_component_memory_transport.py",
             "test_component_runtime_controls.py",
             "test_component_measurement_qualification.py",
             "test_component_applicability.py",

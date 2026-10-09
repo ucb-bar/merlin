@@ -13,7 +13,7 @@ import math
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
-from merlin.targetgen.contract.readback_policy import FULL_VALUES_B64, ReadbackPolicy
+from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
 
 
 def _identifier(value):
@@ -95,7 +95,7 @@ def _raw(spec, values, *, count, width, dtype, byte_order):
 
 
 def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None):
-    """Render a complete pointer-call harness with lossless serial readback.
+    """Render complete pointer-call storage with explicitly selected readback.
 
     This accepts an explicit command-buffer argument roster. The ordinary source
     binder separately verifies its correspondence to the original input/output
@@ -116,8 +116,12 @@ def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, o
             or original_storage.policy.tensor_alignment != abi.tensor_alignment
         ):
             raise ValueError("direct kernel storage differs from its selected byte order/alignment")
-    if type(readback_policy) is not ReadbackPolicy or readback_policy.transport != FULL_VALUES_B64:
-        raise ValueError("direct kernel harness requires complete B64 container readback")
+    if type(readback_policy) is not ReadbackPolicy or readback_policy.transport not in (
+        FULL_VALUES_B64,
+        COHERENT_DUMP_V1,
+    ):
+        raise ValueError("direct kernel harness requires complete B64 or coherent memory readback")
+    memory = readback_policy.transport == COHERENT_DUMP_V1
     tensors, kernel = cb.get("tensors"), cb.get("kernel_abi")
     if not isinstance(tensors, dict) or not isinstance(kernel, dict):
         raise ValueError("direct kernel harness has no explicit tensor/argument declaration")
@@ -150,9 +154,10 @@ def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, o
     declarations = [
         "#include <stdint.h>",
         '#include "htif.h"',
-        '#include "out_b64.h"',
         f"extern void {abi.entry_symbol}({', '.join('void *' for _ in args)});",
     ]
+    if not memory:
+        declarations.insert(2, '#include "out_b64.h"')
     if abi.completion_symbol:
         declarations.append(f"extern void {abi.completion_symbol}(void);")
     for name, (index, access, (count, width, dtype)) in slots.items():
@@ -179,7 +184,9 @@ def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, o
     )
     if abi.completion_symbol:
         body.append(f"  {abi.completion_symbol}();")
-    for name in outputs:
+    # The selected coherent reader resolves these actual linked static objects.
+    # It owns full-value admission; DONE alone supplies no output or effect proof.
+    for name in () if memory else outputs:
         index, _, (count, width, dtype) = slots[name]
         rows = math.prod(tensors[name]["shape"][:-1])
         cols = tensors[name]["shape"][-1]

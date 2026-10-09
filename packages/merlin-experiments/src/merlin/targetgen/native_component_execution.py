@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import copy
 import hashlib
+import inspect
 import json
 import math
 from pathlib import Path
@@ -218,6 +219,7 @@ def execute_component(
     readback_policy,
     timeout_s: int,
     elf_admission=None,
+    memory_readback=None,
 ) -> dict:
     from merlin.targetgen import package_runtime as P
     from merlin.targetgen.bundle_harness import emitted_entry_arity
@@ -232,12 +234,46 @@ def execute_component(
         or type(execution_service) is not FunctionalExecutionService
         or not callable(source_verifier)
         or type(readback_policy) is not RB.ReadbackPolicy
-        or readback_policy.transport in RB.MEMORY_TRANSPORTS
     ):
         raise NativeComponentExecutionError(
-            "independent native route requires explicit bounded build/execution/source services "
-            "and serial full readback"
+            "independent native route requires explicit bounded build/execution/source services and full readback"
         )
+    memory = readback_policy.transport in RB.MEMORY_TRANSPORTS
+    reader_pins, reader_callbacks = [], {}
+    if memory:
+        for name in ("prepare", "decode"):
+            callback = getattr(memory_readback, name, None)
+            try:
+                owner = inspect.getsourcefile(callback) if callable(callback) else None
+            except TypeError:
+                owner = None
+            if owner is None:
+                raise NativeComponentExecutionError("independent memory readback requires a source-bound reader")
+            path = _plain(Path(owner))
+            pin = (str(path), hashlib.sha256(path.read_bytes()).hexdigest())
+            if pin not in execution_service.source_pins:
+                raise NativeComponentExecutionError("memory reader is outside the selected functional source closure")
+            reader_pins.append(pin)
+            function = getattr(callback, "__func__", callback)
+            reader_callbacks[name] = (
+                function,
+                getattr(callback, "__self__", None),
+                getattr(function, "__code__", None),
+            )
+    elif memory_readback is not None:
+        raise NativeComponentExecutionError("memory reader requires an explicitly selected memory policy")
+
+    def verify_reader():
+        for name, (function, instance, code) in reader_callbacks.items():
+            actual = getattr(memory_readback, name, None)
+            current = getattr(actual, "__func__", actual)
+            if (
+                current is not function
+                or getattr(actual, "__self__", None) is not instance
+                or getattr(current, "__code__", None) is not code
+            ):
+                raise NativeComponentExecutionError("selected memory reader callback changed")
+
     if P.active_package_executor() is None:
         raise NativeComponentExecutionError("independent native route requires an explicit scoped package executor")
     deadline = ExecutionDeadline.start(timeout_s)
@@ -256,6 +292,7 @@ def execute_component(
         "semantic stages, effects, hardware and cost remain unqualified",
         "target": target,
         "readback_policy": readback_policy.record(),
+        **({"memory_reader_source_pins": sorted(set(reader_pins))} if memory else {}),
         "inputs": frozen,
     }
 
@@ -266,6 +303,7 @@ def execute_component(
         build_service.verify(target)
         if execution_service.verify(target, execution_service.simulator) != execution_before:
             raise NativeComponentExecutionError("independent native functional transport changed")
+        verify_reader()
 
     try:
         capsule = CC.load_capsule(capsule_dir, contract=contract_root)
@@ -306,6 +344,7 @@ def execute_component(
             )
             observation.returned(stdout=artifact)
         deadline.remaining()
+        unchanged()
         entry = build_service.recipe.require_kernel_stack_frame().entry_symbol
         if (cb.get("kernel_abi") or {}).get("kind") != "whole_program" or emitted_entry_arity(
             artifact, entry_symbol=entry
@@ -368,7 +407,10 @@ def execute_component(
                 generated / "lowered.llvm.mlir",
                 output / "input_projection.json",
             ),
-            dependencies=(*tuple(Path(path) for path, _ in build_service.source_pins), Path(_deadline_owner.__file__)),
+            dependencies=(
+                *tuple(Path(path) for path, _ in (*build_service.source_pins, *execution_service.source_pins)),
+                Path(_deadline_owner.__file__),
+            ),
         ) as observation:
             native = run_on_oracle(
                 bound,
@@ -384,6 +426,7 @@ def execute_component(
                 execution_revalidate=selected_execution,
                 _elf_admission=elf_admission,
                 execution_deadline=deadline,
+                **({"memory_readback": memory_readback, "oracle_revalidate": selected_execution} if memory else {}),
             )
             observation.returned(stdout=native["console"])
         deadline.remaining()
