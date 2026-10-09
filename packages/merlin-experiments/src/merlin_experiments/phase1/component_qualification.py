@@ -15,6 +15,7 @@ from pathlib import Path
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import ComponentView, RuntimeGrant, verify_component_view
 
+from . import component_qualification_domain as D
 from . import component_qualification_evidence as E
 from .component_compile_admission import qualification_compile_roles
 from .component_lineage import ComponentCompilerLineage
@@ -93,8 +94,6 @@ class ComponentQualification:
 
     def verify(self, *, candidate: Path | None = None) -> dict:
         """Reopen all frozen authorities; caller hashes and booleans grant nothing."""
-        from merlin_experiments.phase0.component_coverage import verify_report
-
         from . import source_inputs
         from .component_source_applicability import evaluate_component_source_applicability
 
@@ -140,7 +139,8 @@ class ComponentQualification:
             raise C.StageGateError("component qualification target selection changed")
         if C.exact_tree_record(self.contract_root)["sha256"] != self.contract_sha256:
             raise C.StageGateError("component grading contract changed")
-        report = verify_report(self.corpus_root)
+        report, domain = D.reopen_domain(self.corpus_root, origin=self.compiler_origin)
+        D.verify_receipt_domain(document, domain)
         if report["sha256"] != self.coverage_sha256:
             raise C.StageGateError("component domain membership changed")
         source_inputs.verify(
@@ -177,6 +177,7 @@ class ComponentQualification:
             report=report,
             corpus_root=self.corpus_root,
             descriptor_sha256=self.target_descriptor_sha256,
+            preparation=D.preparation_for_origin(self.compiler_origin),
         )
         return document
 
@@ -204,12 +205,14 @@ def qualify_component_compiler(
     runtime_authority=None,
     compile_role_evaluation=None,
 ) -> ComponentQualification:
-    """Grade every mandatory guard/transfer member, including declared refusals.
+    """Grade every selected original mandatory member, including declared refusals.
 
     The candidate is cloned privately before its normal build. Goldens, held
     members and execution records never enter the public authoring view. Source
     correspondence/native program checks stay with the existing grader and its
     selected target build services; numerical policies are never replaced here.
+    Explicit source preparation keeps its complete mandatory candidate roster;
+    historical coverage retains guard/transfer qualification.
     """
     if type(timeout_s) is not int or not 0 < timeout_s <= 600 or type(max_workers) is not int or max_workers != 1:
         raise C.StageGateError("component qualification requires bounded execution and one scoped compiler worker")
@@ -223,7 +226,7 @@ def qualify_component_compiler(
         candidate=Path(candidate),
         contract_root=contract_root,
     )
-    from merlin_experiments.phase0.component_coverage import build_guard_link, verify_report
+    from merlin_experiments.phase0.component_coverage import build_guard_link
 
     from . import source_inputs
     from .component_source_applicability import evaluate_component_source_applicability
@@ -250,9 +253,11 @@ def qualify_component_compiler(
     implementation = source_inputs.record(repo=source_root, entrypoint=Path(__file__), descriptor=None)
     component_sources = _component_sources()
     evaluator_distribution = _evaluator_distribution()
-    report = verify_report(corpus_root)
-    obligations = [row for row in report["obligations"] if row["mandatory"] and row["cohort"] != "development"]
-    if not obligations or {row["cohort"] for row in obligations} != {"functional_guard", "withheld_transfer"}:
+    report, domain = D.reopen_domain(corpus_root, origin=compiler_origin)
+    preparation = D.preparation_for_origin(compiler_origin)
+    obligations = D.selected_obligations(report, preparation=preparation)
+    cohorts, guards = {row["cohort"] for row in obligations}, {"functional_guard", "withheld_transfer"}
+    if not obligations or (cohorts != guards if preparation is None else not guards <= cohorts):
         raise C.StageGateError("qualification needs mandatory independent guards and withheld transfer obligations")
     members = [member for row in obligations for member in row["members"]]
     if len({member["name"] for member in members}) != len(members):
@@ -386,7 +391,7 @@ def qualify_component_compiler(
         if snapshot_digest != before:
             raise C.StageGateError("private component compiler changed during domain qualification")
         invocation_evidence = E.invocation_members(evidence_root / "grade")
-        E.require_member_invocations(report, evidence_root / "grade", invocation_evidence)
+        E.require_member_invocations(report, evidence_root / "grade", invocation_evidence, preparation=preparation)
     except Exception as exc:  # noqa: BLE001 - keep real incomplete or drifted attempts unavailable
         failures.append("component actual invocation evidence unavailable: " + str(exc))
     if C.exact_tree_record(candidate)["sha256"] != before:
@@ -395,7 +400,8 @@ def qualify_component_compiler(
         failures.append("fresh compiler authoring provenance changed during domain qualification")
     if _verify_runtime(runtime_authority, compiler_origin, descriptor) != runtime_digest:
         failures.append("independent target runtime changed during domain qualification")
-    if verify_report(corpus_root)["sha256"] != report["sha256"]:
+    reopened, actual_domain = D.reopen_domain(corpus_root, origin=compiler_origin)
+    if reopened["sha256"] != report["sha256"] or not D.unchanged_domain(domain, actual_domain):
         failures.append("component domain changed during qualification")
     source_inputs.verify(implementation, repo=source_root, entrypoint=Path(__file__), descriptor=None)
     if component_sources != _component_sources():
@@ -422,7 +428,7 @@ def qualify_component_compiler(
     C.write_json(
         receipt,
         {
-            "schema": "merlin.component_functional_qualification.v1",
+            **D.receipt_domain(domain),
             "status": status,
             "compiler_origin": origin_binding,
             "compile_roles": compile_roles,

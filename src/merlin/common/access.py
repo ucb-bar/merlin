@@ -186,6 +186,7 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.treatments", "grader"),
     _module("merlin_experiments.phase1.corpus_inputs", "grader"),
     _module("merlin_experiments.phase1.source_inputs", "grader"),
+    _module("merlin_experiments.phase1.component_qualification_domain", "grader"),
     _module("merlin_experiments.phase1.providers", "grader", directory=True),
     _module("merlin_experiments.phase1.brokers", "grader", directory=True),
     _module("merlin_experiments.phase1.feedback", "grader", directory=True),

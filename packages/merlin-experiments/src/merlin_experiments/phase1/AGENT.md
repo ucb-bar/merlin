@@ -182,6 +182,19 @@ including files outside the grade tree. Each mandatory member needs observed
 invocations. Replay the original complete stage, source, output and effect joins;
 unchanged result rows or grade-tree bytes cannot replace that check. Retain
 failed attempts as refused evidence, never mint authority from saved records.
+`component_qualification_domain.py` selects the original input owner from the
+exact issued compiler origin. Legacy qualification retains concrete coverage
+and receipt v1. An explicitly selected live `SourcePreparation` must replay all
+original source requirements before grading; receipt v2 binds their complete
+denominator and pending candidate predicates. Every mandatory member, including
+mandatory development, needs fresh numerical/executable/stage evidence and
+actual invocation reopening. Source completion never grants candidate static,
+numerical, effect, hardware or runtime authority; source-only guards remain
+unestablished for Phase 2. Missing source premises refuse before the grader.
+The `source-preparation-qualification` installed suite retains actual native
+clone/dependency/output controls and preparation refusals. Its positive wiring
+facets use synthetic author/runtime/static authority and cannot admit an
+experiment. An explicit native selection requires zero skips in its full roster.
 Neither origin nor lineage proves
 numeric correctness, target runtime independence or performance. The handwritten
 implementation and its adapter remain protected final reference inputs only.
