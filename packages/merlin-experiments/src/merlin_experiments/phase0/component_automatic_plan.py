@@ -15,6 +15,7 @@ _SOURCE_FORMS = {
     "aten.mm.default": "contraction",
     "aten.clone.default": "movement",
 }
+_LOGICAL_COPY_INTERACTIONS = {"shared_producer_multiple_consumers", "publication_and_further_use"}
 
 
 def _program(factory):
@@ -22,7 +23,17 @@ def _program(factory):
         return {"axis": name}
 
     inputs = [{"name": "A", "role": "input", "shape": [axis("M"), axis("K")], "dtype": "operand"}]
-    if factory == "may_alias_result":
+    if factory in _LOGICAL_COPY_INTERACTIONS:
+        # Independent bounded semantic graphs; original class presence selects
+        # them, never the original graph's dimensions, fanout or topology.
+        last_input = "P" if factory == "shared_producer_multiple_consumers" else "C0"
+        nodes = [
+            {"name": "P", "op": "copy", "inputs": ["A"]},
+            {"name": "C0", "op": "copy", "inputs": ["P"]},
+            {"name": "C1", "op": "copy", "inputs": [last_input]},
+        ]
+        outputs = [{"name": name, "value": value} for name, value in (("Yproducer", "P"), ("Y0", "C0"), ("Y1", "C1"))]
+    elif factory == "may_alias_result":
         # A logical identity view is an independent possibility admitted by
         # may-alias annotations. It does not exercise arbitrary view shapes
         # or require physical pointer equality from a downstream compiler.
@@ -63,7 +74,7 @@ def _unknown(kind, selector, reason):
     }
 
 
-def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=None):
+def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=None, logical_interactions=False):
     """Construct a complete required class roster without invented permissions.
 
     One and two are fresh bounded semantic extents, independent of target or
@@ -118,6 +129,7 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
                 )
             )
     contraction = {owner for factory, owner in cases if factory == "contraction"}
+    movement = {owner for factory, owner in cases if factory == "movement"}
     if arithmetic is not None:
         from .component_arithmetic_obligations import required_unknowns
 
@@ -128,6 +140,18 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
             cases[(interaction, owner)] = {
                 member for member, relation in relations if interaction in relation.interaction_classes
             }
+        elif logical_interactions and interaction in _LOGICAL_COPY_INTERACTIONS and len(movement) == 1:
+            owner = next(iter(movement))
+            cases[(interaction, owner)] = {
+                member for member, relation in relations if interaction in relation.interaction_classes
+            }
+            unknowns.append(
+                _unknown(
+                    "physical_interaction",
+                    interaction,
+                    "logical copy use-def sources do not establish physical reuse, layout, lifetime or completion",
+                )
+            )
         else:
             unknowns.append(
                 _unknown("interaction", interaction, "interaction lacks a unique reviewed compatible source factory")
@@ -198,7 +222,7 @@ def derive(policy, *, spec, review, basis, relations, effects=None, arithmetic=N
                 "M": {"kind": "extent", "values": extents},
                 "K": {"kind": "extent", "values": [1] if guard else [2]},
             }
-            if factory not in {"movement", "may_alias_result"}:
+            if factory not in {"movement", "may_alias_result"} | _LOGICAL_COPY_INTERACTIONS:
                 axes["N"] = {"kind": "extent", "values": extents}
             obligations.append(
                 {

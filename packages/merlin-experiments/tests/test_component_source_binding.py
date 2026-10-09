@@ -241,3 +241,134 @@ def test_source_binding_does_not_invent_geometry_or_accept_unissued_semantics():
         derive({}, hardware=None, datapath={})
     with pytest.raises(ValueError, match="live independent"):
         select_evidence("fixture", source_components=True)
+
+
+def _source_options(options, tmp_path, *, version):
+    options = {**options, "capability_contract": None}
+    evidence = select_evidence(
+        "fixture",
+        descriptor=options["descriptor"],
+        facts_path=options["rtl_facts"],
+        software_spec=options["software_spec"],
+        hardware_intake=options["hardware_intake"],
+        software_intake=options["software_intake"],
+        source_components=True,
+    )
+    identity = {key: evidence.derivation_identity[key] for key in ("contract_sha256", "raw_facts_sha256")}
+    recipe = yaml.safe_load(options["recipe"].read_bytes())
+    recipe["component_performance"].update(hardware=identity, objectives=[])
+    fixtures.write(options["recipe"], recipe)
+    template = yaml.safe_load(options["performance_template"].read_bytes())
+    template.update(sweeps=[], families=[])
+    fixtures.write(options["performance_template"], template)
+    policy = yaml.safe_load(options["component_coverage"].read_bytes())
+    policy.update(schema=version, hardware=identity)
+    options["component_coverage"] = fixtures.write(tmp_path / "source-policy.json", policy)
+    return options
+
+
+@pytest.mark.parametrize("automatic", [{"logical": True, "extent": 10**9}], indirect=True)
+def test_versioned_source_generation_checks_complete_copy_forks_publication_and_private_transfer(automatic, tmp_path):
+    options = _source_options(automatic, tmp_path, version=A.LOGICAL_POLICY_SCHEMA)
+    report = fixtures.run(options)
+    record = report["automatic_derivation"]
+    assert record["schema"] == A.LOGICAL_RECEIPT_SCHEMA
+    A.verify(record, report=report)
+    verify_prepared_sources(
+        options["output_root"], report, software=options["software_intake"], hardware=options["hardware_intake"]
+    )
+    assert report["status"] == "source_prepared_incomplete"
+    wanted = {"shared_producer_multiple_consumers", "publication_and_further_use"}
+    unknowns = {(row["kind"], row["selector"]) for row in record["required_unknowns"]}
+    assert all(("interaction", value) not in unknowns for value in wanted)
+    assert all(("physical_interaction", value) in unknowns for value in wanted)
+    assert {("resource_role", "rtl_boundary_axis_mapping"), ("effect_domain", "original_operator_effects")} <= unknowns
+    original_sources, shapes, cohorts, count = set(), set(), set(), 0
+    for obligation in report["obligations"]:
+        if not any(obligation["id"].startswith("auto_" + value + "_") for value in wanted):
+            continue
+        cohorts.add(obligation["cohort"])
+        for member in obligation["members"]:
+            assert member["state"] == "source_generated"
+            directory = options["output_root"] / member["member"]
+            capsule = yaml.safe_load((directory / "capsule.yaml").read_bytes())
+            program = capsule["component_program"]
+            assert [node["op"] for node in program["nodes"]] == ["copy", "copy", "copy"]
+            original_sources.add((directory / capsule["linalg_mlir"]).read_bytes())
+            a = materialize_capsule_leaves(capsule)["A"]
+            m, k = a.shape
+            shapes.add((m, k))
+            assert max(m, k) <= 3 and 10**9 not in (m, k)
+            # Scalar original input values independently determine each complete
+            # output, including the escaped intermediate. No reference helper
+            # or candidate result supplies expected values.
+            expected = [list(a.data[i * k : (i + 1) * k]) for i in range(m)]
+            actual = golden_store.load_golden(directory)["outputs"]
+            assert set(actual) == {"Yproducer", "Y0", "Y1"}
+            assert all(value == expected for value in actual.values())
+            assert program["uses"]["P"] >= 1 and "escaped_use" in program["effects"]
+            count += 1
+    assert count == 6 and cohorts == {"functional_guard", "withheld_transfer"}
+    assert shapes == {(1, 1), (2, 1), (3, 2)} and len(original_sources) == 6
+    relabeled = copy.deepcopy(report)
+    relabeled["automatic_derivation"]["schema"] = A.RECEIPT_SCHEMA
+    relabeled["automatic_derivation"]["sha256"] = C.digest(
+        {key: value for key, value in relabeled["automatic_derivation"].items() if key != "sha256"}
+    )
+    relabeled["generation_identity"]["automatic_derivation_sha256"] = C.digest(relabeled["automatic_derivation"])
+    with pytest.raises(ValueError, match="explicit original versioned policy"):
+        A.verify(relabeled["automatic_derivation"], report=relabeled)
+    changed = copy.deepcopy(report)
+    physical = next(row for row in record["required_unknowns"] if row["kind"] == "physical_interaction")
+    changed["obligations"] = [row for row in changed["obligations"] if row["id"] != physical["id"]]
+    changed["sha256"] = C.digest({key: value for key, value in changed.items() if key != "sha256"})
+    with pytest.raises(ValueError, match="original required obligation"):
+        verify_prepared_sources(
+            options["output_root"], changed, software=options["software_intake"], hardware=options["hardware_intake"]
+        )
+    with pytest.raises(ValueError, match="source-only preparation is not concrete"):
+        C.verify_report(options["output_root"], report)
+
+
+@pytest.mark.parametrize("automatic", [{"logical": True}], indirect=True)
+def test_legacy_policy_keeps_original_missing_interactions(automatic, tmp_path):
+    options = _source_options(automatic, tmp_path, version=A.SCHEMA)
+    report = fixtures.run(options)
+    A.verify(report["automatic_derivation"], report=report)
+    assert report["automatic_derivation"]["schema"] == A.RECEIPT_SCHEMA
+    missing = {(row["kind"], row["selector"]) for row in report["automatic_derivation"]["required_unknowns"]}
+    assert {
+        ("interaction", "shared_producer_multiple_consumers"),
+        ("interaction", "publication_and_further_use"),
+    } <= missing
+    assert not any(row["id"].startswith("auto_publication_") for row in report["obligations"])
+
+
+@pytest.mark.parametrize("automatic", [{"logical": True}], indirect=True)
+def test_copy_interaction_source_budget_refuses_before_builder_and_keeps_both_cohorts(automatic, tmp_path, monkeypatch):
+    from merlin.targetgen import component_program
+
+    options = _source_options(automatic, tmp_path, version=A.LOGICAL_POLICY_SCHEMA)
+    policy = yaml.safe_load(options["component_coverage"].read_bytes())
+    policy["execution_budget"]["max_reference_work"] = 2
+    fixtures.write(options["component_coverage"], policy)
+    original = component_program.build
+
+    def build(entry, *args, **kwargs):
+        if [node["op"] for node in entry["program"]["nodes"]] == ["copy", "copy", "copy"]:
+            pytest.fail("over-budget copy interaction reached source/data/reference builder")
+        return original(entry, *args, **kwargs)
+
+    monkeypatch.setattr(component_program, "build", build)
+    report = fixtures.run(options)
+    A.verify(report["automatic_derivation"], report=report)
+    required = [
+        row
+        for row in report["obligations"]
+        if row["id"].startswith(("auto_publication_and_further_use_", "auto_shared_producer_multiple_consumers_"))
+    ]
+    assert len(required) == 4
+    assert {row["cohort"] for row in required} == {"functional_guard", "withheld_transfer"}
+    assert all(
+        row["mandatory"] and all(member["state"] == "unavailable" for member in row["members"]) for row in required
+    )

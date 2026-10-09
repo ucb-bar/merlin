@@ -34,7 +34,7 @@ independent = generation_fixtures.independent
 write = generation_fixtures.write
 
 
-def example(*, unknown=False, extent=17):
+def example(*, unknown=False, extent=17, logical=False):
     nodes, edges = [], []
 
     def add(name, operation, target, inputs, shape):
@@ -69,9 +69,18 @@ def example(*, unknown=False, extent=17):
     add("P0", "call_function", "aten.matmul.default", ["A", "W0"], [extent, 23])
     add("P1", "call_function", "aten.matmul.default", ["A", "W1"], [extent, 23])
     add("Copy", "call_function", "aten.clone.default", ["A"], [extent, 19])
+    if logical:
+        add("Fork0", "call_function", "aten.clone.default", ["Copy"], [extent, 19])
+        add("Fork1", "call_function", "aten.clone.default", ["Copy"], [extent, 19])
     if unknown:
         add("Unknown", "call_function", "unreviewed.operation", ["P0"], [extent, 23])
-    add("Output", "output", "output", ["P0", "P1", "Copy"] + (["Unknown"] if unknown else []), [1, 1])
+    add(
+        "Output",
+        "output",
+        "output",
+        ["P0", "P1", "Copy"] + (["Fork0", "Fork1"] if logical else []) + (["Unknown"] if unknown else []),
+        [1, 1],
+    )
     graph = {
         "schema": "m2m.frontend_graph.v1",
         "stage": "original",

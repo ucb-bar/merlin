@@ -84,11 +84,17 @@ def _resign(report):
     report["generation_identity"]["automatic_derivation_sha256"] = A.digest(record)
 
 
-def test_real_combined_generation_retains_both_sources_all_outputs_and_unknowns(combined):
+@pytest.mark.parametrize("logical", [False, True])
+def test_real_combined_generation_retains_both_sources_all_outputs_and_unknowns(combined, logical):
+    if logical:
+        policy = yaml.safe_load(combined["component_coverage"].read_bytes())
+        policy["schema"] = A.LOGICAL_POLICY_SCHEMA
+        F.write(combined["component_coverage"], policy)
     report = F.run(combined)
     record = report["automatic_derivation"]
     A.verify(record, report=report)
-    assert report["status"] == "incomplete" and record["schema"] == A.ARITHMETIC_RECEIPT_SCHEMA
+    assert report["status"] == "incomplete"
+    assert record["schema"] == (A.LOGICAL_RECEIPT_SCHEMA if logical else A.ARITHMETIC_RECEIPT_SCHEMA)
     assert record["arithmetic_intake"] == combined["arithmetic_intake"].record()
     assert record["operator_schema_intake"] == combined["operator_schema_intake"].record()
     assert record["operator_effect_semantics"][0]["effect_classes"] == ["may_alias_result"]
@@ -120,7 +126,12 @@ def test_real_combined_generation_retains_both_sources_all_outputs_and_unknowns(
     assert len(sources) > 1 and len(output_rosters) > 1
 
 
-def test_combined_generation_refuses_missing_substituted_and_unselected_bindings(combined, tmp_path):
+@pytest.mark.parametrize("logical", [False, True])
+def test_combined_generation_refuses_missing_substituted_and_unselected_bindings(combined, tmp_path, logical):
+    if logical:
+        policy = yaml.safe_load(combined["component_coverage"].read_bytes())
+        policy["schema"] = A.LOGICAL_POLICY_SCHEMA
+        F.write(combined["component_coverage"], policy)
     original_policy = combined["component_coverage"].read_bytes()
     attempts = 0
 

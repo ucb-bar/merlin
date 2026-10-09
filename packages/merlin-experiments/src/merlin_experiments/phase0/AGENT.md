@@ -249,6 +249,20 @@ logical outputs, numeric-path requirements and physical/unsupported effect gaps.
 Missing, substituted or supplied-but-unselected observations refuse. A saved
 record cannot drop either selected facet and obtain authority from re-signing.
 
+Automatic policy/receipt v4 explicitly selects the next logical use-def source
+family. Independently observed shared-producer and publication/further-use class
+presence plus a unique reviewed movement owner selects fresh bounded three-copy
+fork/chain graphs with every producer/user output published. The ordinary source
+budget, writer and complete scalar oracle still apply before materialization;
+denied members remain mandatory in both guard and private-transfer cohorts.
+Original shapes, fanout, topology, frequencies and hardware geometry never drive
+these sources. V1–v3 derivations retain their former required missing interactions.
+V4 can select either or both exact independent schema/arithmetic observations;
+supplied-but-unselected or missing/substituted facets refuse and replay never
+grants effects from saved JSON. Logical source witnesses remain distinct from
+mandatory physical reuse/layout/lifetime/completion and resource-axis UNKNOWNs.
+Fresh odd/rectangular extents are teaching sources, not observed hardware tails.
+
 `component_source_binding` prepares ordinary automatic tensor DAG originals from
 the same live independent HW/minimal SW before a backend has been authored.
 Source-only evidence selects no backend contract, provider, ISA classes, physical
