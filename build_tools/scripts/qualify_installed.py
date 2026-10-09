@@ -335,10 +335,13 @@ SUITES = {
     "readback": {
         # The policy tests exercise core builds and experiments-owned oracle adapters.
         "include_experiments": True,
+        "native_tools": ("clang",),
+        "native_test_files": ("runtime/test_direct_kernel_invocation.py",),
         "tests_root": "merlin/tests",
         "tests": (
             "runtime/test_out_b64.py",
             "runtime/test_direct_kernel_harness.py",
+            "runtime/test_direct_kernel_invocation.py",
             "targetgen/test_explicit_execution_service.py",
             "runtime/test_out_bin.py",
             "runtime/test_out_bin_bulk.py",
@@ -352,6 +355,7 @@ SUITES = {
         "probe_modules": (
             "merlin.runtime.out_b64",
             "merlin.runtime.direct_kernel_harness",
+            "merlin.runtime.direct_kernel_invocation",
             "merlin.targetgen.contract.execution_service",
             "merlin.targetgen.native_component_execution",
             "merlin.runtime.out_bin",

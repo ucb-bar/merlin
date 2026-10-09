@@ -94,7 +94,9 @@ def _raw(spec, values, *, count, width, dtype, byte_order):
     return raw
 
 
-def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None):
+def render_direct_kernel(
+    cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None, invocation_plan=None
+):
     """Render complete pointer-call storage with explicitly selected readback.
 
     This accepts an explicit command-buffer argument roster. The ordinary source
@@ -122,6 +124,13 @@ def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, o
     ):
         raise ValueError("direct kernel harness requires complete B64 or coherent memory readback")
     memory = readback_policy.transport == COHERENT_DUMP_V1
+    histories = ()
+    if invocation_plan is not None:
+        from .direct_kernel_invocation import DirectKernelInvocationPlan
+
+        if type(invocation_plan) is not DirectKernelInvocationPlan or not memory:
+            raise ValueError("repeated invocation evaluation requires an explicit plan and coherent history reader")
+        histories = invocation_plan.bind(cb, entry_symbol=abi.entry_symbol, completion_symbol=abi.completion_symbol)
     tensors, kernel = cb.get("tensors"), cb.get("kernel_abi")
     if not isinstance(tensors, dict) or not isinstance(kernel, dict):
         raise ValueError("direct kernel harness has no explicit tensor/argument declaration")
@@ -171,19 +180,49 @@ def render_direct_kernel(cb, *, inputs, readback_policy, abi: DirectKernelAbi, o
             f"static unsigned char tensor_{index}[{count * width}] "
             f"__attribute__((aligned({abi.tensor_alignment})))={{{payload}}};"
         )
+    if invocation_plan is not None:
+        declarations.append(f"volatile unsigned char {invocation_plan.count_symbol}[8]={{0}};")
+        declarations.extend(f"unsigned char {history.symbol}[{history.byte_extent}]={{0}};" for history in histories)
     body = (
         ["int main(unsigned long context_id){", "  if(context_id) return 0;"]
         if abi.main_convention == "primary_context_id"
         else ["int main(void){"]
     )
-    body.extend(
-        [
-            "  console_init();",
-            f"  {abi.entry_symbol}({', '.join('tensor_' + str(index) for index in range(len(args)))});",
-        ]
-    )
-    if abi.completion_symbol:
-        body.append(f"  {abi.completion_symbol}();")
+    body.append("  console_init();")
+    call = f"{abi.entry_symbol}({', '.join('tensor_' + str(index) for index in range(len(args)))});"
+    if invocation_plan is None:
+        body.append("  " + call)
+        if abi.completion_symbol:
+            body.append(f"  {abi.completion_symbol}();")
+    else:
+        body.extend(
+            [
+                "  uint64_t invocation_completed=0;",
+                f"  for(uint64_t invocation=0;invocation<UINT64_C({invocation_plan.count});invocation++){{",
+                "    " + call,
+            ]
+        )
+        if abi.completion_symbol:
+            body.append(f"    {abi.completion_symbol}();")
+        for history in histories:
+            index = slots[history.emitted_tensor][0]
+            width = history.bytes_per_invocation
+            body.extend(
+                [
+                    f"    for(uint64_t byte=0;byte<UINT64_C({width});byte++)",
+                    f"      {history.symbol}[invocation*UINT64_C({width})+byte]=tensor_{index}[byte];",
+                ]
+            )
+        count_offset = "byte" if abi.byte_order == "little" else "(7-byte)"
+        body.extend(
+            [
+                "    invocation_completed++;",
+                "    for(unsigned byte=0;byte<8;byte++)",
+                f"      {invocation_plan.count_symbol}[{count_offset}]="
+                "(unsigned char)(invocation_completed>>(byte*8));",
+                "  }",
+            ]
+        )
     # The selected coherent reader resolves these actual linked static objects.
     # It owns full-value admission; DONE alone supplies no output or effect proof.
     for name in () if memory else outputs:

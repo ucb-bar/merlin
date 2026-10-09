@@ -39,6 +39,11 @@ the per-backend adapters under `backends/`.
   from an explicit software ABI and exact input bytes. Contains no target
   instruction or reference compiler. Calling a declared completion symbol does
   not independently prove synchronization, ownership or hardware correspondence.
+- `direct_kernel_invocation.py` — explicitly selected repeated calls with the
+  original ordered ABI, complete raw output snapshots for each call and observed
+  completion count. Reuses source input storage and separate output histories;
+  alias interfaces refuse. Histories and counts do not establish effect, source,
+  platform or timing authority.
 - `out_bin.py` — separate opt-in byte-oriented full-value framing. It consumes
   exact length-delimited raw payloads without text-decoding their NUL/non-UTF-8
   contents, checks the transport checksum, and requires END/DONE and a closed
