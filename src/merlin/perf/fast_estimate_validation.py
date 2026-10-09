@@ -84,6 +84,8 @@ class LinearScreen:
         cycles = self.fixed_cycles + sum(
             x * coefficient for x, coefficient in zip(values, self.coefficients, strict=True)
         )
+        if not math.isfinite(cycles) or cycles < 0:
+            return CycleInterval.unknown("screening prediction has no finite nonnegative cost")
         return CycleInterval.point(cycles, f"empirical screening fit sha256:{self.provenance_sha256}")
 
 

@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass
 from typing import Any
 
 from .dispatch_program import DispatchProgram
@@ -47,7 +48,7 @@ class CycleInterval:
         if isinstance(self.lo, bool) or isinstance(self.hi, bool):
             raise TypeError("cycle endpoints must be numbers, not booleans")
         lo, hi = float(self.lo), float(self.hi)
-        if lo < 0 or hi < lo:
+        if not math.isfinite(lo) or not math.isfinite(hi) or lo < 0 or hi < lo:
             raise ValueError(f"invalid cycle interval [{lo}, {hi}]")
         object.__setattr__(self, "lo", lo)
         object.__setattr__(self, "hi", hi)
@@ -57,12 +58,12 @@ class CycleInterval:
         return self.lo is not None
 
     @classmethod
-    def point(cls, cycles: float, provenance: str = "") -> "CycleInterval":
+    def point(cls, cycles: float, provenance: str = "") -> CycleInterval:
         prov = (provenance,) if provenance else ()
-        return cls(float(cycles), float(cycles), provenance=prov)
+        return cls(cycles, cycles, provenance=prov)
 
     @classmethod
-    def unknown(cls, *missing: str) -> "CycleInterval":
+    def unknown(cls, *missing: str) -> CycleInterval:
         return cls(None, None, missing=tuple(str(item) for item in missing if str(item).strip()))
 
     def to_dict(self) -> dict[str, Any]:

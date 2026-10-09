@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+import pytest
+
 from merlin.perf.global_planner import (
     Bound,
     GlobalPlanPolicy,
@@ -23,6 +25,37 @@ from merlin.xdsl_dialects.lowering.global_plan import (
 
 PLAIN = ValueRepresentation("memory", "row_major", "i8", encoding="plain")
 PACKED = ValueRepresentation("array", "blocked", "i8", encoding="packed")
+
+
+@pytest.mark.parametrize(
+    "lo,hi",
+    [
+        (float("nan"), float("nan")),
+        (float("nan"), 1),
+        (1, float("nan")),
+        (float("inf"), float("inf")),
+        (0, float("inf")),
+        (float("inf"), 1),
+        (float("-inf"), 1),
+    ],
+)
+def test_nonfinite_cost_cannot_become_a_resolved_plan_bound(lo, hi):
+    with pytest.raises(ValueError, match="invalid cycle interval"):
+        CycleInterval(lo, hi, provenance=("untrusted estimate",))
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_point_estimate_preserves_boolean_refusal(value):
+    with pytest.raises(TypeError, match="booleans"):
+        CycleInterval.point(value, "untrusted estimate")
+
+
+def test_zero_estimate_and_missing_cost_remain_distinct():
+    zero = CycleInterval.point(0, "observed zero")
+    unknown = CycleInterval.unknown("missing execution stage")
+    assert zero.resolved and zero.lo == zero.hi == 0
+    assert not unknown.resolved and unknown.lo is None and unknown.hi is None
+    assert unknown.missing == ("missing execution stage",)
 
 
 def _program() -> DispatchProgram:

@@ -126,6 +126,8 @@ SUITES = {
         "tests_root": "merlin/tests/dse",
         "tests": (
             "test_component_cost.py",
+            "test_global_planner.py",
+            "test_fast_estimate_validation.py",
             "test_warm_profile_harness.py",
             "test_phase2_calibration_bundle.py",
             "test_phase2_feature_calibration.py",
@@ -137,6 +139,8 @@ SUITES = {
             "merlin.perf.component_screen",
             "merlin.perf.warm_profile_harness",
             "merlin.perf.phase2_calibration_bundle",
+            "merlin.perf.fast_estimate_validation",
+            "merlin.xdsl_dialects.lowering.global_plan",
         ),
         "required_modules": ("xdsl",),
     },

@@ -3,7 +3,7 @@ title: "Independent compiler tests and calibrated performance feedback"
 kind: design
 status: draft
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [component_compiler_convergence, component_phase2_workflow, beam_cca_architecture]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/component_generation.py
@@ -12,6 +12,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/component_cca.py
   - src/merlin/perf/phase2_analytical_provider.py
   - src/merlin/perf/phase2_calibration_bundle.py
+  - src/merlin/perf/fast_estimate_validation.py
+  - src/merlin/xdsl_dialects/lowering/global_plan.py
 ---
 
 # Independent tests and performance feedback
@@ -109,6 +111,14 @@ The feedback record should contain:
 Do not equate retirement counts, native wall time, requested bytes, nominal MACs,
 partial RTL runs and hardware cycles. CCA explains correspondence and mechanisms;
 an analytical feature without a price does not become zero-cost work.
+
+Resolved cycle intervals require finite nonnegative ordered endpoints. Boolean
+point estimates, NaN and infinity refuse at construction; an arithmetic overflow
+in the empirical screen returns an explicit unknown estimate. Zero remains a
+valid numeric endpoint and is distinct from missing work. Broker admission still
+checks finite bounds and qualified provenance independently, including malformed
+callback objects that bypass the value constructor. These arithmetic checks do
+not replace calibration, complete-cost coverage or held-evidence thresholds.
 
 ## Ranking and choosing the next experiment
 

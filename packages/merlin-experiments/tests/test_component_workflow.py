@@ -252,11 +252,20 @@ def test_provider_configuration_corpus_and_selection_drift_refuse(tmp_path, monk
         policy._validate()
 
 
+def _untrusted_interval(value):
+    # A callback can bypass a Python constructor. The broker must still perform
+    # its independent finite/provenance checks, even with strict value objects.
+    interval = object.__new__(CycleInterval)
+    for name, selected in (("lo", value), ("hi", value), ("provenance", ("claimed",)), ("missing", ())):
+        object.__setattr__(interval, name, selected)
+    return interval
+
+
 @pytest.mark.parametrize(
     "interval",
     [
-        CycleInterval(float("nan"), float("nan"), provenance=("claimed",)),
-        CycleInterval(float("inf"), float("inf"), provenance=("claimed",)),
+        _untrusted_interval(float("nan")),
+        _untrusted_interval(float("inf")),
         CycleInterval(1, 2),
     ],
 )

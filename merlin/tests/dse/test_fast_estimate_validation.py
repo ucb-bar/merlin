@@ -114,6 +114,13 @@ def test_held_out_domain_is_checked_against_training_not_whole_corpus():
     assert not result["exposable"]
 
 
+def test_finite_features_and_rates_that_overflow_leave_prediction_unknown():
+    model = replace(fit(observations()), coefficients=(1e308,), fixed_cycles=1e308)
+    estimate = model.predict({POINTER: 4}, domain_sha256=model.domain_sha256)
+    assert not estimate.resolved and estimate.lo is None and estimate.hi is None
+    assert estimate.missing == ("screening prediction has no finite nonnegative cost",)
+
+
 def test_workload_variants_cannot_leak_between_folds():
     rows = observations()
     rows[1] = replace(rows[1], group="leaky split")
