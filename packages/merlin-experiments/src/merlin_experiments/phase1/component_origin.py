@@ -29,7 +29,7 @@ from merlin_experiments.phase2.component_experiment import (
 from .component_compile_admission import verify_compile_roster
 from .component_generation_admission import verify_bounded_generation
 from .component_package_execution import selected_compiler_transport
-from .component_tool_readiness import probe_shared_tools
+from .component_tool_readiness import _readonly_candidate, probe_native_author_tools, probe_shared_tools
 
 _ISSUED: dict[object, tuple] = {}
 _DRIVER = '''"""Structure-only OOT entrypoint. Author the compiler in this package."""
@@ -158,6 +158,7 @@ class FreshPhase1Inputs:
     auth_source: Path
     compile_roster: object = None
     pointer_storage: object = None
+    author_sandbox: RuntimeGrant | None = None
 
     @property
     def compiler_transport(self):
@@ -165,11 +166,13 @@ class FreshPhase1Inputs:
 
     @property
     def sandbox_binary(self) -> Path:
-        matches = [row for row in self.control_runtime if row.destination == "/usr/bin/bwrap"]
-        if len(matches) != 1:
-            raise C.StageGateError("fresh Phase 1 control closure must pin its sandbox executable")
-        matches[0].verify()
-        return matches[0].source
+        if type(self.author_sandbox) is not RuntimeGrant:
+            raise C.StageGateError("fresh Phase 1 needs an explicitly pinned outer author sandbox")
+        self.author_sandbox.verify()
+        matches = [row for row in self.control_runtime if row.destination == self.author_sandbox.destination]
+        if matches != [self.author_sandbox]:
+            raise C.StageGateError("fresh Phase 1 outer sandbox differs from its declared control closure")
+        return self.author_sandbox.source
 
     def verify(self) -> dict:
         from merlin.targetgen.target_experiment import TargetExperiment
@@ -284,6 +287,11 @@ class FreshPhase1Inputs:
             "public_members": manifest["members"],
             "runtime": [{"destination": row.destination, "sha256": row.sha256} for row in self.runtime],
             "control_runtime": [{"destination": row.destination, "sha256": row.sha256} for row in self.control_runtime],
+            "author_sandbox": {
+                "source": str(self.author_sandbox.source),
+                "destination": self.author_sandbox.destination,
+                "sha256": self.author_sandbox.sha256,
+            },
         }
 
 
@@ -426,17 +434,28 @@ def run_fresh_component_phase1(
     shutil.copytree(inputs.candidate, initial)
     _readonly(initial)
     initial_hash = _tree(initial)["sha256"]
-    policy = strict_tool_policy(
-        inputs.view,
-        inputs.candidate,
-        runtime=inputs.runtime,
-        candidate_destination=str(inputs.candidate),
-        bwrap_binary=inputs.sandbox_binary,
+    policy = _readonly_candidate(
+        strict_tool_policy(
+            inputs.view,
+            inputs.candidate,
+            runtime=inputs.runtime,
+            candidate_destination=str(inputs.candidate),
+            bwrap_binary=inputs.sandbox_binary,
+        )
     )
     _probe_shared_tools(inputs, policy)
+    probe_native_author_tools(inputs)
+    if _tree(inputs.candidate)["sha256"] != initial_hash:
+        raise C.StageGateError("fresh Phase 1 readiness changed the inert initial scaffold")
     prompt = render_fresh_phase1_prompt()
     prompt_path = inputs.output / "author_prompt.md"
     prompt_path.write_text(prompt, encoding="utf-8")
+    if (
+        C.canonical_json(inputs.verify()) != C.canonical_json(binding)
+        or _tree(initial)["sha256"] != initial_hash
+        or _tree(inputs.candidate)["sha256"] != initial_hash
+    ):
+        raise C.StageGateError("fresh Phase 1 inputs or inert scaffold changed before authoring")
     with invocation_record.observe_call(
         inputs.output / "author",
         stage="fresh_phase1_authoring",
