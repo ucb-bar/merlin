@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -77,6 +76,27 @@ def extract_kernel(module, symbol: str, entry: str = "forward"):
     return ModuleOp([clone])
 
 
+def host_scalar_result_dtype(kernel_module, entry: str = "forward") -> str | None:
+    """Derive the by-value result left after tensor results become out-params.
+
+    Multiple scalars need an aggregate C return ABI, which this runner does not
+    support. Rank-zero tensors are still tensor output descriptors.
+    """
+    from xdsl.dialects.builtin import TensorType
+
+    from .abi import scalar_result_ctype
+
+    function = next((op for op in kernel_module.walk() if op.name == "func.func" and op.sym_name.data == entry), None)
+    if function is None:
+        return None  # Ordinary lowering retains its missing-entry refusal.
+    scalars = [t for t in function.function_type.outputs if not isinstance(t, TensorType)]
+    if len(scalars) > 1:
+        raise KernelBackendError("host kernel aggregate scalar results are unsupported")
+    dtype = str(scalars[0]) if scalars else None
+    scalar_result_ctype(dtype)
+    return dtype
+
+
 def compile_host(kernel_module, workdir: str | Path):
     """Lower one kernel module to a host ``.so`` and load it (RTLD_LOCAL)."""
     from ..xdsl_dialects._common import text as to_text
@@ -85,9 +105,14 @@ def compile_host(kernel_module, workdir: str | Path):
 
     # Lowering creates a missing build directory. Resolve its parent aliases
     # first so the selected private sibling retains the compiler's exact origin.
+    result_dtype = host_scalar_result_dtype(kernel_module)
     workdir = Path(workdir).resolve()
     res = lower_model(to_text(kernel_module), workdir, targets=("host",))
-    return HostModel.load(str(res.host_so), image_policy=PrivateHostImagePolicy(workdir.resolve(strict=True)))
+    return HostModel.load(
+        str(res.host_so),
+        image_policy=PrivateHostImagePolicy(workdir.resolve(strict=True)),
+        scalar_result_dtype=result_dtype,
+    )
 
 
 def run_random(model, sig: KernelSignature, seed: int = 0) -> tuple[list[np.ndarray], list[np.ndarray]]:

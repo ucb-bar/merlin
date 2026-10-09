@@ -614,7 +614,7 @@ def execute(
     import platform
 
     from ..llvmlower.abi import HostModel
-    from ..llvmlower.kernel_backend import compile_host, extract_kernel
+    from ..llvmlower.kernel_backend import compile_host, extract_kernel, host_scalar_result_dtype
     from ..xdsl_dialects._common import text as to_text
 
     workdir = Path(workdir)
@@ -799,7 +799,7 @@ def execute(
                 if not so.is_file():
                     compile_host(km, workdir / symbol.replace("$", "_"))
                     shutil.copy2(workdir / symbol.replace("$", "_") / "model_host.so", so)
-                model = HostModel.load(str(so))
+                model = HostModel.load(str(so), scalar_result_dtype=host_scalar_result_dtype(km))
             else:
                 model = compile_host(km, workdir / symbol.replace("$", "_"))
             cache[key] = model
@@ -1082,6 +1082,10 @@ def execute(
                 if _fb is not None and len(_fb) < 64:  # bounded: a diagnostic, not a full trace
                     _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape), "reason": _why})
         model = kernel_model(symbol)
+        scalar_slots = [index for index, r in enumerate(op.results) if not isinstance(r.type, TensorType)]
+        expected_scalar = str(op.results[scalar_slots[0]].type) if len(scalar_slots) == 1 else None
+        if len(scalar_slots) > 1 or getattr(model, "scalar_result_dtype", None) != expected_scalar:
+            raise DispatchRuntimeError("host kernel scalar result ABI differs from the original call")
         args, keep = [], []
         for o in op.operands:
             if isinstance(o.type, TensorType):
@@ -1091,7 +1095,7 @@ def execute(
             else:
                 args.append(ScalarArg(env[id(o)], str(o.type)))  # by-value scalar arg
         out_arrays = [np.zeros(sh, dt) for sh, dt in outs]
-        args += [(o.ctypes.data, o.shape) for o in out_arrays]
+        args += [(o.ctypes.data, o.shape) for r, o in zip(op.results, out_arrays) if isinstance(r.type, TensorType)]
         # THE HOST LANE ACTUALLY EXECUTING, which is the one thing nothing counted. `lane_report`
         # corrected `on_mesh` against per-layer mesh accounting but had no equivalent for
         # `scalar_rvv_lane`, so a capsule could satisfy a required host lane on the strength of a
@@ -1104,7 +1108,12 @@ def execute(
         #
         # Into the per-call `counters` dict, never onto a module-global: run_suite grades on a thread
         # pool and concurrent grades clobber module attributes -- and this count now feeds a verdict.
-        model(args)
+        scalar_result = model(args)
+        if scalar_slots:
+            if scalar_result is None:
+                raise DispatchRuntimeError("host kernel did not return its original scalar result")
+            slot = scalar_slots[0]
+            out_arrays[slot] = np.asarray(scalar_result, dtype=outs[slot][1])
         mesh_counts["native_host_executed"] = True
         mesh_counts["host_kernels_ran"] = mesh_counts.get("host_kernels_ran", 0) + 1
         _hostfn = _host_kernel_fn(symbol)

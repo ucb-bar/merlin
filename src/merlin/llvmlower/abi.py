@@ -3,6 +3,8 @@
 The lowered module exposes ``_mlir_ciface_forward`` (llvm.emit_c_interface): one
 pointer per memref argument, each a rank-N descriptor {alloc, aligned, offset,
 sizes[N], strides[N]}, result buffers appended last (buffer-results-to-out-params).
+One remaining plain scalar result is returned by value, with an explicitly
+selected ctypes result type; it is never a rank-zero memref output argument.
 """
 
 from __future__ import annotations
@@ -11,10 +13,11 @@ import ctypes
 import hashlib
 import os
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 _SCALAR_CTYPE = {
     "i64": ctypes.c_int64,
@@ -25,6 +28,19 @@ _SCALAR_CTYPE = {
     "f64": ctypes.c_double,
     "f32": ctypes.c_float,
 }
+
+
+def scalar_result_ctype(dtype: str | None):
+    """The selected plain scalar C return, or the historical void return.
+
+    This supports neither aggregate results nor index/extended floating ABIs.
+    The caller must derive the selection from the actual entry function type.
+    """
+    if dtype is None:
+        return None
+    if not isinstance(dtype, str) or dtype not in _SCALAR_CTYPE:
+        raise ValueError(f"unsupported scalar result dtype {dtype!r}")
+    return _SCALAR_CTYPE[dtype]
 
 
 class ScalarArg:
@@ -291,6 +307,7 @@ class HostModel:
     fn: Any
     trampoline: Any = None
     image_sha256: str | None = None
+    scalar_result_dtype: str | None = None
 
     @classmethod
     def load(
@@ -301,13 +318,15 @@ class HostModel:
         rtld_global: bool | None = None,
         *,
         image_policy: PrivateHostImagePolicy | None = None,
-    ) -> "HostModel":
+        scalar_result_dtype: str | None = None,
+    ) -> HostModel:
         """Load an artifact, or explicitly freeze a fresh owned build image.
 
         Default loading retains native loader caching and read-only compatibility;
         it supplies no current-image digest. The selected policy requires writable
         sibling staging and identifies only the image, not its dependencies.
         """
+        result_type = scalar_result_ctype(scalar_result_dtype)
         # Give the trampoline this library's exact entry address instead of asking the dynamic
         # loader to resolve a process-global symbol. Keep even many-argument models LOCAL: their
         # shared forward/memrefCopy names could otherwise bind a later A/B variant to the first
@@ -324,13 +343,15 @@ class HostModel:
         fn = getattr(lib, f"_mlir_ciface_{name}", None)
         if fn is None:
             raise ValueError(f"{so_path}: missing _mlir_ciface_{name}")
-        fn.restype = None
-        model = cls(lib, fn, image_sha256=image_sha256)
+        fn.restype = result_type
+        model = cls(lib, fn, image_sha256=image_sha256, scalar_result_dtype=scalar_result_dtype)
         if n_args is not None:
             model._build_trampoline(so_path, name, n_args)
         return model
 
     def _build_trampoline(self, so_path: str, name: str, n_args: int) -> None:
+        if self.scalar_result_dtype is not None:
+            raise ValueError("the trampoline path does not support scalar results")
         import subprocess
         import tempfile
         from pathlib import Path
@@ -345,11 +366,13 @@ class HostModel:
         self._call.restype = None
         self._call.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
-    def __call__(self, arg_buffers: list) -> None:
+    def __call__(self, arg_buffers: list) -> Any:
         """arg_buffers: ordered args including outputs (appended last). Each entry is a
         ``(pointer, shape)`` dense tensor, :class:`StridedMemRefArg` pitched
         tensor (staged through dense storage), or a :class:`ScalarArg`
-        (passed by value)."""
+        (passed by value). Return the explicitly selected plain scalar result,
+        or None for a void entry; tensor results remain appended output args.
+        """
         _validate_staged_aliases(arg_buffers)
         cargs: list = []
         keep: list = []
@@ -377,12 +400,14 @@ class HostModel:
                 cargs.append(ctypes.byref(d))
         self._descs = keep  # keep alive
         self._scratch = scratch
+        result = None
         if self.trampoline is not None:
             if len(keep) != len(arg_buffers):
                 raise ValueError("the trampoline path does not support scalar args")
             arr = (ctypes.c_void_p * len(keep))(*[ctypes.addressof(d) for d in keep])
             self._call(ctypes.cast(self.fn, ctypes.c_void_p), ctypes.cast(arr, ctypes.c_void_p))
         else:
-            self.fn(*cargs)
+            result = self.fn(*cargs)
         for entry, dense in copyback:
             _copy_pitched(entry, dense, to_dense=False)
+        return result
