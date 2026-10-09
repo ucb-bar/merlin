@@ -34,6 +34,7 @@ from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
 
 from . import corpus as C
 from .component_baseline import verify_baseline_admission
+from .component_feature_arms import IndependentArmFeatures
 from .component_runtime import require_independent_runtime
 from .component_workflow import ComponentAnalyticalProvider, _callable_code, _callable_source, _corpus, _pin
 from .contracts import StageGateError, document_sha256, mapping_file, sha256_file
@@ -132,6 +133,7 @@ class ComponentAnalyticalBinding:
     objective: str
     baseline_admission: object
     independent_runtime: object
+    independent_arms: IndependentArmFeatures | None = None
 
     @property
     def sha256(self):
@@ -151,22 +153,40 @@ class ComponentAnalyticalBinding:
                 "memory_per_worker_bytes": self.memory_per_worker_bytes,
                 "engine_slots": self.engine_slots,
                 "objective": self.objective,
+                **(
+                    {"independent_arms_sha256": self.independent_arms.verify()}
+                    if self.independent_arms is not None
+                    else {}
+                ),
             }
         )
 
     def validate(self, calibration):
-        verify_baseline_admission(self.baseline_admission, baseline=self.baseline,
-                                  corpus=self.corpus, target_descriptor=self.target_descriptor)
-        runtime = require_independent_runtime(self.independent_runtime, required_roles=("feature_provider",),
-                                              target_descriptor=self.target_descriptor)
+        verify_baseline_admission(
+            self.baseline_admission,
+            baseline=self.baseline,
+            corpus=self.corpus,
+            target_descriptor=self.target_descriptor,
+        )
+        runtime = require_independent_runtime(
+            self.independent_runtime, required_roles=("feature_provider",), target_descriptor=self.target_descriptor
+        )
         if self.feature_provider is not runtime.services.feature_provider:
             raise StageGateError("component features differ from independently evaluated observation support")
+        if self.independent_arms is not None:
+            if type(self.independent_arms) is not IndependentArmFeatures:
+                raise StageGateError("per-arm feature selection requires its fixed input/process/cache owner")
+            self.independent_arms.require_feedback_owner(runtime, self.feature_provider)
         verify_binding = getattr(runtime.qualification, "verify_feedback_binding", None)
         if not callable(verify_binding):
             raise StageGateError("component features lack independent complete scope/held measurement qualification")
-        verify_binding(baseline_admission=self.baseline_admission, scope=self.scope,
-                       calibration_adapter=self.calibration_adapter, qualification=self.qualification,
-                       objective=self.objective)
+        verify_binding(
+            baseline_admission=self.baseline_admission,
+            scope=self.scope,
+            calibration_adapter=self.calibration_adapter,
+            qualification=self.qualification,
+            objective=self.objective,
+        )
         _corpus(self.corpus)
         _pin(self.target_descriptor, self.target_sha256)
         _pin(self.feature_implementation, self.feature_sha256)
@@ -185,8 +205,10 @@ class ComponentAnalyticalBinding:
             raise StageGateError("component feature provider's selected execution context changed")
         if calibration.get("target_sha256") != self.target_sha256:
             raise StageGateError("component analytical calibration targets another descriptor")
-        if (self.qualification is not None
-            and dict(runtime.source_pins).get(self.qualification) != self.qualification_sha256):
+        if (
+            self.qualification is not None
+            and dict(runtime.source_pins).get(self.qualification) != self.qualification_sha256
+        ):
             raise StageGateError("component held validation is outside independently qualified runtime membership")
         return _qualified_domains(self.qualification, self.qualification_sha256, document_sha256(calibration))
 
@@ -282,7 +304,7 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
             cache = binding.output / "cache" / (cache_key + ".pickle")
             cache.parent.mkdir(exist_ok=True)
             pair = None
-            if cache.is_file() and not cache.is_symlink():
+            if binding.independent_arms is None and cache.is_file() and not cache.is_symlink():
                 try:
                     with cache.open("rb") as stream:
                         pair = pickle.load(stream)
@@ -291,6 +313,15 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                 except (OSError, ValueError, StageGateError, EOFError):
                     pair = None
             if pair is None:
+                extra = {}
+                if binding.independent_arms is not None:
+                    extra["cache_context"] = {
+                        "binding_sha256": binding.sha256,
+                        "runtime_sha256": binding.independent_runtime.sha256,
+                        "calibration_sha256": document_sha256(calibration),
+                        "applicability_sha256": binding.independent_runtime.qualification.applicability_sha256,
+                        "qualified_domains": list(domains),
+                    }
                 pair = binding.feature_provider(
                     baseline=binding.baseline,
                     candidate=measured,
@@ -300,6 +331,7 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                     scope=binding.scope,
                     workspace=workspace,
                     timeout_s=remaining,
+                    **extra,
                 )
             if type(pair) is not tuple or len(pair) != 2:
                 raise StageGateError("component features require exactly baseline and candidate observations")
@@ -308,9 +340,13 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
             if pair[0].inputs_sha256 != pair[1].inputs_sha256:
                 raise StageGateError("component compiler arms must execute identical admitted inputs")
             costs, details = [], []
-            for arm, (observation, compiler_sha) in enumerate(zip(
-                pair, (binding.baseline_sha256, candidate_sha), strict=True,
-            )):
+            for arm, (observation, compiler_sha) in enumerate(
+                zip(
+                    pair,
+                    (binding.baseline_sha256, candidate_sha),
+                    strict=True,
+                )
+            ):
                 _verify_artifacts(observation)
                 if (
                     observation.compiler_sha256,
@@ -328,16 +364,21 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                     raise StageGateError("component feature evidence belongs to different exact inputs")
                 domain, coordinates = _applicability(binding, observation, workspace / (str(arm) + "_" + compiler_sha))
                 totals, report = complete_component_cost(
-                    observation, calibration, scope=binding.scope, qualified_domains=domains,
-                    applicability_domain=domain, applicability_coordinates=coordinates,
+                    observation,
+                    calibration,
+                    scope=binding.scope,
+                    qualified_domains=domains,
+                    applicability_domain=domain,
+                    applicability_coordinates=coordinates,
                 )
                 costs.append(totals[binding.objective])
                 details.append(report)
-            temporary = cache.with_suffix(".partial." + workspace.name)
-            with temporary.open("wb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                pickle.dump(pair, stream, protocol=pickle.HIGHEST_PROTOCOL)
-            temporary.replace(cache)
+            if binding.independent_arms is None:
+                temporary = cache.with_suffix(".partial." + workspace.name)
+                with temporary.open("wb") as stream:
+                    os.fchmod(stream.fileno(), 0o600)
+                    pickle.dump(pair, stream, protocol=pickle.HIGHEST_PROTOCOL)
+                temporary.replace(cache)
             return (
                 (member.family, member.capsule),
                 tuple(costs),
@@ -411,6 +452,7 @@ def build_component_analytical_provider(
     objective: str = "warm",
     baseline_admission=None,
     independent_runtime=None,
+    independent_arms: IndependentArmFeatures | None = None,
 ) -> ComponentAnalyticalProvider:
     """Bind an exact independent corpus to calibrated, complete, bounded feedback.
 
@@ -426,10 +468,10 @@ def build_component_analytical_provider(
     baseline, target_descriptor, adapter = (
         Path(p).resolve() for p in (baseline, target_descriptor, calibration_adapter)
     )
-    verify_baseline_admission(baseline_admission, baseline=baseline, corpus=corpus,
-                              target_descriptor=target_descriptor)
-    runtime = require_independent_runtime(independent_runtime, required_roles=("feature_provider",),
-                                          target_descriptor=target_descriptor)
+    verify_baseline_admission(baseline_admission, baseline=baseline, corpus=corpus, target_descriptor=target_descriptor)
+    runtime = require_independent_runtime(
+        independent_runtime, required_roles=("feature_provider",), target_descriptor=target_descriptor
+    )
     qualification = Path(qualification).resolve() if qualification else None
     output, lease_path = Path(output).resolve(), Path(lease_path).resolve()
     if any(output.is_relative_to(root) or root.is_relative_to(output) for root in (baseline, corpus.root)):
@@ -469,6 +511,7 @@ def build_component_analytical_provider(
         objective,
         baseline_admission,
         independent_runtime,
+        independent_arms,
     )
     binding.validate(calibration)
     return ComponentAnalyticalProvider(

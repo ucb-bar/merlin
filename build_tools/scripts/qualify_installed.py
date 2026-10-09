@@ -72,6 +72,19 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "independent-feature-arms": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "tests": ("test_component_feature_arms.py",),
+        "support_files": ("feature_arm_control.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase2.component_feature_inputs",
+            "merlin_experiments.phase2.component_feature_arms",
+            "merlin_experiments.phase2.component_analytical",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "recorded-process-consumption": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",

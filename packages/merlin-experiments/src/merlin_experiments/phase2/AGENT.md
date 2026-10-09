@@ -23,6 +23,20 @@ Exact membership never implies a range, repetition or cross-product proof;
 absent producer semantics and unseen combinations remain UNKNOWN. The core
 declarations and statistical reports cannot issue physical measurement roles.
 
+`component_feature_inputs` prepares the complete ordinary integer-DAG input
+roster under shared aggregate budgets before realizing leaves. The live source
+owner grants input preparation only. `component_feature_arms` is an explicit
+single-compiler native command and private per-arm cache. Reopen exact original
+argv/tool/input/source/product pins on hits; pricing still needs live qualified
+applicability. Diagnostic commands cannot enter experimental feedback. Select
+the strict namespace and the same owner actually evaluated by the unchanged
+measurement qualifier before using it there. Default qualification calls do
+not cache, preserving their original private invocation denominator. This does
+not qualify loader semantics, transitive dependencies, source genericity,
+physical traffic, timers, unseen scale/reuse cells or complete cost. Bounded
+JSON/input metadata is not an aggregate native-output or OS deadline guarantee.
+Legacy paired callbacks retain their original cache and UNKNOWN behavior.
+
 `rtl_engine_protocol.py` and `rtl_engine_probe.py` own private source-pinned RTL
 support declarations and actual bounded minimal control execution. Bind exact
 argv/tools, original source bytes, full output rosters, generated product joins
