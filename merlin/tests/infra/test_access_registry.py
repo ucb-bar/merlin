@@ -432,11 +432,23 @@ def test_original_reference_source_and_installed_answers_are_masked(tmp_path, is
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
-@pytest.mark.parametrize("name", ["roster", "plan", "products", "observer", "schema_batch"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "original_reference_roster",
+        "original_reference_plan",
+        "original_reference_products",
+        "original_reference_observer",
+        "original_schema_batch",
+        "original_reference_standard_ir",
+        "original_standard_ir_plan",
+        "original_standard_ir_products",
+        "original_standard_ir_observer",
+    ],
+)
 def test_optional_original_reference_answers_are_masked_in_sources_and_installs(
     tmp_path, isolated_policy, monkeypatch, name
 ):
-    name = "original_schema_batch" if name == "schema_batch" else "original_reference_" + name
     site = tmp_path / ".venv/lib/python3.12/site-packages"
     source = _write(tmp_path, f"packages/merlin-experiments/src/merlin_experiments/phase0/{name}.py")
     installed = _write(site, f"merlin_experiments/phase0/{name}.py")

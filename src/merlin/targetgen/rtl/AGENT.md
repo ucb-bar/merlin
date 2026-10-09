@@ -27,6 +27,13 @@ Answer-bearing replay generation lives in the experiments distribution under the
 stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
 initializer and the structure-only tooling; extensions never overwrite it.
 
+`hw_graph` projects uniquely owned legacy attributes into properties on a private
+analysis clone for the selected discovery reader. Preserve every original field,
+SSA edge and ordered typed module port; refuse ambiguous ownership, duplicate
+symbols and incomplete graph identities. Original native source bytes and the
+lossless parser representation remain unchanged. Representation compatibility
+does not establish instruction roles, geometry or execution authority.
+
 `hw_packing.equal_partitions` follows only typed extracts and contiguous
 concatenations to a complete local input bitvector or opaque instance output.
 Equal slices must cover that entire root without gaps or overlaps. Input/module

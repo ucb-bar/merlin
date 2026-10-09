@@ -72,6 +72,92 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "independent-feature-arms": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "tests": ("test_component_feature_arms.py",),
+        "support_files": ("feature_arm_control.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase2.component_feature_inputs",
+            "merlin_experiments.phase2.component_feature_arms",
+            "merlin_experiments.phase2.component_analytical",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "recorded-process-consumption": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_recorded_process_execution.py", "test_explicit_execution_service.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.contract.process_execution",
+            "merlin.targetgen.contract.execution_service",
+            "merlin.targetgen.contract.compile",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "compiler-library-route": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "merlin/tests/targetgen/test_compiler_library.py",
+            "merlin/tests/targetgen/test_compile_only_transport.py",
+            "packages/merlin-experiments/tests/test_component_compile_role_transport.py",
+            "packages/merlin-experiments/tests/test_component_runtime_support.py",
+            "packages/merlin-experiments/tests/test_component_origin.py",
+            "packages/merlin-experiments/tests/test_component_copy_proof.py",
+            "packages/merlin-experiments/tests/test_component_library_execution.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/test_component_compile_sources.py",
+            "packages/merlin-experiments/tests/test_independent_software_intake.py",
+            "packages/merlin-experiments/tests/test_component_semantic_basis.py",
+            "packages/merlin-experiments/tests/test_independent_rtl_intake.py",
+            "packages/merlin-experiments/tests/test_component_coverage.py",
+            "packages/merlin-experiments/tests/test_component_generation.py",
+            "packages/merlin-experiments/tests/test_component_minimal_spec.py",
+            "packages/merlin-experiments/tests/test_phase0_freeze.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.compiler_library",
+            "merlin.targetgen.compile_only_execution",
+            "merlin.targetgen.native_component_execution",
+            "merlin_experiments.phase1.component_origin",
+            "merlin_experiments.phase2.component_runtime_support",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "functional-callback-selection": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_explicit_execution_service.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": ("merlin.targetgen.contract.execution_service",),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "hw-discovery-inputs": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_hw_discovery_graph.py",),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.targetgen.rtl.hw_graph",),
+        "required_modules": ("xdsl",),
+    },
+    "original-standard-ir-inputs": {
+        "tests": ("test_original_reference_standard_ir.py",),
+        "support_files": ("original_reference_fixtures.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_reference_standard_ir",
+            "merlin_experiments.phase0.original_standard_ir_plan",
+            "merlin_experiments.phase0.original_standard_ir_products",
+            "merlin_experiments.phase0.original_standard_ir_observer",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "renderer-source-owner": {
         "include_experiments": False,
         "tests_root": "merlin/tests/infra",
@@ -1557,6 +1643,7 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
         "selected_tests": list(SUITES[suite]["tests"]),
         "support_files": list(support_files),
         "test_fixture_imports": bool(SUITES[suite].get("test_fixture_imports")),
+        "test_collection_policy": "selected_roster" if SUITES[suite].get("collect_selected_tests") else "copied_tree",
         "source_inputs": {},
         "tests_root": tests_root.as_posix(),
         "core_extras": list(SUITES[suite]["core_extras"]),
@@ -1698,7 +1785,15 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
                 "--import-mode=importlib",
                 "-o",
                 "tmp_path_retention_policy=all",
-                *(["-o", "pythonpath=" + str(tests)] if SUITES[suite].get("test_fixture_imports") else []),
+                *(
+                    [
+                        "-o",
+                        "pythonpath="
+                        + " ".join(dict.fromkeys((str(tests), *(str((tests / name).parent) for name in test_files)))),
+                    ]
+                    if SUITES[suite].get("test_fixture_imports")
+                    else []
+                ),
                 # This venv is fresh and unique; pytest must not clean shared user temp roots.
                 "--basetemp",
                 external / "test-tmp",
@@ -1714,7 +1809,11 @@ def qualify(root, output, commit, suite, timeout, *, requested_ref=None, invocat
                     if report["native_tools"]
                     else []
                 ),
-                tests,
+                *(
+                    [tests / name for name in SUITES[suite]["tests"]]
+                    if SUITES[suite].get("collect_selected_tests")
+                    else [tests]
+                ),
             ],
             external,
         )

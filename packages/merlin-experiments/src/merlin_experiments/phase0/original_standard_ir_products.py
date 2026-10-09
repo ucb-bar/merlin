@@ -93,7 +93,7 @@ def verify(document, *, references, selection):
             "members",
             *({"observation"} if members else set()),
         }
-        or document["schema"] != S.schemas(references)[0]
+        or document["schema"] != S.SCHEMA
         or document["scope"] != S._SCOPE
         or document["reference_roster_sha256"] != references.sha256
         or document["selection"] != R._pin(selection)
@@ -104,7 +104,7 @@ def verify(document, *, references, selection):
         raise ValueError("standard IR lost its exact source selection, complete roster or original scope")
     request = destination / "request.json"
     expected_request = {
-        "schema": S.schemas(references)[1],
+        "schema": "merlin.original_standard_ir_request.v1",
         "capture_sources": capture,
         "members": members,
         "budget": selected["budget"],
@@ -118,7 +118,7 @@ def verify(document, *, references, selection):
         schema = references.schema_intake.record()
         python = _selection(Path(schema["selection_path"]).read_bytes())["python"]
         observer = module_source_path(S._READERS[-1])
-        reference_observer = R._observer(loads(references.selection.read_bytes()))
+        reference_observer = module_source_path("merlin_experiments.phase0.original_reference_observer")
         invocation = document["invocation"]
         path = R._plain(invocation["path"])
         if invocation != R._pin(path) or path.parent.parent.parent != destination / "native":
@@ -160,7 +160,7 @@ def verify(document, *, references, selection):
         observed = loads(observation.read_bytes())
         if (
             set(observed) != {"schema", "rows", "dependencies"}
-            or observed["schema"] != S.schemas(references)[2]
+            or observed["schema"] != "merlin.native_original_standard_ir.v1"
             or canonical_json([row.get("index") for row in observed["rows"]])
             != canonical_json([row["index"] for row in members])
             or any(
