@@ -26,6 +26,8 @@ from merlin_experiments.execution.container_transport import PreparedContainerTr
 from merlin_experiments.phase1.component_package_execution import ComponentPackageExecutor, qualified_package_execution
 
 from . import component_runtime_controls as controls
+from . import component_runtime_copy_controls as copy_controls
+from . import component_runtime_copy_support as copy_support_owner
 from . import component_runtime_instruction_control as instruction_control
 from .component_experiment import ComponentView, RuntimeGrant, verify_component_view
 from .component_runtime_authority import IndependentRuntimeServices, _callback_identity
@@ -78,6 +80,7 @@ class PreparedIndependentRuntimeContext:
     compiler_runtime: tuple[RuntimeGrant, ...] = ()
     readback_policy: RB.ReadbackPolicy = RB.ReadbackPolicy(RB.FULL_VALUES_B64)
     memory_readback: object = None
+    copy_control_support: copy_support_owner.RuntimeCopyControlSupport | None = None
     services: IndependentRuntimeServices = field(init=False)
 
     def __post_init__(self):
@@ -152,8 +155,24 @@ class PreparedIndependentRuntimeContext:
                 "instruction_check": self.instruction_check.verify() if self.instruction_check is not None else None,
                 "compiler_commands": self._compiler_commands(),
                 "readback_selection": self._readback_selection(),
+                "copy_control_selection": self._copy_selection(),
             }
         )
+
+    def _copy_selection(self):
+        support = self.copy_control_support
+        if support is None:
+            return None
+        if type(support) is not copy_support_owner.RuntimeCopyControlSupport:
+            raise StageGateError("copy controls require the fixed source-selection declaration")
+        support.verify(hardware=self.hardware_intake, build=self.build_service, context_pins=self.source_pins)
+        selection = self._readback_selection()
+        if self.memory_readback is None or selection["immutable_selection"].get("effect_source") != {
+            "path": str(support.helper_source),
+            "sha256": sha256_file(support.helper_source),
+        }:
+            raise StageGateError("copy controls require the exact independently selected coherent helper observer")
+        return support.record()
 
     def verify(self):
         from merlin_experiments.phase0.rtl_intake import IndependentHardwareIntake
@@ -186,6 +205,7 @@ class PreparedIndependentRuntimeContext:
         self.build_service.verify(descriptor["target"])
         self.execution_service.verify(descriptor["target"], self.execution_service.simulator)
         self._readback_selection()
+        self._copy_selection()
         required = {
             Path(inspect.getsourcefile(value)).resolve()
             for value in (
@@ -210,6 +230,9 @@ class PreparedIndependentRuntimeContext:
             self.instruction_check.verify()
             required.update(path for path, _ in self.instruction_check.source_pins)
             required.add(Path(instruction_control.__file__))
+        if self.copy_control_support is not None:
+            required.update((Path(copy_controls.__file__), Path(copy_support_owner.__file__)))
+            required.update(path for path, _ in self.copy_control_support.source_pins)
         required.add(self.target_descriptor)
         if self.memory_readback is not None:
             required.add(Path(RB.__file__))
@@ -259,8 +282,11 @@ class PreparedIndependentRuntimeContext:
         if name not in CONTROL_CASES:
             raise StageGateError("unknown independent runtime control")
         mechanism, _, direction = name.partition(".")
-        if mechanism not in _SUPPORTED_DIAGNOSTICS and not (
-            mechanism == "instruction_audit" and self.instruction_check is not None
+        copy = self.copy_control_support if mechanism in copy_support_owner.MECHANISMS else None
+        if (
+            mechanism not in _SUPPORTED_DIAGNOSTICS
+            and copy is None
+            and not (mechanism == "instruction_audit" and self.instruction_check is not None)
         ):
             raise StageGateError("independent physical/accelerator control remains UNKNOWN: " + mechanism)
         root = _plain(workspace)
@@ -270,6 +296,7 @@ class PreparedIndependentRuntimeContext:
             build_service=self.build_service,
             contract_root=self.contract_root,
             target_descriptor=self.target_descriptor,
+            **({"copy_support": copy} if copy is not None else {}),
         )
         candidate, capsule = fixture.grade_arguments["package_dir"], fixture.capsule_root
         mutation = None
@@ -324,11 +351,28 @@ class PreparedIndependentRuntimeContext:
     def _evaluate_source(self, source, lowered, fixture):
         """Return an evaluated rejection as data before the normal gate raises."""
         try:
-            proof = controls.verify_primitive_llvm(
-                source.read_text(),
-                lowered.read_text(),
-                entry_symbol=self.build_service.recipe.require_kernel_stack_frame().entry_symbol,
+            copy = (
+                self.copy_control_support
+                if fixture is not None and fixture.case_id.partition(".")[0] in copy_support_owner.MECHANISMS
+                else None
             )
+            if copy is None:
+                proof = controls.verify_primitive_llvm(
+                    source.read_text(),
+                    lowered.read_text(),
+                    entry_symbol=self.build_service.recipe.require_kernel_stack_frame().entry_symbol,
+                )
+            else:
+                program = copy_controls.parse_copy(source.read_text())
+                if program != copy_controls.CopyProgram(copy.shape, copy.dtype, 2, (0, 1)):
+                    raise ValueError("copy control changes the original selected source domain")
+                proof = copy_controls.verify_copy_llvm(
+                    source.read_text(),
+                    lowered.read_text(),
+                    entry_symbol=self.build_service.recipe.require_kernel_stack_frame().entry_symbol,
+                    callee_symbol=copy.callee_symbol,
+                )
+                proof["helper_source"] = {"path": str(copy.helper_source), "sha256": sha256_file(copy.helper_source)}
             capsule = mapping_file(source.parent / "capsule.yaml", yaml_file=True)
             if fixture is not None and capsule["numeric_policy"] != mapping_file(
                 fixture.evidence_root / "original_policy.json"
@@ -450,7 +494,13 @@ class PreparedIndependentRuntimeContext:
                         target=target,
                         out_dir=output,
                         build_service=instruction_control.scoped_build_service(
-                            build=self.build_service,
+                            build=(
+                                self.copy_control_support.selected_build(fixture=fixture, build=self.build_service)
+                                if fixture is not None
+                                and self.copy_control_support is not None
+                                and fixture.case_id.partition(".")[0] in copy_support_owner.MECHANISMS
+                                else self.build_service
+                            ),
                             fixture=fixture,
                             check=self.instruction_check,
                         ),

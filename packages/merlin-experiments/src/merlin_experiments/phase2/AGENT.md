@@ -52,6 +52,17 @@ qualification bypass. Preserve original source/output/numeric authority and
 actual native invocation records. Unsupported accelerator effects, physical
 ownership, synchronization, hardware equivalence and timing remain UNKNOWN;
 this context cannot issue a complete runtime witness or measurement roles.
+`component_runtime_copy_controls` supplies a fixed evaluator-only registered
+integer tensor-copy source and exact ordered LLVM external-callee relation.
+`component_runtime_copy_support` binds the explicitly selected private OOT helper
+and positive/defect build recipes to the same live HW/command/minimal-software
+source owners and coherent observer. It has no callbacks, imported factory,
+saved ELF or target selector. Exact helper source attribution and a matching
+LLVM call do not prove helper/device semantics. These ordinary numerical
+control diagnostics retain the full output roster and fixed source membership;
+the original fourteen-control and eleven-effect qualification remains refused.
+Unsupported hardware-runtime controls, incomplete defects and stage facets stay
+UNKNOWN. No evaluator compiler or selected helper is an author seed or tool grant.
 An explicit coherent readback selection binds the observer's source-owned
 prepare/decode/verify/record methods to the selected functional service and
 context source membership. Reopen and freeze its stable worker/config descriptor;
