@@ -1,0 +1,10 @@
+--- a/lib/Dialect/Arc/Transforms/LowerState.cpp
++++ b/lib/Dialect/Arc/Transforms/LowerState.cpp
+@@ -1263,2 +1263,5 @@
+-  if (initial)
+-    return success();
++  if (initial) {
++    lowerValue(op.getClock(), Phase::New);
++    lowerValue(op.getCondition(), phase);
++    return success();
++  }
