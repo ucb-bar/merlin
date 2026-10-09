@@ -7,6 +7,7 @@ import pytest
 from merlin_experiments.phase2.component_instruction_policy import (
     POLICY_SCHEMA,
     IndependentInstructionPolicy,
+    _exclusions,
     _resolve,
     issue_independent_instruction_policy,
 )
@@ -73,3 +74,41 @@ def test_metadata_and_constructor_cannot_issue_instruction_policy(tmp_path):
         authority.verify()
     with pytest.raises(StageGateError, match="live independent"):
         replace(authority, selectors=(("CONTROL", 7),)).verify()
+
+
+def test_absent_protected_prefix_is_retained_without_creation(tmp_path):
+    present = tmp_path / "present"
+    present.mkdir()
+    absent = tmp_path / "absent" / "private_answers"
+    assert _exclusions((present, absent)) == (present, absent)
+    assert not absent.parent.exists()
+    # Later materialization remains inside the same excluded lexical prefix.
+    assert (absent / "policy.json").is_relative_to(_exclusions((absent,))[0])
+    absent.mkdir(parents=True)
+    assert _exclusions((absent,)) == (absent,)
+
+
+@pytest.mark.parametrize("kind", ["alias", "dangling_alias", "ancestor_alias", "file", "parent_escape"])
+def test_protected_prefix_refuses_indirection_and_non_directory(tmp_path, kind):
+    directory = tmp_path / "ordinary"
+    directory.mkdir()
+    selected = tmp_path / "protected"
+    if kind == "alias":
+        selected.symlink_to(directory, target_is_directory=True)
+    elif kind == "dangling_alias":
+        selected.symlink_to(tmp_path / "never_created", target_is_directory=True)
+    elif kind == "ancestor_alias":
+        selected.symlink_to(directory, target_is_directory=True)
+        selected = selected / "absent_child"
+    elif kind == "file":
+        selected.write_text("ordinary file, not a protected directory prefix")
+    else:
+        selected = directory / ".." / "protected"
+    with pytest.raises(StageGateError, match="canonical ordinary or absent"):
+        _exclusions((selected,))
+
+
+@pytest.mark.parametrize("roots", [(), [], None])
+def test_protected_prefix_roster_is_explicit_and_nonempty(roots):
+    with pytest.raises(StageGateError, match="explicit protected"):
+        _exclusions(roots)

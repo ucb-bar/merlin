@@ -28,6 +28,17 @@ def _plain(path, *, exists=True):
     return selected
 
 
+def _exclusions(forbidden_roots):
+    from merlin_experiments.phase0.rtl_intake import RtlIntakeRefusal, _exclusion_prefix
+
+    if type(forbidden_roots) is not tuple or not forbidden_roots:
+        raise StageGateError("instruction policy requires explicit protected campaign exclusions")
+    try:
+        return tuple(_exclusion_prefix(root) for root in forbidden_roots)
+    except RtlIntakeRefusal as error:
+        raise StageGateError("instruction policy requires canonical ordinary or absent protected prefixes") from error
+
+
 def _resolve(document, declarations, *, target):
     if (
         type(document) is not dict
@@ -144,14 +155,7 @@ def issue_independent_instruction_policy(*, command_intake, routing_intake, poli
     ):
         raise StageGateError("instruction policy requires matching independently issued routing predicates")
     routing_intake.verify()
-    if type(forbidden_roots) is not tuple or not forbidden_roots:
-        raise StageGateError("instruction policy requires explicit protected campaign exclusions")
-    exclusions = []
-    for root in forbidden_roots:
-        path = _plain(root, exists=False)
-        if not path.is_dir():
-            raise StageGateError("instruction policy exclusions must be existing canonical directories")
-        exclusions.append(path)
+    exclusions = _exclusions(forbidden_roots)
     selected, destination = _plain(policy_file), _plain(output, exists=False)
     if any(path == root or path.is_relative_to(root) for path in (selected, destination) for root in exclusions):
         raise StageGateError("instruction policy selected protected answers or implementation history")
