@@ -72,6 +72,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "emitted-dataflow": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "tests": ("test_emitted_dataflow.py", "test_pointer_entry_abi.py"),
+        "core_extras": ("xdsl",),
+        "probe_modules": ("merlin.targetgen.contract.emitted_dataflow",),
+        "required_modules": ("xdsl",),
+    },
     "host-arithmetic": {
         "include_experiments": False,
         "native_tools": ("riscv-gcc",),
