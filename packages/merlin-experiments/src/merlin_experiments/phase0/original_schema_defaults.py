@@ -22,8 +22,14 @@ def observer():
     return module_source_path("merlin.targetgen.torch_schema_defaults_observer")
 
 
-def observe_members(*, schema_record, basis, destination, version):
+def observe_members(*, schema_record, basis, destination, version, transport="per_member"):
     """Retain actual fixed-reader invocations for the complete original roster."""
+    if transport == "batch.v1":
+        from .original_schema_batch import observe_members as batch
+
+        return batch(schema_record=schema_record, basis=basis, destination=destination, version=version)
+    if transport != "per_member":
+        raise ValueError("original defaults need an explicitly supported observation transport")
     destination = Path(destination)
     if any(path.is_symlink() for path in (destination, *destination.parents)):
         raise ValueError("original default observations need ordinary explicit output paths")
@@ -67,8 +73,14 @@ def observe_members(*, schema_record, basis, destination, version):
     return rows
 
 
-def verify_member(row, *, schema_record, version):
+def verify_member(row, *, schema_record, version, transport="per_member"):
     """Reopen exact inputs, request, process environment and native output."""
+    if transport == "batch.v1":
+        from .original_schema_batch import verify_member as batch
+
+        return batch(row, schema_record=schema_record, version=version)
+    if transport != "per_member" or "transport" in row:
+        raise ValueError("original defaults changed their explicitly selected observation transport")
     selection = _selection(Path(schema_record["selection_path"]).read_bytes())
     originals = {member["graph_path"]: member for member in schema_record["members"]}
     original = originals[row["graph_path"]]
@@ -89,3 +101,23 @@ def verify_member(row, *, schema_record, version):
     if observed != Path(actual["stdout"]["path"]).read_bytes():
         raise ValueError("original defaults differ from actual native output")
     return trace, schemas, json.loads(observed)
+
+
+def verify_members(rows, *, schema_record, basis, destination, version, transport="per_member"):
+    """Bind the selected transport and full original ordered graph denominator."""
+    if transport == "batch.v1":
+        from .original_schema_batch import verify_members as batch
+
+        return batch(rows, schema_record=schema_record, basis=basis, destination=destination, version=version)
+    if transport != "per_member" or [row["graph_path"] for row in rows] != [s.path for s in basis.graph_sources]:
+        raise ValueError("original defaults lost their selected complete ordered source transport")
+    for index, member in enumerate(rows):
+        owner = Path(destination) / str(index)
+        if (
+            set(member) != {"graph_path", "request", "observation", "invocation"}
+            or member["request"] != str(owner / "request.json")
+            or member["observation"] != str(owner / "observation.json")
+            or Path(member["invocation"]).parent.parent.parent != owner
+        ):
+            raise ValueError("original reference defaults lost their complete private owner")
+        verify_member(member, schema_record=schema_record, version=version)

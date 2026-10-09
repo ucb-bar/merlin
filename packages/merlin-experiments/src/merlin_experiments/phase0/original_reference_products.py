@@ -82,7 +82,7 @@ def verify(record, *, schema_intake, basis, selection):
             "source_pins",
             "scope",
         }
-        or record.get("schema") != SCHEMA
+        or record.get("schema") != (R.BATCH_SCHEMA if P.transport(selected) == "batch.v1" else SCHEMA)
         or record["selection"] != R._pin(selection)
         or record["operator_schema_intake_sha256"] != schema_intake.sha256
         or selected["operator_schema_intake_sha256"] != schema_intake.sha256
@@ -100,14 +100,14 @@ def verify(record, *, schema_intake, basis, selection):
         or any(path.is_symlink() for path in (destination, *destination.parents))
     ):
         raise ValueError("original reference roster lost its ordinary private owner")
-    for index, member in enumerate(record["defaults"]):
-        owner = destination / "defaults" / str(index)
-        if (
-            member["request"] != str(owner / "request.json")
-            or member["observation"] != str(owner / "observation.json")
-            or Path(member["invocation"]).parent.parent.parent != owner
-        ):
-            raise ValueError("original reference defaults lost their complete private owner")
+    R.D.verify_members(
+        record["defaults"],
+        schema_record=schema,
+        basis=basis,
+        destination=destination / "defaults",
+        version=2,
+        transport=P.transport(selected),
+    )
     rows, contracts, totals = R._drafts(record["defaults"], schema=schema, basis=basis, selection=selected)
     if len(rows) != len(record["members"]) or totals != record["totals"]:
         raise ValueError("original references lost required original slots or complete preallocation decisions")

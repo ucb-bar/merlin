@@ -21,6 +21,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/component_source_performance.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_roster.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/original_schema_batch.py
+  - src/merlin/targetgen/torch_schema_batch_observer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
@@ -121,6 +123,16 @@ and skips are reported separately. This qualification is not accelerator executi
 
 The private original-reference roster separately compares compatible bounded
 original matmul, add and convolution sources with independent scalar references.
+Reference selection v2 explicitly selects `native_observations: batch.v1`:
+one fresh native process reruns the complete original schema/default roster.
+Exact ordered requests, fixed reader source bytes and full output membership
+are checked before the numerical consumer proceeds. No observation or verdict
+cache is consulted. V1 keeps its original separate native invocations and cannot
+adopt batch transport from saved metadata. Both the private consumer and native
+batch observer retain explicit grader identities in source and installed masks.
+The installed `original-schema-batch` suite checks package origins and full-output
+transfer controls; the complete native controls additionally require explicit
+framework/source selections and must be run separately without skips.
 Select explicit operation/ordered-type numerical policies and signed input
 palettes; the original software policy is unchanged. Complete guard and private
 cohorts, allocation/work/transfer budgets and exact source/native products are

@@ -412,7 +412,9 @@ def test_installed_and_shadowed_evaluators_and_bytecode_are_masked(tmp_path, iso
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
-@pytest.mark.parametrize("name", ["original_operator_reference", "original_reference_values"])
+@pytest.mark.parametrize(
+    "name", ["original_operator_reference", "original_reference_values", "torch_schema_batch_observer"]
+)
 def test_original_reference_source_and_installed_answers_are_masked(tmp_path, isolated_policy, monkeypatch, name):
     site = tmp_path / ".venv/lib/python3.12/site-packages"
     source = _write(tmp_path, f"src/merlin/targetgen/{name}.py", "raise AssertionError('never import')\n")
@@ -430,11 +432,11 @@ def test_original_reference_source_and_installed_answers_are_masked(tmp_path, is
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
-@pytest.mark.parametrize("name", ["roster", "plan", "products", "observer"])
+@pytest.mark.parametrize("name", ["roster", "plan", "products", "observer", "schema_batch"])
 def test_optional_original_reference_answers_are_masked_in_sources_and_installs(
     tmp_path, isolated_policy, monkeypatch, name
 ):
-    name = "original_reference_" + name
+    name = "original_schema_batch" if name == "schema_batch" else "original_reference_" + name
     site = tmp_path / ".venv/lib/python3.12/site-packages"
     source = _write(tmp_path, f"packages/merlin-experiments/src/merlin_experiments/phase0/{name}.py")
     installed = _write(site, f"merlin_experiments/phase0/{name}.py")

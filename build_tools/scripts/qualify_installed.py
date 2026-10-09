@@ -72,6 +72,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "original-schema-batch": {
+        "tests": ("test_original_reference_transfer.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_schema_batch",
+            "merlin.targetgen.torch_schema_batch_observer",
+            "merlin_experiments.phase0.original_schema_defaults",
+            "merlin_experiments.phase0.original_reference_roster",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "source-performance-inputs": {
         "native_tools": ("firtool",),
         "native_test_files": (

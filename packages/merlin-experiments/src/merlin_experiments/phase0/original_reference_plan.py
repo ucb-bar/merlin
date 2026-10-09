@@ -16,26 +16,30 @@ from . import component_execution_budget as E
 from .original_call_sources import validate_budget
 
 SCHEMA = "merlin.original_reference_selection.v1"
+BATCH_SCHEMA = "merlin.original_reference_selection.v2"
 COHORTS = ("functional_guard", "withheld_transfer")
 
 
 def validate(selection):
+    selection_fields = {
+        "schema",
+        "operator_schema_intake_sha256",
+        "semantic_basis_sha256",
+        "policies",
+        "input_palettes",
+        "cohorts",
+        "source_budget",
+        "execution_budget",
+        "reference_budget",
+        "byteorder",
+    }
+    if isinstance(selection, dict) and selection.get("schema") == BATCH_SCHEMA:
+        selection_fields.add("native_observations")
     if (
         not isinstance(selection, dict)
-        or set(selection)
-        != {
-            "schema",
-            "operator_schema_intake_sha256",
-            "semantic_basis_sha256",
-            "policies",
-            "input_palettes",
-            "cohorts",
-            "source_budget",
-            "execution_budget",
-            "reference_budget",
-            "byteorder",
-        }
-        or selection["schema"] != SCHEMA
+        or set(selection) != selection_fields
+        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA}
+        or (selection["schema"] == BATCH_SCHEMA and selection["native_observations"] != "batch.v1")
     ):
         raise ValueError("original references require a closed independently selected contract")
     for key in ("operator_schema_intake_sha256", "semantic_basis_sha256"):
@@ -87,6 +91,10 @@ def validate(selection):
             raise ValueError("original reference palettes need unique finite signed typed values")
         seen.add(row["dtype"])
     return selection
+
+
+def transport(selection):
+    return "batch.v1" if validate(selection)["schema"] == BATCH_SCHEMA else "per_member"
 
 
 def policy(record):

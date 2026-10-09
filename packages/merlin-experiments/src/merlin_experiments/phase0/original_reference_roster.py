@@ -31,6 +31,7 @@ from .operator_schema_intake import IndependentOperatorSchemaIntake, _selection
 from .rtl_intake import RtlIntakePin
 
 SCHEMA = "merlin.original_reference_roster.v1"
+BATCH_SCHEMA = "merlin.original_reference_roster.v2"
 _ISSUED = weakref.WeakKeyDictionary()
 _UNKNOWN = (
     "original_numerical_domain",
@@ -83,7 +84,14 @@ def _json(value):
 def _sources(selection):
     if os.environ.get("MERLIN_QUANT_FORMATS") is not None:
         raise ValueError("original reference roster has no explicitly selected format overlay")
-    return [module_source_path(name) for name in _READERS] + [
+    readers = list(_READERS)
+    if P.transport(loads(Path(selection).read_bytes())) == "batch.v1":
+        readers += [
+            "merlin_experiments.phase0.original_schema_batch",
+            "merlin.targetgen.torch_schema_batch_observer",
+            "merlin.targetgen.torch_schema_observer",
+        ]
+    return [module_source_path(name) for name in readers] + [
         Path(selection),
         schemas_dir() / "quant_formats.registry.yaml",
         schemas_dir() / "quant_format.schema.yaml",
@@ -140,7 +148,9 @@ def _drafts(defaults, *, schema, basis, selection):
         raise ValueError("original references lost exact ordered graph/default membership")
     calls, sources = [], {}
     for original_id, row in zip(original_ids, defaults, strict=True):
-        trace, schemas, observed = D.verify_member(row, schema_record=schema, version=2)
+        trace, schemas, observed = D.verify_member(
+            row, schema_record=schema, version=2, transport=P.transport(selection)
+        )
         forms = [
             form
             for factory in (S.matmul_forms, S.original_add_forms, S.conv2d_forms)
@@ -413,7 +423,13 @@ def prepare(*, schema_intake, basis, selection, destination):
     if any(path.is_symlink() for path in (destination, *destination.parents)):
         raise ValueError("original reference products require an ordinary new private destination")
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
-    defaults = D.observe_members(schema_record=schema, basis=basis, destination=destination / "defaults", version=2)
+    defaults = D.observe_members(
+        schema_record=schema,
+        basis=basis,
+        destination=destination / "defaults",
+        version=2,
+        transport=P.transport(selected),
+    )
     rows, contracts, totals = _drafts(defaults, schema=schema, basis=basis, selection=selected)
     python = _selection(Path(schema["selection_path"]).read_bytes())["python"]
     for index, member in enumerate(rows):
@@ -425,7 +441,7 @@ def prepare(*, schema_intake, basis, selection, destination):
             pin.verify()
         schema_intake.verify()
     record = {
-        "schema": SCHEMA,
+        "schema": BATCH_SCHEMA if P.transport(selected) == "batch.v1" else SCHEMA,
         "operator_schema_intake_sha256": schema_intake.sha256,
         "software_intake_sha256": schema_intake.software.sha256,
         "semantic_basis_sha256": basis.source.sha256,
