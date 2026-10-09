@@ -124,3 +124,11 @@ selects the last operand. Opt-in C tracing exposes scalar dependencies only;
 non-power-of-two index domains remain conditional stops and out-of-range local
 values refuse. Nested and opaque aggregates remain stops. No default widening,
 invented fill, state history, resource role or old source record upgrade occurs.
+
+`hw_index_ranges` rejoins every original native address port to its exact local
+memory declaration, SSA and signless type before symbolic unsigned type-domain
+proofs. Explicit complete row/type/depth/proof budgets precede proof expansion;
+no exponential endpoints are materialized. Domain containment is conditional
+on defined known bits and unsigned indexing. Noncontained domains remain
+unproved; address definedness, state/clock validity, memory history, physical
+capacity, roles and effects remain required. Original T records stay unchanged.

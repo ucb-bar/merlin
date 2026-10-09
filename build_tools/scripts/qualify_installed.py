@@ -72,6 +72,27 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "typed-index-ranges": {
+        "tests_root": ".",
+        "collect_selected_tests": True,
+        "source_inputs": (
+            "examples/*/target/docs/*.md",
+            "examples/*/target/examples/*.mlir",
+            "examples/*/target/contracts/*.yaml",
+            "examples/*/target/evidence_concepts.yaml",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_index_ranges.py",
+            "packages/merlin-experiments/tests/test_index_range_intake.py",
+            "merlin/tests/targetgen/test_targetgen_toy.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_index_ranges",
+            "merlin_experiments.phase0.index_range_intake",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "original-semantic-cases": {
         "tests_root": ".",
         "test_fixture_imports": True,

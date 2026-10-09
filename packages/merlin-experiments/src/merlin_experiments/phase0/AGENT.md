@@ -485,3 +485,10 @@ Retain all original mandatory UNKNOWNs plus each missing scalar-to-command/axis
 mapping and incomplete packing-domain obligation. Opaque instance outputs cannot
 select original-input probes, and absent/broken partitions cannot mint a boundary.
 Historical v1–v5 policies cannot acquire packing observations from saved JSON.
+
+`index_range_intake` requires live original T/native hardware identity and fixed
+reader pins. Its separate conditional type-domain/depth facts retain the entire
+original address roster and old unproved T rows. Strict semantic replay rejects
+missing membership, altered source/depth/types and bool/integer substitutions.
+Known-bit containment never grants address definedness, reachable state/event
+validity, memory history, physical mapping or original mandatory admission.
