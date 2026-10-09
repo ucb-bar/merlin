@@ -77,9 +77,15 @@ SUITES = {
         "tests_root": "merlin/tests/targetgen",
         "native_tools": ("firtool", "iverilog", "vvp"),
         "native_test_files": ("test_hw_combinational_observations.py",),
-        "tests": ("test_hw_combinational_observations.py", "test_hw_input_observations.py", "test_hw_packing.py"),
+        "tests": (
+            "test_hw_combinational_observations.py", "test_hw_input_observations.py",
+            "test_hw_packing.py", "test_mlir_source_admission.py",
+        ),
         "core_extras": ("xdsl",),
-        "probe_modules": ("merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_graph"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_combinational", "merlin.targetgen.rtl.hw_graph",
+            "merlin.targetgen.contract.mlir_source_admission",
+        ),
         "required_modules": ("xdsl",),
     },
     "direct-kernel-counters": {
@@ -99,12 +105,13 @@ SUITES = {
         "native_test_files": ("test_emitted_control_flow.py",),
         "tests": (
             "test_emitted_control_flow.py", "test_emitted_dataflow.py",
+            "test_emitted_control_flow_bounds.py", "test_mlir_source_admission.py",
             "test_pointer_entry_abi.py", "test_source_observation.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
             "merlin.targetgen.contract.emitted_control_flow", "merlin.targetgen.contract.emitted_dataflow",
-            "merlin.targetgen.contract.source_observation",
+            "merlin.targetgen.contract.mlir_source_admission", "merlin.targetgen.contract.source_observation",
         ),
         "required_modules": ("xdsl",),
     },

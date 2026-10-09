@@ -22,6 +22,8 @@ from xdsl.dialects.builtin import (
     UnregisteredAttr,
 )
 
+from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
+
 from .hw_graph import parse_generic_hw
 from .hw_observations import _integer, _name
 from .ports import _hw_port_entries
@@ -205,8 +207,18 @@ def prepare_combinational_observation(
     text: str, *, module: str, limits: EvaluationLimits
 ) -> PreparedCombinationalObservation:
     """Prepare every node/output of a selected local module, with no role lift."""
-    if not isinstance(text, str) or len(text.encode("utf-8")) > limits.source_bytes:
+    # Reject obviously oversized text before allocating an encoded copy. The
+    # shared guard then counts UTF-8 bytes exactly before parsing attributes.
+    if type(text) is not str or len(text) > limits.source_bytes:
         raise ValueError("combinational source exceeds its explicit parse budget")
+    admit_mlir_source(
+        text,
+        max_source_bytes=limits.source_bytes,
+        max_nesting=64,
+        max_integer_bits=max(64, limits.scalar_bits),
+        allow_dense=False,
+        allow_dense_resource=False,
+    )
     parsed = parse_generic_hw(text, reject_dense_literals=True)
     matches = [
         op

@@ -157,7 +157,7 @@ try:
         json.loads(sys.argv[2]), module="UnrelatedUnit", limits=EvaluationLimits(16384,64,64,8,10000)
     )
 except Exception as error:
-    assert "refuses dense literals before materialization" in str(error), str(error)
+    assert "unsupported before shaped parser allocation" in str(error), str(error)
 else:
     raise AssertionError("dense source unexpectedly admitted")
 """
@@ -174,6 +174,41 @@ def test_historical_generic_parser_retains_small_dense_literals_without_scalar_m
     parsed = parse_generic_hw(_source().replace("value = false", "value = dense<0> : tensor<2xi8>"))
     module = next(op for op in parsed.walk() if op.attributes.get("sym_name") is not None)
     assert len(module.regions[0].block.first_op.attributes["value"]) == 2
+
+
+@pytest.mark.parametrize("case", ["huge_integer", "nested_attributes", "dense_resource"])
+def test_bounded_source_screen_refuses_before_integer_or_recursive_parser_allocation(case):
+    package_root = Path(observer_module.__file__).resolve().parent.parent.parent.parent
+    if case == "huge_integer":
+        source = _source().replace("value = false", "value = 1 : i10000000000")
+        message = "scalar width"
+    elif case == "nested_attributes":
+        source = "builtin.module attributes {x = " + "[" * 1500 + "0 : i1" + "]" * 1500 + "} {}"
+        message = "nesting bound"
+    else:
+        source = _source().replace("value = false", "value = dense_resource<missing> : tensor<1000000000xi8>")
+        message = "unsupported before shaped parser allocation"
+    child = """import resource, sys, json
+resource.setrlimit(resource.RLIMIT_AS, (256 * 1024**2, 256 * 1024**2))
+sys.path.insert(0, sys.argv[1])
+from merlin.targetgen.contract.mlir_source_admission import MlirSourceUnavailable
+from merlin.targetgen.rtl.hw_combinational import EvaluationLimits, prepare_combinational_observation
+try:
+    prepare_combinational_observation(
+        json.loads(sys.argv[2]), module="UnrelatedUnit", limits=EvaluationLimits(16384,64,64,8,10000)
+    )
+except MlirSourceUnavailable as error:
+    assert sys.argv[3] in str(error), str(error)
+else:
+    raise AssertionError("oversized source unexpectedly admitted")
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", child, str(package_root), json.dumps(source), message],
+        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        capture_output=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr.decode()
 
 
 def test_native_lowered_complete_outputs_match_independent_verilog_execution(tmp_path):

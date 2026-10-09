@@ -75,11 +75,14 @@ class EmittedControlFlow:
     scope: str = "static CFG/typed SSA inventory only; no dynamic execution or semantic/runtime authority"
 
 
-def observe_emitted_control_flow(text, *, entry_symbol, pointer_bits, max_blocks=256, max_operations=4096):
+def observe_emitted_control_flow(
+    text, *, entry_symbol, pointer_bits, max_blocks=256, max_operations=4096, max_source_bytes=2000000, max_nesting=64
+):
     """Retain every supported block, phi edge, typed definition and operation.
 
-    Observation bounds limit only this reader. They do not establish compiled
-    program resource bounds. This observer never folds phi values, assumes a
+    Source/lexical limits run before parser allocation. Observation bounds limit
+    only this reader, without establishing compiled program resource bounds.
+    This observer never folds phi values, assumes a
     unique pointer origin, evaluates a predicate or treats lexical block order
     as actual execution. Unsupported dispatch, regions and types refuse.
     """
@@ -90,6 +93,7 @@ def observe_emitted_control_flow(text, *, entry_symbol, pointer_bits, max_blocks
     from xdsl.utils.exceptions import ParseError, VerifyException
 
     from .compile_only import require_pointer_entry
+    from .mlir_source_admission import MlirSourceUnavailable, admit_mlir_source
 
     if (
         type(text) is not str
@@ -104,13 +108,24 @@ def observe_emitted_control_flow(text, *, entry_symbol, pointer_bits, max_blocks
         or not 1 <= max_operations <= 100000
     ):
         raise DataflowUnavailable("CFG observation needs explicit bounded source/entry/pointer selections")
+    try:
+        admit_mlir_source(
+            text,
+            max_source_bytes=max_source_bytes,
+            max_nesting=max_nesting,
+            max_integer_bits=256,
+            allow_dense=False,
+            allow_dense_resource=False,
+        )
+    except MlirSourceUnavailable as error:
+        raise DataflowUnavailable(str(error)) from error
     context = Context()
     context.load_dialect(builtin.Builtin)
     context.load_dialect(llvm.LLVM)
     try:
         module = Parser(context, text).parse_module()
         module.verify()
-    except (ParseError, VerifyException) as error:
+    except (ParseError, VerifyException, RecursionError) as error:
         raise DataflowUnavailable("emitted LLVM CFG cannot be parsed and verified completely") from error
     members = tuple(module.body.block.ops)
     if module.attributes or module.properties or len(members) != 1 or type(members[0]) is not llvm.FuncOp:

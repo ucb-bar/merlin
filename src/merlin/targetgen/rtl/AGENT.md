@@ -42,3 +42,10 @@ materialization. Two-state local values and carry bits never assign address
 spaces, allocation/capacity, memory ports, tensor axes, protocol or timing roles.
 Source method probes require their own native/public source correspondence and
 cannot replace the selected full RTL or its mandatory unknown obligations.
+
+Bounded scalar observations call the shared `contract.mlir_source_admission`
+lexer guard before xDSL parsing: explicit source bytes, 64 syntax levels, scalar
+width bounded by the requested limit or 64-bit metadata, and no aggregate
+literals. This addresses preparse integer and nesting allocation failures; it
+does not change the historical generic reader or replace a process resource
+lease, exact operation typing, source correspondence or original obligations.
