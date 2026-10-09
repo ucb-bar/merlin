@@ -90,6 +90,14 @@ SUITES = {
         "probe_modules": ("merlin.common.invocation_record",),
         "required_modules": (),
     },
+    "pinned-files": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests",
+        "tests": ("infra/test_pinned_files.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.common.pinned_files",),
+        "required_modules": (),
+    },
     "compile-only": {
         "native_tools": ("clang", "mlir-translate", "riscv-gcc"),
         "native_test_files": (

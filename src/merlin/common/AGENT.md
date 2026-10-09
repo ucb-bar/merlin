@@ -81,3 +81,10 @@ name and removes only the operation's temporary staged link.
 `execution_deadline` carries one explicit monotonic wall budget across selected
 ordinary stages. Passing a parent never resets it; absent selection changes no
 legacy caller behavior. It owns no correctness, runtime or hardware timer authority.
+
+`pinned_files` reopens explicitly selected regular files and creates exclusive
+owner-private streamed snapshots with exact source/output hashes. Callers own
+protected parent directories, resource locking, complete input membership and
+actual consumer correspondence. A file snapshot is never a compiler, hardware,
+runtime, numerical or timing qualification. Failed attempts are retained by the
+caller and return no snapshot selection; mode bits alone do not prove immutability.
