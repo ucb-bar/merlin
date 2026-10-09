@@ -4,6 +4,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`source_preparation_release` replays the complete original source ledger and
+optional finite semantic cases into a live versioned input owner. Preserve all
+mandatory blockers, original declaration roles/cohorts and pending candidate
+predicates. Fresh Phase1 consumes completion through its explicit selector while
+retaining runtime, compile roster, library, transport and isolation gates.
+Source completion is never candidate correctness or hardware qualification;
+historical coverage keeps its separate reader and meaning.
+
 `original_semantic_review` binds protected operation-local public schema/default,
 form, storage and numerical-policy choices to complete original reference and
 upstream source-ABI cases. The same reference traversal observes actual signs,

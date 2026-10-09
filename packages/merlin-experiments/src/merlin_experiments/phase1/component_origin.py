@@ -27,7 +27,7 @@ from merlin_experiments.phase2.component_experiment import (
 )
 
 from .component_compile_admission import verify_compile_roster
-from .component_generation_admission import verify_bounded_generation
+from .component_generation_admission import verify_generation_inputs
 from .component_package_execution import selected_compiler_transport
 from .component_tool_readiness import probe_native_author_tools, probe_shared_tools
 
@@ -159,6 +159,7 @@ class FreshPhase1Inputs:
     compile_roster: object = None
     pointer_storage: object = None
     author_sandbox: RuntimeGrant | None = None
+    source_preparation: object = None
 
     @property
     def compiler_transport(self):
@@ -223,7 +224,9 @@ class FreshPhase1Inputs:
             roster=self.compile_roster,
             view=self.view,
         )
-        report = verify_bounded_generation(self.corpus_root)
+        report = verify_generation_inputs(
+            self.corpus_root, preparation=self.source_preparation, hardware=self.hardware, software=self.software
+        )
         if (
             report["sha256"] != self.view.generation_sha256
             or report.get("hardware_intake_sha256") != self.hardware.sha256
@@ -271,7 +274,7 @@ class FreshPhase1Inputs:
             runtime=self.runtime, control_runtime=self.control_runtime, readiness=self.readiness
         )
         self.sandbox_binary
-        return {
+        binding = {
             "hardware_intake_sha256": self.hardware.sha256,
             "software_intake_sha256": self.software.sha256,
             "runtime_authority_sha256": self.execution_support.sha256,
@@ -296,6 +299,12 @@ class FreshPhase1Inputs:
                 "sha256": self.author_sandbox.sha256,
             },
         }
+        if self.source_preparation is not None:
+            binding["source_preparation"] = {
+                "sha256": self.source_preparation.sha256,
+                "schema": self.source_preparation.record()["schema"],
+            }
+        return binding
 
 
 @dataclass(frozen=True)

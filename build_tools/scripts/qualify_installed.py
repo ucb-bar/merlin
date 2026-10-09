@@ -72,6 +72,38 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "source-preparation-release": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "test_source_preparation_release.py",
+            "test_source_preparation_semantic_join.py",
+            "test_component_origin.py",
+            "test_fresh_phase1_generation_budget.py",
+        ),
+        "support_files": (
+            "test_source_requirement_ledger.py",
+            "test_component_source_binding.py",
+            "test_component_automatic.py",
+            "test_component_generation.py",
+            "test_component_minimal_spec.py",
+            "test_component_execution_budget.py",
+            "test_independent_rtl_intake.py",
+            "test_component_coverage.py",
+            "test_original_semantic_review.py",
+            "test_original_reference_standard_ir.py",
+            "test_original_reference_requirement_join.py",
+            "original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.source_preparation_release",
+            "merlin_experiments.phase1.component_generation_admission",
+            "merlin_experiments.phase1.component_origin",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "development-measurement-scheduling": {
         "tests_root": ".",
         "collect_selected_tests": True,
