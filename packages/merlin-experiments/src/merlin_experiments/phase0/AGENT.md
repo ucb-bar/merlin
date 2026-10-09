@@ -4,6 +4,15 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`original_semantic_review` binds protected operation-local public schema/default,
+form, storage and numerical-policy choices to complete original reference and
+upstream source-ABI cases. The same reference traversal observes actual signs,
+rounding, cancellation and wrap events under complete logical work/payload
+budgets. Missing owners, denied cases and unrealized required stress remain
+unavailable in the original cohort roster. Clean tracked implementation context
+is a reviewed premise, not compiled-body or universal equivalence proof. These
+private finite cases issue no hardware, runtime or Phase 1 release authority.
+
 `original_reference_standard_ir` joins every required original source cohort to
 its independently checked reference, actual ordinary upstream conversion,
 complete ordered tensor ABI and a selected stock parser. Explicit aggregate

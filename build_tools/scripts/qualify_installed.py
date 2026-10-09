@@ -72,6 +72,27 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUITES = {
+    "original-semantic-cases": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "packages/merlin-experiments/tests/test_original_semantic_review.py",
+            "merlin/tests/targetgen/test_original_reference_stress.py",
+            "merlin/tests/targetgen/test_original_operator_reference.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/test_original_reference_standard_ir.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.original_semantic_review",
+            "merlin_experiments.phase0.original_semantic_review_plan",
+            "merlin.targetgen.original_operator_reference",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "typed-array-inputs": {
         "tests_root": ".",
         "collect_selected_tests": True,

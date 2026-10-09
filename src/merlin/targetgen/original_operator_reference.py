@@ -225,26 +225,35 @@ class OriginalReferenceContract:
 
     def evaluate(self, inputs: tuple[TypedReferenceTensor, ...]) -> tuple[TypedReferenceTensor, ...]:
         metadata, values = self._inputs(inputs)
-        arithmetic = _Arithmetic(self.policy)
-        if metadata["target"] == "aten.matmul.default":
-            m, k = metadata["inputs"][0]["shape"]
-            n = metadata["inputs"][1]["shape"][1]
-            result = [
-                arithmetic.reduce((values[0][i * k + t], values[1][t * n + j]) for t in range(k))
-                for i in range(m)
-                for j in range(n)
-            ]
-        elif metadata["target"] == "aten.add.Tensor":
-            result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
-        else:
-            result = _conv(metadata, values, arithmetic)
-        output = metadata["outputs"][0]
-        result = [arithmetic.readout(value, output["dtype"]) for value in result]
-        return (
-            TypedReferenceTensor.from_values(
-                output["name"], output["dtype"], output["shape"], result, byteorder=self.output_byteorder
+        return _evaluate(metadata, values, _Arithmetic(self.policy), self.output_byteorder)
+
+    def observe_stress(self, inputs: tuple[TypedReferenceTensor, ...]) -> dict:
+        """Observe realized inputs/products/partial sums in the same reference.
+
+        Counters retain actual rounding, cancellation and wrap events under the
+        declared policy. They cannot establish an untested numerical domain,
+        framework reduction order, candidate semantics or hardware effects.
+        """
+        metadata, values = self._inputs(inputs)
+        arithmetic = _StressArithmetic(self.policy)
+        for row in values:
+            for value in row:
+                arithmetic.counts["positive_inputs"] += value > 0
+                arithmetic.counts["negative_inputs"] += value < 0
+                arithmetic.counts["zero_inputs"] += value == 0
+        output = _evaluate(metadata, values, arithmetic, self.output_byteorder)
+        return {
+            "schema": "merlin.original_reference_stress.v1",
+            "contract_sha256": self.sha256,
+            "input_sha256": [_sha(tensor.data) for tensor in inputs],
+            "output_sha256": [_sha(tensor.data) for tensor in output],
+            "counts": arithmetic.counts,
+            "logical_input_shapes": [row["shape"] for row in metadata["inputs"]],
+            "logical_output_shapes": [row["shape"] for row in metadata["outputs"]],
+            "scope": (
+                "realized bounded reference arithmetic only; no whole-domain, framework, target or phase authority"
             ),
-        )
+        }
 
     def compare(self, inputs, actual) -> dict:
         """Recompute and compare every original output slot and element."""
@@ -316,6 +325,78 @@ class _Arithmetic:
             if self.policy.arithmetic == "finite_f32"
             else integer_project(value, dtype, self.policy.arithmetic)
         )
+
+
+class _StressArithmetic(_Arithmetic):
+    def __init__(self, policy):
+        super().__init__(policy)
+        self.counts = dict.fromkeys(
+            (
+                "positive_inputs",
+                "negative_inputs",
+                "zero_inputs",
+                "products",
+                "additions",
+                "rounded_products",
+                "rounded_additions",
+                "wrapped_products",
+                "wrapped_additions",
+                "wrapped_outputs",
+                "cancellation_additions",
+                "exact_zero_cancellations",
+                "zero_outputs",
+            ),
+            0,
+        )
+
+    def _observe(self, kind, exact, observed):
+        self.counts[kind] += 1
+        if Fraction(observed) != exact:
+            prefix = "rounded_" if self.policy.arithmetic == "finite_f32" else "wrapped_"
+            self.counts[prefix + kind] += 1
+        return observed
+
+    def product(self, a, b):
+        return self._observe("products", Fraction(a) * Fraction(b), super().product(a, b))
+
+    def add(self, a, b):
+        exact = Fraction(a) + Fraction(b)
+        opposite = (a > 0 and b < 0) or (a < 0 and b > 0)
+        self.counts["cancellation_additions"] += opposite
+        self.counts["exact_zero_cancellations"] += opposite and exact == 0
+        return self._observe("additions", exact, super().add(a, b))
+
+    def readout(self, value, dtype):
+        observed = super().readout(value, dtype)
+        self.counts["wrapped_outputs"] += self.policy.arithmetic != "finite_f32" and observed != value
+        self.counts["zero_outputs"] += observed == 0
+        return observed
+
+
+def _evaluate(metadata, values, arithmetic, byteorder):
+    if metadata["target"] == "aten.matmul.default":
+        m, k = metadata["inputs"][0]["shape"]
+        n = metadata["inputs"][1]["shape"][1]
+        result = [
+            arithmetic.reduce((values[0][i * k + t], values[1][t * n + j]) for t in range(k))
+            for i in range(m)
+            for j in range(n)
+        ]
+    elif metadata["target"] == "aten.add.Tensor":
+        result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
+    else:
+        result = _conv(metadata, values, arithmetic)
+    output = metadata["outputs"][0]
+    result = [arithmetic.readout(value, output["dtype"]) for value in result]
+    return (
+        TypedReferenceTensor.from_values(
+            output["name"],
+            output["dtype"],
+            output["shape"],
+            result,
+            byteorder=byteorder,
+        ),
+    )
 
 
 def _conv(metadata, values, arithmetic):
