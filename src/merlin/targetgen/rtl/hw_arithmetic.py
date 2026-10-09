@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from xdsl.ir import BlockArgument, OpResult
 
-from .hw_observations import _inputs, _integer, _name
+from .hw_observations import _inputs, _integer, _module_name, _name
 from .hw_observations import _width as _observed_width
 
 SCHEMA = "merlin.local_hw_arithmetic.v1"
@@ -136,6 +136,7 @@ def local_arithmetic(module):
         if _name(op) != "hw.module":
             continue
         module_count += 1
+        module_name = _module_name(op)
         inputs = _inputs(op)
         terminator = op.regions[0].block.last_op
         if terminator is None or _name(terminator) != "hw.output":
@@ -144,7 +145,7 @@ def local_arithmetic(module):
         for ordinal, value in enumerate(terminator.operands):
             relation = _relation(value, inputs, ordinal)
             if relation is not None:
-                records.append({"module": op.attributes["sym_name"].data, **relation})
+                records.append({"module": module_name, **relation})
     return {
         "schema": SCHEMA,
         "scope": "local combinational module-output two-state modular expression",
