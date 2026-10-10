@@ -3,9 +3,9 @@ title: Provisioning Merlin's Gemmini gSIM on a Linux worker
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-08
+last_verified: 2026-10-10
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py]
 ---
 
 # Provisioning Gemmini gSIM on a Linux worker
@@ -151,6 +151,64 @@ receipts or expose private model inputs to a compiler author.
 A private-input YAML file is not its input closure: transfer its referenced model captures, weights,
 selected SDK/toolchain and attestation inputs separately, or regenerate them through the normal
 capture workflow. A small simulator bringup bundle alone does not make an EL4 full-model gate ready.
+
+## Prepare the catalog Phase 0 and Phase 1 handoff
+
+Use a reviewed experiment definition with explicit recipe, conformance and synthesis
+inputs, verified evidence mode, exact facts and capability contract, and an
+operator-owned hidden cohort. The retained diagnostic example cannot be promoted
+by changing its status. Select independently reviewed support with
+`MERLIN_TARGET_PATH`; Merlin's metadata-only example does not supply its executable
+backend. Keep handwritten references and final-validation inputs outside public
+derivation and author grants.
+
+The ordinary catalog route uses `capsule_derivation` and `capsule_bench`.
+Explicit component-only preparation and `FreshPhase1Inputs` are a separate route;
+their diagnostic ledgers are not the catalog launch prerequisites. Both routes
+retain their own correctness and independence gates.
+
+Set the variables below to the reviewed definition and fresh destinations. Run
+Phase 0 separately from Phase 1, using the same definition and selections through
+inspection, preflight and execution:
+
+```sh
+merlin experiment inspect "$SPEC" --phase 0 --run-dir "$P0"
+merlin experiment preflight "$SPEC" --phase 0 --run-dir "$P0"
+merlin experiment run "$SPEC" --phase 0 --run-dir "$P0"
+merlin experiment corpus coverage "$P0" --spec "$CONFORMANCE"
+merlin experiment corpus prepare "$P0" --generated-only --output "$RELEASE"
+merlin experiment corpus inspect "$RELEASE"
+```
+
+The release belongs beneath the configured `out/artifacts` root. Supply
+`--private-baseline` to `prepare` when selecting a separate private cohort. After
+actual operator review, seal the exact inspected digest:
+
+```sh
+merlin experiment corpus seal "$RELEASE" \
+  --expected-digest "$REVIEW_DIGEST" \
+  --reviewed-by "$OPERATOR" --review-note "$REVIEW_NOTE"
+merlin experiment preflight "$SPEC" --phase 1 --run-dir "$P1" \
+  --corpus-seal "$RELEASE/private/seal.json" \
+  --bundle-manifest "$RELEASE/payload/experiment/input_bundles/$BUNDLE/input_bundle_manifest.yaml"
+```
+
+Choose `BUNDLE` from this release's regenerated inputs. The seal and manifest must
+belong to the same release; the runner derives the released descriptor and bundle
+identity. Provider/model overrides, when selected, must remain identical through
+inspection, preflight and execution. See the
+[reviewed handoff](../../experiments/README.md#reviewed-phase-0-handoff) for the
+available flags.
+
+Catalog preflight reports `engine_readiness: not_executed`. It checks configuration
+and recorded timing bindings without launching a simulator or an author. The
+execution worker still needs a genuine target/config/binary-bound Chipyard oracle
+timing record, usable compiler tools, exact bundle snapshots and successful native
+sandbox checks. Current timing admission checks Verilator even when gSIM is selected;
+gSIM engine selection alone does not satisfy that prerequisite.
+Ordinary startup performs those checks before authoring; configuration
+preflight alone does not establish them. Only a subsequent Phase 1 `run` starts
+the author experiment.
 
 ## Worker isolation and access
 

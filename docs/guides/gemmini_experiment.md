@@ -23,8 +23,8 @@ the launch procedure for a new verified Phase 1 run. Use the
 [Phase 0 release guide](../../examples/gemmini/phase0/README.md), and its
 [installed Phase 1 guide](../../examples/gemmini/phase1/README.md). A new EL4
 run requires a reviewed Phase 0 seal, a bundle generated for that release, a
-measured oracle-timing receipt, and a selected support provider (the vendored
-`examples/gemmini/support` when `MERLIN_TARGET_PATH` is unset).
+measured oracle-timing receipt, and independently reviewed support selected
+explicitly through `MERLIN_TARGET_PATH`.
 The retained example alone is not ready to run.
 
 Gemmini is the **case study** for the target-dialect-generation tool: it asks *how well can an agent

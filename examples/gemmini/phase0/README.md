@@ -407,7 +407,7 @@ interpreter. An installed Merlin checkout does not imply they are installed or
 selected; check `python -c 'import aet'` and resolve these paths before grading.
 
 ```sh
-MERLIN_TARGET_PATH="$PWD/examples/gemmini/support" \
+MERLIN_TARGET_PATH="${MERLIN_INDEPENDENT_TARGET_SUPPORT:?independent runtime support required}" \
 MERLIN_TARGET_CONTRACT="$PWD/examples/gemmini/target/contracts/target_contract.yaml" \
 MERLIN_RTL_FACTS="$RTL_ROOT/facts.json" \
 MERLIN_EXT_CHIPYARD="$SIMULATOR_CHIPYARD_ROOT" \
