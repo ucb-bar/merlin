@@ -12,6 +12,9 @@ including without an optional native-tool inventory; missing compiler selections
 original-candidate-members checks full typed transport and original qualification membership.
 Every selected test is mandatory, including the actual source-only namespace check;
 missing native tools or unavailable namespace isolation cannot qualify the suite.
+host-ranked-descriptors requires all 46 selection controls and both ordinary
+native descriptor cases with explicit compiler/source selections and zero skips.
+This checks finite storage transport, not body, effects or runtime authority.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -86,6 +89,31 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "dispatch-placement": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/runtime",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": ("test_dispatch_placement_execution.py",),
+        "tests": ("test_dispatch_placement_execution.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.runtime.dispatch_runtime", "merlin.runtime.dispatch_placement"),
+        "required_modules": ("numpy", "xdsl"),
+        "guarded_tests": True,
+    },
+    "installed-test-origins": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/infra",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": ("test_installed_test_origins.py",),
+        "tests": ("test_installed_test_origins.py",),
+        "source_inputs": ("build_tools/scripts/installed_qualification_probe.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.common.paths",),
+        "required_modules": (),
+        "guarded_tests": True,
+    },
     "rtl-counter-timelines": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
@@ -95,22 +123,61 @@ SUITES = {
         "native_test_files": (
             "test_hw_counter_intervals.py",
             "test_hw_counter_state_timelines.py",
+            "test_hw_state_effects.py",
             "test_counter_source_tool.py",
         ),
         "tests": (
             "test_hw_counter_intervals.py",
             "test_hw_counter_state_timelines.py",
+            "test_hw_state_effects.py",
             "test_counter_source_tool.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
             "merlin.targetgen.rtl.hw_counter_intervals",
             "merlin.targetgen.rtl.hw_counter_state_timelines",
+            "merlin.targetgen.rtl.hw_state_effects",
             "merlin.targetgen.rtl.hw_combinational",
             "merlin.targetgen.rtl.hw_graph",
             "merlin.targetgen.tool_cli",
         ),
         "required_modules": ("xdsl",),
+    },
+    "original-broadcast-add-sources": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("operator-python", "firtool", "mlir-opt"),
+        "native_python_entries": ("operator-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}},
+        "test_input_environment_keys": (
+            "MERLIN_TEST_M2M_COMMIT",
+            "MERLIN_TEST_OPERATOR_DECLARATIONS",
+            "MERLIN_TEST_TORCH_SOURCE_ROOT",
+        ),
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_broadcast_add.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_plan.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_broadcast_add.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_plan.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_flow.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/original_broadcast_add_fixtures.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_broadcast_add_sources",
+            "merlin.targetgen.original_operator_reference",
+            "merlin_experiments.phase0.original_reference_roster",
+            "merlin_experiments.phase0.original_reference_standard_ir",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
     },
     "original-transpose-sources": {
         "tests_root": ".",
@@ -145,6 +212,94 @@ SUITES = {
             "merlin.targetgen.original_transpose_reference",
             "merlin_experiments.phase0.original_reference_roster",
             "merlin_experiments.phase0.original_reference_standard_ir",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
+    "host-ranked-descriptors": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/ir",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("compiler-python", "llvm-llc", "clang"),
+        "native_python_entries": ("compiler-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_M2M_DIR"}},
+        "native_test_files": ("test_host_descriptor_selection.py", "test_host_descriptor_native.py"),
+        "native_test_cases": (
+            *(
+                ("test_host_descriptor_selection.py", method + suffix)
+                for method, suffixes in (
+                    ("test_original_complete_body_returns_and_storage_are_checked_before_lowering", ("",)),
+                    (
+                        "test_no_environment_default_duplicate_or_scalar_alias",
+                        tuple(f"[environment{i}]" for i in range(4)),
+                    ),
+                    ("test_only_actual_calling_marker_may_differ_in_prepared_source", ("",)),
+                    ("test_join_requires_same_actual_object_runtime_link_environment_and_image", ("",)),
+                    (
+                        "test_complete_raw_translation_copy_joins_actual_object_input_without_path_or_pin_shape_assumption",
+                        tuple(
+                            f"[{name}]"
+                            for name in ("None", "changed_raw", "changed_final", "missing_raw", "stale_raw_pin")
+                        ),
+                    ),
+                    ("test_compile_host_uses_selected_original_and_own_result_before_loading", ("",)),
+                    (
+                        "test_complete_ordered_original_fields_use_observed_i32_indices",
+                        ("[shape0-i64]", "[shape1-i32]"),
+                    ),
+                    (
+                        "test_changed_partial_or_aliased_caller_objects_refuse_before_descriptor_allocation",
+                        tuple(
+                            f"[{name}]"
+                            for name in (
+                                "missing",
+                                "reordered",
+                                "dtype",
+                                "shape",
+                                "stride",
+                                "capacity",
+                                "alignment",
+                                "overlap",
+                                "scalar",
+                                "address",
+                            )
+                        ),
+                    ),
+                    ("test_constructed_transport_and_scalar_trampoline_paths_cannot_invoke", ("",)),
+                    (
+                        "test_unsupported_selected_image_entry_scalar_or_trampoline_refuses_before_loading",
+                        tuple(f"[{name}]" for name in ("image", "entry", "wrapper", "scalar", "trampoline")),
+                    ),
+                    (
+                        "test_actual_selected_model_route_checks_selection_and_entry_before_and_after_call",
+                        tuple(
+                            f"[{name}-{when}]"
+                            for name in ("drop", "replace", "function", "restype", "argtypes", "scalar", "trampoline")
+                            for when in ("before", "during")
+                        ),
+                    ),
+                    ("test_absent_selection_keeps_ordinary_host_scalar_call_and_lowering_kwargs", ("",)),
+                )
+                for suffix in suffixes
+            ),
+            *(
+                (
+                    "test_host_descriptor_native.py",
+                    "test_ordinary_original_complete_outputs_guards_and_actual_descriptor_call[" + case + "]",
+                )
+                for case in ("rank_zero_signed_zero", "tail_wide_repeated_results")
+            ),
+        ),
+        "tests": ("test_host_descriptor_selection.py", "test_host_descriptor_native.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.llvmlower.compiled_layout_query",
+            "merlin.llvmlower.descriptor_contract",
+            "merlin.llvmlower.descriptor_wrapper",
+            "merlin.llvmlower.descriptor_layout",
+            "merlin.llvmlower.host_descriptor_compile",
+            "merlin.llvmlower.host_descriptor_call",
+            "merlin.llvmlower.kernel_backend",
         ),
         "required_modules": ("xdsl", "jsonschema", "numpy"),
     },
@@ -1099,6 +1254,10 @@ SUITES = {
             "test_component_launch_authority.py",
             "test_component_analytical.py",
             "test_component_screening.py",
+            "test_component_cost_interval_states.py",
+            "test_component_held_group_partition.py",
+            "test_component_unknown_coverage.py",
+            "test_component_training_membership.py",
             "test_supervised_feedback.py",
             "test_feedback_guardian.py",
             "test_component_normal_execution.py",
@@ -1890,6 +2049,24 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def retain_archived_test_sources(tests, names, output):
+    """Pin exact copied test identities; production origin checks stay strict."""
+    rows = []
+    for name in dict.fromkeys(names):
+        relative = Path(name.split("::", 1)[0])
+        if relative.suffix != ".py" or not relative.stem.startswith("test_"):
+            continue
+        path = (tests / relative).resolve()
+        if relative.is_absolute() or ".." in relative.parts or not path.is_relative_to(tests.resolve()):
+            raise QualificationFailed("archived test identity escapes its selected root")
+        rows.append({"module": ".".join(relative.with_suffix("").parts), "path": str(path), "sha256": digest(path)})
+    path = output / "archived-test-sources.json"
+    path.write_text(
+        json.dumps({"schema": "merlin.installed_test_sources.v1", "files": rows}, sort_keys=True, indent=2) + "\n"
+    )
+    return path
+
+
 def clean_environment():
     excluded = {"UV_OVERRIDE", "UV_EXCLUDE", "UV_CONSTRAINT", "UV_BUILD_CONSTRAINT"}
     return {
@@ -2490,6 +2667,9 @@ def qualify(
             report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
+        archived_tests = retain_archived_test_sources(tests, test_files, output)
+        runner.environment["MERLIN_TEST_ARCHIVED_SOURCES"] = str(archived_tests)
+        report["archived_test_sources"] = {"path": str(archived_tests), "sha256": digest(archived_tests)}
         runner.environment = retain_test_environment(suite, output, runner.environment, report)
         runner.save()
         runner.run(

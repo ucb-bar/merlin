@@ -4,6 +4,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+Original call-source v5 / automatic policy v12 selects typed broadcast-add forms;
+original reference selection/roster v5 and standard-IR v4 explicitly select the
+same vocabulary. Preserve every original call and guard/private slot, complete
+aggregate logical budgets and all unavailable policies/owners/effect/resource
+requirements. Original positive extents supply singleton/equality relations only,
+never generated sizes, objective weights or packing roles. Earlier versions keep
+their meanings; new finite source/reference products grant no mandatory admission.
+
 `source_preparation_release` replays the complete original source ledger and
 optional finite semantic cases into a live versioned input owner. Preserve all
 mandatory blockers, original declaration roles/cohorts and pending candidate

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -197,7 +198,7 @@ def validate_component_screen_report(report: Mapping[str, Any]) -> dict[str, Any
     records = report.get("predictions")
     if not isinstance(records, list) or not records:
         raise ValueError("component screen report omits its held predictions")
-    seen, intervals, programs, errors = set(), {}, [], []
+    seen, intervals, programs, errors, workload_groups = set(), {}, [], [], {}
     for row in records:
         ident = row["id"]
         if ident in seen or ident != canonical_sha256([row["program"], row["workload"]]):
@@ -205,6 +206,7 @@ def validate_component_screen_report(report: Mapping[str, Any]) -> dict[str, Any
         seen.add(ident)
         if not is_sha256(row["program"]) or not is_sha256(row["workload"]):
             raise ValueError("component screen requires exact executable and workload identities")
+        workload_groups.setdefault(row["workload"], set()).add(row["group"])
         measured = row["measured_cycles"]
         if isinstance(measured, bool) or not math.isfinite(measured) or measured <= 0:
             raise ValueError("component held measurement is invalid")
@@ -225,9 +227,13 @@ def validate_component_screen_report(report: Mapping[str, Any]) -> dict[str, Any
                 raise ValueError("component held error/coverage claim differs from prediction")
             intervals[ident] = (interval.lo, interval.hi)
             errors.append(error)
+        elif "relative_error" in row or "contains_observation" in row:
+            raise ValueError("unresolved held prediction cannot claim error or coverage")
+    if any(len(groups) != 1 for groups in workload_groups.values()):
+        raise ValueError("all variants of a workload must share one held-out group")
     for row in records:
         expected = [other["program"] for other in records if other["group"] != row["group"]]
-        if set(row["training_programs"]) != set(expected):
+        if not isinstance(row["training_programs"], list) or Counter(row["training_programs"]) != Counter(expected):
             raise ValueError("component prediction training roster leaks or omits a held workload group")
     overall = rank.interval_agreement(rank.ordered_pairs(programs), intervals)
     slices = {
@@ -245,7 +251,7 @@ def validate_component_screen_report(report: Mapping[str, Any]) -> dict[str, Any
     if replay_rank != report.get("ranking"):
         raise ValueError("component held ranking claim differs from exact pair ordering")
     n = len(intervals)
-    contains = sum(row.get("contains_observation", False) for row in records)
+    contains = sum(row["contains_observation"] for row in records if row["id"] in intervals)
     coverage = {"n": n, "contains": contains, "rate": contains / n if n else None}
     if coverage != report.get("interval_coverage") or report.get("absolute_error", {}).get("n") != n:
         raise ValueError("component held aggregate coverage/count differs from predictions")

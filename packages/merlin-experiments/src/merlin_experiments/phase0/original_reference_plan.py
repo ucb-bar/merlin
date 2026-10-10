@@ -19,6 +19,7 @@ SCHEMA = "merlin.original_reference_selection.v1"
 BATCH_SCHEMA = "merlin.original_reference_selection.v2"
 POINTWISE_SCHEMA = "merlin.original_reference_selection.v3"
 TRANSPOSE_SCHEMA = "merlin.original_reference_selection.v4"
+BROADCAST_SCHEMA = "merlin.original_reference_selection.v5"
 COHORTS = ("functional_guard", "withheld_transfer")
 
 
@@ -35,14 +36,19 @@ def validate(selection):
         "reference_budget",
         "byteorder",
     }
-    if isinstance(selection, dict) and selection.get("schema") in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}:
+    if isinstance(selection, dict) and selection.get("schema") in {
+        BATCH_SCHEMA,
+        POINTWISE_SCHEMA,
+        TRANSPOSE_SCHEMA,
+        BROADCAST_SCHEMA,
+    }:
         selection_fields.add("native_observations")
     if (
         not isinstance(selection, dict)
         or set(selection) != selection_fields
-        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
         or (
-            selection["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+            selection["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
             and selection["native_observations"] != "batch.v1"
         )
     ):
@@ -76,8 +82,8 @@ def validate(selection):
     for record in policies:
         selected = policy(
             record,
-            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA},
-            transpose=selection["schema"] == TRANSPOSE_SCHEMA,
+            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA},
+            transpose=selection["schema"] in {TRANSPOSE_SCHEMA, BROADCAST_SCHEMA},
         )
         key = (selected.operation, selected.operand_dtypes, selected.readout_dtypes)
         if key in seen:
@@ -105,7 +111,7 @@ def validate(selection):
 def transport(selection):
     return (
         "batch.v1"
-        if validate(selection)["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+        if validate(selection)["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
         else "per_member"
     )
 
@@ -171,8 +177,8 @@ def selected_policy(selection, form):
     rows = [
         policy(
             row,
-            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA},
-            transpose=selection["schema"] == TRANSPOSE_SCHEMA,
+            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA},
+            transpose=selection["schema"] in {TRANSPOSE_SCHEMA, BROADCAST_SCHEMA},
         )
         for row in selection["policies"]
     ]

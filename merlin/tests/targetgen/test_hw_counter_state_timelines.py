@@ -369,3 +369,230 @@ def test_observations_are_data_only_with_original_unknown_denominator():
     assert "physical_clock_units_frequency_and_loaded_image" in record["unknowns"]
     assert record["intervals"][0]["unit_increments"] is None
     assert not {"qualified", "cold", "warm", "cycles", "frequency"} & set(record)
+
+
+def _metadata_source(
+    *, visibility='"private"', locations='[loc(unknown), loc("origin":2:3), loc("carry")]', fragments="[]"
+):
+    return _source().replace(
+        'sym_name = "StateCell",',
+        f'sym_name = "StateCell", sym_visibility = {visibility}, '
+        f"result_locs = {locations}, emit.fragments = {fragments},",
+    )
+
+
+@pytest.mark.parametrize("visibility", ["public", "private", "nested"])
+def test_exact_typed_module_locations_and_visibility_are_retained(visibility):
+    result = _observe(_metadata_source(visibility=f'"{visibility}"'), _samples(((0, 0, 0, 0, 0, 0),)))
+    record = asdict(result)["module_metadata"]
+    assert record["symbol_visibility"] == visibility
+    assert record["emission_fragments"] == ()
+    assert tuple(row["kind"] for row in record["result_locations"]) == (
+        "unknown_loc",
+        "file_line_loc",
+        "builtin.name_loc",
+    )
+    assert record["result_locations"][1]["assembly"] == 'loc("origin":2:3)'
+    assert len(result.output_ports) == len(record["result_locations"]) == 3
+    assert result.intervals[0].unit_increments is None
+
+
+def test_absent_metadata_and_explicit_empty_emission_roster_stay_distinct():
+    record = _observe(_source(), _samples(((0, 0, 0, 0, 0, 0),))).module_metadata
+    assert record.symbol_visibility is None and record.result_locations is None and record.emission_fragments is None
+
+
+def test_shared_location_dag_is_bounded_before_expanded_printing():
+    aliases = ["#where0 = loc(unknown)"]
+    for index in range(1, 10):
+        aliases.append(f"#where{index} = loc(callsite(#where{index - 1} at #where{index - 1}))")
+    source = "\n".join(aliases) + "\n" + _metadata_source(locations="[#where9, loc(unknown), loc(unknown)]")
+    with pytest.raises(ValueError, match="location metadata exceeds its node budget"):
+        _observe(source, _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+def test_shared_fused_location_metadata_cannot_hide_expansion_in_a_dictionary():
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, FusedLoc, StringAttr, UnknownLoc
+
+    from merlin.targetgen.rtl.hw_counter_state_timelines import _module_metadata
+
+    # The selected parser does not implement fused-location metadata syntax.
+    # Exercise the typed metadata helper directly; this does not admit a source.
+    parsed = parse_generic_hw(_metadata_source())
+    module = next(op for op in parsed.walk() if _name(op) == "hw.module")
+    payload = DictionaryAttr({"tag": StringAttr("debug")})
+    for _ in range(9):
+        payload = DictionaryAttr({"left": payload, "right": payload})
+    module.attributes["result_locs"] = ArrayAttr([FusedLoc([UnknownLoc()], payload), UnknownLoc(), UnknownLoc()])
+    with pytest.raises(ValueError, match="location metadata exceeds its node budget"):
+        _module_metadata(module, 3, LIMITS.expressions)
+
+
+def test_duplicate_original_metadata_ownership_refuses_even_identical_values():
+    source = _metadata_source().replace('"hw.module"()', '"hw.module"() <{sym_visibility = "private"}>')
+    with pytest.raises(ValueError, match="module semantics"):
+        _observe(source, _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("visibility", ['"unknown"', "true", "1 : i64"])
+def test_unknown_or_wrong_typed_visibility_refuses(visibility):
+    with pytest.raises(ValueError, match="symbol visibility"):
+        _observe(_metadata_source(visibility=visibility), _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("locations", ["[]", "[loc(unknown)]", "[loc(unknown), loc(unknown), true]", '"locations"'])
+def test_complete_original_location_membership_and_type_are_required(locations):
+    with pytest.raises(ValueError, match="result locations"):
+        _observe(_metadata_source(locations=locations), _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("fragments", ['"body"', "[true]", "[@body::@nested]", "[@body, @body]"])
+def test_emission_dependency_metadata_is_typed_and_not_an_allowlist(fragments):
+    with pytest.raises(ValueError, match="emission dependency metadata"):
+        _observe(_metadata_source(fragments=fragments), _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_even_resolved_unused_emission_body_is_a_required_semantic_dependency(resolved):
+    source = _metadata_source(fragments="[@body]")
+    if resolved:
+        source = source.replace(
+            "builtin.module {",
+            'builtin.module {\n "emit.fragment"() ({\n'
+            ' "sv.verbatim"() {text = "opaque emission"} : () -> ()\n'
+            ' }) {sym_name = "body"} : () -> ()\n',
+            1,
+        )
+    with pytest.raises(ValueError, match="emission dependencies are unresolved"):
+        _observe(source, _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_original_root_clock_cast_replication_and_unsigned_overshift(direct):
+    source = _source(direct_clock=direct)
+    clock = "%c" if direct else "%tick"
+    source = source.replace(
+        '"hw.output"(%value, %blocked, %carry) : (i5, i1, i1)',
+        '%repeated = "comb.replicate"(%blocked) : (i1) -> i8\n'
+        '%amount = "hw.constant"() {value = 255 : i8} : () -> i8\n'
+        '%shifted = "comb.shru"(%repeated, %amount) : (i8, i8) -> i8\n'
+        f'%level = "seq.from_clock"({clock}) : (!seq.clock) -> i1\n'
+        '"hw.output"(%value, %blocked, %carry, %repeated, %shifted, %level) : (i5, i1, i1, i8, i8, i1)',
+    ).replace("output carry : i1>", "output carry : i1, output repeated : i8, output shifted : i8, output level : i1>")
+    samples = _samples(((0, 0, 1, 1, 0, 0), (0, 1, 0, 0, 0, 0), (1, 0, 0, 0, 0, 0)))
+    samples = tuple(replace(row, outputs=(*row.outputs, 255 * row.states[2], 0, row.inputs[0])) for row in samples)
+    result = _observe(source, samples)
+    assert len(result.output_ports) == 6 and len(result.states) == 3
+    assert result.samples == samples and result.intervals[0].unit_increments is None
+    wrong = replace(samples[1], outputs=(*samples[1].outputs[:-1], 0))
+    with pytest.raises(ValueError, match="actual source transitions"):
+        _observe(source, (samples[0], wrong, *samples[2:]))
+
+
+@pytest.mark.parametrize("mutation", ["integer", "wrong_result", "attribute", "opaque", "other_clock"])
+def test_clock_value_cast_requires_original_typed_clock_and_complete_outputs(mutation):
+    source = _source().replace(
+        '"hw.output"(%value', '%level = "seq.from_clock"(%tick) : (!seq.clock) -> i1\n "hw.output"(%value'
+    )
+    if mutation == "integer":
+        source = source.replace('"seq.from_clock"(%tick) : (!seq.clock)', '"seq.from_clock"(%c) : (i1)')
+    elif mutation == "wrong_result":
+        source = source.replace(
+            '"seq.from_clock"(%tick) : (!seq.clock) -> i1', '"seq.from_clock"(%tick) : (!seq.clock) -> i2'
+        )
+    elif mutation == "attribute":
+        source = source.replace('"seq.from_clock"(%tick)', '"seq.from_clock"(%tick) {unsupported}')
+    elif mutation == "opaque":
+        source = source.replace("%level =", '%opaque = "unknown.clock"() : () -> !seq.clock\n %level =').replace(
+            '"seq.from_clock"(%tick)', '"seq.from_clock"(%opaque)'
+        )
+    else:
+        source = source.replace('"seq.from_clock"(%tick)', '"seq.from_clock"(%reset)')
+    with pytest.raises(ValueError):
+        _observe(
+            source,
+            _samples(((0, 0, 0, 0, 0, 0),)),
+            selection=replace(_selection(_source()), source_sha256=hashlib.sha256(source.encode()).hexdigest()),
+        )
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        '"sim.fatal"(%reset) : (i1) -> ()',
+        '"sv.fwrite"(%lo) {formatString = "%d"} : (i2) -> ()',
+        '"sv.if"(%reset) ({ "sim.fatal"() : () -> () }) : (i1) -> ()',
+        '%macro = "sv.macro.ref"() {macro = @condition} : () -> i1',
+    ],
+)
+def test_unused_original_sv_sim_and_macro_effects_cannot_be_ignored(effect):
+    source = _metadata_source().replace('"hw.output"(%value', effect + '\n "hw.output"(%value')
+    with pytest.raises(ValueError, match="expression semantics"):
+        _observe(source, _samples(((0, 0, 0, 0, 0, 0),)))
+
+
+@pytest.mark.parametrize("count", [17, 116])
+def test_complete_large_two_clock_roster_retains_every_state_output_and_unused_effect(count):
+    statements = ['%one = "hw.constant"() {value = 1 : i4} : () -> i4']
+    for index in range(count):
+        clock = "%first" if index % 2 == 0 else "%second"
+        statements.extend(
+            [
+                f'%next{index} = "comb.add"(%r{index}, %one) : (i4, i4) -> i4',
+                f'%r{index} = "seq.firreg"(%next{index}, {clock}) {{name = "state{index}"}} : (i4, !seq.clock) -> i4',
+            ]
+        )
+    statements.append('%joined = "comb.concat"(%r0, %r2) : (i4, i4) -> i8')
+    values = ", ".join(f"%r{index}" for index in range(count))
+    types = ", ".join("i4" for _ in range(count))
+    statements.append(f'"hw.output"(%joined, {values}) : (i8, {types}) -> ()')
+    ports = ", ".join(f"output state{index} : i4" for index in range(count))
+    locations = ", ".join("loc(unknown)" for _ in range(count + 1))
+    source = (
+        'builtin.module { "hw.module"() ({\n ^bb0(%first: !seq.clock, %second: !seq.clock):\n'
+        + "\n".join(statements)
+        + '\n }) {sym_name = "WholeState", parameters = [], '
+        + f'sym_visibility = "private", result_locs = [{locations}], '
+        + f"module_type = !hw.modty<input first : !seq.clock, input second : !seq.clock, output joined : i8, {ports}>"
+        + "} : () -> () }"
+    )
+    parsed = parse_generic_hw(source)
+    module = next(op for op in parsed.walk() if _name(op) == "hw.module")
+    ordinals = {
+        op.results[0].name_hint: ordinal
+        for ordinal, op in enumerate(module.regions[0].block.ops)
+        if _name(op) == "seq.firreg"
+    }
+    selection = StateGetterSelection(
+        hashlib.sha256(source.encode()).hexdigest(), "WholeState", (ordinals["r0"], ordinals["r2"]), "joined", "first"
+    )
+    states = tuple(index % 16 for index in range(count))
+    rows = []
+    for ordinal in range(6):
+        first = ordinal % 2
+        second = int(ordinal == 3)
+        if first:
+            states = tuple((value + int(index % 2 == 0 or second)) % 16 for index, value in enumerate(states))
+        outputs = (states[0] * 16 + states[2], *states)
+        rows.append(StatePhaseSample(ordinal, (first, second), states, outputs))
+    limits = StateTimelineLimits(EvaluationLimits(65536, 2048, 64, 16, 4_000_000), 128, 1)
+    kwargs = {
+        "selection": selection,
+        "limits": limits,
+        "expected_phases": 6,
+        "samples": tuple(rows),
+        "intervals": (CounterInterval(0, 5),),
+    }
+    result = observe_state_getter_timeline(source, **kwargs)
+    assert len(result.states) == count and len(result.output_ports) == count + 1
+    assert len(result.module_metadata.result_locations) == count + 1
+    assert tuple(state.clock_input for state in result.states) == tuple(
+        "first" if index % 2 == 0 else "second" for index in range(count)
+    )
+    incomplete = tuple(replace(row, states=row.states[:-1]) for row in rows)
+    with pytest.raises(ValueError, match="complete original typed roster"):
+        observe_state_getter_timeline(source, **(kwargs | {"samples": incomplete}))
+    changed = source.replace('"hw.output"', '"sim.fatal"() : () -> ()\n "hw.output"')
+    changed_selection = replace(selection, source_sha256=hashlib.sha256(changed.encode()).hexdigest())
+    with pytest.raises(ValueError, match="expression semantics"):
+        observe_state_getter_timeline(changed, **(kwargs | {"selection": changed_selection}))

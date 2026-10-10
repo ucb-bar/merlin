@@ -2,6 +2,17 @@
 
 ## Purpose
 
+`compile_host` may explicitly select `HostDescriptorSelection` for complete
+original tensor/storage declarations. The ordinary caller requires unchanged
+typed source/prepared correspondence, actual translation/object/runtime/link
+membership and the same loaded private image. `HostModel` then packs ordered
+ranked descriptors from that object driver's observed layout, checks complete
+caller shape/dtype/stride/capacity and disjoint address intervals, and retains
+the actual call's descriptor bytes. Absent selection retains the legacy ABI.
+This does not prove implementation indexing, accessible allocation, lifetime,
+body/effect equivalence, hardware, dependency closure or runtime qualification.
+Unsupported scalar/trampoline/alias and transformed source routes refuse.
+
 `codegen.build_host_shared` records the existing LLVM-object, runtime-C-object
 and shared-link subprocesses with the same frozen argv, working directory and
 environment used for execution. Direct source/object/product roles reopen
@@ -9,6 +20,18 @@ changed or missing recorded intermediates. Failed subprocesses retain their
 original exceptions and interrupted records. This is artifact custody only;
 transitive headers/libraries, body semantics, storage/ABI, dependency closure
 and execution authority remain independent obligations.
+
+`descriptor_contract`, `descriptor_wrapper`, `descriptor_object` and
+`descriptor_layout` provide an explicitly selected, bounded ranked-memref
+C-interface transport observation. Original ordered tensor slots and every
+storage offset/stride/capacity/alignment are caller declarations. Complete
+parsed aggregate load/extract/call/return fields are checked; the actual object
+producer folds GEP layout constants into a readonly, relocation-free object.
+No separately versioned LLVM API or pointer/index/contiguity defaults interpret
+that layout. Format-only packing preserves pointed data. Prepared source/body
+semantics, accessible allocation, carrier alignment, physical alias ownership,
+callee indexing, machine equivalence, dependency closure and runtime authority
+remain separate obligations. No ordinary ABI or author admission default changes.
 
 `llvm_dialect_product` optionally retains the serial upstream runner's actual
 post-pass generic module and raw in-process translation in one subprocess
@@ -27,6 +50,14 @@ DataLayout API, retaining real tool/header/library and invocation pins. Missing
 storage/layout, opaque operations, aggregate literals, poison/provenance flags,
 general graphs and unsupported control remain UNKNOWN. These conditional IR
 facets do not prove physical resources/lifetime, machine code or runtime/timing.
+
+`compiled_layout_query` also observes the existing ordinary selected LLVM object
+driver through its actual bounded pre-instruction-selection MIR module. Exact
+original object/source/tool records, options, working directory and explicitly
+selected environment are reopened. No compiler or layout fallback is supplied;
+unsupported options and absent layout/triple refuse. Its byte cap bounds the
+observation reader only. Descriptor fields/storage, optimized IR equivalence,
+transitive dependency closure and host/target execution remain separate proofs.
 
 `endpoint_narrowing` is a separate default-off capability for finite interval
 subsets in a private original-source epoch. It preserves the legacy prepared

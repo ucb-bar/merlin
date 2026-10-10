@@ -25,6 +25,7 @@ from .rtl_intake import RtlIntakePin
 SCHEMA = "merlin.original_reference_standard_ir.v1"
 POINTWISE_SCHEMA = "merlin.original_reference_standard_ir.v2"
 TRANSPOSE_SCHEMA = "merlin.original_reference_standard_ir.v3"
+BROADCAST_SCHEMA = "merlin.original_reference_standard_ir.v4"
 _SCOPE = (
     "complete original source/reference/standard-IR ABI observations only; no compiler, runtime or release authority"
 )
@@ -48,6 +49,8 @@ _ISSUED = weakref.WeakKeyDictionary()
 
 
 def schemas(references):
+    if references.record_without_verification()["schema"] == R.BROADCAST_SCHEMA:
+        return BROADCAST_SCHEMA, "merlin.original_standard_ir_request.v4", "merlin.native_original_standard_ir.v4"
     if references.record_without_verification()["schema"] == R.TRANSPOSE_SCHEMA:
         return TRANSPOSE_SCHEMA, "merlin.original_standard_ir_request.v3", "merlin.native_original_standard_ir.v3"
     if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA:
@@ -167,7 +170,7 @@ def _pin_sources(selection, capture, pin_replay=None):
         "merlin.xdsl_dialects.fp8",
     ]
     selected = loads(Path(selection).read_bytes())
-    if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
+    if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
         modules += [I.__name__, "merlin.common.selected_pin_replay"]
     paths = {module_source_path(name) for name in modules}
     paths.update(module_source_path("xdsl").parent.rglob("*.py"))

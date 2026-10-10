@@ -11,7 +11,18 @@ from __future__ import annotations
 import hashlib
 from dataclasses import asdict, dataclass
 
-from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, IntegerType, Signedness, StringAttr, UnregisteredAttr
+from xdsl.dialects.builtin import (
+    ArrayAttr,
+    DictionaryAttr,
+    IntegerAttr,
+    IntegerType,
+    LocationAttr,
+    Signedness,
+    StringAttr,
+    SymbolRefAttr,
+    UnregisteredAttr,
+)
+from xdsl.ir import ParametrizedAttribute
 from xdsl.utils.exceptions import ParseError, VerifyException
 
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
@@ -27,6 +38,12 @@ from .hw_combinational import (
 from .hw_counter_intervals import _UNKNOWN, CounterInterval
 from .hw_graph import parse_generic_hw
 from .hw_observations import _attribute, _name
+from .hw_state_effects import (
+    OriginalSourceEffect,
+    SourceEffectPhase,
+    SourceEmissionObservation,
+    prepare_source_emission,
+)
 from .ports import _hw_port_entries
 
 
@@ -74,6 +91,21 @@ class TimelinePort:
     name: str
     type: str
     width: int
+
+
+@dataclass(frozen=True)
+class SourceLocation:
+    """Typed canonical location assembly; selected source bytes remain authoritative."""
+
+    kind: str
+    assembly: str
+
+
+@dataclass(frozen=True)
+class ModuleSourceMetadata:
+    symbol_visibility: str | None
+    result_locations: tuple[SourceLocation, ...] | None
+    emission_fragments: tuple[str, ...] | None
 
 
 @dataclass(frozen=True)
@@ -128,7 +160,17 @@ class StateTimelineObservation:
     samples: tuple[StatePhaseSample, ...]
     transitions: tuple[LocalStateTransition, ...]
     intervals: tuple[LocalGetterInterval, ...]
+    module_metadata: ModuleSourceMetadata
     unknowns: tuple[str, ...] = (*_UNKNOWN, "unit_increment_meaning_for_general_state_updates")
+    source_emission: SourceEmissionObservation | None = None
+
+
+@dataclass(frozen=True)
+class _PreparedEffect:
+    source: OriginalSourceEffect
+    predicate: int | None
+    branches: tuple[tuple[int, bool], ...]
+    file_descriptor: int | None
 
 
 @dataclass(frozen=True)
@@ -144,6 +186,78 @@ class _Prepared:
     selected_states: tuple[int, ...]
     updates: tuple[tuple[int, int | None, int | None], ...]
     output_indices: tuple[int, ...]
+    module_metadata: ModuleSourceMetadata
+    emission: object | None = None
+    effects: tuple[_PreparedEffect, ...] = ()
+
+
+def _module_metadata(module, output_count, bound, *, explicit_emission=False):
+    visibility = _attribute(module, "sym_visibility")
+    if visibility is not None and (
+        not isinstance(visibility, StringAttr) or visibility.data not in {"public", "private", "nested"}
+    ):
+        raise ValueError("State timeline symbol visibility is unsupported.")
+    locations = _attribute(module, "result_locs")
+    if locations is not None and (
+        not isinstance(locations, ArrayAttr)
+        or len(locations) != output_count
+        or any(not isinstance(location, LocationAttr) for location in locations)
+    ):
+        raise ValueError("State timeline result locations differ from the original output roster.")
+    if locations is not None:
+        # Location aliases can share a DAG whose expanded printer form is much
+        # larger than its input spelling. Price every occurrence before printing.
+        stack = [(location, 0) for location in locations]
+        visits = string_chars = 0
+        while stack:
+            attribute, depth = stack.pop()
+            visits += 1
+            if visits > bound.nodes or depth > 64:
+                raise ValueError("State timeline location metadata exceeds its node budget.")
+            if isinstance(attribute, ParametrizedAttribute):
+                stack.extend((child, depth + 1) for child in attribute.parameters)
+            elif isinstance(attribute, ArrayAttr):
+                if len(attribute) + visits + len(stack) > bound.nodes:
+                    raise ValueError("State timeline location metadata exceeds its node budget.")
+                stack.extend((child, depth + 1) for child in attribute)
+            elif isinstance(attribute, StringAttr):
+                string_chars += len(attribute.data)
+            elif isinstance(attribute, DictionaryAttr):
+                if len(attribute.data) + visits + len(stack) > bound.nodes:
+                    raise ValueError("State timeline location metadata exceeds its node budget.")
+                string_chars += sum(len(key) for key in attribute.data)
+                stack.extend((child, depth + 1) for child in attribute.data.values())
+            if string_chars > bound.source_bytes:
+                raise ValueError("State timeline location metadata exceeds its source byte budget.")
+        try:
+            for location in locations:
+                location.verify()
+        except VerifyException:
+            raise ValueError("State timeline result location metadata is unsupported.") from None
+    fragments = _attribute(module, "emit.fragments")
+    if fragments is not None and (
+        not isinstance(fragments, ArrayAttr)
+        or any(
+            not isinstance(fragment, SymbolRefAttr)
+            or fragment.nested_references.data
+            or not fragment.root_reference.data
+            for fragment in fragments
+        )
+        or len({fragment.root_reference.data for fragment in fragments}) != len(fragments)
+    ):
+        raise ValueError("State timeline emission dependency metadata is unsupported.")
+    metadata = ModuleSourceMetadata(
+        visibility.data if visibility is not None else None,
+        tuple(SourceLocation(location.name, str(location)) for location in locations)
+        if locations is not None
+        else None,
+        tuple(fragment.root_reference.data for fragment in fragments) if fragments is not None else None,
+    )
+    # Emit inserts each referenced body before the module. A well-typed symbol
+    # reference is a required semantic dependency, not a disposable location.
+    if metadata.emission_fragments and not explicit_emission:
+        raise ValueError("State timeline emission dependencies are unresolved.")
+    return metadata
 
 
 def _ports(module, block, output, bound):
@@ -175,7 +289,7 @@ def _ports(module, block, output, bound):
     return tuple(inputs), tuple(outputs)
 
 
-def _prepare(text, selection, limits):
+def _prepare(text, selection, limits, *, macro_environment=None):
     bound = limits.expressions
     if type(text) is not str or len(text) > bound.source_bytes:
         raise ValueError("State timeline source exceeds its parse budget.")
@@ -203,7 +317,8 @@ def _prepare(text, selection, limits):
         raise ValueError("State timeline module membership is incomplete.")
     module = matches[0]
     if (
-        (set(module.attributes) | set(module.properties)) - {"op_name__", "sym_name", "module_type", "parameters"}
+        (set(module.attributes) | set(module.properties))
+        - {"op_name__", "sym_name", "module_type", "parameters", "sym_visibility", "result_locs", "emit.fragments"}
         or set(module.attributes) & set(module.properties)
         or len(module.regions) != 1
         or len(module.regions[0].blocks) != 1
@@ -227,6 +342,12 @@ def _prepare(text, selection, limits):
     ):
         raise ValueError("State timeline output membership is incomplete.")
     inputs, outputs = _ports(module, block, output, bound)
+    metadata = _module_metadata(module, len(outputs), bound, explicit_emission=macro_environment is not None)
+    emission = (
+        prepare_source_emission(parsed, module, metadata.emission_fragments, macro_environment, bound, sha)
+        if macro_environment is not None
+        else None
+    )
     if len(inputs) + len(outputs) + len(children) > bound.nodes:
         raise ValueError("State timeline original roster exceeds its node budget.")
     registers = tuple((ordinal, op) for ordinal, op in enumerate(children) if _name(op) == "seq.firreg")
@@ -342,15 +463,35 @@ def _prepare(text, selection, limits):
         if value in visiting or len(visiting) >= 64:
             raise ValueError("State timeline expression dependencies are cyclic or too deep.")
         op = value.owner
-        if op not in children or op in clock_ops or op is output or op.regions or len(op.results) != 1:
+        if op not in scalar_ops or op in clock_ops or op is output or op.regions or len(op.results) != 1:
             raise ValueError("State timeline expression semantics are unsupported.")
         visiting.add(value)
         bits = _width(value, bound)
-        operand_widths = [_width(operand, bound) for operand in op.operands]
-        try:
-            kind, parameter = _expression(op, operand_widths, bits, conditional_logic=True)
-        except ValueError:
-            raise ValueError("State timeline expression semantics are unsupported.") from None
+        if value in macro_constants:
+            operand_widths = []
+            kind, parameter = "hw.constant", macro_constants[value]
+        elif _name(op) == "seq.from_clock":
+            if (
+                bits != 1
+                or len(op.operands) != 1
+                or op.operands[0] not in roots
+                or str(op.operands[0].type) != "!seq.clock"
+                or (set(op.attributes) | set(op.properties)) - {"op_name__", "sv.namehint"}
+                or set(op.attributes) & set(op.properties)
+                or (
+                    _attribute(op, "sv.namehint") is not None
+                    and not isinstance(_attribute(op, "sv.namehint"), StringAttr)
+                )
+            ):
+                raise ValueError("State timeline clock value expression is unsupported.")
+            operand_widths = [1]
+            kind, parameter = "seq.from_clock", None
+        else:
+            operand_widths = [_width(operand, bound) for operand in op.operands]
+            try:
+                kind, parameter = _expression(op, operand_widths, bits, conditional_logic=True)
+            except ValueError:
+                raise ValueError("State timeline expression semantics are unsupported.") from None
         operands = tuple(trace(operand) for operand in op.operands)
         depth = 1 + max((depths[operand] for operand in op.operands), default=0)
         if depth > 64:
@@ -366,7 +507,14 @@ def _prepare(text, selection, limits):
         return indices[value]
 
     register_ops = {op for _, op in registers}
-    for op in children:
+    scalar_ops = (
+        set(emission.scalar_operations) if emission is not None else set(children) - register_ops - clock_ops - {output}
+    )
+    macro_constants = dict(emission.macro_constants) if emission is not None else {}
+    # The shared lossless parser owns SSA region visibility. Preserve its whole
+    # original walk order when preparing newly supported nested expressions.
+    scalar_order = tuple(op for op in module.walk() if op in scalar_ops)
+    for op in scalar_order:
         if op not in register_ops | clock_ops | {output}:
             if op.regions or len(op.results) != 1:
                 raise ValueError("State timeline expression semantics are unsupported.")
@@ -380,8 +528,58 @@ def _prepare(text, selection, limits):
             reset, reset_value = (trace(value) for value in op.operands[2:])
         updates.append((trace(op.operands[0]), reset, reset_value))
     output_indices = tuple(trace(value) for value in output.operands)
+    prepared_effects = []
+    if emission is not None:
+
+        def endpoint(value):
+            return (
+                ("input", block.args.index(value))
+                if value in block.args
+                else ("operation", emission.operation_ordinals[value.owner])
+            )
+
+        for effect in emission.effects:
+            clock = effect.clock
+            if clock not in roots and clock.owner in scalar_ops and _name(clock.owner) == "seq.from_clock":
+                clock = clock.owner.operands[0]
+            if clock in roots:
+                clock_index = roots[clock]
+            elif clock in block.args and block.args.index(clock) in clocks:
+                clock_index = block.args.index(clock)
+            else:
+                raise ValueError("State timeline observable effect clock is unsupported.")
+            source = OriginalSourceEffect(
+                emission.operation_ordinals[effect.operation],
+                _name(effect.operation),
+                clock_index,
+                effect.enabled,
+                endpoint(effect.predicate) if effect.predicate is not None else None,
+                tuple((endpoint(value), required) for value, required in effect.branches),
+                effect.format_string,
+            )
+            prepared_effects.append(
+                _PreparedEffect(
+                    source,
+                    trace(effect.predicate) if effect.predicate is not None else None,
+                    tuple((trace(value), required) for value, required in effect.branches),
+                    trace(effect.file_descriptor) if effect.file_descriptor is not None else None,
+                )
+            )
+    prepared_effects = tuple(prepared_effects)
     refs = tuple(
-        dict.fromkeys((*[value for update in updates for value in update if value is not None], *output_indices))
+        dict.fromkeys(
+            (
+                *[value for update in updates for value in update if value is not None],
+                *output_indices,
+                *[
+                    value
+                    for effect in prepared_effects
+                    for value in (effect.predicate, effect.file_descriptor)
+                    if value is not None
+                ],
+                *[value for effect in prepared_effects for value, _ in effect.branches],
+            )
+        )
     )
     internal = tuple(ScalarPort(f"${index}", width) for index, width in enumerate(widths[:base]))
     evaluator = PreparedCombinationalObservation(
@@ -406,6 +604,9 @@ def _prepare(text, selection, limits):
         selected,
         tuple(updates),
         output_indices,
+        metadata,
+        emission,
+        prepared_effects,
     )
 
 
@@ -417,6 +618,7 @@ def observe_state_getter_timeline(
     expected_phases: int,
     samples: tuple[StatePhaseSample, ...],
     intervals: tuple[CounterInterval, ...],
+    macro_environment: str | None = None,
 ) -> StateTimelineObservation:
     """Reparse every original state update; compare complete post-phase samples.
 
@@ -439,7 +641,9 @@ def observe_state_getter_timeline(
         or len(intervals) > limits.intervals
     ):
         raise ValueError("State timeline phase or interval roster is incomplete.")
-    prepared = _prepare(text, selection, limits)
+    prepared = _prepare(text, selection, limits, macro_environment=macro_environment)
+    if len(prepared.effects) * expected_phases > limits.expressions.nodes:
+        raise ValueError("State timeline observable effect roster exceeds its budget.")
     if expected_phases * 2 * prepared.evaluator.per_case_bit_work > limits.expressions.bit_work:
         raise ValueError("State timeline exceeds its bit-work budget.")
     state_ports = tuple(ScalarPort(str(state.ordinal), state.width) for state in prepared.states)
@@ -493,10 +697,39 @@ def observe_state_getter_timeline(
         )[0]
 
     states, transitions, prefixes = samples[0].states, [], [(0, 0, 0, 0, 0, 0)]
+    effect_phases = []
     domain = 1 << prepared.outputs[prepared.getter].width
     for ordinal, sample in enumerate(samples):
         before, reset_registers, rising = states, [], []
         values = evaluate(sample, before)
+        for effect in prepared.effects:
+            edge = bool(
+                ordinal
+                and not samples[ordinal - 1].inputs[effect.source.clock_input]
+                and sample.inputs[effect.source.clock_input]
+            )
+            predicate = values[str(effect.predicate)] if effect.predicate is not None else None
+            branches = tuple(values[str(value)] for value, _ in effect.branches)
+            active = (
+                effect.source.compile_enabled
+                and edge
+                and (predicate is None or bool(predicate))
+                and all(bool(value) == required for value, (_, required) in zip(branches, effect.branches, strict=True))
+            )
+            effect_phases.append(
+                SourceEffectPhase(
+                    ordinal,
+                    effect.source.ordinal,
+                    effect.source.operation,
+                    "triggered" if active else "inactive",
+                    edge,
+                    predicate,
+                    branches,
+                    values[str(effect.file_descriptor)] if effect.file_descriptor is not None else None,
+                )
+            )
+            if active and effect.source.operation == "sim.fatal" and ordinal + 1 < expected_phases:
+                raise ValueError("State timeline continues after a triggered termination.")
         prior_getter = values[str(prepared.output_indices[prepared.getter])]
         after = list(before)
         if ordinal:
@@ -548,4 +781,17 @@ def observe_state_getter_timeline(
         samples,
         tuple(transitions),
         tuple(results),
+        prepared.module_metadata,
+        source_emission=SourceEmissionObservation(
+            prepared.emission.environment_sha256,
+            prepared.emission.original_macros,
+            prepared.emission.macros,
+            prepared.emission.fragments,
+            prepared.emission.definitions,
+            prepared.emission.fragment_operations,
+            tuple(effect.source for effect in prepared.effects),
+            tuple(effect_phases),
+        )
+        if prepared.emission is not None
+        else None,
     )

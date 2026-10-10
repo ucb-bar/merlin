@@ -140,6 +140,36 @@ written. The request/source hashes and all original unknowns remain in that
 output; operator use grants no sample custody, physical timer, runtime or
 performance qualification. It supplies no default samples or endpoint roles.
 
+State timelines retain exact typed module output locations and symbol visibility.
+Location membership must cover the complete original output roster; malformed or
+unknown fields refuse. Nonempty `emit.fragments` references are unresolved semantic
+emission dependencies, including unused bodies, and never discarded as locations.
+Unsigned shifts preserve public Comb overshift-to-zero semantics; replication
+requires an exact positive width multiple. Clock-to-bit casts only observe an
+already derived original root clock. Nested SV, macros, fatal operations and
+undefined effects remain required/refused; these expression additions do not
+establish a complete public source cone, event units or physical correspondence.
+
+The opt-in source macro premise resolves both original emission fragments from
+the complete selected container. Every macro declaration has an explicit external
+definedness/value row; declarations never default to definitions. Literal and
+single-alias bodies and comment-only opaque text form the bounded supported domain.
+Unused fragments and inactive regions are checked too. Scalar predicates observe
+pre-edge states; every original conditional output or termination effect retains its
+clock, branches and per-phase status. A timeline after triggered termination refuses.
+The public SimToSV synthesis guard is conditional on the supplied premise, never
+an implicit compile option. Supplied macro data, source-local effects and matching
+values do not establish actual compiler/environment, scheduling or runtime custody.
+Old requests without an explicit premise retain the unresolved-fragment refusal.
+
+Counter-source request v2 carries the exact complete source macro premise for the
+state-getter reader; its hash joins the request, source and returned effect rows.
+The unit-counter reader admits only a null premise, preserving its narrower domain.
+Request v1 retains its original fields, output field roster and unresolved
+emission refusals; module metadata and source effects appear only in v2 output. Complete
+conditional source samples and effect statuses grant no actual compiler options,
+event scheduling, sample custody, physical timer or performance qualification.
+
 `hw_transition_connectivity.transition_operand_connectivity` retains every
 original state operand slot and crosses only exact named port/index/type
 bindings in the already bounded rooted source hierarchy. Repeated callees keep

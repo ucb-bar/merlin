@@ -19,6 +19,13 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
 - Never commit generated artifacts here.
 - Write generated products beneath the configured `out/` root using the shared path helpers.
 - Keep checks source-layout-aware across core and optional distributions.
+- Installed test origin exceptions name only exact archived test modules,
+  paths and SHA-256 bytes in a closed roster retained before collection and
+  reopened at completion. Production imports must still come from the own-site
+  installation; no namespace-wide test exception or checkout fallback exists.
+  Load and check installed parent packages before pytest can create archive-only
+  parents with their names during importlib collection.
+  This is qualification bookkeeping and an execution tripwire, not isolation.
 - Selected native suites may retain their explicitly supplied test-child
   environment before launch. Keep actual values in private operator output,
   bind the complete mapping including its selected record path, and recheck
@@ -27,6 +34,11 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   complete suite-declared string-key roster. Reopen their bytes before and after
   each command; they cannot replace selected tool/source environment keys. Their
   values remain private operator inputs, not source or runtime qualification.
+- `host-ranked-descriptors` is core-only and requires the exact 46 pure and two
+  native original test identities with zero skips. Compiler Python preserves its
+  selected entry/prefix; llc, clang and clean model2MLIR source are explicit
+  selections. Packaging proves finite descriptor transport only; logical body,
+  physical storage, dependency closure and runtime/effect authority stay separate.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must
