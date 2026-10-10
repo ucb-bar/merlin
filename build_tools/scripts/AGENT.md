@@ -34,6 +34,11 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   complete suite-declared string-key roster. Reopen their bytes before and after
   each command; they cannot replace selected tool/source environment keys. Their
   values remain private operator inputs, not source or runtime qualification.
+- `host-ranked-descriptors` is core-only and requires the exact 46 pure and two
+  native original test identities with zero skips. Compiler Python preserves its
+  selected entry/prefix; llc, clang and clean model2MLIR source are explicit
+  selections. Packaging proves finite descriptor transport only; logical body,
+  physical storage, dependency closure and runtime/effect authority stay separate.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must

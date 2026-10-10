@@ -302,6 +302,7 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         ("component-convergence", True),
         ("original-pointwise-host", True),
         ("original-candidate-members", True),
+        ("host-ranked-descriptors", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -321,11 +322,15 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
-        if suite in ("original-pointwise-host", "original-candidate-members") and native:
+        if suite in ("original-pointwise-host", "original-candidate-members", "host-ranked-descriptors") and native:
             assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
-            assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
             assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")
             assert self.environment["MERLIN_M2M_DIR"] == str(frontend)
+            if suite == "host-ranked-descriptors":
+                assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
+                assert "MERLIN_MLIR_TRANSLATE" not in self.environment
+            else:
+                assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
             if suite == "original-candidate-members":
                 assert self.environment["MERLIN_TEST_BWRAP"] == str(tmp_path / "bwrap")
                 assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
@@ -397,7 +402,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
             selections.append(name + "=" + str(tool))
-        if suite in ("original-pointwise-host", "original-candidate-members"):
+        if suite in ("original-pointwise-host", "original-candidate-members", "host-ranked-descriptors"):
             frontend = tmp_path / "frontend"
             (frontend / "m2m").mkdir(parents=True)
             (frontend / "m2m/__init__.py").write_text("# owned source identity fixture\n")

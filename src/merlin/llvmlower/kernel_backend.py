@@ -97,21 +97,46 @@ def host_scalar_result_dtype(kernel_module, entry: str = "forward") -> str | Non
     return dtype
 
 
-def compile_host(kernel_module, workdir: str | Path, *, retain_llvm_dialect: bool = False):
+def compile_host(kernel_module, workdir: str | Path, *, retain_llvm_dialect: bool = False, descriptor_selection=None):
     """Lower one kernel module to a host ``.so`` and load it (RTLD_LOCAL)."""
     from ..xdsl_dialects._common import text as to_text
     from .abi import HostModel, PrivateHostImagePolicy
     from .lower import lower_model
 
+    if descriptor_selection is not None:
+        from .host_descriptor_compile import HostDescriptorSelection
+
+        if type(descriptor_selection) is not HostDescriptorSelection:
+            raise ValueError("host compilation requires an explicit typed descriptor selection")
+        descriptor_selection.require_module(kernel_module)
+
     # Lowering creates a missing build directory. Resolve its parent aliases
     # first so the selected private sibling retains the compiler's exact origin.
     result_dtype = host_scalar_result_dtype(kernel_module)
     workdir = Path(workdir).resolve()
-    res = lower_model(to_text(kernel_module), workdir, targets=("host",), retain_llvm_dialect=retain_llvm_dialect)
+    res = lower_model(
+        to_text(kernel_module),
+        workdir,
+        targets=("host",),
+        retain_llvm_dialect=retain_llvm_dialect or descriptor_selection is not None,
+    )
+    transport = None
+    if descriptor_selection is not None:
+        from .host_descriptor_compile import observe_host_descriptor_transport
+
+        transport = observe_host_descriptor_transport(selection=descriptor_selection, result=res)
+    if transport is None:
+        return HostModel.load(
+            str(res.host_so),
+            image_policy=PrivateHostImagePolicy(workdir.resolve(strict=True)),
+            scalar_result_dtype=result_dtype,
+        )
     return HostModel.load(
         str(res.host_so),
+        name=descriptor_selection.source.entry_symbol,
         image_policy=PrivateHostImagePolicy(workdir.resolve(strict=True)),
         scalar_result_dtype=result_dtype,
+        descriptor_transport=transport,
     )
 
 
