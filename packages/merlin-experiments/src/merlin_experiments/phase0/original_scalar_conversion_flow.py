@@ -24,6 +24,7 @@ from .rtl_intake import _outside
 SCHEMA = "merlin.declared_original_scalar_conversion_selection.v1"
 METADATA_SCHEMA = "merlin.declared_original_scalar_conversion_selection.v2"
 TRIANGULAR_SCHEMA = "merlin.declared_original_scalar_conversion_selection.v3"
+RESHAPE_SCHEMA = "merlin.declared_original_scalar_conversion_selection.v4"
 
 
 def _declaration(raw, forbidden, *, version=1):
@@ -31,8 +32,8 @@ def _declaration(raw, forbidden, *, version=1):
         type(raw) is not dict
         or set(raw) != {"schema", "capture_checkout", "capture_commit", "mlir_opt", "budget"}
         or type(version) is not int
-        or version not in {1, 2, 3}
-        or raw["schema"] != {1: SCHEMA, 2: METADATA_SCHEMA, 3: TRIANGULAR_SCHEMA}[version]
+        or version not in {1, 2, 3, 4}
+        or raw["schema"] != {1: SCHEMA, 2: METADATA_SCHEMA, 3: TRIANGULAR_SCHEMA, 4: RESHAPE_SCHEMA}[version]
         or type(raw["capture_commit"]) is not str
         or len(raw["capture_commit"]) != 40
         or any(c not in "0123456789abcdef" for c in raw["capture_commit"])
@@ -117,9 +118,12 @@ def prepare(selected, *, schema_intake, basis, source_record, numerical_semantic
         raise ValueError("declared scalar construction needs a fresh private owner outside its inputs")
     value = _declaration(loads(selected.selection.read_bytes()), selected.forbidden, version=selected.version)
     value.update(
-        schema={1: V.INTEGER_SELECTION_SCHEMA, 2: V.METADATA_SELECTION_SCHEMA, 3: V.TRIANGULAR_SELECTION_SCHEMA}[
-            selected.version
-        ],
+        schema={
+            1: V.INTEGER_SELECTION_SCHEMA,
+            2: V.METADATA_SELECTION_SCHEMA,
+            3: V.TRIANGULAR_SELECTION_SCHEMA,
+            4: V.RESHAPE_SELECTION_SCHEMA,
+        }[selected.version],
         source_record_sha256=V._digest(source_record),
         operator_schema_intake_sha256=schema_intake.sha256,
         semantic_basis_sha256=basis.source.sha256,

@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Original call-source v10 / automatic v17 / declared v10 opt in to exact typed
+contiguous reshape construction. Preserve original literal dimensions and -1,
+shape/stride premises, ordered storage/result and Tensor(a) declarations.
+Fixed products admit only legal fresh factorizations, never capacity evidence;
+impossible requested extents stay required unavailable. Converter selection v5,
+declared selector v4 and stable factory v4/ledger v6 retain complete original
+call/cohort IDs beside every numerical/effect/packing UNKNOWN. Prior versions
+retain their meanings; construction issues no reference or phase admission.
+
 Local packing intake v2 explicitly selects source-byte, local-memory,
 hierarchy and interval metadata budgets. Reuse the freshly serialized original
 core and its exact live hardware production root/container; preserve v1 local

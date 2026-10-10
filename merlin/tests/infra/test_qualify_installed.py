@@ -885,6 +885,38 @@ def test_original_triangular_qualification_requires_every_identity_without_skips
     _check_scalar_qualification_report(tmp_path, "original-triangular-source-flow", defect)
 
 
+def test_original_reshape_qualification_keeps_complete_controls_and_fixture_closure():
+    from collections import Counter
+
+    suite = Q.SUITES["original-reshape-source-flow"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_original_reshape_sources.py",
+            "packages/merlin-experiments/tests/test_original_reshape_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_reshape_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (76, 16, 13), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 105
+    assert suite["support_files"] == Q.SUITES["original-triangular-source-flow"]["support_files"]
+    assert len(suite["support_files"]) == 11
+    assert "packages/merlin-experiments/tests/original_reference_fixtures.py" in suite["support_files"]
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert "merlin.targetgen.original_reshape_sources" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_reshape_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-reshape-source-flow", defect)
+
+
 @pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
 def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
     _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)

@@ -1,5 +1,14 @@
 # AGENT.md — src/merlin/targetgen
 
+`original_reshape_sources` retains the exact original required shape literal,
+same-storage Tensor(a) schema and complete positive contiguous shape/stride
+relation. Fresh leading extents must factor the fixed literal product or prove
+unique positive single-minus-one inference. Fixed-product factorizations do
+not demonstrate larger capacity. Bound rank/index/logical-output costs before
+allocation; impossible extents, zero/empty shapes and unproved layouts refuse.
+Schema aliases and source construction grant no observed alias/effect,
+numerical, packing, hardware or phase admission.
+
 `original_metadata_sources` constructs exact typed original dtype casts and
 metadata assertions with independently bounded rank-based geometry. Preserve
 cast flags, Tensor(a) schema possibility and original metadata conditions; no

@@ -26,6 +26,7 @@ from .software_intake import IndependentSoftwareIntake
 SCHEMA = "merlin.original_factory_prerequisites.v1"
 METADATA_SCHEMA = "merlin.original_factory_prerequisites.v2"
 TRIANGULAR_SCHEMA = "merlin.original_factory_prerequisites.v3"
+RESHAPE_SCHEMA = "merlin.original_factory_prerequisites.v4"
 _KIND = "original_operator_factory"
 
 
@@ -37,10 +38,10 @@ def _requests(source_record, basis, *, version=1):
     """Derive all identities before reading any factory status or source pin."""
     if (
         type(version) is not int
-        or version not in {1, 2, 3}
+        or version not in {1, 2, 3, 4}
         or type(source_record) is not dict
         or source_record.get("schema")
-        != {1: C.INTEGER_SCALAR_SCHEMA, 2: C.METADATA_SCHEMA, 3: C.TRIANGULAR_SCHEMA}[version]
+        != {1: C.INTEGER_SCALAR_SCHEMA, 2: C.METADATA_SCHEMA, 3: C.TRIANGULAR_SCHEMA, 4: C.RESHAPE_SCHEMA}[version]
     ):
         raise ValueError("stable factory prerequisites require the explicit original source vocabulary")
     originals = loads(basis.declaration_json)["members"]
@@ -135,7 +136,7 @@ def _record(schema_intake, basis, source_record, *, version=1):
         rows.append(row)
     readers = [_pin(module_source_path(name)) for name in (__name__, A.__name__, *C.reader_modules(version + 6))]
     document = {
-        "schema": {1: SCHEMA, 2: METADATA_SCHEMA, 3: TRIANGULAR_SCHEMA}[version],
+        "schema": {1: SCHEMA, 2: METADATA_SCHEMA, 3: TRIANGULAR_SCHEMA, 4: RESHAPE_SCHEMA}[version],
         "operator_schema_intake_sha256": schema_intake.sha256,
         "semantic_basis_sha256": basis.source.sha256,
         "software_intake_sha256": software.sha256,

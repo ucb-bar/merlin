@@ -84,3 +84,10 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   selection. Preserve every prior qualification suite and original source ID.
   Native issuers and conversion seams are substituted in these controls;
   packaging grants no numerical, effect, packing, hardware or phase admission.
+- `original-reshape-source-flow` retains all 105 reshape-source and versioned
+  ordinary-caller controls with zero skips. Archive the exact eleven fixture
+  siblings, including the literal `original_reference_fixtures.py` selection.
+  Preserve every prior qualification suite, original source/cohort ID and
+  exact shape literal. Fixed-product factorizations do not show larger capacity;
+  construction and installed wiring grant no alias, effect, numerical, packing,
+  hardware, runtime or phase admission. Native seams are diagnostic substitutes.
