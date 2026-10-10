@@ -83,6 +83,32 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "coherent-measurement": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("clang", "mlir-translate", "riscv-gcc", "readelf", "cpu-simulator"),
+        "native_test_files": ("test_component_coherent_measurement.py", "test_component_measurement_execution.py"),
+        "test_environment_record": "MERLIN_TEST_MEASUREMENT_ENV_SELECTION",
+        "test_environment_defaults": {"MERLIN_TARGET_PATH": ""},
+        "tests": (
+            "test_component_coherent_measurement.py",
+            "test_component_measurement_execution.py",
+            "test_component_decode_products.py",
+        ),
+        "support_files": (
+            "coherent_measurement_control.py",
+            "coherent_measurement_runner.py",
+            "measurement_execution_control.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.perf.component_coherent_measurement",
+            "merlin_experiments.phase2.component_measurement_execution",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
     "serial-llvm-products": {
         "include_experiments": False,
         "tests_root": "merlin/tests/ir",
@@ -1688,6 +1714,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "circt-opt": "MERLIN_TEST_CIRCT_OPT",
     "clang": "MERLIN_CLANG",
     "compiler-python": "MERLIN_COMPILER_PYTHON",
+    "cpu-simulator": "MERLIN_TEST_STOCK_CPU_SIMULATOR",
     "firtool": "MERLIN_TEST_FIRTOOL",
     "iverilog": "MERLIN_TEST_IVERILOG",
     "mlir-opt": "MERLIN_TEST_MLIR_OPT",
@@ -1762,6 +1789,13 @@ def capture_native_sources(suite, selections):
 
 def verify_native_inputs(report):
     verify_native_tools(report.get("native_tools", {}))
+    selected_environment = report.get("native_test_environment")
+    if selected_environment is not None:
+        try:
+            if digest(selected_environment["path"]) != selected_environment["sha256"]:
+                raise QualificationFailed("selected native test environment changed")
+        except OSError as exc:
+            raise QualificationFailed("selected native test environment unavailable") from exc
     try:
         _INPUTS.verify_sources(report.get("native_sources", {}))
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
@@ -1777,6 +1811,31 @@ def native_environment(report):
         (source["environment_key"], source["identity"]["path"]) for source in report.get("native_sources", {}).values()
     )
     return environment
+
+
+def retain_test_environment(suite, output, environment, report):
+    """Retain a declared child mapping for selected native replay, never recover one."""
+    key = SUITES[suite].get("test_environment_record")
+    if key is None:
+        return dict(environment)
+    if key in environment or "native_test_environment" in report:
+        raise QualificationFailed("native test environment was already selected")
+    selected = dict(environment)
+    for name, value in SUITES[suite].get("test_environment_defaults", {}).items():
+        if name in selected and selected[name] != value:
+            raise QualificationFailed("native test environment conflicts with its declared default")
+        selected[name] = value
+    if any(type(name) is not str or type(value) is not str for name, value in selected.items()):
+        raise QualificationFailed("native test environment requires declared string values")
+    path = Path(output).resolve(strict=True) / "native-test-environment.json"
+    selected[key] = str(path)
+    # The caller owns this private output directory. The file contains actual
+    # values, stays outside candidate inputs, and must not inherit broad modes.
+    with path.open("xb") as stream:
+        path.chmod(0o600)
+        stream.write((json.dumps(selected, sort_keys=True) + "\n").encode())
+    report["native_test_environment"] = {"path": str(path), "sha256": digest(path), "environment_key": key}
+    return selected
 
 
 def native_test_report_required(suite, report):
@@ -2187,6 +2246,8 @@ def qualify(
             report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
+        runner.environment = retain_test_environment(suite, output, runner.environment, report)
+        runner.save()
         runner.run(
             "tests",
             [

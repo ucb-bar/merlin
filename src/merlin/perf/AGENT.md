@@ -38,6 +38,15 @@ changes are retained. Event labels do not establish actual stage boundaries;
 there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
 timer, observer, resource, runtime and held qualification remain independent.
 
+`component_coherent_measurement` splits an explicitly selected complete ordered
+object file using the original typed ABI, repeated-call, counter and fixed
+harness-phase plans. It rechecks immutable inputs and retains every output
+history and raw counter/control sample. Experiments reopens the actual same-ELF
+decoder/process products and recomputes each call's original numerical gate.
+This is raw observation grammar, not ELF loading, observer integrity, device
+completion, counter units, cold/warm or complete-cost qualification. Omitted
+startup, return, parent readback and sample publication costs remain UNKNOWN.
+
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
 qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,
