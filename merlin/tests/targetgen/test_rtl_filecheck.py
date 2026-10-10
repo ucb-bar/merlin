@@ -16,11 +16,13 @@ from __future__ import annotations
 import math
 
 import pytest
+import selected_driver
 import yaml
-from gemmini_rtl_test_support import checks as RC
 
 from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RR
+from merlin.targetgen import rtl_checks as SHAPES
+from merlin.targetgen.corpora import capsule_corpus_roots
 from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
 
@@ -36,13 +38,19 @@ _FACTS = load_facts("gemmini")
 _ARC = MB.arc_available("gemmini")
 
 
+
+def _mesh() -> tuple[int, int]:
+    """The array geometry from the RTL-derived facts projection the checks read (never a literal)."""
+    rows, cols = CC._facts_to_rc(_FACTS)["mesh"]
+    return int(rows), int(cols)
+
 def _matmul_capsule(min_tiles: int = 1):
     """A real matmul capsule from the corpus with exactly/at-least the requested tile count."""
-    mr, mc = RC._mesh(CC._facts_to_rc(_FACTS))
-    for name, p in sorted(RR.capsule_index(RR.capsule_corpus_roots()).items()):
+    mr, mc = _mesh()
+    for name, p in sorted(RR.capsule_index(capsule_corpus_roots()).items()):
         cap = yaml.safe_load(p.read_text())
-        shp = RC._declared_output_shape(cap)
-        if RC._declared_op(cap) in ("matmul", "matmul_resident") and shp:
+        shp = SHAPES._declared_output_shape(cap)
+        if SHAPES._declared_op(cap) in ("matmul", "matmul_resident") and shp:
             if math.ceil(shp[0] / mr) * math.ceil(shp[1] / mc) >= min_tiles:
                 return cap
     return None
@@ -57,8 +65,8 @@ def _trace(seq, abi=None):
 
 def _good_matmul_trace(cap):
     """A legal single/multi-tile matmul RoCC sequence matching the capsule's declared tile count."""
-    mr, mc = RC._mesh(CC._facts_to_rc(_FACTS))
-    M, N = RC._declared_output_shape(cap)
+    mr, mc = _mesh()
+    M, N = SHAPES._declared_output_shape(cap)
     tiles = math.ceil(M / mr) * math.ceil(N / mc)
     seq = [("CONFIG_EX", 0), ("CONFIG_LD", 0)]
     for _ in range(tiles):
@@ -105,6 +113,7 @@ def test_real_funct_126_is_legal():
     assert ok, diag
 
 
+@selected_driver.requires_package_owned_support("gemmini")
 def test_wrong_tile_count_rejected_without_verilator():
     """MVOUT_COUNT must equal ceil(M/DIM)*ceil(N/DIM) with the RTL's real mesh DIM. A wrong tile count is
     wrong hardware coverage; spike may still emit a plausible output, but the RTL-derived count rejects

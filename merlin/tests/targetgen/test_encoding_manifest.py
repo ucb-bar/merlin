@@ -18,7 +18,7 @@ pytestmark = pytest.mark.target("gemmini")
 
 
 def _encoding():
-    return RD._semantics("gemmini").encoding_fields(load_capability_manifest("gemmini").encoding)
+    return RD._semantics("gemmini").encoding_fields(load_capability_manifest("gemmini").encoding, target="gemmini")
 
 
 @selected_driver.requires_support("gemmini")
@@ -72,14 +72,14 @@ def test_readout_bits_are_not_declared_in_the_contract_yaml():
 def test_derived_readout_bits_equal_the_frozen_hex():
     # DERIVED from addr_len alone == the former hand-declared hex, byte-for-byte (discovery, not change).
     enc = _encoding()
-    assert RD._semantics("gemmini").derived_readout_bits(int(enc["addr_len"])) == _FROZEN_HEX
+    assert RD._semantics("gemmini").derived_readout_bits(int(enc["addr_len"]), target="gemmini") == _FROZEN_HEX
     assert enc["readout_bits"] == _FROZEN_HEX  # what consumers actually read, via the loader synthesis
 
 
 @selected_driver.requires_support("gemmini")
 def test_readout_bit_roles_follow_the_addr_len_convention():
     # The 3 flag bits are the top 3 bits of the addr_len-wide field; c_acc composes two of them; f1 is 1.0f.
-    rb = RD._semantics("gemmini").derived_readout_bits(32)
+    rb = RD._semantics("gemmini").derived_readout_bits(32, target="gemmini")
     assert rb["acc_i8"] == 1 << 31 and rb["acc_accum"] == 1 << 30 and rb["full_c_bit"] == 1 << 29
     assert rb["c_acc"] == rb["acc_i8"] | rb["full_c_bit"]
     import struct

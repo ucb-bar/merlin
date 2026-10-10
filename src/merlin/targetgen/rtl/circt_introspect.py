@@ -38,7 +38,7 @@ from .port_geometry import extract_accumulator, memories_from_port_geometry
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
-GENERATOR_VERSION = "rtl-introspect-v11-selected-source-receipts"
+GENERATOR_VERSION = "rtl-introspect-v12-inherent-attribute-graph"
 # RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
 # per-target fact. WHICH custom slot a RoCC accelerator is wired to IS target-specific; it is resolved
 # from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked

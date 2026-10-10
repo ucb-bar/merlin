@@ -8,6 +8,7 @@ The RoCC coprocessor interface: decoding a trace of it, and emitting one.
 
 - `asm.py` — Derived RoCC assembler for ``inline_asm_insn`` targets.
 - `decode.py` — Decode a target's RoCC instruction trace from a package's emitted ``lowered.llvm.mlir``.
+- `semantics.py` — Generic RoCC operand semantics, driven entirely by a target's RTL facts and contract.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
@@ -47,3 +48,18 @@ Structural checking is a separate `rocc_semantics.rtl_checks` capability. It exp
 `compile_trace_checks(facts_rec, capsule, prefix)` and `render_trace(trace, facts_rec)`.
 Reports use Merlin's shared `Check`/`CheckReport` types. Specialized geometry and
 instruction ordering remain support-owned; missing coverage is not a passing check.
+
+## Generic RoCC support (`semantics.py`)
+
+`semantics.py` is a complete `rocc_semantics` capability written once for every RoCC target; its
+`rtl_checks` attribute is `merlin.targetgen.rtl_checks_generic`. A support provider may select it
+instead of shipping its own. It names no accelerator: funct codes and classes come from the
+contract's `encoding.semantic_class`/`config_subtype` (codes range-checked against the facts'
+decoder width, else the RoCC funct7 width); opcode, funct3 and DIM are RTL facts; every operand
+field's offset/width is a `register_bundle_layouts` fact; the contract's `rocc_operand_roles`
+says only which bundle field each decoded value reads and how it is interpreted. A field whose
+bundle the facts lack decodes as UNKNOWN, never at an assumed offset. The rule engine reads the
+contract's `rtl_checks` protocol (class roles, field meanings, local-address fields, labels, ordered
+legality rules); a contract without one gets `RtlChecksUnavailable`, not another target's roles.
+The engine checks legality only; a lowering choice (tile counts, which fields an emitter fills, how a
+convolution is lowered) is never a finding.

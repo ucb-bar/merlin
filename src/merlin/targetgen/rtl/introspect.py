@@ -105,6 +105,7 @@ class RtlSource:
     origin: Path  # the declaration file this came from — provenance, so a wrong pin is traceable
     source_revision: str | None = None
     gitlinks: tuple[tuple[str, str], ...] = ()
+    artifact_sha256: tuple[tuple[str, str], ...] = ()
 
     def artifacts(self) -> dict[str, Path]:
         return find_artifacts(self.root, self.config)
@@ -213,10 +214,10 @@ def declared_rtl_source(target: str) -> RtlSource:
                 f"means is not resolvable — an SoC checkout holds many, and picking one would be a "
                 f"guess about the hardware"
             )
-        from .declared_revision import declared_revision
+        from .declared_revision import declared_artifact_pins, declared_revision, verify_artifact_digests
 
         revision, gitlinks = declared_revision(block, Path(str(root)), where=f"{target}: {path}")
-        return RtlSource(
+        source = RtlSource(
             target=target,
             root=Path(str(root)),
             config=str(config),
@@ -224,7 +225,10 @@ def declared_rtl_source(target: str) -> RtlSource:
             origin=path,
             source_revision=revision,
             gitlinks=gitlinks,
+            artifact_sha256=declared_artifact_pins(block, where=f"{target}: {path}"),
         )
+        verify_artifact_digests(source)
+        return source
     raise RtlSourceUndeclared(
         f"{target}: no file of this target's declares an elaborated-RTL source. Add an `rtl_source:` "
         f"block (ext_root / config / generator) to its contract, or an `rtl.elaboration:` block to its "
