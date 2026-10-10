@@ -289,6 +289,10 @@ For a dedicated CPU partition, set `MERLIN_GSIM_MAX_SLOTS` to the desired
 concurrency and `MERLIN_GSIM_CPUS` to a comma-separated roster containing one
 distinct CPU per slot. Each native-launch thread and its children use that
 slot's CPU; the caller's affinity is restored after execution or failure.
+The admission census pairs threaded native children with slots only when their
+kernel-reported singleton CPU affinity, direct parent, process identity and
+held lock inode agree across repeated observations. Missing or ambiguous joins
+remain conservatively counted.
 Reserve these CPUs separately from authoring/build CPUs through host CPU
 partitioning; affinity alone does not exclude unrelated workloads.
 `MERLIN_GSIM_SLOT_ROOT` can select an existing-parent, private task-local lock
