@@ -1,7 +1,7 @@
 """Resolve a single resident matmul's pointers from its selected interface contract.
 
 The target name never chooses wiring.  This small supported subset of the shared
-``kernel_abi.arg_order_by_command_shape`` contract resolves command operands to
+``kernel_abi.arg_order_by_command_shape`` (the version-1 kernel ABI) resolves command operands to
 external pointer names and refuses any interface it cannot describe exactly.
 """
 
@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import yaml
 
 from merlin.common.digest import sha256_bytes
-from merlin.common.paths import contract_dir
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+from merlin.targetgen.contract.schemas import legacy_kernel_abi_path
 
 
 @dataclass(frozen=True)
@@ -40,9 +40,7 @@ def bind_single_resident_matmul(
     current rank-2 shim.  Other command shapes are explicit refusals, not an
     assumption that their pointer ABI happens to look like this one.
     """
-    raw = abi_contract if abi_contract is not None else (
-        contract_dir() / "mlir_oot_backend_contract.yaml"
-    ).read_bytes()
+    raw = abi_contract if abi_contract is not None else legacy_kernel_abi_path().read_bytes()
     if not isinstance(raw, bytes):
         raise ValueError("selected kernel ABI contract must be exact bytes")
     document = yaml.safe_load(raw)

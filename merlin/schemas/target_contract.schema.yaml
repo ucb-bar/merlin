@@ -70,7 +70,9 @@ validation_notes: >-
 
   OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
   `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
-  cycle_window_metric, extern_decls: [...]}`. These are conventions of the target's own bare-metal test
+  cycle_window_metric, extern_decls: [...], kernel_abi_version}`. `kernel_abi_version` is 2 (the default:
+  the logical ABI in `merlin/contract/mlir_oot_backend_contract.yaml`) or 1 (the version-1 resident ABI in
+  `merlin/contract/legacy/kernel_abi_v1.yaml`, selected only by a support package whose harness implements it). These are conventions of the target's own bare-metal test
   environment, NOT RTL facts — nothing in a fact bundle says a kernel is called `foo_kernel` rather than
   `bar_entry` — which is exactly why the target declares them and why the parser refuses rather than
   substituting a default. A default here would produce a harness that compiles and then fails to link,

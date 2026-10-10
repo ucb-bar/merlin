@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Gate: the kernel ABI's argument order has ONE definition, and no harness has drifted from it.
+"""Gate: the version-1 kernel ABI's argument order has ONE definition, and no harness has drifted from it.
 
 The definition is ``kernel_abi.arg_order_by_command_shape`` in
-``merlin/contract/mlir_oot_backend_contract.yaml`` — a row per COMMAND SHAPE, each carrying a token
+``merlin/contract/legacy/kernel_abi_v1.yaml`` — a row per COMMAND SHAPE, each carrying a token
 list that expands to the pointer arguments in order. This gate resolves those tokens against a probe
 command buffer of every declared shape, then renders every explicitly selected OOT backend's real runner-owned
 harness for the same buffer, parses the actual entry call out of the emitted C, and fails if the two
@@ -37,6 +37,8 @@ Usage::
     python build_tools/scripts/check_kernel_abi_arg_order.py --static   # contract/probes only
     MERLIN_TARGET_PATH=<reviewed-support> python build_tools/scripts/check_kernel_abi_arg_order.py
     python build_tools/scripts/check_kernel_abi_arg_order.py --verbose  # print every order it resolved
+    python build_tools/scripts/check_kernel_abi_arg_order.py --target <t> \\
+        --logical merlin.targetgen.contract.harness_render:render_harness  # the logical (v2) ABI
 """
 
 from __future__ import annotations
@@ -49,7 +51,9 @@ _HERE = Path(__file__).resolve()
 _ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT / "merlin" / "python"))
 
-_CONTRACT = _ROOT / "merlin" / "contract" / "mlir_oot_backend_contract.yaml"
+_CONTRACT = _ROOT / "merlin" / "contract" / "legacy" / "kernel_abi_v1.yaml"
+#: The candidate-facing OOT backend contract, which declares ``logical_kernel_abi`` (version 2).
+_LOGICAL_CONTRACT = _ROOT / "merlin" / "contract" / "mlir_oot_backend_contract.yaml"
 
 #: The external tensor roles that become pointer arguments on the whole-op shape. Named here because
 #: the token's own definition in the contract names them, and the two are compared below.
@@ -393,6 +397,15 @@ def _renderers() -> list[tuple[str, object, object]]:
     return found
 
 
+def _explicit_renderer(spec: str, target: str) -> list[tuple[str, object, object]]:
+    """``[(target, defining_module, render)]`` for an explicitly named ``module:function`` renderer."""
+    import importlib
+
+    module_name, _, attr = spec.partition(":")
+    module = importlib.import_module(module_name)
+    return [(target, module, getattr(module, attr or "render_harness"))]
+
+
 def check(verbose: bool = False, *, static: bool = False) -> list[str]:
     import yaml
 
@@ -558,12 +571,110 @@ def check(verbose: bool = False, *, static: bool = False) -> list[str]:
     return problems
 
 
+# --------------------------------------------------------------------------------------------------
+# the logical (v2) ABI -- resolved here independently of the renderer that implements it
+# --------------------------------------------------------------------------------------------------
+def _probe_host_lane() -> dict:
+    """No command, results declared: a program routed entirely onto the host lane."""
+    return {
+        "abi_version": "0.1",
+        "tensors": {
+            "x": {"shape": [4, 8], "dtype": "f32", "role": "input"},
+            "gamma": {"shape": [8], "dtype": "f32", "role": "weight"},
+            "y": {"shape": [4, 8], "dtype": "f32", "role": "output"},
+            "x2": {"shape": [4, 8], "dtype": "i8", "role": "input"},
+        },
+        "commands": [],
+    }
+
+
+def logical_expected(cb: dict, block: dict) -> list[str]:
+    """The pointer list ``logical_kernel_abi`` declares for ``cb``, resolved from its token text alone."""
+    kabi = cb.get("kernel_abi") or {}
+    order = block["argument_order"]["whole_program" if kabi.get("kind") == "whole_program" else "default"]
+    tensors = cb.get("tensors") or {}
+    produced = {
+        (cmd.get("operands") or {}).get("dst")
+        for cmd in cb.get("commands", [])
+        if (cmd.get("operands") or {}).get("dst")
+    }
+    derived = {
+        recipe.get("target") for key, recipes in (cb.get("params") or {}).items()
+        if key.endswith("_recipes") for recipe in recipes or ()
+    }
+    published = set(block["published_by"])
+    names: list[str] = []
+    for token in order:
+        if token == "declared_whole_program_args":
+            names += [arg["tensor"] for arg in kabi["args"]]
+        elif token == "logical_inputs_in_declaration_order":
+            names += [n for n, spec in tensors.items() if n not in produced and n not in derived
+                      and (spec or {}).get("role", "input") not in ("output", "intermediate")]
+        elif token == "logical_outputs_in_result_order":
+            outs: list[str] = []
+            for cmd in cb.get("commands", []):
+                dst = (cmd.get("operands") or {}).get("dst")
+                if cmd.get("opcode") in published and dst not in outs:
+                    outs.append(dst)
+            outs += [n for n, spec in tensors.items() if (spec or {}).get("role") == "output" and n not in outs]
+            if cb.get("outputs"):
+                outs = [n for n in outs if n in set(cb["outputs"])]
+            names += outs
+        else:
+            raise Unresolvable(f"unknown logical_kernel_abi token {token!r}")
+    return names
+
+
+def check_logical(renderer: str, target: str, verbose: bool = False) -> list[str]:
+    """Hold ``renderer`` to ``logical_kernel_abi`` for a probe buffer of every command shape."""
+    import yaml
+
+    doc = yaml.safe_load(_LOGICAL_CONTRACT.read_text(encoding="utf-8")) or {}
+    block = doc.get("logical_kernel_abi")
+    if not isinstance(block, dict):
+        return [f"{_LOGICAL_CONTRACT.name}: no logical_kernel_abi block -- NOT certified"]
+    (_t, _m, render), = _explicit_renderer(renderer, target)
+    symbol = str(block["symbol"]).replace("{target}", target)
+    probes = [("whole_program", _probe_whole_program()), ("host_lane", _probe_host_lane()),
+              ("movement", _probe_movement()), ("resident_matmul", _probe_resident_matmul())]
+    probes += [(f"native_whole_op:{op}", _probe_native_whole_op(op))
+               for op in ("CONV2D", "ATTENTION_QK", "ATTENTION_PV", "BATCHED_MATMUL")]
+    problems = []
+    for shape, cb in probes:
+        expected = logical_expected(cb, block)
+        try:
+            text = render(cb, target=target)
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"{target}/{shape}: the logical renderer refused the probe ({type(exc).__name__}: {exc})")
+            continue
+        got = emitted_call_args(text, symbol)
+        if got != expected:
+            problems.append(f"{target}/{shape}: harness passes {got}, logical_kernel_abi declares {expected}")
+        elif verbose:
+            print(f"  ok {target}/{shape}: {symbol}({', '.join(got)})")
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--verbose", action="store_true", help="print every order it resolved")
     ap.add_argument("--static", action="store_true", help="contract/probes only; never certifies a renderer")
     ap.add_argument("--staged", action="store_true", help="accepted for pre-commit symmetry (no-op)")
+    ap.add_argument("--logical", metavar="MODULE:FUNCTION",
+                    help="certify this renderer against logical_kernel_abi (v2) instead of the legacy rows")
+    ap.add_argument("--target", help="the target --logical renders for")
     a = ap.parse_args(argv)
+    if a.logical:
+        if not a.target:
+            ap.error("--logical requires --target")
+        problems = check_logical(a.logical, a.target, verbose=a.verbose)
+        if problems:
+            print("logical kernel ABI drift:")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+        print("logical kernel ABI OK: the renderer's call matches logical_kernel_abi for every probe shape")
+        return 0
     problems = check(verbose=a.verbose, static=a.static)
     if problems:
         print("kernel ABI argument-order drift:")
