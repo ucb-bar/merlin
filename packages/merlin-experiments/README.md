@@ -148,3 +148,8 @@ canary result grants compiler correctness, target runtime or phase qualification
 The outer catalog's legacy default client is not covered by these explicit commands.
 Select `LEVEL` from the reviewed experiment definition and retain the same optional
 tool, accuracy and budget selections through startup, canary and authoring.
+
+The explicit runtime binds the pinned Codex executable at its
+`codex-linux-sandbox` helper alias and grants that exact path read access.
+The selected helper search path is recorded and rechecked. Client credentials
+and other client-home state retain their candidate-tool denials.

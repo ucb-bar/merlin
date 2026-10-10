@@ -76,6 +76,8 @@ def selection_record(options) -> dict | None:
         "schema": "phase1_codex_runtime.v1",
         "binary": str(binary),
         "binary_sha256": digest.hexdigest(),
+        "helper_path": str(binary.with_name("codex-linux-sandbox")),
+        "helper_search_path": str(binary.parent) + ":" + os.environ.get("PATH", ""),
         "auth_source": options.codex_auth_source,
         "home_root": options.codex_home_root,
     }
@@ -125,6 +127,12 @@ class SelectedCodexRuntime:
             "--ro-bind",
             selected["binary"],
             selected["binary"],
+            "--ro-bind",
+            selected["binary"],
+            selected["helper_path"],
+            "--setenv",
+            "PATH",
+            selected["helper_search_path"],
             "--bind",
             str(home),
             str(home),
@@ -183,6 +191,10 @@ def select(options, context, bundle: dict, workspace: Path, private_run: Path) -
         else:
             raise ValueError("unsupported ordinary toolchain mount selection")
     paths.append(selected["binary"])
+    # The CLI creates private argv0 aliases; its nested sandbox cannot execute
+    # those through the denied client home. Bind the same pinned executable at
+    # an exact public helper path instead, preserving all private-home denials.
+    paths.append(selected["helper_path"])
     read_paths = tuple(dict.fromkeys(paths))
     for value in read_paths:
         path = Path(value)

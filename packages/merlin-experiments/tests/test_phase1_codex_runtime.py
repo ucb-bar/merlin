@@ -286,3 +286,32 @@ def test_preflight_accepts_the_complete_same_client_selection_without_provider(t
     monkeypatch.setattr(CA, "run_round", lambda *a, **kw: pytest.fail("provider started"))
     assert S.validate_options(options) is None
     assert R.selection_record(options)["auth_source"] == options.codex_auth_source
+
+
+def test_helper_alias_uses_selected_bytes_without_client_home_grants(tmp_path, monkeypatch):
+    options = _options(tmp_path)
+    runtime, *_ = _select(tmp_path, monkeypatch, options)
+    helper = str(Path(options.codex_binary).with_name("codex-linux-sandbox"))
+    assert helper in runtime.read_paths
+    assert not any(Path(path).is_relative_to(Path(options.codex_home_root)) for path in runtime.read_paths)
+    home = Path(options.codex_home_root) / "round"
+    binds = runtime.runtime_binds(home)
+    assert ["--ro-bind", options.codex_binary, helper] == binds[3:6]
+    assert binds[6:9] == ["--setenv", "PATH", runtime.record()["helper_search_path"]]
+
+
+def test_helper_search_path_drift_refuses_selected_runtime(tmp_path, monkeypatch):
+    options = _options(tmp_path)
+    runtime, *_ = _select(tmp_path, monkeypatch, options)
+    monkeypatch.setenv("PATH", "/changed-after-selection")
+    with pytest.raises(ValueError, match="changed"):
+        runtime.verify()
+
+
+def test_helper_alias_cannot_overlap_selected_credential(tmp_path, monkeypatch):
+    options = _options(tmp_path)
+    helper = Path(options.codex_binary).with_name("codex-linux-sandbox")
+    helper.write_text("synthetic credential")
+    options = dataclasses.replace(options, codex_auth_source=str(helper))
+    with pytest.raises(ValueError, match="private selections"):
+        _select(tmp_path, monkeypatch, options)
