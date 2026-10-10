@@ -102,6 +102,45 @@ def test_missing_stages_domains_and_functional_qualification_are_not_zero_cost()
     assert any("functional" in reason for reason in totals["warm"].missing)
 
 
+def _interval_type_report(resolved):
+    """Synthetic arithmetic only; no runtime or held qualification is issued."""
+    scope = ComponentCostScope(sha("timer"), sha("accuracy"), sha("input policy"))
+    row = observation(sha("target"), scope)
+    if not resolved:
+        row = replace(
+            row,
+            cold=tuple(replace(region, context={"count": None}) for region in row.cold),
+            warm=tuple(replace(region, context={"count": None}) for region in row.warm),
+        )
+    _totals, report = complete_component_cost(
+        row, calibration(row.target_sha256), scope=scope, qualified_domains=(sha("domain"),)
+    )
+    return report
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_complete_cost_preserves_exact_boolean_interval_states(resolved):
+    report = _interval_type_report(resolved)
+    assert validate_complete_cost_report(report) == report
+    for regime in report["regimes"].values():
+        intervals = [regime["total"], *(row["cycles"] for row in regime["regions"])]
+        assert all(interval["resolved"] is resolved for interval in intervals)
+    assert report["promotion"] == "SCREENING_ONLY"
+
+
+@pytest.mark.parametrize("regime", ["cold", "warm"])
+@pytest.mark.parametrize("location", ["total", "region"])
+@pytest.mark.parametrize("resolved", [False, True])
+@pytest.mark.parametrize("numeric", [int, float], ids=["int", "float"])
+def test_complete_cost_refuses_numeric_interval_states(regime, location, resolved, numeric):
+    report = _interval_type_report(resolved)
+    selected = report["regimes"][regime]
+    interval = selected["total"] if location == "total" else selected["regions"][0]["cycles"]
+    interval["resolved"] = numeric(resolved)
+    with pytest.raises(ValueError, match="interval schema"):
+        validate_complete_cost_report(report)
+
+
 def held_rows():
     return [
         Observation(

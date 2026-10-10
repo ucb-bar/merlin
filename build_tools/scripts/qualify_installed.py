@@ -1163,6 +1163,7 @@ SUITES = {
             "test_component_launch_authority.py",
             "test_component_analytical.py",
             "test_component_screening.py",
+            "test_component_cost_interval_states.py",
             "test_supervised_feedback.py",
             "test_feedback_guardian.py",
             "test_component_normal_execution.py",

@@ -279,7 +279,7 @@ def validate_complete_cost_report(report):
         raise ValueError("complete component report identity/regime is invalid")
 
     def interval(raw):
-        if set(raw) != {"lo", "hi", "resolved", "provenance", "missing"}:
+        if set(raw) != {"lo", "hi", "resolved", "provenance", "missing"} or type(raw["resolved"]) is not bool:
             raise ValueError("complete component interval schema is invalid")
         value = CycleInterval(raw["lo"], raw["hi"], tuple(raw["provenance"]), tuple(raw["missing"]))
         if value.to_dict() != dict(raw) or (
