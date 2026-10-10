@@ -37,8 +37,52 @@ void merlin_prof_dump(void);
 #define MERLIN_WEIGHTS_BASE_ADDR 0x200000000ULL
 #endif
 
+#ifdef MERLIN_FULL_READBACK
+/* Every forward result, complete, as OUT_BIN v1 frames (merlin.runtime.whole_model_readback); the
+ * prefix protocol below is not emitted, so the two transports never mix on one console. */
+#include "model_outputs.h"
+void htif_line_flush(int);
+static void merlin_put_u64(unsigned long long v) {
+  char buf[24];
+  int i = 0;
+  do { buf[i++] = (char)('0' + (v % 10)); v /= 10; } while (v);
+  while (i) htif_putc(buf[--i]);
+}
+static void merlin_emit_full_outputs(void) {
+  for (int o = 0; o < MERLIN_N_OUTPUTS; o++) {
+    const unsigned char *p = (const unsigned char *)MERLIN_OUTPUT_PTR[o];
+    unsigned long long n = MERLIN_OUTPUT_BYTES[o];
+    uint64_t h = 0xcbf29ce484222325ULL;
+    htif_puts("OUT_BIN_BEGIN v1 ");
+    htif_puts(MERLIN_OUTPUT_NAMES[o]);
+    htif_putc(' '); merlin_put_u64(MERLIN_OUTPUT_ROWS[o]);
+    htif_putc(' '); merlin_put_u64(MERLIN_OUTPUT_COLS[o]);
+    htif_putc(' '); merlin_put_u64(MERLIN_OUTPUT_WIDTH[o]);
+    htif_putc(' '); htif_putc(MERLIN_OUTPUT_SIGN[o]);
+    htif_putc(' '); merlin_put_u64(n);
+    htif_putc('\n');
+    /* Raw payload bytes: a newline byte inside it must not split the buffered write. */
+    htif_line_flush(0);
+    for (unsigned long long i = 0; i < n; i++) {
+      htif_putc((char)p[i]);
+      h = (h ^ p[i]) * 0x100000001b3ULL;
+    }
+    htif_line_flush(1);
+    htif_puts("OUT_BIN_END v1 ");
+    for (int shift = 60; shift >= 0; shift -= 4)
+      htif_putc("0123456789abcdef"[(h >> shift) & 15]);
+    htif_putc('\n');
+  }
+}
+#else
 #if !MERLIN_OUT_IS_F32 && !MERLIN_OUT_IS_I64 && !MERLIN_OUT_IS_I1
 #error "bare-metal model output supports only f32, i64 or i1"
+#endif
+#endif
+#ifdef MERLIN_GROUP_PROFILE
+/* Cycle brackets around every device group call (merlin.runtime.whole_model_readback). */
+uint64_t merlin_group_profile_now(void);
+void merlin_group_profile_dump(uint64_t forward_start, uint64_t forward_end);
 #endif
 #if MERLIN_OUT_IS_F32
 #define OUT ((float *)MERLIN_OUTPUT_PTR[0])
@@ -58,8 +102,14 @@ int main(int hart) {
 
   merlin_reset_session();
   merlin_prepare_step(0);
+#ifdef MERLIN_GROUP_PROFILE
+  uint64_t merlin_forward_start = merlin_group_profile_now();
+#endif
   merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
                    MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
+#ifdef MERLIN_GROUP_PROFILE
+  uint64_t merlin_forward_end = merlin_group_profile_now();
+#endif
 #if MERLIN_N_STATE_PAIRS > 0
   if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
                           MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
@@ -78,6 +128,9 @@ int main(int hart) {
    * For large outputs (e.g. LM logits) additionally a digest the host can gate on:
    *   ARGMAX <rows> <idx...>: argmax over the last dim per row (token predictions).
    *   SUM <bits>            : f32 sum of all outputs (loose-tol checksum). */
+#ifdef MERLIN_FULL_READBACK
+  merlin_emit_full_outputs();
+#else
 #ifndef MERLIN_DUMP_CAP
 #define MERLIN_DUMP_CAP 4096
 #endif
@@ -151,6 +204,7 @@ int main(int hart) {
   htif_putc('\n');
 #endif
 #endif
+#endif /* MERLIN_FULL_READBACK */
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));
   htif_putc('\n');
@@ -178,6 +232,9 @@ int main(int hart) {
   htif_puts("METRIC memref_rank_mismatch ");
   htif_putd((long)merlin_memref_rank_mismatches());
   htif_putc('\n');
+#ifdef MERLIN_GROUP_PROFILE
+  merlin_group_profile_dump(merlin_forward_start, merlin_forward_end);
+#endif
 #ifdef MERLIN_PROF_BAREMETAL
   /* Per-op ticks, emitted only by a build that instrumented the IR to produce them. Placed after the
      output and the cycle metric so a profiled run is a superset of a normal one -- the same grade, the

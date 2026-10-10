@@ -465,6 +465,19 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
     return outputs
 
 
+def _row_major(value) -> list:
+    if isinstance(value, (list, tuple)):
+        return [item for element in value for item in _row_major(element)]
+    return [value]
+
+
 def outputs_match(a: dict[str, list], b: dict[str, list]) -> bool:
-    """Exact equality of two output maps."""
-    return a == b
+    """Exact equality of two output maps, per output in row-major element order.
+
+    A console reports a tensor as ``OUT <name> <rows> <cols>`` with its leading dimensions flattened
+    into rows, so a rank-1 or rank-3+ reference and a correct device result differ in NESTING only.
+    Values and their count must still agree exactly; only the bracket structure is not compared.
+    """
+    if set(a) != set(b):
+        return False
+    return all(_row_major(a[name]) == _row_major(b[name]) for name in a)
