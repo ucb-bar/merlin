@@ -812,6 +812,48 @@ def test_original_automatic_flow_requires_each_member_with_zero_skips(tmp_path, 
     _check_scalar_qualification_report(tmp_path, "original-scalar-automatic-flow", defect)
 
 
+def test_original_metadata_qualification_keeps_complete_controls_and_dynamic_fixture():
+    from collections import Counter
+
+    suite = Q.SUITES["original-metadata-source-flow"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (64, 21, 13), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 98
+    assert set(suite["support_files"]) == {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+        "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+        "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        "packages/merlin-experiments/tests/original_reference_fixtures.py",
+    }
+    assert len(suite["support_files"]) == 11
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert "merlin.targetgen.original_metadata_sources" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_metadata_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-metadata-source-flow", defect)
+
+
 @pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
 def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
     _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)

@@ -1698,6 +1698,246 @@ SUITES = {
             for suffix in suffixes
         ),
     },
+    "original-metadata-source-flow": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        ),
+        "support_files": (
+            "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_metadata_sources",
+            "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion",
+            "merlin_experiments.phase0.original_scalar_conversion_flow",
+            "merlin_experiments.phase0.original_factory_prerequisites",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+        "native_test_cases": tuple(
+            (filename, method + suffix)
+            for filename, methods in (
+                (
+                    "merlin/tests/targetgen/test_original_metadata_sources.py",
+                    (
+                        (
+                            "test_same_rank_different_original_cast_result_shape_is_not_rewritten_as_equal",
+                            (
+                                "[shape0]",
+                                "[None]",
+                                "[shape2]",
+                            ),
+                        ),
+                        (
+                            "test_cast_source_rechecks_the_bound_shape_relation_before_construction",
+                            (
+                                "[missing]",
+                                "[operand]",
+                                "[result]",
+                                "[rank]",
+                                "[scalar_alias]",
+                            ),
+                        ),
+                        (
+                            "test_cast_preserves_actual_original_storage_flags_and_fresh_geometry",
+                            (
+                                "[flags0-int8-int32]",
+                                "[flags0-float32-float16]",
+                                "[flags0-int64-float32]",
+                                "[flags0-float32-float32]",
+                                "[flags1-int8-int32]",
+                                "[flags1-float32-float16]",
+                                "[flags1-int64-float32]",
+                                "[flags1-float32-float32]",
+                                "[flags2-int8-int32]",
+                                "[flags2-float32-float16]",
+                                "[flags2-int64-float32]",
+                                "[flags2-float32-float32]",
+                                "[flags3-int8-int32]",
+                                "[flags3-float32-float16]",
+                                "[flags3-int64-float32]",
+                                "[flags3-float32-float32]",
+                            ),
+                        ),
+                        (
+                            "test_assertion_is_retained_as_actual_zero_result_call_with_one_none_metadata_slot",
+                            (
+                                "[conditions0]",
+                                "[conditions1]",
+                                "[conditions2]",
+                                "[conditions3]",
+                            ),
+                        ),
+                        (
+                            "test_unsupported_original_conditions_remain_required_unknown",
+                            (
+                                "[aten.to.dtype-conditions0]",
+                                "[aten.to.dtype-conditions1]",
+                                "[aten.to.dtype-conditions2]",
+                                "[aten._assert_tensor_metadata.default-conditions3]",
+                                "[aten._assert_tensor_metadata.default-conditions4]",
+                                "[aten._assert_tensor_metadata.default-conditions5]",
+                                "[aten._assert_tensor_metadata.default-conditions6]",
+                                "[aten._assert_tensor_metadata.default-conditions7]",
+                            ),
+                        ),
+                        (
+                            "test_source_rechecks_complete_original_bindings_and_exact_scalar_types",
+                            (
+                                "[parameters-aten.to.dtype]",
+                                "[parameters-aten._assert_tensor_metadata.default]",
+                                "[ordinal-aten.to.dtype]",
+                                "[ordinal-aten._assert_tensor_metadata.default]",
+                                "[rank-aten.to.dtype]",
+                                "[rank-aten._assert_tensor_metadata.default]",
+                                "[storage-aten.to.dtype]",
+                                "[storage-aten._assert_tensor_metadata.default]",
+                                "[alias-aten.to.dtype]",
+                                "[alias-aten._assert_tensor_metadata.default]",
+                                "[result-aten.to.dtype]",
+                                "[result-aten._assert_tensor_metadata.default]",
+                                "[arity-aten.to.dtype]",
+                                "[arity-aten._assert_tensor_metadata.default]",
+                                "[form-aten.to.dtype]",
+                                "[form-aten._assert_tensor_metadata.default]",
+                            ),
+                        ),
+                        (
+                            "test_zero_result_source_requires_the_original_native_bridge_and_metadata",
+                            (
+                                "[missing]",
+                                "[not_none]",
+                                "[other_id]",
+                                "[container]",
+                                "[unknown]",
+                                "[native_count]",
+                            ),
+                        ),
+                        (
+                            "test_complete_logical_budget_precedes_shape_and_loader_allocation",
+                            (
+                                "[aten.to.dtype-2-2-11]",
+                                "[aten._assert_tensor_metadata.default-2-2-5]",
+                                "[aten.to.dtype-1000000000-1-100]",
+                                "[aten._assert_tensor_metadata.default-2-1000000000-100]",
+                            ),
+                        ),
+                        (
+                            "test_scalar_sources_keep_one_logical_input_and_no_invented_assertion_tensor",
+                            (
+                                "[aten.to.dtype]",
+                                "[aten._assert_tensor_metadata.default]",
+                            ),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+                    (
+                        (
+                            "test_budget_denials_keep_every_stable_prerequisite_and_all_original_admission_blockers",
+                            (
+                                "[max_sources-0]",
+                                "[max_total_tensor_elements-3]",
+                            ),
+                        ),
+                        (
+                            "test_v7_reproduces_all_twelve_missing_cast_assertion_source_slots_without_changing_legacy",
+                            ("",),
+                        ),
+                        (
+                            "test_connected_v8_replays_zero_bridge_and_retains_complete_unsupported_and_admission_roster",
+                            ("",),
+                        ),
+                        (
+                            "test_complete_original_slots_source_bytes_types_and_native_zero_member_cannot_change",
+                            (
+                                "[missing]",
+                                "[extra]",
+                                "[order]",
+                                "[dtype]",
+                                "[none]",
+                                "[scalar_alias]",
+                                "[source]",
+                                "[bridge]",
+                                "[version]",
+                            ),
+                        ),
+                        ("test_new_factory_owner_preserves_status_independent_ids_and_refuses_old_vocabulary", ("",)),
+                        ("test_exact_zero_return_join_keeps_the_original_binding_identity_without_admission", ("",)),
+                        (
+                            "test_binding_roster_cannot_be_edited_to_replace_complete_live_replay",
+                            (
+                                "[missing]",
+                                "[extra]",
+                                "[order]",
+                                "[status]",
+                                "[scalar_alias]",
+                            ),
+                        ),
+                        ("test_v4_ledger_keeps_original_blockers_and_all_twelve_factory_prerequisites", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+                    (
+                        (
+                            "test_v8_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion",
+                            (
+                                "[False-False]",
+                                "[True-False]",
+                                "[False-True]",
+                                "[True-True]",
+                            ),
+                        ),
+                        (
+                            "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority",
+                            (
+                                "[old_request]",
+                                "[old_policy]",
+                                "[old_schema]",
+                                "[saved_converter]",
+                                "[default_factory]",
+                            ),
+                        ),
+                        ("test_automatic_policy_selects_only_the_new_source_version_and_keeps_complete_facets", ("",)),
+                        ("test_full_v8_source_keeps_exact_old_scalar_subroster_request_and_payload_budgets", ("",)),
+                        ("test_new_declared_converter_pins_full_v8_record_and_old_selection_refuses_it", ("",)),
+                        (
+                            "test_actual_v8_declared_caller_keeps_complete_missing_rows_and_invokes_versioned_fixed_producers",
+                            ("",),
+                        ),
+                    ),
+                ),
+            )
+            for method, suffixes in methods
+            for suffix in suffixes
+        ),
+    },
     "original-reference-flow": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,

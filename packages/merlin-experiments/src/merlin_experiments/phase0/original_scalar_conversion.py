@@ -29,8 +29,10 @@ from .original_reference_roster import _pin, _plain
 
 SCHEMA = "merlin.original_scalar_conversion.v1"
 INTEGER_SCHEMA = "merlin.original_scalar_conversion.v2"
+METADATA_SCHEMA = "merlin.original_scalar_conversion.v3"
 SELECTION_SCHEMA = "merlin.original_scalar_conversion_selection.v1"
 INTEGER_SELECTION_SCHEMA = "merlin.original_scalar_conversion_selection.v2"
+METADATA_SELECTION_SCHEMA = "merlin.original_scalar_conversion_selection.v3"
 _ISSUED = weakref.WeakKeyDictionary()
 _LIMITS = {
     *B._LIMITS,
@@ -86,7 +88,7 @@ def validate_selection(selected, *, source_record, schema_intake, basis):
             "mlir_opt",
             "budget",
         }
-        or selected["schema"] not in {SELECTION_SCHEMA, INTEGER_SELECTION_SCHEMA}
+        or selected["schema"] not in {SELECTION_SCHEMA, INTEGER_SELECTION_SCHEMA, METADATA_SELECTION_SCHEMA}
         or selected["source_record_sha256"] != _digest(source_record)
         or selected["operator_schema_intake_sha256"] != schema_intake.sha256
         or selected["semantic_basis_sha256"] != basis.source.sha256
@@ -95,14 +97,22 @@ def validate_selection(selected, *, source_record, schema_intake, basis):
         or any(c not in "0123456789abcdef" for c in selected["capture_commit"])
     ):
         raise ValueError("scalar conversion requires its explicit exact original-source and public compiler selection")
-    if source_record.get("schema") != (
-        C.INTEGER_SCALAR_SCHEMA if selected["schema"] == INTEGER_SELECTION_SCHEMA else C.SCALAR_BINARY_SCHEMA
+    if (
+        source_record.get("schema")
+        != (
+            {
+                SELECTION_SCHEMA: C.SCALAR_BINARY_SCHEMA,
+                INTEGER_SELECTION_SCHEMA: C.INTEGER_SCALAR_SCHEMA,
+                METADATA_SELECTION_SCHEMA: C.METADATA_SCHEMA,
+            }[selected["schema"]]
+        )
     ):
         raise ValueError("scalar conversion selection cannot widen a prior original-source vocabulary")
     limits = selected["budget"]
     if (
         type(limits) is not dict
-        or set(limits) != (_INTEGER_LIMITS if selected["schema"] == INTEGER_SELECTION_SCHEMA else _LIMITS)
+        or set(limits)
+        != (_INTEGER_LIMITS if selected["schema"] in {INTEGER_SELECTION_SCHEMA, METADATA_SELECTION_SCHEMA} else _LIMITS)
         or any(type(value) is not int or value < 1 for value in limits.values())
         or limits["timeout_s"] > 180
     ):
@@ -117,9 +127,9 @@ def validate_selection(selected, *, source_record, schema_intake, basis):
 
 def required_members(source_record, *, basis, budget):
     """Preserve every scalar call's original three source slots before expansion."""
-    if source_record.get("schema") not in {C.SCALAR_BINARY_SCHEMA, C.INTEGER_SCALAR_SCHEMA}:
+    if source_record.get("schema") not in {C.SCALAR_BINARY_SCHEMA, C.INTEGER_SCALAR_SCHEMA, C.METADATA_SCHEMA}:
         raise ValueError("scalar conversion requires the opt-in original scalar source vocabulary")
-    version = 2 if source_record["schema"] == C.INTEGER_SCALAR_SCHEMA else 1
+    version = 2 if source_record["schema"] in {C.INTEGER_SCALAR_SCHEMA, C.METADATA_SCHEMA} else 1
     if version == 2 and (
         type(budget) is not dict
         or set(budget) != _INTEGER_LIMITS
@@ -278,8 +288,14 @@ def _products(destination, index):
     }
 
 
-def _pins(selection, capture, *, version=1, getter=None):
-    readers = [module_source_path(name) for name in (*_READERS, *C.reader_modules(7 if version == 2 else 6))]
+def _pins(selection, capture, *, version=1, getter=None, source_version=None):
+    readers = [
+        module_source_path(name)
+        for name in (
+            *_READERS,
+            *C.reader_modules(source_version if source_version is not None else 7 if version == 2 else 6),
+        )
+    ]
     if version == 2:
         readers.append(module_source_path("merlin.targetgen.torch_tensor_argument_observer"))
         readers.extend(Path(getter[key]) for key in ("getter", "cpp", "sdk"))
@@ -321,7 +337,7 @@ def _record(owner, destination):
     )
     capture = P.capture_sources(selected)
     members, totals = required_members(source_record, basis=owner.basis, budget=selected["budget"])
-    version = 2 if selected["schema"] == INTEGER_SELECTION_SCHEMA else 1
+    version = 2 if selected["schema"] in {INTEGER_SELECTION_SCHEMA, METADATA_SELECTION_SCHEMA} else 1
     getter = schema.get("tensor_argument_getter") if version == 2 else None
     request = _request(members, capture, selected["budget"], version=version, getter=getter)
     request_path, observation_path = destination / "request.json", destination / "products/observation.json"
@@ -340,7 +356,13 @@ def _record(owner, destination):
         or [row["index"] for row in native["rows"]] != [row["index"] for row in request["members"]]
     ):
         raise ValueError("scalar conversion actual native observation lost its requested original members")
-    pins = _pins(owner.selection, capture, version=version, getter=getter)
+    pins = _pins(
+        owner.selection,
+        capture,
+        version=version,
+        getter=getter,
+        source_version=8 if selected["schema"] == METADATA_SELECTION_SCHEMA else None,
+    )
     observer = module_source_path(_READERS[1])
     invocations = tuple((destination / "native/invocations").glob("*/invocation.json"))
     if len(invocations) != 1:
@@ -423,7 +445,11 @@ def _record(owner, destination):
     if {pin["path"] for pin in actual["outputs"]} != outputs:
         raise ValueError("scalar conversion process omitted or substituted an actual complete product")
     return {
-        "schema": INTEGER_SCHEMA if version == 2 else SCHEMA,
+        "schema": METADATA_SCHEMA
+        if selected["schema"] == METADATA_SELECTION_SCHEMA
+        else INTEGER_SCHEMA
+        if version == 2
+        else SCHEMA,
         "destination": str(destination),
         "source_record_sha256": _digest(source_record),
         "operator_schema_intake_sha256": owner.schema_intake.sha256,
@@ -448,7 +474,7 @@ def prepare(*, schema_intake, basis, source_record, numerical_semantics, selecti
     )
     capture = P.capture_sources(selected)
     members, _ = required_members(source_record, basis=basis, budget=selected["budget"])
-    version = 2 if selected["schema"] == INTEGER_SELECTION_SCHEMA else 1
+    version = 2 if selected["schema"] in {INTEGER_SELECTION_SCHEMA, METADATA_SELECTION_SCHEMA} else 1
     getter = schema.get("tensor_argument_getter") if version == 2 else None
     request = _request(members, capture, selected["budget"], version=version, getter=getter)
     destination = Path(destination).absolute()
@@ -479,7 +505,16 @@ def prepare(*, schema_intake, basis, source_record, numerical_semantics, selecti
         env=D.ENVIRONMENT,
         inputs=(observer, request_path, *(Path(row["source"]) for row in request["members"])),
         outputs=paths,
-        dependencies=tuple(Path(pin["path"]) for pin in _pins(selection, capture, version=version, getter=getter)),
+        dependencies=tuple(
+            Path(pin["path"])
+            for pin in _pins(
+                selection,
+                capture,
+                version=version,
+                getter=getter,
+                source_version=8 if selected["schema"] == METADATA_SELECTION_SCHEMA else None,
+            )
+        ),
         capture_output=True,
         timeout=selected["budget"]["timeout_s"],
     ).check_returncode()

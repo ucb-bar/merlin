@@ -15,6 +15,18 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+Original call-source v8 / automatic v15 / declared v8 explicitly select bounded
+typed `to.dtype` and metadata-assertion factories. Retain original storage/rank,
+cast flags and dtype/device/layout conditions; non-None size/stride requirements
+remain unavailable rather than borrowing example geometry. Replay the selected
+native zero-return bridge and preserve the Python None slot separately from zero
+dispatcher results. Stable factory v2/ledger v4 keep every original selector ID,
+cohort and candidate blocker, including fulfilled original call-binding IDs.
+Binding state does not discharge effects or numerical admission. Scalar-conversion selection/receipt v3 replays the
+complete v8 source roster and the unchanged scalar sub-roster/native observer v2.
+Old versions, independent reference/packing choices and all numerical, alias,
+effect, hardware and phase-admission requirements keep their meanings.
+
 Original call-source v7 and scalar-conversion selection/receipt v2 explicitly
 select signed64 integer-literal construction through the same original live
 schema Tensor getter. Retain every original cohort and require exact native

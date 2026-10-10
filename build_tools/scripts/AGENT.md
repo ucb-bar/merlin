@@ -72,3 +72,9 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   controls substitute native issuers and conversion processes explicitly;
   installed wiring establishes no fresh original numerical, hardware, runtime,
   complete-coverage or author-session qualification.
+- `original-metadata-source-flow` retains all 98 cast/assertion and versioned
+  ordinary-caller controls with zero skips. Archive the ten direct fixture
+  siblings and the exact `original_reference_fixtures.py` file selected by the
+  retained sibling loader; direct AST imports alone do not close that edge.
+  The controls substitute native issuers and conversions. Installed wiring
+  establishes no numerical, alias, effect, hardware, runtime or phase admission.

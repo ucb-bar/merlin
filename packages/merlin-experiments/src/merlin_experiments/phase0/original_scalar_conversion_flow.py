@@ -22,13 +22,16 @@ from .original_reference_roster import _pin
 from .rtl_intake import _outside
 
 SCHEMA = "merlin.declared_original_scalar_conversion_selection.v1"
+METADATA_SCHEMA = "merlin.declared_original_scalar_conversion_selection.v2"
 
 
-def _declaration(raw, forbidden):
+def _declaration(raw, forbidden, *, version=1):
     if (
         type(raw) is not dict
         or set(raw) != {"schema", "capture_checkout", "capture_commit", "mlir_opt", "budget"}
-        or raw["schema"] != SCHEMA
+        or type(version) is not int
+        or version not in {1, 2}
+        or raw["schema"] != (METADATA_SCHEMA if version == 2 else SCHEMA)
         or type(raw["capture_commit"]) is not str
         or len(raw["capture_commit"]) != 40
         or any(c not in "0123456789abcdef" for c in raw["capture_commit"])
@@ -59,6 +62,7 @@ class OriginalScalarConversionInputs:
     selection: Path
     source_pins: tuple[tuple[str, str], ...]
     forbidden: tuple[Path, ...]
+    version: int = 1
 
     @property
     def paths(self):
@@ -71,20 +75,22 @@ class OriginalScalarConversionInputs:
             _outside(Path(path), self.forbidden)
             if _pin(path)["sha256"] != sha256:
                 raise ValueError("declared scalar source, parser or input selection changed")
-        selected = _declaration(loads(self.selection.read_bytes()), self.forbidden)
+        selected = _declaration(loads(self.selection.read_bytes()), self.forbidden, version=self.version)
         capture = P.capture_sources(selected)
         if tuple((row["path"], row["sha256"]) for row in capture) != self.source_pins[2:]:
             raise ValueError("declared scalar compiler source membership changed")
 
 
-def read_selection(pin, *, forbidden):
+def read_selection(pin, *, forbidden, version=1):
     path = _selected(pin, forbidden)
-    selected = _declaration(loads(path.read_bytes()), forbidden)
+    selected = _declaration(loads(path.read_bytes()), forbidden, version=version)
     capture = P.capture_sources(selected)
     pins = [_pin(path), _pin(selected["mlir_opt"]), *capture]
     for row in pins:
         _outside(Path(row["path"]), forbidden)
-    result = OriginalScalarConversionInputs(path, tuple((row["path"], row["sha256"]) for row in pins), tuple(forbidden))
+    result = OriginalScalarConversionInputs(
+        path, tuple((row["path"], row["sha256"]) for row in pins), tuple(forbidden), version
+    )
     result.verify()
     return result
 
@@ -108,9 +114,9 @@ def prepare(selected, *, schema_intake, basis, source_record, numerical_semantic
         )
     ):
         raise ValueError("declared scalar construction needs a fresh private owner outside its inputs")
-    value = _declaration(loads(selected.selection.read_bytes()), selected.forbidden)
+    value = _declaration(loads(selected.selection.read_bytes()), selected.forbidden, version=selected.version)
     value.update(
-        schema=V.INTEGER_SELECTION_SCHEMA,
+        schema=V.METADATA_SELECTION_SCHEMA if selected.version == 2 else V.INTEGER_SELECTION_SCHEMA,
         source_record_sha256=V._digest(source_record),
         operator_schema_intake_sha256=schema_intake.sha256,
         semantic_basis_sha256=basis.source.sha256,

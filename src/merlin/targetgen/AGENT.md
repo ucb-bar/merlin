@@ -1,5 +1,12 @@
 # AGENT.md — src/merlin/targetgen
 
+`original_metadata_sources` constructs exact typed original dtype casts and
+metadata assertions with independently bounded rank-based geometry. Preserve
+cast flags, Tensor(a) schema possibility and original metadata conditions; no
+alias/copy/exception/numerical authority follows. Assertions with unimplemented
+size/stride conditions refuse. Their actual call and observed Python None slot
+remain separate from the empty dispatcher result, never a synthesized tensor.
+
 `original_scalar_binary_sources` constructs the exact original positive-rank
 CPU strided f32 mul/div Tensor call with one SSA input and a finite Python
 FloatLiteral. Preserve literal kind/hex, ordered argument/result bindings and

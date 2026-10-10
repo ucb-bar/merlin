@@ -19,6 +19,7 @@ from .component_generation import digest
 
 SCHEMA = "merlin.phase0.source_requirement_ledger.v1"
 PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v3"
+METADATA_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v4"
 PURPOSES = ("source_diagnostic", "source_preparation", "performance_campaign")
 
 # These are compiler verdict owners, not evidence that a source case exists.
@@ -312,8 +313,8 @@ def verify_requirement_ledger(ledger, *, root, coverage, hardware, software, pur
     return actual.record()
 
 
-def prepare_prerequisite_ledger(
-    *, root, coverage, hardware, software, purpose, schema_intake, semantic_basis, standard_ir=None
+def _prepare_prerequisite_ledger(
+    *, root, coverage, hardware, software, purpose, schema_intake, semantic_basis, standard_ir=None, version
 ):
     """Retain fulfilled original factories beside the unchanged coverage projection.
 
@@ -335,6 +336,7 @@ def prepare_prerequisite_ledger(
         schema_intake=schema_intake,
         basis=semantic_basis,
         source_record=coverage["automatic_derivation"]["original_call_sources"],
+        version=version,
     )
     result = prepare_requirement_ledger(
         root=root, coverage=coverage, hardware=hardware, software=software, purpose=purpose, standard_ir=standard_ir
@@ -349,9 +351,15 @@ def prepare_prerequisite_ledger(
         raise ValueError("stable prerequisites lost or duplicated an original coverage ID")
     observation = factory.record()
     factories = {row["id"]: row for row in observation["factory_prerequisites"]}
+    if version == 2:
+        factories.update({row["id"]: row for row in observation["call_prerequisites"]})
     for row in result["requirements"]:
         selected = factories.get(row["original_id"])
-        if row["kind"] == "original_operator_factory" or selected is not None:
+        if (
+            row["kind"] == "original_operator_factory"
+            or (version == 2 and row["kind"] == "original_call_binding")
+            or selected is not None
+        ):
             if (
                 selected is None
                 or row["kind"] != selected["kind"]
@@ -364,7 +372,7 @@ def prepare_prerequisite_ledger(
     if not set(original) <= set(union):
         raise ValueError("stable prerequisites omitted an original coverage ID")
     result.update(
-        schema=PREREQUISITE_SCHEMA,
+        schema=METADATA_PREREQUISITE_SCHEMA if version == 2 else PREREQUISITE_SCHEMA,
         coverage_projection_schema=result["schema"],
         original_prerequisite_ids=union,
         original_factory_prerequisites=observation,
@@ -372,6 +380,16 @@ def prepare_prerequisite_ledger(
     )
     result["sha256"] = digest({key: value for key, value in result.items() if key != "sha256"})
     return SourceRequirementLedger(json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False))
+
+
+def prepare_prerequisite_ledger(**inputs):
+    """Replay the unchanged original source-v7/v3 prerequisite vocabulary."""
+    return _prepare_prerequisite_ledger(**inputs, version=1)
+
+
+def prepare_metadata_prerequisite_ledger(**inputs):
+    """Replay explicit source-v8/v4 without changing any original selector ID."""
+    return _prepare_prerequisite_ledger(**inputs, version=2)
 
 
 def verify_prerequisite_ledger(ledger, **inputs):
@@ -383,4 +401,16 @@ def verify_prerequisite_ledger(ledger, **inputs):
     actual = prepare_prerequisite_ledger(**inputs)
     if canonical_json(actual.record()) != canonical_json(ledger.record()):
         raise ValueError("stable original prerequisite roster, source bytes or unchanged coverage projection changed")
+    return actual.record()
+
+
+def verify_metadata_prerequisite_ledger(ledger, **inputs):
+    """Reopen every source-v8 prerequisite and unchanged coverage blocker."""
+    from merlin.common.jsonio import canonical_json
+
+    if type(ledger) is not SourceRequirementLedger:
+        raise ValueError("metadata prerequisite comparison needs the exact diagnostic data type")
+    actual = prepare_metadata_prerequisite_ledger(**inputs)
+    if canonical_json(actual.record()) != canonical_json(ledger.record()):
+        raise ValueError("metadata original prerequisite roster or source bytes changed")
     return actual.record()
