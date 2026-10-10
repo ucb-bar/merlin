@@ -37,6 +37,8 @@ Supported engines are explicit Spike and gSIM selections. gSIM uses the existing
 strict-v3 receipt checks against its actual binary and the selected FIRRTL.
 Spike uses an explicitly pinned extension and provides functional evidence.
 Metadata binding does not execute tools, build RTL or establish native readiness.
+Actual gSIM calls hold the same cross-process runtime reservation and optional
+operator-selected CPU slot as legacy calls, including release on failure.
 
 ## Prepare a worker selection
 

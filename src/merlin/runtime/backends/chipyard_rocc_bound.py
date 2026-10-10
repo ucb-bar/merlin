@@ -17,6 +17,7 @@ import signal
 import stat
 import subprocess
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -546,14 +547,20 @@ class BoundRoCCBackend:
             inputs=(path,),
             dependencies=dependencies,
         ) as observed:
-            result = _bounded_process(
-                argv,
-                cwd=cwd,
-                env=block["environment"],
-                timeout=timeout,
-                max_bytes=block["max_console_bytes"],
-                observed=observed,
-            )
+            slot = nullcontext()
+            if simulator == "gsim":
+                from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+
+                slot = gsim_runtime_slot(wait_timeout_s=timeout)
+            with slot:
+                result = _bounded_process(
+                    argv,
+                    cwd=cwd,
+                    env=block["environment"],
+                    timeout=timeout,
+                    max_bytes=block["max_console_bytes"],
+                    observed=observed,
+                )
             result.check_returncode()
             _require(
                 self._engine_identity(simulator) == before and _digest(path) == elf_sha,

@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -638,3 +639,49 @@ def test_gsim_refuses_weak_foreign_or_changed_lineage(selection, tmp_path, chang
     elif change == "missing_receipt":
         receipt.unlink()
     assert bound.available("gsim") is False
+
+
+@pytest.mark.parametrize("simulator", ("spike", "gsim"))
+@pytest.mark.parametrize("failure", (False, True))
+def test_selected_execution_guards_only_gsim_and_releases_after_failure(
+    selection, tmp_path, monkeypatch, simulator, failure,
+):
+    from merlin.runtime.backends import chipyard_rocc_bound as owner
+    from merlin.targetgen import rtl_engine_policy
+
+    if simulator == "gsim":
+        _gsim(selection, tmp_path)
+    active = False
+    events = []
+
+    @contextmanager
+    def guarded(*, wait_timeout_s):
+        nonlocal active
+        assert wait_timeout_s == 2
+        active = True
+        events.append("enter")
+        try:
+            yield
+        finally:
+            active = False
+            events.append("exit")
+
+    def execute(argv, **kwargs):
+        assert active is (simulator == "gsim")
+        if failure:
+            raise subprocess.TimeoutExpired(argv, 2)
+        result = subprocess.CompletedProcess(argv, 0, stdout=_console().encode(), stderr=b"")
+        kwargs["observed"].complete(result)
+        return result
+
+    monkeypatch.setattr(rtl_engine_policy, "gsim_runtime_slot", guarded)
+    monkeypatch.setattr(owner, "_bounded_process", execute)
+    elf = _file(tmp_path, "requested.elf", "owned original executable")
+    bound = _bound(selection)
+    if failure:
+        with pytest.raises(subprocess.TimeoutExpired):
+            bound.run_elf(elf, simulator=simulator, timeout=2)
+    else:
+        assert bound.run_elf(elf, simulator=simulator, timeout=2) == _console()
+    assert active is False
+    assert events == (["enter", "exit"] if simulator == "gsim" else [])
