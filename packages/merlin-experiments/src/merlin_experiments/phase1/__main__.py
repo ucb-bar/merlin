@@ -27,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = list(sys.argv[1:] if argv is None else argv)
     values = vars(parser.parse_args(arguments))
+    if (
+        values["codex_canary"] or values["codex_binary"] or values["codex_auth_source"] or values["codex_home_root"]
+    ) and not any(arg == "--model" or arg.startswith("--model=") for arg in arguments):
+        parser.error("explicit Codex runtime requires an explicit --model selection")
     if not values["bundle"]:
         parser.error("installed execution requires --bundle (the authored bundle identity)")
     selected_level = values.pop("level")

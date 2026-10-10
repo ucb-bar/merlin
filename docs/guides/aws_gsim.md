@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py, packages/merlin-experiments/src/merlin_experiments/phase1/canary.py, packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_runtime.py]
 ---
 
 # Provisioning Gemmini gSIM on a Linux worker
@@ -233,6 +233,19 @@ The private `preflight_result.json` records startup completion with
 `formal_complete: false` and `provider_started: false`. It cannot certify a compiler
 or fresh-client isolation. Use another fresh run ID for the author experiment;
 preflight-only sessions cannot resume into authoring.
+
+For a Codex client, select `--driver codex`, an explicit `--model`,
+`--codex-binary`, `--codex-auth-source` and `--codex-home-root` for all three
+installed invocations: preflight, canary and ordinary authoring. Use
+`--codex-canary --round-timeout 300` with another fresh run ID for the bounded
+client check. The [package instructions](../../packages/merlin-experiments/README.md#sealed-fresh-codex-client-check-aws-execution)
+show the commands. They use the same runtime selection and sandbox composition;
+the parent home root can be reused, while each round home must be fresh. The
+credential file is mounted for the client, denied to its tools, and never copied
+or hashed. The canary requires the actual completed fixed public/tool probe,
+rejects additional tool activity, and preserves the sealed task. Its private
+result establishes only the observed selected-client check. The outer catalog's
+legacy default client is not covered by a differently selected canary.
 
 ## Launch readiness boundary
 

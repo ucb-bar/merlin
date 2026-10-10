@@ -54,6 +54,18 @@ def _verify_public_build_budget(options: RunOptions, environment: dict) -> None:
         raise RuntimeError("resume refused: public object-build advisory selection changed")
 
 
+def _client_selection(options) -> dict | None:
+    from .providers.codex_runtime import selection_record
+
+    return selection_record(options)
+
+
+def _verify_client_selection(options, environment: dict) -> None:
+    recorded = (environment.get("run_config") or {}).get("codex_runtime")
+    if recorded != _client_selection(options):
+        raise RuntimeError("explicit client selection changed")
+
+
 def _verify_phase0_handoff(corpus_review: dict | None, workload_coverage: dict | None) -> None:
     """Bind the reviewed Phase 0 handoff to the frozen corpus view.
 
@@ -98,7 +110,9 @@ class RunRequest:
         return {
             "schedule": a.schedule,
             "session_mode": (
-                "preflight_only"
+                "codex_canary"
+                if a.codex_canary
+                else "preflight_only"
                 if a.preflight_only
                 else "submission_qualification"
                 if a.qualify_submission
@@ -120,6 +134,7 @@ class RunRequest:
                 if a.public_object_build_budget_s
                 else {}
             ),
+            **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 
@@ -187,9 +202,21 @@ class PreparedRun:
             "contract": self.contract_root,
         }
 
+    @property
+    def selected_codex_runtime(self):
+        from .providers.codex_runtime import select
+
+        runtime = select(self.request.options, self.request.context, self.bundle, self.workspace, self.run_dir)
+        observed = None if runtime is None else runtime.record()
+        if observed != self.environment.get("codex_runtime_policy"):
+            raise RuntimeError("explicit client permission/runtime selection changed")
+        return runtime
+
     def verify_inputs(self) -> None:
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
+        _verify_client_selection(self.request.options, self.environment)
+        self.selected_codex_runtime
         if self.environment.get("public_object_build_selection") != _public_build_selection(
             self.request.context.target, self.request.options.public_object_build_budget_s
         ):
@@ -365,9 +392,10 @@ def validate_preflight_options(a: RunOptions) -> None:
     ambient_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
     if a.corpus_seal and ambient_seal and a.corpus_seal != ambient_seal:
         raise ValueError("explicit corpus seal differs from the environment selection")
-    if a.preflight_only:
+    if a.preflight_only or a.codex_canary:
         if (
-            a.resume
+            (a.preflight_only and a.codex_canary)
+            or a.resume
             or a.seed_submission
             or a.qualify_submission
             or a.seal_current
@@ -388,6 +416,11 @@ def validate_options(a: RunOptions) -> int | None:
     validate_preflight_options(a)
     if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
         raise ValueError("instruction selection requires a sandboxed private full-model declaration")
+    from .providers.codex_runtime import validate_options as validate_client
+
+    validate_client(a)
+    if a.codex_canary and not 0 < a.round_timeout <= 600:
+        raise ValueError("Codex canary requires an explicit 1..600 second round timeout")
     if a.qualify_submission:
         if a.resume or a.seed_submission or a.seal_current or a.continuous:
             raise RuntimeError("unpaid qualification requires a fresh run and one selected submission")
@@ -448,7 +481,7 @@ def prepare(
         return load_target_experiment(context.descriptor)
 
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
-    if a.preflight_only and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
+    if (a.preflight_only or a.codex_canary) and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
         raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
     bundle_dir = request.bundle_manifest.parent
     _corpus_seal = a.corpus_seal or os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
@@ -473,6 +506,7 @@ def prepare(
             raise RuntimeError("resume refused: environment record is not a mapping")
         verify_readback_record(context, _environment_record.get("readback_policy"))
         _verify_public_build_budget(a, _environment_record)
+        _verify_client_selection(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
         SI.verify(_implementation_sources, **_source_context)
     else:
@@ -792,6 +826,9 @@ def prepare(
             contract_root=_contract_root,
         )
     if not _resuming:
+        from .providers.codex_runtime import select as select_client
+
+        _client_runtime = select_client(a, context, bundle, ws, run_dir)
         _environment_record = {
             "run_id": a.run_id,
             "arm": arm,
@@ -807,6 +844,7 @@ def prepare(
             "qa_loop": not bool(a.qualify_submission),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
+            **({"codex_runtime_policy": _client_runtime.record()} if _client_runtime is not None else {}),
             **(
                 {"public_object_build_selection": _public_build_selection_record}
                 if _public_build_selection_record is not None

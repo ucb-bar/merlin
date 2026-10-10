@@ -107,3 +107,44 @@ changed or removed selections on resume, and passes the frozen path to formal
 grading. Catalog definitions accept the corresponding `instruction_selection` and
 `private_full_model_spec` input fields. No selection is discovered from candidate
 metadata, and the declaration alone establishes no instruction or runtime authority.
+
+### Sealed fresh Codex client check (AWS execution)
+
+The installed Phase 1 command accepts an explicit client runtime for both the
+canary and ordinary authoring. Supply operator-reviewed inputs and paths:
+
+```sh
+python -m merlin_experiments.phase1 --run-id startup-preflight \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT" --preflight-only
+
+python -m merlin_experiments.phase1 --run-id client-canary \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT" --codex-canary --round-timeout 300
+
+python -m merlin_experiments.phase1 --run-id ordinary-author \
+  --descriptor "$DESCRIPTOR" --repo "$REPO" --level "$LEVEL" --sandbox bwrap \
+  --bundle-manifest "$MANIFEST" --bundle "$BUNDLE" --corpus-seal "$CORPUS_SEAL" \
+  --oracle-timing "$TIMING" --driver codex --model "$MODEL" \
+  --codex-binary "$CODEX_BINARY" --codex-auth-source "$AUTH_SOURCE" \
+  --codex-home-root "$FRESH_CLIENT_ROOT"
+```
+
+Use distinct fresh run IDs; individual round homes cannot already exist. The parent
+home root may be reused. Hold the reviewed bundle, treatment, executable, credential
+path and tooling selections constant. The credential is mounted for the CLI client
+and denied to candidate tools; it is never copied or hashed. Both commands require
+normal admission, masks and native permission checks. The canary uses an immutable
+single-command public/tool and synthetic protected-read probe, requiring actual raw
+provider command completion. It stops before authoring/grading and writes a private
+`client_canary_result.json`; failure retains provider evidence. No source fake test or
+canary result grants compiler correctness, target runtime or phase qualification.
+The outer catalog's legacy default client is not covered by these explicit commands.
+Select `LEVEL` from the reviewed experiment definition and retain the same optional
+tool, accuracy and budget selections through startup, canary and authoring.

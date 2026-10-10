@@ -124,6 +124,10 @@ def run(
             from . import preflight
 
             return preflight.complete(prepared)
+        if options.codex_canary:
+            from . import canary
+
+            return canary.execute(prepared)
         if options.qualify_submission:
             from . import qualification
 

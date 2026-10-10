@@ -32,3 +32,9 @@ Continuous Codex sessions retry only explicit capacity refusals, at most three t
 within the existing wall budget, using the same thread, model and sandbox. Preserve
 all failed-turn events and unknown usage. Quota/authentication errors, missing session
 identity, round-mode execution and exhausted retry budgets remain non-successes.
+
+Optional explicit credential selection is stat/path only and requires complete
+explicit isolated Codex inputs. Never discover the real home in that route. Reject
+same-file/hard-link executable and credential selections before executable hashing.
+The shared ordinary/canary runtime constructs the same read grants, home mounts and
+native permission preflight. Existing per-round homes refuse before client startup.

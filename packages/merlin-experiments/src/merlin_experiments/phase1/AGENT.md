@@ -235,3 +235,18 @@ under the registered tensor SSA contract. This source-only observation grants no
 native ABI, numerical, tail/resource, physical ownership or runtime effects.
 The `original-pointwise-host` installed suite retains ordinary source factory,
 upstream conversion and complete host value controls with explicit tool selection.
+
+`--codex-canary` uses the normal reviewed preparation and stops before authoring.
+Explicit binary/auth-source/home-root selections are also accepted by ordinary
+installed authoring, through the same private `providers/codex_runtime.py` owner.
+Seal the executable bytes, read grants, toolchain mounts, import paths and environment;
+replay them on resume and dispatch. Credential selection is path/stat only, never
+content or a hash. Require a fresh individual round home, allowing a shared parent
+for distinct run IDs. Legacy routes without any selection preserve their defaults.
+`canary.py` issues one immutable literal isolated-Python probe, reusing selected public
+tool probes and frozen public interfaces, with synthetic protected-negative controls.
+Raw paired command completion must have exact command/id, completed status and explicit
+integer exit zero; extra tools/edits refuse. Marker files and usage corroborate only.
+Reopen complete prepared inputs after execution. Fake controls certify no real isolation.
+A real result covers its selected installed invocation, not an unselected catalog route
+or compiler, target runtime, correctness or phase qualification. Do not rewrite TASK.md.

@@ -200,6 +200,8 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.runtime_environment", "grader"),
     _module("merlin_experiments.phase1.controller", "grader"),
     _module("merlin_experiments.phase1.preflight", "grader"),
+    _module("merlin_experiments.phase1.canary", "grader"),
+    _module("merlin_experiments.phase1.providers.codex_runtime", "grader"),
     _module("merlin_experiments.phase1.__main__", "grader"),
     _module("merlin_experiments.phase1.task_staging", "grader"),
     _module("merlin_experiments.phase1.workspace_transport", "grader"),

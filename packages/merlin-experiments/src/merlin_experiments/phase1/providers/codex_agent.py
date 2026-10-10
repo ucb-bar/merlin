@@ -287,10 +287,20 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
     if not codex_home.is_absolute():
         raise ValueError("isolated CODEX_HOME must be absolute")
     if read_paths is not None:
-        if (not isinstance(read_paths, tuple) or not read_paths or len(set(read_paths)) != len(read_paths)
-            or any(not isinstance(path, str) or not Path(path).is_absolute() or ".." in Path(path).parts
-                   or Path(path) == Path("/") or codex_home.is_relative_to(Path(path))
-                   or Path(path).is_relative_to(codex_home) for path in read_paths)):
+        if (
+            not isinstance(read_paths, tuple)
+            or not read_paths
+            or len(set(read_paths)) != len(read_paths)
+            or any(
+                not isinstance(path, str)
+                or not Path(path).is_absolute()
+                or ".." in Path(path).parts
+                or Path(path) == Path("/")
+                or codex_home.is_relative_to(Path(path))
+                or Path(path).is_relative_to(codex_home)
+                for path in read_paths
+            )
+        ):
             raise ValueError("explicit candidate read grants must be exact absolute paths without control credentials")
         grants = "".join(f'{json.dumps(path)} = "read"\n' for path in read_paths)
         return (
@@ -298,8 +308,7 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
             'extends = ":workspace"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem]\n"
             '":root" = "deny"\n'
-            '":minimal" = "read"\n' + grants +
-            f'{json.dumps(str(codex_home))} = "deny"\n'
+            '":minimal" = "read"\n' + grants + f'{json.dumps(str(codex_home))} = "deny"\n'
             f'[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem.":workspace_roots"]\n'
             '"." = "write"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.network]\n"
@@ -360,8 +369,13 @@ def real_codex_home() -> Path:
 
 
 def prepare_codex_home(
-    dest: Path, *, model: str, effort: str, workspace: Path,
+    dest: Path,
+    *,
+    model: str,
+    effort: str,
+    workspace: Path,
     candidate_read_paths: tuple[str, ...] | None = None,
+    auth_source: Path | None = None,
 ) -> dict:
     """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
 
@@ -384,6 +398,10 @@ def prepare_codex_home(
     """
     if not workspace.is_absolute() or not workspace.is_dir() or workspace.resolve(strict=True) != workspace:
         raise ValueError("Codex workspace must be an existing canonical absolute directory")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        auth_source = canonical_file(str(auth_source), "client credential")
     dest.mkdir(parents=True, exist_ok=True)
     # A non-OpenAI model reaches codex-cli only through the LiteLLM bridge: codex 0.147 speaks the
     # Responses API and nothing else, so the provider block points it at our proxy and declares the
@@ -401,7 +419,7 @@ def prepare_codex_home(
     )
     config_path = dest / "config.toml"
     config_path.write_text(config)
-    auth = real_codex_home() / "auth.json"
+    auth = real_codex_home() / "auth.json" if auth_source is None else auth_source
     import hashlib
 
     return {
@@ -851,6 +869,7 @@ def run_round(
     candidate_read_paths: tuple[str, ...] | None = None,
     runtime_binds: Callable[[Path], list[str]] | None = None,
     require_fresh_home: bool = False,
+    auth_source: Path | None = None,
     continuation_prompt: str | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
@@ -880,6 +899,19 @@ def run_round(
     # or credential-isolated home placement. Defaults retain historical callers.
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        canonical_file(str(auth_source), "client credential")
+        if (
+            sandbox != "bwrap"
+            or codex_binary is None
+            or codex_home_root is None
+            or not candidate_read_paths
+            or runtime_binds is None
+            or not require_fresh_home
+        ):
+            raise ValueError("explicit credential selection requires complete isolated client inputs")
     codex_bin = str(codex_binary) if codex_binary is not None else os.environ.get("CODEX_BIN", "codex")
     # A rigorous caller may preflight model resolution and pass the content-addressed result.
     # In that mode do NOT consult CODEX_MODEL_MAP a second time between the declaration and
@@ -896,6 +928,12 @@ def run_round(
             # candidate shell. A future broker can deliver it without a shell
             # environment leak; clearenv intentionally does not do that today.
             raise RuntimeError("bridged Codex needs a host-side proxy credential broker under bwrap")
+    if require_fresh_home and sandbox == "bwrap" and codex_home_root is not None:
+        selected_home = Path(codex_home_root) / f"{run_dir.name}_r{rnd:02d}"
+        if selected_home.exists() or selected_home.is_symlink():
+            raise ValueError("fresh authoring refuses an existing Codex home or session history")
+        if selected_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(selected_home.resolve()):
+            raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
     tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"
@@ -973,6 +1011,8 @@ def run_round(
         if require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
+        if auth_source is not None:
+            home_options["auth_source"] = auth_source
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _verify_frozen_config(codex_home, home_info["config_sha256"])
@@ -1003,11 +1043,15 @@ def run_round(
     stamped_f = open(stamped_path, "w")
     #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
     #: extra guidance mid-session would not be comparable to one that did not.
-    _CONTINUE_MSG = continuation_prompt if continuation_prompt is not None else (
-        "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-        "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
-        "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-        "checks improve, and never edit submission/ while a self-check is running."
+    _CONTINUE_MSG = (
+        continuation_prompt
+        if continuation_prompt is not None
+        else (
+            "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
+            "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
+            "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
+            "checks improve, and never edit submission/ while a self-check is running."
+        )
     )
     turn_index = 0
     rc = 0

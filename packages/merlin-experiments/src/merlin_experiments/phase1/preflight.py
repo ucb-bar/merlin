@@ -25,6 +25,29 @@ def complete(prepared) -> int:
     from .session import validate_preflight_options
 
     validate_preflight_options(request.options)
+    identity = verify_prepared_inputs(prepared)
+    record = {
+        "schema": "phase1_readiness_preflight.v1",
+        "mode": "preflight_only",
+        "status": "startup_checks_completed",
+        "formal_complete": False,
+        "provider_started": False,
+        **({"runtime_selection": prepared.selected_codex_runtime.record()} if request.options.codex_binary else {}),
+        "bundle_manifest_sha256": identity,
+        "snapshot_content_sha256": prepared.environment["bundle_input_snapshot"]["content_sha256"],
+        "scope": "ordinary native startup only; no author/client isolation, compiler, runtime or phase qualification",
+    }
+    path = prepared.run_dir / "preflight_result.json"
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as stream:
+        json.dump(record, stream, sort_keys=True, indent=2)
+    return 0
+
+
+def verify_prepared_inputs(prepared) -> str:
+    """Replay the same complete fresh reviewed input owners for both continuations."""
+    request = prepared.request
+    if prepared.resuming or prepared.reviewed_roots is None:
+        raise ValueError("readiness needs a fresh reviewed ordinary preparation")
     prepared.verify_inputs()
     manifest = prepared.run_dir / "input_bundle_manifest.yaml"
     identity = run_inputs.bundle_manifest_identity(manifest, prepared.bundle)
@@ -43,17 +66,4 @@ def complete(prepared) -> int:
         prepared.bundle,
         repo=request.context.repo,
     )
-    record = {
-        "schema": "phase1_readiness_preflight.v1",
-        "mode": "preflight_only",
-        "status": "startup_checks_completed",
-        "formal_complete": False,
-        "provider_started": False,
-        "bundle_manifest_sha256": identity,
-        "snapshot_content_sha256": prepared.environment["bundle_input_snapshot"]["content_sha256"],
-        "scope": "ordinary native startup only; no author/client isolation, compiler, runtime or phase qualification",
-    }
-    path = prepared.run_dir / "preflight_result.json"
-    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as stream:
-        json.dump(record, stream, sort_keys=True, indent=2)
-    return 0
+    return identity
