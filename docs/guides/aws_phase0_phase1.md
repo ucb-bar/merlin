@@ -52,7 +52,7 @@ harness_abi:
   tensor_alignment: 64
   byte_order: little
   main_convention: void
-  readback_transport: full_values_b64
+  readback_transport: out_b64_v1
 ```
 
 This fragment is a calling convention, not a complete execution declaration.

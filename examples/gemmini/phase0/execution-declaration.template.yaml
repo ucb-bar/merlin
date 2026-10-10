@@ -73,7 +73,7 @@ harness_abi:
   tensor_alignment: 64
   byte_order: little
   main_convention: void
-  readback_transport: full_values_b64
+  readback_transport: out_b64_v1
 rocc_operand_roles:
   version: 1
   word_bits: REVIEWED_REGISTER_WIDTH
