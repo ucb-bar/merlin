@@ -12,8 +12,9 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
-# Retained reference metadata does not ship an executable backend. Select the OOT
-# gemmini-mlir support provider explicitly; its contract owns plugin.backend.
+# Retained reference metadata does not select execution tooling. Fresh runs need
+# a reviewed data contract with the shared logical ABI and explicit engine pins.
+# The handwritten compiler's executable support is not grading tooling.
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.

@@ -278,8 +278,6 @@ class BoundRoCCBackend:
     target: str
     _selection_json: str
     rocc_semantics: object
-    contract_path: Path | None
-    facts_path: Path | None
     __name__ = __name__
     __file__ = __file__
     EXECUTION_CAPABILITIES = {
@@ -603,7 +601,7 @@ def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
     return result
 
 
-def bind(*, target, contract, facts, contract_path=None, facts_path=None):
+def bind(*, target, contract, facts):
     """Bind already selected data once; no plugin, discovery, binary check or build."""
     _require(
         type(target) is str and target and type(contract) is dict and type(facts) is dict and facts,
@@ -669,10 +667,4 @@ def bind(*, target, contract, facts, contract_path=None, facts_path=None):
     if "readout" in block:
         _validate_readout(block["readout"])
     semantics = bind_semantics(target=target, contract=contract, facts=facts)
-    return BoundRoCCBackend(
-        target,
-        snapshot,
-        semantics,
-        None if contract_path is None else _path(str(contract_path)),
-        None if facts_path is None else _path(str(facts_path)),
-    )
+    return BoundRoCCBackend(target, snapshot, semantics)

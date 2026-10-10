@@ -7,8 +7,7 @@ Ties the deterministic RTL facts + the FileCheck compiler to a candidate capsule
   2. compile the FileCheck assertions for the capsule (:mod:`rtl_check_compiler`),
   3. invoke the **FileCheck LLVM binary** over that rendered decode of the target's ACTUAL emitted
      commands/instructions (never the agent's dialect MLIR — its op mnemonics are un-derivable per run),
-  4. additionally run the Python :func:`rtl_checks.screen` for numeric bounds FileCheck can't express
-     (scratchpad/accumulator capacity, multi-matmul tile lower bound),
+  4. additionally run the selected Python :func:`rtl_checks.screen` capability,
 
 and return a combined result whose ``verdict`` a caller may use to SKIP the expensive spike/verilator/VCS
 oracle on a hard reject — turning a multi-minute failed RTL run into an instant FileCheck diagnostic.
@@ -153,8 +152,9 @@ def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | Non
         f"ILLEGAL_OPCODE_COUNT {n_illegal if determinable else '-'}",
     ]
     L += [f"CLASS_PRESENT {c}" for c in present]
-    L += [f"CLASS_COUNT {c} {counts[c]}" for c in present]  # for the mesh-tiling count check
-    L += [f"CLASS_ZEROOPS {c} {zeroops.get(c, 0)}" for c in present]  # for the field-sanity (base≠0) check
+    # Preserve raw diagnostics without prescribing a tile count or operand value.
+    L += [f"CLASS_COUNT {c} {counts[c]}" for c in present]
+    L += [f"CLASS_ZEROOPS {c} {zeroops.get(c, 0)}" for c in present]
     return "\n".join(L + lines) + "\n"
 
 
@@ -200,7 +200,7 @@ def screen_run(
     ``inline_asm_insn``) gets the TRACE FileCheck over its decoded RoCC stream; a self-hosted-ISA target
     (``external_backend``) gets KERNEL structural checks over its emitted instruction stream.
     Universal legality is checked only with an explicitly complete ISA taxonomy;
-    the Python numeric screen adds capacity bounds."""
+    Python screening uses the same explicitly selected check capability."""
     gen = run_capsule_dir / "generated"
     trace_p = gen / "instruction_trace.json"
     kernel_p = gen / "kernel.S"
@@ -220,9 +220,7 @@ def screen_run(
         tax = IT.taxonomy_for_target(target)  # DERIVED at run time; {} if unavailable
         decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec, tax)
         if fc:
-            # KERNEL = order-independent -DAG (legality, coverage, tiling, field-sanity); KERNELORDER =
-            # the ordered first-occurrence class sequence. Disjoint vocabularies, one FileCheck pass.
-            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, ["KERNEL", "KORDER"])
+            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, "KERNEL")
             res["filecheck"]["kernel"] = {"ok": ok, "diag": diag}
             res["verdict"] = "reject" if ok is False else "ok"
         else:
@@ -252,14 +250,12 @@ def screen_run(
         trace_txt = render_trace(trace, facts_rec, target=target, checks=checks)
         ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
         res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
-    # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
+    # Screen only through the selected hardware-check capability.
     checks = RC.selected_checks(target) if checks is None else checks
     rc_facts = checks.project_facts(facts_rec)
     if not isinstance(rc_facts, dict):
         raise RC.RtlChecksUnavailable("selected RTL check provider returned malformed fact projection")
-    # The package's OWN emitted command buffer: the declaration that binds each kernel argument to a
-    # declared tensor, which the encoded-field-intent check needs. Absent -> that check reports skipped
-    # with that reason (never a pass); a malformed one is treated the same way.
+    # Preserve the emitted command buffer for checks that explicitly consume it.
     cb_p = gen / "command_buffer.json"
     command_buffer = None
     if cb_p.is_file():

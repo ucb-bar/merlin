@@ -3,9 +3,9 @@ title: Selecting a target definition package
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-08
-related: [adding_a_target, generated_target_repos, targetgen, target_publishing]
-code_refs: [src/merlin/targetgen/target_registry.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/capability_manifests.py, build_tools/upstreams/target_support.json]
+last_verified: 2026-10-10
+related: [adding_a_target, generated_target_repos, targetgen, target_publishing, neutral_runtime_tooling]
+code_refs: [src/merlin/targetgen/target_registry.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/capability_manifests.py, src/merlin/runtime/backends/base.py, build_tools/upstreams/target_support.json]
 ---
 
 # Selecting a target definition package
@@ -33,7 +33,9 @@ Support packages declare `provider.yaml` at their own root, separate from a comp
 `manifest.yaml`. An independently selected repository can use the declaration at
 `merlin-support/provider.yaml`. Gemmini has no in-repo executable support default:
 its handwritten provider and copied headers have been removed from this repository.
-Fresh experiments require separately issued independent support authority.
+Fresh compiler experiments use reviewed data with shared execution tooling, or an
+independently reviewed execution provider that contains no compiler solution.
+The handwritten compiler's support cannot substitute for independent tooling.
 
 ```yaml
 schema: merlin.provider.v1
@@ -50,6 +52,19 @@ but neither participates in target-definition discovery. Roles are claims about 
 grants, certification, or proof that a compiler executes. Existing ABI/capability/grading checks remain
 unchanged. A legacy schedule with a compiler-looking wrapper is still reported as a host schedule.
 
+## Data-only execution tooling
+
+`runner.backend: chipyard_rocc` selects shared Merlin tooling from the selected
+contract and existing RTL facts. This route requires the logical ABI v2 and
+explicit toolchain and engine pins; it refuses executable `plugin` references.
+It selects no compiler, device kernel, packing routine or schedule. See
+[neutral runtime tooling](../reference/neutral_runtime_tooling.md).
+
+`MERLIN_TARGET_CONTRACT` can select a reviewed contract independently of provider
+discovery. Observed sealed contract/facts snapshots take precedence in their
+existing scopes. Missing or malformed data refuses; it cannot trigger a legacy
+provider import. A selected contract alone does not qualify the native worker.
+
 ## How Merlin picks *which* package to use
 
 `merlin.targetgen.target_registry.resolve(name)` walks an **ordered search path** and takes the **first**
@@ -58,7 +73,7 @@ package whose contract `name` matches. Precedence, highest first:
 | # | Source | `kind` | Use it for |
 | - | ------ | ------ | ---------- |
 | 1 | **`MERLIN_TARGET_PATH`** entries | `external` | **Explicit selection** — a specific versioned/named package, or a repo you cloned yourself. Always wins. **Unset**, the entries are the checkout's in-repo support providers (`examples/*/support`, see below). |
-| 2 | Reference metadata: legacy `merlin/targets/` roots, then checkout `examples/*/target/` | `reference` | Inspect authored inputs; Gemmini's contract now lives in its example. Legacy roots win duplicate names during migration. |
+| 2 | Reference metadata: checkout `examples/*/target/`, then `merlin/targets/` compatibility roots | `reference` | Inspect authored inputs; explicit `MERLIN_TARGETS_DIR` replaces this search. |
 | 3 | `out/build/generated/<name>/` | `external` | The **freshly generated** package — dropped here by onboarding / `write_oot_target`, so a just-generated target resolves with **zero env**. |
 | 4 | `out/artifacts/targets/<name>/` | `generated` | Legacy generated location (fallback). |
 

@@ -73,6 +73,13 @@ not be substituted with preferred schedules, tile coverage, reuse or command
 balance assertions. Complete numerical output and existing linked-ELF policy
 checks remain separate mandatory evidence.
 
+Self-hosted instruction streams retain declared class presence, nonempty-kernel
+and complete-taxonomy legality checks. The shared screen imposes no exact tile
+count, preferred instruction order or assumed legality of a zero operand payload.
+Observed counts and payloads remain diagnostics; numerical and target-specific
+protocol obligations require their own independent checks. Shared provenance
+reads existing decoder facts without launching a behavioral role probe.
+
 ## What these tools establish
 
 Source controls check selection, data custody and refusal behavior. A worker

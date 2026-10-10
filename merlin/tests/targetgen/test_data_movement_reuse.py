@@ -13,14 +13,13 @@ import pytest
 import yaml
 from gemmini_rtl_test_support import checks as RC
 
-from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RR
 from merlin.targetgen.rtl import mlc_bridge
 from merlin.targetgen.rtl.facts import load_facts
 
 pytestmark = pytest.mark.target("gemmini")
 
-_FACTS = CC._facts_to_rc(load_facts("gemmini"))
+_FACTS = RC.project_facts(load_facts("gemmini"))
 
 
 def _matmul_capsule():

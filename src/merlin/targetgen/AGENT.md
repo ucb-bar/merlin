@@ -143,6 +143,11 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   refuses; the advisory CIRCT wrapper records unavailable evidence and still runs
   the scientific oracle. The runner selects one owner for all three operations;
   compiled assertions are not cached by mutable capsule names or object identities.
+- Shared self-hosted instruction screens check declared class presence and
+  complete-taxonomy legality. Exact tile counts, preferred class order and
+  zero-payload assumptions are not hardware legality; keep them out of the
+  shared grader. Provenance reads existing decoder facts without role-probe
+  execution or schedule claims.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a
