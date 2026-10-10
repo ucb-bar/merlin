@@ -8,17 +8,22 @@ materialized once per selection identity under the regenerable cache and hard-li
 Nothing about the seal is relaxed: the per-run guest root is still a private directory whose every
 byte the issuer re-hashes against the plan before executing anything, and the replay re-hashes it
 again. A store entry is published only after its own trees match the plan's selected digests, and
-is built under a private name and renamed into place, so a half-built store is never linked.
+is built under a private name and renamed into place, so a half-built store is never linked. A
+per-entry advisory lock makes build/publish and verification exclusive and linking shared, so
+parallel captures never remove or replace an entry another one is reading.
 File modes are kept exactly as copied, because the selected tree digests bind them.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import secrets
 import shutil
 import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,6 +61,28 @@ def _store_root() -> Path:
     return Path(cache_dir("sealed-m2m-runtime"))
 
 
+@contextmanager
+def _entry_lock(root: Path, key: str, *, exclusive: bool) -> Iterator[None]:
+    """Serialize publication of one store entry against everyone reading it.
+
+    Builders hold the lock exclusively while they check, build and publish an entry, and so does
+    a full verification, whose inventory must not see the ctime changes concurrent hard-links
+    make. Linkers hold it shared with each other. An entry can therefore never be replaced or
+    removed while a capture inventories or links it. The lock is advisory and per entry, so
+    different selections never wait on each other.
+    """
+    descriptor = os.open(root / f"{key}.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        os.close(descriptor)  # closing the only descriptor releases the lock
+
+
+def _published(entry: Path, marker: Path) -> bool:
+    return entry.is_dir() and not entry.is_symlink() and marker.is_file() and not marker.is_symlink()
+
+
 @dataclass(frozen=True)
 class VerifiedRuntimeCache:
     """One exact, local store entry; never an authority to rebuild or change the plan."""
@@ -77,10 +104,29 @@ def verified_cached_entry(
     rechecks the token immediately before and after linking; a discounted issue
     must never silently fall back to a fresh runtime copy.
     """
-    from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+    from .sealed_static import _canonical_path
 
     try:
         root = _canonical_path(_store_root(), exists=False)
+        if not root.is_dir() or root.is_symlink():
+            return None
+        # Exclusive: a concurrent hard-link changes member ctimes, which the inventory treats as
+        # an unstable read. Verification therefore excludes linkers as well as builders.
+        with _entry_lock(root, _identity(plan), exclusive=True):
+            return _verified_cached_entry(plan, destination, selected_system_libraries, root)
+    except (KeyError, TypeError, ValueError, OSError):
+        return None
+
+
+def _verified_cached_entry(
+    plan: dict[str, Any],
+    destination: Path,
+    selected_system_libraries: list[dict[str, Any]] | None,
+    root: Path,
+) -> VerifiedRuntimeCache | None:
+    from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+
+    try:
         entry = root / _identity(plan)
         marker = root / f"{entry.name}.complete.json"
         destination = _canonical_path(destination, exists=True)
@@ -231,19 +277,30 @@ def store_entry(plan: dict[str, Any]) -> Path:
     key = _identity(plan)
     entry = root / key
     marker = root / f"{key}.complete.json"
-    if entry.is_dir() and marker.is_file() and not entry.is_symlink():
+    if _published(entry, marker):
         return entry
-    staging = root / f"{key}.building-{secrets.token_hex(8)}"
-    staging.mkdir()
-    try:
-        _build(plan, staging)
-        if entry.exists():
-            shutil.rmtree(entry)
-        staging.rename(entry)
-        marker.write_text(json.dumps({"identity": key, "base": plan["base"], "system_libs": plan["system_libs"]}))
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
+    with _entry_lock(root, key, exclusive=True):
+        # Another capture may have published it while this one waited.
+        if _published(entry, marker):
+            return entry
+        staging = root / f"{key}.building-{secrets.token_hex(8)}"
+        staging.mkdir()
+        try:
+            _build(plan, staging)
+            if entry.exists() or entry.is_symlink():
+                # An unpublished leftover of an interrupted build. No reader links an entry without
+                # its marker, and the exclusive lock excludes every reader, so removing it is safe.
+                if entry.is_dir() and not entry.is_symlink():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+            staging.rename(entry)
+            pending = root / f"{key}.complete.json.{secrets.token_hex(8)}"
+            pending.write_text(json.dumps({"identity": key, "base": plan["base"], "system_libs": plan["system_libs"]}))
+            os.replace(pending, marker)  # the marker appears whole, after the entry is in place
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
     return entry
 
 
@@ -255,14 +312,26 @@ def link_runtime(
     selected_system_libraries: list[dict[str, Any]] | None = None,
 ) -> None:
     """Hard-link the plan's stored runtime into ``runtime`` with the stored directory modes."""
+    from .sealed_m2m import SealedM2MError
+
     if verified_cache is None:
         entry = store_entry(plan)
     else:
-        from .sealed_m2m import SealedM2MError
-
         if verified_cached_entry(plan, runtime, selected_system_libraries) != verified_cache:
             raise SealedM2MError("cached runtime changed after discounted admission")
         entry = verified_cache.entry
+    # Link under the shared entry lock: no builder can replace the entry mid-walk.
+    with _entry_lock(entry.parent, entry.name, exclusive=False):
+        if not _published(entry, entry.parent / f"{entry.name}.complete.json"):
+            raise SealedM2MError("runtime store entry is not published")
+        _link_entry(entry, runtime)
+    if verified_cache is not None and (
+        verified_cached_entry(plan, runtime, selected_system_libraries) != verified_cache
+    ):
+        raise SealedM2MError("cached runtime changed during hard-link snapshot")
+
+
+def _link_entry(entry: Path, runtime: Path) -> None:
     directories: list[tuple[Path, int]] = []
     for current, names, files in os.walk(entry, followlinks=False):
         here = Path(current)
@@ -282,7 +351,3 @@ def link_runtime(
     for path, mode in sorted(directories, key=lambda row: len(row[0].parts), reverse=True):
         if path != runtime:
             path.chmod(mode)
-    if verified_cache is not None and (
-        verified_cached_entry(plan, runtime, selected_system_libraries) != verified_cache
-    ):
-        raise SealedM2MError("cached runtime changed during hard-link snapshot")

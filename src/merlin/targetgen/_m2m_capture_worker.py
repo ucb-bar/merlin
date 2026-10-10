@@ -566,6 +566,18 @@ def _materialize_session(
             stage_abis[program.name] = {"input_abi": input_abi, "output_abi": output_abi}
     programs = session.bundle_programs()
     selections = {program.name: "untransformed" for program in session.programs}
+    # A recipe-quantized stage reaches the bundle writer already quantized, so a paper-ready stage
+    # needs its quality trajectory from the untransformed program first. Every reference is taken
+    # before any stage is quantized. FP32 staging freezes its own reference from the staged program.
+    stage_sessions = {program.name: program.session for program in session.programs}
+    if quantized and not args.stage_fp32:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from _capture_session_reference import pre_quantization_session_reference
+
+        stage_sessions = {
+            program.name: pre_quantization_session_reference(program.module, program.inputs, program.session)
+            for program in session.programs
+        }
     stage_quants = {}
     if quantized or args.stage_fp32:
         from m2m.capture.bundle import _shared_tensor_inventory
@@ -597,7 +609,7 @@ def _materialize_session(
                     "module": program.module,
                     "inputs": program.inputs,
                     "dependencies": dependencies,
-                    "session": program.session,
+                    "session": stage_sessions[program.name],
                     "provenance": _scalars(dict(session.metadata.get("provenance") or {})),
                     "source_exported": exported if args.stage_fp32 else None,
                     "float_reference": stage_references.get(program.name),
@@ -670,6 +682,12 @@ def _materialize_session(
             {
                 "name": program.name,
                 "precision_selection": selections[program.name],
+                # Present only for transformed stages, so an untransformed session keeps its bytes.
+                **(
+                    {"numeric_deployment": _numeric_deployment(meta, staged=bool(args.stage_fp32))}
+                    if selections[program.name] != "untransformed"
+                    else {}
+                ),
                 "ok": meta["ok"],
                 "opaque": count,
                 "trace_status": trace.get("status", "unknown"),
@@ -706,6 +724,76 @@ def _materialize_session(
         )
     )
     return 0 if ok else 3
+
+
+def _numeric_deployment(meta: dict, *, staged: bool) -> dict:
+    """What a transformed session stage actually deploys, stated in its receipt, not implied.
+
+    ``form`` names the precision path (FP32 staging, then the recipe's W8A8, or either alone). The
+    contraction census separates what the recipe selected and integerized, what it selected but had to
+    keep as dequantized float (with the source dtype that forced it), and what it never selected. The
+    activation x activation matmuls in that last group are an explicit, counted scope note: a static
+    weight recipe has no weight to quantize there, so they stay float by design.
+    """
+    receipt = meta.get("integerization_receipt") or {}
+    staging = meta.get("fp32_staging")
+    conversion = meta.get("precision_conversion") or {}
+    audit = conversion.get("staged_precision_audit") or {}
+    quantized = bool(receipt)
+    form = (
+        ("fp32_staged_then_recipe_w8a8" if staged else "recipe_w8a8")
+        if quantized
+        else ("fp32_staged" if staged else "untransformed")
+    )
+    record: dict = {"form": form}
+    if staged:
+        record["precision_staging"] = {
+            "target_dtype": audit.get("target_dtype"),
+            "audit_status": audit.get("status"),
+            "checked_floating_values": audit.get("checked_floating_values"),
+            "non_target_floating_values": audit.get("non_target_floating_values"),
+            "graph_dtype_retargeting": conversion.get("graph_dtype_retargeting"),
+            "retyped_dtype_decisions": len(conversion.get("dtype_decisions") or ()),
+            "original_graph_sha256": conversion.get("original_graph_sha256"),
+            "staged_graph_sha256": conversion.get("staged_graph_sha256"),
+            "source_state_unchanged": bool(staging),
+        }
+    if quantized:
+        by_kind = receipt.get("quantized_by_kind") or {}
+        decisions = receipt.get("precision_decisions") or []
+        census = {}
+        for kind in ("linear", "conv2d", "matmul"):
+            seen = int(receipt.get(f"{kind}_seen") or 0)
+            selected = int((by_kind.get(kind) or {}).get("seen") or 0)
+            integerized = int((by_kind.get(kind) or {}).get("integerized") or 0)
+            census[kind] = {
+                "seen": seen,
+                "recipe_selected": selected,
+                "integerized": integerized,
+                "selected_kept_float": selected - integerized,
+                "not_selected": seen - selected,
+            }
+        reasons: dict[str, int] = {}
+        for row in decisions:
+            if row.get("decision") != "integerized_i32":
+                key = f"{row.get('decision')}:{row.get('kind')}:{row.get('source_dtype')}"
+                reasons[key] = reasons.get(key, 0) + 1
+        record.update(
+            contractions=census,
+            selected_kept_float_reasons=dict(sorted(reasons.items())),
+            integer_contractions=int(receipt.get("exported_integer_mm_count") or 0),
+        )
+        unselected_matmuls = census["matmul"]["not_selected"]
+        if unselected_matmuls:
+            record["scope_notes"] = [
+                {
+                    "kind": "matmul",
+                    "count": unselected_matmuls,
+                    "reason": "activation x activation matmul (no weight operand); a static weight recipe "
+                    "does not quantize it, so it stays float",
+                }
+            ]
+    return record
 
 
 def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | None:
