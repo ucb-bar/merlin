@@ -31,6 +31,7 @@ class ProviderConfig:
     provider: str = "subscription"
     subagent_model: str = ""
     background_model: str = ""
+    codex_runtime: object | None = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +182,31 @@ def sandbox_command(
     return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
 
 
+def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
+    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    runtime.verify()
+    target = load_target_experiment(context.descriptor)
+    if (
+        tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
+        or TC.sandbox_env(target, ws) != runtime.tool_environment
+    ):
+        raise ValueError("explicit client toolchain mount selection changed")
+    return sandbox_command(
+        inner, ws, bundle, extra_binds, context=context, private_run_dir=private_run_dir, codex_mode=True
+    )
+
+
+def codex_call_kwargs(runtime, *, context, run_dir, model) -> dict:
+    if runtime is None:
+        return {"sandbox_command": partial(sandbox_command, context=context, private_run_dir=run_dir, codex_mode=True)}
+    return {
+        **runtime.round_kwargs(),
+        "sandbox_command": partial(codex_sandbox_command, context=context, private_run_dir=run_dir, runtime=runtime),
+    }
+
+
 def launch(
     ws: Path,
     run_dir: Path,
@@ -237,6 +263,8 @@ def launch(
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = resolve_driver(model, config=config.provider)
+        if config.provider.codex_runtime is not None and drv != "codex":
+            raise ValueError("explicit client runtime requires the Codex provider")
         # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
         # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
         # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
@@ -306,8 +334,8 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
-                sandbox_command=partial(
-                    sandbox_command, context=config.context, private_run_dir=run_dir, codex_mode=True
+                **codex_call_kwargs(
+                    config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),
             )
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches

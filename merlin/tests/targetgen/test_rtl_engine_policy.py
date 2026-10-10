@@ -939,3 +939,62 @@ def test_gsim_cap_operator_override(monkeypatch):
         monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", bad)
         with pytest.raises(ValueError):
             policy._gsim_cap_override()
+
+
+def test_operator_cpu_slots_pin_distinct_launch_threads_and_restore(monkeypatch, tmp_path):
+    import subprocess
+    import sys
+
+    cpus = sorted(os.sched_getaffinity(0))[:2]
+    if len(cpus) != 2:
+        pytest.skip("two available CPUs required")
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", ",".join(map(str, cpus)))
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 2)
+    monkeypatch.setattr(P, "_native_gsim_census", lambda **_kwargs: P._NativeCensus(0, ()))
+    barrier = threading.Barrier(2)
+    observed, errors = [], []
+
+    def worker():
+        original = os.sched_getaffinity(0)
+        try:
+            with P.gsim_runtime_slot(slot_root=tmp_path / "cpu-slots", wait_timeout_s=5):
+                barrier.wait(timeout=5)
+                selected = os.sched_getaffinity(0)
+                child = subprocess.check_output(
+                    [sys.executable, "-c", "import os; print(*sorted(os.sched_getaffinity(0)))"], text=True
+                )
+                assert selected == {int(child.strip())}
+                with P.gsim_runtime_slot(slot_root=tmp_path / "cpu-slots"):
+                    assert os.sched_getaffinity(0) == selected
+                observed.append(selected)
+            assert os.sched_getaffinity(0) == original
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not any(thread.is_alive() for thread in threads)
+    assert not errors
+    assert observed[0].isdisjoint(observed[1])
+
+
+@pytest.mark.parametrize("roster", ("0,0", "0", "0-1", "-1,0"))
+def test_operator_cpu_roster_refuses_shared_missing_or_malformed_slots(monkeypatch, roster):
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 2)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", roster)
+    with pytest.raises(ValueError, match="MERLIN_GSIM_CPUS"):
+        with P._gsim_cpu_slot(0):
+            pytest.fail("invalid CPU selection must refuse before launching")
+
+
+def test_operator_cpu_slot_restores_affinity_after_failure(monkeypatch):
+    original = os.sched_getaffinity(0)
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 1)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", str(min(original)))
+    with pytest.raises(RuntimeError, match="native failed"):
+        with P._gsim_cpu_slot(0):
+            raise RuntimeError("native failed")
+    assert os.sched_getaffinity(0) == original

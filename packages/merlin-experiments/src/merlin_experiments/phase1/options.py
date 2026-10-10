@@ -60,6 +60,13 @@ class RunOptions:
     private_full_model_spec: str = ""
     readback_policy: str = ""
     public_object_build_budget_s: int = 0
+    preflight_only: bool = False
+    corpus_seal: str = ""
+    instruction_selection: str = ""
+    codex_canary: bool = False
+    codex_binary: str = ""
+    codex_auth_source: str = ""
+    codex_home_root: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -85,6 +92,22 @@ def build_parser(
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
     ap.add_argument("--run-id", required=True)
+    ap.add_argument(
+        "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
+    )
+    ap.add_argument(
+        "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
+    )
+    ap.add_argument(
+        "--codex-auth-source",
+        default="",
+        help="explicit credential file for the client only; never copied or exposed to tools",
+    )
+    ap.add_argument(
+        "--codex-home-root",
+        default="",
+        help="fresh isolated per-run client home root, shared selection policy for canary and authoring",
+    )
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
@@ -280,6 +303,12 @@ def build_parser(
         help="operator-only frozen complete-network validation declaration for the official post-freeze gate",
     )
     ap.add_argument(
+        "--instruction-selection",
+        default="",
+        metavar="FILE",
+        help="operator-private source-bound instruction policy for formal full-model grading",
+    )
+    ap.add_argument(
         "--experiment",
         choices=["full", "realistic"],
         default="full",
@@ -356,6 +385,12 @@ def build_parser(
         default=environment.get("CLAUDE_CONFIG_DIR", ""),
         help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)",
     )
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="run ordinary sealed native readiness, then stop before authoring or completion",
+    )
+    ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
     return ap
 
 

@@ -29,6 +29,8 @@ Private holdouts,
 goldens and credentials must never be copied into this public example.
 
 The handwritten support provider and copied kernel headers have been removed.
+[`support/`](support/) is a data-only provider (contract copy, plugin pointers to the generic
+`merlin.runtime.backends.chipyard_rocc` runtime, and a digest-pinned ISA-headers spec); it holds no code.
 Fresh Phase 1 and Phase 2 use the independently issued hardware, runtime and
 compiler-origin authorities described in the
 [fresh compiler design](../../docs/design/fresh_compiler_origin.md).

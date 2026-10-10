@@ -13,6 +13,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -199,36 +200,55 @@ def _sandbox_probe(target: str, tools: tuple[str, ...], mnemonic: str) -> str:
     return "\n".join(lines)
 
 
-def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> dict:
-    from merlin.targetgen.sandbox import toolchain as TC
+@contextmanager
+def public_probe_session(
+    context, ws: Path, bundle: dict, tools: tuple[str, ...], *, facts_workspace: Path | None = None
+):
+    """Run the existing selected public brokers for a tool probe, without oracle jobs."""
+    from merlin_experiments.frozen_python import inherited_python_command
 
     from .feedback.lifecycle import stage_client
 
     processes = []
-    selected_facts = BW.frozen_selected_rtl_facts(ws, bundle, repo=context.repo)
+    selected_facts = BW.frozen_selected_rtl_facts(
+        ws if facts_workspace is None else facts_workspace, bundle, repo=context.repo
+    )
+    specs = TR.brokers_for(tools)
+    try:
+        for spec in specs:
+            channel = ws / spec.channel
+            channel.mkdir(exist_ok=True)
+            if (channel / "STOP").exists():
+                raise ValueError("public tool probe refuses a stopped broker channel")
+            for module, staged_as in spec.shims:
+                stage_client(ws, module_source_path(module), staged_as)
+            argv = [sys.executable, "-m", spec.module, "--ws", str(ws)]
+            if spec.module.endswith(".isa_tools"):
+                argv += ["--descriptor", str(context.descriptor), "--repo", str(context.repo)]
+            if selected_facts is not None and spec.module.endswith((".isa_tools", ".cca")):
+                argv += ["--rtl-facts", str(selected_facts)]
+            with (channel / spec.log).open("w", encoding="utf-8") as log:
+                processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
+        yield _sandbox_probe(context.target, tools, _asm_probe(context) if "isa_tools" in tools else "")
+    finally:
+        for spec in specs:
+            channel = ws / spec.channel
+            if channel.is_dir():
+                (channel / "STOP").write_text("stop", encoding="utf-8")
+        for process in processes:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> dict:
+    from merlin.targetgen.sandbox import toolchain as TC
+
     with tempfile.TemporaryDirectory(prefix="tooling-readiness-", dir=ws.parent) as directory:
         probe_ws = Path(directory)
-        try:
-            for spec in TR.brokers_for(tools):
-                channel = probe_ws / spec.channel
-                channel.mkdir()
-                for module, staged_as in spec.shims:
-                    stage_client(probe_ws, module_source_path(module), staged_as)
-                argv = [sys.executable, "-m", spec.module, "--ws", str(probe_ws)]
-                if spec.module.endswith(".isa_tools"):
-                    argv += ["--descriptor", str(context.descriptor), "--repo", str(context.repo)]
-                if selected_facts is not None and spec.module.endswith((".isa_tools", ".cca")):
-                    argv += ["--rtl-facts", str(selected_facts)]
-                from merlin_experiments.frozen_python import inherited_python_command
-
-                log = (channel / spec.log).open("w", encoding="utf-8")
-                try:
-                    processes.append(
-                        subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT)
-                    )
-                finally:
-                    log.close()
-            probe = _sandbox_probe(context.target, tools, _asm_probe(context) if "isa_tools" in tools else "")
+        with public_probe_session(context, probe_ws, bundle, tools, facts_workspace=ws) as probe:
             command = TC.sandbox_env(te, probe_ws) + " python3 -c " + shlex.quote(probe)
             result = subprocess.run(
                 [*BW.full_argv(te, probe_ws, bundle), "bash", "-c", command],
@@ -240,17 +260,6 @@ def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> 
             ok = result.returncode == 0 and "AUTHORING_AND_BROKER_ROUNDTRIPS_OK" in result.stdout
             output = (result.stdout + "\n" + result.stderr).strip()[-1600:]
             return _check("selected_sandbox_authoring", ok, f"rc={result.returncode}; output={output}")
-        finally:
-            for spec in TR.brokers_for(tools):
-                channel = probe_ws / spec.channel
-                if channel.is_dir():
-                    (channel / "STOP").write_text("stop", encoding="utf-8")
-            for process in processes:
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
 
 
 def assess(

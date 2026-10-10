@@ -33,6 +33,26 @@ _DARK = """color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--surface-2:#26262
 --band:rgba(57,135,229,.12);--t0:#184f95;--t1:#1c5cab;--t2:#256abf;--t3:#3987e5;--t4:#5598e7;--t5:#86b6ef;
 --t6:#b7d3f6;--fail:#8a3434"""
 
+#: Categorical slots --c1..--c8 (fixed order) and the richer views' feed, matrix and note styles.
+EXTRA_CSS = """
+:root{--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;--c7:#4a3aa7;--c8:#e34948}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--c1:#3987e5;--c2:#d95926;--c3:#199e70;
+--c4:#c98500;--c5:#d55181;--c6:#008300;--c7:#9085e9;--c8:#e66767}}
+:root[data-theme=dark]{--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
+--c7:#9085e9;--c8:#e66767}
+.mode{display:inline-block;padding:2px 10px;border-radius:6px;font-weight:600;font-size:12px;
+border:1px dashed var(--border);background:var(--surface-2)}
+.feed{list-style:none;margin:0;padding:0;font-size:12.5px}.feed li{padding:3px 0;border-bottom:1px solid var(--grid)}
+.feed .t{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;margin-right:8px}
+.feed .kind{display:inline-block;min-width:74px;color:var(--ink-2);font-weight:600}
+.feed .err{color:var(--critical)}
+.now{border-left:4px solid var(--s1);padding:6px 10px;background:var(--surface-2);border-radius:4px}
+.gap{background:color-mix(in srgb,var(--critical) 22%,transparent)}
+.hit{background:color-mix(in srgb,var(--good) 22%,transparent)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+pre.note{white-space:pre-wrap;margin:4px 0;font-size:12px}
+"""
+
 CSS = (
     """
 :root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--surface-2:#f0efec;--ink:#0b0b0b;--ink-2:#52514e;
@@ -83,13 +103,23 @@ svg{display:block;width:100%;height:auto}svg text{fill:var(--ink-2);font-size:11
 color:var(--surface);font-size:12px;white-space:pre-line;pointer-events:none}
 footer{color:var(--muted);font-size:12px;margin:20px 0}
 """
+    + EXTRA_CSS
 )
 
 JS = """(()=>{const t=document.getElementById('tip');document.addEventListener('mousemove',e=>{
 const g=e.target.closest&&e.target.closest('[data-tip]');if(!g){t.hidden=true;return}
 t.textContent=g.getAttribute('data-tip');t.hidden=false;
 t.style.left=Math.max(4,Math.min(e.clientX+14,innerWidth-t.offsetWidth-8))+'px';
-t.style.top=Math.min(e.clientY+16,innerHeight-t.offsetHeight-8)+'px'});})();"""
+t.style.top=Math.min(e.clientY+16,innerHeight-t.offsetHeight-8)+'px'});
+document.querySelectorAll('table.sortable th').forEach(h=>{h.style.cursor='pointer';h.title='sort';
+h.addEventListener('click',()=>{const tb=h.closest('table').tBodies[0],i=h.cellIndex,up=h.dataset.up!=='1';
+h.dataset.up=up?'1':'0';const k=r=>{const s=(r.cells[i]||{}).textContent||'',
+n=parseFloat(s.split(',').join(''));return isNaN(n)?s:n};
+[...tb.rows].sort((a,b)=>{const x=k(a),y=k(b);return(x>y?1:x<y?-1:0)*(up?1:-1)}).forEach(r=>tb.appendChild(r))})});
+document.querySelectorAll('input[data-filter]').forEach(f=>f.addEventListener('input',()=>{
+const q=f.value.toLowerCase();document.querySelectorAll('table.sortable tbody tr').forEach(r=>{
+r.hidden=!!q&&!r.textContent.toLowerCase().includes(q)})}));
+})();"""
 
 
 # --------------------------------------------------------------------------- formatting

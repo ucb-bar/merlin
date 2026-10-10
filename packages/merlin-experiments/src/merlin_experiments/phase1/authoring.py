@@ -259,7 +259,13 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     _operator_errata_record = _environment_record.get("operator_errata")
     _run_config = prepared.request.run_config
     _verify_implementation_sources = prepared.verify_inputs
-    provider = EX.ProviderConfig(a.driver, a.provider, a.subagent_model, a.background_model)
+    provider = EX.ProviderConfig(
+        a.driver,
+        a.provider,
+        a.subagent_model,
+        a.background_model,
+        (prepared.selected_codex_runtime if a.codex_binary else None),
+    )
     from merlin.targetgen.sandbox import bwrap as BW
 
     selected_rtl_facts = BW.frozen_selected_rtl_facts(ws, bundle, repo=context.repo) if a.sandbox == "bwrap" else None

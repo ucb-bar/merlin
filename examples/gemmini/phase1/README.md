@@ -2,8 +2,10 @@
 
 Select the reviewed Phase 0 manifest's `phase_corpora.phase1` functional members
 and retain its evidence-manifest identity, SW spec and hardware selection.
-The example's current diagnostic derivation is not an admission release; required
-source consistency, semantics and coverage must be resolved in a fresh run first.
+The retained diagnostic derivation described below is not an admission release.
+An admission release comes from a fresh Phase 0 run with verified evidence
+(`--phase0-evidence-mode verified`): audited RTL facts, sealed capture
+attestations and the reviewed host manifest. Run it, then prepare and seal it.
 Do not substitute Phase 2's performance membership for the functional population.
 
 Start from [the experiment definition](../experiment.yaml). Its
@@ -106,9 +108,16 @@ The four iteration captures have complete static frontend correspondence, but
 their materialized receipts all report `source_closure_verified: false`. Both
 large SmolVLA stages report incomplete quantized-to-prepared correspondence;
 `prefix_encode` additionally has prepared nodes `n552`–`n557` without final
-lowering correspondence. The host manifest is `unreviewed`, leaving all host
-admissions unknown. No target execution or whole-model numerical match follows
-from these counts. The selected Gemmini compiler's retained whole-model
+lowering correspondence. The host manifest that check used (`74a614e8…`) was
+`unreviewed`, so it left all host admissions unknown. The current
+[`host-capabilities.yaml`](../target/host-capabilities.yaml) is `reviewed` at the
+document level and pins the minted scalar package (`89e00e39…`). Of its 63
+operation declarations, 18 carry reviewed numerical contracts and 45 remain
+`unreviewed`. Host admission is therefore decided per operation. A route whose
+matching contract is unreviewed stays unknown. A reviewed route still needs its
+own emitted lowering and numerical receipt. Re-run this check against the current
+manifest rather than reusing these counts. No target execution or whole-model
+numerical match follows from these counts. The selected Gemmini compiler's retained whole-model
 `emit_command_buffer` observations explicitly decline routing upstream Linalg
 regions, even where parse and native LLVM lowering accepted the model.
 
@@ -242,7 +251,10 @@ not files in this example. The remaining harness resources still require a check
 
 ## Independent runtime support
 
-The copied kernel headers and legacy harness aliases have been removed. Fresh
-experiments require separately derived support from the admitted public RTL and
-minimal reviewed software contract. The handwritten compiler and its runtime
-remain a private final reference; they cannot supply authoring or feedback tools.
+The copied kernel headers and legacy harness aliases have been removed. Runtime
+support is the data-only provider `examples/gemmini/support` (selected by default
+when `MERLIN_TARGET_PATH` is unset): the generic `merlin.runtime.backends.chipyard_rocc`
+backend reads its contract and ISA-headers spec, builds against the pinned bare-metal
+runtime plus a header generated from the RTL facts, and never puts an excluded vendor
+header on the include path. Reference compilers and their runtimes stay outside
+the repository; they cannot supply authoring or feedback tools.

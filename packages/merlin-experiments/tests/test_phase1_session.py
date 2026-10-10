@@ -141,6 +141,7 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
             bundle_dir=project / "input_bundles/fixture",
             public_root=public,
             private_full_model_spec=private_spec,
+            instruction_selection=project / "private-instruction-selection.json",
             contract_root=None,
             scope_roots={"public_roots": [public], "hidden_roots": [hidden], "contract": None},
             environment={
@@ -158,6 +159,8 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
         calls.append(argv)
         assert "merlin_experiments.phase1.feedback.formal" in argv
         assert "--private-full-model-spec" in argv
+        assert "--instruction-selection" in argv
+        assert argv[argv.index("--instruction-selection") + 1].endswith("private-instruction-selection.json")
         assert "--hidden-capsules" in argv
         assert argv[argv.index("--qa-timeout") + 1] == "3217"
         return subprocess.CompletedProcess(argv, 1)
