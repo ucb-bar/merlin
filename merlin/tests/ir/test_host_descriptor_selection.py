@@ -216,6 +216,60 @@ def test_compile_host_uses_selected_original_and_own_result_before_loading(tmp_p
     assert calls == ["lower", "observe", "load"]
 
 
+@pytest.mark.parametrize("selected_route", [False, True])
+def test_compile_host_preserves_complete_operation_attributes_before_preprocessing(
+    tmp_path, monkeypatch, selected_route
+):
+    from merlin.llvmlower import kernel_backend, lower
+    from merlin.llvmlower.passes_xdsl import preprocess_text
+    from merlin.xdsl_dialects._common import text
+
+    selected = selection(tmp_path)
+    original = parse(
+        b"""module {
+          func.func @forward(%x: tensor<3x5xi32>) -> tensor<3x5xi32> {
+            %e = tensor.empty() : tensor<3x5xi32>
+            %zero = arith.constant 0 : i32
+            %predicate = arith.cmpi eq, %zero, %zero : i32
+            %chosen = arith.select %predicate, %x, %e : tensor<3x5xi32>
+            func.return %chosen : tensor<3x5xi32>
+          }
+        }""",
+        LIMITS,
+        emitted=False,
+    )
+    for ordinal, op in enumerate(original.walk()):
+        op.attributes["source.boundary"] = StringAttr(f"original-{ordinal}")
+    selected.source.path.write_text(text(original, generic=True))
+    selected = replace(
+        selected, source=replace(selected.source, sha256=hashlib.sha256(selected.source.path.read_bytes()).hexdigest())
+    )
+    observed = []
+
+    class StopAfterSourceCheck(Exception):
+        pass
+
+    def lowering(source, root, **kwargs):
+        reparsed = parse(source.encode(), LIMITS, emitted=False)
+        assert text(reparsed, generic=True) == text(original, generic=True)
+        prepared_text, _ = preprocess_text(source)
+        prepared = tmp_path / "prepared.mlir"
+        prepared.write_text(prepared_text)
+        C._prepared(
+            selected,
+            {"source": {"path": str(prepared), "sha256": hashlib.sha256(prepared.read_bytes()).hexdigest()}},
+        )
+        observed.append(tuple(op.attributes["source.boundary"].data for op in reparsed.walk()))
+        raise StopAfterSourceCheck
+
+    monkeypatch.setattr(lower, "lower_model", lowering)
+    with pytest.raises(StopAfterSourceCheck):
+        kernel_backend.compile_host(
+            original, tmp_path / "build", descriptor_selection=selected if selected_route else None
+        )
+    assert observed == [tuple(f"original-{ordinal}" for ordinal, _ in enumerate(original.walk()))]
+
+
 def diagnostic_transport(tmp_path, monkeypatch, shape=(3, 5), dtype="i32", index_bits=32, outputs=1):
     selected = selection(tmp_path, shape, dtype, outputs)
     pointer_bytes = ctypes.sizeof(ctypes.c_void_p)

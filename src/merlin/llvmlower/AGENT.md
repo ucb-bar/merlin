@@ -12,6 +12,9 @@ the actual call's descriptor bytes. Absent selection retains the legacy ABI.
 This does not prove implementation indexing, accessible allocation, lifetime,
 body/effect equivalence, hardware, dependency closure or runtime qualification.
 Unsupported scalar/trampoline/alias and transformed source routes refuse.
+The ordinary host entry serializes generic MLIR before preprocessing, preserving
+attributes that individual operation custom printers can omit. This retains
+source correspondence; it supplies no new semantic or runtime admission.
 
 `device_offload.build_arguments` preserves the explicit group route's complete
 per-symbol statements across the ordinary sidecar/build boundary. Missing,
