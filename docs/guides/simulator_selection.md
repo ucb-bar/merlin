@@ -3,7 +3,7 @@ title: Selecting and checking a simulator
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-08
+last_verified: 2026-10-10
 related: [phase0_specification, target_resolution, reproducing_whole_model_on_rtl]
 code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/targetgen/program_engine_policy.py, src/merlin/targetgen/program_oracle.py, src/merlin/targetgen/mem_perturb.py, src/merlin/targetgen/load_order.py]
 ---
@@ -84,11 +84,19 @@ FIRRTL equals a separate Phase 0 source selection.
 That source comparison is automatic only when the run names its selected facts.
 With `MERLIN_RTL_FACTS` pointing at a facts file (frozen runs set it to their
 verified input snapshot), the Chipyard engine selection and the capsule GSIM
-adapter require a *bound* build receipt whose `firrtl_sha256` equals the facts'
-FIRRTL digest; an unbound receipt or a different digest makes GSIM unavailable
-with that reason. Without `MERLIN_RTL_FACTS`, GSIM keeps its availability
-semantics, but its selection reason records that source identity is unverified
+adapter require a *bound v3* build receipt whose file and recorded-command
+commitments validate and whose `firrtl_sha256` equals the facts' FIRRTL digest.
+Older or unrecognized receipt schemas cannot establish that comparison, even
+when their binary and saved FIRRTL digests match. An unbound receipt, changed
+pinned artifact or different source digest makes GSIM unavailable with that
+reason. Without `MERLIN_RTL_FACTS`, GSIM keeps its availability semantics,
+but its selection reason records that source identity is unverified
 and cannot be cited as evidence of it.
+
+The v3 checks validate files and a saved transcript. They do not reopen actual
+producer invocations or environments, establish the emitter's source-to-build
+correspondence, or qualify counter semantics, runtime or physical timing.
+The declared adopted-FIRRTL boundary retains its original elaboration warning.
 
 Compare the actual engine's FIRRTL digest and configuration with the selected
 Phase 0 facts. Do not infer equivalence from a shared target name or array size.

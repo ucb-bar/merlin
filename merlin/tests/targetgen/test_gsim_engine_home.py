@@ -99,6 +99,12 @@ def _write_strict_receipt(target: str, binary) -> dict:
     return doc
 
 
+def _select_firrtl_facts(monkeypatch, tmp_path, sha256: str) -> None:
+    facts = tmp_path / "selected-facts.json"
+    facts.write_text(json.dumps({"inputs": {"fir_sha256": sha256}}), encoding="utf-8")
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(facts))
+
+
 # --- present -> selected ------------------------------------------------------------------------
 
 
@@ -246,6 +252,87 @@ def test_a_v3_adopted_receipt_is_refused_without_the_required_warning(out_root):
     res = GE.resolve(target)
     assert res.ok is False and res.refused is True
     assert "provenance contradicts" in res.reason
+
+
+@pytest.mark.parametrize(
+    "schema", ["merlin.gsim-model-build.v1", "merlin.gsim-model-build.v2", "merlin.gsim-model-build.v4"]
+)
+def test_selected_firrtl_refuses_binary_only_receipt_schemas(out_root, monkeypatch, tmp_path, schema):
+    target = "fixture_selected_legacy"
+    emu = _install_binary(target)
+    from merlin.common import provenance
+
+    _write_receipt(target, provenance.file_digest(emu), schema_version=schema)
+    monkeypatch.setenv(GE.REQUIRE_RECEIPT_ENV, "1")
+    _select_firrtl_facts(monkeypatch, tmp_path, "f" * 64)
+
+    # Availability remains a binary binding, even when receipt presence is required.
+    resolved = GE.resolve(target)
+    assert resolved.ok and resolved.receipt_status == "bound", resolved.reason
+    ok, why = GE.selected_firrtl_status(target)
+    assert ok is False
+    assert why == "gsim selected FIRRTL comparison has no strict v3 build receipt"
+
+
+def test_selected_firrtl_accepts_valid_strict_file_and_transcript_commitments(out_root, monkeypatch, tmp_path):
+    target = "fixture_selected_strict"
+    emu = _install_binary(target)
+    doc = _write_strict_receipt(target, emu)
+    _select_firrtl_facts(monkeypatch, tmp_path, doc["firrtl_sha256"])
+
+    ok, why = GE.selected_firrtl_status(target)
+    assert ok is True, why
+    assert "matches the selected RTL facts" in why
+    # Adopted FIRRTL still grants no original elaboration or actual build execution proof.
+    assert doc["provenance"]["elaboration_performed"] is False
+
+
+@pytest.mark.parametrize("artifact", ["firrtl", "model_manifest"])
+def test_selected_firrtl_refuses_changed_strict_artifacts(out_root, monkeypatch, tmp_path, artifact):
+    target = "fixture_selected_changed"
+    emu = _install_binary(target)
+    doc = _write_strict_receipt(target, emu)
+    _select_firrtl_facts(monkeypatch, tmp_path, doc["firrtl_sha256"])
+    Path(doc["artifacts"][artifact]["path"]).write_text("changed artifact\n", encoding="utf-8")
+
+    ok, why = GE.selected_firrtl_status(target)
+    assert ok is False
+    assert "artifact pin changed" in why
+
+
+def test_selected_firrtl_still_refuses_a_different_strict_source_digest(out_root, monkeypatch, tmp_path):
+    target = "fixture_selected_different"
+    emu = _install_binary(target)
+    _write_strict_receipt(target, emu)
+    _select_firrtl_facts(monkeypatch, tmp_path, "0" * 64)
+
+    ok, why = GE.selected_firrtl_status(target)
+    assert ok is False
+    assert "differs from model receipt" in why
+
+
+@pytest.mark.parametrize(
+    "schema", [None, "merlin.gsim-model-build.v2", "merlin.gsim-model-build.v4", GE.STRICT_RECEIPT_SCHEMA]
+)
+def test_no_selected_facts_preserve_availability_without_source_identity(out_root, monkeypatch, schema):
+    target = "fixture_selected_absent"
+    emu = _install_binary(target)
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    monkeypatch.setenv(GE.REQUIRE_RECEIPT_ENV, "0")
+    if schema == GE.STRICT_RECEIPT_SCHEMA:
+        _write_strict_receipt(target, emu)
+    elif schema is not None:
+        from merlin.common import provenance
+
+        _write_receipt(target, provenance.file_digest(emu), schema_version=schema)
+
+    resolved = GE.resolve(target)
+    assert resolved.ok, resolved.reason
+    assert resolved.receipt_status == ("absent" if schema is None else "bound")
+    assert GE.selected_firrtl_status(target) == (
+        True,
+        "no selected FIRRTL facts supplied; source identity unverified",
+    )
 
 
 def test_an_unreceipted_emulator_says_so_and_can_be_made_fatal(out_root, monkeypatch):

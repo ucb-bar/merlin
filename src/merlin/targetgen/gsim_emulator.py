@@ -572,6 +572,10 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     ``MERLIN_RTL_FACTS`` to their verified input snapshot.  Legacy invocations
     without that selection retain their existing availability semantics, but
     cannot cite this check as evidence of source identity.
+
+    Selected facts require v3 file and saved-transcript validation before the
+    digest comparison.  That validation does not establish actual producer,
+    emitter-build, counter, runtime or physical correspondence.
     """
     facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
     if not facts_path:
@@ -593,6 +597,8 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     if not model.ok:
         return False, model.reason
     receipt = model.receipt or {}
+    if model.receipt_status == "bound" and receipt.get("schema_version") != STRICT_RECEIPT_SCHEMA:
+        return False, "gsim selected FIRRTL comparison has no strict v3 build receipt"
     actual = receipt.get("firrtl_sha256")
     if model.receipt_status != "bound" or not isinstance(actual, str) or len(actual) != 64:
         return False, "gsim has no bound FIRRTL build receipt for the selected RTL facts"
