@@ -15,6 +15,21 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+Original call-source v6 / automatic policy and receipt v13 explicitly adds the
+bounded scalar mul/div factory. Every original call and guard/private slot,
+aggregate cost and missing admission remains required. Keep old versions and
+numeric/reference/review meanings unchanged; FloatLiteral preservation and a
+constructed loader grant no registered conversion or numerical/domain authority.
+
+`original_scalar_conversion` is a separate opt-in live consumer of that complete
+scalar guard/private source roster. The fixed observer records real registered
+importer entry/return without replacing registry functions; overrides refuse.
+Check exact public source bytes, original typed arguments, complete native
+products, the core SSA/body relation and actual selected stock parser before
+issuing construction data. Keep wrapped-number source correspondence,
+numeric/reference/owner, effects/resources and every mandatory admission unknown.
+Old source, reference and automatic versions keep their meanings.
+
 Original call-source v5 / automatic policy v12 selects typed broadcast-add forms;
 original reference selection/roster v5 and standard-IR v4 explicitly select the
 same vocabulary. Preserve every original call and guard/private slot, complete

@@ -39,6 +39,12 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   selected entry/prefix; llc, clang and clean model2MLIR source are explicit
   selections. Packaging proves finite descriptor transport only; logical body,
   physical storage, dependency closure and runtime/effect authority stay separate.
+- `original-scalar-binary-sources` archives the exact five source/conversion test
+  modules and their scalar fixture support. Its complete 110 pure plus six native
+  identities require zero skips and explicit public source/tool selections.
+  Preserve original literal/typed argument/body checks and all numerical policy,
+  reference, owner, effect, resource and mandatory admission unknowns; packaging
+  and finite registered construction never establish those premises.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must

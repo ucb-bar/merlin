@@ -170,6 +170,7 @@ def validate(request):
             A.POINTWISE_POLICY_SCHEMA,
             A.TRANSPOSE_POLICY_SCHEMA,
             A.BROADCAST_POLICY_SCHEMA,
+            A.SCALAR_BINARY_POLICY_SCHEMA,
         }
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)

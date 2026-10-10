@@ -651,6 +651,83 @@ def test_target_fetch_qualification_is_core_only():
     assert suite["probe_modules"] == ("merlin.targetgen.oot_fetch",)
 
 
+def test_original_scalar_qualification_preserves_complete_source_native_and_support_rosters():
+    from collections import Counter
+
+    suite = Q.SUITES["original-scalar-binary-sources"]
+    expected = {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py": 30,
+        "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py": 44,
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py": 6,
+    }
+    assert suite["tests_root"] == "."
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 116
+    assert suite["support_files"] == ("packages/merlin-experiments/tests/original_scalar_conversion_fixtures.py",)
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["native_tools"] == ("operator-python", "firtool", "mlir-opt")
+    assert suite["native_python_entries"] == ("operator-python",)
+    assert suite["native_sources"] == {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}}
+    assert suite["test_input_environment_keys"] == (
+        "MERLIN_TEST_M2M_COMMIT",
+        "MERLIN_TEST_OPERATOR_DECLARATIONS",
+        "MERLIN_TEST_TORCH_SOURCE_ROOT",
+    )
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert suite["probe_modules"] == (
+        "merlin.targetgen.original_scalar_binary_sources",
+        "merlin.targetgen.original_scalar_binary_correspondence",
+        "merlin_experiments.phase0.original_call_sources",
+        "merlin_experiments.phase0.original_scalar_conversion",
+        "merlin_experiments.phase0.original_scalar_conversion_observer",
+    )
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
+    import xml.etree.ElementTree as ET
+
+    suite = "original-scalar-binary-sources"
+    rows = Q.SUITES[suite]["native_test_cases"]
+    root = ET.Element("testsuites")
+    group = ET.SubElement(root, "testsuite")
+    for filename, name in rows:
+        ET.SubElement(
+            group,
+            "testcase",
+            file=filename,
+            name=name,
+            classname=Path(filename).with_suffix("").as_posix().replace("/", "."),
+        )
+    member = group[-1]
+    if defect == "missing":
+        group.remove(member)
+    elif defect == "extra":
+        ET.SubElement(group, "testcase", **{**member.attrib, "name": "undeclared_original"})
+    elif defect == "duplicate":
+        ET.SubElement(group, "testcase", **member.attrib)
+    elif defect == "module":
+        member.set("classname", "substituted.module")
+    elif defect == "skip":
+        ET.SubElement(member, "skipped", message="actual prerequisite unavailable")
+    elif defect == "failure":
+        ET.SubElement(member, "failure", message="original source correspondence failed")
+    path = tmp_path / "original-tests.xml"
+    ET.ElementTree(root).write(path)
+    report = {}
+    if defect is None:
+        Q.check_native_test_report(suite, path, report)
+        assert report["native_test_counts"] == {"tests": 116, "skipped": 0}
+        assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
+    else:
+        with pytest.raises(Q.QualificationFailed):
+            Q.check_native_test_report(suite, path, report)
+
+
 def test_tensor_inspection_qualification_is_core_only():
     suite = Q.SUITES["tensor-inspection"]
     assert suite["include_experiments"] is False

@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from merlin.common.jsonio import canonical_json
 from merlin.targetgen.frontend_original_call import call_contracts
 from merlin.targetgen.original_operator_sources import (
     ADD_FORM_SCHEMA,
@@ -32,6 +33,7 @@ LINEAR_SCHEMA = "merlin.original_call_sources.v2"
 POINTWISE_SCHEMA = "merlin.original_call_sources.v3"
 TRANSPOSE_SCHEMA = "merlin.original_call_sources.v4"
 BROADCAST_SCHEMA = "merlin.original_call_sources.v5"
+SCALAR_BINARY_SCHEMA = "merlin.original_call_sources.v6"
 BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
@@ -53,6 +55,12 @@ _LIMITS = {
 _COHORTS = (("functional_guard", 1), ("functional_guard", 2), ("withheld_transfer", 3))
 
 
+def _same(actual, expected, *, version):
+    # Preserve historical equality exactly. The new literal source record
+    # compares validated finite JSON with scalar types and signed zero intact.
+    return canonical_json(actual) == canonical_json(expected) if version == 6 else actual == expected
+
+
 def required_source_cohorts():
     """Ordered original teaching-source membership; never hardware tail evidence.
 
@@ -63,13 +71,14 @@ def required_source_cohorts():
 
 
 def reader_modules(version):
-    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6}:
         raise ValueError("original source readers need an explicit supported factory version")
     return (
         READER_MODULES
         + (("merlin.targetgen.original_pointwise_sources",) if version >= 3 else ())
         + (("merlin.targetgen.original_transpose_sources",) if version >= 4 else ())
-        + (("merlin.targetgen.original_broadcast_add_sources",) if version == 5 else ())
+        + (("merlin.targetgen.original_broadcast_add_sources",) if version >= 5 else ())
+        + (("merlin.targetgen.original_scalar_binary_sources",) if version == 6 else ())
     )
 
 
@@ -86,7 +95,7 @@ def validate_budget(budget):
 
 def _forms(trace, schemas, defaults, *, numerical_semantics, version):
     add_forms = original_add_forms
-    if version == 5:
+    if version >= 5:
         from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
 
         add_forms = broadcast_add_forms
@@ -99,6 +108,10 @@ def _forms(trace, schemas, defaults, *, numerical_semantics, version):
         from merlin.targetgen.original_transpose_sources import transpose_forms
 
         factories.append(transpose_forms)
+    if version == 6:
+        from merlin.targetgen.original_scalar_binary_sources import scalar_binary_forms
+
+        factories.append(scalar_binary_forms)
     return [
         form
         for factory in factories
@@ -119,11 +132,16 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
         from merlin.targetgen.original_transpose_sources import transpose_source
 
         pointwise[TRANSPOSE_FORM_SCHEMA] = transpose_source
-    if version == 5:
+    if version >= 5:
         from merlin.targetgen.original_broadcast_add_sources import FORM_SCHEMA as BROADCAST_FORM_SCHEMA
         from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
 
         pointwise[BROADCAST_FORM_SCHEMA] = broadcast_add_source
+    if version == 6:
+        from merlin.targetgen.original_scalar_binary_sources import FORM_SCHEMA as SCALAR_BINARY_FORM_SCHEMA
+        from merlin.targetgen.original_scalar_binary_sources import scalar_binary_source
+
+        pointwise[SCALAR_BINARY_FORM_SCHEMA] = scalar_binary_source
     indexed = {form["node"]: form for form in forms}
     result = []
     for call in calls:
@@ -175,7 +193,7 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
 def observe(*, schema_record, basis, numerical_semantics, budget, destination, version=1):
     """Write source-only original forms through the selected normal observer."""
     validate_budget(budget)
-    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6}:
         raise ValueError("original source observation requires an explicit supported factory version")
     destination = Path(destination)
     rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
@@ -204,7 +222,14 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination, v
                 member["source"] = {"path": str(path), "sha256": member["source_sha256"]}
             row["source_members"].append(member)
     record = {
-        "schema": {1: SCHEMA, 2: LINEAR_SCHEMA, 3: POINTWISE_SCHEMA, 4: TRANSPOSE_SCHEMA, 5: BROADCAST_SCHEMA}[version],
+        "schema": {
+            1: SCHEMA,
+            2: LINEAR_SCHEMA,
+            3: POINTWISE_SCHEMA,
+            4: TRANSPOSE_SCHEMA,
+            5: BROADCAST_SCHEMA,
+            6: SCALAR_BINARY_SCHEMA,
+        }[version],
         "budget": budget,
         "members": rows,
     }
@@ -216,13 +241,19 @@ def verify(record, *, schema_record, basis, numerical_semantics):
     if (
         not isinstance(record, dict)
         or set(record) != {"schema", "budget", "members"}
-        or record["schema"] not in {SCHEMA, LINEAR_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
+        or record["schema"]
+        not in {SCHEMA, LINEAR_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA, SCALAR_BINARY_SCHEMA}
     ):
         raise ValueError("original call sources require their closed observation version")
     budget = validate_budget(record["budget"])
-    version = {SCHEMA: 1, LINEAR_SCHEMA: 2, POINTWISE_SCHEMA: 3, TRANSPOSE_SCHEMA: 4, BROADCAST_SCHEMA: 5}[
-        record["schema"]
-    ]
+    version = {
+        SCHEMA: 1,
+        LINEAR_SCHEMA: 2,
+        POINTWISE_SCHEMA: 3,
+        TRANSPOSE_SCHEMA: 4,
+        BROADCAST_SCHEMA: 5,
+        SCALAR_BINARY_SCHEMA: 6,
+    }[record["schema"]]
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
@@ -244,7 +275,14 @@ def verify(record, *, schema_record, basis, numerical_semantics):
         forms = _forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, version=version)
         compatibility = [{"node": form["node"], **policy_compatibility(form, numerical_semantics)} for form in forms]
         expected = _sources(calls, forms, budget=budget, total=total, requested=requested, version=version)
-        if row["calls"] != calls or row["forms"] != forms or row["policy_compatibility"] != compatibility:
+        if not all(
+            _same(actual, expected, version=version)
+            for actual, expected in (
+                (row["calls"], calls),
+                (row["forms"], forms),
+                (row["policy_compatibility"], compatibility),
+            )
+        ):
             raise ValueError("original typed bindings/forms/policy differ from actual original schema replay")
         if len(row["source_members"]) != len(expected):
             raise ValueError("original source preparation lost a requested guard or private transfer member")
@@ -261,7 +299,7 @@ def verify(record, *, schema_record, basis, numerical_semantics):
                 if path.read_bytes() != loader.encode() or pin["sha256"] != wanted["source_sha256"]:
                     raise ValueError("original typed source differs from its independently reconstructed loader")
                 wanted["source"] = pin
-            if member != wanted:
+            if not _same(member, wanted, version=version):
                 raise ValueError("original typed source metadata or missing member differs from original replay")
     return record
 

@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+`original_scalar_binary_sources` constructs the exact original positive-rank
+CPU strided f32 mul/div Tensor call with one SSA input and a finite Python
+FloatLiteral. Preserve literal kind/hex, ordered argument/result bindings and
+storage; refuse unsupported promotion, alias, scalar kinds and second SSA.
+Explicit fresh extent and complete logical input/output plus rank costs bound
+allocation. No registered scalar conversion, numeric policy, reviewed owner,
+effects or target admission follows from construction.
+
 `original_broadcast_add_sources` derives only original positive right-aligned
 singleton/equality relations and exact ordered Tensor storage/unit alpha. Fresh
 extents and complete input/output plus rank metadata costs precede allocation.
@@ -155,6 +163,14 @@ invocation remains unavailable rather than gaining an evidence exception.
 - The Merlin core dialects or runtime ABI (those live elsewhere in the repo).
 
 ## Interfaces
+
+`original_scalar_binary_correspondence` checks actual parsed standard IR for the
+bounded original one-Tensor/right-FloatLiteral mul/div form. Reopen exact f32
+coefficient bits, input/splat/body operand order, identity maps and complete
+yield/return, in addition to full original/prepared trace and registered-source
+joins. Provenance IDs and matching types cannot prove those semantic bindings.
+The reader grants no numerical policy, wrapped-number source ownership,
+compiled semantics, effects, resource mapping or mandatory admission.
 
 `original_transpose_sources` binds the exact original rank-two CPU strided
 `aten.transpose.int` schema, ordered result and signed axis arguments. Fresh
