@@ -636,3 +636,8 @@ original outputs match. Source-produced labels and raw getters cannot certify
 actual complete-cost boundaries, cold/warm state, timer integrity, runtime14,
 stage11, measurement14 or held ranking/error/coverage. OOT support owns those
 semantics; this data-only collector supplies no issuer or author grant.
+
+The ordinary measurement launcher freezes its explicit observation plan and
+readback policy before work and refuses drift before accounting or raw-product
+publication. Direct collection also retains the original plan through replay.
+These identity checks supply no new measurement or runtime qualification.

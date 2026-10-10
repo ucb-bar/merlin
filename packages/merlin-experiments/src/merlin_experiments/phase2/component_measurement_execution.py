@@ -111,7 +111,7 @@ def collect_component_measurement(
     """Reopen fixed ordinary products and the live actual process consumption."""
     if type(plan) not in (RawMeasurementPlan, CoherentMeasurementPlan):
         raise TypeError("measurement accounting requires its explicit raw observation plan")
-    plan.record()
+    original_plan = plan.record()
     environments = _environments(native_environments)
     if type(build_service) is not BuildOnlyService or type(execution_service) is not FunctionalExecutionService:
         raise TypeError("measurement accounting requires exact ordinary build and functional services")
@@ -317,6 +317,8 @@ def collect_component_measurement(
             raise ValueError("measurement accounting source or native product changed during collection")
     if any(_tree(owner) != original_inputs[name] for name, owner in owners.items()):
         raise ValueError("measurement accounting original input tree changed during output replay")
+    if not _same_json(plan.record(), original_plan):
+        raise ValueError("measurement accounting observation selection changed")
     return {
         "schema": "merlin.component_measurement_execution.v1"
         if coherent is None
@@ -358,6 +360,12 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
     if type(service) is not FunctionalExecutionService or service.process_transport is None:
         raise ValueError("measurement execution requires actual selected recorded process consumption")
     _selection(plan, service, policy)
+    original_plan, original_policy = plan.record(), policy.record()
+
+    def unchanged_selection():
+        if not _same_json(plan.record(), original_plan) or not _same_json(policy.record(), original_policy):
+            raise ValueError("measurement execution observation selection changed")
+
     for name in ("package_dir", "capsule_dir", "contract_root"):
         original = Path(ordinary_arguments[name])
         if output.is_relative_to(original) or original.is_relative_to(output):
@@ -368,11 +376,12 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
     }
     output.mkdir(parents=True, mode=0o700)
     result = execute_component(out_dir=output / "ordinary", **ordinary_arguments)
+    unchanged_selection()
     product = output / "raw_measurement.json"
     inputs = tuple(Path(row["path"]) for row in (result["elf"], result["console"]))
     selected_environments = _environments(native_environments)
     arguments = {
-        "plan": plan.record(),
+        "plan": original_plan,
         "original_input_trees_sha256": RB.canonical_sha256(original_inputs),
         "native_environments": {
             stage: I.environment_identity(values) for stage, values in selected_environments.items()
@@ -425,6 +434,7 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
             native_environments=native_environments,
             original_inputs=original_inputs,
         )
+        unchanged_selection()
         with product.open("x", encoding="utf-8") as stream:
             json.dump(observed, stream, sort_keys=True, indent=2)
             stream.write("\n")
