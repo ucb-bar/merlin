@@ -19,6 +19,13 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
 - Never commit generated artifacts here.
 - Write generated products beneath the configured `out/` root using the shared path helpers.
 - Keep checks source-layout-aware across core and optional distributions.
+- Installed test origin exceptions name only exact archived test modules,
+  paths and SHA-256 bytes in a closed roster retained before collection and
+  reopened at completion. Production imports must still come from the own-site
+  installation; no namespace-wide test exception or checkout fallback exists.
+  Load and check installed parent packages before pytest can create archive-only
+  parents with their names during importlib collection.
+  This is qualification bookkeeping and an execution tripwire, not isolation.
 - Selected native suites may retain their explicitly supplied test-child
   environment before launch. Keep actual values in private operator output,
   bind the complete mapping including its selected record path, and recheck

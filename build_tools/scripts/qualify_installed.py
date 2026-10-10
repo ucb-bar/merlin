@@ -86,6 +86,19 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "installed-test-origins": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/infra",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": ("test_installed_test_origins.py",),
+        "tests": ("test_installed_test_origins.py",),
+        "source_inputs": ("build_tools/scripts/installed_qualification_probe.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.common.paths",),
+        "required_modules": (),
+        "guarded_tests": True,
+    },
     "rtl-counter-timelines": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
@@ -1926,6 +1939,24 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def retain_archived_test_sources(tests, names, output):
+    """Pin exact copied test identities; production origin checks stay strict."""
+    rows = []
+    for name in dict.fromkeys(names):
+        relative = Path(name.split("::", 1)[0])
+        if relative.suffix != ".py" or not relative.stem.startswith("test_"):
+            continue
+        path = (tests / relative).resolve()
+        if relative.is_absolute() or ".." in relative.parts or not path.is_relative_to(tests.resolve()):
+            raise QualificationFailed("archived test identity escapes its selected root")
+        rows.append({"module": ".".join(relative.with_suffix("").parts), "path": str(path), "sha256": digest(path)})
+    path = output / "archived-test-sources.json"
+    path.write_text(
+        json.dumps({"schema": "merlin.installed_test_sources.v1", "files": rows}, sort_keys=True, indent=2) + "\n"
+    )
+    return path
+
+
 def clean_environment():
     excluded = {"UV_OVERRIDE", "UV_EXCLUDE", "UV_CONSTRAINT", "UV_BUILD_CONSTRAINT"}
     return {
@@ -2526,6 +2557,9 @@ def qualify(
             report["source_input_root"] = input_root
         runner.save()
         shutil.copyfile(copied_helper, tests / "conftest.py")
+        archived_tests = retain_archived_test_sources(tests, test_files, output)
+        runner.environment["MERLIN_TEST_ARCHIVED_SOURCES"] = str(archived_tests)
+        report["archived_test_sources"] = {"path": str(archived_tests), "sha256": digest(archived_tests)}
         runner.environment = retain_test_environment(suite, output, runner.environment, report)
         runner.save()
         runner.run(
