@@ -120,17 +120,20 @@ SUITES = {
         "native_test_files": (
             "test_hw_counter_intervals.py",
             "test_hw_counter_state_timelines.py",
+            "test_hw_state_effects.py",
             "test_counter_source_tool.py",
         ),
         "tests": (
             "test_hw_counter_intervals.py",
             "test_hw_counter_state_timelines.py",
+            "test_hw_state_effects.py",
             "test_counter_source_tool.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
             "merlin.targetgen.rtl.hw_counter_intervals",
             "merlin.targetgen.rtl.hw_counter_state_timelines",
+            "merlin.targetgen.rtl.hw_state_effects",
             "merlin.targetgen.rtl.hw_combinational",
             "merlin.targetgen.rtl.hw_graph",
             "merlin.targetgen.tool_cli",

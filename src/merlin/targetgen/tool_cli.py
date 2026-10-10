@@ -157,11 +157,23 @@ def _counter_source_observation(args: argparse.Namespace) -> int:
     request_bytes = read(args.request, args.max_request_bytes)
     request = loads(request_bytes, max_bytes=args.max_request_bytes)
     keys = {"schema", "kind", "selection", "limits", "expected_phases", "samples", "intervals"}
-    if type(request) is not dict or set(request) != keys or request["schema"] != "merlin.counter_source_request.v1":
+    if type(request) is not dict or request.get("schema") not in (
+        "merlin.counter_source_request.v1",
+        "merlin.counter_source_request.v2",
+    ):
+        raise ValueError("Counter observation request schema is unsupported.")
+    explicit_emission = request["schema"] == "merlin.counter_source_request.v2"
+    if set(request) != keys | ({"macro_environment"} if explicit_emission else set()):
         raise ValueError("Counter observation request schema is unsupported.")
     kind = request["kind"]
     if kind not in ("unit_counter", "state_getter"):
         raise ValueError("Counter observation request kind is unsupported.")
+    macro_environment = request["macro_environment"] if explicit_emission else None
+    if explicit_emission:
+        if kind == "state_getter" and type(macro_environment) is not str:
+            raise ValueError("Counter observation macro premise is unavailable.")
+        if kind == "unit_counter" and macro_environment is not None:
+            raise ValueError("Counter observation macro premise is unsupported for this kind.")
     limit_type = CounterIntervalLimits if kind == "unit_counter" else StateTimelineLimits
     raw_limits = request["limits"]
     if type(raw_limits) is not dict or set(raw_limits) != {field.name for field in fields(limit_type)}:
@@ -194,15 +206,31 @@ def _counter_source_observation(args: argparse.Namespace) -> int:
         raise ValueError("Counter observation source encoding is unsupported.") from None
     observer = observe_counter_intervals if kind == "unit_counter" else observe_state_getter_timeline
     result = observer(
-        source, selection=selection, limits=limits, expected_phases=phases, samples=samples, intervals=intervals
+        source,
+        selection=selection,
+        limits=limits,
+        expected_phases=phases,
+        samples=samples,
+        intervals=intervals,
+        **({"macro_environment": macro_environment} if explicit_emission and kind == "state_getter" else {}),
     )
+    observation = asdict(result)
+    if not explicit_emission and kind == "state_getter":
+        observation.pop("module_metadata", None)
+        observation.pop("source_emission", None)
     rendered = {
-        "schema": "merlin.counter_source_observation.v1",
+        "schema": "merlin.counter_source_observation.v2"
+        if explicit_emission
+        else "merlin.counter_source_observation.v1",
         "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
         "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
-        "observation": asdict(result),
+        "observation": observation,
         "scope": "source-local values only; sample custody, physical units, runtime and timing remain unknown",
     }
+    if explicit_emission:
+        rendered["macro_environment_sha256"] = (
+            hashlib.sha256(macro_environment.encode("utf-8")).hexdigest() if macro_environment is not None else None
+        )
     with Path(args.out).open("x", encoding="utf-8") as handle:
         handle.write(json.dumps(rendered, sort_keys=True, indent=2, allow_nan=False) + "\n")
     return 0

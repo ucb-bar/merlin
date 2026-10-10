@@ -109,6 +109,16 @@ class PreparedCombinationalObservation:
                     value = 0
                     for index, arg in zip(expression.operands, args, strict=True):
                         value = (value << widths[index]) | arg
+                elif expression.kind == "comb.replicate":
+                    value = 0
+                    for _ in range(expression.parameter):
+                        value = (value << widths[expression.operands[0]]) | args[0]
+                elif expression.kind == "comb.shru":
+                    # The public Comb fold defines overshifts as zero. Avoid
+                    # passing an unbounded shift count to the host operator.
+                    value = 0 if args[1] >= expression.width else args[0] >> args[1]
+                elif expression.kind == "seq.from_clock":
+                    value = args[0]
                 elif expression.kind == "comb.add":
                     value = sum(args)
                 elif expression.kind == "comb.and":
@@ -204,7 +214,12 @@ def _ports(module, block, output, limits):
 
 def _expression(op, widths, width, *, conditional_logic=False):
     kind, parameter = _name(op), None
-    expected = {"hw.constant": {"value"}, "comb.extract": {"lowBit"}, "comb.icmp": {"predicate", "twoState"}}
+    expected = {
+        "hw.constant": {"value"},
+        "comb.extract": {"lowBit"},
+        "comb.icmp": {"predicate", "twoState"},
+        "comb.replicate": set(),
+    }
     allowed = expected.get(kind, {"twoState"}) | {"op_name__", "sv.namehint"}
     if not (set(op.attributes) | set(op.properties)) <= allowed:
         raise ValueError("combinational observation refuses unknown operation attributes")
@@ -213,6 +228,9 @@ def _expression(op, widths, width, *, conditional_logic=False):
     two_state = op.attributes.get("twoState", op.properties.get("twoState"))
     if two_state is not None and not isinstance(two_state, UnitAttr):
         raise ValueError("combinational observation refuses malformed two-state annotation")
+    hint = _attribute(op, "sv.namehint")
+    if hint is not None and not isinstance(hint, StringAttr):
+        raise ValueError("combinational observation refuses malformed source-name metadata")
     if kind == "hw.constant" and not widths:
         parameter = _integer(op, "value")
         constant = op.attributes.get("value", op.properties.get("value"))
@@ -222,6 +240,11 @@ def _expression(op, widths, width, *, conditional_logic=False):
         valid = parameter is not None and 0 <= parameter and parameter + width <= widths[0]
     elif kind == "comb.concat":
         valid = bool(widths) and sum(widths) == width
+    elif kind == "comb.replicate" and len(widths) == 1:
+        valid = width >= widths[0] and width % widths[0] == 0
+        parameter = width // widths[0]
+    elif kind == "comb.shru":
+        valid = widths == [width, width]
     elif kind in {"comb.add", "comb.and"}:
         valid = len(widths) >= 2 and all(bits == width for bits in widths)
     elif conditional_logic and kind in {"comb.or", "comb.xor"}:
