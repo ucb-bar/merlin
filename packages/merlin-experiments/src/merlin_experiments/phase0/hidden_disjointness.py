@@ -25,7 +25,9 @@ def capsule_point(capsule: Mapping[str, Any]) -> str:
     inputs = [row for row in capsule.get("inputs") or () if isinstance(row, Mapping)]
     labels = {str(row.get("name")) for row in inputs}
     operation = capsule.get("operation") or {}
-    attributes = operation.get("attributes") or {}
+    from merlin.targetgen.legacy_labels import operation_attributes
+
+    attributes = operation_attributes(operation.get("attributes") or {})
     labels |= {str(value) for key, value in attributes.items() if key == "out"}
     stated = {
         key: value

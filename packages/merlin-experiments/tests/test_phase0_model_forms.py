@@ -191,3 +191,17 @@ def test_a_window_mean_form_is_minted_in_the_orientation_the_model_holds():
     stored = {**row, "entry": {**mean, "N": 4}, "program": {"stored_operand": 1}}
     (kept,) = MF.derive_application("residual_cnn", _stated(stored), _binding(), capture_sha256="0" * 64)["entries"]
     assert STATIONARY_KEY not in kept and kept["N"] == 4
+
+
+def test_an_activation_stationary_form_is_named_apart_from_its_weight_stationary_twin():
+    """``stationary`` is part of the form key, so it is part of the name; otherwise two forms that
+    differ only in which operand stays resident mint one capsule name twice."""
+    from merlin_experiments.phase0 import model_forms as MF
+
+    from merlin.xdsl_dialects.lowering.group_command import STATIONARY_ACTIVATION, STATIONARY_KEY
+
+    entry = {"op": "matmul", "M": 1, "K": 16, "N": 16, "epilogue": []}
+    stored = MF.capsule_name("app", entry, "most_frequent")
+    resident = MF.capsule_name("app", {**entry, STATIONARY_KEY: STATIONARY_ACTIVATION}, "most_frequent")
+    assert stored != resident and "activation_stationary" in resident
+    assert MF.form_key(entry) != MF.form_key({**entry, STATIONARY_KEY: STATIONARY_ACTIVATION})

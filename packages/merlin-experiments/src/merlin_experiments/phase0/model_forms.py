@@ -524,8 +524,13 @@ def _geometry_tag(entry: Mapping[str, Any]) -> str:
 
 def capsule_name(model: str, entry: Mapping[str, Any], extreme: str) -> str:
     """``MF_<model>_<op>[_<geometry>]_<stages|raw>_<scale class>[_<extreme>]``."""
+    from merlin.xdsl_dialects.lowering.group_command import STATIONARY_KEY
+
     stages = "_".join(str(s) for s in (entry.get("epilogue") or ())) or "raw"
-    parts = [PREFIX, _slug(model), str(entry["op"]), _geometry_tag(entry), stages, scale_class(entry)]
+    # The stationary operand is part of the form (form_key), so it is part of the name: two forms that
+    # differ only in which operand stays resident would otherwise mint one capsule name twice.
+    stationary = f"{entry[STATIONARY_KEY]}_stationary" if entry.get(STATIONARY_KEY) else ""
+    parts = [PREFIX, _slug(model), str(entry["op"]), stationary, _geometry_tag(entry), stages, scale_class(entry)]
     if extreme in ("max_multiplier", "min_multiplier"):
         parts.append("max" if extreme == "max_multiplier" else "min")
     return "_".join(p for p in parts if p)
@@ -580,7 +585,11 @@ def derive_application(
             real_regimes = regimes(real)
             reduced = reduce_entry(real, tile, same_regime=lambda e, want=real_regimes: regimes(e) == want)
             name = capsule_name(label, reduced, extreme)
-            output_dtype = CS._resolve_output_dtype(binding, list(reduced.get("epilogue") or ()), reduced)  # noqa: SLF001
+            stages = list(reduced.get("epilogue") or ())
+            # A bias stage brings its own operand, which is what licenses a bias route (the same roles
+            # the builders pass): without it a seeded bias would be refused as if no route existed.
+            roles = frozenset({"bias"}) if any(stage in CS._BIAS_STAGES for stage in stages) else frozenset()  # noqa: SLF001
+            output_dtype = CS._resolve_output_dtype(binding, stages, reduced, available_operand_roles=roles)  # noqa: SLF001
             try:
                 operand_range = element_range(str(reduced.get("operand_dtype") or binding.operand_dtype))
                 output_range = element_range(output_dtype) if binding.integer else operand_range

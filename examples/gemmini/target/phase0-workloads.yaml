@@ -1,0 +1,74 @@
+# Phase 0 capture inputs for this target: one workload root per label of the descriptor's
+# workload_spec.applications (iteration roster) and workload_spec.performance_applications
+# (Phase 2 form-scale roster). Stage them with
+#   merlin experiment corpus stage-workloads --roster examples/gemmini/target/phase0-workloads.yaml \
+#     --descriptor examples/gemmini/target/descriptor.yaml --output <fresh dir>
+# and capture each staged root with `corpus capture select --workload-root`. Loader paths are
+# relative to this file. Every loader is an independently authored pattern; none is extracted from a
+# held-out model. A profile is the loader's optional adjacent profile.json (see
+# examples/workloads/README.md); without one the loader's defaults apply.
+schema: merlin.phase0_workload_roster.v1
+applications:
+  coverage_mlp:
+    loader: ../../workloads/coverage_mlp/loader.py
+  residual_cnn:
+    loader: ../../workloads/residual_cnn/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: residual_cnn
+      channels: 12
+      spatial_side: 20
+      blocks: 2
+      stem: conv7s2
+      stem_pool: true
+      downsample: true
+      bottleneck: true
+      batchnorm: true
+  causal_decoder:
+    loader: ../../workloads/causal_decoder/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: causal_decoder
+      seq: 12
+      hidden: 48
+      heads: 6
+      kv_heads: 2
+      ffn: 80
+      rope: true
+  causal_decoder_decode_step:
+    loader: ../../workloads/causal_decoder/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: causal_decoder
+      seq: 12
+      hidden: 48
+      heads: 6
+      kv_heads: 2
+      ffn: 80
+      rope: true
+      decode_step: true
+      cache_len: 9
+  multimodal_policy:
+    loader: ../../workloads/multimodal_policy/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: multimodal_policy
+      tokens: 13
+      queries: 3
+      gelu_mlp: true
+      time_embedding: true
+performance_applications:
+  residual_cnn_scale:
+    loader: ../../workloads/residual_cnn/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: residual_cnn
+      channels: 96
+      spatial_side: 48
+      blocks: 2
+  decoder_scale:
+    loader: ../../workloads/decoder_scale/loader.py
+  decoder_step_scale:
+    loader: ../../workloads/decoder_step_scale/loader.py
+  vit_scale:
+    loader: ../../workloads/vit_scale/loader.py

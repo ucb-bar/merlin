@@ -366,3 +366,50 @@ def test_a_pooling_stage_leaves_its_geometry_to_the_generator():
     for e in pooled:
         assert e.get("pool_size") == [2, 2] and e.get("pool_stride") == [2, 2]
         assert "pool_in_dims" not in e, "the input geometry is the generator's to derive"
+
+
+def test_an_unread_readout_and_taxonomy_leave_stages_undetermined_not_refused(monkeypatch):
+    """No readout declaration and no derived taxonomy is an ABSENT input, not evidence of incapacity.
+
+    Recording such a stage as rejected wrote "the hardware cannot fuse this" into the requirement, and
+    the derived corpus then asked for no epilogue at all. The stage must be named as undetermined so a
+    verified derivation can refuse it."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen import eligibility as E
+    from merlin.targetgen import isa_taxonomy as IT
+    from merlin.targetgen import readout_facet as RF
+
+    monkeypatch.setattr(
+        E, "capability_map_for_target", lambda _t: {"elementwise_map": SimpleNamespace(composed_with=())}
+    )
+    monkeypatch.setattr(IT, "taxonomy_for_target", lambda _t: IT._unknown("target 'synthetic'", "no descriptor"))
+    monkeypatch.setattr(RF, "epilogue_readouts", lambda _t: None)
+    monkeypatch.setattr(RF, "epilogue_stage_routes", lambda _t: ())
+    axis = CF._epilogue_axis("synthetic")
+    assert axis["required"] == [] and axis["rejected"] == []
+    unresolved = {row["stage"]: row for row in axis["unresolved"]}
+    assert {"relu", "acc_scale", "bias_add"} <= set(unresolved)
+    assert all(row["taxonomy_status"] == IT.STATUS_UNKNOWN and row["why"] for row in unresolved.values())
+
+
+def test_a_derived_taxonomy_without_the_role_still_refuses_the_stage(monkeypatch):
+    """The undetermined state is only for UNREAD evidence: a derived taxonomy that resolves no class
+    for the stage is evidence, and the stage stays refused with its reason."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen import eligibility as E
+    from merlin.targetgen import isa_taxonomy as IT
+    from merlin.targetgen import readout_facet as RF
+
+    derived = IT.Taxonomy({"by_class": {"Load": {}}, "by_mnemonic": {}, "asm_mnemonics": {}})
+    monkeypatch.setattr(
+        E, "capability_map_for_target", lambda _t: {"elementwise_map": SimpleNamespace(composed_with=())}
+    )
+    monkeypatch.setattr(IT, "taxonomy_for_target", lambda _t: derived)
+    monkeypatch.setattr(IT, "required_classes_for_op", lambda *_a, **_k: [])
+    monkeypatch.setattr(RF, "epilogue_readouts", lambda _t: None)
+    monkeypatch.setattr(RF, "epilogue_stage_routes", lambda _t: ())
+    axis = CF._epilogue_axis("synthetic")
+    assert axis["unresolved"] == []
+    assert {"relu", "acc_scale"} <= {row["stage"] for row in axis["rejected"]}

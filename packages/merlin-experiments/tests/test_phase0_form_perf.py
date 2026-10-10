@@ -20,8 +20,11 @@ def _template() -> dict:
     return yaml.safe_load((repo_root() / "experiments/templates/phase0/performance.yaml").read_text())
 
 
-def _pw() -> dict:
-    return copy.deepcopy(next(s for s in _template()["sweeps"] if s["id"] == "PW"))
+def _pw(*, stratify: bool = False) -> dict:
+    """The shared PW family; geometry stratification off unless a test is about it."""
+    sweep = copy.deepcopy(next(s for s in _template()["sweeps"] if s["id"] == "PW"))
+    sweep["requires_form_scope"]["stratify_geometry"] = stratify
+    return sweep
 
 
 def _member(group, key, entry, cycles, placement="systolic"):
@@ -622,3 +625,54 @@ def test_an_unfalsifiable_class_is_skipped_and_reported_not_failed():
     assert coverage["skipped_unfalsifiable"] == [skipped[0]["class_id"]]
     assert coverage["status"] == "complete" and not coverage["missing"]
     assert {r["status"] for r in coverage["classes"]} == {"covered", FP.SKIPPED_UNFALSIFIABLE}
+
+
+def _strata_requirement():
+    key = {"placement": "device", "op": "matmul", "activation_source": "intermediate"}
+    summary = FP.aggregate(
+        {
+            "projection": {"members": [_member(1, key, {"op": "matmul", "M": 96, "K": 768, "N": 4096}, 900)]},
+            "convolution": {
+                "members": [
+                    _member(2, key, {"op": "matmul", "M": 2048, "K": 72, "N": 16}, 800),
+                    _member(3, key, {"op": "matmul", "M": 2048, "K": 72, "N": 16}, 800),
+                ]
+            },
+            "step": {"members": [_member(4, key, {"op": "matmul", "M": 1, "K": 768, "N": 4096}, 50)]},
+        }
+    )
+    return {"scope": {"performance": {"forms": {"schema": FP.SCHEMA, "classes": summary["classes"]}}}}
+
+
+def test_the_shared_template_stratifies_form_members_by_geometry():
+    assert next(s for s in _template()["sweeps"] if s["id"] == "PW")["requires_form_scope"]["stratify_geometry"]
+
+
+def test_each_further_geometry_stratum_of_a_class_gets_one_observed_member():
+    """One class can hold a wide projection, a tall convolution-as-GEMM and a one-row product; their
+    cost is decided by different regimes, so each stratum gets its own observed member, once."""
+    from merlin.capture.shape_taxonomy import classify_geometry
+
+    requirement = _strata_requirement()
+    plain = FP.form_perf_entries(_pw(), requirement, "f" * 64)
+    stratified = FP.form_perf_entries(_pw(stratify=True), requirement, "f" * 64)
+    assert len(stratified) > len(plain)
+    extents = [(e["M"], e["K"], e["N"]) for e in stratified]
+    assert len(extents) == len(set(extents)), "no work is measured twice"
+    geometries = [classify_geometry(m, n, k) for m, k, n in extents]
+    assert len(geometries) == len(set(geometries)), "at most one member per stratum"
+    added = [e for e in stratified if e["performance"]["form"].get("mechanism") == FP.GEOMETRY_WITNESS]
+    assert added and all(e["name"].startswith("PWG") for e in added)
+    assert all(e["performance"]["form"]["geometry"] in geometries for e in added)
+    assert all(set(e["performance"]["arms"]) == {"candidate", "vendor_reference"} for e in added)
+    row = FP.form_perf_coverage(requirement, stratified, threshold=0.01)["classes"][0]
+    assert row["geometry_strata"]["unrepresented"] == []
+    row = FP.form_perf_coverage(requirement, plain, threshold=0.01)["classes"][0]
+    assert row["geometry_strata"]["unrepresented"], "an unminted stratum stays visible"
+
+
+def test_stratify_geometry_must_be_a_boolean():
+    bad = _pw()
+    bad["requires_form_scope"]["stratify_geometry"] = "yes"
+    with pytest.raises(ValueError, match="stratify_geometry"):
+        FP.validate_form_scope_declaration(bad, owner="PW")
