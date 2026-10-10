@@ -122,6 +122,11 @@ simulator dispatch. Reopen its actual report and exact ELF bytes before and afte
 execution. Refusal is completed evaluation data with `execution=not_attempted`,
 never a fabricated console, output roster, timing result or completed process.
 This source-bound transport does not issue instruction or physical authority.
+It freezes the selected evaluator's actual function/code, bound owner and exact
+stdlib partial bindings, using the functional transport's shallow selection
+mechanism. Recheck through completed output decoding; same-file substitutions
+cannot replace the preexecution policy. Mutable reachable state, import closure
+and source-to-bytecode equivalence remain unproved.
 
 `compile_only.CompileOnlySourceAbi` contains static original tensor declarations,
 with provenance supplied by an independent source producer. Its retained

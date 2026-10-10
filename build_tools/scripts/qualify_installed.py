@@ -614,9 +614,22 @@ SUITES = {
     "functional-callback-selection": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_explicit_execution_service.py",),
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "test_explicit_execution_service.py",
+            "test_linked_admission_selection.py",
+        ),
+        "tests": (
+            "test_explicit_execution_service.py",
+            "test_linked_admission_selection.py",
+        ),
         "core_extras": ("xdsl", "targetgen"),
-        "probe_modules": ("merlin.targetgen.contract.execution_service",),
+        "probe_modules": (
+            "merlin.targetgen.contract.execution_service",
+            "merlin.targetgen.contract.elf_admission",
+            "merlin.targetgen.contract.compile",
+        ),
         "required_modules": ("xdsl", "jsonschema"),
     },
     "hw-discovery-inputs": {
