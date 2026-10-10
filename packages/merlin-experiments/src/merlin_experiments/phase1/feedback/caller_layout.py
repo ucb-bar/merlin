@@ -64,11 +64,20 @@ def _provider_digest(info: Any, module: Any) -> str:
         raise ValueError("selected caller-layout source roster is empty or duplicated")
     contract = Path(info.contract_path)
     records = []
+    from merlin.targetgen.plugins import is_core_module_source
+
     for path in (*declared, contract, root / "provider.yaml"):
         path = Path(path)
-        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
-            raise ValueError("selected caller-layout source is absent, indirect, or outside its provider")
-        records.append((path.resolve().relative_to(root).as_posix(), _sha256(path.read_bytes())))
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("selected caller-layout source is absent or indirect")
+        if path.resolve().is_relative_to(root):
+            records.append((path.resolve().relative_to(root).as_posix(), _sha256(path.read_bytes())))
+        elif path in declared and is_core_module_source(path):
+            # A data-only provider is served by a GENERIC core backend: its layout code is installed
+            # core, pinned by bytes beside the provider's own data -- never an arbitrary outside file.
+            records.append((f"<core>/{path.name}", _sha256(path.read_bytes())))
+        else:
+            raise ValueError("selected caller-layout source is outside its provider and the installed core")
     if len(records) != len(set(name for name, _ in records)):
         raise ValueError("selected caller-layout source identity is duplicated")
     return _sha256(_canonical(sorted(records)))
@@ -161,6 +170,16 @@ def _checked_projection(layout: Any, command_buffer: dict) -> dict:
     return {"policy": policy, "tensors": checked}
 
 
+def _declared_core_backend(info: Any, module: Any, plugins: Any) -> bool:
+    """Whether ``module`` is the installed core backend the provider's own contract names."""
+    block = info.plugin()
+    reference = block.get("backend")
+    if not isinstance(reference, str) or not plugins.is_core_module_source(module.__file__):
+        return False
+    root = plugins.provider_root(info.base, block.get("path"))
+    return plugins.resolve_reference(root, reference, "module") == Path(module.__file__).resolve()
+
+
 def inspect_caller_layout(*, submission: Path, command_buffer_member: str, target: str, facts_path: Path) -> dict:
     """Describe only physical pointer storage under one selected, source-pinned provider."""
     from merlin.perf import storage_encoding
@@ -182,7 +201,9 @@ def inspect_caller_layout(*, submission: Path, command_buffer_member: str, targe
         raise ValueError("selected caller-layout RTL facts name another target")
     info = plugins.resolve_support(target)
     module = backends.get_backend(target)
-    if not Path(module.__file__).resolve().is_relative_to(Path(info.base).resolve()):
+    if not Path(module.__file__).resolve().is_relative_to(Path(info.base).resolve()) and not (
+        _declared_core_backend(info, module, plugins)
+    ):
         raise ValueError("selected harness backend differs from explicit support provider")
     describe = getattr(module, "describe_caller_layout", None)
     if not callable(describe):

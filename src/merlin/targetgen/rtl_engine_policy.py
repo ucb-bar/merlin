@@ -53,6 +53,21 @@ ENGINE_PRIORITY: tuple[str, ...] = ("vcs", "gsim", "verilator")
 # both observe an idle host and otherwise each start a full-width pool. The
 # asynchronous broker and direct/scheduled graders must use the same caps.
 CAPSULE_WORKER_CAP: dict[str, int] = {"verilator": 4, "gsim": 5, "spike": 8}
+
+
+def _gsim_cap_override() -> int | None:
+    """Operator-declared GSim cap for a dedicated host (the same-user slot count and per-suite cap)."""
+    raw = os.environ.get("MERLIN_GSIM_MAX_SLOTS", "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if not 1 <= value <= (os.cpu_count() or 1):
+        raise ValueError(f"MERLIN_GSIM_MAX_SLOTS={raw} must be between 1 and the host CPU count")
+    return value
+
+
+if (_override := _gsim_cap_override()) is not None:
+    CAPSULE_WORKER_CAP["gsim"] = _override
 GSIM_RUNTIME_SLOT_PROTOCOL = "reentrant_per_thread_v1"
 
 # Host runners and selected backends may both guard the same synchronous native

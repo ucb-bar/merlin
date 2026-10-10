@@ -15,7 +15,7 @@ here — only functional/numerical correctness.
   # the real barrier (cycle-accurate RTL; minutes/capsule; runs in parallel):
   python agent_selfcheck.py --sim verilator --capsules all --workers 2
   # focus on the ones still failing:
-  python agent_selfcheck.py --sim verilator --capsules B3_conv2d_im2col_i8,A1_mvin_mvout
+  python agent_selfcheck.py --sim verilator --capsules B3_conv2d_i8,A1_mvin_mvout
 
 What it does NOT reveal: golden output tensors, private model weights, hidden capsules, or the reference
 oracle. It tells you

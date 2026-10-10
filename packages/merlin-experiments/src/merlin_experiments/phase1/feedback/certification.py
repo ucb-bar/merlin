@@ -14,6 +14,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -206,12 +207,18 @@ def _official_grade_result(
     required_tier: str = "L3",
     required_models: Sequence[str] = (),
     required_programs: Mapping[str, Sequence[str]] | None = None,
+    execution_gate: Mapping[str, Any] | None = None,
 ) -> dict:
     """Validate the official grader's exit status *and* its claim-bearing manifest.
 
     The subprocess return code is necessary but not sufficient: this rejects a stale/malformed manifest,
     a vacuous 0/0 phase, and a phase whose status says complete without the matching L3/RTL evidence.
+    ``execution_gate`` is the trusted descriptor's private full-model execution declaration
+    (:func:`.private_full_model_execution.gate_for`); when it is required, the recorded execution
+    must be complete against it for the current candidate.
     """
+    from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
+
     failures: list[str] = []
     if returncode != 0:
         failures.append(f"grader_exit_nonzero:{returncode}")
@@ -265,6 +272,19 @@ def _official_grade_result(
             candidate_sha256=candidate_sha,
         ):
             failures.append("private_full_model_build_gate_incomplete")
+        # The trusted descriptor's execution declaration, when it requires one: the recorded execution
+        # of the same linked ELFs must hold up against it, not merely report itself passed.
+        if (
+            execution_gate is not None
+            and execution_gate.get("required") is not False
+            and not PFX.complete(
+                manifest.get("private_full_model_execution"),
+                execution_gate,
+                static=manifest.get("private_full_models"),
+                candidate_sha256=candidate_sha,
+            )
+        ):
+            failures.append("private_full_model_execution_incomplete")
 
     for phase_name in ("public_dev", "hidden"):
         phase = manifest.get(phase_name)

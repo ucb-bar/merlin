@@ -375,8 +375,22 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
                 helper, _ = _program_emitter(str(target))
                 files.extend((helper, selected.contract_path))
                 files.extend(python_members(provider_root, label="program emitter provider").values())
+            from merlin.targetgen.plugins import is_core_module_source
+
             if entrypoint.is_relative_to(provider_root):
                 home = provider_root
+            elif getattr(selected, "kind", None) == "external" and is_core_module_source(entrypoint):
+                # A data-only provider served by a GENERIC core backend: the instrument is that core
+                # package plus every byte of the provider's data (contract, specs) it reads.
+                home = entrypoint.parent
+                data = [
+                    path
+                    for path in sorted(provider_root.rglob("*"))
+                    if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts
+                ]
+                if not data:
+                    return None
+                files.extend(data)
             elif getattr(selected, "kind", None) == "external":
                 return None
             else:

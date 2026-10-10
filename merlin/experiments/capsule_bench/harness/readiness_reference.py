@@ -31,3 +31,23 @@ def select_reference_backend(raw: str | None, *, target: str) -> tuple[Path, dic
     if not isinstance(manifest.get("entrypoints"), dict) or not manifest["entrypoints"].get("tool"):
         raise ValueError("selected reference backend has no tool entrypoint")
     return path, manifest
+
+
+#: The campaign's elaborated-RTL engine pin (selfcheck refuses a --sim that contradicts it).
+REQUIRED_ENGINE_ENV = "MERLIN_REQUIRED_RTL_ENGINE"
+
+
+def timing_probe_environment(environment: dict, *, engine: str) -> tuple[dict, str | None]:
+    """The grade environment for the oracle-TIMING probe, which runs ``engine`` by design.
+
+    A campaign may pin a different engine for certification. That pin governs the run's grades, not
+    this calibration probe, so it is lifted for the probe only and returned: the caller must still
+    prove the pinned engine itself reaches a real verdict. Returns ``(env, pinned_other_engine)``;
+    the input mapping is never mutated.
+    """
+    probe = dict(environment)
+    pinned = (probe.get(REQUIRED_ENGINE_ENV) or "").strip() or None
+    if pinned is None or pinned == engine:
+        return probe, None
+    probe.pop(REQUIRED_ENGINE_ENV)
+    return probe, pinned

@@ -1341,6 +1341,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             _manifest_doc["run_config"] = _environment_record.get("run_config", _run_config)
             _manifest_doc["feedback_health"] = feedback_health
             _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
+        from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
         from merlin_experiments.phase1.feedback import private_full_models as PFM
 
         official_grade = CERT._official_grade_result(
@@ -1348,6 +1349,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             run_dir,
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
+            execution_gate=PFX.gate_for(
+                context.descriptor, required_programs=PFM.program_requirements_for(context.descriptor)
+            ),
         )
     elif wsub.exists() and not feedback_health["healthy"]:
         official_grade["failures"] = ["feedback_channel_unhealthy"]

@@ -159,9 +159,11 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
 
     ``agent_selfcheck`` passes ``timeout`` to every capsule run.  Treating that value as a deadline for
     the entire request aborts a healthy full-suite check after one capsule-timeout, even though the suite
-    has a serial calibration head followed by several parallel worker waves.  Mirror that scheduling
-    shape here.  The bound is deliberately conservative: an individual capsule normally finishes far
-    below its timeout, so successful requests still return promptly.
+    has a serial calibration head followed by a pipelined worker pool (``capsule_scheduling``).  Greedy
+    list scheduling of members each bounded by ``timeout`` on ``workers`` finishes within
+    ``(n - 1) / workers + 1`` timeouts (Graham), so the pool term is ``ceil(rest / workers) + 1``.  The
+    bound is deliberately conservative: an individual capsule normally finishes far below its timeout,
+    so successful requests still return promptly.
     """
     per_capsule = max(1, int(timeout))
     worker_count = max(1, int(workers))
@@ -170,8 +172,9 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
     else:
         count = max(1, len({name.strip() for name in capsules.split(",") if name.strip()}))
     serial = min(_CALIBRATION_CAP, count)
-    parallel_waves = math.ceil(max(0, count - serial) / worker_count)
-    return (serial + parallel_waves) * per_capsule + 240
+    rest = max(0, count - serial)
+    pool = math.ceil(rest / worker_count) + (1 if rest > worker_count else 0)
+    return (serial + pool) * per_capsule + 240
 
 
 def _atomic_write(path: Path, text: str) -> None:

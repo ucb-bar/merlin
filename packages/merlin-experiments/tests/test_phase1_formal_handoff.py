@@ -34,7 +34,9 @@ def handoff(tmp_path, monkeypatch):
     return build_handoff(tmp_path, monkeypatch)
 
 
-def build_handoff(tmp_path, monkeypatch, *, reviewed=None, authored_submission=None, post_freeze_failure=False):
+def build_handoff(
+    tmp_path, monkeypatch, *, reviewed=None, authored_submission=None, post_freeze_failure=False, execution=None
+):
     """Join real frozen inputs and formal receipts; external oracle observations stay synthetic."""
     # The explicit legacy context updates environment during formal.main.
     monkeypatch.setattr(os, "environ", os.environ.copy())
@@ -233,8 +235,11 @@ def build_handoff(tmp_path, monkeypatch, *, reviewed=None, authored_submission=N
         lambda _descriptor: {"fixture_complete_model": {"required": {}, "forbidden": ()}},
     )
 
+    linked_with: list = []
+
     def external_private_gate(submission, _spec, *, target, required_models, required_programs, **_kwargs):
         assert os.environ["MERLIN_RTL_FACTS"] == str(raw_facts)
+        linked_with.append(_kwargs.get("build_options"))
         sha = strict_tree_sha256(Path(submission))["sha256"]
         spec_sha = hashlib.sha256(Path(_spec).read_bytes()).hexdigest()
         return {
@@ -306,6 +311,26 @@ def build_handoff(tmp_path, monkeypatch, *, reviewed=None, authored_submission=N
         return {"fixture": True}
 
     monkeypatch.setattr(formal, "_private_source_freeze_for_formal", synthetic_source_freeze)
+    if execution is not None:
+        # The descriptor's execution declaration and the engine run are the external boundary here;
+        # formal's wiring (when it runs, with which facts, and what completion it allows) stays real.
+        from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
+
+        declared = {
+            "required": True,
+            "programs": {"fixture_complete_model": {"model": {"engine": "gsim", "timeout_s": 1}}},
+        }
+        monkeypatch.setattr(PFX, "gate_for", lambda _descriptor, *, required_programs: declared)
+
+        def external_execution(static, gate, *, target, static_out, **_kwargs):
+            assert gate is declared and static["passed"] is True
+            assert os.environ["MERLIN_RTL_FACTS"] == str(raw_facts)
+            assert Path(static_out) == run / "grading_private_full_models"
+            execution_calls.append(target)
+            return {"schema": PFX.SCHEMA, "passed": execution == "pass", "programs": [], "deferred": []}
+
+        execution_calls: list = []
+        monkeypatch.setattr(PFX, "run", external_execution)
     status = formal.main(
         [
             "--run-dir",
@@ -323,7 +348,11 @@ def build_handoff(tmp_path, monkeypatch, *, reviewed=None, authored_submission=N
         ],
         context=load_context(descriptor, repo=repo),
     )
-    assert status == (1 if post_freeze_failure else 0)
+    assert status == (1 if post_freeze_failure or execution == "fail" else 0)
+    if execution is not None:
+        assert execution_calls == [target]
+        # The static gate links each executed program for the execution gate: every result read back.
+        assert linked_with[0] == {"fixture_complete_model": {"model": {"readback": "full", "group_profile": True}}}
     assert os.environ["MERLIN_RTL_FACTS"] == str(effective_facts)
     assert events == ["public", "hidden"]
     digest = hash_tree(run / "submission")["sha256"]
@@ -347,6 +376,21 @@ def test_successful_private_build_cannot_survive_postbuild_snapshot_refusal(tmp_
     assert "changed after linked build" in manifest["private_full_models"]["reason"]
     assert manifest["completion"]["formal_grade_complete"] is False
     assert "private_full_models:incomplete" in manifest["completion"]["failures"]
+
+
+@pytest.mark.parametrize("execution", ["pass", "fail"])
+def test_a_declared_execution_gate_runs_after_the_static_gate_and_holds_completion(tmp_path, monkeypatch, execution):
+    handoff = build_handoff(tmp_path, monkeypatch, execution=execution)
+    manifest = yaml.safe_load((handoff.run / "run_manifest.yaml").read_text())
+    assert manifest["private_full_models"]["passed"] is True
+    assert manifest["private_full_model_execution"]["passed"] is (execution == "pass")
+    assert manifest["completion"]["formal_grade_complete"] is (execution == "pass")
+    assert ("private_full_model_execution:incomplete" in manifest["completion"]["failures"]) is (execution == "fail")
+
+
+def test_an_undeclared_execution_gate_leaves_the_manifest_unchanged(handoff):
+    manifest = yaml.safe_load((handoff.run / "run_manifest.yaml").read_text())
+    assert "private_full_model_execution" not in manifest
 
 
 def test_actual_diagnostic_observations_still_refuse(handoff):

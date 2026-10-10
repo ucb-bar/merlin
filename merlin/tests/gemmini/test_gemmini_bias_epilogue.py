@@ -17,6 +17,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 import pytest
+import selected_driver
 import yaml
 from gemmini_rtl_test_support import checks as rtl_checks
 
@@ -29,6 +30,13 @@ from merlin.targetgen.rocc.decode import decode_text
 from merlin.targetgen.rtl.facts import load_facts
 from merlin.targetgen.target_experiment import load_capability_manifest
 from merlin.targetgen.trace_check import check
+
+if selected_driver.selected_is_generic("gemmini"):
+    pytest.skip(
+        "tests compiler/harness modules a gemmini support package ships itself; the selected "
+        "generic data provider (merlin.runtime.backends.chipyard_rocc) does not ship them",
+        allow_module_level=True,
+    )
 
 gem = _bk.get_backend("gemmini")
 gm = gem.gemmini_codegen_mlir

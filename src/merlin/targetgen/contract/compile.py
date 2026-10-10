@@ -29,6 +29,7 @@ from merlin.common.execution_deadline import ExecutionDeadline, selected_deadlin
 
 from .build_recipe import named_object_paths
 from .harness_blobs import stage_harness_blobs
+from .memory_decode import observed_memory_decode as _observed_memory_decode
 
 
 def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
@@ -42,77 +43,6 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
         outputs=outputs,
         dependencies=(Path(__file__), Path(_deadline_owner.__file__)),
         **kwargs,
-    )
-
-
-def _observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=()):
-    """Retain the actual selected decoder and its declared private products.
-
-    A callback return or payload pin supplies attribution only. Original packet
-    membership, observer integrity and execution semantics remain independent.
-    """
-    from merlin.common import invocation_record
-
-    from .readback_policy import BUILD_RECEIPT, require_memory_value_roster
-
-    work = Path(workdir).resolve()
-    product = work / "readback_decode.json"
-    if product.exists() or product.is_symlink():
-        raise ValueError("memory decoder product already exists in its private execution owner")
-    with invocation_record.observe_call(
-        work,
-        stage="coherent_memory_decode",
-        function=reader.decode,
-        arguments={"readback_policy": policy.record()},
-        inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT),
-        outputs=(product,),
-        dependencies=(Path(__file__), *dependencies),
-    ) as observed:
-        outputs, evidence = reader.decode(console)
-        if type(outputs) is not dict or type(evidence) is not dict or evidence.get("status") != "complete":
-            raise ValueError("memory output reader returned no completed full-value admission")
-        require_memory_value_roster(cb, outputs)
-        declared_payload = evidence.get("payload")
-        if declared_payload is not None:
-            if type(declared_payload) is not dict or set(declared_payload) != {"path", "sha256"}:
-                raise ValueError("memory decoder declared an unsupported payload product")
-            payload = Path(declared_payload["path"])
-            if (
-                not payload.is_absolute()
-                or payload.resolve() != payload
-                or any(path.is_symlink() for path in (payload, *payload.parents))
-                or not payload.is_relative_to(work)
-                or not payload.is_file()
-            ):
-                raise ValueError("memory decoder payload escapes its private execution owner")
-            if hashlib.sha256(payload.read_bytes()).hexdigest() != declared_payload["sha256"]:
-                raise ValueError("memory decoder payload differs from its actual declared bytes")
-            observed.outputs = (*observed.outputs, payload)
-        encoded = (
-            json.dumps(
-                {
-                    "outputs": outputs,
-                    "memory_evidence": evidence,
-                    "scope": "actual decoder return and declared products only; observer/runtime/effects UNKNOWN",
-                },
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        # The selected observer runs before publication. Exclusive creation also
-        # refuses a file or symlink it creates after the earlier metadata check.
-        with product.open("x", encoding="utf-8") as output:
-            output.write(encoded)
-        observed.returned(stdout=encoded)
-    invocation_record.verify(observed.path)
-    return (
-        outputs,
-        evidence,
-        {
-            "record": {"path": str(observed.path), "sha256": hashlib.sha256(observed.path.read_bytes()).hexdigest()},
-            "product": {"path": str(product), "sha256": hashlib.sha256(product.read_bytes()).hexdigest()},
-            "scope": "source-bound decoder invocation only; no observer, stage, hardware or timer authority",
-        },
     )
 
 
@@ -683,7 +613,10 @@ def link_elf(
     # so reordering could move code and change cycles. This build changes how each object is NAMED,
     # nothing about which objects are linked or in what order.
     objects: list[Path] = []
-    sources = [workdir / "harness.c", obj, *blob_sources, *recipe.support_sources]
+    # ... except a recipe's ``link_first`` support sources, which lead (see HarnessBuildRecipe).
+    linked = [workdir / "harness.c", obj, *blob_sources]
+    ordered = getattr(recipe, "ordered_link_sources", None)  # a duck-typed recipe keeps declared order
+    sources = ordered(linked) if callable(ordered) else [*linked, *recipe.support_sources]
     for source, unit in zip(sources, named_object_paths(sources, workdir), strict=True):
         source = Path(source)
         # Assembly counts: the driver assembles a .S through the same temp-named intermediate that
@@ -1041,7 +974,7 @@ def _counter_observations(
     readings = hw_counters.parse_counter_output(console)
     if not readings:
         return None, None  # unbracketed: byte-identical to before
-    discovery = hw_counters.counters_for_target(target)
+    discovery = hw_counters.counter_source_for_target(target)
     if discovery.get("status") != "derived":
         return None, None  # no counter set derived from this target's own header
     measured_schema = hw_counters.parse_counter_schema(console)
@@ -1051,8 +984,10 @@ def _counter_observations(
     # refusing on its absence would refuse every such run. What actually binds the readings to this
     # header is the coverage check below: the reading set must contain every combination the header
     # derives, which a run bracketed against a different counter set cannot satisfy.
-    header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
-    occupancy = hw_counters.derive_occupancy_counters(header)
+    try:
+        occupancy, _codes = hw_counters.occupancy_for_discovery(discovery)
+    except (OSError, ValueError):
+        return None, None  # the counter source changed or vanished after discovery
     required = set(occupancy.by_combination.values())
     if not required or not required <= set(readings):
         return None, None  # a partial combination set is a lower bound, not a total
@@ -1061,12 +996,12 @@ def _counter_observations(
     from merlin.runtime.backends import base as _backends
 
     _kinds_reader = getattr(_backends.get_backend(target), "counter_engine_kinds", None)
-    kinds = _kinds_reader() if callable(_kinds_reader) else None
+    kinds = _kinds_reader() if callable(_kinds_reader) else hw_counters.declared_engine_kinds(target)
     block = hw_counters.observations_from_counters(
         readings,
         occupancy,
         total_cycles=cycles,
-        source=f"hardware combination counters ({discovery['header']})",
+        source=f"hardware combination counters ({discovery.get('header') or 'contract counter-event table'})",
         kind_of=kinds,
     )
     validated = _observations.validate_block(block)
@@ -1273,10 +1208,12 @@ def run_on_oracle(
         ) as observed:
             console = backend.run_elf(elf, simulator=simulator, timeout=run_timeout, **run_kwargs, **memory_kwargs)
             observed.returned(stdout=console)
-    except (TimeoutExpired, CalledProcessError) as exc:
-        # Standard process failures can carry partial output even with
-        # text=True. Preserve bytes verbatim; they are diagnostic evidence,
-        # never a completed frame or a numerical verdict. Re-raise unchanged.
+    except Exception as exc:
+        if not isinstance(exc, (TimeoutExpired, CalledProcessError)) and getattr(exc, "stdout", None) is None:
+            raise
+        # Process failures (and a backend error that carries its run's output) can hold partial
+        # output. Preserve bytes verbatim; they are diagnostic evidence, never a completed frame or a
+        # numerical verdict. Re-raise unchanged.
         for path, data in ((console_path, exc.stdout), (stderr_path, exc.stderr)):
             if isinstance(data, (bytes, str)):
                 path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
@@ -1333,13 +1270,19 @@ def run_on_oracle(
                 raise ValueError("memory output reader returned no completed full-value admission")
             require_memory_value_roster(cb, outputs)
     check_budget()
+    output_digests = None
     if readback_policy is not None:
         from .readback_policy import (
+            DIGEST_TRANSPORTS,
             require_current_build_receipt,
+            require_digest_roster,
             require_full_value_roster,
         )
 
-        if not memory:
+        if readback_policy.transport in DIGEST_TRANSPORTS:
+            # Digests, not values: the caller compares them with the digest of the bytes it expects.
+            output_digests = require_digest_roster(cb, console, outputs)
+        elif not memory:
             require_full_value_roster(cb, console, outputs, policy=readback_policy)
         if readback_build != require_current_build_receipt(
             cb=cb,
@@ -1397,6 +1340,8 @@ def run_on_oracle(
         result["process_consumption"] = process_consumption
     if memory_evidence is not None:
         result["readback_memory"] = memory_evidence
+    if output_digests is not None:
+        result["output_digests"] = output_digests
     if memory_observation is not None:
         result["readback_observation"] = memory_observation
     # Counter markers are a target-independent wire protocol.  The event names/codes remain the
@@ -1432,7 +1377,7 @@ def run_on_oracle(
             "engine": _trust.to_dict(),
         }
     elif readings:
-        discovery = hw_counters.counters_for_target(target)
+        discovery = hw_counters.counter_source_for_target(target)
         measured_schema = hw_counters.parse_counter_schema(counter_console)
         report: dict[str, Any] = {
             "status": "measured",
@@ -1441,26 +1386,20 @@ def run_on_oracle(
             "measured_header_sha256": measured_schema,
         }
         if discovery.get("status") == "derived" and measured_schema == discovery.get("header_sha256"):
-            header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
-            occupancy = hw_counters.derive_occupancy_counters(header)
+            occupancy, _event_codes = hw_counters.occupancy_for_discovery(discovery)
             required = set(occupancy.by_combination.values())
             if required and required <= set(readings):
                 report["occupancy"] = occupancy.to_dict()
                 partition_reader = getattr(backend, "counter_partition_inputs", None)
                 partition = (
-                    partition_reader()
-                    if callable(partition_reader)
-                    else {
-                        "status": "unknown",
-                        "why": "the target backend exposes no CIRCT counter-partition artifact",
-                    }
+                    partition_reader() if callable(partition_reader) else hw_counters.declared_partition_inputs(target)
                 )
                 if partition.get("status") == "available":
                     report["overlap"] = hw_counters.eta_from_counters(
                         readings,
                         occupancy,
                         hw_text=partition["hw_text"],
-                        codes=hw_counters.event_codes(header),
+                        codes=_event_codes,
                         module=partition["module"],
                         counter_module=partition["counter_module"],
                         measurement_cycles=raw.get("cycles"),
