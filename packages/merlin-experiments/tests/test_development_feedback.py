@@ -98,4 +98,39 @@ def test_prepared_feedback_binds_explicit_resources_to_installed_engine(
     assert args[0].member is member and args[0].workload is workload
     assert args[0].gsim_certificate is certificate and args[0].gsim_decision is decision
     assert args[1:] == (tmp_path / "execution", 7, target, rtl_identity)
+    binding = kwargs.pop("counter_binding", None)
     assert kwargs == {"contract_root": contract_root, "hardware_counters": hardware_counters, "workers": workers}
+    # Only a counter pass carries the stage's byte-binding evidence.
+    assert binding is None or hardware_counters
+
+
+def test_the_agent_may_profile_a_named_frozen_member_and_counter_passes_carry_the_binding(tmp_path, monkeypatch):
+    member = SimpleNamespace(family="PM", capsule="PM00", descriptor={"label": "dev"})
+    feedback = DF.DevelopmentGsimFeedback(
+        SimpleNamespace(sha256="a" * 64),
+        SimpleNamespace(capsules=(member,), capsules_sha256="a" * 64),
+        tmp_path,
+        "a" * 64,
+        SimpleNamespace(target="synthetic"),
+        {"rtl": "identity"},
+        tmp_path / "work",
+        {},
+    )
+    assert feedback.profile_member("PM/PM00") == (member, "named by the agent from the frozen tuning corpus")
+    for bad in ("PM00", "PM/absent", "/PM00"):
+        with pytest.raises(DF.StageGateError):
+            feedback.profile_member(bad)
+    probed = []
+    monkeypatch.setattr(
+        DF.MS, "probe_counter_byte_bindings", lambda rtl, *, target: probed.append(target) or {"status": "proved"}
+    )
+    seen = []
+    feedback.executor = lambda **kw: seen.append(kw) or {}
+    for counters in (False, True, True):
+        feedback._execute_once(
+            arm="candidate", package=tmp_path, package_sha256="a" * 64, member=member, decision=None,
+            workspace=tmp_path, timeout_s=1, hardware_counters=counters,
+        )
+    assert "counter_binding" not in seen[0]
+    assert seen[1]["counter_binding"] == seen[2]["counter_binding"] == {"status": "proved"}
+    assert probed == ["synthetic"], "the binding is probed once per stage"

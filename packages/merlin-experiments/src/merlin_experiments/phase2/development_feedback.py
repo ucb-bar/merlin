@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -24,8 +23,14 @@ from . import paired_measurement as PME
 from .broker_evidence import _is_sha256
 from .contracts import StageGateError
 from .contracts import write_json as _write_json
-
-SWEEP_WORKERS_ENV = "MERLIN_PERF_SWEEP_WORKERS"
+from .feedback_metrics import derive_machine_bounds  # noqa: F401 -- re-exported for its callers
+from .sweep_policy import (  # noqa: F401 -- the sweep's declared environment, re-exported
+    AUTHORING_GSIM_FLOOR_BUDGET_ENV,
+    SWEEP_WORKERS_ENV,
+    authoring_gsim_floor_budget,
+    sweep_workers,
+)
+from .whole_model_profile import load_selected_inputs as _load_whole_model_inputs
 
 
 def _measurement_selection(value):
@@ -34,20 +39,6 @@ def _measurement_selection(value):
     if type(value) is not DevelopmentMeasurementPlan:
         raise StageGateError("development measurement selection requires its live qualified plan")
     return value
-
-
-def sweep_workers() -> int:
-    """The declared sweep fan-out, or 1. Refuses a value it cannot read rather than guessing one."""
-    raw = (os.environ.get(SWEEP_WORKERS_ENV) or "").strip()
-    if not raw:
-        return 1
-    try:
-        workers = int(raw)
-    except ValueError:
-        raise StageGateError(f"{SWEEP_WORKERS_ENV}={raw!r} is not an integer; refusing to guess a fan-out") from None
-    if workers < 1:
-        raise StageGateError(f"{SWEEP_WORKERS_ENV}={workers} is not a positive fan-out")
-    return workers
 
 
 @dataclass
@@ -69,6 +60,23 @@ class DevelopmentGsimFeedback:
     decisions: Mapping[tuple[str, str], GATE.EvaluationDecision]
     peak_macs_per_cycle: int | None = None
     peak_basis: str = ""
+    #: The machine's derived bounds for each member's ROOFLINE: array geometry from the RTL facts and
+    #: the memory-path widths of the exact elaboration the certified timing engine was built from
+    #: (:func:`merlin.perf.capsule_roofline.machine_bounds`). None leaves every roofline UNKNOWN with
+    #: that reason; it never substitutes a width.
+    machine_bounds: Mapping[str, Any] | None = None
+    #: The target's counter-byte binding evidence, probed once per stage the first time a counter
+    #: profile runs (:func:`measurement_support.probe_counter_byte_bindings`). Passed to every counter
+    #: pass so physical movement is measured whenever the target's probe proves the byte semantics,
+    #: and stays UNKNOWN with the probe's own reason when it does not.
+    counter_binding: Mapping[str, Any] | None = None
+    #: Seconds allowed for each arm's executed-command replay; 0 disables it (the cells then say so).
+    executed_profile_timeout_s: int = 120
+    #: The operator's whole-model deployment record (:mod:`.whole_model_profile`); None leaves the
+    #: whole-model boundary profile unavailable, and the stage advertises that.
+    whole_model_inputs: Any = None
+    rtl_facts_path: Path | None = None
+    _whole_model_baseline: dict | None = None
     achievable_macs_per_cycle: float | None = None
     achievable_basis: str = ""
     # Spread of the achievable rate across the points that established it. It is what "already at
@@ -169,6 +177,15 @@ class DevelopmentGsimFeedback:
                 break
         if not attempts:
             raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+        if not hardware_counters and self.executed_profile_timeout_s and isinstance(raw.get("measurement"), Mapping):
+            raw = {
+                **raw,
+                "_executed_profile": MS.executed_profile(
+                    destination,
+                    target=str(getattr(self.target_experiment, "target", "") or ""),
+                    timeout_s=self.executed_profile_timeout_s,
+                ),
+            }
         return raw
 
     def _execute_once(
@@ -211,6 +228,7 @@ class DevelopmentGsimFeedback:
                 target_experiment=self.target_experiment,
                 rtl_identity=self.rtl_identity,
                 hardware_counters=hardware_counters,
+                **({"counter_binding": self.counter_binding_evidence()} if hardware_counters else {}),
             )
             if measurement_plan is not None:
                 measurement_plan.verify(self, package=package, arm=arm, member=member)
@@ -304,7 +322,12 @@ class DevelopmentGsimFeedback:
             or not decision.use_gsim
         ):
             raise StageGateError(f"development GSIM {arm}/{family}/{capsule} lacks a positive certified cycle count")
-        return {"correct": correct, "gsim_cycles": cycles}
+        executed = raw.get("_executed_profile")
+        return {
+            "correct": correct,
+            "gsim_cycles": cycles,
+            "executed": dict(executed) if isinstance(executed, Mapping) else None,
+        }
 
     def profile_witness(self) -> tuple[CORPUS.PerformanceCapsule, str]:
         """The fixed reduced witness used only to explain a global candidate's cycle change.
@@ -462,10 +485,53 @@ class DevelopmentGsimFeedback:
             "missing": missing,
         }
 
-    def profile(self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int) -> dict[str, Any]:
-        """Warm-profile one preselected reduced witness with only occupancy/movement counters."""
+    def whole_model_profile(self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int) -> dict:
+        """Per-group cycles, gaps and rooflines of the declared whole-model programs (see that module)."""
+        from . import whole_model_profile as WMP  # noqa: PLC0415
+
+        return WMP.profile_candidate(self, candidate, round_index=round_index, call_index=call_index)
+
+    def counter_binding_evidence(self) -> Mapping[str, Any]:
+        if self.counter_binding is None:
+            target = str(getattr(self.target_experiment, "target", "") or "")
+            try:
+                self.counter_binding = MS.probe_counter_byte_bindings(self.rtl_identity, target=target)
+            except Exception as exc:  # noqa: BLE001 - an unavailable probe leaves bytes UNKNOWN
+                self.counter_binding = {"status": "unknown", "counter_facts": [], "why": type(exc).__name__}
+        return self.counter_binding
+
+    def profile_member(self, identity: str) -> tuple[CORPUS.PerformanceCapsule, str]:
+        """The frozen tuning member ``family/capsule`` the agent asked to profile, or a refusal."""
+        family, sep, capsule = str(identity or "").strip().partition("/")
+        if not sep or not family or not capsule:
+            raise StageGateError("a profiled member is named as family/capsule from the frozen tuning corpus")
+        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+
+        for member in tuple(getattr(self.corpus, "capsules", ()) or ()):
+            if member.family == family and member.capsule == capsule:
+                try:
+                    require_probe_execution(member.descriptor)
+                except ValueError as exc:
+                    raise StageGateError(str(exc)) from exc
+                return member, "named by the agent from the frozen tuning corpus"
+        raise StageGateError(f"{family}/{capsule} is not a member of the frozen tuning corpus")
+
+    def profile(
+        self,
+        candidate: Path,
+        *,
+        round_index: int,
+        call_index: int,
+        timeout_s: int,
+        member: str | None = None,
+    ) -> dict[str, Any]:
+        """Warm-profile one reduced member with only occupancy/movement counters: the preselected
+        witness, or the frozen tuning member the caller names (``family/capsule``)."""
         candidate = Path(candidate).resolve(strict=True)
-        member, selection_basis = self.profile_witness()
+        if member is None:
+            member, selection_basis = self.profile_witness()
+        else:
+            member, selection_basis = self.profile_member(member)
         key = (member.family, member.capsule)
         decision = self.decisions.get(key)
         if decision is None:
@@ -517,6 +583,14 @@ class DevelopmentGsimFeedback:
                 "selection": selection_basis,
                 "selected_before_candidate_measurement": True,
             },
+            # The measured member's derived machine bound, beside its counters (see `roofline` in the
+            # tuning feedback): busy time and overlap read against the floors they can be compared to.
+            "roofline": FM.roofline_cell(
+                member.descriptor,
+                self.machine_bounds,
+                baseline_cycles=baseline["total_compute_cycles"],
+                candidate_cycles=candidate_row["total_compute_cycles"],
+            ),
             "candidate_sha256": candidate_sha,
             "profile_contract": {
                 "warmup_runs": 1,
@@ -890,6 +964,11 @@ class DevelopmentGsimFeedback:
             dispersion,
         )
 
+    def roofline_floor(self, member: Any) -> int | None:
+        """The member's declared-work roofline floor on this machine, or None when underivable."""
+        value = FM.capsule_roofline(member.descriptor, self.machine_bounds).get("roofline_cycles")
+        return value if type(value) is int else None
+
     def evaluate(
         self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int, measurement_plan=None
     ) -> dict[str, Any]:
@@ -925,6 +1004,20 @@ class DevelopmentGsimFeedback:
 
             by_id = {document_sha256([member.family, member.capsule]): member for member in original_members}
             members = [by_id[identity] for identity in measurement_plan.selected]
+        # LARGE MEMBERS NEVER BLOCK AUTHORING. Above the declared roofline-floor budget a member is
+        # measured on gSIM only in the final cells (one of them alone runs past an hour); here it gets
+        # its roofline cell and a stated reason, and static analysis, Spike and the reduced witnesses
+        # remain the agent's tools for it.
+        budget = authoring_gsim_floor_budget()
+        deferred = []
+        if budget is not None:
+            floors = {(member.family, member.capsule): self.roofline_floor(member) for member in members}
+            deferred = [
+                m
+                for m in members
+                if type(floors[(m.family, m.capsule)]) is int and floors[(m.family, m.capsule)] > budget
+            ]
+            members = [m for m in members if m not in deferred]
         cells: list[dict[str, Any]] = []
         started = time.monotonic()
         # CHEAPEST MEASURED MEMBER FIRST. A candidate behind on every member measured so far is
@@ -1073,6 +1166,20 @@ class DevelopmentGsimFeedback:
                         candidate_cycles=ccycles if comparable else None,
                         dispersion=matched_dispersion,
                     ),
+                    # WHERE EACH ARM SITS AGAINST THE MACHINE'S OWN BOUND for this member's declared
+                    # work: the larger of the array's compute floor and the memory path's movement
+                    # floor, both derived. Only a correct arm is positioned against it.
+                    "roofline": FM.roofline_cell(
+                        member.descriptor,
+                        self.machine_bounds,
+                        baseline_cycles=bcycles if baseline["correct"] else None,
+                        candidate_cycles=ccycles if candidate_row["correct"] else None,
+                    ),
+                    # WHAT EACH ARM EXECUTED: accelerator commands by class, retired host
+                    # instructions, and the local-memory rows its commands addressed.
+                    "executed_commands": FM.executed_commands_cell(
+                        baseline.get("executed"), candidate_row.get("executed")
+                    ),
                     "measured": True,
                     "skip_reason": None,
                 }
@@ -1091,6 +1198,7 @@ class DevelopmentGsimFeedback:
             cells.append(
                 FM.unmeasured_cell(
                     member,
+                    machine=self.machine_bounds,
                     reason=(
                         "the sweep is ordered cheapest-measured-first and this candidate "
                         "was already behind on every comparable member measured before "
@@ -1098,11 +1206,24 @@ class DevelopmentGsimFeedback:
                     ),
                 )
             )
+        for member in deferred:
+            cells.append(
+                FM.unmeasured_cell(
+                    member,
+                    machine=self.machine_bounds,
+                    reason=(
+                        f"measured on gSIM only in the final measurement cells: its roofline floor exceeds "
+                        f"the authoring gSIM budget of {budget} cycles"
+                    ),
+                )
+            )
         if measurement_plan is not None:
             selected_ids = set(measurement_plan.selected)
             for member in original_members:
                 if document_sha256([member.family, member.capsule]) not in selected_ids:
-                    cells.append(FM.unmeasured_cell(member, reason=measurement_plan.reason(member)))
+                    cells.append(
+                        FM.unmeasured_cell(member, machine=self.machine_bounds, reason=measurement_plan.reason(member))
+                    )
             measurement_plan.verify(self, candidate=candidate)
         # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
         # difference now would mean the measurement mutated its own input rather than that the agent
@@ -1199,6 +1320,7 @@ class DevelopmentGsimFeedback:
                         "ranked": [],
                         "corpus_total_cycles": None,
                     },
+                    "roofline_machine": FM.roofline_machine_summary(self.machine_bounds),
                 },
             }
         )
@@ -1218,6 +1340,7 @@ def development_executor(
     target_experiment,
     rtl_identity,
     hardware_counters=False,
+    counter_binding=None,
 ):
     # The installed engine uses the package-sandboxed Spike+GSIM path;
     # the trusted caller supplies the contract resource root explicitly.
@@ -1246,6 +1369,7 @@ def development_executor(
         rtl_identity,
         contract_root=contract_root,
         hardware_counters=hardware_counters,
+        **({"counter_binding": counter_binding} if hardware_counters else {}),
         workers=1 if hardware_counters else sweep_workers(),
     )
 
@@ -1263,6 +1387,7 @@ def prepare_development_feedback(
     work_root: Path,
     tuning_call_budget: int | None = None,
     functional_run_dir: Path | None = None,
+    whole_model_inputs: Path | None = None,
 ) -> DevelopmentGsimFeedback:
     """Bind one stage to a strict certificate and exact frozen tuning corpus."""
     if certificate_path is None or not _is_sha256(certificate_sha256) or rtl_facts_path is None:
@@ -1276,6 +1401,7 @@ def prepare_development_feedback(
 
         rtl_identity = MS.load_rtl_identity(Path(rtl_facts_path), target_experiment.target)
         peak_macs, peak_basis = FM.derived_peak_macs_per_cycle(Path(rtl_facts_path), target_experiment.target)
+        machine_bounds = derive_machine_bounds(Path(rtl_facts_path), certificate, target_experiment.target)
         # THE ACHIEVABLE CEILING, from cycles phase 1 already paid for. The structural peak is what
         # the array could retire if nothing ever stalled; the achievable
         # ceiling is the best rate anything on this machine actually reached, and it is what the
@@ -1352,6 +1478,7 @@ def prepare_development_feedback(
         decisions,
         peak_macs_per_cycle=peak_macs,
         peak_basis=peak_basis,
+        machine_bounds=machine_bounds,
         achievable_macs_per_cycle=achievable_macs,
         achievable_basis=achievable_basis,
         achievable_dispersion=achievable_dispersion,
@@ -1362,4 +1489,6 @@ def prepare_development_feedback(
         member_cost_basis=member_cost_basis,
         executor=partial(development_executor, contract_root=contract_root),
         tuning_call_budget=tuning_call_budget,
+        whole_model_inputs=_load_whole_model_inputs(whole_model_inputs, target_experiment),
+        rtl_facts_path=Path(rtl_facts_path),
     )

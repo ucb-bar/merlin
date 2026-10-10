@@ -53,6 +53,10 @@ _WORK_OPERATIONS = (
     _SCOPE_CHAIN_OPERATION,
 )
 
+#: Declared epilogue stages that act elementwise on the contraction's result and so leave its extent
+#: unchanged. Any other stage leaves the declared result volume UNKNOWN rather than over-charged.
+_EXTENT_PRESERVING_EPILOGUES = frozenset(("bias_add", "acc_scale", "relu"))
+
 ARM_WORKSPACE = "m{index:03d}_{arm}"
 _BASELINE_ARM_GLOB = "m*_baseline"
 RECOVERABLE_RANK_LIMIT = 8
@@ -206,12 +210,16 @@ def derived_peak_macs_per_cycle(rtl_facts_path: Path, target: str) -> tuple[int 
     return value, f"facts-derived peak of compute unit {name!r}"
 
 
-def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, str]:
-    """The MACs the capsule's own declaration REQUIRES, independent of how a compiler emits them.
+def declared_capsule_contractions(
+    descriptor: Mapping[str, Any],
+) -> tuple[tuple[tuple[int, int, int], ...] | None, str]:
+    """Every ``(M, K, N)`` contraction the capsule's own declaration REQUIRES, with its basis.
 
-    Utilization must be priced against the work the spec demands, not the work the program happens to
-    perform: dividing emitted MACs by cycles would reward a candidate for doing redundant arithmetic.
-    Shapes come from the capsule's declared operands, so this stays a statement about the workload.
+    Shapes come from the capsule's declared operands, so this stays a statement about the workload,
+    never about how a compiler emits it. A convolution is its own window contraction
+    (``M`` = output positions, ``K`` = window taps, ``N`` = output channels); a batch or a reused
+    weight contributes one contraction per slice or reuse. ``None`` with a reason when the declared
+    operation's work is not derivable here.
     """
     operation = descriptor.get("operation")
     if not isinstance(operation, Mapping) or operation.get("op") not in _WORK_OPERATIONS:
@@ -244,7 +252,7 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         if q[1] != k[1]:
             return None, (f"the declared attention operands do not share a depth: q {q} against k {k}")
         # [queries, depth] @ [keys, depth]^T -> [queries, keys], so queries x depth x keys.
-        return q[0] * q[1] * k[0], "declared attention operand shapes (queries x depth x keys)"
+        return ((q[0], q[1], k[0]),), "declared attention operand shapes (queries x depth x keys)"
 
     if operation.get("op") == _BATCHED_OPERATION:
         lhs = shapes.get(str(attributes.get("lhs")))
@@ -255,7 +263,7 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
             return None, (f"the declared batched operands describe different batches: {lhs} against {rhs}")
         if lhs[2] != rhs[1]:
             return None, (f"the declared batched operands do not contract: {lhs} against {rhs}")
-        return lhs[0] * lhs[1] * lhs[2] * rhs[2], (
+        return tuple((lhs[1], lhs[2], rhs[2]) for _ in range(lhs[0])), (
             "declared batched operand shapes (batch x M x K x N), one independent contraction per batch slice"
         )
 
@@ -276,7 +284,7 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
             return None, "the declared host-island extents disagree with its operand shapes"
         if attributes.get("accelerator_contractions") != 2:
             return None, "the declared host-island program does not name exactly two contractions"
-        return lhs[0] * lhs[1] * first[1] + lhs[0] * first[1] * second[1], (
+        return ((lhs[0], lhs[1], first[1]), (lhs[0], first[1], second[1])), (
             "declared two-stage contraction shapes (M x K x H plus M x H x N); "
             "the intervening host map contributes no MACs"
         )
@@ -286,19 +294,22 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         weight = shapes.get(str(attributes.get("weight")))
         if lhs is None or weight is None or len(lhs) != 2 or len(weight) != 2 or lhs[1] != weight[1]:
             return None, "the scope-chain operands do not form a transposed rank-2 contraction"
-        if any(type(attributes.get(axis)) is not int or attributes[axis] != extent
-               for axis, extent in zip(("M", "K", "N"), (lhs[0], lhs[1], weight[0]))):
+        if any(
+            type(attributes.get(axis)) is not int or attributes[axis] != extent
+            for axis, extent in zip(("M", "K", "N"), (lhs[0], lhs[1], weight[0]))
+        ):
             return None, "the scope-chain extents disagree with its declared operand shapes"
         families = attributes.get("scope_families")
         if not (
-            isinstance(families, list) and len(families) >= 3
+            isinstance(families, list)
+            and len(families) >= 3
             and families[:2] == ["movement", "contraction"]
             and all(family == "elementwise_map" for family in families[2:])
             and attributes.get("scope_signature") == " -> ".join(families)
             and attributes.get("map_count") == len(families) - 2
         ):
             return None, "the scope-chain declaration lacks a coherent selected family list"
-        return lhs[0] * lhs[1] * weight[0], (
+        return ((lhs[0], lhs[1], weight[0]),), (
             "declared transposed contraction M x K x N; movement and maps contribute no MACs"
         )
 
@@ -354,7 +365,7 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         # no existing price -- which is the point: it is added while it is provably inert, rather than
         # discovered as an N-fold under-price by the first member that carries a batch.
         batch = int(ifm[0])
-        return batch * rows * cols * weight[0] * weight[1], (
+        return ((batch * rows * cols, weight[0], weight[1]),), (
             f"declared convolution geometry: {batch} image(s) x {rows}x{cols} output positions x "
             f"{weight[0]} window taps x {weight[1]} output channels"
         )
@@ -368,7 +379,7 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     # M x K x N and the total is what the specification demands however a compiler emits it.
     reuses = attributes.get("matmuls")
     if isinstance(reuses, Sequence) and not isinstance(reuses, (str, bytes)):
-        total = 0
+        found: list[tuple[int, int, int]] = []
         for index, row in enumerate(reuses):
             if not isinstance(row, Mapping):
                 return None, f"reuse {index} of the declared operation is not a mapping"
@@ -377,10 +388,10 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
                 return None, f"reuse {index} declares no rank-2 activation shape"
             if lhs[1] != weight[0]:
                 return None, (f"reuse {index} does not contract: lhs {lhs} against weight {weight}")
-            total += lhs[0] * lhs[1] * weight[1]
-        if not total:
+            found.append((lhs[0], lhs[1], weight[1]))
+        if not found:
             return None, "the declared operation reuses the weight zero times"
-        return total, (
+        return tuple(found), (
             f"declared operand shapes, summed over the {len(reuses)} reuse(s) of one resident weight (M x K x N each)"
         )
 
@@ -395,7 +406,160 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
             "declared contraction operand shapes (M x K x N); the fused bias epilogue is an "
             "elementwise add on the readout path and contributes no multiply-accumulate"
         )
-    return lhs[0] * lhs[1] * weight[1], basis
+    return ((lhs[0], lhs[1], weight[1]),), basis
+
+
+def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, str]:
+    """The MACs the capsule's own declaration REQUIRES, independent of how a compiler emits them.
+
+    Utilization must be priced against the work the spec demands, not the work the program happens to
+    perform: dividing emitted MACs by cycles would reward a candidate for doing redundant arithmetic.
+    The sum over :func:`declared_capsule_contractions`, so the price and the per-contraction extents a
+    roofline reads can never describe two different workloads.
+    """
+    contractions, basis = declared_capsule_contractions(descriptor)
+    if contractions is None:
+        return None, basis
+    return sum(m * k * n for m, k, n in contractions), basis
+
+
+def declared_capsule_operand_bytes(descriptor: Mapping[str, Any]) -> tuple[int | None, int | None, str]:
+    """``(read_bytes, write_bytes, basis)`` -- the bytes the capsule's declaration says must be read
+    and written at least once, independent of how a program moves them.
+
+    Reads are every declared input at its declared shape and element width. Writes are the declared
+    result: the declared ``outputs`` when the descriptor lists them, otherwise the ``M x N`` result of
+    each declared contraction (only the final stage of a host-island program leaves the program) at
+    the declared result element width. Either is None when a shape or width is not declared -- an
+    absent volume is never read as zero.
+    """
+    from merlin.perf.derived_bound import _width_bits  # noqa: PLC0415
+
+    def volume(rows: Any) -> int | None:
+        if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)) or not rows:
+            return None
+        total = 0
+        for row in rows:
+            if not isinstance(row, Mapping):
+                return None
+            shape, bits = row.get("shape"), _width_bits(row.get("dtype"))
+            if bits is None or not isinstance(shape, Sequence) or isinstance(shape, (str, bytes)):
+                return None
+            count = 1
+            for extent in shape:
+                if isinstance(extent, bool) or not isinstance(extent, int) or extent < 0:
+                    return None
+                count *= extent
+            total += count * -(-bits // 8)
+        return total
+
+    read_bytes = volume(descriptor.get("inputs"))
+    write_bytes = volume(descriptor.get("outputs"))
+    basis = "declared inputs; declared outputs"
+    if write_bytes is None:
+        operation = descriptor.get("operation") if isinstance(descriptor.get("operation"), Mapping) else {}
+        attributes = operation.get("attributes") if isinstance(operation.get("attributes"), Mapping) else {}
+        policy = descriptor.get("numeric_policy") if isinstance(descriptor.get("numeric_policy"), Mapping) else {}
+        bits = _width_bits(attributes.get("output_dtype") or policy.get("dtype"))
+        contractions, _ = declared_capsule_contractions(descriptor)
+        epilogue = attributes.get("epilogue") or ()
+        reshaping = (
+            [str(stage) for stage in epilogue if str(stage) not in _EXTENT_PRESERVING_EPILOGUES]
+            if isinstance(epilogue, Sequence) and not isinstance(epilogue, (str, bytes))
+            else [str(epilogue)]
+        )
+        if reshaping:
+            # A stage outside the extent-preserving vocabulary (a window reduction, say) may leave
+            # FEWER result bytes than the contraction produced; charging the contraction's result
+            # would overstate the floor, so the result volume is left undeclared instead.
+            basis = f"declared inputs; the result volume after epilogue stage(s) {reshaping} is not declared"
+        elif contractions and bits is not None:
+            results = contractions[-1:] if operation.get("op") == _HOST_ISLAND_OPERATION else contractions
+            write_bytes = sum(m * n for m, _k, n in results) * -(-bits // 8)
+            basis = "declared inputs; the M x N result of each declared contraction at its declared width"
+        else:
+            basis = "declared inputs; the result volume is not declared"
+    return read_bytes, write_bytes, basis
+
+
+def capsule_roofline(descriptor: Mapping[str, Any], machine: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The derived roofline of one frozen member's DECLARED work on this machine.
+
+    A statement about the workload and the machine only, so it is identical for every program that
+    computes the member; see :mod:`merlin.perf.capsule_roofline` for both floors.
+    """
+    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+
+    contractions, work_basis = declared_capsule_contractions(descriptor)
+    read_bytes, write_bytes, byte_basis = declared_capsule_operand_bytes(descriptor)
+    doc = CR.roofline(contractions, read_bytes, write_bytes, machine)
+    if contractions is None:
+        doc["unresolved"]["compute"] = work_basis
+    doc["basis"] = f"work: {work_basis}; bytes: {byte_basis}"
+    return doc
+
+
+#: The fields of a feedback cell's ``roofline`` block, in a closed schema the validator enforces.
+ROOFLINE_CELL_FIELDS = (
+    "status",
+    "roofline_cycles",
+    "limiter",
+    "compute_floor_cycles",
+    "movement_floor_cycles",
+    "compulsory_read_bytes",
+    "compulsory_write_bytes",
+    "baseline_over_roofline",
+    "candidate_over_roofline",
+    "basis",
+    "unresolved",
+)
+
+
+def roofline_cell(
+    descriptor: Mapping[str, Any],
+    machine: Mapping[str, Any] | None,
+    *,
+    baseline_cycles: Any = None,
+    candidate_cycles: Any = None,
+) -> dict[str, Any]:
+    """The agent-visible ``roofline`` block of one feedback cell: the derived bound and where each
+    measured arm sits against it (``cycles / roofline``; 1.0 is the bound itself). Any measured count
+    BELOW the bound refutes the bound (``status: refuted``) rather than reporting a ratio under one."""
+    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+
+    try:
+        doc = capsule_roofline(descriptor, machine)
+    except Exception as exc:  # noqa: BLE001 - an underivable bound is reported, never guessed
+        doc = {
+            "status": "unknown",
+            "roofline_cycles": None,
+            "limiter": None,
+            "compute_floor_cycles": None,
+            "movement_floor_cycles": None,
+            "compulsory_read_bytes": None,
+            "compulsory_write_bytes": None,
+            "basis": "",
+            "unresolved": {"roofline": f"derivation failed ({type(exc).__name__})"},
+        }
+    baseline = CR.position(doc, baseline_cycles)
+    candidate = CR.position(doc, candidate_cycles)
+    status = doc.get("status")
+    if status == "derived" and any(value is not None and value < 1 for value in (baseline, candidate)):
+        status = "refuted"
+        baseline = candidate = None
+    return {
+        "status": status,
+        "roofline_cycles": doc.get("roofline_cycles"),
+        "limiter": doc.get("limiter"),
+        "compute_floor_cycles": doc.get("compute_floor_cycles"),
+        "movement_floor_cycles": doc.get("movement_floor_cycles"),
+        "compulsory_read_bytes": doc.get("compulsory_read_bytes"),
+        "compulsory_write_bytes": doc.get("compulsory_write_bytes"),
+        "baseline_over_roofline": baseline,
+        "candidate_over_roofline": candidate,
+        "basis": _scrub(str(doc.get("basis") or "")),
+        "unresolved": sorted(_scrub(f"{key}: {value}") for key, value in dict(doc.get("unresolved") or {}).items()),
+    }
 
 
 def declared_reduction_depths(descriptor: Mapping[str, Any]) -> tuple[tuple[int, ...] | None, str]:
@@ -479,7 +643,79 @@ def declared_reduction_depths(descriptor: Mapping[str, Any]) -> tuple[tuple[int,
     return (lhs[1],), "declared matmul reduction depth"
 
 
-def unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
+#: The closed agent-visible projection of one arm's executed-command profile.
+EXECUTED_ARM_FIELDS = (
+    "status",
+    "accelerator_commands",
+    "retired_instructions",
+    "by_class",
+    "local_memory",
+    "why",
+)
+_LOCAL_MEMORY_FIELDS = (
+    "scratchpad_rows_touched",
+    "scratchpad_rows_high_water",
+    "scratchpad_rows_capacity",
+    "accumulator_rows_touched",
+    "accumulator_rows_high_water",
+    "accumulator_rows_capacity",
+)
+
+
+def executed_arm(profile: Mapping[str, Any] | None) -> dict[str, Any]:
+    """One arm's executed-command profile, reduced to the fixed agent-visible fields."""
+    profile = profile if isinstance(profile, Mapping) else {}
+    if profile.get("status") != "measured":
+        return {
+            "status": "unknown",
+            "accelerator_commands": None,
+            "retired_instructions": None,
+            "by_class": None,
+            "local_memory": None,
+            "why": _scrub(str(profile.get("why") or "no executed profile was recorded for this arm")),
+        }
+    local = profile.get("local_high_water") if isinstance(profile.get("local_high_water"), Mapping) else {}
+    by_class = profile.get("by_class") if isinstance(profile.get("by_class"), Mapping) else {}
+    return {
+        "status": "measured",
+        "accelerator_commands": profile.get("accelerator_commands"),
+        "retired_instructions": profile.get("retired_instructions"),
+        "by_class": {str(k): int(v) for k, v in sorted(by_class.items())},
+        "local_memory": (
+            {key: local.get(key) for key in _LOCAL_MEMORY_FIELDS} if local.get("status") == "measured" else None
+        ),
+        "why": None,
+    }
+
+
+def executed_commands_cell(baseline: Mapping[str, Any] | None, candidate: Mapping[str, Any] | None) -> dict:
+    return {"baseline": executed_arm(baseline), "candidate": executed_arm(candidate)}
+
+
+def _scrub(text: str) -> str:
+    """Agent-visible text never carries a host path (see :mod:`merlin.common.path_scrub`)."""
+    from merlin.common.path_scrub import scrub_host_paths  # noqa: PLC0415
+
+    return scrub_host_paths(text)
+
+
+def roofline_machine_summary(machine: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The summary's statement of which machine every cell's roofline was derived for."""
+    machine = machine if isinstance(machine, Mapping) else {}
+    return {
+        "array_rows": machine.get("array_rows"),
+        "array_cols": machine.get("array_cols"),
+        "read_bytes_per_cycle": machine.get("read_bytes_per_cycle"),
+        "write_bytes_per_cycle": machine.get("write_bytes_per_cycle"),
+        "basis": sorted(_scrub(f"{key}: {value}") for key, value in dict(machine.get("basis") or {}).items()),
+        "unresolved": sorted(
+            _scrub(f"{key}: {value}")
+            for key, value in dict(machine.get("unresolved") or {"machine": "no machine bounds were derived"}).items()
+        ),
+    }
+
+
+def unmeasured_cell(member: Any, *, reason: str, machine: Mapping[str, Any] | None = None) -> dict[str, Any]:
     return {
         "family": member.family,
         "capsule": member.capsule,
@@ -505,6 +741,8 @@ def unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
         "ideal_cycles_at_achievable": None,
         "cycles_saved": None,
         "gap_closed": None,
+        "roofline": roofline_cell(getattr(member, "descriptor", None) or {}, machine),
+        "executed_commands": executed_commands_cell(None, None),
         "measured": False,
         "skip_reason": reason,
     }
@@ -599,3 +837,26 @@ def order_members_by_cost(members: Sequence[Any], cost: Mapping[str, float]) -> 
     return tuple(ordered), (
         f"ascending median measured simulation seconds ({priced}/{len(members)} members priced; unpriced sort last)"
     )
+
+
+def derive_machine_bounds(rtl_facts_path: Path, certificate: Any, target: str) -> dict[str, Any]:
+    """Roofline bounds for this stage: geometry from the exact RTL facts, memory-path widths from the
+    elaboration the certificate pins for the timing engine (so the bound describes the machine that
+    produces every cycle in the feedback). Anything underivable is UNKNOWN with its reason."""
+    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+
+    pins = getattr(certificate, "pins", None)
+    pin = pins.get("gsim_firrtl") if isinstance(pins, Mapping) else None
+    elaboration = pin.get("path") if isinstance(pin, Mapping) else None
+    try:
+        facts = json.loads(Path(rtl_facts_path).read_text(encoding="utf-8"))
+        return CR.machine_bounds(target, facts=facts, elaboration=elaboration)
+    except Exception as exc:  # noqa: BLE001 - an underivable machine leaves every roofline UNKNOWN
+        return {
+            "array_rows": None,
+            "array_cols": None,
+            "read_bytes_per_cycle": None,
+            "write_bytes_per_cycle": None,
+            "basis": {},
+            "unresolved": {"machine": f"bounds are not derivable ({type(exc).__name__})"},
+        }
