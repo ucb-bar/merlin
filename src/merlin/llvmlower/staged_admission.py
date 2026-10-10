@@ -26,7 +26,7 @@ from merlin.targetgen.contract.resident_interface_abi import bind_single_residen
 from merlin.targetgen.rtl.facts import validate_facts
 
 from .device_build import _nm, _objcopy, build_device_objects, verify_object_symbol_binding
-from .device_shim import emit_translation_unit, kernel_abi_for
+from .device_shim import emit_translation_unit, kernel_abi_for, logical_argument_roles
 from .exact_offload import _package_sha256
 
 SCHEMA = "merlin.staged_model_kernel_admission.v1"
@@ -178,11 +178,14 @@ def stage_integer_model_admission(
 
     # No ambient RTL cache lookup: a shim emitted from an unpinned tile edge
     # could not be reproduced or bound to this exact review identity.
+    logical = abi is not None and getattr(abi, "version", 1) == 2
+    roles = logical_argument_roles(interface)[0] if logical else None
     unit = None if edge is None else emit_translation_unit(
         target, {"merlin_staged_kernel": (m, n, k)},
         {"merlin_staged_kernel": resident.dtypes},
         kernel_symbol_for=(lambda _symbol: abi.symbol) if abi is not None else None,
         tile_edge=edge,
+        argument_roles={"merlin_staged_kernel": roles} if roles else None,
     )
     shim_generated = unit is not None and bool(unit.symbols)
     shim = {
@@ -196,7 +199,7 @@ def stage_integer_model_admission(
             "status": "reported_verified_not_rechecked" if facts_consistency == "verified" else "unverified",
             "qualification": "source consistency is reported by supplied facts, not independently checked here",
         },
-        "padding_required": bool(edge and any(extent % edge for extent in (m, n, k))),
+        "padding_required": bool(not logical and edge and any(extent % edge for extent in (m, n, k))),
         "sha256": sha256_text(unit.text) if shim_generated else None,
         "source": unit.text if shim_generated else None,
         "declines": list(unit.skipped) if unit is not None else [

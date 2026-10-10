@@ -23,6 +23,13 @@ from merlin.perf import whole_model_build as W
 from merlin.perf import whole_model_gsim as G
 from merlin.perf.layer_bench import reference as ref
 
+if selected_driver.selected_is_generic("gemmini"):
+    pytest.skip(
+        "tests compiler/harness modules a gemmini support package ships itself; the selected "
+        "generic data provider (merlin.runtime.backends.chipyard_rocc) does not ship them",
+        allow_module_level=True,
+    )
+
 pytestmark = pytest.mark.target("gemmini")
 
 _TARGET = "gemmini"

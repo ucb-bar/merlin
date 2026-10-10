@@ -140,3 +140,49 @@ def test_a_window_mean_is_oriented_as_the_program_holds_it_and_nothing_else_is()
     assert GC.device_orientation(mean, {"stored_operand": 1}) == mean
     assert GC.device_orientation({**mean, "N": 4}, {"stored_operand": None}) == {**mean, "N": 4}
     assert GC.device_orientation(mean, None) == mean
+
+
+# ------------------------------------------------------------------ a convolution the capture gathered on the host
+
+
+def _host_gathered(text: str) -> CG.Group:
+    groups = CG.form_groups(mq.parse(text), "synthetic", oracle=_Oracle())
+    (group,) = [g for g in groups if g.placement != CG.HOST and g.root is not None]
+    return group
+
+
+@pytest.mark.parametrize(
+    ("channels", "side", "features", "kernel", "stride", "pad"),
+    [(3, 9, 8, 3, 1, 1), (4, 9, 8, 3, 2, 1), (5, 6, 7, 1, 1, 0), (5, 7, 6, 1, 2, 0)],
+    ids=["3x3_s1_pad1", "3x3_s2_pad1", "1x1_s1", "1x1_s2"],
+)
+def test_a_host_gathered_convolution_is_stated_as_the_convolution_the_route_passes(
+    channels, side, features, kernel, stride, pad
+) -> None:
+    """The patch matrix a capture builds on the host (strided slices of the padded NCHW image, NHWC per
+    tap, concatenated) is the host's lowering, not the layer: the statement names the convolution over
+    the image before the gather -- window, stride, padding, the [tap_h, tap_w, channel] weight rows and
+    the fused readout -- exactly as the whole-model route reads it back."""
+    from test_device_shim_logical_abi import _conv_layer_module
+
+    text, (ho, wo) = _conv_layer_module(channels, side, side, features, kernel, stride, pad)
+    stated = GC.program(_host_gathered(text), weight_args={1, 2})
+    entry = stated.entry
+    assert entry["op"] == "conv2d" and "M" not in entry and "K" not in entry
+    assert (entry["ci"], entry["Himg"], entry["Wimg"], entry["N"]) == (channels, side, side, features)
+    assert (entry["kh"], entry["kw"], entry["stride"], entry["padding"]) == (kernel, kernel, [stride] * 2, [pad] * 4)
+    assert stated.column_order == GC.HOST_GATHER_COLUMN_ORDER == ("tap_h", "tap_w", "channel")
+    assert GC.device_output_shape(entry) == [ho * wo, features]
+    assert entry["epilogue"] == ["bias_add", "acc_scale", "relu"]
+
+
+def test_a_host_gather_the_statement_cannot_read_back_is_refused_not_stated_as_a_contraction() -> None:
+    from test_device_shim_logical_abi import _conv_layer_module
+
+    text, _ = _conv_layer_module(3, 9, 9, 8, 3, 1, 1)
+    line = next(row for row in text.splitlines() if '"tensor.concat"' in row)
+    head, rest = line.split('"tensor.concat"(', 1)
+    pieces, tail = rest.split(")", 1)
+    swapped = ", ".join(reversed(pieces.split(", ")))  # taps concatenated in reverse window order
+    with pytest.raises(CG.NoCapsuleForm, match="row-major"):
+        GC.program(_host_gathered(text.replace(line, f'{head}"tensor.concat"({swapped}){tail}')), weight_args={1, 2})

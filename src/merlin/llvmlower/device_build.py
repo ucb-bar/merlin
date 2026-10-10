@@ -566,8 +566,15 @@ def build_device_objects(
     expected_interfaces: Mapping[str, Mapping[str, str]] | None = None,
     package_sha256: str | None = None,
     tile_edge: int | None = None,
+    call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
+
+    ``call_buffers`` is ``symbol -> the host call's operands`` (``{"role", "shape", "dtype"}`` in call
+    order), recorded by a group rewrite under the logical kernel ABI. With it every pointer of each
+    kernel's logical interface is passed from the host call (:func:`device_shim.logical_buffers`,
+    :func:`device_shim.emit_logical_translation_unit`); an interface value the call does not supply is
+    declined by name.
 
     ``signatures`` / ``dtypes`` come from the offload rewrite. ``operand_dtype`` / ``accum_dtype`` are
     the device's own datapath tokens, which the caller derived from the device rather than assumed.
@@ -594,7 +601,13 @@ def build_device_objects(
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.package_runtime import load_package, run_entrypoint
 
-    from .device_shim import emit_translation_unit, kernel_abi_for
+    from .device_shim import (
+        emit_logical_translation_unit,
+        emit_translation_unit,
+        kernel_abi_for,
+        logical_argument_roles,
+        logical_buffers,
+    )
     from .toolchain import clang, mlir_translate
 
     work = Path(workdir)
@@ -667,6 +680,11 @@ def build_device_objects(
     objs: list[Path] = []
     kernels: dict[str, str] = {}
     built_from: dict[str, str] = {}
+    # Under the logical kernel ABI each kernel's pointer order is its own interface's.
+    logical_abi = getattr(abi, "version", 1) == 2
+    argument_roles: dict[str, tuple[str, ...]] = {}
+    grouped = logical_abi and call_buffers is not None
+    group_buffers: dict[str, tuple] = {}
     oc = _objcopy()
     # The selected interface is still checked and emitted for every signature. Two
     # interfaces may nevertheless produce the same LLVM artifact; compile its raw
@@ -709,6 +727,19 @@ def build_device_objects(
             resident = bind_single_resident_matmul(iface, target=device)
             if (resident.m, resident.n, resident.k) != (m, n, k) or resident.dtypes != tuple(dtypes[sym]):
                 raise ValueError(f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision")
+        if grouped:
+            buffers, refusal = logical_buffers(iface)
+            call = (call_buffers or {}).get(sym)
+            if buffers is None or call is None:
+                skipped.append((sym, refusal or "the group rewrite recorded no host call for this symbol"))
+                continue
+            group_buffers[sym] = (buffers, tuple(call))
+        elif logical_abi:
+            roles, refusal = logical_argument_roles(iface)
+            if roles is None:
+                skipped.append((sym, refusal))
+                continue
+            argument_roles[sym] = roles
         ifc = stem.with_suffix(".iface.mlir")
         ifc.write_text(iface, encoding="utf-8")
 
@@ -774,12 +805,17 @@ def build_device_objects(
     if not kernels:
         return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt())
 
-    unit = emit_translation_unit(
-        device,
-        {s: signatures[s] for s in kernels},
-        {s: dtypes.get(s, ()) for s in kernels},
-        kernel_symbol_for=kernels.get,
-        tile_edge=tile_edge,
+    unit = (
+        emit_logical_translation_unit(device, {s: group_buffers[s] for s in kernels}, kernel_symbol_for=kernels.get)
+        if grouped
+        else emit_translation_unit(
+            device,
+            {s: signatures[s] for s in kernels},
+            {s: dtypes.get(s, ()) for s in kernels},
+            kernel_symbol_for=kernels.get,
+            tile_edge=tile_edge,
+            argument_roles=argument_roles if logical_abi else None,
+        )
     )
     if not unit.symbols:
         return DeviceBuild(

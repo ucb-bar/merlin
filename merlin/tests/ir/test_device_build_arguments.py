@@ -54,10 +54,18 @@ def _sidecar(tmp_path):
 
 def test_group_arguments_preserve_every_original_statement(tmp_path):
     rewrite, sidecar = _sidecar(tmp_path)
+    sidecar["call_buffers"] = {
+        "first": [
+            {"role": "activation", "shape": [3, 5], "dtype": "i8"},
+            {"role": "bias", "shape": [7], "dtype": "i32"},
+            {"role": "output", "shape": [3, 7], "dtype": "i8"},
+        ]
+    }
     before = copy.deepcopy(sidecar)
     arguments = DO.build_arguments(sidecar)
     assert arguments["entries"] == rewrite.entries
     assert arguments["signatures"] == rewrite.signatures
+    assert arguments["call_buffers"] == sidecar["call_buffers"]
     assert set(arguments["dtypes"]) == set(rewrite.signatures)
     for symbol, shape in arguments["signatures"].items():
         entry, provenance, refusal = kernel_entry(symbol, shape, arguments["entries"][symbol], rewrite.device)
@@ -114,7 +122,12 @@ def test_nongroup_explicit_statements_keep_existing_behavior(tmp_path):
 
 def test_empty_group_route_has_no_required_statement(tmp_path):
     DO.DeviceRewrite(device="independent_fixture", granularity=DO.BY_GROUP).write_sidecar(tmp_path)
-    assert DO.build_arguments(DO.load_sidecar(tmp_path)) == {"signatures": {}, "dtypes": {}, "entries": {}}
+    assert DO.build_arguments(DO.load_sidecar(tmp_path)) == {
+        "signatures": {},
+        "dtypes": {},
+        "entries": {},
+        "call_buffers": None,
+    }
 
 
 def test_missing_group_statement_refuses_before_package_or_synthesized_entry(tmp_path, monkeypatch):

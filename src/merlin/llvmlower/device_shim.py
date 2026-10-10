@@ -3,8 +3,11 @@
 The host side of an offloaded contraction is an MLIR function call. Its lowered private declaration
 passes a memref as ``(allocated, aligned, offset, sizes..., strides...)`` -- seven scalars for a rank-2
 operand -- but calls the external ``_mlir_ciface_*`` as a result-descriptor pointer followed by one
-pointer per operand descriptor. The device side is the target's own kernel, whose ABI states:
-``void {target}_kernel(weight, lhs_0.., out_0..)``, row-major, edge tiles zero-padded to the tile edge.
+pointer per operand descriptor. The device side is the target's own kernel. Under the logical
+kernel ABI (the default, ``logical_kernel_abi`` in the OOT backend contract) it takes dense row-major
+logical tensors in the order the group's interface declares them; a support that selects the
+version-1 resident ABI (``harness_abi.kernel_abi_version: 1``) gets
+``void {target}_kernel(weight, lhs_0.., out_0..)`` with edge tiles zero-padded to the tile edge.
 Neither side can call the other directly, so something has to unpack one convention into the other.
 That is all this emits.
 
@@ -23,7 +26,8 @@ matrix-unit shim to know which dtypes exist.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Any
 
 __all__ = ["KernelAbi", "ShimUnit", "emit_translation_unit", "emit_dense_translation_unit", "kernel_abi_for"]
 
@@ -156,8 +160,7 @@ merlin_memref_2d {symbol}(
       !merlin_disjoint((void *)a_addr, a_bytes, (void *)c_addr, c_bytes) ||
       !merlin_disjoint((void *)b_addr, b_bytes, (void *)c_addr, c_bytes))
     __builtin_trap();
-  /* arg_order is [the single resident weight] ++ [lhs] ++ [outputs]: the rhs is the weight. */
-  {kernel}((void *)b_addr, (void *)a_addr, (void *)c_addr);
+  {call}
   merlin_memref_2d r;
   r.allocated = c_alloc; r.aligned = c_aligned; r.offset = c_off;
   r.sizes[0] = c_s0; r.sizes[1] = c_s1;
@@ -289,7 +292,7 @@ merlin_memref_3d {symbol}(
 """
 
 #: Direct call, when every extent already sits on the tile edge.
-_BODY_3D_DIRECT = """      {kernel}((void *)src_b, (void *)src_a, (void *)dst_c);"""
+_BODY_3D_DIRECT = """      {kernel}({call_args});"""
 
 #: Staged call, when an extent misses the edge. Same contract as the rank-2 padded entry.
 _BODY_3D_STAGED = """      {{
@@ -339,11 +342,13 @@ def _c_interface_wrapper(symbol: str, rank: int) -> str:
 
 @dataclass(frozen=True)
 class KernelAbi:
-    """The device kernel's symbol and argument order, from the OOT backend contract."""
+    """The device kernel's symbol, argument order and pointee layout under the selected kernel ABI."""
 
     symbol: str
     arg_order: str = ""
     pointee_layout: str = ""
+    #: 2 = the logical ABI (dense logical tensors, interface declaration order); 1 = the resident ABI.
+    version: int = 1
 
 
 @dataclass(frozen=True)
@@ -364,21 +369,112 @@ class ShimUnit:
 def kernel_abi_for(device: str) -> KernelAbi | None:
     """The device's kernel ABI, or None when the contract cannot be read.
 
-    The symbol pattern lives in the shared OOT backend contract rather than here, so a target that
-    names its entry differently changes a declaration and not this emitter.
+    The version is the selected support's (``harness_abi.kernel_abi_version``, default the logical ABI).
+    The symbol pattern lives in the shared contract rather than here, so a target that names its entry
+    differently changes a declaration and not this emitter.
     """
     try:
-        from merlin.targetgen.contract.schemas import render_backend_contract
+        from merlin.targetgen.contract.harness_abi import LEGACY_KERNEL_ABI_VERSION, kernel_abi_version_for
 
-        blk = render_backend_contract(device).get("kernel_abi") or {}
+        if kernel_abi_version_for(device) == LEGACY_KERNEL_ABI_VERSION:
+            from merlin.targetgen.contract.schemas import render_legacy_kernel_abi
+
+            blk = render_legacy_kernel_abi(device)
+            sym = str(blk.get("symbol") or "")
+            if not sym:
+                return None
+            return KernelAbi(
+                symbol=sym,
+                arg_order=str(blk.get("arg_order") or ""),
+                pointee_layout=str(blk.get("pointee_layout") or ""),
+                version=1,
+            )
+        import yaml
+
+        from merlin.targetgen.contract.schemas import render_contract_text
+
+        doc = yaml.safe_load(render_contract_text("mlir_oot_backend_contract.yaml", device)) or {}
+        blk = doc.get("logical_kernel_abi") or {}
         sym = str(blk.get("symbol") or "")
-        if not sym:
+        if not sym or blk.get("version") != 2:
             return None
+        order = blk.get("argument_order") or {}
         return KernelAbi(
-            symbol=sym, arg_order=str(blk.get("arg_order") or ""), pointee_layout=str(blk.get("pointee_layout") or "")
+            symbol=sym,
+            arg_order=" ++ ".join(str(t) for t in order.get("default") or ()),
+            pointee_layout=str((blk.get("pointee") or {}).get("layout") or ""),
+            version=2,
         )
     except Exception:  # noqa: BLE001 -- an unreadable contract is a real answer: decline
         return None
+
+
+#: The three memrefs a shim entry receives from the host call, by role.
+SHIM_ROLES = ("lhs", "rhs", "out")
+#: The version-1 resident ABI's fixed order over those roles: the weight (rhs) first.
+_LEGACY_ROLE_ORDER = ("rhs", "lhs", "out")
+
+
+def _call_args(roles: Sequence[str], names: Mapping[str, str]) -> str:
+    return ", ".join(names[role] for role in roles)
+
+
+#: Operand keys naming a contraction's activation-side and weight-side input, per the command-buffer ABI.
+_LHS_KEYS = ("lhs", "a", "q", "p", "ifm", "src")
+_RHS_KEYS = ("rhs", "w", "k", "v", "weight")
+
+
+def logical_argument_roles(interface: str) -> tuple[tuple[str, ...] | None, str]:
+    """``(roles, "")`` -- the logical kernel ABI's pointer order for one group interface, over
+    :data:`SHIM_ROLES` -- or ``(None, reason)``.
+
+    The order is :func:`merlin.targetgen.contract.harness_render.kernel_arg_order` of the interface,
+    the same order a runner-owned capsule harness passes. Each pointer is then named by the role the
+    host call supplies it in: the contraction's activation-side input (``lhs``), its weight-side input
+    (``rhs``, through a resident handle when the weight is made resident) and the single result
+    (``out``). An interface whose logical pointers are not exactly those three -- a fused bias, a
+    second result -- has no entry this shim can express and is refused, never called with a guess.
+    """
+    from merlin.targetgen.contract import harness_render as HR
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    try:
+        cb = parse_interface_mlir(interface)
+        names = HR.kernel_arg_order(cb)
+    except Exception as exc:  # noqa: BLE001 -- an interface the logical ABI cannot describe is a refusal
+        return None, f"the logical kernel ABI does not resolve this interface ({type(exc).__name__}: {exc})"
+    if len(names) != len(SHIM_ROLES):
+        return None, f"the logical kernel ABI passes {len(names)} pointers ({names}); this shim adapts (lhs, rhs, out)"
+    resident = {
+        (cmd.get("operands") or {}).get("dst"): (cmd.get("operands") or {}).get("src")
+        for cmd in cb.get("commands") or []
+        if cmd.get("opcode") == "RES_PACK"
+    }
+    role_of: dict[str, str] = {}
+    for cmd in cb.get("commands") or []:
+        ops = cmd.get("operands") or {}
+        lhs = next((ops[key] for key in _LHS_KEYS if isinstance(ops.get(key), str)), None)
+        rhs = next((ops[key] for key in _RHS_KEYS if isinstance(ops.get(key), str)), None)
+        if lhs is not None and rhs is not None:
+            role_of = {lhs: "lhs", resident.get(rhs, rhs): "rhs"}
+            break
+    outputs = set(HR.logical_outputs(cb, HR.logical_abi().published_by))
+    role_of.update({name: "out" for name in names if name in outputs})
+    roles = tuple(role_of.get(name, "") for name in names)
+    if sorted(roles) != sorted(SHIM_ROLES):
+        return None, f"the logical pointers {names} are not one activation, one weight and one result"
+    return roles, ""
+
+
+def _entry_call(kernel: str, roles: Sequence[str], *, logical: bool) -> str:
+    """The rank-2 entry's kernel call; the version-1 text is kept byte-identical."""
+    if not logical:
+        return (
+            "/* arg_order is [the single resident weight] ++ [lhs] ++ [outputs]: the rhs is the weight. */\n"
+            f"  {kernel}((void *)b_addr, (void *)a_addr, (void *)c_addr);"
+        )
+    args = _call_args(roles, {"lhs": "(void *)a_addr", "rhs": "(void *)b_addr", "out": "(void *)c_addr"})
+    return f"/* pointer order of the logical kernel ABI for this group: {', '.join(roles)} */\n  {kernel}({args});"
 
 
 def tile_edge_for(device: str) -> int | None:
@@ -529,8 +625,15 @@ def emit_translation_unit(
     *,
     kernel_symbol_for: Callable[[str], str] | None = None,
     tile_edge: int | None = None,
+    argument_roles: Mapping[str, Sequence[str]] | None = None,
 ) -> ShimUnit:
     """One entry per signature, adapting the MLIR ABI to ``device``'s kernel.
+
+    Under the logical kernel ABI (version 2) the kernel takes the dense logical tensors, so no entry
+    stages or pads, and ``argument_roles[symbol]`` gives the kernel's pointer order over
+    :data:`SHIM_ROLES`, resolved from the group's own interface (:func:`logical_argument_roles`). A
+    symbol with no resolved order is DECLINED. Under the version-1 resident ABI the order is fixed
+    (weight first) and edge tiles are staged to the tile edge.
 
     ``signatures`` is ``{symbol: (M, N, K)}``, or ``(B, M, N, K)`` for
     independent dense matrix slices, as minted by the offload rewrite; ``dtypes`` is
@@ -566,7 +669,12 @@ def emit_translation_unit(
             skipped.append((sym, f"sub-byte or unknown element width in {dt}; offset arithmetic would be a guess"))
             continue
         batch, (m, n, k) = (None, key) if len(key) == 3 else (key[0], key[1:])
-        edge = tile_edge if tile_edge is not None else tile_edge_for(device)
+        logical = getattr(abi, "version", 1) == 2
+        roles = tuple((argument_roles or {}).get(sym) or ()) if logical else _LEGACY_ROLE_ORDER
+        if sorted(roles) != sorted(SHIM_ROLES):
+            skipped.append((sym, "no logical kernel argument order over (lhs, rhs, out) was resolved for this symbol"))
+            continue
+        edge = 1 if logical else (tile_edge if tile_edge is not None else tile_edge_for(device))
         if not edge:
             # Without the edge we cannot know whether this entry needs staging, and emitting the
             # unpadded form "because we did not find out" is the exact failure that produced a model
@@ -597,6 +705,8 @@ def emit_translation_unit(
             lhs_bytes=widths[0],
             rhs_bytes=widths[1],
             out_bytes=widths[2],
+            call_args=_call_args(roles, {"lhs": "(void *)src_a", "rhs": "(void *)src_b", "out": "(void *)dst_c"}),
+            call=_entry_call(kernel_for(sym), roles, logical=logical),
         )
         if batch is None:
             entries.append((_ENTRY_2D_PADDED if needs_pad else _ENTRY_2D).format(edge=int(edge), **shape))
@@ -622,7 +732,12 @@ def emit_translation_unit(
         emitted.append(sym)
 
     kernels = sorted({kernel_for(sym) for sym in emitted})
-    externs = "\n".join(f"extern void {k}(void *weight, void *lhs_0, void *out_0);" for k in kernels)
+    params = (
+        "void *arg_0, void *arg_1, void *arg_2"
+        if getattr(abi, "version", 1) == 2
+        else "void *weight, void *lhs_0, void *out_0"
+    )
+    externs = "\n".join(f"extern void {k}({params});" for k in kernels)
     pointer_guard = _RANK2_POINTER_GUARD
     text = (
         _PREAMBLE.format(
@@ -634,3 +749,265 @@ def emit_translation_unit(
     return ShimUnit(
         text=text, symbols=tuple(emitted), kernel=abi.symbol, kernels=tuple(kernels), skipped=tuple(skipped)
     )
+
+
+# ------------------------------------------------------------------ the logical ABI's general entry
+@dataclass(frozen=True)
+class LogicalBuffer:
+    """One pointer of a kernel's logical interface: its name, direction, host role, shape and dtype.
+
+    ``role`` is how the host call supplies it: ``input_<k>`` / ``weight_<k>`` / ``bias_<k>`` (the
+    interface's own tensor roles, numbered in order) and ``out_<k>`` (the k-th result). A role the host
+    call does not carry is a value with no host source."""
+
+    name: str
+    kind: str
+    role: str
+    shape: tuple[int, ...]
+    dtype: str
+
+
+def logical_buffers(interface: str) -> tuple[tuple[LogicalBuffer, ...] | None, str]:
+    """``(buffers in kernel_arg_order, "")`` for one interface, or ``(None, reason)``.
+
+    The order, shapes and dtypes are :func:`merlin.targetgen.contract.harness_render.logical_interface`'s
+    -- what a runner-owned capsule harness passes. Inputs are numbered within their declared role;
+    activations (role ``input``) in the order the commands read them (a contraction's left operand
+    first), weights and biases in declaration order; results in result order.
+    """
+    from merlin.targetgen.contract import harness_render as HR
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    try:
+        cb = parse_interface_mlir(interface)
+        ordered = HR.logical_interface(cb, HR.logical_abi())
+    except Exception as exc:  # noqa: BLE001 -- an interface the logical ABI cannot describe is a refusal
+        return None, f"the logical kernel ABI does not resolve this interface ({type(exc).__name__}: {exc})"
+    tensors = cb.get("tensors") or {}
+    resident = {
+        (cmd.get("operands") or {}).get("dst"): (cmd.get("operands") or {}).get("src")
+        for cmd in cb.get("commands") or []
+        if cmd.get("opcode") == "RES_PACK"
+    }
+    read_order: list[str] = []
+    for cmd in cb.get("commands") or []:
+        ops = cmd.get("operands") or {}
+        for key in (*_LHS_KEYS, *_RHS_KEYS):
+            value = ops.get(key)
+            value = resident.get(value, value) if isinstance(value, str) else None
+            if value is not None and value not in read_order:
+                read_order.append(value)
+    counters: dict[str, int] = {}
+    position = {name: index for index, name in enumerate(read_order)}
+    inputs = sorted(
+        (b.name for b in ordered if b.kind == "input" and (tensors.get(b.name) or {}).get("role", "input") == "input"),
+        key=lambda name: position.get(name, len(position)),
+    )
+    role_of = {name: f"input_{index}" for index, name in enumerate(inputs)}
+    out: list[LogicalBuffer] = []
+    for buffer in ordered:
+        if buffer.kind not in ("input", "output"):
+            return None, f"interface value {buffer.name!r} is {buffer.kind}; a group call passes inputs and results"
+        if buffer.kind == "output":
+            role = f"out_{counters.get('out', 0)}"
+            counters["out"] = counters.get("out", 0) + 1
+        elif buffer.name in role_of:
+            role = role_of[buffer.name]
+        else:
+            declared = str((tensors.get(buffer.name) or {}).get("role") or "input")
+            role = f"{declared}_{counters.get(declared, 0)}"
+            counters[declared] = counters.get(declared, 0) + 1
+        if _elem_bytes(buffer.dtype) is None:
+            return None, f"interface value {buffer.name!r} has a sub-byte or unknown element type {buffer.dtype!r}"
+        out.append(
+            LogicalBuffer(
+                name=buffer.name,
+                kind=buffer.kind,
+                role=role,
+                shape=tuple(int(v) for v in buffer.shape),
+                dtype=buffer.dtype,
+            )
+        )
+    return tuple(out), ""
+
+
+def _memref_typedef(rank: int) -> str:
+    if rank == 0:
+        return "typedef struct { void *allocated; void *aligned; intptr_t offset; } merlin_lmemref_0d;"
+    return (
+        f"typedef struct {{ void *allocated; void *aligned; intptr_t offset; intptr_t sizes[{rank}]; "
+        f"intptr_t strides[{rank}]; }} merlin_lmemref_{rank}d;"
+    )
+
+
+def _logical_entry(
+    symbol: str,
+    kernel: str,
+    call: Sequence[LogicalBuffer],
+    order: Sequence[LogicalBuffer],
+    batch: int | None = None,
+) -> str:
+    """The expanded-memref entry for one call, plus its C-interface wrapper.
+
+    Parameters arrive in the HOST CALL's order (``call`` carries the host shapes); the kernel is called
+    in the logical ABI's order. Every buffer is checked against its shape (a contradiction returns an
+    empty result rather than reaching the kernel) and must be dense row-major (otherwise trap), and no
+    result may overlap another buffer. With ``batch`` every host buffer is ``batch`` disjoint slices of
+    the kernel's logical tensor, and the kernel is called once per slice."""
+    params: list[str] = []
+    shape_checks: list[str] = []
+    stride_checks: list[str] = []
+    spans: list[str] = []
+    voids: list[str] = []
+    for index, buf in enumerate(call):
+        p = f"p{index}"
+        rank = len(buf.shape)
+        params += [f"void *{p}_alloc", f"void *{p}_aligned", f"intptr_t {p}_off"]
+        params += [f"intptr_t {p}_s{d}" for d in range(rank)] + [f"intptr_t {p}_st{d}" for d in range(rank)]
+        pitch = 1
+        for d in reversed(range(rank)):
+            shape_checks.append(f"{p}_s{d} != {buf.shape[d]}")
+            stride_checks.append(f"{p}_st{d} != {pitch}")
+            pitch *= buf.shape[d]
+        rows = 1
+        for extent in buf.shape[:-1]:
+            rows *= extent
+        cols = buf.shape[-1] if rank else 1
+        spans.append(
+            f"!merlin_span({p}_aligned, {p}_off, {rows}, {cols}, {_elem_bytes(buf.dtype)}u, &{p}_addr, &{p}_bytes)"
+        )
+        voids.append(f"(void){p}_alloc;")
+    index_of = {buf.role: index for index, buf in enumerate(call)}
+    outputs = [index for index, buf in enumerate(call) if buf.kind == "output"]
+    disjoint = [
+        f"!merlin_disjoint((void *)p{o}_addr, p{o}_bytes, (void *)p{other}_addr, p{other}_bytes)"
+        for o in outputs
+        for other in range(len(call))
+        if other != o and not (call[other].kind == "output" and other < o)
+    ]
+    single = len(outputs) == 1
+    result_t = f"merlin_lmemref_{len(call[outputs[0]].shape)}d" if single else f"{symbol}_results"
+    lines: list[str] = []
+    if not single:
+        fields = " ".join(f"merlin_lmemref_{len(call[o].shape)}d r{k};" for k, o in enumerate(outputs))
+        lines.append(f"typedef struct {{ {fields} }} {symbol}_results;")
+    addr_decl = ", ".join(f"p{i}_addr, p{i}_bytes" for i in range(len(call)))
+    lines.append(f"/* {symbol}: logical kernel ABI, pointer order {', '.join(b.name for b in order)}. */")
+    lines.append(f"{result_t} {symbol}(\n    " + ",\n    ".join(params) + ")\n{")
+    lines.append(f"  {result_t} r;\n  memset(&r, 0, sizeof r);")
+    if shape_checks:
+        lines.append(f"  if ({' || '.join(shape_checks)}) return r;")
+        lines.append(f"  if ({' || '.join(stride_checks)}) __builtin_trap();")
+    lines.append("  " + " ".join(voids))
+    lines.append(f"  uintptr_t {addr_decl};")
+    guard = " ||\n      ".join(spans + disjoint)
+    lines.append(f"  if ({guard})\n    __builtin_trap();")
+    if batch is None:
+        args = ", ".join(f"(void *)p{index_of[buf.role]}_addr" for buf in order)
+        lines.append(f"  {kernel}({args});")
+    else:
+        args = ", ".join(
+            f"(void *)(p{index_of[buf.role]}_addr + (uintptr_t)slice * (p{index_of[buf.role]}_bytes / {batch}u))"
+            for buf in order
+        )
+        lines.append(f"  for (long slice = 0; slice < {batch}; ++slice)\n    {kernel}({args});")
+    for k, o in enumerate(outputs):
+        target = "r" if single else f"r.r{k}"
+        lines.append(f"  {target}.allocated = p{o}_alloc; {target}.aligned = p{o}_aligned; {target}.offset = p{o}_off;")
+        for d in range(len(call[o].shape)):
+            lines.append(f"  {target}.sizes[{d}] = p{o}_s{d}; {target}.strides[{d}] = p{o}_st{d};")
+    lines.append("  return r;\n}")
+    descriptors = ", ".join(f"const merlin_lmemref_{len(buf.shape)}d *d{i}" for i, buf in enumerate(call))
+    fields: list[str] = []
+    for i, buf in enumerate(call):
+        fields += [f"d{i}->allocated", f"d{i}->aligned", f"d{i}->offset"]
+        fields += [f"d{i}->sizes[{d}]" for d in range(len(buf.shape))]
+        fields += [f"d{i}->strides[{d}]" for d in range(len(buf.shape))]
+    lines.append(
+        f"void _mlir_ciface_{symbol}({result_t} *result, {descriptors})\n"
+        f"{{\n  *result = {symbol}(\n      " + ",\n      ".join(fields) + ");\n}"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def emit_logical_translation_unit(
+    device: str,
+    symbols: Mapping[str, tuple[Sequence[LogicalBuffer], Sequence[Mapping[str, Any]]]],
+    *,
+    kernel_symbol_for: Callable[[str], str],
+) -> ShimUnit:
+    """One entry per symbol, passing EVERY pointer of the kernel's logical interface.
+
+    ``symbols[s] = (buffers, call)``: the kernel's logical buffers (:func:`logical_buffers`, kernel
+    order) and the host call's operands in call order, each ``{"role", "shape", "dtype"}`` -- what the
+    rewrite that minted the call supplies (activation, stored weight, folded bias, destinations). Each
+    buffer is matched to the call operand with its role; an interface value no operand supplies, or one
+    whose host operand has another shape or dtype, is DECLINED by name, never called with a guess.
+    """
+    entries: list[str] = []
+    emitted: list[str] = []
+    skipped: list[tuple[str, str]] = []
+    ranks: set[int] = set()
+    kernels: dict[str, int] = {}
+    for sym in sorted(symbols):
+        buffers, call = symbols[sym]
+        by_role = {buf.role: buf for buf in buffers}
+        supplied = {str(op.get("role")): op for op in call}
+        missing = [buf for buf in buffers if buf.role not in supplied]
+        if missing:
+            skipped.append(
+                (sym, "; ".join(f"interface value {b.name!r} ({b.role}) has no host source" for b in missing))
+            )
+            continue
+        extra = [role for role in supplied if role not in by_role]
+        if extra or len(supplied) != len(call):
+            skipped.append(
+                (sym, f"the host call passes {sorted(extra) or 'duplicate'} roles the interface does not take")
+            )
+            continue
+        host = {r: tuple(int(v) for v in op.get("shape") or ()) for r, op in supplied.items()}
+        # A BATCH IS A LOOP over disjoint slices: every host buffer is the same count of the kernel's
+        # logical tensor, so the shim calls the one per-slice kernel once per slice.
+        leading = {shape[0] for r, shape in host.items() if len(shape) == len(by_role[r].shape) + 1}
+        batch = (
+            next(iter(leading))
+            if len(leading) == 1
+            and all(
+                len(shape) == len(by_role[r].shape) + 1 and shape[1:] == by_role[r].shape for r, shape in host.items()
+            )
+            else None
+        )
+        disagree = [
+            f"interface value {by_role[r].name!r} is {list(by_role[r].shape)} {by_role[r].dtype}, "
+            f"the host supplies {list(host[r])} {op.get('dtype')}"
+            for r, op in supplied.items()
+            if (batch is None and host[r] != by_role[r].shape) or str(op.get("dtype")) != by_role[r].dtype
+        ]
+        if disagree:
+            skipped.append((sym, "; ".join(disagree)))
+            continue
+        if not any(buf.kind == "output" for buf in buffers):
+            skipped.append((sym, "the interface declares no result"))
+            continue
+        call_buffers = [replace(by_role[str(op["role"])], shape=host[str(op["role"])]) for op in call]
+        ranks.update(len(buf.shape) for buf in call_buffers)
+        kernel = kernel_symbol_for(sym)
+        kernels[kernel] = len(buffers)
+        entries.append(_logical_entry(sym, kernel, call_buffers, buffers, batch))
+        emitted.append(sym)
+    if not emitted:
+        return ShimUnit(text="", skipped=tuple(skipped))
+    typedefs = "\n".join(_memref_typedef(rank) for rank in sorted(ranks))
+    externs = "\n".join(
+        f"extern void {k}({', '.join(f'void *arg_{i}' for i in range(n))});" for k, n in sorted(kernels.items())
+    )
+    text = (
+        f"/* Generated by merlin.llvmlower.device_shim for device {device!r} (logical kernel ABI). Do not edit.\n"
+        " * Each entry hands the kernel every pointer of its logical interface, dense row-major, in the\n"
+        " * interface's own order; the kernels are supplied by the archive. */\n"
+        "#include <stdint.h>\n#include <string.h>\n\n"
+        f"{typedefs}\n{_RANK2_POINTER_GUARD}\n{externs}\n\n"
+        + "\n".join(entries)
+        + f"/* {len(emitted)} entry point(s) emitted. */\n"
+    )
+    return ShimUnit(text=text, symbols=tuple(emitted), kernels=tuple(sorted(kernels)), skipped=tuple(skipped))

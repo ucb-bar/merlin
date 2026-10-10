@@ -22,6 +22,7 @@ running a third of its layers on the device read exactly like one running all of
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.common import mlir_query as mq
 from merlin.llvmlower import group_offload as GO
@@ -390,6 +391,37 @@ def test_the_two_ways_a_kernel_can_be_built_are_named_apart() -> None:
 # ------------------------------------------------- the rewrite: the group becomes the device call
 
 
+def _capture(directory, shapes: dict) -> object:
+    """A capture beside which the route finds a weights manifest and its tensors (the prepack's input).
+
+    ``shapes`` maps each stored model argument, in argument order from 1, to its shape: 2-D int8
+    weights and 1-D float biases (multiples of the folded scale, so the fold is exact)."""
+    import json
+    import struct
+
+    import numpy as np
+
+    directory.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(0)
+    header, payload, manifest = {}, b"", {"0": {"kind": "input"}}
+    for index, (name, shape) in enumerate(shapes.items(), start=1):
+        if len(shape) == 2:
+            array, spelled = rng.integers(-8, 8, shape).astype(np.int8), "I8"
+        else:
+            array, spelled = (rng.integers(-8, 8, shape) * 0.25).astype(np.float32), "F32"
+        raw = array.tobytes()
+        header[name] = {"dtype": spelled, "shape": list(shape), "data_offsets": [len(payload), len(payload) + len(raw)]}
+        payload += raw
+        manifest[str(index)] = {"kind": "weight", "weight": name}
+    blob = json.dumps(header).encode()
+    (directory / "model.safetensors").write_bytes(struct.pack("<Q", len(blob)) + blob + payload)
+    (directory / "model.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return directory / "model.mlir"
+
+
+_TWO_LAYER_STORED = {"wa": (8, 16), "biasa": (16,), "wb": (16, 32), "biasb": (32,), "biasr": (4,)}
+
+
 def _rewritten(text: str, **kw):
     """The module after the whole-program rewrite, with what it routed and what it refused."""
     from merlin.common.ir_lock import IR_LOCK
@@ -406,14 +438,14 @@ def _rewritten(text: str, **kw):
         return rewrite, to_text(module)
 
 
-def test_each_closed_group_becomes_exactly_one_device_call_and_the_layer_leaves_the_host() -> None:
+def test_each_closed_group_becomes_exactly_one_device_call_and_the_layer_leaves_the_host(tmp_path) -> None:
     """The route the phase-2 loop needs: the model's own text no longer contains the layers.
 
     Counting the calls is not enough on its own -- a rewrite that added calls and left the linalg in
     place would pass that -- so the contraction, its bias, its activation and its requantize are all
     asserted GONE from the driver.
     """
-    rewrite, text = _rewritten(_two_layers())
+    rewrite, text = _rewritten(_two_layers(), capture=_capture(tmp_path, _TWO_LAYER_STORED))
     assert rewrite.moved == 2, rewrite.skipped
     assert rewrite.granularity == "group"
     assert text.count("func.call @merlin_dev_") == 2
@@ -422,18 +454,29 @@ def test_each_closed_group_becomes_exactly_one_device_call_and_the_layer_leaves_
     assert "arith.maximumf" not in text, "the activation stayed on the host"
 
 
-def test_the_call_takes_the_stored_integers_and_commits_the_integer_the_layer_does() -> None:
-    """(activation, stored tensor, destination) in the device's own precision.
+def test_the_call_takes_the_stored_integers_and_commits_the_integer_the_layer_does(tmp_path) -> None:
+    """(activation, stored tensor, folded bias, destination) in the device's own precision.
 
-    The group READS its scale splats and zero points too, and a call carrying those would declare a
-    callee no kernel ABI can define. What the device is handed is what its stated program names.
+    The group READS its scale splats and zero points too; the scale is baked into the stated program,
+    so a call carrying them would declare a callee no kernel ABI can define. Under the logical kernel
+    ABI the call passes every pointer the kernel's interface declares: the bias, folded into the
+    accumulator's integer domain, is one of them.
     """
-    rewrite, text = _rewritten(_two_layers())
+    rewrite, text = _rewritten(_two_layers(), capture=_capture(tmp_path, _TWO_LAYER_STORED))
     for routed in rewrite.routed:
-        assert rewrite.arg_access[routed.symbol] == ("read", "read", "write")
+        assert rewrite.arg_access[routed.symbol] == ("read", "read", "read", "write")
+        assert [op["role"] for op in rewrite.call_buffers[routed.symbol]] == ["input_0", "weight_0", "bias_0", "out_0"]
         assert routed.dtypes == ("i8", "i8", "i8"), "the call must carry the integer datapath, not the capture's f32"
         assert routed.group is not None
-    assert "(tensor<4x8xi8>, tensor<8x16xi8>, tensor<4x16xi8>) -> tensor<4x16xi8>" in text
+    assert "(tensor<4x8xi8>, tensor<8x16xi8>, tensor<16xi32>, tensor<4x16xi8>) -> tensor<4x16xi8>" in text
+
+
+@selected_driver.requires_support(_TARGET)
+def test_a_bias_with_no_host_source_is_declined_by_name() -> None:
+    """Without the capture's weights there is no folded bias to pass, and the group says so."""
+    rewrite, _text = _rewritten(_two_layers())
+    assert rewrite.moved == 0
+    assert all("interface value bias_0 has no host source" in why for _name, why in rewrite.skipped), rewrite.skipped
 
 
 def test_the_entries_the_rewrite_records_carry_the_layers_epilogue_and_multiplier() -> None:
@@ -447,7 +490,7 @@ def test_the_entries_the_rewrite_records_carry_the_layers_epilogue_and_multiplie
     assert all(program["entry"]["op"] == "matmul" for program in rewrite.programs.values())
 
 
-def test_a_group_that_escapes_as_a_float_is_refused_by_name_rather_than_routed() -> None:
+def test_a_group_that_escapes_as_a_float_is_refused_by_name_rather_than_routed(tmp_path) -> None:
     """An integer kernel cannot produce the capture's float accumulation.
 
     Measured on the public `SY_micro_model` capsule: all four of its device groups stop at the
@@ -470,12 +513,13 @@ def test_a_group_that_escapes_as_a_float_is_refused_by_name_rather_than_routed()
             "}",
         ]
     )
-    rewrite, _out = _rewritten(text)
+    stored = {"wa": (8, 16), "biasa": (16,), "wb": (16, 32), "biasb": (32,)}
+    rewrite, _out = _rewritten(text, capture=_capture(tmp_path, stored))
     assert rewrite.moved == 1, "only the layer that still commits an integer may move"
     assert any("escapes as a float" in why for _name, why in rewrite.skipped), rewrite.skipped
 
 
-def test_two_layers_asking_for_the_same_program_share_one_device_kernel() -> None:
+def test_two_layers_asking_for_the_same_program_share_one_device_kernel(tmp_path) -> None:
     """Two calls, one symbol. A route that minted a symbol per CALL SITE would build the same kernel
     twice, put both in the archive, and price the model as if it needed two."""
     text = "\n".join(
@@ -493,7 +537,8 @@ def test_two_layers_asking_for_the_same_program_share_one_device_kernel() -> Non
             "}",
         ]
     )
-    rewrite, out = _rewritten(text)
+    stored = {"wa": (8, 8), "biasa": (8,), "wb": (8, 8), "biasb": (8,)}
+    rewrite, out = _rewritten(text, capture=_capture(tmp_path, stored))
     assert rewrite.moved == 2, rewrite.skipped
     assert out.count("func.call @merlin_dev_") == 2
     assert len(rewrite.signatures) == 1, f"the same program was given {len(rewrite.signatures)} kernels"
@@ -540,6 +585,7 @@ def test_the_sidecar_hands_the_build_the_statements_and_not_only_the_signatures(
             granularity=BY_GROUP,
             weight_args=_WEIGHT_ARGS,
             model="two_layer",
+            capture=_capture(tmp_path / "capture", _TWO_LAYER_STORED),
         )
     assert rewrite.moved == 2, rewrite.skipped
     sidecar = load_sidecar(tmp_path)
@@ -549,7 +595,9 @@ def test_the_sidecar_hands_the_build_the_statements_and_not_only_the_signatures(
     assert all(entry["epilogue"] == ["bias_add", "acc_scale", "relu"] for entry in arguments["entries"].values())
     # The printer drops arg_attrs from a bodyless declaration; the seam patches them back, and a
     # declaration without them makes one-shot-bufferize copy the weight operand of every layer.
-    assert prepared.read_text(encoding="utf-8").count("bufferization.access") == 3 * len(rewrite.signatures)
+    # Under the logical kernel ABI each call also passes its folded bias: four accesses per callee.
+    assert prepared.read_text(encoding="utf-8").count("bufferization.access") == 4 * len(rewrite.signatures)
+    assert arguments["call_buffers"] == rewrite.call_buffers
 
 
 def test_a_contraction_sidecar_states_no_program_and_says_so_rather_than_an_empty_one(tmp_path) -> None:
