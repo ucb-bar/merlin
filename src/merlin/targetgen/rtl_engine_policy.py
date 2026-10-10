@@ -507,6 +507,29 @@ def capsule_worker_cap(engine: str) -> int:
 
 
 @contextmanager
+def _gsim_cpu_slot(index: int):
+    """Pin this native-launch thread and its children to one operator-selected CPU."""
+    raw = os.environ.get("MERLIN_GSIM_CPUS", "").strip()
+    if not raw:
+        yield
+        return
+    tokens = raw.split(",")
+    if any(not token.isdecimal() for token in tokens):
+        raise ValueError("MERLIN_GSIM_CPUS requires a comma-separated CPU roster")
+    cpus = tuple(int(token) for token in tokens)
+    if len(set(cpus)) != len(cpus) or len(cpus) < CAPSULE_WORKER_CAP["gsim"]:
+        raise ValueError("MERLIN_GSIM_CPUS requires a distinct CPU for every configured slot")
+    original = os.sched_getaffinity(0)
+    try:
+        os.sched_setaffinity(0, {cpus[index]})
+        if os.sched_getaffinity(0) != {cpus[index]}:
+            raise RuntimeError("selected GSim CPU is unavailable in the process CPU partition")
+        yield
+    finally:
+        os.sched_setaffinity(0, original)
+
+
+@contextmanager
 def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
     """Hold one of five same-user GSim slots for the entire native simulation.
 
@@ -519,7 +542,8 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
     forked children acquire their own; do not launch concurrent children inside one slot.
     Ambiguous multi-slot ownership can conservatively reduce utilization below five.
     """
-    root = slot_root or Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}"
+    selected_root = os.environ.get("MERLIN_GSIM_SLOT_ROOT", "").strip()
+    root = slot_root or (Path(selected_root) if selected_root else Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}")
     root.mkdir(mode=0o700, parents=False, exist_ok=True)
     info = root.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -565,7 +589,8 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                     raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
                 time.sleep(0.1)
         held[key] = fd
-        yield
+        with _gsim_cpu_slot(index):
+            yield
     finally:
         if fd is not None and os.getpid() == owner_pid:
             held.pop(key, None)

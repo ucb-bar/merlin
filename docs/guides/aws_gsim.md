@@ -259,3 +259,13 @@ authentication and a successful Bubblewrap user/network-namespace isolation chec
 network isolation to bypass a failing check. Chia execution requires Merlin's managed-worker cleanup
 contract, not an arbitrary unmanaged host. Re-run these checks on the actual AWS worker before
 launching experiments; local relocation checks do not qualify a different operating system or host.
+
+For a dedicated CPU partition, set `MERLIN_GSIM_MAX_SLOTS` to the desired
+concurrency and `MERLIN_GSIM_CPUS` to a comma-separated roster containing one
+distinct CPU per slot. Each native-launch thread and its children use that
+slot's CPU; the caller's affinity is restored after execution or failure.
+Reserve these CPUs separately from authoring/build CPUs through host CPU
+partitioning; affinity alone does not exclude unrelated workloads.
+`MERLIN_GSIM_SLOT_ROOT` can select an existing-parent, private task-local lock
+directory. Keep the same selection across all experiment workers. These controls
+allocate capacity; actual concurrency depends on ready grading work.
