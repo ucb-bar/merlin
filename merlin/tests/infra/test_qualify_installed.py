@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -279,6 +280,7 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         *((suite, False) for suite in Q.SUITES),
         ("compile-only", True),
         ("component-convergence", True),
+        ("original-pointwise-host", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -298,6 +300,11 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
+        if suite == "original-pointwise-host" and native:
+            assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
+            assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
+            assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")
+            assert self.environment["MERLIN_M2M_DIR"] == str(frontend)
         if label == "resource-manifest":
             Path(stdout).write_text('{"files": []}')
         elif label == "source-archive":
@@ -324,20 +331,23 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             (directory / ("fixture.tar.gz" if label.endswith("-sdist") else "fixture.whl")).write_bytes(b"artifact")
         elif label == "freeze":
             Path(stdout).write_text("pytest==synthetic\n")
-        elif label == "tests" and native:
+        elif label == "tests" and (native or Q.SUITES[suite].get("mandatory_test_report")):
             from xml.etree import ElementTree as ET
 
             # Synthetic orchestration fixture, never a native qualification.
             xml = ET.Element("testsuites")
             selected = ET.SubElement(xml, "testsuite")
-            for name in Q.SUITES[suite]["native_test_files"]:
+            members = Q.SUITES[suite].get("native_test_cases") or tuple(
+                (name, "test_synthetic_pipeline") for name in Q.SUITES[suite]["native_test_files"]
+            )
+            for name, method in members:
                 ET.SubElement(
                     selected,
                     "testcase",
                     {
                         "file": name,
                         "classname": Path(name).with_suffix("").as_posix().replace("/", "."),
-                        "name": "test_synthetic_pipeline",
+                        "name": method,
                     },
                 )
             if suite == "component-convergence":
@@ -355,12 +365,40 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     monkeypatch.setattr(Q.Recorder, "run", run)
     selections = []
+    sources = []
     if native:
         for name in Q.SUITES[suite]["native_tools"]:
             tool = tmp_path / name
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
             selections.append(name + "=" + str(tool))
+        if suite == "original-pointwise-host":
+            frontend = tmp_path / "frontend"
+            (frontend / "m2m").mkdir(parents=True)
+            (frontend / "m2m/__init__.py").write_text("# owned source identity fixture\n")
+            (frontend / "pyproject.toml").write_text('[project]\nname="owned-control"\nversion="0"\n')
+            environment = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+            for argv in (
+                ["git", "init", "-q", frontend],
+                ["git", "-C", frontend, "add", "."],
+                [
+                    "git",
+                    "-C",
+                    frontend,
+                    "-c",
+                    "user.name=Control",
+                    "-c",
+                    "user.email=control@example.invalid",
+                    "commit",
+                    "-qm",
+                    "source",
+                ],
+            ):
+                subprocess.run(argv, env=environment, check=True, capture_output=True)
+            selected_commit = (
+                subprocess.check_output(["git", "-C", frontend, "rev-parse", "HEAD"], env=environment).decode().strip()
+            )
+            sources.append("m2m=" + str(frontend) + "@" + selected_commit)
     success = Q.qualify(
         repo_root(),
         output,
@@ -370,6 +408,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         requested_ref="named-ref",
         invocation=["synthetic"],
         native_tools=selections,
+        native_sources=sources,
     )
     report = json.loads((output / "report.json").read_text())
     assert report["requested_ref"] == "named-ref" and report["ref"] == "b" * 40
@@ -402,17 +441,27 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     archive_command = dict(calls)["source-archive"]
     assert archive_command[:4] == ["git", "archive", "--format=tar", "b" * 40]
     for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
-        assert report["tests_root"] + "/" + name in archive_command
-        assert report["tests_root"] + "/" + name in report["source_files"]
+        member = (Path(report["tests_root"]) / name).as_posix()
+        assert member in archive_command
+        assert member in report["source_files"]
         # Tests are copied from the selected commit archive, never the live checkout.
         assert (external / "qualification-tests" / name).read_text() == "# committed synthetic test\n"
-    assert dict(calls)["tests"][-1] == str(external / "qualification-tests")
+    expected_tests = (
+        [str(external / "qualification-tests" / name) for name in Q.SUITES[suite]["tests"]]
+        if Q.SUITES[suite].get("collect_selected_tests")
+        else [str(external / "qualification-tests")]
+    )
+    assert dict(calls)["tests"][-len(expected_tests) :] == expected_tests
     test_command = dict(calls)["tests"]
-    assert ("--junitxml" in test_command) is native
-    if native:
+    mandatory_report = native or bool(Q.SUITES[suite].get("mandatory_test_report"))
+    assert ("--junitxml" in test_command) is mandatory_report
+    if mandatory_report:
         assert test_command[test_command.index("--rootdir") + 1] == str(external / "qualification-tests")
         assert "junit_family=xunit1" in test_command
-        assert report["native_test_counts"] == {"tests": len(Q.SUITES[suite]["native_test_files"]), "skipped": 0}
+        assert report["native_test_counts"] == {
+            "tests": len(Q.SUITES[suite].get("native_test_cases") or Q.SUITES[suite]["native_test_files"]),
+            "skipped": 0,
+        }
         assert report["missing_native_test_files"] == []
         assert report["native_zero_skip_scope"] == "declared_native_test_files"
         assert report["other_test_counts"]["skipped"] == int(suite == "component-convergence")
