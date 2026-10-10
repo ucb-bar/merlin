@@ -1,6 +1,6 @@
 """Public typed LLVM parsing with preserved upstream optimization metadata.
 
-Extend only missing standard loop/TBAA properties on local operation classes.
+Extend missing standard LLVM annotations on local operation classes.
 Original xDSL operand, successor and custom checks still run. Metadata payloads
 remain opaque: the stock compiler verifier owns their internal vocabulary;
 these annotations never establish numerical or transformation correctness.
@@ -83,10 +83,15 @@ _OPERATIONS = {
     llvm.LoadOp: _annotated_operation(llvm.LoadOp, "tbaa", BaseAttr(ArrayAttr), "llvm.tbaa_tag"),
     llvm.StoreOp: _annotated_operation(llvm.StoreOp, "tbaa", BaseAttr(ArrayAttr), "llvm.tbaa_tag"),
     llvm.FuncOp: _annotated_operation(
-        _annotated_operation(llvm.FuncOp, "dso_local", BaseAttr(UnitAttr), "builtin.unit"),
-        "nobuiltins",
-        BaseAttr(ArrayAttr),
-        "builtin.string_array",
+        _annotated_operation(
+            _annotated_operation(llvm.FuncOp, "dso_local", BaseAttr(UnitAttr), "builtin.unit"),
+            "nobuiltins",
+            BaseAttr(ArrayAttr),
+            "builtin.string_array",
+        ),
+        "memory_effects",
+        BaseAttr(UnregisteredAttr),
+        "llvm.memory_effects",
     ),
     llvm.TruncOp: _annotated_operation(
         llvm.TruncOp, "overflowFlags", BaseAttr(llvm.OverflowAttr) | IntegerAttr.constr(type=IntegerType(32)), None

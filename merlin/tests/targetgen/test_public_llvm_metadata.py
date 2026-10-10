@@ -147,3 +147,59 @@ def test_nobuiltins_preserves_selected_llvm_function_semantics_and_typed_schema(
     ):
         with pytest.raises(Exception):
             Parser(make_llvm_context(), wrong).parse_module().verify()
+
+
+def _function_effects(annotation="#llvm.memory_effects<other = none, argMem = none>"):
+    return f"""module {{
+      "llvm.func"() <{{sym_name = "external_function", function_type = !llvm.func<f32 (f32)>,
+        memory_effects = {annotation}, CConv = #llvm.cconv<ccc>,
+        linkage = #llvm.linkage<external>}}> ({{}}) : () -> ()
+      llvm.func @entry(%a: !llvm.ptr, %b: !llvm.ptr) {{ llvm.return }}
+    }}"""
+
+
+def test_function_memory_effects_roundtrip_without_mutating_upstream_schema():
+    from xdsl.context import Context
+    from xdsl.dialects import builtin, llvm
+
+    from merlin.targetgen.contract.compile_only import require_pointer_entry
+
+    text = _function_effects()
+    module = Parser(make_llvm_context(), text).parse_module()
+    before = str(module)
+    module.verify()
+    assert str(module) == before
+    function = next(op for op in module.walk() if op.name == "llvm.func")
+    metadata = function.properties["memory_effects"]
+    assert metadata.attr_name.data == "llvm.memory_effects"
+    assert metadata.value.data == "other = none, argMem = none"
+    reparsed = Parser(make_llvm_context(), before).parse_module()
+    reparsed.verify()
+    assert str(reparsed) == before
+    require_pointer_entry(text, entry_symbol="entry", pointer_arity=2)
+    original = Context(allow_unregistered=True)
+    original.load_dialect(builtin.Builtin)
+    original.load_dialect(llvm.LLVM)
+    with pytest.raises(Exception, match="memory_effects"):
+        Parser(original, text).parse_module().verify()
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ['"not effects metadata"', "#other.effects<none>", "#llvm.loop_annotation<mustProgress = true>"],
+)
+def test_function_memory_effects_requires_its_standard_metadata_kind(annotation):
+    with pytest.raises(Exception):
+        Parser(make_llvm_context(), _function_effects(annotation)).parse_module().verify()
+
+
+def test_function_memory_effects_keeps_original_body_and_property_checks():
+    text = _function_effects()
+    for invalid in (
+        text.replace("memory_effects =", "unknown_property ="),
+        text.replace("%a: !llvm.ptr", "%a: i64"),
+    ):
+        from merlin.targetgen.contract.compile_only import require_pointer_entry
+
+        with pytest.raises(ValueError):
+            require_pointer_entry(invalid, entry_symbol="entry", pointer_arity=2)
