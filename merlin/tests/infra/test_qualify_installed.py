@@ -26,6 +26,109 @@ def load(name):
 Q = load("qualify_installed")
 
 
+def test_packing_memory_suite_keeps_the_complete_original_control_roster():
+    suite = Q.SUITES["packing-memory-intake"]
+    files = (
+        "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+    )
+    members = suite["native_test_cases"]
+    assert suite["tests"] == suite["native_test_files"] == files
+    assert len(members) == len(set(members)) == 129
+    assert [sum(filename == selected for filename, _ in members) for selected in files] == [42, 36, 29, 22]
+    native_members = tuple(name for filename, name in members if filename == files[-1])
+    assert [
+        sum(name.endswith("[" + era + "]") or "[" + era + "-" in name for name in native_members)
+        for era in (
+            "legacy",
+            "modern",
+        )
+    ] == [11, 11]
+    assert suite["tests_root"] == "." and suite["test_fixture_imports"] is True
+    assert suite["collect_selected_tests"] is True
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["required_modules"] == ("xdsl", "jsonschema", "numpy")
+    assert suite["native_tools"] == ("firtool", "circt-opt", "firtool-modern", "circt-opt-modern")
+
+
+@pytest.mark.parametrize("changed", ["firtool", "circt-opt", "firtool-modern", "circt-opt-modern"])
+def test_packing_memory_both_explicit_pairs_retain_actual_tool_bytes(tmp_path, monkeypatch, changed):
+    suite = "packing-memory-intake"
+    supplied = []
+    expected_environment = {}
+    for name in Q.SUITES[suite]["native_tools"]:
+        tool = tmp_path / name
+        tool.write_text("#!/bin/sh\n# " + name + "\nexit 0\n")
+        tool.chmod(0o700)
+        supplied.append(name + "=" + str(tool))
+        expected_environment[Q.NATIVE_TOOL_ENVIRONMENT[name]] = str(tool)
+    monkeypatch.setenv("MERLIN_TEST_FIRTOOL_MODERN", "/unselected/modern/compiler")
+    selected = Q.capture_native_tools(suite, supplied)
+    assert Q.native_environment({"native_tools": selected}, suite=suite) == expected_environment
+    assert set(expected_environment) == {
+        "MERLIN_TEST_FIRTOOL",
+        "MERLIN_TEST_CIRCT_OPT",
+        "MERLIN_TEST_FIRTOOL_MODERN",
+        "MERLIN_TEST_CIRCT_OPT_MODERN",
+    }
+    Q.verify_native_tools(selected)
+    Path(selected[changed]["path"]).write_text("changed explicitly selected compiler")
+    with pytest.raises(Q.QualificationFailed, match="changed"):
+        Q.verify_native_tools(selected)
+    with pytest.raises(Q.QualificationFailed, match="complete explicit tool roster"):
+        Q.capture_native_tools(suite, supplied[:-1])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [None, "pure_missing", "native_missing", "era", "extra", "duplicate", "skip_pure", "skip_native", "class", "error"],
+)
+def test_packing_memory_qualification_requires_every_pure_and_native_original_member(tmp_path, change):
+    from xml.etree import ElementTree as ET
+
+    suite = "packing-memory-intake"
+    policy = Q.SUITES[suite]
+    xml = ET.Element("testsuites")
+    cases = ET.SubElement(xml, "testsuite")
+    for filename, name in policy["native_test_cases"]:
+        ET.SubElement(
+            cases,
+            "testcase",
+            {"file": filename, "classname": Path(filename).with_suffix("").as_posix().replace("/", "."), "name": name},
+        )
+    pure, native = cases[0], cases[-1]
+    if change == "pure_missing":
+        cases.remove(pure)
+    elif change == "native_missing":
+        cases.remove(native)
+    elif change == "era":
+        native.set("name", native.get("name").replace("modern", "unselected"))
+    elif change in {"extra", "duplicate"}:
+        attributes = dict(pure.attrib)
+        if change == "extra":
+            attributes["name"] = "test_unselected_substitute"
+        ET.SubElement(cases, "testcase", attributes)
+    elif change in {"skip_pure", "skip_native"}:
+        ET.SubElement(pure if change == "skip_pure" else native, "skipped", {"message": "actual unavailable input"})
+    elif change == "class":
+        native.set("classname", native.get("classname") + ".Alias")
+    elif change == "error":
+        ET.SubElement(native, "error", {"message": "actual native failure"})
+    path = tmp_path / "actual-report.xml"
+    ET.ElementTree(xml).write(path)
+    report = {"native_tools": {}}
+    assert Q.native_test_report_required(suite, report)
+    if change is not None:
+        with pytest.raises(Q.QualificationFailed):
+            Q.check_native_test_report(suite, path, report)
+        return
+    Q.check_native_test_report(suite, path, report)
+    assert report["suite_test_counts"] == report["native_test_counts"] == {"tests": 129, "skipped": 0}
+    assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
+
+
 def test_source_input_patterns_are_target_neutral_and_archive_bound(tmp_path):
     pattern = "examples/*/target/descriptor.yaml"
     for target in ("neutral_a", "neutral_b"):
@@ -303,6 +406,7 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         ("original-pointwise-host", True),
         ("original-candidate-members", True),
         ("host-ranked-descriptors", True),
+        ("packing-memory-intake", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -322,6 +426,9 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
+        if suite == "packing-memory-intake" and native:
+            for name in Q.SUITES[suite]["native_tools"]:
+                assert self.environment[Q.NATIVE_TOOL_ENVIRONMENT[name]] == str(tmp_path / name)
         if suite in ("original-pointwise-host", "original-candidate-members", "host-ranked-descriptors") and native:
             assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
             assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")

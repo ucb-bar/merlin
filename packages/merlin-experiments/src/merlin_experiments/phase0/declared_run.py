@@ -22,7 +22,7 @@ from .component_generation import DECLARATION, digest
 from .evidence import select_evidence
 from .generation import generate_target
 from .original_call_sources import validate_budget as validate_source_budget
-from .packing_intake import issue_independent_packing_intake
+from .packing_intake import issue_independent_packing_intake, validate_memory_selection
 from .rtl_intake import _outside, _plain, issue_independent_hardware_intake
 from .software_intake import issue_independent_software_intake
 
@@ -31,6 +31,7 @@ BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
 REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
 PERFORMANCE_SCHEMA = "merlin.independent_phase0_run.v4"
 REFERENCE_SCHEMA = "merlin.independent_phase0_run.v5"
+PACKING_SCHEMA = "merlin.independent_phase0_run.v6"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -67,16 +68,20 @@ def validate(request):
         REQUIREMENT_SCHEMA,
         PERFORMANCE_SCHEMA,
         REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
     }:
         fields.add("release_purpose")
-    if isinstance(request, dict) and request.get("schema") in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if isinstance(request, dict) and request.get("schema") in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
         fields.add("source_performance")
-    if isinstance(request, dict) and request.get("schema") == REFERENCE_SCHEMA:
+    if isinstance(request, dict) and request.get("schema") in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
         fields.add("original_references")
+    if isinstance(request, dict) and request.get("schema") == PACKING_SCHEMA:
+        fields.add("packing")
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}
+        or request["schema"]
+        not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -89,12 +94,12 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
-    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
         from .source_requirement_ledger import PURPOSES
 
         if request["release_purpose"] not in PURPOSES:
             raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
         from .component_source_performance import SCHEMA as source_schema
 
         selection = request["source_performance"]
@@ -109,7 +114,7 @@ def validate(request):
             )
         ):
             raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
-    if request["schema"] == REFERENCE_SCHEMA:
+    if request["schema"] in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
         selection = request["original_references"]
         if (
             type(selection) is not dict
@@ -117,6 +122,8 @@ def validate(request):
             or any(type(pin) is not dict or set(pin) != {"path", "sha256"} for pin in selection.values())
         ):
             raise ValueError("original reference flow requires two closed explicit source selections")
+    if request["schema"] == PACKING_SCHEMA:
+        validate_memory_selection(request["packing"])
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
     tensor = isinstance(operator, dict) and operator.get("schema") in {
@@ -129,7 +136,7 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -364,6 +371,17 @@ def _verify_diagnostic_products(root, coverage, paths, *, target, hardware, soft
     return len(commitments)
 
 
+def _issue_packing(request, *, hardware, circt_opt, forbidden_roots, output):
+    selected = validate_memory_selection(request["packing"]) if request["schema"] == PACKING_SCHEMA else None
+    return issue_independent_packing_intake(
+        hardware=hardware,
+        circt_opt=circt_opt,
+        forbidden_roots=forbidden_roots,
+        output=output,
+        **({"memory_selection": selected} if selected is not None else {}),
+    )
+
+
 def run(request_path, *, output):
     """Issue selected public inputs and execute the ordinary complete diagnostic."""
     request_path = _plain(request_path)
@@ -383,12 +401,12 @@ def run(request_path, *, output):
     declarations = _pin(canonical["declarations"], forbidden=forbidden)
     circt_opt = _pin(request["circt_opt"], forbidden=forbidden)
     performance_paths, objectives, sweep_template = {}, [], {"sweeps": []}
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
         performance_paths, objectives, sweep_template = _source_performance_inputs(
             request["source_performance"], forbidden=forbidden
         )
     reference_inputs, standard_ir = None, None
-    if request["schema"] == REFERENCE_SCHEMA:
+    if request["schema"] in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
         from .original_reference_flow import read_selection
 
         reference_inputs = read_selection(request["original_references"], forbidden=forbidden)
@@ -489,13 +507,20 @@ def run(request_path, *, output):
         )
         packing = step(
             "fresh_public_rtl_packing",
-            lambda: issue_independent_packing_intake(
+            lambda: _issue_packing(
+                request,
                 hardware=hardware,
                 circt_opt=circt_opt,
                 forbidden_roots=forbidden,
                 output=output / "packing",
             ),
         )
+        if request["schema"] == PACKING_SCHEMA:
+            report["conditional_memory_bindings"] = {
+                "path": str(output / "packing" / "intake.json"),
+                "sha256": packing.sha256,
+                "scope": "same original source conditional structural bindings only; no mapping or domain admission",
+            }
         facts = output / "hardware" / "facts.json"
         evidence = select_evidence(
             request["target"],
@@ -636,7 +661,7 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
-        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
             from .source_requirement_ledger import prepare_requirement_ledger
 
             ledger = step(

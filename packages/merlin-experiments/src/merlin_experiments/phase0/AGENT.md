@@ -1,5 +1,16 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Local packing intake v2 explicitly selects source-byte, local-memory,
+hierarchy and interval metadata budgets. Reuse the freshly serialized original
+core and its exact live hardware production root/container; preserve v1 local
+partitions and add separate conditional occurrence-to-memory bit facts. Retain
+every memory port and state/read/opaque/unsupported cut, original undefined
+memory domains and all command/axis/capacity/effect UNKNOWNs. Declared Phase 0
+run v6 carries this selector through the ordinary packing intake while keeping
+all v5 source/reference and mandatory requirements. Structural data grants no
+packing-domain, numerical, physical or grading admission; saved records cannot
+recreate live source authority or upgrade prior observations.
+
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.

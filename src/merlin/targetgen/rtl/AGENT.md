@@ -195,3 +195,12 @@ no exponential endpoints are materialized. Domain containment is conditional
 on defined known bits and unsigned indexing. Noncontained domains remain
 unproved; address definedness, state/clock validity, memory history, physical
 capacity, roles and effects remain required. Original T records stay unchanged.
+
+`hw_partition_memory_bindings` joins complete original local bit partitions to
+exact rooted memory data operands through typed named bindings, extracts and
+concatenations. Intermediate occurrence identities survive upstream state,
+read, opaque and other operation stops. Whole source/trace/join/materialization
+budgets precede expansion; every original memory port is retained. Bit identity
+is conditional on defined known bits, with no write event, software scalar,
+command/axis, allocation/capacity, effect or whole packing admission. Existing
+local, H and C records retain their original meanings.
