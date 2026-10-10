@@ -23,6 +23,19 @@ merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/F
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
+The installed `plain-word-relation` command consumes its closed source request
+with explicit input/output byte bounds and retains conditional unknowns.
+
+`plain_word_relation.observe_plain_word_relation` checks an explicitly pinned
+plain source declaration and its exact reinterpret cast with complete ordered
+literal/fixed-width fields. Primitive constructors and packing order are
+explicit source-pinned conditional premises, never inferred target defaults.
+Complete file/span, byte, token, nesting, field and word-width budgets are
+retained; unsupported, partial, aliased or changed source selections refuse.
+The observation does not issue primitive semantic review, source/binary or HW
+correspondence, instruction length, ELF ABI, prohibition, effects or runtime
+authority. A declaration-to-exact-HW-occurrence join remains separately required.
+
 Answer-bearing replay generation lives in the experiments distribution under the
 stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
 initializer and the structure-only tooling; extensions never overwrite it.
@@ -178,6 +191,19 @@ names and widths never classify a command interface or decoded resource role.
 State, memory reads, opaque and unsupported producers stop traversal. Structural
 root contact grants no event validity, state reachability, capacity, software
 axis, physical effect, temporal closure or whole memory mapping requirement.
+
+`hw_value_bindings.prepare_value_bindings` binds explicit original SSA slots to
+exact supplied source bytes and complete rooted instance/port membership. Defined
+combinational bindings may follow across instances; distinct occurrences retain
+distinct state identities. Clock, state, memory, external, parameterized and
+unsupported values remain cuts with original types/metadata. All operation and
+nested effect membership in visited definitions is retained without evaluating
+effects. Extract/concat connectivity assigns no opcode, getter, endpoint role,
+sample custody, runtime, physical unit or complete-cost authority. The parsed-graph
+API alone does not recheck source bytes; selections and exported JSON are data.
+The installed `value-binding-observation` operator command requires a closed
+original selection request, explicit input/output byte bounds and a fresh output.
+It reopens request/source identities after export without granting source roles.
 
 `hw_array_selection` preflights all rooted creation/get occurrences against
 explicit operation, element and aggregate-bit budgets before scalar expansion.

@@ -55,3 +55,8 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   must execute without skips. The native issuers and model builds in these
   controls are diagnostic substitutes; installed wiring grants no instruction,
   source-role, numerical, runtime, physical or experiment qualification.
+- `rtl-source-bindings` is core-only and retains all 266 original reader,
+  operator-command and file-boundary controls with zero skips. Archive the exact
+  three counter fixture siblings; production reader/command imports must come
+  from the own-site package. Installed source observations grant no instruction,
+  endpoint role, counter sample, numerical, runtime or performance authority.

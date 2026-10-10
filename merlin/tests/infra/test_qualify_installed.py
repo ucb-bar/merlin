@@ -651,6 +651,42 @@ def test_target_fetch_qualification_is_core_only():
     assert suite["probe_modules"] == ("merlin.targetgen.oot_fetch",)
 
 
+def test_rtl_source_bindings_keep_complete_operator_and_reader_controls():
+    from collections import Counter
+
+    suite = Q.SUITES["rtl-source-bindings"]
+    expected = {
+        "test_hw_value_bindings.py": 38,
+        "test_value_binding_tool.py": 40,
+        "test_counter_source_tool.py": 36,
+        "test_plain_word_relation.py": 58,
+        "test_plain_word_request.py": 45,
+        "test_source_predicates.py": 20,
+        "test_plain_word_tool.py": 13,
+        "test_plain_word_files.py": 16,
+    }
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 266
+    assert suite["include_experiments"] is False
+    assert suite["tests_root"] == "merlin/tests/targetgen"
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["support_files"] == (
+        "test_hw_counter_intervals.py",
+        "test_hw_counter_state_timelines.py",
+        "test_hw_state_effects.py",
+    )
+    assert suite["probe_modules"] == (
+        "merlin.targetgen.rtl.hw_value_bindings",
+        "merlin.targetgen.rtl.plain_word_relation",
+        "merlin.targetgen.rtl.plain_word_request",
+        "merlin.targetgen.tool_cli",
+    )
+    assert suite["core_extras"] == suite["required_modules"] == ("xdsl",)
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
 def test_original_scalar_qualification_preserves_complete_source_native_and_support_rosters():
     from collections import Counter
 
