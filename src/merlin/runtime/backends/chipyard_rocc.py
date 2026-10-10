@@ -357,6 +357,15 @@ class BoundRoCCBackend:
     def gcc_path(self):
         return _check_pin(self._block()["toolchain"]["compiler"], executable=True)
 
+    def verify_execution_inputs(self):
+        """Reopen every selected build/engine input without executing any tool.
+
+        This checks local byte identity and existing receipt lineage only. It
+        does not qualify the worker, source consistency, numerics or timing.
+        """
+        self.harness_build_recipe()
+        return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
+
     def render_harness(self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None):
         _require(target == self.target, "logical harness target differs from the selected backend")
         if warm_profile is not None:
@@ -617,12 +626,21 @@ def bind(*, target, contract, facts):
     contract, facts = selected["contract"], selected["facts"]
     runner = contract.get("runner")
     _require(type(runner) is dict and runner.get("backend") == "chipyard_rocc", "RoCC execution family is not selected")
+    _require(not contract.get("plugin"), "data-bound runtime selection cannot grant executable provider hooks")
     block = runner.get("chipyard_rocc")
     _fields(block, {"version", "config", "toolchain", "engines"}, {"readout"})
     _require(
         type(block["version"]) is int and block["version"] == 1 and type(block["config"]) is str and block["config"],
         "RoCC execution requires a supported version and explicit configuration",
     )
+    runtime = contract.get("runtime")
+    if runtime is not None:
+        _require(type(runtime) is dict, "selected runtime declarations must be a mapping")
+        if "rtl_sim_config" in runtime:
+            _require(
+                runtime["rtl_sim_config"] == block["config"],
+                "selected runtime and execution configurations differ",
+            )
     inputs = facts.get("inputs")
     body = facts.get("facts")
     consistency = facts.get("source_consistency")

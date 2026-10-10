@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [target_resolution, simulator_selection, aws_gsim]
-code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py]
+code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py]
 ---
 
 # Neutral contract-driven runtime tooling
@@ -37,6 +37,25 @@ Supported engines are explicit Spike and gSIM selections. gSIM uses the existing
 strict-v3 receipt checks against its actual binary and the selected FIRRTL.
 Spike uses an explicitly pinned extension and provides functional evidence.
 Metadata binding does not execute tools, build RTL or establish native readiness.
+
+## Prepare a worker selection
+
+`python -m merlin.runtime.backends.rocc_selection` turns an explicitly selected
+deployment declaration into the ordinary pinned contract. Use the same contract
+shape described above; only `sha256` fields may be omitted from file pins, core
+runtime/header IDs and the Spike extension. Paths, ABI, flags, engine arguments,
+budgets, software instruction labels and operand bundle names remain explicit
+operator inputs. There are no inferred defaults or ambient tool discovery.
+
+Preparation hashes the actual selected members, refuses a mismatching existing
+pin, validates the logical ABI and operand bindings, and reopens every selected
+build/engine input through `verify_execution_inputs`. A gSIM selection must pass
+the existing strict receipt/FIRRTL checks. The original contract and facts are
+reopened before publishing a new contract beneath the artifacts root; an existing
+destination refuses. No compiler, simulator or provider runs. Neither source
+consistency nor review status is upgraded. The output is deployment data, not a
+native qualification receipt. Follow the [AWS procedure](../guides/aws_gsim.md#prepare-the-catalog-phase-0-and-phase-1-handoff)
+for the independent input review and subsequent execution gates.
 
 ## Logical tensors
 
