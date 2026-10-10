@@ -13,6 +13,17 @@ This does not prove implementation indexing, accessible allocation, lifetime,
 body/effect equivalence, hardware, dependency closure or runtime qualification.
 Unsupported scalar/trampoline/alias and transformed source routes refuse.
 
+`device_offload.build_arguments` preserves the explicit group route's complete
+per-symbol statements across the ordinary sidecar/build boundary. Missing,
+empty, malformed or changed statement membership refuses before a group can
+fall through to contraction-only synthesis. Legacy and contraction routes keep
+their existing unstated-program behavior. This structural check establishes no
+source-body, numerical, device-event, ownership or runtime authority.
+The same reader requires exact routed-symbol/signature membership and complete,
+consistent per-symbol precision, including repeated calls to a shared kernel.
+The ordinary linker caller passes its explicitly selected routing granularity;
+sidecar metadata cannot downgrade that selection to contraction-only work.
+
 `codegen.build_host_shared` records the existing LLVM-object, runtime-C-object
 and shared-link subprocesses with the same frozen argv, working directory and
 environment used for execution. Direct source/object/product roles reopen

@@ -51,6 +51,11 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - Whole-model `spike_model` build identity includes the actual linked device and
   matrix object bytes in link order, after compiling them and before emitting the
   harness marker. Paths are not identity. Final ELF hashes remain authoritative.
+- The ordinary device build checks the complete routed kernel/precision roster
+  and the caller's selected granularity before building or linking device work.
+  Its optional `final_elf_audit` callback is not a default executable no-FSM
+  checker or an independent instruction/effect/runtime qualification. Such
+  authority requires the separately selected original linked-ELF gates.
 - Explicit whole-model operation profiling uses complete typed operation
   boundaries, including calls/stores with no result. Generic source printing
   retains the entry C interface; private marker callbacks retain their ABI.

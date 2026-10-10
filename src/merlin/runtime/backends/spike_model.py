@@ -898,7 +898,9 @@ def build(
     from ...llvmlower.device_offload import load_sidecar as _load_device_sidecar
 
     _dev_side = _load_device_sidecar(work)
-    _dev_args = _device_build_arguments(_dev_side)
+    _dev_args = _device_build_arguments(
+        _dev_side, expected_granularity=device.granularity if device is not None else None
+    )
     _dev_sigs = _dev_args["signatures"]
     _catalog_requested = device is not None and (
         getattr(device, "catalog_manifest", None) is not None or getattr(device, "catalog_builder", None) is not None
