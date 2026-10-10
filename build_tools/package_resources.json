@@ -31,6 +31,7 @@
     "merlin/contract/interface_dialect_contract.yaml",
     "merlin/contract/interface_grammar.md",
     "merlin/contract/isa_errata.yaml",
+    "merlin/contract/legacy/kernel_abi_v1.yaml",
     "merlin/contract/merlin_iface.irdl.mlir",
     "merlin/contract/mlir_oot_backend_contract.yaml",
     "merlin/contract/oracle_runner_contract.yaml",

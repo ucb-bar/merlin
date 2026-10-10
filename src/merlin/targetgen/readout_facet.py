@@ -662,15 +662,73 @@ def derive(
     return facet
 
 
+class ReadoutSupportError(RuntimeError):
+    """The selected support declares readout semantics but cannot serve them.
+
+    Raised instead of returning ``None``: an absent declaration reads as UNKNOWN downstream, and a
+    selected provider that promised readout facts and then failed to load, lacks the hook, or raised
+    from it must not degrade into "this target declares nothing" without anyone being told.
+    """
+
+
+def _readout_required(target: str) -> str | None:
+    """The selected provider root when its contract DECLARES ``readout_semantics``, else None.
+
+    Only a selected support provider can owe an answer; a target with no selected support (or one
+    whose contract declares no readout block) keeps the historical "no hook" meaning.
+    """
+    try:
+        from merlin.targetgen.plugins import resolve_support
+
+        selected = resolve_support(target)
+    except Exception:  # noqa: BLE001 -- nothing selected: nothing is owed
+        return None
+    try:
+        contract = selected.load_contract()
+    except Exception as exc:  # noqa: BLE001 -- a selected provider whose contract will not load
+        raise ReadoutSupportError(
+            f"{target}: selected support {selected.base} has an unreadable contract: {type(exc).__name__}: {exc}"
+        ) from exc
+    return (
+        str(selected.base)
+        if isinstance(contract, Mapping) and isinstance(contract.get("readout_semantics"), Mapping)
+        else None
+    )
+
+
 def _backend_hook(target: str, name: str) -> Callable[[], Any] | None:
     from merlin.runtime.backends import base
 
+    required = _readout_required(target)
     try:
         backend = base.get_backend(target)
-    except Exception:  # noqa: BLE001 -- a target with no runtime backend has no hook, not an error
+    except Exception as exc:  # noqa: BLE001 -- a target with no runtime backend has no hook, not an error
+        if required:
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} declares readout_semantics, but its backend did not "
+                f"load ({type(exc).__name__}: {exc}); refusing to treat the readout as undeclared"
+            ) from exc
         return None
     hook = getattr(backend, name, None)
-    return hook if callable(hook) else None
+    if not callable(hook):
+        if required:
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} declares readout_semantics, but its backend "
+                f"{getattr(backend, '__name__', backend)!r} has no {name}() hook to serve it"
+            )
+        return None
+    if not required:
+        return hook
+
+    def strict():
+        try:
+            return hook()
+        except Exception as exc:  # noqa: BLE001 -- surfaced, never swallowed into "absent"
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} could not serve {name}(): {type(exc).__name__}: {exc}"
+            ) from exc
+
+    return strict
 
 
 def epilogue_readouts(target: str):
@@ -688,6 +746,8 @@ def epilogue_readouts(target: str):
         return None
     try:
         raw = hook()
+    except ReadoutSupportError:
+        raise
     except Exception:  # noqa: BLE001 -- an unreadable declaration is an absent one, not a crash
         return None
     if not raw:
@@ -712,6 +772,8 @@ def epilogue_stage_routes(target: str):
         return ()
     try:
         raw = hook()
+    except ReadoutSupportError:
+        raise
     except Exception:  # noqa: BLE001 -- a failed declaration grants nothing
         return ()
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
@@ -768,6 +830,8 @@ def capture_inputs(target: str, *, facts: Mapping[str, Any], include_taxonomy: b
         hook = _backend_hook(target, hook_name)
         try:
             inputs[field_name] = hook() if hook is not None else None
+        except ReadoutSupportError:
+            raise
         except Exception as exc:  # noqa: BLE001 -- an unreadable declaration is unknown
             inputs[field_name] = None
             inputs.setdefault("unknown", {})[field_name] = f"{type(exc).__name__}: {exc}"

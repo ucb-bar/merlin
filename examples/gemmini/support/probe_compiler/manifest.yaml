@@ -1,0 +1,23 @@
+# A PROBE package, not a solution: exercises Merlin's grading path for two ISA capsules only.
+# See README.md. Every encoding comes from gemmini_isa.h, which merlin.targetgen.isa_header_gen
+# generated from the verified RTL facts and the target contract.
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: gemmini_isa_probe_v0
+language: python
+authoring:
+  mode: deterministic_generated_from_spec
+  author: merlin-runtime-probe
+  generated_by_agent: false
+integrity_exempt: false
+entrypoints:
+  tool: probe_compiler.py
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-target-artifact", "{input_mlir}"]

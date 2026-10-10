@@ -190,6 +190,11 @@ def _ensure_discovered() -> None:
 # changes and the core carries no name -> module map for it. Target-agnostic: the PACKAGE names its own
 # backend file; nothing here is keyed on a specific target.
 #
+# A DATA-ONLY provider may instead name a generic CORE module (``plugin.backend:
+# merlin.runtime.backends.<generic>``). The core file is then loaded as a fresh per-target instance
+# under the same synthetic ``merlin._oot_backends.<target>`` name, so the generic module learns which
+# target it serves from its own ``__name__`` and reads everything else from the provider's data.
+#
 # ``plugin.backend`` may point at EITHER a single ``.py`` file OR a directory (a package with an
 # ``__init__.py``). A directory is loaded as a package with its own ``__path__``, so a backend whose
 # implementation spans several relative-import-coupled modules (``from .codegen import ...``) works
@@ -231,7 +236,7 @@ def _assert_oot_plugin_ownership() -> None:
     because metadata can change without an environment-string change. Ownership
     commits canonical provider/module paths, not source bytes or held references.
     """
-    from merlin.targetgen.plugins import PluginError, _reference_path, provider_root, resolve_support
+    from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference, resolve_support
 
     with _oot_lock:
         for owner in tuple(_LOADED_PLUGIN_OWNERS.values()):
@@ -243,9 +248,9 @@ def _assert_oot_plugin_ownership() -> None:
                 for key in _PLUGIN_KEYS[owner.namespace]:
                     if not plugin.get(key):
                         continue
-                    path = _reference_path(root, plugin[key], "module")
+                    path = resolve_reference(root, plugin[key], "module")
                     if path is None:
-                        raise PluginError(f"plugin.{key} does not resolve under selected provider root")
+                        raise PluginError(f"plugin.{key} does not resolve under selected provider root or core")
                     paths.add(_plugin_source(path))
                 if selected.base.resolve() == owner.provider_root and paths == {owner.module_path}:
                     continue
@@ -287,11 +292,12 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
         rel = plugin.get(key)
         if not rel:
             continue  # declares nothing under this key — a package without the seam, not a broken one
-        from merlin.targetgen.plugins import PluginError, _reference_path, provider_root
+        from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference
 
         try:
             root = provider_root(info.base, plugin.get("path"))
-            path = _reference_path(root, rel, "module") if isinstance(rel, str) else None
+            # A provider-owned file, or a dotted reference to GENERIC core code the provider selects.
+            path = resolve_reference(root, rel, "module") if isinstance(rel, str) else None
         except PluginError as exc:
             _LOAD_FAILURES[name] = f"PluginError: {exc}"
             continue
@@ -336,7 +342,13 @@ def _load_oot_backend_locked(name: str, path: Path, *, ns: str) -> None:
     ``ns`` is the synthetic top-level namespace, so a target's ``plugin.backend`` and its
     ``plugin.sim_oracle`` (loaded via the same mechanism) get distinct module names and never collide."""
     modname = f"{ns}.{name}"
-    from merlin.targetgen.plugins import PluginError, _reference_path, provider_root, resolve_support
+    from merlin.targetgen.plugins import (
+        PluginError,
+        _reference_path,
+        is_core_module_source,
+        provider_root,
+        resolve_support,
+    )
 
     selected = resolve_support(name)
 
@@ -348,11 +360,18 @@ def _load_oot_backend_locked(name: str, path: Path, *, ns: str) -> None:
         try:
             relative = path.resolve(strict=True).relative_to(root)
         except (OSError, RuntimeError, ValueError) as exc:
-            raise PluginError(f"plugin module escapes selected provider root {root}") from exc
-    checked = _reference_path(root, str(relative), "module")
-    if checked is None:
-        raise PluginError(f"plugin module does not resolve under selected provider root {root}")
-    path = checked
+            # ...unless the provider SELECTS a generic core module: that file is installed Merlin
+            # source, loaded below as a fresh per-target instance under this target's synthetic name.
+            if not is_core_module_source(path):
+                raise PluginError(f"plugin module escapes selected provider root {root}") from exc
+            relative = None
+    if relative is not None:
+        checked = _reference_path(root, str(relative), "module")
+        if checked is None:
+            raise PluginError(f"plugin module does not resolve under selected provider root {root}")
+        path = checked
+    else:
+        path = path.resolve(strict=True)
     owner = _PluginOwner(name, ns, selected.base.resolve(), _plugin_source(path))
     previous = _LOADED_PLUGIN_OWNERS.get(modname)
     if previous is not None and previous != owner:

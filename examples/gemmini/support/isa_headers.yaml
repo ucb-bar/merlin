@@ -1,0 +1,111 @@
+# The gemmini bare-metal software environment, by REFERENCE: which upstream checkout, which commit,
+# which files at which bytes. Nothing here is copied from that checkout; the generic chipyard RoCC
+# backend (merlin.runtime.backends.chipyard_rocc) resolves the root on this host, verifies every
+# file below by SHA-256 and refuses to build when any differs (merlin.targetgen.isa_headers_spec).
+# MERLIN_GEMMINI_HARNESS_DIR may relocate the tree; it cannot authorize different bytes.
+#
+# ONLY the bare-metal runtime is taken from that checkout: startup (crt.S), syscalls/printf, the
+# link script and the util/encoding headers they include. The accelerator's own software headers
+# (include/gemmini.h is a kernel library, not only an ISA description) are deliberately NOT on the include
+# path of a fresh experiment's build; their place is taken by a minimal header GENERATED from the
+# RTL facts and the contract's encoding anchors (merlin.targetgen.isa_header_gen).
+schema: merlin.isa_headers.v1
+target: gemmini
+source:
+  pin: gemmini_isa_headers            # merlin/contract/hardware_pins.yaml
+  repository: https://github.com/ucb-bar/gemmini-rocc-tests.git
+  commit: 7c540b3adf1b86ad93d07f893abe3a73489b568e
+  # Nested submodules the build reads from, at the gitlinks 7c540b3a records (informational: the
+  # per-file digests below are what is enforced).
+  nested:
+    riscv-tests: c84daca8824635b7d896003c78f9c6245997cf7a
+    riscv-tests/env: 0666378f353599d01fc48562b431b1dd049faab5
+  root_env: MERLIN_CHIPYARD
+  root_ext: chipyard
+  path: generators/gemmini/software/gemmini-rocc-tests
+# Compiler -I order: the env syscall headers before the CRT directory, as in the upstream
+# bareMetalC Makefile (a wrong order shadows them and corrupts the tohost protocol). The tree root,
+# `riscv-tests` and `include` are NOT roots: from them `include/gemmini.h` (a kernel library) would be
+# reachable. The backend appends the generated ISA header's directory last.
+include_roots:
+  - riscv-tests/env
+  - riscv-tests/benchmarks/common
+crt:
+  # Link order of the upstream Makefile's common sources (*.c, then *.S).
+  sources:
+    - riscv-tests/benchmarks/common/syscalls.c
+    - riscv-tests/benchmarks/common/crt.S
+  link_script: riscv-tests/benchmarks/common/test.ld
+  # crt.S reaches _init (syscalls.c) with `j _init`, a +-1 MiB branch. Link syscalls.c ahead of the
+  # harness and the candidate's objects so that branch never spans candidate code, however large.
+  link_first:
+    - riscv-tests/benchmarks/common/syscalls.c
+  stack_bytes_per_hart: 131072
+  evidence: "crt.S: `#define STKSHIFT 17` -- each hart gets 128 KiB of stack + TLS"
+kernel_stack:
+  # Half of the per-hart reservation for the package entry frame; the other half stays with the
+  # harness and its call chain. A software-ABI policy, not a mesh or model fact.
+  max_static_bytes: 65536
+  evidence: "half of crt.stack_bytes_per_hart"
+# CFLAGS_BAREMETAL of gemmini-rocc-tests/bareMetalC/Makefile.
+cflags:
+  - -DPREALLOCATE=1
+  - -DMULTITHREAD=1
+  - -mcmodel=medany
+  - -std=gnu99
+  - -O2
+  - -ffast-math
+  - -fno-common
+  - -fno-builtin-printf
+  - -fno-tree-loop-distribute-patterns
+  - -march=rv64gc
+  - -Wa,-march=rv64gc
+  - -DID_STRING=
+  - -DPRINT_TILE=0
+  - -nostdlib
+  - -nostartfiles
+  - -static
+  - -DBAREMETAL=1
+ldflags:
+  - -lm
+  - -lgcc
+# Direct children of an include root whose bytes enter the build-cache key
+# (contract.build_recipe.HarnessBuildRecipe.header_dependencies); the generated header is added too.
+header_dependencies:
+  - riscv-tests/env/encoding.h
+  - riscv-tests/benchmarks/common/util.h
+# Every file a runner-owned harness build reads from the tree (the CRT and its preprocessor
+# closure), at the bytes of the pinned commits above.
+files:
+  riscv-tests/benchmarks/common/crt.S: 2794cf1a7ae21537060453864c94a811869e72335e98b9eb1e8aeee4de7f0508
+  riscv-tests/benchmarks/common/syscalls.c: 71b02fbad1f1d29c7f13fb6ab96a18f90cd7c257398b4a52cd8c9f2b459dfcab
+  riscv-tests/benchmarks/common/test.ld: 77ff20ffb473836e779809ff47b34fbcc391152025d19de4d6fd7380948658f4
+  riscv-tests/benchmarks/common/util.h: d2d9895ca9bd97de279f8570cb735d99ff408b09095cf81ff8b93caa621b0484
+  riscv-tests/env/encoding.h: 01d64c269f7460ca946449fef3552fc9b2454769556fb9eb5e85952ac9ad4b81
+# The minimal hardware-facts header the backend generates and puts on the include path instead.
+generated_header:
+  name: gemmini_isa.h
+# The upstream runtime has printf/printstr but no length-taking write, which the binary full-value
+# readback transport needs (embedded NUL bytes are payload). One is GENERATED and linked as a support
+# source: the proxy-kernel syscall protocol over the runtime's own tohost/fromhost mailbox, exactly as
+# its syscalls.c issues SYS_write (64) for printf.
+console_write:
+  protocol: htif_syscall
+  write_syscall: 64
+  host_symbols: {request: tohost, response: fromhost}
+  symbol: printbuf
+# Names that must not resolve from ANY include root (the backend refuses the build otherwise).
+excluded_from_include_path:
+  - gemmini.h
+  - gemmini_nn.h
+  - gemmini_testutils.h
+  - gemmini_params.h
+  - include/gemmini.h
+  - include/gemmini_nn.h
+  - include/gemmini_testutils.h
+  - include/gemmini_params.h
+  - rocc-software/src/xcustom.h
+# Reviewed bytes other data was checked against (the contract's readout_semantics), never placed on
+# the include path and never read by the build.
+evidence_files:
+  include/gemmini_params.h: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924

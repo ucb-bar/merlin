@@ -1,3 +1,5 @@
+# GENERATED from ../../target/contracts/residual.yaml plus this provider's plugin block by
+# build_tools/scripts/sync_support_contract.py. Edit the reviewed contract, then re-run it.
 # Residual side-input for the target-agnostic capability deriver
 # (merlin.targetgen.capability_manifests.manifest_for). This is the human intent + prose + ABI
 # encoding surface the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes /
@@ -18,6 +20,11 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
+plugin:
+  backend: merlin.runtime.backends.chipyard_rocc
+  isa_headers: isa_headers.yaml
+  rocc_semantics: merlin.targetgen.rocc.semantics
+  rtl_checks: merlin.targetgen.rtl_checks_generic
 # Reference metadata has no executable backend. The explicitly selected OOT support
 # provider owns its plugin declaration and implementation.
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate

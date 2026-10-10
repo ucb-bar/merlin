@@ -6,14 +6,21 @@ values byte-for-byte, mirroring ``test_generate_prompt`` (``kernel_symbol == f"{
 
 from __future__ import annotations
 
+import yaml
+
 from merlin.targetgen.contract.schemas import (
     contract_dir,
-    render_backend_contract,
     render_contract_text,
+    render_legacy_kernel_abi,
     render_oracle_runner_contract,
 )
 
-_GENERIC = ["mlir_oot_backend_contract.yaml", "oracle_runner_contract.yaml"]
+
+def render_backend_contract(target: str) -> dict:
+    return yaml.safe_load(render_contract_text("mlir_oot_backend_contract.yaml", target))
+
+
+_GENERIC = ["mlir_oot_backend_contract.yaml", "oracle_runner_contract.yaml", "legacy/kernel_abi_v1.yaml"]
 
 
 def test_generic_contracts_have_no_target_literal():
@@ -24,10 +31,19 @@ def test_generic_contracts_have_no_target_literal():
 
 def test_backend_contract_resolves_kernel_abi_to_the_target():
     c = render_backend_contract("gemmini")
-    assert c["kernel_abi"]["symbol"] == "gemmini_kernel"  # {target}_kernel, not a literal
-    assert c["kernel_abi"]["signature"].startswith("void gemmini_kernel(")
+    assert c["logical_kernel_abi"]["symbol"] == "gemmini_kernel"  # {target}_kernel, not a literal
+    assert c["logical_kernel_abi"]["signature"].startswith("void gemmini_kernel(")
     # a different target resolves by the same rule (nothing baked in for gemmini)
-    assert render_backend_contract("radiance")["kernel_abi"]["symbol"] == "radiance_kernel"
+    assert render_backend_contract("radiance")["logical_kernel_abi"]["symbol"] == "radiance_kernel"
+    # the candidate-facing contract carries only the logical ABI
+    assert "kernel_abi" not in c
+
+
+def test_legacy_kernel_abi_resolves_to_the_target():
+    abi = render_legacy_kernel_abi("gemmini")
+    assert abi["symbol"] == "gemmini_kernel"
+    assert abi["signature"].startswith("void gemmini_kernel(")
+    assert render_legacy_kernel_abi("radiance")["symbol"] == "radiance_kernel"
 
 
 def test_backend_entrypoint_argv_resolve_to_the_target():
