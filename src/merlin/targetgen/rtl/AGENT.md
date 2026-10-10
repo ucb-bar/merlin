@@ -107,6 +107,39 @@ and no reset history, initialization, reachable range, decoded command, tensor
 axis, allocation/capacity or temporal premise is granted. Original declared-depth
 range statements remain unproved, including enabled out-of-range branches.
 
+`hw_counter_intervals.observe_counter_intervals` reparses an explicitly selected
+source module and exact FirReg/getter/clock endpoints before checking its complete
+post-evaluation LOW/HIGH roster. Only one synchronous register with a typed
+guarded unit increment/hold body and a direct `seq.to_clock` input is supported.
+All original inputs and outputs, reset priority, held edges and modular wraps
+are retained; interval increment totals across reset remain unknown. Endpoint
+declarations, dataclasses and matching local values grant no source/runtime
+authority. Initial reachability, producer custody, actual getter execution,
+external events, physical units/loaded identity, omitted costs, cold/warm reuse
+and independent held qualification remain required unknowns. Asynchronous,
+split-state, opaque and unsupported clock/update forms refuse.
+
+`hw_counter_state_timelines.observe_state_getter_timeline` checks every original
+local FirReg state and input/output at every declared LOW/HIGH phase. Supported
+scalar next/reset expressions use one pre-edge state for simultaneous updates;
+the selected getter derives an exact MSB-first concatenation of complete register
+results. Original state controls cannot be omitted or replaced with input labels.
+Direct root clocks and synchronous constant resets retain their actual bindings;
+opaque operations, gated clock expressions, asynchronous reset and preset refuse.
+Random-initialization metadata remains recorded with initial reachability unknown.
+Modular deltas and observed changes do not distinguish increments from writes;
+unit-event meaning always remains unknown. Complete source-local rows grant no
+sample custody, physical timing, source/SDK correspondence, startup/readback costs,
+cold/warm composition or held-group qualification. The older one-register API
+keeps its original supported domain and proof identity.
+
+The installed `merlin-target-tools counter-source-observation` command consumes
+an explicitly byte-bounded closed request and exact selected HW source. Both
+readers check complete declared samples before a fresh data-only output is
+written. The request/source hashes and all original unknowns remain in that
+output; operator use grants no sample custody, physical timer, runtime or
+performance qualification. It supplies no default samples or endpoint roles.
+
 `hw_transition_connectivity.transition_operand_connectivity` retains every
 original state operand slot and crosses only exact named port/index/type
 bindings in the already bounded rooted source hierarchy. Repeated callees keep

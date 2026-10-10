@@ -86,6 +86,32 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "rtl-counter-timelines": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/targetgen",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "test_hw_counter_intervals.py",
+            "test_hw_counter_state_timelines.py",
+            "test_counter_source_tool.py",
+        ),
+        "tests": (
+            "test_hw_counter_intervals.py",
+            "test_hw_counter_state_timelines.py",
+            "test_counter_source_tool.py",
+        ),
+        "core_extras": ("xdsl",),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_counter_intervals",
+            "merlin.targetgen.rtl.hw_counter_state_timelines",
+            "merlin.targetgen.rtl.hw_combinational",
+            "merlin.targetgen.rtl.hw_graph",
+            "merlin.targetgen.tool_cli",
+        ),
+        "required_modules": ("xdsl",),
+    },
     "original-transpose-sources": {
         "tests_root": ".",
         "test_fixture_imports": True,

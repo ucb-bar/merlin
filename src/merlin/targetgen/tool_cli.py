@@ -111,6 +111,103 @@ def _rtl_source_audit(args: argparse.Namespace) -> int:
     )
 
 
+def _counter_source_observation(args: argparse.Namespace) -> int:
+    """Check complete source-local rows; retain all physical timer unknowns."""
+    from dataclasses import asdict, fields
+
+    from merlin.common.strict_json import loads
+
+    from .rtl.hw_combinational import EvaluationLimits
+    from .rtl.hw_counter_intervals import (
+        CounterEndpointSelection,
+        CounterInterval,
+        CounterIntervalLimits,
+        CounterPhaseSample,
+        observe_counter_intervals,
+    )
+    from .rtl.hw_counter_state_timelines import (
+        StateGetterSelection,
+        StatePhaseSample,
+        StateTimelineLimits,
+        observe_state_getter_timeline,
+    )
+
+    def read(path, limit):
+        if type(limit) is not int or not 0 < limit < 1 << 63:
+            raise ValueError("Counter observation input bound is unavailable.")
+        try:
+            with Path(path).open("rb") as handle:
+                value = handle.read(limit + 1)
+        except OSError:
+            raise ValueError("Counter observation input is unavailable.") from None
+        if len(value) > limit:
+            raise ValueError("Counter observation input exceeds its byte bound.")
+        return value
+
+    def record(cls, value, *, arrays=()):
+        if type(value) is not dict or set(value) != {field.name for field in fields(cls)}:
+            raise ValueError("Counter observation request fields are incomplete.")
+        converted = dict(value)
+        for name in arrays:
+            if type(converted[name]) is not list:
+                raise ValueError("Counter observation request array is unavailable.")
+            converted[name] = tuple(converted[name])
+        return cls(**converted)
+
+    request_bytes = read(args.request, args.max_request_bytes)
+    request = loads(request_bytes, max_bytes=args.max_request_bytes)
+    keys = {"schema", "kind", "selection", "limits", "expected_phases", "samples", "intervals"}
+    if type(request) is not dict or set(request) != keys or request["schema"] != "merlin.counter_source_request.v1":
+        raise ValueError("Counter observation request schema is unsupported.")
+    kind = request["kind"]
+    if kind not in ("unit_counter", "state_getter"):
+        raise ValueError("Counter observation request kind is unsupported.")
+    limit_type = CounterIntervalLimits if kind == "unit_counter" else StateTimelineLimits
+    raw_limits = request["limits"]
+    if type(raw_limits) is not dict or set(raw_limits) != {field.name for field in fields(limit_type)}:
+        raise ValueError("Counter observation limit roster is incomplete.")
+    limits = record(limit_type, {**raw_limits, "expressions": record(EvaluationLimits, raw_limits["expressions"])})
+    selection_type = CounterEndpointSelection if kind == "unit_counter" else StateGetterSelection
+    selection = record(
+        selection_type, request["selection"], arrays=() if kind == "unit_counter" else ("register_ordinals",)
+    )
+    phases, samples, intervals = (request[name] for name in ("expected_phases", "samples", "intervals"))
+    if (
+        type(phases) is not int
+        or phases < 2
+        or phases % 2
+        or phases > limits.expressions.cases
+        or type(samples) is not list
+        or len(samples) != phases
+        or type(intervals) is not list
+        or not 0 < len(intervals) <= limits.intervals
+    ):
+        raise ValueError("Counter observation phase or interval roster is incomplete.")
+    sample_type = CounterPhaseSample if kind == "unit_counter" else StatePhaseSample
+    arrays = ("inputs", "outputs") if kind == "unit_counter" else ("inputs", "states", "outputs")
+    samples = tuple(record(sample_type, row, arrays=arrays) for row in samples)
+    intervals = tuple(record(CounterInterval, row) for row in intervals)
+    source_bytes = read(args.source, limits.expressions.source_bytes)
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeError:
+        raise ValueError("Counter observation source encoding is unsupported.") from None
+    observer = observe_counter_intervals if kind == "unit_counter" else observe_state_getter_timeline
+    result = observer(
+        source, selection=selection, limits=limits, expected_phases=phases, samples=samples, intervals=intervals
+    )
+    rendered = {
+        "schema": "merlin.counter_source_observation.v1",
+        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "observation": asdict(result),
+        "scope": "source-local values only; sample custody, physical units, runtime and timing remain unknown",
+    }
+    with Path(args.out).open("x", encoding="utf-8") as handle:
+        handle.write(json.dumps(rendered, sort_keys=True, indent=2, allow_nan=False) + "\n")
+    return 0
+
+
 def _semantic_search(args: argparse.Namespace) -> int:
     """Inspect real linalg-on-tensors MLIR with a selected instruction model."""
     from .contract.linalg_iface import parse_linalg_mlir
@@ -384,6 +481,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--hardware-spec", required=True)
     audit.add_argument("--output", required=True)
     audit.set_defaults(func=_rtl_source_audit)
+
+    counter = sub.add_parser("counter-source-observation", help="check complete source-local counter/state rows")
+    counter.add_argument("--source", required=True, help="exact selected HW MLIR source")
+    counter.add_argument("--request", required=True, help="closed source selection, limits and complete sample JSON")
+    counter.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    counter.add_argument("--out", required=True, help="fresh data-only JSON observation destination")
+    counter.set_defaults(func=_counter_source_observation)
 
     selection = sub.add_parser(
         "semantic-search", help="inspect linalg-on-tensors kernels against selected OOT instruction semantics"
