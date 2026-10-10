@@ -19,6 +19,9 @@ certify a functional compiler (1), and optimize target performance (2).
 Read `CLAUDE.md`, local instructions, and `docs/reference/architecture.md` before changes.
 Target-specific facts and implementations belong in OOT support packages. Evaluated compiler
 candidates have stricter import/access rules than trusted support plugins.
+Shared execution tooling may bind target contract/facts data without importing a
+support implementation. Neutral tensor transport and hardware-legality checks
+must not supply kernels, packing, schedules or preferred lowering choices.
 
 **Compiler ownership rule:** all target-specific implementations belong in the target's OOT
 MLIR dialect repository: dialect operations, instruction encodings, device kernels/schedules,

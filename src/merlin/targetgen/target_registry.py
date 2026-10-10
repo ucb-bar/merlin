@@ -154,8 +154,15 @@ class TargetInfo:
         is the caller's job, guarded — so nothing target-specific runs at resolution time. The OOT
         package root is injected as ``path`` so a caller can put it on ``sys.path``.
         """
-        # Capability observations must never remove or inject executable plugin
-        # references. Provider resolution and support-code ownership stay fixed.
+        selected = self.load_contract()
+        runner = selected.get("runner", {})
+        if not isinstance(runner, dict):
+            raise ValueError("selected runtime declaration must be a mapping")
+        if "backend" in runner:
+            if runner["backend"] != "chipyard_rocc" or selected.get("plugin"):
+                raise ValueError("data-bound runtime selection cannot grant executable provider hooks")
+            return {}
+        # Legacy observations cannot inject executable plugin references.
         block = dict(self._load_provider_contract().get("plugin", {}))
         if self.external_root is not None:
             block.setdefault("path", str(self.external_root))

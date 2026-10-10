@@ -528,11 +528,7 @@ def _readout_epilogue_capabilities(target: str):
 
 
 def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, readback_policy=None) -> Callable:
-    """Adapter for one declared chipyard sim engine. ``selection`` is the engine-policy record that
-    CHOSE this engine — carried into the result so the tier can record not just which simulator answered
-    but what it was chosen over and why. The choice was previously made, printed once to a log nobody
-    keeps, and then discarded; a cert that ran on the slow engine because the fast one was missing looked
-    exactly like one that ran on the slow engine because it was the only one."""
+    """Run one declared engine, retaining its selected identity and policy record."""
 
     from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
 
@@ -547,7 +543,9 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
         if sim == "gsim":
             from . import gsim_emulator
 
-            exact, reason = gsim_emulator.selected_firrtl_status(target, env_var=getattr(backend, "GSIM_EMU_ENV", None))
+            exact, reason = gsim_emulator.selected_firrtl_status(
+                target, env_var=getattr(backend, "GSIM_EMU_ENV", None), backend=backend
+            )
             if not exact:
                 raise OracleUnavailable(reason)
         policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
@@ -3038,7 +3036,9 @@ def _grade_candidate_model_capsule_inline(
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
     return enforce_model_execution_check(
-        result, capsule, target=target,
+        result,
+        capsule,
+        target=target,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
     )
 

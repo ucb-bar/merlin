@@ -83,3 +83,24 @@ def test_evaluators_and_worker_live_only_in_experiments_distribution():
         assert not (python_source_dir() / "merlin/targetgen" / (name + ".py")).exists()
     runner = module_source_path("merlin.targetgen.capsule_runner")
     assert runner.with_name("_capsule_bundle_worker.py").is_file()
+
+
+def test_simulator_adapter_uses_bound_backend_firrtl_identity(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import pytest
+
+    from merlin.runtime.backends import base
+    from merlin.targetgen import capsule_runner, gsim_emulator
+
+    backend = SimpleNamespace(
+        available=lambda engine: engine == "gsim", gsim_selected_firrtl_status=lambda: (True, "bound selected FIRRTL")
+    )
+    monkeypatch.setattr(base, "get_backend", lambda target: backend)
+    monkeypatch.setattr(gsim_emulator, "emulator_path", lambda *a, **k: pytest.fail("legacy discovery reached"))
+    monkeypatch.setattr(capsule_runner.oot_compile, "run_on_oracle", lambda *a, **k: {"oracle": {}})
+    adapter = capsule_runner.simulator_adapter("gsim", "synthetic", selection={"engine": "gsim"})
+    assert adapter({}, "module {}", tmp_path, 1)["oracle"]["selection"] == {"engine": "gsim"}
+    backend.gsim_selected_firrtl_status = lambda: (False, "selected receipt changed")
+    with pytest.raises(capsule_runner.OracleUnavailable, match="selected receipt changed"):
+        adapter({}, "module {}", tmp_path, 1)

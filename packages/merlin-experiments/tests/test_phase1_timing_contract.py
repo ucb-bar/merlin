@@ -552,3 +552,21 @@ def test_ordinary_selfcheck_projects_only_actual_passed_barrier_identity(tmp_pat
     assert report["per_capsule"][0]["barrier_cycles"] == 19
     assert private_path not in json.dumps(report)
     assert "private receipt details" not in json.dumps(report)
+
+
+def test_ordinary_timing_uses_bound_backend_without_legacy_engine_discovery(selected_engine, monkeypatch):
+    from merlin.runtime.backends import base as backends
+    from merlin.targetgen import gsim_emulator as gsim
+
+    model = gsim.resolve(selected_engine.target)
+    assert model.ok and model.receipt_status == "bound"
+    backend = backends.get_backend(selected_engine.target)
+    backend.gsim_resolution = lambda: model
+    backend.gsim_selected_firrtl_status = lambda: (True, "selected strict receipt")
+    monkeypatch.setattr(gsim, "emulator_path", lambda *a, **k: pytest.fail("legacy engine discovery reached"))
+    binding = timing.selected_engine_binding(descriptor=selected_engine.descriptor, target=selected_engine.target)
+    assert binding["simulator_path"] == str(selected_engine.binary)
+    assert binding["receipt"] == model.receipt
+    backend.gsim_selected_firrtl_status = lambda: (False, "selected receipt changed")
+    with pytest.raises(ValueError, match="strict gSIM receipt"):
+        timing.selected_engine_binding(descriptor=selected_engine.descriptor, target=selected_engine.target)

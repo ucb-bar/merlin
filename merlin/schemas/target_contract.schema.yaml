@@ -78,6 +78,29 @@ validation_notes: >-
   when the target does not distinguish an accelerator region: an absent metric and one printed as 0 are
   read identically by the runner's parser, so emitting a falsy one says nothing.
 
+  OPTIONAL `runner.backend: chipyard_rocc` selects shared runtime tooling before executable
+  provider discovery. Its closed `runner.chipyard_rocc` v1 data pins the compiler, fixed core
+  runtime units/headers, linker script, flags, load address and explicit Spike/gSIM engines.
+  gSIM requires its existing strict-v3 build receipt; Spike requires a pinned extension.
+  No selected tool is executed during metadata binding, and no missing field inherits a
+  provider or environment default. See docs/reference/neutral_runtime_tooling.md.
+
+  This route requires logical `harness_abi` v2: `{version: 2, kind: logical_pointer,
+  entry_symbol, fence_symbol, tensor_alignment, byte_order, main_convention,
+  readback_transport, prelude_symbol?}`. Buffers are dense logical tensors without padding
+  or device layout preparation. Legacy includes/extern snippets refuse in this mode.
+  The shared backend currently admits B64 readback only; coherent transport needs
+  a separately connected trusted memory reader and refuses backend binding here.
+
+  OPTIONAL `rocc_operand_roles` v1: `{version: 1, word_bits: 32|64, instructions:
+  [{funct, class, operands: {rs1?: {bundle}, rs2?: {bundle}}}]}`. Codes must occur in
+  selected `funct_decode_table` facts; operand field offsets/widths come only from
+  selected `register_bundle_layouts`. Unknown widths, overlapping fields and ambiguous
+  interfaces refuse. Labels do not establish numerical or temporal semantics.
+  `rtl_checks` is a nonempty unique list of supported hardware checks. Generic v1 supports
+  `decode_clean` and `legal_funct`; universal legality requires complete funct7 coverage.
+  Strategy rules (tiling, reuse, issue order, balance) and unimplemented checks refuse.
+
   OPTIONAL `plugin` (the package's extension points; recognised keys are declared once in
   `merlin.targetgen.plugins.PLUGIN_KEYS` and validated by `load_target`). A reference is a path
   relative to the package root, a dotted module, or `module:attribute`. Two rules matter more than the

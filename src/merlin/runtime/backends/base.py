@@ -511,10 +511,9 @@ def whole_model_driver(target: str):
 def harness_renderer(target: str):
     """``target``'s runner-owned harness renderer — ``render_harness(cb, *, target) -> str``.
 
-    Optional, like :func:`harness_build_recipe`, and separate from it on purpose: the BUILD is a
-    toolchain description a contract could plausibly carry, whereas the harness body pads to a
-    target's tile edge and lays out its accumulator readout. That is codegen, and putting it behind a
-    contract key would define a key no second target could implement.
+    Optional, like :func:`harness_build_recipe`. Shared logical harnesses transport
+    dense semantic buffers; device packing and scheduling belong to the candidate.
+    Legacy external renderers remain explicitly selected executable capabilities.
     """
     backend = get_backend(target)
     render = getattr(backend, "render_harness", None)
@@ -543,6 +542,34 @@ def name_of_module(module_name: str) -> str:
     raise KeyError(f"no registered backend for module {module_name!r}")
 
 
+def _contract_backend(name: str):
+    """Bind selected data before discovering executable providers; never cache by name."""
+    if name in _SEEDED:
+        return None
+    from merlin.targetgen.target_registry import TargetContractMissing, resolve
+
+    selected = resolve(name)
+    try:
+        contract = selected.load_contract()
+    except TargetContractMissing:
+        if os.environ.get("MERLIN_TARGET_CONTRACT"):
+            raise
+        return None
+    runner = contract.get("runner", {})
+    if not isinstance(runner, dict):
+        raise ValueError("selected contract runner must be a mapping")
+    if "backend" not in runner:
+        return None
+    if contract.get("name") != name or runner["backend"] != "chipyard_rocc":
+        raise ValueError("selected contract has an unknown backend family or mismatched name")
+    if contract.get("plugin"):
+        raise ValueError("data-bound runtime selection cannot grant executable provider hooks")
+    from merlin.runtime.backends.chipyard_rocc import bind
+    from merlin.targetgen.rtl.facts import load_facts
+
+    return bind(target=name, contract=contract, facts=load_facts(name, regenerate=False))
+
+
 def get_backend(name: str):
     """Lazily import + return the backend module for ``name``.
 
@@ -551,6 +578,9 @@ def get_backend(name: str):
     refactor elsewhere in the tree presents exactly like a backend that was never declared, and the
     suites that depend on it skip green instead of failing.
     """
+    bound = _contract_backend(name)
+    if bound is not None:
+        return bound
     _ensure_discovered()
     why = _LOAD_FAILURES.get(name)
     if why and name in _REGISTRY:

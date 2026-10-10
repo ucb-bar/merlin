@@ -198,10 +198,10 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
             facts = selected_firrtl(_ordinary_file(Path(facts_path)), target=target, config=config)
             backend = backends.get_backend(target)
             env_var = getattr(backend, "GSIM_EMU_ENV", None)
-            exact, _reason = gsim_emulator.selected_firrtl_status(target, env_var=env_var)
+            exact, _reason = gsim_emulator.selected_firrtl_status(target, env_var=env_var, backend=backend)
             if not exact:
                 raise ValueError("oracle timing cannot verify a strict gSIM receipt for the selected FIRRTL")
-            model = gsim_emulator.resolve(target, env_var=env_var)
+            model = gsim_emulator.resolve(target, env_var=env_var, backend=backend)
             receipt = model.receipt or {}
             if (
                 not model.ok
