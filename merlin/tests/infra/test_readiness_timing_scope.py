@@ -30,6 +30,6 @@ def test_readiness_measures_the_selected_engine_without_lifting_its_policy():
     source = (repo_root() / "merlin/experiments/capsule_bench/harness/readiness_check.py").read_text()
     assert "before = selected_engine_binding(descriptor=C.DESCRIPTOR, target=TARGET)" in source
     assert 'engine = before["engine"]' in source
-    assert '_grade(ref, engine, 900, cap="A2_single_tile_matmul")' in source
+    assert '_grade(ref, engine, 900, cap=probe_names[1])' in source
     assert "write_observed_timing(" in source
     assert "grade_env=probe_env" not in source

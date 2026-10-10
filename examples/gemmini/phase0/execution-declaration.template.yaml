@@ -1,0 +1,90 @@
+# Operator-only deployment template, NOT a reviewed or runnable contract.
+# Replace every REVIEWED_* path/value, attach independently derived capability
+# declarations, then prepare pins with merlin.runtime.backends.rocc_selection.
+# Merlin performs no interpolation. Do not copy legacy harness includes, issue
+# order, compiler obligations or vendor routines from the diagnostic prototype.
+name: gemmini
+version: REVIEWED_CONTRACT_VERSION
+endpoint_kind: inline_asm_insn
+# Fill these from the reviewed software specification and selected RTL evidence.
+# The ordinary capability reader requires a nonempty compute_units block.
+compute_units:
+  - name: REVIEWED_UNIT_NAME
+    kind: REVIEWED_UNIT_KIND
+    dtypes: [REVIEWED_DTYPE_FORMAT]
+    ops: [{family: REVIEWED_OPERATION_FAMILY}]
+capabilities: {}
+memory_model: {}
+legality: {}
+compiler_obligations: []
+hardware_promises: []
+runtime_promises: []
+runtime:
+  # Regenerate/verify facts for this exact configuration. The old example's
+  # GemminiRocketConfig elaboration is not evidence for this selection.
+  rtl_sim_config: FireSimGemminiRocketConfig
+runner:
+  backend: chipyard_rocc
+  suite: gemmini-capsule-bench
+  dtype: i8xi8_i32
+  tier_sim: {L2: spike, L3: elaborated_rtl}
+  sim_via: chipyard
+  chipyard_rocc:
+    version: 1
+    config: FireSimGemminiRocketConfig
+    toolchain:
+      compiler: {path: /REVIEWED_TOOLCHAIN/riscv64-unknown-elf-gcc}
+      link_script: {path: /REVIEWED_INPUTS/logical-layout.ld}
+      runtime_units: [{id: startup}, {id: htif_console}, {id: printf}, {id: libc}]
+      headers: [{id: htif}, {id: out_b64}]
+      load_address: REVIEWED_LOAD_ADDRESS
+      cflags: [REVIEWED_EXACT_COMPILER_FLAGS]
+      ldflags: [REVIEWED_EXACT_LINKER_FLAGS]
+      kernel_stack_frame:
+        entry_symbol: kernel_entry
+        max_static_bytes: REVIEWED_STACK_BUDGET
+    engines:
+      # Retain only engines that will actually be selected and checked.
+      gsim:
+        binary: {path: /REVIEWED_ENGINE/model}
+        receipt: {path: /REVIEWED_ENGINE/strict-build-receipt.json}
+        argv: [REVIEWED_EXACT_ENGINE_ARGUMENTS, '{elf}']
+        environment: {REVIEWED_EXPLICIT_ENV_KEY: REVIEWED_EXPLICIT_ENV_VALUE}
+        cwd: /REVIEWED_ENGINE
+        max_timeout_s: REVIEWED_DEADLINE_AT_MOST_600
+        max_console_bytes: REVIEWED_CONSOLE_BUDGET
+        failure_markers: [REVIEWED_FAILURE_MARKERS]
+      spike:
+        binary: {path: /REVIEWED_TOOLCHAIN/spike}
+        argv: [REVIEWED_EXPLICIT_ISA_ARGUMENT, '{elf}']
+        environment: {REVIEWED_EXPLICIT_ENV_KEY: REVIEWED_EXPLICIT_ENV_VALUE}
+        cwd: /REVIEWED_ENGINE
+        max_timeout_s: REVIEWED_DEADLINE_AT_MOST_600
+        max_console_bytes: REVIEWED_CONSOLE_BUDGET
+        failure_markers: [REVIEWED_FAILURE_MARKERS]
+  spike_extension:
+    extension_name: REVIEWED_EXTENSION_NAME
+    extlib: /REVIEWED_TOOLCHAIN/libextension.so
+harness_abi:
+  version: 2
+  kind: logical_pointer
+  entry_symbol: kernel_entry
+  fence_symbol: kernel_complete
+  tensor_alignment: 64
+  byte_order: little
+  main_convention: void
+  readback_transport: full_values_b64
+rocc_operand_roles:
+  version: 1
+  word_bits: REVIEWED_REGISTER_WIDTH
+  # Expand to the reviewed public primitive ISA roster. Codes and layouts must
+  # exist in the exact facts. Labels describe semantics, not an issue sequence.
+  # Never fill missing facts from the golden compiler.
+  instructions:
+    - funct: REVIEWED_RTL_FUNCT
+      class: REVIEWED_PUBLIC_INSTRUCTION_LABEL
+      operands:
+        rs1: {bundle: REVIEWED_RTL_RS1_BUNDLE}
+        rs2: {bundle: REVIEWED_RTL_RS2_BUNDLE}
+# legal_funct additionally requires an independently complete decode taxonomy.
+rtl_checks: [decode_clean]

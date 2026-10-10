@@ -11,6 +11,7 @@ import pytest
 
 from merlin.common import invocation_record as I
 from merlin.runtime.backends import chipyard_rocc as B
+from merlin.runtime.backends import rocc_selection as S
 from merlin.targetgen import gsim_emulator as GE
 from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
 
@@ -141,6 +142,138 @@ def _program():
             "outputs": ["Y"],
         },
     }
+
+
+def _deployment(selection):
+    contract = copy.deepcopy(selection[0])
+    block = contract["runner"]["chipyard_rocc"]
+    for name in ("compiler", "link_script"):
+        block["toolchain"][name].pop("sha256")
+    for name in ("runtime_units", "headers"):
+        for row in block["toolchain"][name]:
+            row.pop("sha256")
+    for engine in block["engines"].values():
+        engine["binary"].pop("sha256")
+        if "receipt" in engine:
+            engine["receipt"].pop("sha256")
+    if "spike" in block["engines"]:
+        contract["runner"]["spike_extension"].pop("sha256")
+    return contract
+
+
+def test_prepare_deployment_preserves_semantics_and_reaches_ordinary_selection(selection, monkeypatch):
+    from merlin.runtime.backends.base import get_backend
+    from merlin.targetgen.rtl.facts import observed_facts
+    from merlin.targetgen.target_registry import observed_contract
+
+    declaration = _deployment(selection)
+    before = copy.deepcopy(declaration)
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    prepared = S.prepare_contract(target="synthetic", contract=declaration, facts=selection[1])
+    assert prepared == selection[0]
+    assert declaration == before
+    with observed_contract("synthetic", prepared), observed_facts("synthetic", selection[1]):
+        bound = get_backend("synthetic")
+        assert (
+            bound.verify_execution_inputs()["spike"]["extension"]["path"]
+            == prepared["runner"]["spike_extension"]["extlib"]
+        )
+        assert "entry(tensor_0, tensor_1);" in bound.render_harness(
+            _program(), target="synthetic", inputs={"X": [[1, 2]]}
+        )
+        assert bound.rocc_semantics.isa_constants("synthetic")["CUSTOM_OPCODE"] == 11
+
+
+def test_prepare_deployment_reopens_strict_receipt_without_native_work(selection, tmp_path, monkeypatch):
+    _gsim(selection, tmp_path)
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    prepared = S.prepare_contract(target="synthetic", contract=_deployment(selection), facts=selection[1])
+    assert prepared == selection[0]
+    assert (
+        B.bind(target="synthetic", contract=prepared, facts=selection[1]).verify_execution_inputs()["gsim"]["receipt"][
+            "schema_version"
+        ]
+        == GE.STRICT_RECEIPT_SCHEMA
+    )
+
+
+@pytest.mark.parametrize("member", ["compiler", "link_script", "runtime_units", "headers", "binary", "extension"])
+def test_prepare_deployment_never_restamps_existing_pins(selection, member, monkeypatch):
+    declaration = _deployment(selection)
+    block = declaration["runner"]["chipyard_rocc"]
+    if member in ("compiler", "link_script"):
+        row = block["toolchain"][member]
+    elif member in ("runtime_units", "headers"):
+        row = block["toolchain"][member][0]
+    elif member == "binary":
+        row = block["engines"]["spike"]["binary"]
+    else:
+        row = declaration["runner"]["spike_extension"]
+    row["sha256"] = "0" * 64
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    with pytest.raises(ValueError, match="changed"):
+        S.prepare_contract(target="synthetic", contract=declaration, facts=selection[1])
+
+
+@pytest.mark.parametrize(
+    "mutation", ["plugin", "legacy_abi", "missing_layout", "vendor_unit", "foreign_config", "runtime_config"]
+)
+def test_prepare_deployment_cannot_supply_or_invent_compiler_inputs(selection, mutation, monkeypatch):
+    declaration = _deployment(selection)
+    facts = copy.deepcopy(selection[1])
+    if mutation == "plugin":
+        declaration["plugin"] = {"backend": "private.py"}
+    elif mutation == "legacy_abi":
+        declaration["harness_abi"] = {"entry_symbol": "entry", "includes": ["vendor.h"]}
+    elif mutation == "missing_layout":
+        declaration["rocc_operand_roles"]["instructions"][0]["operands"] = {"rs2": {"bundle": "Absent"}}
+    elif mutation == "vendor_unit":
+        declaration["runner"]["chipyard_rocc"]["toolchain"]["runtime_units"].append({"id": "device_kernel"})
+    elif mutation == "runtime_config":
+        declaration["runtime"] = {"rtl_sim_config": "other_config"}
+    else:
+        facts["facts"]["source"]["config"] = "other_config"
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    with pytest.raises(ValueError):
+        S.prepare_contract(target="synthetic", contract=declaration, facts=facts)
+
+
+def test_prepare_cli_writes_only_a_fresh_operator_contract(selection, tmp_path, monkeypatch, capsys):
+    root = tmp_path / "artifacts"
+    monkeypatch.setattr(S, "artifacts_dir", lambda: root)
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    contract = _file(tmp_path, "deployment.json", json.dumps(_deployment(selection)))
+    facts = _file(tmp_path, "facts.json", json.dumps(selection[1]))
+    output = root / "handoff/contract.json"
+    argv = ["--target", "synthetic", "--contract", str(contract), "--facts", str(facts), "--output", str(output)]
+    assert S.main(argv) == 0
+    assert json.loads(output.read_text()) == selection[0]
+    report = json.loads(capsys.readouterr().out)
+    assert report["native_executed"] is False
+    assert report["sha256"] == _pin(output)["sha256"]
+    with pytest.raises(SystemExit):
+        S.main(argv)
+    assert json.loads(output.read_text()) == selection[0]
+
+
+def test_prepare_cli_refuses_source_drift_before_publishing(selection, tmp_path, monkeypatch):
+    root = tmp_path / "artifacts"
+    monkeypatch.setattr(S, "artifacts_dir", lambda: root)
+    contract = _file(tmp_path, "deployment.json", json.dumps(_deployment(selection)))
+    facts = _file(tmp_path, "facts.json", json.dumps(selection[1]))
+    output = root / "handoff/contract.json"
+    original = S.prepare_contract
+
+    def changed(**kwargs):
+        prepared = original(**kwargs)
+        facts.write_text("{}")
+        return prepared
+
+    monkeypatch.setattr(S, "prepare_contract", changed)
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *a, **k: pytest.fail("process reached"))
+    with pytest.raises(SystemExit):
+        S.main(["--target", "synthetic", "--contract", str(contract), "--facts", str(facts), "--output", str(output)])
+    assert not output.exists()
 
 
 def test_bound_metadata_has_no_binary_dependency_or_default_provider(selection, monkeypatch):
