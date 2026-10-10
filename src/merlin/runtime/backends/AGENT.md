@@ -53,9 +53,21 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   harness marker. Paths are not identity. Final ELF hashes remain authoritative.
 - The ordinary device build checks the complete routed kernel/precision roster
   and the caller's selected granularity before building or linking device work.
-  Its optional `final_elf_audit` callback is not a default executable no-FSM
-  checker or an independent instruction/effect/runtime qualification. Such
-  authority requires the separately selected original linked-ELF gates.
+  Active device routes require an explicitly selected `LinkedElfAdmissionService`
+  on the unchanged final link bytes, after legacy audits and before completing
+  the recipe. Its optional `final_elf_audit` callback cannot replace that gate.
+  The selected evaluator owns original source-symbol and instruction policy;
+  shared orchestration grants no independent instruction/effect/runtime role.
+  Zephyr preparation can emit the same routed device calls, but its builder
+  constructs no device-object roster or final-link admission boundary. Active
+  device signatures therefore refuse before LLVM/object compilation; host-only
+  and inert routes remain available. A selected service alone cannot fill this
+  missing device-link implementation.
+  The legacy matrix-object routes bind support/unit/config but have no selected
+  original linked-ELF policy correspondence. Nonempty matrix signatures refuse
+  in both builders; host-only and inert routes remain available. Provider object
+  presence, scalar diagnostic substitution or a successful link cannot supply
+  the user's mandatory forbidden-instruction policy.
 - Explicit whole-model operation profiling uses complete typed operation
   boundaries, including calls/stores with no result. Generic source printing
   retains the entry C interface; private marker callbacks retain their ABI.

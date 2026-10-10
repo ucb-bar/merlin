@@ -2415,9 +2415,8 @@ def build_app(
 ) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
-    ``device`` is a :class:`~merlin.llvmlower.device_build.DeviceRouting`, threaded through to
-    :func:`prepare_for_lowering` exactly as ``matrix`` is. It is the seam a whole-model DEVICE
-    offload arrives through; ``None`` (the default) moves nothing and the build is byte-identical.
+    ``device`` reaches preparation, but active device calls refuse: this builder has no
+    device-object/final-link admission consumer. Host-only and inert routes retain their path.
 
     ``backend``: ``"rvv"`` (vector tile) or ``"scalar"`` (scalar tile). The
     scalar build is the portable FireSim-safe path; the vector build targets the vector
@@ -2428,21 +2427,17 @@ def build_app(
     replaces ``_cflags(backend)``. Both default ``None`` -> the build is byte-identical to the
     shipping codegen, so the global flow is never perturbed by the package machinery.
 
-    ``n_harts > 1`` builds the MULTICORE image: the model is lowered with an outer
-    OpenMP-parallel loop under the RVV schedule (llvmlower ``parallel_harts``) and linked
-    against the Zephyr OpenMP shim (``merlin/runtime/c/libomp_zephyr.c``), whose pool pins
-    one COOP worker per hart. ``n_harts=1`` (default) is byte-identical to the shipping
-    single-worker image.
+    ``n_harts > 1`` lowers an outer OpenMP-parallel loop under the RVV schedule
+    (``parallel_harts``) and links the Zephyr shim's COOP worker pool, one per hart.
+    ``n_harts=1`` (default) retains the single-worker image.
 
     ``iters``/``warmup`` build the SUSTAINED-inference image (per-iteration cycle metrics
     over a reused arena); the defaults are the single-shot behavior.
 
-    ``sdk_dir`` is the target's own SDK checkout, REQUIRED when the board declares a UART console:
-    the UART address and the two clock rates its baud divisor depends on are derived from that SDK's
-    headers (``runtime.sdk_facts``) rather than written down here.
+    UART boards require ``sdk_dir``; ``runtime.sdk_facts`` derives the UART address and
+    baud-divisor clock rates from its headers rather than assuming them.
 
-    ``completion_metric_prefix`` is an optional terminal cycle marker required
-    by some out-of-tree runners. It is folded into the image build hash.
+    ``completion_metric_prefix`` is an optional terminal cycle marker included in the image build hash.
 
     ``masked_contraction_effects`` forwards an explicit nontrapping,
     unobserved-floating-flags contract to closed-mask scalar scheduling. It
@@ -2487,9 +2482,7 @@ def build_app(
     objcopy = gcc.with_name("riscv64-unknown-elf-objcopy")
     clang = toolchain.clang()
 
-    # 1. model.mlir -> normalize (SAME prep passes the dispatch_runtime applies, so
-    #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
-    #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
+    # 1. Normalize with the dispatch_runtime preparation passes, then lower to LLVM/object.
     # Board facts as DATA (runtime.boards): the console options, the vector-state width, the DT RAM
     # label and the DRAM ceiling all come from the descriptor instead of being assumed. `vlen` given
     # explicitly wins over the board's, so a caller can sweep it.
@@ -2514,8 +2507,7 @@ def build_app(
             f"vector instruction and deadlock the barrier (a timeout, with no fault printed). Build "
             f"{brd.n_vector_harts} harts or fewer, or use backend='scalar' to use every hart."
         )
-    # Parse + lower under IR_LOCK: xDSL's parser is not thread-safe, and a delivery builds several
-    # images in one process. See common.ir_lock -- the symptom is a bogus ParseError on valid IR.
+    # IR_LOCK prevents concurrent xDSL parsers from producing bogus ParseError on valid IR.
     from ...common.ir_lock import IR_LOCK
 
     prof_table: list[dict] | None = None
@@ -2533,6 +2525,14 @@ def build_app(
             device=device,
             prepared_model_transform=prepared_model_transform,
         )
+        from ...llvmlower.device_offload import build_arguments, load_sidecar
+
+        if build_arguments(load_sidecar(work), expected_granularity=getattr(device, "granularity", None))["signatures"]:
+            raise ZephyrModelError("active device route has no device-object/final-link admission consumer")
+        if load_matrix_signatures(work, matrix):
+            raise ZephyrModelError(
+                "active matrix route has no independently selected final linked-ELF admission consumer"
+            )
         # A DEBUG image interleaves a mark between the top-level ops of @forward. Two things come out
         # of it: a per-op cost table at the end of a successful run, and -- the reason it is here at
         # all -- a continuously published "which op are we in", which the heartbeat prints while the

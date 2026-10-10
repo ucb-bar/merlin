@@ -1459,6 +1459,7 @@ SUITES = {
             "targetgen/test_bucketize_host_source_body.py",
             "targetgen/test_f32_maximum_host_source_body.py",
             "runtime/test_whole_model_device_offload.py",
+            "runtime/test_device_linked_elf_admission.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
@@ -1468,6 +1469,7 @@ SUITES = {
             "merlin.llvmlower.link_supplier_trace",
             "merlin.llvmlower.device_build",
             "merlin.llvmlower.device_offload",
+            "merlin.targetgen.contract.elf_admission",
             "merlin.targetgen.contract.resident_interface_abi",
             "merlin.targetgen.host_linkage_contract",
             "merlin.frontends.linalg_composite_math",

@@ -24,6 +24,14 @@ consistent per-symbol precision, including repeated calls to a shared kernel.
 The ordinary linker caller passes its explicitly selected routing granularity;
 sidecar metadata cannot downgrade that selection to contraction-only work.
 
+Every active ordinary device route requires an explicitly selected
+`LinkedElfAdmissionService`. The build freezes its original target, callback and
+source pins before work, then evaluates and reopens the exact final-link bytes
+after legacy audits and before completing the recipe. Missing policy, refusal
+or changed selection/image/report prevents completion. Target decoding and
+protected source-symbol policy remain independently selected inputs; this
+transport establishes no device execution, effect or runtime authority.
+
 `codegen.build_host_shared` records the existing LLVM-object, runtime-C-object
 and shared-link subprocesses with the same frozen argv, working directory and
 environment used for execution. Direct source/object/product roles reopen

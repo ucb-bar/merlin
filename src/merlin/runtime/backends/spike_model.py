@@ -595,10 +595,16 @@ def build(
     """
     from ...llvmlower.compilation_recipe import FILENAME as COMPILATION_RECIPE
     from ...llvmlower.compilation_recipe import CompilationRecipe
+    from ...llvmlower.device_build import (
+        admit_linked_device_elf,
+        freeze_device_elf_admission,
+        require_device_elf_admission,
+    )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
 
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
+    device_admission_selection = freeze_device_elf_admission(device)
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -917,6 +923,7 @@ def build(
                 f"{len(_dev_sigs)} device signature(s) were offloaded but no `device=` routing is "
                 "available to build them against; the image would not link"
             )
+        require_device_elf_admission(device, device_admission_selection)
         if _dev_side.get("device") != device.device:
             raise RuntimeError("device offload sidecar does not match selected device")
         exact = getattr(device, "exact_selection", None)
@@ -989,6 +996,7 @@ def build(
 
     matrix_sigs = load_matrix_signatures(work, matrix)
     if matrix_sigs:
+        raise ValueError("active matrix route has no independently selected final linked-ELF admission consumer")
         if matrix is None:
             raise RuntimeError(
                 f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
@@ -1225,6 +1233,15 @@ def build(
 
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
+    linked_admission = None
+    if _dev_sigs:
+        linked_admission = admit_linked_device_elf(
+            device,
+            device_admission_selection,
+            elf=elf,
+            linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
+            directory=work,
+        )
     compilation.completed(elf)
     return {
         "elf": elf,
@@ -1254,6 +1271,7 @@ def build(
         "matrix_routing": matrix.identity() if matrix is not None else None,
         "index_lowering": index_lowering,
         **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
+        **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
         **info,
     }
 
