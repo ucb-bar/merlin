@@ -73,7 +73,7 @@ def test_absent_explicit_selection_preserves_historical_host_clang_commands(tmp_
     codegen.build_host_shared(tmp_path / "source.ll", tmp_path / "model.so")
     assert commands[0] == (
         [Path("selected-clang"), "-O2", "-fPIC", "-c", tmp_path / "source.ll", "-o", tmp_path / "model.o"],
-        {},
+        {"inputs": (tmp_path / "source.ll",), "outputs": (tmp_path / "model.o",)},
     )
     assert len(commands) == 3 and commands[1][0][0] == commands[2][0][0] == "cc"
 
@@ -128,8 +128,10 @@ def test_ordinary_repeated_tensor_arguments_and_tail_shape_execute_all_original_
     actual = execute(outlined, [inputs], tmp_path / "ordinary")
     _record(tmp_path, actual, [inputs * 2])
     records = list((tmp_path / "ordinary/forward_kernel_0/invocations").glob("*/invocation.json"))
-    assert len(records) == 1
-    record = json.loads(records[0].read_text())
+    assert len(records) == 3
+    documents = [json.loads(path.read_text()) for path in records]
+    assert {row["stage"] for row in documents} == {"object", "runtime_object", "link"}
+    record = next(row for row in documents if row["stage"] == "object")
     assert Path(record["argv"][0]).resolve() == selected.resolve()
     assert record["status"] == "completed" and record["returncode"] == 0
     assert record["inputs"][0]["path"].endswith("model.ll")

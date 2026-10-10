@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`codegen.build_host_shared` records the existing LLVM-object, runtime-C-object
+and shared-link subprocesses with the same frozen argv, working directory and
+environment used for execution. Direct source/object/product roles reopen
+changed or missing recorded intermediates. Failed subprocesses retain their
+original exceptions and interrupted records. This is artifact custody only;
+transitive headers/libraries, body semantics, storage/ABI, dependency closure
+and execution authority remain independent obligations.
+
 `llvm_dialect_product` optionally retains the serial upstream runner's actual
 post-pass generic module and raw in-process translation in one subprocess
 record. Fresh product paths preserve raw bytes through later normalization;
