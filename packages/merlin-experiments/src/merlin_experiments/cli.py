@@ -54,6 +54,48 @@ def _measured_status(run_dir: Path, *, stall_hours: float | None = None) -> dict
     return document
 
 
+def _member_paths(values: list[str], flag: str) -> dict[str, Path]:
+    selected: dict[str, Path] = {}
+    for value in values:
+        member, separator, location = value.partition("=")
+        if not separator or not member or not location or member in selected:
+            raise SpecError(f"invalid/duplicate {flag} {value!r}; use GUEST_MEMBER=PATH")
+        selected[member] = Path(location).expanduser().absolute()
+    return selected
+
+
+def _full_capture_inputs(args: argparse.Namespace) -> dict:
+    """Map the v2 (checkpoint) selection flags onto ``capture_selection.select`` keywords.
+
+    Absent flags pass nothing, so a checkpoint-free v1 selection is unchanged. Each loader
+    environment name is declared exactly once, present (``NAME=VALUE``) or absent (``NAME``).
+    """
+    selected: dict = {}
+    if args.checkpoint is not None:
+        ((member, path),) = _member_paths([args.checkpoint], "--checkpoint").items()
+        selected.update(checkpoint=path, checkpoint_guest_member=member)
+    if args.extra_input:
+        selected["extra_inputs"] = _member_paths(args.extra_input, "--extra-input")
+    environment: dict[str, str | None] = {}
+    for value in args.loader_env:
+        name, separator, setting = value.partition("=")
+        if not separator or not name or name in environment:
+            raise SpecError(f"invalid/duplicate --loader-env {value!r}; use NAME=VALUE")
+        environment[name] = setting
+    for name in args.loader_env_unset:
+        if not name or "=" in name or name in environment:
+            raise SpecError(f"invalid/duplicate --loader-env-unset {name!r}; use NAME")
+        environment[name] = None
+    if environment:
+        selected["loader_env"] = environment
+    if args.execution_timeout_seconds is not None:
+        selected["execution_timeout_seconds"] = args.execution_timeout_seconds
+    if args.stage_fp32:
+        # A worker option: absent keeps the historical plan bytes.
+        selected["worker_options"] = {"stage_fp32": True}
+    return selected
+
+
 def _capture_sources() -> tuple[Path, Path]:
     """Keep a sealed capture's worker and schemas in the same Merlin installation.
 
@@ -68,6 +110,45 @@ def _capture_sources() -> tuple[Path, Path]:
     bundled = package / "_data/schemas"
     schemas = bundled if "MERLIN_SCHEMAS_DIR" not in os.environ and bundled.is_dir() else schemas_dir()
     return package / "targetgen/_m2m_capture_worker.py", schemas
+
+
+def _dashboard_arguments(dashboard: argparse.ArgumentParser) -> None:
+    """The richer dashboard views' options (Phase 0, explorer, comparison, operator records, live)."""
+    dashboard.add_argument("--phase0", type=Path, help="a Phase 0 derivation, generation run or corpus directory")
+    dashboard.add_argument("--explorer", action="store_true", help="with --target: every run, lineage and links")
+    dashboard.add_argument(
+        "--compare", type=Path, nargs=2, metavar=("RUN_A", "RUN_B"), help="two runs of the same phase side by side"
+    )
+    dashboard.add_argument("--monitor", type=Path, help="a monitor's notes (## <utc> headings, STATUS: lines)")
+    dashboard.add_argument("--load", type=Path, help="host load samples (TSV: utc, load1, cpu_busy_pct, ...)")
+    dashboard.add_argument("--corpus", type=Path, action="append", default=[], help="capsule corpus root(s)")
+    dashboard.add_argument("--measurement-root", type=Path, help="paired Phase 2: where cells are measured")
+    dashboard.add_argument("--stage-root", type=Path, help="paired Phase 2: where trials are authored")
+    dashboard.add_argument(
+        "--operator-private", action="store_true", help="name hidden capsules, held-out members, reference ratios"
+    )
+    dashboard.add_argument("--live", action="store_true", help="rewrite the page every --interval s and serve it")
+    dashboard.add_argument("--interval", type=float, default=60.0, help="--live refresh period in seconds")
+    dashboard.add_argument("--port", type=int, default=8765, help="--live port on 127.0.0.1")
+    dashboard.add_argument("--cpus", help="--live CPU set, e.g. 24-31 (default: unpinned)")
+
+
+def _dashboard_options(args: argparse.Namespace) -> dict:
+    return {
+        "run_dir": args.run_dir,
+        "target": args.target,
+        "store": args.store,
+        "stall_hours": args.stall_hours,
+        "phase0": args.phase0,
+        "explorer": args.explorer or None,
+        "compare": tuple(args.compare) if args.compare else None,
+        "monitor": args.monitor,
+        "load": args.load,
+        "corpus": tuple(args.corpus) or None,
+        "measurement_root": args.measurement_root,
+        "stage_root": args.stage_root,
+        "operator_private": args.operator_private or None,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,7 +228,19 @@ def main(argv: list[str] | None = None) -> int:
             "--phase0-m2m-root", type=Path, help="explicit Model2MLIR source root for diagnostic capture"
         )
         child.add_argument(
+            "--phase0-capture-timeout-seconds",
+            type=int,
+            help="sandbox timeout (120..14400 s) frozen into the plan for every sealed generation-time "
+            "capture; default keeps the historical fixed 120 s",
+        )
+        child.add_argument(
             "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
+        )
+        child.add_argument(
+            "--phase0-bwrap",
+            type=Path,
+            help="absolute bubblewrap binary frozen into the plan for every sealed generation-time capture; "
+            "default resolves the system bwrap",
         )
         if verb == "inspect":
             from . import group_inspect
@@ -209,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out", type=Path, help="HTML file; defaults to out/artifacts/experiments/<target>/dashboard/<run>.html"
     )
     dashboard.add_argument("--open", action="store_true", help="also open the written page in a browser")
+    _dashboard_arguments(dashboard)
     watch = commands.add_parser("watch", help="live terminal view of a run's records; refreshes until Ctrl-C")
     watch.add_argument("run_dir", type=Path)
     watch.add_argument("--interval", type=float, default=30.0, help="seconds between refreshes")
@@ -249,6 +343,26 @@ def main(argv: list[str] | None = None) -> int:
         help="independently selected policy bytes for each externally quantized capture",
     )
     derive.add_argument(
+        "--performance-capture",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="capture of a declared workload_spec.performance_applications member; feeds only the Phase 2 form scope",
+    )
+    derive.add_argument(
+        "--performance-capture-selection",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH@SHA256",
+        help="pre-execution selection for each performance-scale capture (all or none)",
+    )
+    derive.add_argument(
+        "--heldout-layer-shapes",
+        type=Path,
+        help="OPERATOR-PRIVATE merlin.heldout_layer_shapes.v1 file (owner-only, outside the repository): "
+        "refuse any derived form member whose contraction equals a held-out network layer",
+    )
+    derive.add_argument(
         "--native-qualification",
         action="append",
         default=[],
@@ -270,9 +384,76 @@ def main(argv: list[str] | None = None) -> int:
     select_capture.add_argument("--run-dir", type=Path, required=True)
     select_capture.add_argument("--output", type=Path, required=True, help="fresh owner-only selection directory")
     select_capture.add_argument("--bwrap", type=Path)
+    select_capture.add_argument(
+        "--checkpoint",
+        metavar="GUEST_MEMBER=PATH",
+        help="explicit checkpoint file or tree (v2 full-model selection); the loader reads it at GUEST_MEMBER "
+        "under its read-only input root",
+    )
+    select_capture.add_argument(
+        "--extra-input",
+        action="append",
+        default=[],
+        metavar="GUEST_MEMBER=PATH",
+        help="additional selected input file or tree (v2 only; repeatable)",
+    )
+    select_capture.add_argument(
+        "--loader-env",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="declared loader environment value (v2 only; repeatable); every literal loader read must be declared",
+    )
+    select_capture.add_argument(
+        "--loader-env-unset",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="loader environment read selected as deliberately absent (v2 only; repeatable)",
+    )
+    select_capture.add_argument(
+        "--stage-fp32",
+        action="store_true",
+        help="stage the exported program to FP32 before capture (and before an int8 recipe quantizes it), "
+        "with the worker's exact-source precision audit; needed for models that compute in bf16/fp16",
+    )
+    select_capture.add_argument(
+        "--execution-timeout-seconds",
+        type=int,
+        help="bounded sandbox execution time, used by issue and by the attestation replay: a checkpoint "
+        "selection requires 120..43200; a checkpoint-free selection may select 120..14400 (default: the "
+        "historical fixed 120 s, recorded nowhere so old selections keep their bytes)",
+    )
     issue_capture = capture_ops.add_parser("issue", help="capture only from an exact preselected identity")
     issue_capture.add_argument("--selection", type=Path, required=True)
     issue_capture.add_argument("--expected-sha256", required=True)
+    issue_capture.add_argument(
+        "--attestation-output",
+        type=Path,
+        help="after issuing, replay the capture and write its sealed execution attestation here "
+        "(v3 for a v2 checkpoint selection) as a fresh owner-only file",
+    )
+    attest_capture = capture_ops.add_parser(
+        "attest", help="replay an issued preselected capture and write its sealed execution attestation"
+    )
+    attest_capture.add_argument("--selection", type=Path, required=True)
+    attest_capture.add_argument("--expected-sha256", required=True)
+    attest_capture.add_argument("--output", type=Path, required=True, help="fresh attestation JSON path")
+    heldout = operations.add_parser(
+        "heldout-layers",
+        help="OPERATOR: write the private held-out layer-shape file from per-program inventories",
+    )
+    heldout.add_argument("--inventory", type=Path, action="append", required=True)
+    heldout.add_argument("--output", type=Path, required=True, help="fresh owner-only file outside the repository")
+    staging = operations.add_parser(
+        "stage-workloads",
+        help="write a fresh workload root (loader and optional profile) per declared roster label",
+    )
+    staging.add_argument("--roster", type=Path, required=True, help="merlin.phase0_workload_roster.v1 file")
+    staging.add_argument("--output", type=Path, required=True, help="fresh capture-input directory")
+    staging.add_argument(
+        "--descriptor", type=Path, help="require the roster to stage exactly the descriptor's declared labels"
+    )
     variants = operations.add_parser(
         "variants", help="derive bounded independent workload roots from selected RTL facts"
     )
@@ -335,6 +516,26 @@ def main(argv: list[str] | None = None) -> int:
         return group_inspect.run_from_args(args)
     try:
         if args.verb == "corpus":
+            if args.operation == "heldout-layers":
+                from merlin.common.paths import repo_root
+
+                from .phase0 import heldout_layers as HL
+
+                if args.output.absolute().is_relative_to(repo_root()):
+                    raise SpecError("the held-out layer file is operator-private; write it outside the repository")
+                document = HL.from_inventories(args.inventory)
+                path = HL.write_private(document, args.output)
+                print(json.dumps({"path": str(path), **HL.load(path).summary()}, indent=2))
+                return 0
+            if args.operation == "stage-workloads":
+                from .phase0.workload_roster import stage
+
+                try:
+                    result = stage(args.roster, args.output, descriptor=args.descriptor)
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
             if args.operation == "variants":
                 from .phase0.workload_variants import materialize
 
@@ -366,10 +567,27 @@ def main(argv: list[str] | None = None) -> int:
                             dtype=args.dtype,
                             recipe=args.recipe,
                             bwrap_binary=args.bwrap,
+                            **_full_capture_inputs(args),
+                        )
+                    elif args.capture_operation == "attest":
+                        result = capture_selection.attest(
+                            args.selection, expected_sha256=args.expected_sha256, output=args.output
                         )
                     else:
+                        if args.attestation_output is not None and (
+                            args.attestation_output.exists() or not args.attestation_output.parent.is_dir()
+                        ):
+                            raise ValueError("capture attestation output must be fresh, under an existing parent")
                         receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
                         result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
+                        if args.attestation_output is not None:
+                            result.update(
+                                capture_selection.attest(
+                                    args.selection,
+                                    expected_sha256=args.expected_sha256,
+                                    output=args.attestation_output,
+                                )
+                            )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
                 print(json.dumps(result, indent=2))
@@ -391,6 +609,9 @@ def main(argv: list[str] | None = None) -> int:
                         native_qualifications=capture_selections(args.native_qualification),
                         capture_preselections=capture_selection_specs(args.application_capture_selection),
                         quantization_policies=quantization_policy_specs(args.application_quant_policy),
+                        performance_captures=capture_selections(args.performance_capture),
+                        performance_preselections=capture_selection_specs(args.performance_capture_selection),
+                        heldout_layers=args.heldout_layer_shapes,
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
@@ -490,15 +711,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if current else 1
             result = {"index": str(target_index.write_index(args.target))}
         elif args.verb == "dashboard":
-            from .tracking import write_dashboard
+            from .tracking import serve_dashboard, write_dashboard
 
-            result = write_dashboard(
-                run_dir=args.run_dir,
-                target=args.target,
-                out=args.out,
-                store=args.store,
-                stall_hours=args.stall_hours,
-            )
+            options = _dashboard_options(args)
+            if args.live:
+                from .tracking import destination_for
+
+                out = args.out or destination_for(**options)
+                return serve_dashboard(out=out, interval=args.interval, port=args.port, cpus=args.cpus, **options)
+            result = write_dashboard(out=args.out, **options)
             if args.open:
                 import webbrowser
 
@@ -539,6 +760,8 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_component_coverage=args.phase0_component_coverage,
                 phase0_m2m_root=args.phase0_m2m_root,
                 phase0_m2m_python=args.phase0_m2m_python,
+                phase0_capture_timeout_seconds=args.phase0_capture_timeout_seconds,
+                phase0_bwrap=args.phase0_bwrap,
             )
             if args.verb == "inspect":
                 result = plan

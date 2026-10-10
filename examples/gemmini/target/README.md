@@ -104,6 +104,15 @@ hierarchy files may precede specialization/deduplication; discrepancies remain
 diagnostics, not guessed aliases. `validation.json` compares direct source slices
 with extracted values and records the storage-versus-compute precision gap.
 
+`validation.json` is `verified` only when all three checks read `agrees`. If
+they read `unknown` and `facts.json` lists `datapaths_undeterminable` ("no array
+carrying an `element`") with a `timing` row for module `<anon>`, the discovery
+graph saw no module names. CIRCT 1.75 (chipyard 1.14's firtool/circt-opt) prints
+`hw.module`'s `sym_name`/`module_type` in the generic attribute dictionary
+rather than as properties. `merlin.targetgen.rtl.hw_graph.load_hw_graph` exposes
+those inherent attributes as properties before mlc's `HwGraph` reads them.
+Facts produced by a checkout without that step must be regenerated, not edited.
+
 Source consistency verifies provenance, not compiler or numerical conformance.
 Operation, quantization, transfer and host support stay unreviewed until their
 own execution receipts exist. Use fresh facts for a fresh frozen Phase 0 run;

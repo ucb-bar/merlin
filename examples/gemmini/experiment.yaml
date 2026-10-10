@@ -19,6 +19,12 @@ phases:
       capability_contract: target/contracts/target_contract.yaml
       hardware_spec: target/hardware.yaml
       # Diagnostic only: review and production-source consistency are not established.
+      # Kept diagnostic on purpose so an ordinary run of this example never claims verified
+      # evidence. A release run selects verified evidence explicitly on the command line
+      # (`merlin experiment run ... --phase0-evidence-mode verified`), which overrides this value
+      # and then requires an audited `validation.json` beside the selected RTL facts, sealed
+      # capture attestations, and the reviewed software/host inputs; any gap makes Phase 0 fail
+      # closed rather than silently downgrade.
       evidence_mode: diagnostic
       # Select freshly derived conformance/synthesis artifacts with CLI overrides.
       performance_template: ../../experiments/templates/phase0/performance.yaml

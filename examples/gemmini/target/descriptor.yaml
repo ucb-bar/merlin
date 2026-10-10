@@ -3,6 +3,9 @@
 target: gemmini
 resources_root: merlin/experiments/capsule_bench/targets/gemmini
 task_root: examples/gemmini/phase1/task
+# Present but intentionally empty (see its README): no curated harness or ISA headers are granted,
+# and a declared root stops contract lookups from falling back to legacy capsule_bench contracts.
+# Release preparation drops this pointer.
 contracts_root: examples/gemmini/phase1/contracts
 numeric_profile: examples/gemmini/phase0/recipe.yaml
 
@@ -60,6 +63,91 @@ phase1_gates:
     forbidden_loader_env:
       smolvla: [M2M_SMOLVLA_VLM_LAYERS, M2M_SMOLVLA_EXPERT_LAYERS, M2M_SMOLVLA_TAP]
       tiny_llama: [M2M_LLAMA_LAYERS]
+  # Operator-side numerical execution of the SAME linked ELFs the static gate above verified
+  # (merlin_experiments.phase1.feedback.private_full_model_execution), run by the formal grade after
+  # the freeze. Every program of the roster executes; each is linked with full readback (every
+  # result printed whole) and its group calls bracketed with cycle counts.
+  # Correctness is the QUANTIZED program's semantics, never the float model's:
+  #   integer_reference  every result the capture's receipt-bound integer reference states is
+  #                      value-exact, wherever the saved program's own host execution reproduces that
+  #                      reference exactly (where it does not, the reference's float nonlinear
+  #                      arithmetic is not the saved program's, and the result falls to host_execution);
+  #   host_execution     every other result is held to an independent host execution of the same
+  #                      quantized saved program; host execution is deterministic and the scalar device
+  #                      reproduces it exactly, so the tolerance only admits float-order rounding
+  #                      (about a hundred float32 ulps), never a changed quantization;
+  #   fp32_sanity        the float model is a sanity bound: per result, cosine to it must be at least
+  #                      1 - cosine_margin * (1 - cosine of the quantized program's own result to it),
+  #                      calibrated per capture; top1 (result 0) must equal the float model's on every
+  #                      row where the quantized program's own top-1 does.
+  # The engine sets the scope of the evidence: `gsim` is the RTL-equivalent engine (numerics and
+  # cycles); `spike` is the functional instruction-set model with the accelerator extension
+  # (spike-functional: numerics only, never certification or timing), on the declared functional
+  # board, whose DRAM holds the whole program's weights. max_cycles and timeout_s are hang bounds.
+  # smolvla.action_decode carries no contraction (no quantization work), so its capture states no
+  # integer reference and host execution judges it.
+  whole_model:
+    private_full_models:
+      required: true
+      programs:
+        resnet50:
+          model:
+            engine: gsim
+            board: gemmini_rocket_verilator
+            max_cycles: 150000000
+            timeout_s: 86400
+            integer_reference: [integer-reference.json]
+            require_integer_reference: true
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: true}
+            group_profile: true
+        smolvla:
+          prefix_encode:
+            engine: spike
+            board: gemmini_rocket_spike_functional
+            timeout_s: 86400
+            integer_reference: [integer-reference.json]
+            require_integer_reference: true
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: false}
+            group_profile: true
+          flow_denoise:
+            engine: spike
+            board: gemmini_rocket_spike_functional
+            timeout_s: 86400
+            integer_reference: [integer-reference.json]
+            require_integer_reference: true
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: false}
+            group_profile: true
+          action_decode:
+            engine: spike
+            board: gemmini_rocket_spike_functional
+            timeout_s: 14400
+            integer_reference: [integer-reference.json]
+            require_integer_reference: false
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: false}
+            group_profile: true
+        tiny_llama:
+          prefill:
+            engine: spike
+            board: gemmini_rocket_spike_functional
+            timeout_s: 172800
+            integer_reference: [integer-reference.json]
+            require_integer_reference: true
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: false}
+            group_profile: true
+          decode:
+            engine: spike
+            board: gemmini_rocket_spike_functional
+            timeout_s: 86400
+            integer_reference: [integer-reference.json]
+            require_integer_reference: true
+            host_execution: {atol: 1.0e-6, rtol: 1.0e-5}
+            fp32_sanity: {reference: float_reference.json, cosine_margin: 4, top1: false}
+            group_profile: true
 
 answer_surfaces:
   prior_backends: [merlin_native_v0, hand_smoke_oot, agent_spec_v0_mlir_oot, agent_spec_v1_mlir_oot]
@@ -97,11 +185,17 @@ workload_spec:
         quant_scheme: int8_dyn_act_int8_weight
         quant_activation_contractions: true
         quant_integer_nonlinear: true
+  # The iteration roster; its capture inputs (loader and profile per label) are staged from
+  # phase0-workloads.yaml beside this file.
   applications:
     - coverage_mlp
     - residual_cnn
     - causal_decoder
+    - causal_decoder_decode_step
     - multimodal_policy
+  # Independent performance-scale workloads whose forms feed only the Phase 2 form scope
+  # (`corpus derive --performance-capture LABEL=PATH`); never Phase 1 forms or source capsules.
+  performance_applications: [residual_cnn_scale, decoder_scale, decoder_step_scale, vit_scale]
   historical_application_suites:
     model_scale: [deepjscc_int8_consistent, lstmnetvit_fp8_consistent,
                   lstmnetvit_int8_consistent, lstmnetvit_int8_w8a8_consistent]

@@ -472,6 +472,8 @@ def resolve_plan(
     phase0_evidence_mode: str | None = None,
     phase0_m2m_root: Path | None = None,
     phase0_m2m_python: Path | None = None,
+    phase0_capture_timeout_seconds: int | None = None,
+    phase0_bwrap: Path | None = None,
 ) -> dict:
     from merlin.common.paths import out_dir, repo_root
 
@@ -514,6 +516,8 @@ def resolve_plan(
                 phase0_evidence_mode,
                 phase0_m2m_root,
                 phase0_m2m_python,
+                phase0_capture_timeout_seconds,
+                phase0_bwrap,
             )
         )
         and phase != "0"
@@ -541,6 +545,20 @@ def resolve_plan(
     for name, path in (("m2m_root", phase0_m2m_root), ("m2m_python", phase0_m2m_python)):
         if path is not None:
             phase0_selection[name] = str(path.expanduser().absolute())
+    if phase0_capture_timeout_seconds is not None:
+        from .phase0.m2m_runtime import capture_timeout
+
+        try:
+            capture_timeout(phase0_capture_timeout_seconds)
+        except ValueError as exc:
+            raise SpecError(str(exc)) from exc
+    if phase0_bwrap is not None:
+        from .phase0.m2m_runtime import capture_bwrap
+
+        try:
+            phase0_bwrap = Path(capture_bwrap(phase0_bwrap))
+        except ValueError as exc:
+            raise SpecError(str(exc)) from exc
     commands = {}
     corpus_closures = {}
     phase1_operator_inputs = None
@@ -635,8 +653,18 @@ def resolve_plan(
                 from .phase0.sealed_generation import CONFIG_ENV
 
                 selection = command["phase0_m2m_selection"]
+                if phase0_capture_timeout_seconds is not None:
+                    # Frozen with the plan; the freeze rebinds and re-verifies the capture config.
+                    command["phase0_capture_timeout_seconds"] = phase0_capture_timeout_seconds
+                if phase0_bwrap is not None:
+                    command["phase0_bwrap"] = str(phase0_bwrap)
                 command["env"][CONFIG_ENV] = json.dumps(
-                    sealed_capture_config(selection, destination / "phase0"),
+                    sealed_capture_config(
+                        selection,
+                        destination / "phase0",
+                        execution_timeout_seconds=phase0_capture_timeout_seconds,
+                        bwrap=phase0_bwrap,
+                    ),
                     sort_keys=True,
                 )
                 # Keep the operator's shared store selection in the frozen
@@ -695,6 +723,16 @@ def resolve_plan(
                 for visibility, roots in closure.items():
                     for index, path in enumerate(roots):
                         inputs[f"phase{number}:corpus:{visibility}:{index}"] = path
+    if phase0_bwrap is not None and "phase0_bwrap" not in commands.get("0", {}):
+        raise SpecError(
+            "--phase0-bwrap applies only to sealed generation captures: select "
+            "--phase0-m2m-root/--phase0-m2m-python with verified (or component-coverage) Phase 0 evidence"
+        )
+    if phase0_capture_timeout_seconds is not None and "phase0_capture_timeout_seconds" not in commands.get("0", {}):
+        raise SpecError(
+            "--phase0-capture-timeout-seconds applies only to sealed generation captures: select "
+            "--phase0-m2m-root/--phase0-m2m-python with verified (or component-coverage) Phase 0 evidence"
+        )
     # No engine-owned output or editable workspace may overlap the immutable closure,
     # even when the orchestration directory itself lives elsewhere.
     mutable = [destination]
@@ -780,7 +818,7 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
     support contract and its declared file.  Native startup still validates that
     the module loads and implements the complete check capability.
     """
-    from merlin.targetgen.plugins import resolve_support, validate
+    from merlin.targetgen.plugins import core_module_path, resolve_support, validate
 
     for command in plan["phases"].values():
         if command.get("module") != PHASE1_MODULE or "--treatment" not in command["argv"]:
@@ -802,6 +840,16 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
                     "RTL checks cannot run from the metadata-only example. Select a reviewed OOT support provider."
                 ]
             problems = validate(plugin, root=support.base, where=f"{target} plugin")
+            # A data-only provider served by a GENERIC core backend has RTL checks only through the
+            # modules its plugin block selects; say so here rather than at native startup.
+            if core_module_path(str(plugin["backend"])) is not None and not (
+                plugin.get("rocc_semantics") and plugin.get("rtl_checks")
+            ):
+                declared = sorted(key for key in ("rocc_semantics", "rtl_checks") if plugin.get(key))
+                problems.append(
+                    f"{target} plugin: the generic backend {plugin['backend']!r} serves RTL checks only from "
+                    f"plugin.rocc_semantics and plugin.rtl_checks; the selected provider declares {declared or 'neither'}"
+                )
             return [f"phase 1 EL4 support: {problem}" for problem in problems]
         except (OSError, ValueError) as exc:
             return [f"phase 1 EL4 support for {target!r} cannot be resolved: {exc}"]
