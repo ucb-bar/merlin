@@ -35,6 +35,25 @@ select both the sealed descriptor and its `corpus_seal` input. Combined phase 0/
 selection remains refused: automation cannot supply the human review. Phase 2 catalog templates require operator
 inputs and are not runnable examples with fabricated compiler certificates.
 
+To stop an ordinary Phase 1 session after its native startup checks, select the
+reviewed inputs explicitly:
+
+```sh
+python -m merlin_experiments.phase1 \
+  --descriptor /absolute/sealed/target_experiment.yaml --repo /absolute/operator-root \
+  --bundle BUNDLE_ID --bundle-manifest /absolute/sealed/input_bundles/BUNDLE_ID/input_bundle_manifest.yaml \
+  --corpus-seal /absolute/reviewed/corpus-seal.json --oracle-timing /absolute/target-timing.json \
+  --level EL4 --sandbox bwrap --run-id fresh-preflight --preflight-only
+```
+
+This uses the same source, snapshot, mask, oracle and admitted-tool preparation as
+ordinary authoring, then rechecks the prepared inputs. It launches no author or
+submission qualification. The private `preflight_result.json` records startup
+completion only; it does not establish fresh-client isolation or compiler/runtime
+qualification. A candidate, resume, copy sandbox, oracle/hidden bypass or missing
+seal is refused. Existing environment and explicit seal selections must agree.
+Independently selected target tools, support and verified timing remain prerequisites.
+
 The Phase 0 engine lives in `merlin_experiments.phase0`, partitioned into profile
 loading, sweep expansion, independent numerics, caching, writing and provenance.
 Installed invocation needs explicit external profiles, descriptor and output:

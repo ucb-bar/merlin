@@ -380,7 +380,7 @@ def _per_capsule_timeout(
     2. the cost law of the engine that will actually run (:func:`_cert_budget_s`), FLOORED at
        :data:`_CERT_TIMEOUT_FLOOR_S` so a cheap fit can never shorten the budget below what the old
        default already allowed. Derivation is allowed to raise the budget, never to lower it.
-    3. the recorded verilator measurement, i.e. exactly what this used to do -- kept so a target with
+    3. the recorded selected-engine measurement -- kept so a target with
        no cert history behaves as it did rather than losing its budget to the new code path.
     4. the historical constant, when even that measurement is absent.
     """
@@ -389,15 +389,18 @@ def _per_capsule_timeout(
     derived, why = _cert_budget_s(str(context.target or ""))
     if derived:
         return max(_CERT_TIMEOUT_FLOOR_S, int(derived)), f"derived from {why}"
-    from merlin_experiments.phase1.timing import read_verified_timing, requires_chipyard_timing, timing_path
+    from merlin_experiments.phase1.timing import (
+        observed_seconds,
+        read_verified_timing,
+        requires_chipyard_timing,
+        timing_path,
+    )
 
     descriptor = getattr(context, "descriptor", None)
     if requires_chipyard_timing(descriptor):
         tf = timing_file or timing_path(context.experiment, context.target)
         try:
-            measured = int(
-                2 * read_verified_timing(tf, descriptor=descriptor, target=context.target)["verilator_per_capsule_s"]
-            )
+            measured = int(2 * observed_seconds(read_verified_timing(tf, descriptor=descriptor, target=context.target)))
         except ValueError as exc:  # absent/foreign observations cannot shorten a Chipyard cert budget
             return _CERT_TIMEOUT_FALLBACK_S, f"no engine cost law and no target-bound measurement ({why}; {exc})"
     else:
@@ -407,7 +410,9 @@ def _per_capsule_timeout(
         except Exception:  # noqa: BLE001 -- no measurement: the historical constant
             return _CERT_TIMEOUT_FALLBACK_S, f"no engine cost law and no recorded measurement ({why})"
     return max(_CERT_TIMEOUT_FLOOR_S, measured), (
-        f"no engine cost law ({why}); fell back to the recorded verilator measurement"
+        f"no engine cost law ({why}); fell back to the recorded "
+        + ("selected-engine" if requires_chipyard_timing(descriptor) else "verilator")
+        + " measurement"
     )
 
 

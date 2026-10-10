@@ -43,6 +43,7 @@ from merlin_experiments.phase1.context import (
     resolve_context,
 )
 from merlin_experiments.phase1.feedback import qa as _qc
+from merlin_experiments.phase1.timing import barrier_measurements
 
 
 def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, barrier_tier: str) -> tuple[dict, bool]:
@@ -1244,9 +1245,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # default. Preserve the cycle count from the tier that actually supplied this row's barrier
         # verdict. This is measurement metadata, not answer-bearing data, and is sealed with the score.
         _barrier_record = (d.get("tiers") or {}).get(bar_used) or {}
-        _barrier_cycles = _barrier_record.get("cycles") if isinstance(_barrier_record, dict) else None
-        if isinstance(_barrier_cycles, int) and not isinstance(_barrier_cycles, bool) and _barrier_cycles > 0:
-            row["barrier_cycles"] = _barrier_cycles
+        row.update(barrier_measurements(_barrier_record, cert_tier=bar_used == "L3"))
         # The L2 cycle count is meaningful only with the exact selected simulator bytes and timing
         # configuration that produced it.  The selected OOT adapter writes this generic sidecar around
         # its successful invocation; absent/malformed provenance stays absent so the downstream seal

@@ -20,6 +20,13 @@ call this same owner; they must not retain a second execution composition. Initi
 context before execution imports. Installed callers provide operator paths explicitly.
 `__main__.py` is the installed command using the same option parser and controller.
 Keep parsing/help target-inert; require explicit operator inputs instead of native defaults.
+`--preflight-only` uses the same ordinary `session.prepare` and stops before authoring
+or submission qualification. Require an explicit reviewed corpus seal and exact bundle
+identity, native bwrap, oracle and hidden checks, without candidate/resume/bypass modes.
+An explicit seal must agree with an existing environment selection; absent CLI selection
+preserves legacy behavior. The private `preflight.py` continuation reopens complete prepared
+inputs and the frozen manifest/snapshot/seal. Its result records only startup checks;
+it is not a compiler verdict, fresh-client canary, runtime or phase qualification.
 `workspace_transport.py` owns frozen friendly views, copy grants and mask probes. Resolve grants
 through the shared resolver and inspect frozen membership for frozen views. Missing probe
 completion, failed execution or unreadable public controls are not successful isolation evidence.
@@ -77,6 +84,13 @@ Supplemental integrity markers are immutable `GradingInputs` chosen only from tr
 invocation options. Propagate them through ordinary/fast QA, treatment callbacks, shape
 probes and in-process L3 repairs; never mutate core scanner defaults, weaken AST restrictions,
 read policy from candidates or silently extend fresh official/selfcheck child policy.
+
+`timing.py` binds readiness's actual passed L3 grade wall-time observation to the
+selected engine/config/binary before and after measurement. gSIM additionally
+requires existing strict-v3 receipt and byte-verified selected FIRRTL facts;
+these file/transcript checks grant no emitter-build, counter, runtime or physical
+authority. Selfcheck exposes only actual barrier engine/digests, never raw paths.
+Legacy Verilator observations apply only to Verilator selection.
 
 `audit.py` owns `AnswerAudit`: immutable descriptor-derived tokens plus an explicit absolute
 bundle directory. Grant files are reread at their historical observation points. Importing

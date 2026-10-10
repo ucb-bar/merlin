@@ -98,7 +98,9 @@ class RunRequest:
         return {
             "schedule": a.schedule,
             "session_mode": (
-                "submission_qualification"
+                "preflight_only"
+                if a.preflight_only
+                else "submission_qualification"
                 if a.qualify_submission
                 else "legacy_progress_only"
                 if a.continuous
@@ -342,8 +344,32 @@ def phase_run_dir(context, arm: str, run_id: str, *, resume: bool) -> Path:
     return context.phase_runs / run_id
 
 
+def validate_preflight_options(a: RunOptions) -> None:
+    """Pure selection checks, before native probes and when reopening preparation."""
+    ambient_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
+    if a.corpus_seal and ambient_seal and a.corpus_seal != ambient_seal:
+        raise ValueError("explicit corpus seal differs from the environment selection")
+    if a.preflight_only:
+        if (
+            a.resume
+            or a.seed_submission
+            or a.qualify_submission
+            or a.seal_current
+            or a.continuous
+            or a.no_oracle
+            or a.skip_hidden
+            or a.allow_unsandboxed
+            or a.sandbox != "bwrap"
+        ):
+            raise ValueError("preflight-only requires fresh isolated readiness without bypasses or a candidate")
+        seal = Path(a.corpus_seal)
+        if not a.corpus_seal or not seal.is_absolute() or not seal.is_file() or seal.resolve() != seal or not a.bundle:
+            raise ValueError("preflight-only requires an explicit canonical corpus seal and bundle identity")
+
+
 def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
+    validate_preflight_options(a)
     if a.qualify_submission:
         if a.resume or a.seed_submission or a.seal_current or a.continuous:
             raise RuntimeError("unpaid qualification requires a fresh run and one selected submission")
@@ -404,8 +430,10 @@ def prepare(
         return load_target_experiment(context.descriptor)
 
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
+    if a.preflight_only and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
+        raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
     bundle_dir = request.bundle_manifest.parent
-    _corpus_seal = os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
+    _corpus_seal = a.corpus_seal or os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
     if a.qualify_submission and not _corpus_seal:
         raise RuntimeError("unpaid qualification requires an explicitly selected reviewed corpus seal")
     if _corpus_seal:

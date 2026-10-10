@@ -1,11 +1,4 @@
-"""Readiness's Verilator timing probe and a campaign's RTL-engine pin do not conflict.
-
-The oracle-timing record calibrates the launcher with Verilator's per-capsule cost, so its probe runs
-Verilator by design. A campaign that pins certification to another engine (``.env``
-``MERLIN_REQUIRED_RTL_ENGINE=gsim``) made selfcheck refuse that probe outright -- a NO-GO that blamed
-the oracle and blocked the timing record. The pin is lifted for the probe only and returned, so
-readiness still proves the pinned engine on its own.
-"""
+"""Legacy probe helper behavior and selected-engine readiness integration."""
 
 from __future__ import annotations
 
@@ -33,8 +26,10 @@ def test_no_pin_or_a_matching_pin_changes_nothing():
     assert timing_probe_environment({REQUIRED_ENGINE_ENV: "  "}, engine="verilator")[1] is None
 
 
-def test_readiness_grades_the_timing_probe_with_the_scoped_environment_and_the_pin_separately():
+def test_readiness_measures_the_selected_engine_without_lifting_its_policy():
     source = (repo_root() / "merlin/experiments/capsule_bench/harness/readiness_check.py").read_text()
-    assert 'timing_probe_environment(env, engine="verilator")' in source
-    assert 'grade_env=probe_env' in source
-    assert "_grade(ref, pinned_engine, 900" in source
+    assert "before = selected_engine_binding(descriptor=C.DESCRIPTOR, target=TARGET)" in source
+    assert 'engine = before["engine"]' in source
+    assert '_grade(ref, engine, 900, cap="A2_single_tile_matmul")' in source
+    assert "write_observed_timing(" in source
+    assert "grade_env=probe_env" not in source
