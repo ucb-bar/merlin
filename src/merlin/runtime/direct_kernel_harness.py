@@ -104,6 +104,8 @@ def render_direct_kernel(
     invocation_plan=None,
     counter_plan=None,
     phase_plan=None,
+    output_poison=None,
+    prelude_symbol=None,
 ):
     """Render complete pointer-call storage with explicitly selected readback.
 
@@ -115,6 +117,10 @@ def render_direct_kernel(
     if type(abi) is not DirectKernelAbi:
         raise ValueError("direct kernel harness requires a typed host ABI")
     abi.verify()
+    if output_poison is not None and (type(output_poison) is not int or not 0 <= output_poison <= 255):
+        raise ValueError("direct output poison must be an explicit byte")
+    if prelude_symbol is not None:
+        _identifier(prelude_symbol)
     if original_storage is not None:
         from merlin.targetgen.contract.pointer_storage import OriginalPointerStorageContract
 
@@ -182,6 +188,29 @@ def render_direct_kernel(
         if type(phase_plan) is not DirectKernelPhasePlan or not memory or phase_plan.counter_plan is not counter_plan:
             raise ValueError("harness phases require coherent readback and the same explicit counter plan")
         phase_roster = phase_plan.bind(cb, abi=abi, invocation_plan=invocation_plan)
+    if prelude_symbol is not None:
+        reserved = {
+            abi.entry_symbol,
+            abi.completion_symbol,
+            "main",
+            "console_init",
+            "htif_puts",
+            "htif_exit",
+            "invocation",
+            "invocation_completed",
+            "byte",
+            "merlin_poison_index",
+            *("tensor_" + str(index) for index in range(len(args))),
+            *(history.symbol for history in histories),
+            *(counter_roster or ()),
+            *(phase_roster or ()),
+        }
+        if invocation_plan is not None:
+            reserved.add(invocation_plan.count_symbol)
+        if counter_plan is not None:
+            reserved.update((counter_plan.counter_symbol, counter_plan.state_symbol))
+        if prelude_symbol in reserved:
+            raise ValueError("direct prelude overlaps a harness storage or entry symbol")
     declarations = [
         "#include <stdint.h>",
         '#include "htif.h"',
@@ -191,6 +220,8 @@ def render_direct_kernel(
         declarations.insert(2, '#include "out_b64.h"')
     if abi.completion_symbol:
         declarations.append(f"extern void {abi.completion_symbol}(void);")
+    if prelude_symbol is not None:
+        declarations.append(f"extern void {prelude_symbol}(void);")
     for name, (index, access, (count, width, dtype)) in slots.items():
         if width > abi.tensor_alignment:
             raise ValueError("direct kernel software alignment is smaller than a container word")
@@ -227,6 +258,9 @@ def render_direct_kernel(
     if phase_roster is not None:
         body.extend(phase_plan.end("console_setup", "  "))
         body.extend(phase_plan.store("console_setup", index="0", byte_order=abi.byte_order, indent="  "))
+    if prelude_symbol is not None:
+        body.append(f"  {prelude_symbol}();")
+    if phase_roster is not None:
         body.extend(phase_plan.begin("calibration_loop", "  "))
     if counter_roster is not None:
         body.extend(
@@ -246,7 +280,24 @@ def render_direct_kernel(
         body.extend(phase_plan.end("calibration_loop", "  "))
         body.extend(phase_plan.store("calibration_loop", index="0", byte_order=abi.byte_order, indent="  "))
     call = f"{abi.entry_symbol}({', '.join('tensor_' + str(index) for index in range(len(args)))});"
+
+    def poison(indent):
+        if output_poison is None:
+            return []
+        lines = []
+        for index, access, (count, width, _) in slots.values():
+            if access == "write":
+                lines.extend(
+                    [
+                        indent + f"for(uint64_t merlin_poison_index=0;merlin_poison_index<UINT64_C({count * width});"
+                        "merlin_poison_index++)",
+                        indent + f"  ((volatile unsigned char*)tensor_{index})[merlin_poison_index]={output_poison};",
+                    ]
+                )
+        return lines
+
     if invocation_plan is None:
+        body.extend(poison("  "))
         if counter_roster is not None:
             body.extend(counter_plan.begin("  "))
         body.append("  " + call)
@@ -263,6 +314,7 @@ def render_direct_kernel(
                 f"  for(uint64_t invocation=0;invocation<UINT64_C({invocation_plan.count});invocation++){{",
             ]
         )
+        body.extend(poison("    "))
         if counter_roster is not None:
             body.extend(counter_plan.begin("    "))
         body.append("    " + call)

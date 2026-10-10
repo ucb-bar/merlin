@@ -50,7 +50,14 @@ class ReadbackPolicy:
         return cls(schema=record["schema"], transport=record["transport"])
 
 
-def selected(policy: ReadbackPolicy | None) -> ReadbackPolicy | None:
+def selected(policy: ReadbackPolicy | None, *, backend: Any = None) -> ReadbackPolicy | None:
+    """Resolve only a trusted backend's explicit default, never candidate data."""
+    if policy is None and backend is not None:
+        getter = getattr(backend, "readback_policy", None)
+        if callable(getter):
+            policy = getter()
+            if type(policy) is not ReadbackPolicy:
+                raise ValueError("backend readback default must be a trusted ReadbackPolicy")
     if policy is not None and type(policy) is not ReadbackPolicy:
         raise ValueError("readback policy must be an explicit trusted ReadbackPolicy")
     return policy
@@ -227,8 +234,13 @@ def require_build_receipt(
         # the actual selected object; never guess a transform suffix or replace
         # an original compiler product to satisfy a reader's filename.
         name = data.get("kernel_object_name", "kernel.o")
-        if (type(name) is not str or not name or name in {".", ".."}
-            or Path(name).name != name or any(ord(char) < 32 for char in name)):
+        if (
+            type(name) is not str
+            or not name
+            or name in {".", ".."}
+            or Path(name).name != name
+            or any(ord(char) < 32 for char in name)
+        ):
             raise ValueError("readback build receipt has an unsafe kernel object member")
         object_path = path.parent / name
         if object_path.is_symlink() or object_path.resolve() != object_path.absolute() or not object_path.is_file():
@@ -375,9 +387,19 @@ def require_full_value_roster(
         raise ValueError("coherent output requires independent memory admission, not serial output values")
 
     abi = cb.get("kernel_abi") or {}
-    names = abi.get("outputs")
+    names = abi.get("outputs") if type(abi) is dict else None
     tensors = cb.get("tensors") or {}
-    if abi.get("kind") != "whole_program" or not isinstance(names, list) or not names or len(set(names)) != len(names):
+    if "kernel_abi" not in cb:
+        from merlin.runtime.harness_render import logical_output_names
+
+        names = list(logical_output_names(cb))
+    elif (
+        type(abi) is not dict
+        or abi.get("kind") != "whole_program"
+        or not isinstance(names, list)
+        or not names
+        or len(set(names)) != len(names)
+    ):
         raise ValueError("full-value readback requires a closed whole-program output roster")
     frames: dict[str, tuple[int, int]] = {}
     if policy is not None and policy.transport == FULL_VALUES_BIN:

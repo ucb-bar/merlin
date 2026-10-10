@@ -128,6 +128,12 @@ _BUILD_MODULES = (
     "merlin/runtime/commandbuffer.py",
     "merlin/runtime/fp8_formats.py",
     "merlin/runtime/backends/base.py",
+    "merlin/runtime/harness_render.py",
+    "merlin/runtime/direct_kernel_harness.py",
+    "merlin/runtime/direct_kernel_invocation.py",
+    "merlin/runtime/direct_kernel_counter.py",
+    "merlin/runtime/direct_kernel_phases.py",
+    "merlin/common/quant_formats.py",
 )
 
 

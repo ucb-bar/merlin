@@ -551,6 +551,11 @@ def link_elf(
     from .readback_policy import BUILD_RECEIPT, selected
 
     readback_policy = selected(readback_policy)
+    if _build_service is None:
+        from merlin.runtime.backends import base as _backends
+
+        if readback_policy is None:
+            readback_policy = selected(None, backend=_backends.get_backend(target))
     receipt_path = workdir / BUILD_RECEIPT
     if readback_policy is not None:
         # A failed rebuild may never leave a previous complete policy receipt.
@@ -571,8 +576,6 @@ def link_elf(
         recipe = _build_service.recipe.with_effective_abi()
         _render = _build_service.render
     else:
-        from merlin.runtime.backends import base as _backends
-
         recipe = _backends.harness_build_recipe(target).with_effective_abi()
         _render = _backends.harness_renderer(target)
     readback_inputs = None
@@ -831,7 +834,6 @@ def compile_lowered_to_elf(
     execution_deadline: ExecutionDeadline | None = None,
 ) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link).
-
     The result is a pure function of its inputs, so an unchanged capsule is not recompiled: see
     :mod:`merlin.targetgen.build_cache` for the key, and for why reusing a BUILD carries none of the
     risk of reusing a verdict. A restored build reproduces the whole generated directory, not only the
@@ -859,6 +861,11 @@ def compile_lowered_to_elf(
     from .readback_policy import selected
 
     readback_policy = selected(readback_policy)
+    if _build_service is None:
+        from merlin.runtime.backends import base as _backends
+
+        if readback_policy is None:
+            readback_policy = selected(None, backend=_backends.get_backend(target))
     if _build_service is not None:
         from .build_service import BuildOnlyService
 
@@ -888,8 +895,6 @@ def compile_lowered_to_elf(
         if deadline is not None:
             deadline.remaining()
         return elf
-    from merlin.runtime.backends import base as _backends
-
     from .. import build_cache as _bc
     from ..elf_lanes import PACKAGE_ELF_NAME
 
@@ -1123,7 +1128,7 @@ def run_on_oracle(
         backend = _execution_service
     from .readback_policy import FULL_VALUES_BIN, MEMORY_TRANSPORTS, selected
 
-    readback_policy = selected(readback_policy)
+    readback_policy = selected(readback_policy, backend=backend if _execution_service is None else None)
     execution_identity = None
     if execution_revalidate is not None:
         if not callable(execution_revalidate):
