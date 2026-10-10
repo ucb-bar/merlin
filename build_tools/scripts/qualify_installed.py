@@ -1467,10 +1467,14 @@ SUITES = {
         "native_test_files": (
             "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
             "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
         ),
         "tests": (
             "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
             "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
         ),
         "support_files": (
             "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
@@ -1489,6 +1493,8 @@ SUITES = {
             "merlin_experiments.phase0.declared_run",
             "merlin_experiments.phase0.original_call_sources",
             "merlin_experiments.phase0.original_scalar_conversion_flow",
+            "merlin_experiments.phase0.original_factory_prerequisites",
+            "merlin_experiments.phase0.source_requirement_ledger",
         ),
         "required_modules": ("xdsl", "jsonschema"),
         "native_test_cases": tuple(
@@ -1577,6 +1583,114 @@ SUITES = {
                             "test_ordinary_v7_generation_keeps_complete_original_missing_selectors_and_blocked_phases",
                             ("",),
                         ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+                    (
+                        ("test_complete_roster_keeps_fulfilled_and_unavailable_factories_without_admission", ("",)),
+                        (
+                            "test_original_membership_refuses_before_reading_factory_status",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "missing",
+                                    "extra",
+                                    "reordered",
+                                    "cohort",
+                                    "extent_bool",
+                                    "node",
+                                    "target",
+                                    "duplicate_call",
+                                    "graph",
+                                    "member_id",
+                                    "old_schema",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_live_original_sources_and_selected_native_bindings_cannot_drift",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "source_bytes",
+                                    "source_alias",
+                                    "graph_bytes",
+                                    "basis_bytes",
+                                    "native_binding",
+                                    "basis_selection",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_saved_factory_rows_or_statuses_are_never_replay_authority",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "drop",
+                                    "extra",
+                                    "order",
+                                    "source_state",
+                                    "mandatory_int",
+                                    "candidate_pass",
+                                    "selector_bool",
+                                )
+                            ),
+                        ),
+                        ("test_real_construction_budget_transition_keeps_all_prerequisite_ids", ("",)),
+                        ("test_plain_saved_inputs_are_not_live_schema_ownership", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
+                    (
+                        (
+                            "test_new_union_retains_original_coverage_and_every_fulfilled_prerequisite",
+                            (
+                                "[merlin.phase0.source_requirement_ledger.v1]",
+                                "[merlin.phase0.source_requirement_ledger.v2]",
+                            ),
+                        ),
+                        (
+                            "test_original_projection_ids_and_selector_collisions_refuse",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "duplicate_id",
+                                    "omitted_id",
+                                    "omitted_row_and_id",
+                                    "kind",
+                                    "selector",
+                                    "mandatory_int",
+                                    "extra_factory",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_resigned_or_saved_ledger_cannot_replace_full_live_replay",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "union_drop",
+                                    "union_extra",
+                                    "union_reorder",
+                                    "factory_drop",
+                                    "factory_state",
+                                    "candidate_pass",
+                                    "blocker_drop",
+                                )
+                            ),
+                        ),
+                        ("test_unchanged_standard_owner_is_forwarded_and_never_replaced_by_factory_state", ("",)),
+                        (
+                            "test_complete_union_is_stable_when_a_real_factory_budget_refuses_previous_construction",
+                            ("",),
+                        ),
+                        (
+                            "test_different_live_selection_refuses_before_coverage_producer",
+                            ("[schema]", "[software]", "[hardware]"),
+                        ),
+                        ("test_plain_saved_ledger_is_not_fixed_prerequisite_replay", ("",)),
                     ),
                 ),
             )

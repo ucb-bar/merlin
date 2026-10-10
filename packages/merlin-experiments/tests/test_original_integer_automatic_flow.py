@@ -292,7 +292,15 @@ def test_ordinary_v7_generation_keeps_complete_original_missing_selectors_and_bl
         "_verify_source_performance_products",
         lambda *args, **kwargs: (0, {"source_checked_counts": {}, "requested_members": []}, request_path),
     )
-    monkeypatch.setattr(L, "prepare_requirement_ledger", lambda **kwargs: SimpleNamespace(record=lambda: {}))
+    ledger_joins = []
+    monkeypatch.setattr(
+        L, "prepare_requirement_ledger", lambda **kwargs: pytest.fail("v7 selected failure-only ledger")
+    )
+    monkeypatch.setattr(
+        L,
+        "prepare_prerequisite_ledger",
+        lambda **kwargs: ledger_joins.append(kwargs) or SimpleNamespace(record=lambda: {}),
+    )
     monkeypatch.setattr(R, "prepare", lambda *args, **kwargs: pytest.fail("implicit numerical reference selected"))
     from merlin_experiments.phase0.component_semantic_basis import ComponentSemanticBasis
 
@@ -303,6 +311,9 @@ def test_ordinary_v7_generation_keeps_complete_original_missing_selectors_and_bl
     monkeypatch.setattr(F, "summary", lambda actual: {"numerical_or_mandatory_admission": False})
     report = D.run(request_path, output=tmp_path / "connected-run")
     assert len(joined) == 1 and joined[0]["schema_intake"] is schemas
+    assert len(ledger_joins) == 1 and ledger_joins[0]["schema_intake"] is schemas
+    assert ledger_joins[0]["semantic_basis"] is basis
+    assert ledger_joins[0]["coverage"]["automatic_derivation"]["original_call_sources"] == original
     assert joined[0]["source_record"] == original and joined[0]["numerical_semantics"] == policy
     assert "memory_selection" not in packing_calls[0]
     assert replays == ["fresh registered owner replay"]

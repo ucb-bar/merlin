@@ -761,17 +761,29 @@ def run(request_path, *, output):
             PACKING_SCHEMA,
             INTEGER_SCALAR_SCHEMA,
         }:
-            from .source_requirement_ledger import prepare_requirement_ledger
+            from .source_requirement_ledger import prepare_prerequisite_ledger, prepare_requirement_ledger
+
+            prepare_ledger = prepare_requirement_ledger
+            prerequisite_inputs = {}
+            if request["schema"] == INTEGER_SCALAR_SCHEMA:
+                from .component_semantic_basis import ComponentSemanticBasis
+
+                prepare_ledger = prepare_prerequisite_ledger
+                prerequisite_inputs = {
+                    "schema_intake": schemas,
+                    "semantic_basis": ComponentSemanticBasis.from_recipe(recipe, routing={}),
+                }
 
             ledger = step(
                 "checked_source_requirement_ledger",
-                lambda: prepare_requirement_ledger(
+                lambda: prepare_ledger(
                     root=generated,
                     coverage=coverage,
                     hardware=hardware,
                     software=software,
                     purpose=request["release_purpose"],
                     **({"standard_ir": standard_ir} if standard_ir is not None else {}),
+                    **prerequisite_inputs,
                 ),
             )
             ledger_path = output / "source-requirement-ledger.json"

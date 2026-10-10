@@ -774,12 +774,14 @@ def test_original_automatic_flow_qualification_keeps_complete_controls_and_exact
         == (
             "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
             "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
         )
     )
     assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
-        zip(suite["tests"], (17, 21), strict=True)
+        zip(suite["tests"], (17, 21, 27, 22), strict=True)
     )
-    assert len(set(suite["native_test_cases"])) == 38
+    assert len(set(suite["native_test_cases"])) == 87
     assert suite["support_files"] == (
         "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
         "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
@@ -799,6 +801,8 @@ def test_original_automatic_flow_qualification_keeps_complete_controls_and_exact
         "merlin_experiments.phase0.declared_run",
         "merlin_experiments.phase0.original_call_sources",
         "merlin_experiments.phase0.original_scalar_conversion_flow",
+        "merlin_experiments.phase0.original_factory_prerequisites",
+        "merlin_experiments.phase0.source_requirement_ledger",
     )
     assert not suite.get("native_tools") and not suite.get("native_sources")
 

@@ -33,6 +33,15 @@ Reference and local-memory selections are independent explicit additions, never
 fallbacks. Their absence preserves all missing numeric/effect/packing premises
 and blocked phases. Old v13/v6 factories and v5/v6 caller grammars are unchanged.
 
+Declared run v7 additionally selects source requirement ledger v3. The fixed
+`original_factory_prerequisites` owner derives every original call and all three
+cohorts before inspecting construction outcomes, then replays live schema/basis
+owners and exact source bytes. Stable selector IDs include fulfilled factories;
+the full `original_prerequisite_ids` union retains every coverage ID. Historical
+`original_required_ids`, ledger APIs, missing-row semantics and nonfactory or
+candidate blockers remain unchanged. Constructed source is separate from all
+numerical, hardware, effect, runtime and phase admission.
+
 Original call-source v6 / automatic policy and receipt v13 explicitly adds the
 bounded scalar mul/div factory. Every original call and guard/private slot,
 aggregate cost and missing admission remains required. Keep old versions and

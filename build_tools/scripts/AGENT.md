@@ -65,8 +65,10 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   three counter fixture siblings; production reader/command imports must come
   from the own-site package. Installed source observations grant no instruction,
   endpoint role, counter sample, numerical, runtime or performance authority.
-- `original-scalar-automatic-flow` retains all 38 declared-input and ordinary
-  caller controls with their exact nine fixture siblings and zero skips. The
+- `original-scalar-automatic-flow` retains all 87 declared-input, ordinary
+  caller and stable-prerequisite controls with their exact nine fixture siblings
+  and zero skips. Preserve all 38 prior controls and every original factory ID,
+  including fulfilled construction and budget-refused slots. The
   controls substitute native issuers and conversion processes explicitly;
   installed wiring establishes no fresh original numerical, hardware, runtime,
   complete-coverage or author-session qualification.
