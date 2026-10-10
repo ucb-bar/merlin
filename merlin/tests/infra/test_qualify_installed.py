@@ -917,6 +917,42 @@ def test_original_reshape_qualification_requires_every_identity_without_skips(tm
     _check_scalar_qualification_report(tmp_path, "original-reshape-source-flow", defect)
 
 
+def test_source_cfg_qualification_keeps_complete_controls_and_fixture_closure():
+    from collections import Counter
+
+    suite = Q.SUITES["source-cfg-caller-controls"]
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "merlin/tests/targetgen/test_source_control_flow_observation.py",
+            "packages/merlin-experiments/tests/test_component_runtime_cfg_observation.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (56, 4), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 60
+    assert suite["support_files"] == (
+        "merlin/tests/targetgen/test_emitted_control_flow.py",
+        "merlin/tests/targetgen/test_source_observation.py",
+        "packages/merlin-experiments/tests/test_component_runtime_source_selection.py",
+        "packages/merlin-experiments/tests/test_component_runtime_support.py",
+    )
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert "merlin.targetgen.contract.source_control_flow" in suite["probe_modules"]
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+    assert Q.SUITES["emitted-dataflow"]["native_tools"] == ("mlir-opt",)
+    assert Q.SUITES["emitted-dataflow"]["native_test_files"] == ("test_emitted_control_flow.py",)
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_source_cfg_qualification_requires_every_identity_without_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "source-cfg-caller-controls", defect)
+
+
 @pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
 def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
     _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)
