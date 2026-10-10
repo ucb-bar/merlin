@@ -37,6 +37,11 @@ def select_reference_backend(raw: str | None, *, target: str) -> tuple[Path, dic
 REQUIRED_ENGINE_ENV = "MERLIN_REQUIRED_RTL_ENGINE"
 
 
+def reference_probe_path(python: str, chipyard_environment: str, inherited: str) -> str:
+    """Keep env-python reference tools on the interpreter selected by this probe."""
+    return f"{Path(python).parent}:{chipyard_environment}/bin:{chipyard_environment}/riscv-tools/bin:{inherited}"
+
+
 def timing_probe_environment(environment: dict, *, engine: str) -> tuple[dict, str | None]:
     """The grade environment for the oracle-TIMING probe, which runs ``engine`` by design.
 

@@ -15,6 +15,12 @@ reference = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(reference)
 
 
+def test_reference_env_python_precedes_chipyard_python_without_losing_tools():
+    assert reference.reference_probe_path("/selected/venv/bin/python", "/chipyard/.conda-env", "/usr/bin") == (
+        "/selected/venv/bin:/chipyard/.conda-env/bin:/chipyard/.conda-env/riscv-tools/bin:/usr/bin"
+    )
+
+
 def test_reference_backend_selection_is_explicit_and_target_bound(tmp_path):
     with pytest.raises(ValueError, match="requires --reference-backend"):
         reference.select_reference_backend(None, target="gemmini")

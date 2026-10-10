@@ -1233,7 +1233,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
         return
-    from readiness_reference import select_reference_backend
+    from readiness_reference import reference_probe_path, select_reference_backend
 
     try:
         ref, ref_manifest = select_reference_backend(reference_backend, target=TARGET)
@@ -1254,7 +1254,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
     CE = str(_cy / ".conda-env") if _cy else "/path/to/chipyard/.conda-env"
     _compat = str(REPO / ".compat_lib")
     env = dict(_os.environ)
-    env["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + env.get("PATH", "")
+    env["PATH"] = reference_probe_path(PY, CE, env.get("PATH", ""))
     # MIRROR the driver's grade env exactly (incl. .compat_lib for libidn) so the gate fails iff a real
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
