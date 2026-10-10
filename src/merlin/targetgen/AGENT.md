@@ -149,6 +149,11 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   a contract encoding, and no rule encodes a schedule, tile count or emitter field choice. Its
   protocol is the target contract's `rtl_checks` block (see `rocc/AGENT.md`). Flat facts it returns
   carry `target`, so target-less helpers resolve the same protocol.
+- Shared self-hosted instruction screens check declared class presence and
+  complete-taxonomy legality. Exact tile counts, preferred class order and
+  zero-payload assumptions are not hardware legality; keep them out of the
+  shared grader. Provenance reads existing decoder facts without role-probe
+  execution or schedule claims.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a

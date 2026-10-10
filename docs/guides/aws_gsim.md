@@ -16,12 +16,12 @@ model; an x86-64 emulator does not run natively on an ARM/Graviton worker. Keep 
 credentials and generated simulator artifacts outside Git and candidate-visible workspaces.
 
 The native fork procedure below is retained inspection material. Ordinary catalog
-experiments require verified hardware inputs, independent target support and the
+experiments require verified hardware inputs, neutral execution tooling and the
 selected session's actual startup checks. These build commands alone do not admit
 an engine or its helpers. The additional component qualification route is described
 in [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
 support provider and copied kernel headers have been removed from Merlin. The
-in-repo `examples/gemmini/support` provider is data only, served by the generic
+retained `examples/gemmini/support` provider is data only, served by the legacy generic
 `merlin.runtime.backends.chipyard_rocc` backend.
 
 ## Clone and install the source stack
@@ -44,10 +44,17 @@ checkpoints. Use the [LLVM toolchain guide](llvm_toolchain.md) and the selected 
 configuration. If regenerating frontend captures, also follow the [model2MLIR guide](model2mlir.md)
 and record its source and framework versions independently.
 
-Select target support explicitly. A Merlin clone supplies shared orchestration and the
+For historical provider-bound execution, select support explicitly. A Merlin clone supplies shared orchestration and the
 generic chipyard RoCC runtime; `examples/gemmini/support` is the data-only provider that
 selects it (contract copy, plugin pointers, and an ISA-headers spec that references the
 pinned bare-metal runtime by digest).
+For fresh authoring, select an independently derived data contract for the
+[neutral runtime tooling](../reference/neutral_runtime_tooling.md). Declare
+`runner.backend: chipyard_rocc`, the explicit pinned engine/toolchain roster and
+logical harness ABI v2. Select that contract with `MERLIN_TARGET_CONTRACT` and
+its existing facts with `MERLIN_RTL_FACTS`; this route needs no executable support
+provider. Candidate implementation and the private handwritten reference remain
+out of tree. An old vendor-header ABI is not compatible with this route.
 
 Clone the [public gSIM fork](https://github.com/copparihollmann/gsim) at an exact commit of its
 `merlin` branch (not `master`). The published Merlin integration commit below is an example pin;
@@ -106,6 +113,11 @@ From the Merlin checkout, select the data-only support provider, exact model and
 
 ```sh
 export MERLIN_TARGET_PATH="$PWD/examples/gemmini/support"
+From the Merlin checkout, select the reviewed data contract and exact facts explicitly:
+
+```sh
+export MERLIN_TARGET_CONTRACT=/absolute/selected/neutral-target-contract.yaml
+export MERLIN_RTL_FACTS=/absolute/selected/facts.json
 export MERLIN_EXT_GSIM=/absolute/pinned/gsim
 export MERLIN_CHIPYARD=/absolute/selected/chipyard
 export MERLIN_EXT_CHIPYARD="$MERLIN_CHIPYARD"
@@ -161,9 +173,9 @@ capture workflow. A small simulator bringup bundle alone does not make an EL4 fu
 Use a reviewed experiment definition with explicit recipe, conformance and synthesis
 inputs, verified evidence mode, exact facts and capability contract, and an
 operator-owned hidden cohort. The retained diagnostic example cannot be promoted
-by changing its status. Select independently reviewed support with
-`MERLIN_TARGET_PATH`; Merlin's metadata-only example does not supply its executable
-backend. Keep handwritten references and final-validation inputs outside public
+by changing its status. Select the reviewed neutral data contract; the shared
+backend binds it without an executable support package. Keep handwritten
+references and final-validation inputs outside public
 derivation and author grants.
 
 The ordinary catalog route uses `capsule_derivation` and `capsule_bench`.

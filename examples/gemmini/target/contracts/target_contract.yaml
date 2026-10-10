@@ -15,6 +15,9 @@ family: tensor_resident
 # This reviewed contract ships no executable plugin. The data-only support provider
 # examples/gemmini/support (selected by MERLIN_TARGET_PATH, or by default when it is unset) carries a
 # copy of it plus a `plugin` block naming the GENERIC runtime (merlin.runtime.backends.chipyard_rocc).
+# Retained reference metadata does not select execution tooling. Fresh runs need
+# a reviewed data contract with the shared logical ABI and explicit engine pins.
+# The handwritten compiler's executable support is not grading tooling.
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.

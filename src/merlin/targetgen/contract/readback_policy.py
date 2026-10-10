@@ -139,7 +139,13 @@ def engine_readback(cb: dict, simulator: str, *, target: str, backend: Any) -> t
     return large_output_readback(cb, simulator, abi=abi, memory_transport=memory)
 
 
-def selected(policy: ReadbackPolicy | None) -> ReadbackPolicy | None:
+def selected(policy: ReadbackPolicy | None, *, backend: Any = None) -> ReadbackPolicy | None:
+    if policy is None and backend is not None:
+        getter = getattr(backend, "readback_policy", None)
+        if callable(getter):
+            policy = getter()
+            if type(policy) is not ReadbackPolicy:
+                raise ValueError("backend readback default must be a trusted ReadbackPolicy")
     if policy is not None and type(policy) is not ReadbackPolicy:
         raise ValueError("readback policy must be an explicit trusted ReadbackPolicy")
     return policy
@@ -458,21 +464,19 @@ def _console_output_roster(cb: Mapping[str, Any]) -> tuple[list[str], dict[str, 
     A whole-program ABI names its outputs; the default logical ABI's outputs are its logical interface's
     output buffers, the same ones the harness frames -- so the roster is closed either way.
     """
-    abi = cb.get("kernel_abi") or {}
-    if abi.get("kind") == "whole_program":
-        names = abi.get("outputs")
-        if not isinstance(names, list) or not names or len(set(names)) != len(names):
-            raise ValueError("full-value readback requires a closed whole-program output roster")
-        return names, dict(cb.get("tensors") or {})
-    if abi:
-        raise ValueError("full-value readback requires the default logical or a whole-program kernel ABI")
-    from merlin.targetgen.contract.harness_render import logical_abi, logical_interface
+    abi = cb.get("kernel_abi")
+    if "kernel_abi" not in cb:
+        from merlin.runtime.harness_render import logical_output_names
 
-    outputs = [buf for buf in logical_interface(dict(cb), logical_abi()) if buf.kind == "output"]
-    if not outputs:
-        raise ValueError("full-value readback found no logical output")
-    roster = {buf.name: {"shape": list(buf.shape), "dtype": buf.dtype} for buf in outputs}
-    return [buf.name for buf in outputs], roster
+        names = list(logical_output_names(dict(cb)))
+    else:
+        names = abi.get("outputs") if type(abi) is dict else None
+        if (type(abi) is not dict or abi.get("kind") != "whole_program"
+                or type(names) is not list or not names
+                or any(type(name) is not str for name in names)
+                or len(set(names)) != len(names)):
+            raise ValueError("full-value readback requires a closed whole-program output roster")
+    return names, dict(cb.get("tensors") or {})
 
 
 def require_digest_roster(cb: Mapping[str, Any], console: str, outputs: Mapping[str, Any]) -> dict[str, dict]:
