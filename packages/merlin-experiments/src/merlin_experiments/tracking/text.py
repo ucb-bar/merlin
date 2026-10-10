@@ -161,4 +161,23 @@ def render(summary: Mapping[str, Any], *, colour: bool = False) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["CLEAR", "render"]
+def agent(activity: Mapping[str, Any] | None, now: float) -> list[str]:
+    """What the authoring agent is doing now, from its event stream (:mod:`.activity`)."""
+    if not activity:
+        return []
+    current = activity["now"]
+    last = current.get("last_event")
+    age = f"{(now - last) / 60.0:.0f} min ago" if last is not None else NR
+    lines = [
+        f"AGENT  last event {R.stamp(last) or NR} ({age}); {activity['n_commands']} commands, "
+        f"{activity['failed_commands']} non-zero"
+    ]
+    for call in current.get("running") or ():
+        lines.append(f"  running  {call.get('label') or call['type']}: {str(call.get('command') or '')[:110]}")
+    message = current.get("last_message")
+    if message:
+        lines.append(f"  said     {message['text'][:140]}")
+    return lines
+
+
+__all__ = ["CLEAR", "agent", "render"]
