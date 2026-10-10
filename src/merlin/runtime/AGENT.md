@@ -21,6 +21,12 @@ the per-backend adapters under `backends/`.
   `cumsum` accumulator-init `i64`) are passed by value via `abi.ScalarArg`, NOT as a memref
   descriptor — `emit_c_interface` only wraps memrefs.
 - `backends/` — host / spike adapters.
+- `dispatch_placement.py` joins the original ordered outline table to actual
+  typed functions/calls and placement attributes/properties before dispatch.
+  Explicit nonhost intent refuses native/XNNPACK substitution and a declined
+  device route before host execution or a successful host ledger entry.
+  Unspecified placement retains fallback behavior. This structural requirement
+  grants no device capability, command-event, ownership or synchronization role.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.

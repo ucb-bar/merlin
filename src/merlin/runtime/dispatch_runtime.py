@@ -31,6 +31,7 @@ import numpy as np
 
 from .dispatch_numeric import boundary_scale as boundary_scale
 from .dispatch_numeric import float_boundary_operands as float_boundary_operands
+from .dispatch_placement import DispatchPlacements, DispatchRuntimeError
 from .dispatch_transform_audit import qualify_model_transform_audit, record_model_transform_audit
 
 _NP = {
@@ -43,10 +44,6 @@ _NP = {
     "i8": np.int8,
     "i1": np.int8,
 }
-
-
-class DispatchRuntimeError(RuntimeError):
-    pass
 
 
 # bf16 has no native numpy dtype; we store it as the raw 16-bit pattern (uint16) so the
@@ -624,6 +621,7 @@ def execute(
     module = outline_result.module
     driver = next(op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry)
     block = driver.body.blocks[0]
+    placements = DispatchPlacements(outline_result, driver, host_only=kernel_backend != "mesh")
 
     env: dict[int, Any] = {}
     for arg, arr in zip(block.args, arg_arrays):
@@ -696,7 +694,7 @@ def execute(
         for sym, kfn in kfns.items():
             # An explicitly host-placed group must not be promoted merely because its body happens
             # to match the standalone matmul classifier.
-            if sym in grouped and grouped[sym].placement == "host":
+            if sym in placements.host_symbols:
                 continue
             # a bare linalg.matmul, or the linalg.generic a quantization rewrite leaves behind
             route = _classify_mesh_matmul(kfn, _accept) or _classify_mesh_contraction(kfn, _accept)
@@ -774,12 +772,7 @@ def execute(
         mesh_counts["mesh_capacity_fit_delegated"] = execute.mesh_capacity_fit_delegated
 
     def _record_dispatch(symbol: str, lane: str, **evidence) -> None:
-        """Append one unbounded, ordered entry for one *completed* dynamic kernel call.
-
-        Aggregate counters and a routing plan cannot prove ordering or host/accelerator seams.  This
-        ledger is owned by the runtime, populated only after the selected lane completes, and returned
-        with this invocation's counters (never a module-global shared across concurrent grades).
-        """
+        """Record completed dynamic calls; the ledger grants no command/effect authority."""
         ledger = mesh_counts.setdefault("dispatch_ledger", [])
         ledger.append({"ordinal": len(ledger), "symbol": symbol, "lane": lane, "status": "pass", **evidence})
 
@@ -842,7 +835,7 @@ def execute(
             if op.name != "func.call":
                 continue
             sym, _ = _kernel_io(op)
-            if sym in seen or sym not in kfuncs or sym in xnn_routes:
+            if sym in seen or sym not in kfuncs or sym in xnn_routes or placements.is_device(op):
                 continue  # xnn-routed kernels are computed by XNNPACK, never compiled
             seen.add(sym)
             ktext = _ktext(sym)
@@ -872,6 +865,7 @@ def execute(
     from ..llvmlower.abi import ScalarArg
 
     def run_call(op):
+        placements.verify_call(op)
         symbol, outs = _kernel_io(op)
         host_lane = "native_cpu"
         host_evidence: dict = {}
@@ -887,6 +881,7 @@ def execute(
             _record_dispatch(
                 symbol,
                 "xnnpack_host",
+                selected_placement=placements.verify_call(op),
                 placement="host",
                 executor="xnnpack_host",
                 runtime_architecture=native_architecture,
@@ -989,6 +984,7 @@ def execute(
                     _record_dispatch(
                         symbol,
                         "on_mesh",
+                        selected_placement=placements.verify_call(op),
                         lhs_shape=list(a.shape),
                         rhs_shape=list(b.shape),
                         oracle_evidence=_obs.get("oracle_evidence"),
@@ -1000,6 +996,7 @@ def execute(
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
+            placements.require_host(op)
             # A layer the mesh could not run falls back to the host kernel and is NOT counted as
             # mesh-executed — honest accounting, never a faked mesh result. RECORD WHY. The count alone
             # says a model failed its must_accelerate gate without saying what to fix, which is the same
@@ -1081,6 +1078,7 @@ def execute(
                 _fb = getattr(execute, "mesh_fallbacks", None)
                 if _fb is not None and len(_fb) < 64:  # bounded: a diagnostic, not a full trace
                     _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape), "reason": _why})
+        placements.require_host(op)
         model = kernel_model(symbol)
         scalar_slots = [index for index, r in enumerate(op.results) if not isinstance(r.type, TensorType)]
         expected_scalar = str(op.results[scalar_slots[0]].type) if len(scalar_slots) == 1 else None
@@ -1124,6 +1122,7 @@ def execute(
         _record_dispatch(
             symbol,
             host_lane,
+            selected_placement=placements.verify_call(op),
             placement="host",
             executor="native_cpu",
             runtime_architecture=native_architecture,

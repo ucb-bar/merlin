@@ -86,6 +86,18 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "dispatch-placement": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/runtime",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": ("test_dispatch_placement_execution.py",),
+        "tests": ("test_dispatch_placement_execution.py",),
+        "core_extras": (),
+        "probe_modules": ("merlin.runtime.dispatch_runtime", "merlin.runtime.dispatch_placement"),
+        "required_modules": ("numpy", "xdsl"),
+        "guarded_tests": True,
+    },
     "installed-test-origins": {
         "include_experiments": False,
         "tests_root": "merlin/tests/infra",
