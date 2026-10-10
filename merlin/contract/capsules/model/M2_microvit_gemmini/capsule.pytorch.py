@@ -81,7 +81,7 @@ HID = 3 * TILE        # 48 MixFFN hidden width (reference: 4x expansion)
 HST = TILE            # 16 recurrent hidden units (reference: 128, three layers)
 SENS = TILE           # 16 sensor scalars (reference: 1 desired velocity + 4 quaternion)
 OUT = TILE            # 16 command outputs (reference: 3-DoF command)
-PK, PS, PP = 6, 4, 1  # overlapping patch window -> 4x4 tokens, im2col depth 36
+PK, PS, PP = 6, 4, 1  # overlapping patch window -> 4x4 tokens, window depth 36
 
 
 def _ternary(g, *shape):
@@ -143,7 +143,7 @@ class MicroViT(nn.Module):
         self.register_buffer("w_out", _ternary(g, HST, OUT))
 
     def forward(self, depth: torch.Tensor, sensor: torch.Tensor) -> torch.Tensor:
-        # --- OverlapPatchMerging: im2col + int8 GEMM, the same lowering the capture pipeline gives a
+        # --- OverlapPatchMerging: unfold + int8 GEMM, as the upstream model writes a
         # strided convolution. Windows OVERLAP (6 wide, stride 4), as upstream's do.
         cols = F.unfold(depth, kernel_size=PK, stride=PS, padding=PP)          # (1, 36, 16)
         cols = cols.transpose(1, 2).reshape(NTOK, PK * PK)

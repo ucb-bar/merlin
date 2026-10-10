@@ -44,7 +44,7 @@ operation:
     epilogue:
     - relu
     output_dtype: i8
-    semantic: conv2d_im2col
+    semantic: conv2d
 numeric_policy:
   compare: exact_int
   dtype: i8
