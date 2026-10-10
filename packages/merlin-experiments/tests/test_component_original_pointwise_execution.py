@@ -92,11 +92,13 @@ CASES = (
     _case("integer_rectangle", "aten.relu.default", "int8", 2, 3, [-128, -7, -1, 0, 1, 7, 127]),
 )
 
-WORKER = """import importlib.util,json,math,sys
+WORKER = """import importlib.util,json,math,runpy,sys
 from pathlib import Path
 request_path=Path(sys.argv[1]);destination=Path(sys.argv[2])
 request=json.loads(request_path.read_text())
-sys.path[:0]=request['import_roots']
+selected=request['merlin_imports']
+runpy.run_path(selected['bootstrap'])['activate'](**selected['selection'])
+sys.path.insert(0,request['frontend_root'])
 import numpy as np
 import m2m
 from merlin.common import invocation_record as I
@@ -178,11 +180,40 @@ def ordinary_pointwise(tmp_path_factory):
     worker = owner / "worker.py"
     worker.write_text(WORKER)
     request = owner / "request.json"
+    import hashlib
+
+    from merlin.common.paths import module_source_path
+
+    import_roots = tuple(
+        dict.fromkeys((Path(P.__file__).parents[2], module_source_path("merlin.common.frozen_imports").parents[2]))
+    )
+    snapshot_root = Path(os.path.commonpath(import_roots))
+    sources = {}
+    for root in import_roots:
+        for namespace in ("merlin", "merlin_experiments"):
+            package = root / namespace
+            if not package.is_dir():
+                continue
+            for path in package.rglob("*"):
+                if "__pycache__" in path.parts or path.suffix == ".pyc":
+                    continue
+                assert not path.is_symlink()
+                if path.is_file():
+                    sources[path.relative_to(snapshot_root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
     request.write_text(
         json.dumps(
             {
                 "cases": CASES,
-                "import_roots": [str(Path(P.__file__).parents[2]), selected["MERLIN_M2M_DIR"]],
+                "frontend_root": selected["MERLIN_M2M_DIR"],
+                "merlin_imports": {
+                    "bootstrap": str(module_source_path("merlin.common.frozen_imports")),
+                    "selection": {
+                        "snapshot_root": str(snapshot_root),
+                        "import_roots": list(map(str, import_roots)),
+                        "sources": sources,
+                        "expose_roots_to_path": False,
+                    },
+                },
             },
             sort_keys=True,
         )
@@ -194,7 +225,6 @@ def ordinary_pointwise(tmp_path_factory):
         "TORCHINDUCTOR_CACHE_DIR": str(owner / "framework-cache"),
         **selected,
     }
-    environment["PYTHONPATH"] = str(Path(P.__file__).parents[2])
     environment_path = owner / "environment.json"
     environment_path.write_text(json.dumps(environment, sort_keys=True) + "\n")
     result = I.run(

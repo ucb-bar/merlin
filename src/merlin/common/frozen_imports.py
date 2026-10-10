@@ -121,10 +121,15 @@ class _Source(importlib.abc.InspectLoader):
         return None
 
     def exec_module(self, module):
+        original_paths = module.__path__ if self.package else None
         exec(self.get_code(module.__name__), module.__dict__)
         if self.package:
             # pkgutil.extend_path may discover editable owners, even after an isolated startup.
-            module.__path__ = self.guard.package_paths(module.__path__)
+            paths = module.__path__
+            if not self.guard.expose_roots_to_path and paths is not original_paths:
+                declared = [root.joinpath(*module.__name__.split(".")) for root in self.guard.roots]
+                paths = [*paths, *map(str, declared)]
+            module.__path__ = self.guard.package_paths(paths)
             module.__spec__.submodule_search_locations = module.__path__
 
 
@@ -145,13 +150,21 @@ class _Namespace(importlib.abc.Loader):
 
 class _FrozenImports(importlib.abc.MetaPathFinder):
     def __init__(
-        self, root: Path, roots: tuple[Path, ...], sources: dict[str, str], names: frozenset[str], auxiliary_roots=()
+        self,
+        root: Path,
+        roots: tuple[Path, ...],
+        sources: dict[str, str],
+        names: frozenset[str],
+        auxiliary_roots=(),
+        *,
+        expose_roots_to_path=True,
     ):
         self.root = root
         self.roots = roots
         self.source_roots = (*roots, *auxiliary_roots)
         self.sources = sources
         self.names = names
+        self.expose_roots_to_path = expose_roots_to_path
         self.directories = {parent for name in sources for parent in PurePosixPath(name).parents}
 
     def protected(self, name: str) -> bool:
@@ -247,6 +260,7 @@ def activate(
     sources: Mapping[str, str],
     legacy_names: Sequence[str] = (),
     auxiliary_roots: Sequence[str | Path] = (),
+    expose_roots_to_path: bool = True,
 ) -> None:
     """Install one process's import boundary using caller-verified relative-path SHA256 pins.
 
@@ -256,7 +270,13 @@ def activate(
     a protected import. Unprotected third-party dependencies retain normal import behavior.
     Auxiliary roots admit explicitly mounted protected package namespaces/resources,
     but never participate in top-level lookup or change sys.path.
+    With expose_roots_to_path=False, protected namespaces still use the declared
+    roots, while those roots are not added to third-party dependency lookup. This
+    lets a different selected interpreter retain its own native dependencies.
+    Existing sys.path entries remain the caller's responsibility.
     """
+    if type(expose_roots_to_path) is not bool:
+        raise ValueError("frozen import root exposure requires an exact boolean")
     root = Path(snapshot_root).absolute()
     roots = tuple(Path(entry).absolute() for entry in import_roots)
     auxiliary = tuple(Path(entry).absolute() for entry in auxiliary_roots)
@@ -285,10 +305,11 @@ def activate(
             or any(char not in "0123456789abcdef" for char in digest)
         ):
             raise ValueError(f"invalid frozen source receipt entry: {name!r}")
-    guard = _FrozenImports(root, roots, pins, names, auxiliary)
+    guard = _FrozenImports(root, roots, pins, names, auxiliary, expose_roots_to_path=expose_roots_to_path)
     loaded = sorted(name for name in sys.modules if guard.protected(name))
     if loaded:
         raise ImportError(f"protected owners imported before frozen source isolation: {', '.join(loaded)}")
     sys.meta_path.insert(0, guard)
-    root_paths = list(dict.fromkeys(str(entry) for entry in roots))
-    sys.path[:] = root_paths + [entry for entry in sys.path if entry not in root_paths]
+    if expose_roots_to_path:
+        root_paths = list(dict.fromkeys(str(entry) for entry in roots))
+        sys.path[:] = root_paths + [entry for entry in sys.path if entry not in root_paths]
