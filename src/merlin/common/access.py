@@ -241,6 +241,7 @@ MODULE_ACCESS = (
             "merlin.targetgen.original_reference_values",
             "merlin.targetgen.original_pointwise_reference",
             "merlin.targetgen.original_pointwise_stress",
+            "merlin.targetgen.original_transpose_reference",
         ),
     ),
     _module(
@@ -251,6 +252,7 @@ MODULE_ACCESS = (
             "merlin_experiments.phase0.original_reference_products",
             "merlin_experiments.phase0.original_reference_observer",
             "merlin_experiments.phase0.original_pointwise_reference_observer",
+            "merlin_experiments.phase0.original_transpose_reference_observer",
             "merlin_experiments.phase0.original_pointwise_semantic_probes",
             "merlin_experiments.phase0.original_pointwise_stress_observer",
             "merlin_experiments.phase0.original_schema_batch",

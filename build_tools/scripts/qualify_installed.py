@@ -86,6 +86,42 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "original-transpose-sources": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("operator-python", "firtool", "mlir-opt"),
+        "native_python_entries": ("operator-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}},
+        "test_input_environment_keys": (
+            "MERLIN_TEST_M2M_COMMIT",
+            "MERLIN_TEST_OPERATOR_DECLARATIONS",
+            "MERLIN_TEST_TORCH_SOURCE_ROOT",
+        ),
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_transpose.py",
+            "packages/merlin-experiments/tests/test_original_transpose_plan.py",
+            "packages/merlin-experiments/tests/test_original_transpose_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_transpose.py",
+            "packages/merlin-experiments/tests/test_original_transpose_plan.py",
+            "packages/merlin-experiments/tests/test_original_transpose_flow.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/original_transpose_fixtures.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_transpose_sources",
+            "merlin.targetgen.original_transpose_reference",
+            "merlin_experiments.phase0.original_reference_roster",
+            "merlin_experiments.phase0.original_reference_standard_ir",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
     "integer-scalar-correspondence": {
         "include_experiments": False,
         "tests_root": "merlin/tests/ir",
@@ -1835,6 +1871,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "mlir-opt": "MERLIN_TEST_MLIR_OPT",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
     "llvm-llc": "MERLIN_LLVM_LLC",
+    "operator-python": "MERLIN_TEST_TORCH_PYTHON",
     "readelf": "MERLIN_TEST_READELF",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
     "vvp": "MERLIN_TEST_VVP",
@@ -1915,6 +1952,26 @@ def verify_native_inputs(report):
         _INPUTS.verify_sources(report.get("native_sources", {}))
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         raise QualificationFailed(f"selected native source changed or unavailable: {exc}") from exc
+    selected_inputs = report.get("native_test_inputs")
+    if selected_inputs:
+        try:
+            current = _INPUTS.test_inputs_record(selected_inputs["path"], selected_inputs["environment"])
+        except (OSError, ValueError) as exc:
+            raise QualificationFailed("selected native test inputs unavailable") from exc
+        if current != selected_inputs:
+            raise QualificationFailed("selected native test inputs changed")
+
+
+def capture_native_test_inputs(suite, path):
+    if path is None:
+        return {}
+    names = SUITES[suite].get("test_input_environment_keys", ())
+    if not names or len(names) != len(set(names)):
+        raise QualificationFailed("suite does not admit the selected native test inputs")
+    try:
+        return _INPUTS.test_inputs_record(path, names)
+    except (OSError, ValueError) as exc:
+        raise QualificationFailed("native test inputs require their complete closed suite mapping") from exc
 
 
 def native_environment(report, *, suite=None):
@@ -1925,6 +1982,10 @@ def native_environment(report, *, suite=None):
     environment.update(
         (source["environment_key"], source["identity"]["path"]) for source in report.get("native_sources", {}).values()
     )
+    selected_inputs = report.get("native_test_inputs", {}).get("environment", {})
+    if set(selected_inputs) & set(environment):
+        raise QualificationFailed("native test inputs conflict with selected tools or sources")
+    environment.update(selected_inputs)
     if suite is not None and report.get("native_tools"):
         selected = report["native_tools"]
         for key, names in SUITES[suite].get("native_tool_path_lists", {}).items():
@@ -2131,8 +2192,10 @@ class Recorder:
         finally:
             record["elapsed_s"] = time.monotonic() - start
             self.save()
-        if self.report.get("native_sources") or any(
-            "python_entry" in tool for tool in self.report.get("native_tools", {}).values()
+        if (
+            self.report.get("native_sources")
+            or self.report.get("native_test_inputs")
+            or any("python_entry" in tool for tool in self.report.get("native_tools", {}).values())
         ):
             try:
                 verify_native_inputs(self.report)
@@ -2206,7 +2269,17 @@ def selected_source_inputs(snapshot, patterns):
 
 
 def qualify(
-    root, output, commit, suite, timeout, *, requested_ref=None, invocation=None, native_tools=(), native_sources=()
+    root,
+    output,
+    commit,
+    suite,
+    timeout,
+    *,
+    requested_ref=None,
+    invocation=None,
+    native_tools=(),
+    native_sources=(),
+    test_inputs=None,
 ):
     own = Path(__file__).resolve()
     helper = own.with_name("installed_qualification_probe.py")
@@ -2244,6 +2317,8 @@ def qualify(
         "requested_native_tools": list(native_tools),
         "native_sources": {},
         "requested_native_sources": list(native_sources),
+        "native_test_inputs": {},
+        "native_test_input_policy": "Explicit closed suite input strings; no source, dependency or runtime authority.",
         "native_source_policy": (
             "Explicit package bytes and checkout identity only; import/dependency closure unproved."
         ),
@@ -2256,6 +2331,7 @@ def qualify(
     try:
         report["native_tools"] = capture_native_tools(suite, native_tools)
         report["native_sources"] = capture_native_sources(suite, native_sources)
+        report["native_test_inputs"] = capture_native_test_inputs(suite, test_inputs)
         runner.environment.update(native_environment(report, suite=suite))
         report["native_environment"] = native_environment(report, suite=suite)
         runner.save()
@@ -2458,6 +2534,11 @@ def main(argv=None):
         metavar="NAME=ABSOLUTE_CHECKOUT@FULL_COMMIT",
         help="Explicit suite-admitted package checkout; pin tracked bytes and reject untracked package files",
     )
+    parser.add_argument(
+        "--test-inputs",
+        metavar="ABSOLUTE_JSON_FILE",
+        help="Explicit closed suite-declared native test input strings; pin and recheck before/after commands",
+    )
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
@@ -2482,6 +2563,7 @@ def main(argv=None):
             invocation=[sys.executable, str(Path(__file__).resolve()), *(sys.argv[1:] if argv is None else argv)],
             native_tools=args.native_tool,
             native_sources=args.native_source,
+            test_inputs=args.test_inputs,
         )
         else 1
     )

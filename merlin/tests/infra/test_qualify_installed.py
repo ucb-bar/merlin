@@ -558,3 +558,97 @@ def test_interrupted_pipeline_records_terminal_status(monkeypatch, tmp_path):
     monkeypatch.setattr(Q.Recorder, "run", interrupted)
     assert not Q.qualify(repo_root(), tmp_path, "b" * 40, "phase1", 5)
     assert json.loads((tmp_path / "report.json").read_text())["status"] == "interrupted"
+
+
+def _native_test_input_file(tmp_path):
+    path = tmp_path / "native-inputs.json"
+    keys = Q.SUITES["original-transpose-sources"]["test_input_environment_keys"]
+    path.write_text(json.dumps({key: "explicit original input" for key in keys}))
+    return path
+
+
+def test_native_test_inputs_are_explicit_closed_and_reopened(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    report = {"native_test_inputs": selected}
+    assert Q.native_environment(report) == json.loads(path.read_bytes())
+    Q.verify_native_inputs(report)
+    path.write_text(path.read_text() + "\n")
+    with pytest.raises(Q.QualificationFailed, match="test inputs changed"):
+        Q.verify_native_inputs(report)
+    assert Q.capture_native_test_inputs("phase1", None) == {}
+
+
+@pytest.mark.parametrize("defect", ["missing", "extra", "duplicate", "boolean", "null", "empty", "nul"])
+def test_native_test_inputs_reject_ambiguous_or_undeclared_mappings(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    mapping = json.loads(path.read_bytes())
+    key = next(iter(mapping))
+    if defect == "missing":
+        mapping.pop(key)
+    elif defect == "extra":
+        mapping["UNDECLARED_OVERRIDE"] = "unselected"
+    elif defect == "duplicate":
+        path.write_text(path.read_text()[:-1] + "," + json.dumps(key) + ':"repeated"}')
+    else:
+        mapping[key] = {"boolean": True, "null": None, "empty": "", "nul": "a\0b"}[defect]
+    if defect != "duplicate":
+        path.write_text(json.dumps(mapping))
+    with pytest.raises(Q.QualificationFailed, match="complete closed suite mapping"):
+        Q.capture_native_test_inputs("original-transpose-sources", str(path))
+
+
+@pytest.mark.parametrize("defect", ["relative", "symlink", "oversized", "wrong_suite"])
+def test_native_test_input_selection_requires_bounded_regular_admitted_file(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    suite = "original-transpose-sources"
+    if defect == "relative":
+        path = Path("unselected.json")
+    elif defect == "symlink":
+        link = tmp_path / "alias.json"
+        link.symlink_to(path)
+        path = link
+    elif defect == "oversized":
+        path.write_bytes(b" " * 65537)
+    else:
+        suite = "phase1"
+    with pytest.raises(Q.QualificationFailed):
+        Q.capture_native_test_inputs(suite, str(path))
+
+
+def test_native_test_inputs_cannot_replace_tool_or_source_environment(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    key = next(iter(selected["environment"]))
+    with pytest.raises(Q.QualificationFailed, match="conflict"):
+        Q.native_environment(
+            {"native_test_inputs": selected, "native_tools": {"owned": {"environment_key": key, "path": "/tool"}}}
+        )
+
+
+def test_actual_child_mutation_is_rejected_after_qualification_command(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    report = {
+        "commands": [],
+        "native_test_inputs": Q.capture_native_test_inputs("original-transpose-sources", str(path)),
+    }
+    recorder = Q.Recorder(tmp_path, report, 5)
+    script = "from pathlib import Path; Path(" + repr(str(path)) + ").write_text('{}')"
+    with pytest.raises(Q.QualificationFailed, match="test inputs"):
+        recorder.run("owned-input-mutation", [sys.executable, "-I", "-B", "-c", script], tmp_path)
+    assert report["commands"][-1]["status"] == "inputs_changed"
+
+
+def test_native_test_input_cli_forwards_explicit_selection(monkeypatch, tmp_path):
+    path = _native_test_input_file(tmp_path)
+    seen = {}
+    monkeypatch.setattr(Q, "resolve_ref", lambda *_: "a" * 40)
+    monkeypatch.setattr(Q, "reserve_output", lambda *_: tmp_path)
+
+    def qualify(*args, **kwargs):
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr(Q, "qualify", qualify)
+    assert Q.main(["--ref", "HEAD", "--suite", "original-transpose-sources", "--test-inputs", str(path)]) == 0
+    assert seen["test_inputs"] == str(path)

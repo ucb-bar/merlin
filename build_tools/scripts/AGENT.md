@@ -23,6 +23,10 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   environment before launch. Keep actual values in private operator output,
   bind the complete mapping including its selected record path, and recheck
   record bytes before execution. This is replay input, not runtime authority.
+- Native test input mappings are explicit bounded regular JSON files with a
+  complete suite-declared string-key roster. Reopen their bytes before and after
+  each command; they cannot replace selected tool/source environment keys. Their
+  values remain private operator inputs, not source or runtime qualification.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must

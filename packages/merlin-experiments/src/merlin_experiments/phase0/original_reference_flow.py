@@ -24,8 +24,10 @@ from .rtl_intake import _outside
 
 REFERENCE_SELECTION = "merlin.declared_original_reference_selection.v1"
 POINTWISE_REFERENCE_SELECTION = "merlin.declared_original_reference_selection.v2"
+TRANSPOSE_REFERENCE_SELECTION = "merlin.declared_original_reference_selection.v3"
 STANDARD_SELECTION = "merlin.declared_original_standard_ir_selection.v1"
 POINTWISE_STANDARD_SELECTION = "merlin.declared_original_standard_ir_selection.v2"
+TRANSPOSE_STANDARD_SELECTION = "merlin.declared_original_standard_ir_selection.v3"
 
 
 def pin(path):
@@ -46,12 +48,20 @@ def _selected(value, forbidden):
 
 def _reference(value, identity):
     value = copy.deepcopy(value)
-    if type(value) is not dict or value.get("schema") not in {REFERENCE_SELECTION, POINTWISE_REFERENCE_SELECTION}:
+    if type(value) is not dict or value.get("schema") not in {
+        REFERENCE_SELECTION,
+        POINTWISE_REFERENCE_SELECTION,
+        TRANSPOSE_REFERENCE_SELECTION,
+    }:
         raise ValueError("declared original references need their explicit source-selection version")
     if {"operator_schema_intake_sha256", "semantic_basis_sha256"} & set(value):
         raise ValueError("declared original references cannot import saved live identities")
     value.update(
-        schema=P.POINTWISE_SCHEMA if value["schema"] == POINTWISE_REFERENCE_SELECTION else P.BATCH_SCHEMA,
+        schema={
+            REFERENCE_SELECTION: P.BATCH_SCHEMA,
+            POINTWISE_REFERENCE_SELECTION: P.POINTWISE_SCHEMA,
+            TRANSPOSE_REFERENCE_SELECTION: P.TRANSPOSE_SCHEMA,
+        }[value["schema"]],
         operator_schema_intake_sha256=identity,
         semantic_basis_sha256=identity,
     )
@@ -67,7 +77,7 @@ def _standard(value, forbidden):
     if (
         type(value) is not dict
         or set(value) != fields
-        or value["schema"] not in {STANDARD_SELECTION, POINTWISE_STANDARD_SELECTION}
+        or value["schema"] not in {STANDARD_SELECTION, POINTWISE_STANDARD_SELECTION, TRANSPOSE_STANDARD_SELECTION}
     ):
         raise ValueError("declared standard IR needs a closed explicit upstream source selection")
     commit = value["capture_commit"]
@@ -114,7 +124,11 @@ class OriginalReferenceInputs:
                 raise ValueError("declared original observer input/tool/source changed")
         reference = _reference(loads(self.reference.read_bytes()), pin(self.reference)["sha256"])
         standard = _standard(loads(self.standard.read_bytes()), self.forbidden)
-        if (reference["schema"] == P.POINTWISE_SCHEMA) != (standard["schema"] == POINTWISE_STANDARD_SELECTION):
+        if {
+            P.BATCH_SCHEMA: STANDARD_SELECTION,
+            P.POINTWISE_SCHEMA: POINTWISE_STANDARD_SELECTION,
+            P.TRANSPOSE_SCHEMA: TRANSPOSE_STANDARD_SELECTION,
+        }[reference["schema"]] != standard["schema"]:
             raise ValueError("declared observer versions select different original source vocabularies")
         # Reopen exact tracked upstream membership, including an added source.
         current = SP.capture_sources(standard)
@@ -128,8 +142,11 @@ def read_selection(selected, *, forbidden):
     reference, standard = (_selected(selected[key], forbidden) for key in ("reference", "standard_ir"))
     _reference(loads(reference.read_bytes()), selected["reference"]["sha256"])
     value = _standard(loads(standard.read_bytes()), forbidden)
-    pointwise = loads(reference.read_bytes())["schema"] == POINTWISE_REFERENCE_SELECTION
-    if pointwise != (value["schema"] == POINTWISE_STANDARD_SELECTION):
+    if {
+        REFERENCE_SELECTION: STANDARD_SELECTION,
+        POINTWISE_REFERENCE_SELECTION: POINTWISE_STANDARD_SELECTION,
+        TRANSPOSE_REFERENCE_SELECTION: TRANSPOSE_STANDARD_SELECTION,
+    }[loads(reference.read_bytes())["schema"]] != value["schema"]:
         raise ValueError("declared reference and standard IR versions must select the same original source vocabulary")
     capture = SP.capture_sources(value)
     pins = [pin(reference), pin(standard), pin(value["mlir_opt"]), *capture]
@@ -168,7 +185,11 @@ def prepare(selected, *, schema_intake, semantic_basis, destination):
     selected.verify()
     standard = _standard(loads(selected.standard.read_bytes()), selected.forbidden)
     standard.update(
-        schema=SP.POINTWISE_SCHEMA if standard["schema"] == POINTWISE_STANDARD_SELECTION else SP.SCHEMA,
+        schema={
+            STANDARD_SELECTION: SP.SCHEMA,
+            POINTWISE_STANDARD_SELECTION: SP.POINTWISE_SCHEMA,
+            TRANSPOSE_STANDARD_SELECTION: SP.TRANSPOSE_SCHEMA,
+        }[standard["schema"]],
         reference_roster_sha256=references.sha256,
     )
     standard_path = destination / "standard-selection.json"

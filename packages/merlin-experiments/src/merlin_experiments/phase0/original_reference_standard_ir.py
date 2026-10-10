@@ -24,6 +24,7 @@ from .rtl_intake import RtlIntakePin
 
 SCHEMA = "merlin.original_reference_standard_ir.v1"
 POINTWISE_SCHEMA = "merlin.original_reference_standard_ir.v2"
+TRANSPOSE_SCHEMA = "merlin.original_reference_standard_ir.v3"
 _SCOPE = (
     "complete original source/reference/standard-IR ABI observations only; no compiler, runtime or release authority"
 )
@@ -47,6 +48,8 @@ _ISSUED = weakref.WeakKeyDictionary()
 
 
 def schemas(references):
+    if references.record_without_verification()["schema"] == R.TRANSPOSE_SCHEMA:
+        return TRANSPOSE_SCHEMA, "merlin.original_standard_ir_request.v3", "merlin.native_original_standard_ir.v3"
     if references.record_without_verification()["schema"] == R.POINTWISE_SCHEMA:
         return POINTWISE_SCHEMA, "merlin.original_standard_ir_request.v2", "merlin.native_original_standard_ir.v2"
     return SCHEMA, "merlin.original_standard_ir_request.v1", "merlin.native_original_standard_ir.v1"
@@ -164,7 +167,7 @@ def _pin_sources(selection, capture, pin_replay=None):
         "merlin.xdsl_dialects.fp8",
     ]
     selected = loads(Path(selection).read_bytes())
-    if selected["schema"] == P.POINTWISE_SCHEMA:
+    if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
         modules += [I.__name__, "merlin.common.selected_pin_replay"]
     paths = {module_source_path(name) for name in modules}
     paths.update(module_source_path("xdsl").parent.rglob("*.py"))
@@ -403,7 +406,10 @@ def _contract(original, references):
         source,
         extent=original["extent"],
         policy=original_reference_plan.policy(
-            original["policy"], pointwise=selected["schema"] == original_reference_plan.POINTWISE_SCHEMA
+            original["policy"],
+            pointwise=selected["schema"]
+            in {original_reference_plan.POINTWISE_SCHEMA, original_reference_plan.TRANSPOSE_SCHEMA},
+            transpose=selected["schema"] == original_reference_plan.TRANSPOSE_SCHEMA,
         ),
         budget=OriginalReferenceBudget(**selected["reference_budget"]),
         output_byteorder=selected["byteorder"],
@@ -429,7 +435,7 @@ def _stock_verify(paths, selected, owner, deadline):
 def verify(document, *, references, selection):
     from .original_standard_ir_products import verify as replay
 
-    if schemas(references)[0] != POINTWISE_SCHEMA:
+    if schemas(references)[0] not in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}:
         return replay(document, references=references, selection=selection)
     from merlin.common.selected_pin_replay import replay_selected_pins
 

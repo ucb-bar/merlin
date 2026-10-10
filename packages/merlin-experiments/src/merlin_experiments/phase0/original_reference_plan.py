@@ -18,6 +18,7 @@ from .original_call_sources import validate_budget
 SCHEMA = "merlin.original_reference_selection.v1"
 BATCH_SCHEMA = "merlin.original_reference_selection.v2"
 POINTWISE_SCHEMA = "merlin.original_reference_selection.v3"
+TRANSPOSE_SCHEMA = "merlin.original_reference_selection.v4"
 COHORTS = ("functional_guard", "withheld_transfer")
 
 
@@ -34,13 +35,16 @@ def validate(selection):
         "reference_budget",
         "byteorder",
     }
-    if isinstance(selection, dict) and selection.get("schema") in {BATCH_SCHEMA, POINTWISE_SCHEMA}:
+    if isinstance(selection, dict) and selection.get("schema") in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}:
         selection_fields.add("native_observations")
     if (
         not isinstance(selection, dict)
         or set(selection) != selection_fields
-        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA, POINTWISE_SCHEMA}
-        or (selection["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA} and selection["native_observations"] != "batch.v1")
+        or selection["schema"] not in {SCHEMA, BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+        or (
+            selection["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+            and selection["native_observations"] != "batch.v1"
+        )
     ):
         raise ValueError("original references require a closed independently selected contract")
     for key in ("operator_schema_intake_sha256", "semantic_basis_sha256"):
@@ -70,7 +74,11 @@ def validate(selection):
     if not isinstance(policies, list):
         raise ValueError("original reference requires explicitly selected operation-local policies")
     for record in policies:
-        selected = policy(record, pointwise=selection["schema"] == POINTWISE_SCHEMA)
+        selected = policy(
+            record,
+            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA},
+            transpose=selection["schema"] == TRANSPOSE_SCHEMA,
+        )
         key = (selected.operation, selected.operand_dtypes, selected.readout_dtypes)
         if key in seen:
             raise ValueError("original reference policy selector is duplicated/ambiguous")
@@ -95,15 +103,37 @@ def validate(selection):
 
 
 def transport(selection):
-    return "batch.v1" if validate(selection)["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA} else "per_member"
+    return (
+        "batch.v1"
+        if validate(selection)["schema"] in {BATCH_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+        else "per_member"
+    )
 
 
-def policy(record, *, pointwise=False):
+def policy(record, *, pointwise=False, transpose=False):
     from merlin.targetgen.original_operator_reference import POLICY_SCHEMA
 
     names = {field.name for field in fields(OriginalReferencePolicy)}
-    if type(pointwise) is not bool:
+    if type(pointwise) is not bool or type(transpose) is not bool:
         raise ValueError("original reference policy version selection must be an explicit Boolean")
+    if transpose:
+        from merlin.targetgen.original_transpose_reference import POLICY_SCHEMA as TRANSPOSE_POLICY_SCHEMA
+        from merlin.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
+
+        if isinstance(record, dict) and record.get("schema") == TRANSPOSE_POLICY_SCHEMA:
+            names = {field.name for field in fields(OriginalTransposeReferencePolicy)}
+            if set(record) != {"schema", *names}:
+                raise ValueError("transpose reference policy needs its complete separate storage contract")
+            values = {key: record[key] for key in names}
+            if any(type(values[key]) is not str for key in ("operation", "movement", "comparison")):
+                raise ValueError("transpose reference policy needs exact string-valued storage choices")
+            if type(values["finite_only"]) is not bool:
+                raise ValueError("transpose reference policy needs an explicit finite domain choice")
+            for key in ("operand_dtypes", "readout_dtypes"):
+                if type(values[key]) is not list or not values[key] or any(type(t) is not str for t in values[key]):
+                    raise ValueError("transpose reference policy needs complete ordered storage selectors")
+                values[key] = tuple(values[key])
+            return OriginalTransposeReferencePolicy(**values)
     schemas = {POLICY_SCHEMA}
     policy_type = OriginalReferencePolicy
     if pointwise:
@@ -138,7 +168,14 @@ def policy(record, *, pointwise=False):
 
 
 def selected_policy(selection, form):
-    rows = [policy(row, pointwise=selection["schema"] == POINTWISE_SCHEMA) for row in selection["policies"]]
+    rows = [
+        policy(
+            row,
+            pointwise=selection["schema"] in {POINTWISE_SCHEMA, TRANSPOSE_SCHEMA},
+            transpose=selection["schema"] == TRANSPOSE_SCHEMA,
+        )
+        for row in selection["policies"]
+    ]
     rows = [
         row
         for row in rows
@@ -215,6 +252,12 @@ def measure(contract, selection):
         add(role, input_count, 8 * input_count)
     for role in ("stimulus_raw", "native_raw_decode", "native_bytearray", "native_input_clone", "native_examples"):
         add(role, input_count, input_bytes)
+    if metadata["target"] == "aten.transpose.int":
+        for role in ("native_alias_input_bytes_before", "native_alias_input_bytes_after"):
+            add(role, input_count, input_bytes)
+        # Two rank-two stride vectors, offsets, indices, byte counts and the
+        # storage-contact flag are explicit separate finite observation work.
+        add("native_alias_geometry", 13, 13 * 8)
     for role in ("stimulus_hex", "native_input_hex"):
         add(role, input_count, 2 * input_bytes)
     for role in ("native_output", "native_contiguous_copy", "native_output_bytes", "parent_actual_bytes"):

@@ -148,6 +148,13 @@ invocation remains unavailable rather than gaining an evidence exception.
 
 ## Interfaces
 
+`original_transpose_sources` binds the exact original rank-two CPU strided
+`aten.transpose.int` schema, ordered result and signed axis arguments. Fresh
+rectangular geometry uses only explicit bounded extent. Its separate transpose
+reference policy computes a complete finite element-byte permutation with
+explicit byte order, preserving signed zero and signed integer storage. Value
+equality grants no alias, effect, hardware or whole-domain authority.
+
 `original_pointwise_sources` binds exact original unary schemas and constructs
 independently bounded ReLU, round and scalar-bound clamp loaders. Preserve
 original tensor storage, rank and scalar bound kind/value, including signed

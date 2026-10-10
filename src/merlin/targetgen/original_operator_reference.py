@@ -145,12 +145,14 @@ def _costs(metadata):
         products = count * inputs[0]["shape"][1]
     elif metadata["target"] == "aten.conv2d.default":
         products = count * math.prod(inputs[1]["shape"][1:])
-    elif metadata["target"] in OPERATIONS:
+    elif metadata["target"] in OPERATIONS or metadata["target"] == "aten.transpose.int":
         products = 0
     else:
         products = count
     steps = (
-        reference_steps(metadata)
+        count
+        if metadata["target"] == "aten.transpose.int"
+        else reference_steps(metadata)
         if metadata["target"] in OPERATIONS
         else 2 * products + (count if metadata["parameters"].get("bias") else 0)
     )
@@ -476,6 +478,14 @@ def _conv(metadata, values, arithmetic):
 def prepare_original_reference(form, source, *, extent, policy, budget, output_byteorder):
     """Bind one independently selected source/policy, never mint phase authority."""
     from .original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+    if getattr(policy, "operation", None) == "aten.transpose.int":
+        from .original_transpose_reference import OriginalTransposeReferencePolicy, prepare_transpose_reference
+
+        if type(policy) is OriginalTransposeReferencePolicy:
+            return prepare_transpose_reference(
+                form, source, extent=extent, policy=policy, budget=budget, output_byteorder=output_byteorder
+            )
 
     if (
         type(policy) not in {OriginalReferencePolicy, OriginalPointwiseReferencePolicy}

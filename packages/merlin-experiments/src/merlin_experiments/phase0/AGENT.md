@@ -394,6 +394,17 @@ Historical v8/v9 meanings and every original numerical admission, unsupported
 owner, effect and hardware gap remain unchanged. Factory construction and
 ordinary upstream source parsing grant no whole-domain numerical authority.
 
+Automatic policy/receipt v11 explicitly selects source record v4, adding exact
+original rank-two transpose forms. Original reference selection/roster v4 and
+declared reference/standard selections v3 use a separate finite storage policy;
+standard IR selection/request/roster v3 binds the exact ordinary converter.
+Preserve original axes and Tensor(a) schema alias while using fresh bounded
+rectangular geometry. Check every output element's exact storage bytes and
+separately reopen actual native strides, storage contact and unchanged finite
+input bytes. Those observations grant no effect domain, physical ownership,
+temporal behavior, hardware mapping, semantic-review owner or release authority.
+Keep every old version, guard/private identity and unsupported original slot.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins

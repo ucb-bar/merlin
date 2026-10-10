@@ -26,6 +26,7 @@ def observe(request, *, capture, reference_observer, destination):
     if set(request) != {"schema", "capture_sources", "members", "budget"} or request["schema"] not in {
         "merlin.original_standard_ir_request.v1",
         "merlin.original_standard_ir_request.v2",
+        "merlin.original_standard_ir_request.v3",
     }:
         raise ValueError("standard IR observation needs the complete fixed original request")
     sources = {row["path"]: row["sha256"] for row in request["capture_sources"]}
@@ -99,7 +100,9 @@ def observe(request, *, capture, reference_observer, destination):
                 {"module": name, "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
             )
     return {
-        "schema": "merlin.native_original_standard_ir.v2"
+        "schema": "merlin.native_original_standard_ir.v3"
+        if request["schema"] == "merlin.original_standard_ir_request.v3"
+        else "merlin.native_original_standard_ir.v2"
         if request["schema"] == "merlin.original_standard_ir_request.v2"
         else "merlin.native_original_standard_ir.v1",
         "rows": rows,
