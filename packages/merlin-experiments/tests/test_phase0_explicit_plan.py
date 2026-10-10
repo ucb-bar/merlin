@@ -475,3 +475,97 @@ def test_historical_profiles_root_keeps_original_identity_rules(authored):
 def test_invalid_mixed_or_partial_declarations_refuse(config):
     with pytest.raises(SpecError):
         adapters.ADAPTERS["capsule_derivation"].validate({"descriptor": "target.yaml", **config})
+
+
+def test_generation_capture_timeout_is_frozen_into_the_sealed_capture_plan(authored, monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+    from merlin_experiments.phase0.sealed_generation import CONFIG_ENV
+
+    make, definitions, config = authored
+    (definitions / "software.yaml").write_text("{}\n")
+    selected = {**config, "software_spec": "software.yaml", "evidence_mode": "verified"}
+    selection = {"base": str(tmp_path / "base"), "root": "/m2m", "package": {"sha256": "p"}, "python": "/v/bin/python"}
+    monkeypatch.setattr(m2m_runtime, "observe", lambda *args, **kwargs: dict(selection))
+    monkeypatch.setattr(phase0_freeze, "selected_inputs", lambda *args, **kwargs: ({}, {}))
+    make(selected)
+
+    def plan(**kwargs):
+        return runner.resolve_plan(
+            load_spec(definitions / "experiment.yaml"),
+            phase="0",
+            run_dir=tmp_path / "run",
+            phase0_m2m_root=tmp_path / "m2m",
+            phase0_m2m_python=tmp_path / "venv/bin/python",
+            **kwargs,
+        )
+
+    default = plan()["phases"]["0"]
+    assert "phase0_capture_timeout_seconds" not in default
+    assert "execution_timeout_seconds" not in json.loads(default["env"][CONFIG_ENV])
+    timed = plan(phase0_capture_timeout_seconds=1800)["phases"]["0"]
+    assert timed["phase0_capture_timeout_seconds"] == 1800
+    timed_config = json.loads(timed["env"][CONFIG_ENV])
+    assert timed_config == {**json.loads(default["env"][CONFIG_ENV]), "execution_timeout_seconds": 1800}
+    # The freeze rebuilds the same capture configuration from the frozen command.
+    assert (
+        m2m_runtime.sealed_capture_config(
+            selection, tmp_path / "run/phase0", execution_timeout_seconds=timed["phase0_capture_timeout_seconds"]
+        )
+        == timed_config
+    )
+    for unbounded in (60, 14_401):
+        with pytest.raises(SpecError, match="between 120 and 14400"):
+            plan(phase0_capture_timeout_seconds=unbounded)
+    make({**selected, "evidence_mode": "diagnostic"})
+    with pytest.raises(SpecError, match="only to sealed generation captures"):
+        plan(phase0_capture_timeout_seconds=1800)
+
+
+def test_generation_capture_bwrap_is_frozen_into_the_sealed_capture_plan(authored, monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+    from merlin_experiments.phase0.sealed_generation import CONFIG_ENV
+
+    make, definitions, config = authored
+    (definitions / "software.yaml").write_text("{}\n")
+    selected = {**config, "software_spec": "software.yaml", "evidence_mode": "verified"}
+    selection = {"base": str(tmp_path / "base"), "root": "/m2m", "package": {"sha256": "p"}, "python": "/v/bin/python"}
+    monkeypatch.setattr(m2m_runtime, "observe", lambda *args, **kwargs: dict(selection))
+    monkeypatch.setattr(phase0_freeze, "selected_inputs", lambda *args, **kwargs: ({}, {}))
+    make(selected)
+    bwrap = tmp_path / "tools" / "bwrap"
+    bwrap.parent.mkdir()
+    bwrap.write_text("#!/bin/sh\n")
+    bwrap.chmod(0o755)
+
+    def plan(**kwargs):
+        return runner.resolve_plan(
+            load_spec(definitions / "experiment.yaml"),
+            phase="0",
+            run_dir=tmp_path / "run",
+            phase0_m2m_root=tmp_path / "m2m",
+            phase0_m2m_python=tmp_path / "venv/bin/python",
+            **kwargs,
+        )
+
+    default = plan()["phases"]["0"]
+    assert "phase0_bwrap" not in default and "bwrap" not in json.loads(default["env"][CONFIG_ENV])
+    chosen = plan(phase0_bwrap=bwrap)["phases"]["0"]
+    assert chosen["phase0_bwrap"] == str(bwrap)
+    chosen_config = json.loads(chosen["env"][CONFIG_ENV])
+    assert chosen_config == {**json.loads(default["env"][CONFIG_ENV]), "bwrap": str(bwrap)}
+    # The freeze rebuilds the same capture configuration from the frozen command.
+    assert (
+        m2m_runtime.sealed_capture_config(selection, tmp_path / "run/phase0", bwrap=chosen["phase0_bwrap"])
+        == chosen_config
+    )
+    not_bwrap = tmp_path / "tools" / "sandbox"
+    not_bwrap.write_text("#!/bin/sh\n")
+    not_bwrap.chmod(0o755)
+    for refused in (not_bwrap, tmp_path / "tools" / "absent" / "bwrap"):
+        with pytest.raises(SpecError, match="absolute executable named bwrap"):
+            plan(phase0_bwrap=refused)
+    make({**selected, "evidence_mode": "diagnostic"})
+    with pytest.raises(SpecError, match="only to sealed generation captures"):
+        plan(phase0_bwrap=bwrap)

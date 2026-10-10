@@ -1404,19 +1404,28 @@ def _epilogue_axis(target: str) -> dict:
     # as an epilogue" -- so it makes every elementwise stage required together. These declarations
     # distinguish activation on readout from bias seeded before contraction. Consulting only the
     # coarse source put a stage in the requirement that no application path performs, and the grade
-    # refused that capsule hours later -- having read the very declaration this loop now reads.
-    # Absent (the target declares no readouts) leaves the two original sources deciding, unchanged.
-    from merlin.targetgen.readout_facet import epilogue_readouts, epilogue_stage_routes
+    # refused that capsule hours later. Absent declarations leave the original sources deciding.
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, epilogue_stage_routes
     from merlin.verify.epilogue_applicability import selectors_applying
 
     try:
         readouts = epilogue_readouts(target)
         routes = epilogue_stage_routes(target)
+    except ReadoutSupportError:
+        raise  # selected support owes readout facts and cannot serve them: a refusal, not "absent"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
-        readouts = None
-        routes = ()
+        readouts, routes = None, ()
 
-    required, rejected = [], []
+    # Whether the two stage-granular sources were READ at all. ``epilogue_readouts`` returns ``None`` for
+    # a target that declares nothing (or whose declaration could not be read), which its own contract
+    # calls UNKNOWN; an ungrounded taxonomy is likewise ``unknown`` / ``not_applicable``, never "derived
+    # with no fusion class". When neither was read, a stage the manifest does not make fused-only has NO
+    # evidence either way. Recording it as rejected wrote a definitive "the target cannot fuse this" into
+    # the requirement, and the derived corpus then demanded no epilogue at all.
+    taxonomy_status = IT.status_of(taxonomy)
+    unread = readouts is None and taxonomy_status != IT.STATUS_DERIVED
+
+    required, rejected, unresolved = [], [], []
     for stage in _builder_epilogue_stages():
         family = sf.from_op(stage)
         by_manifest = family in fused_families
@@ -1462,6 +1471,21 @@ def _epilogue_axis(target: str) -> dict:
                     "isa_classes": classes,
                 }
             )
+        elif unread:
+            unresolved.append(
+                {
+                    "stage": stage,
+                    "family": family,
+                    "taxonomy_status": taxonomy_status,
+                    "readouts": "undeclared",
+                    "why": (
+                        "the manifest declares no family fused-only for it, no readout declaration could be "
+                        f"read for this target and its instruction taxonomy is {taxonomy_status!r}; whether "
+                        "the stage fuses onto a contraction is UNDETERMINED, which is neither a requirement "
+                        "nor a refusal"
+                    ),
+                }
+            )
         else:
             rejected.append(
                 {
@@ -1477,6 +1501,7 @@ def _epilogue_axis(target: str) -> dict:
     return {
         "required": required,
         "rejected": rejected,
+        "unresolved": unresolved,
         "axis_basis": (
             "the epilogue stages this target can fuse onto a contraction, evidenced by its capability "
             "manifest declaring the stage's family fused-only OR by its own instruction taxonomy "

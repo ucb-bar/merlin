@@ -100,8 +100,9 @@ def _input_provenance(capsule_dir: str | Path | None):
         if not capsule_dir:
             return None
         from merlin.targetgen.golden_store import load_golden
+        from merlin.targetgen.loader_reference import captured_reference
 
-        document = load_golden(capsule_dir)
+        document = load_golden(capsule_dir) or captured_reference(capsule_dir)
     if not document:
         return None
     return ((document.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}

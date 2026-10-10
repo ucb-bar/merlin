@@ -908,8 +908,12 @@ def generate_target(
                         host_capabilities=evidence.host_capabilities,
                     )
                 admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
+                # A must-refuse member is refused by the declarations by construction; that refusal is
+                # what it grades, so it neither moves to the diagnostic cohort nor fails generation.
+                must_refuse = e.get("outcome") == "refuse"
                 if (
                     observed["status"] == "unsupported"
+                    and not must_refuse
                     and Path(w).parent.name != "_diagnostic"
                     and not (
                         source_preparation is not None
@@ -953,10 +957,10 @@ def generate_target(
                                 "detail": str(exc),
                             }
                         )
-                if observed["status"] == "unsupported":
+                if observed["status"] == "unsupported" and not must_refuse:
                     actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
                 (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
-                if evidence_mode != "diagnostic" and observed["status"] != "admitted":
+                if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
                     failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
                 # Verified evidence admits a generation-time capture only from the sealed runner.
                 capture_refusal = verified_capture_failure(actual)

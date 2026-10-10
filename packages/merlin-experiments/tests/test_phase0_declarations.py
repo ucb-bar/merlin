@@ -104,6 +104,14 @@ def test_templates_skipped(tmp_path):
     assert D.all_declarations(catalog_path=catalog(tmp_path, path)) == ()
 
 
+def _performance_captures(descriptor, tmp_path):
+    """The descriptor's declared Phase 2 form-scale roster, one distinct capture path per label."""
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    declared = load_target_experiment(descriptor).workload_spec.get("performance_applications") or []
+    return {label: tmp_path / "performance" / label / "model.mlir" for label in declared}
+
+
 def test_requirement_derivation_selects_authored_capability_contract(tmp_path, monkeypatch):
     from merlin_experiments.phase0 import requirements
 
@@ -126,7 +134,13 @@ def test_requirement_derivation_selects_authored_capability_contract(tmp_path, m
     monkeypatch.setattr(requirements, "select_evidence", observe)
     captures = {label: tmp_path / label / "model.mlir" for label in roster}
     with pytest.raises(ContractObserved):
-        requirements.derive(definition, captures, rtl_facts=tmp_path / "facts.json", output_root=tmp_path / "derived")
+        requirements.derive(
+            definition,
+            captures,
+            rtl_facts=tmp_path / "facts.json",
+            output_root=tmp_path / "derived",
+            performance_captures=_performance_captures(descriptor, tmp_path),
+        )
 
 
 def test_requirement_derivation_observes_the_preselected_capture_python(tmp_path, monkeypatch):
@@ -165,4 +179,59 @@ def test_requirement_derivation_observes_the_preselected_capture_python(tmp_path
             rtl_facts=tmp_path / "facts.json",
             output_root=tmp_path / "derived",
             capture_preselections=selections,
+            performance_captures=_performance_captures(descriptor, tmp_path),
         )
+
+
+def test_performance_capture_selections_cover_the_roster_and_are_replay_verified(tmp_path, monkeypatch):
+    from merlin_experiments.phase0 import capture_execution_attestation, capture_selection, requirements
+
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    definition, descriptor = authored_inputs(monkeypatch)
+    roster = load_target_experiment(descriptor).workload_spec["applications"]
+    captures = {label: tmp_path / label / "model.mlir" for label in roster}
+    performance = _performance_captures(descriptor, tmp_path)
+    assert performance, "the target declares a performance-scale roster"
+    selections = {label: (tmp_path / "performance" / label / "selection.json", "b" * 64) for label in performance}
+    first = sorted(selections)[0]
+    with pytest.raises(ValueError, match="entire declared performance roster"):
+        requirements.derive(
+            definition,
+            captures,
+            rtl_facts=tmp_path / "facts.json",
+            output_root=tmp_path / "derived",
+            performance_captures=performance,
+            performance_preselections={first: selections[first]},
+        )
+    verified, attested = [], []
+
+    def verify(path, *, expected_sha256, model_path):
+        verified.append((path, expected_sha256, model_path))
+        return {"status": "verified_preselected_replay"}
+
+    monkeypatch.setattr(capture_selection, "verify", verify)
+    monkeypatch.setattr(
+        capture_execution_attestation,
+        "attest_sealed_m2m",
+        lambda evidence, *, selection_path, model_path: attested.append(model_path) or {},
+    )
+
+    class Selected(Exception):
+        pass
+
+    def observe(target, **kwargs):
+        raise Selected
+
+    monkeypatch.setattr(requirements, "select_evidence", observe)
+    with pytest.raises(Selected):
+        requirements.derive(
+            definition,
+            captures,
+            rtl_facts=tmp_path / "facts.json",
+            output_root=tmp_path / "derived",
+            performance_captures=performance,
+            performance_preselections=selections,
+        )
+    assert sorted(verified) == sorted((path, sha, performance[label]) for label, (path, sha) in selections.items())
+    assert sorted(attested) == sorted(performance.values())

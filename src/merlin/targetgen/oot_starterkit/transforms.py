@@ -34,7 +34,7 @@ def im2col(
     dilation=(1, 1),
 ) -> Im2colPlan:
     """Generic conv->matmul reduction (NHWC input, weight [kh,kw,cin,cout]). Returns the matmul shapes +
-    a recipe (the same recipe schema the contract's `params.im2col_recipes` expects). No target specifics.
+    a recipe (the same recipe schema the command buffer's params derivation recipes use). No target specifics.
     """
     n, h, w, cin = ifm_nhwc
     kh, kw, wcin, cout = weight_khwc

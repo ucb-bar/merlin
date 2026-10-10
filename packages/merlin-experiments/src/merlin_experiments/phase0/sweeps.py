@@ -69,6 +69,16 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
             for mm in matmuls
         ]
     resolved = out if out is not None else entry
+    prelude = resolved.get("prelude")
+    if isinstance(prelude, dict) and any(isinstance(prelude.get(key), str) for key in _EXTENT_KEYS):
+        # A residual-state prelude is sized in the same tile-relative tokens as the entry it precedes.
+        resolved = {
+            **resolved,
+            "prelude": {
+                key: (resolve_extent(value, tile) if key in _EXTENT_KEYS and isinstance(value, str) else value)
+                for key, value in prelude.items()
+            },
+        }
     # A POOLING EPILOGUE NEEDS ITS SPATIAL SHAPE, and this is the first point at which it can be had:
     # the entry's rows are known only after the tile-relative tokens resolve. A synthesized entry
     # declares the pool WINDOW (a 2x2 with stride 2 is the shape every pooling datapath has) and leaves

@@ -303,8 +303,19 @@ def receipt(frozen: dict) -> bytes:
     return (json.dumps(frozen, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
 
 
-def sealed_capture_config(selected: dict, artifact_root: Path) -> dict:
-    """Bind generation captures to the selected owner, using copied sources after freezing."""
+def sealed_capture_config(
+    selected: dict,
+    artifact_root: Path,
+    *,
+    execution_timeout_seconds: int | None = None,
+    bwrap: str | Path | None = None,
+) -> dict:
+    """Bind generation captures to the selected owner, using copied sources after freezing.
+
+    ``execution_timeout_seconds`` is the operator-selected sandbox timeout every generation
+    capture is selected with. Absent, the key is omitted so the configuration (and every capture
+    selection made from it) keeps its historical bytes and the fixed 120 s timeout.
+    """
     copied = "frozen_root" in selected
     private = artifact_root / "private"
     config = {
@@ -318,4 +329,32 @@ def sealed_capture_config(selected: dict, artifact_root: Path) -> dict:
         selector = frozen_selector(private / "m2m-runtime.json")
         verify_frozen_selector(selector, Path(selected["frozen_root"]), selected["frozen_package"])
         config["frozen_origin"] = selector
+    if execution_timeout_seconds is not None:
+        config["execution_timeout_seconds"] = capture_timeout(execution_timeout_seconds)
+    if bwrap is not None:
+        # The operator-selected sandbox binary every generation capture runs under. Absent, the key
+        # is omitted and the capture resolves the system one, as before.
+        config["bwrap"] = capture_bwrap(bwrap)
     return config
+
+
+def capture_bwrap(value) -> str:
+    """An explicit, absolute, executable sandbox binary for generation captures, or refuse."""
+    import os
+
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK) or path.name != "bwrap":
+        raise ValueError(f"Phase 0 capture bwrap must be an absolute executable named bwrap: {value}")
+    return str(path)
+
+
+def capture_timeout(value) -> int:
+    """A generation-capture timeout within the sealed checkpoint-free capture bounds, or refuse."""
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    if value is None or not sealed_m2m._selected_timeout_valid(sealed_m2m.SCHEMA, value):
+        raise ValueError(
+            f"Phase 0 capture timeout must be an integer between {sealed_m2m._TIMEOUT_SECONDS} and "
+            f"{sealed_m2m._MAX_SELECTED_CAPTURE_SECONDS} seconds"
+        )
+    return value

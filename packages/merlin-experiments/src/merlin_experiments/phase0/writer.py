@@ -542,7 +542,10 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
     capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
     on has to be readable from the capsule itself rather than inferred from a naming convention.
     """
-    cap_to = str(entry.get("max_oracle_tier") or "")
+    # The cap may come from the profile entry or already sit on a carried capsule (a hand-authored or
+    # materialized member). Either way a written capsule must never demand a tier above its own cap:
+    # `required_oracle_tiers: [..., L3]` beside `max_oracle_tier: L2` is unrunnable as a corpus.
+    cap_to = str(entry.get("max_oracle_tier") or cap.get("max_oracle_tier") or "")
     if not cap_to:
         return False
     tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
@@ -553,8 +556,9 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
             f"leave the capsule demanding everything"
         )
     trimmed = tiers[: tiers.index(cap_to) + 1]
-    changed = trimmed != tiers
+    changed = trimmed != tiers or cap.get("max_oracle_tier") != cap_to
     cap["required_oracle_tiers"] = trimmed
+    cap["max_oracle_tier"] = cap_to
     if entry.get("extends"):
         cap["extends"] = str(entry["extends"])
         changed = True

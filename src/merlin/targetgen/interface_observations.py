@@ -65,6 +65,23 @@ def _row(index: int, opcode: str, operation: str, family: str | None, **fields) 
     }
 
 
+#: Command attributes that state GEOMETRY (the command-buffer ABI's window and store-path fields).
+#: They are integer lists by definition and say nothing about how a readout scales its values.
+_GEOMETRY_ATTRIBUTES = frozenset(
+    {"kernel", "stride", "padding", "dilation", "pool_in_dims", "pool_size", "pool_stride", "pool_padding"}
+)
+
+
+def _per_tensor_scales(attributes: dict) -> bool:
+    """Whether every multiplier a command states is one value for the whole tensor: no attribute other
+    than its stage list and its geometry is an array or a mapping (a per-channel scale would be one)."""
+    return all(
+        not isinstance(value, (list, dict))
+        for key, value in attributes.items()
+        if key != "epilogue" and key not in _GEOMETRY_ATTRIBUTES and value is not None
+    )
+
+
 def _stage_rows(
     *,
     index: int,
@@ -79,11 +96,7 @@ def _stage_rows(
 ) -> list[dict]:
     from merlin.targetgen.semantic_families import from_op
 
-    scalar_scales = all(
-        not isinstance(value, (list, dict))
-        for key, value in attributes.items()
-        if key != "epilogue" and value is not None
-    )
+    scalar_scales = _per_tensor_scales(attributes)
     return [
         _row(
             index,
@@ -183,7 +196,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             # rule a commit's stages are observed by. A command with no multiplier states none.
             stated = {key: value for key, value in attributes.items() if key != "epilogue" and value is not None}
             multiplied = any(isinstance(value, float) for value in stated.values())
-            scalar = all(not isinstance(value, (list, dict)) for value in stated.values())
+            scalar = _per_tensor_scales(attributes)
             row["composed_observation"] = {
                 "epilogues": [],
                 "composed_with": [],

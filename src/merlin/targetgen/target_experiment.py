@@ -127,7 +127,7 @@ class HostLane:
     dtype_strategy: str | None = None
     #: How this package came to exist, closed vocabulary. ``published`` means it was checked out of
     #: ``repo_canonical`` and ``branch`` names the revision. ``in_tree_minted`` means it was generated
-    #: HERE (promote_champion) and never existed upstream -- for which a branch name would be a
+    #: HERE (by in-tree promotion) and never existed upstream -- for which a branch name would be a
     #: fiction, so one is not required and the pin is carried by the package digest instead.
     provenance: str = "published"
     #: Separate operation-support declaration, never appended to the immutable compiler payload.
@@ -221,7 +221,13 @@ class HostLane:
         try:
             package = package_lexical.resolve(strict=True)
         except OSError as exc:
-            raise ValueError(f"host_lane package {self.package!r} is missing or unreadable") from exc
+            minted = (
+                "; it is in_tree_minted, so it is generated in this checkout from its deterministic recipe "
+                "before use, and its tree digest must equal the capability declaration's package pin"
+                if self.provenance == "in_tree_minted"
+                else ""
+            )
+            raise ValueError(f"host_lane package {self.package!r} is missing or unreadable{minted}") from exc
         if not _is_within(package, root) or not package.is_dir():
             raise ValueError(f"host_lane package {self.package!r} does not resolve to a directory inside {root}")
 

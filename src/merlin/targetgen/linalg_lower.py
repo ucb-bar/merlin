@@ -252,7 +252,9 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
     #     a matmul. Derive the conv geometry structurally from the operand/result shapes (no padding/dilation
     #     assumed, matching the im2col map) and hand the emitter a compile-time (k, patch) -> X source-offset
     #     table so it fuses the gather into the matmul. --------------------------------------------------
-    if any(o.get("op") == "convolution_im2col_matmul" for o in ops):
+    from merlin.targetgen.legacy_labels import is_gathered_conv_op
+
+    if any(is_gathered_conv_op(o.get("op")) for o in ops):
         mm = next((o for o in ops if o.get("kind") == "linalg.matmul"), None)
         if mm is None:
             raise LinalgLowerError("im2col conv region has no linalg.matmul anchor")

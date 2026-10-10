@@ -143,6 +143,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   refuses; the advisory CIRCT wrapper records unavailable evidence and still runs
   the scientific oracle. The runner selects one owner for all three operations;
   compiled assertions are not cached by mutable capsule names or object identities.
+- `rtl_checks_generic.py` is the generic RoCC implementation of that capability. It enforces
+  HARDWARE LEGALITY only (decode, decoder-legal functs, local-address bounds, declared ordering
+  prerequisites, fence bracketing, store coverage of declared outputs); every bound is an RTL fact or
+  a contract encoding, and no rule encodes a schedule, tile count or emitter field choice. Its
+  protocol is the target contract's `rtl_checks` block (see `rocc/AGENT.md`). Flat facts it returns
+  carry `target`, so target-less helpers resolve the same protocol.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a

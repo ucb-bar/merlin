@@ -488,7 +488,8 @@ def _trace_geometries(path: Path) -> list[ConvGeometry] | None:
     found = []
     for node in convolutions:
         args = node.get("args") or []
-        if not isinstance(args, list) or not 3 <= len(args) <= 7 or node.get("kwargs"):
+        # A bias-free convolution exports with just (input, weight): two positional arguments.
+        if not isinstance(args, list) or not 2 <= len(args) <= 7 or node.get("kwargs"):
             raise ValueError("convolution source arguments are not in the supported positional form")
         input_shape, weight_shape = shape(args[0]), shape(args[1])
         results = node.get("results") or []

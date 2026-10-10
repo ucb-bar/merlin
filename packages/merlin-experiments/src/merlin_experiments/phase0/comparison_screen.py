@@ -59,10 +59,13 @@ def refused_part(variants: list[dict], base: dict, *, software_spec: dict | None
 
 
 def refused_emitted_part(entries: list[dict], *, binding, evidence) -> dict | None:
-    """Definite refusal of a comparison part from its builder's typed interface.
+    """Definite refusal of any comparison-group member from its builder's typed interface.
 
-    This is a pre-write SW/host admission screen, not a numerical or execution
-    proof. Unknown admissions remain for the written capsule's full screen.
+    Every member of a comparison group is needed for the comparison -- a fused member and its parts,
+    an island member and its matched no-island member -- so a member the selected declarations
+    definitely refuse withdraws the family, whatever its role. This is a pre-write SW/host admission
+    screen, not a numerical or execution proof. Unknown admissions remain for the written capsule's
+    full screen.
     """
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.semantic_families import from_op
@@ -71,7 +74,7 @@ def refused_emitted_part(entries: list[dict], *, binding, evidence) -> dict | No
 
     for entry in entries:
         group = entry.get("comparison_group")
-        if not isinstance(group, dict) or group.get("role") != "part":
+        if not isinstance(group, dict) or not group.get("role"):
             continue
         if entry.get("source") not in (None, "direct"):
             continue  # A non-builder source has no interface to screen here.
@@ -81,7 +84,12 @@ def refused_emitted_part(entries: list[dict], *, binding, evidence) -> dict | No
         try:
             _, selected_binding = CS.entry_binding(entry, binding)
             capsule, mlir = CS.build(entry, selected_binding)
-            observed = account_interface_text(mlir, target=binding.target, evidence=evidence)
+            if "linalg_mlir" in capsule:
+                # A builder that emits a source program is screened the way its written capsule
+                # will be: per operation, as for a captured application.
+                observed = _account_source_program(mlir, str(entry.get("name") or op), binding, evidence)
+            else:
+                observed = account_interface_text(mlir, target=binding.target, evidence=evidence)
         except (KeyError, TypeError, ValueError):
             # The ordinary writer reports a malformed or unavailable builder;
             # it must not become an inapplicability skip at this early screen.
@@ -100,3 +108,15 @@ def refused_emitted_part(entries: list[dict], *, binding, evidence) -> dict | No
                 "basis": "builder_emitted_typed_interface",
             }
     return None
+
+
+def _account_source_program(mlir: str, name: str, binding, evidence) -> list[dict]:
+    import tempfile
+    from pathlib import Path
+
+    from .program_admission import account_program
+
+    with tempfile.TemporaryDirectory(prefix="merlin-comparison-part-") as scratch:
+        program = Path(scratch) / "capsule.linalg.mlir"
+        program.write_text(mlir, encoding="utf-8")
+        return account_program(program, name=name, target=binding.target, evidence=evidence)

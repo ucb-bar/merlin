@@ -545,9 +545,9 @@ def get_model_and_inputs():
     "permute": """
 class Model(nn.Module):
     def forward(self, x):
-        return x.permute(1, 0)
+        return x.permute({perm_args})
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({shape_args}),)
 """,
     "reduce_sum": """
 class Model(nn.Module):
@@ -711,8 +711,11 @@ def build_loader_src(spec: dict) -> str:
     from .capsule_builtin_source import render_builtin_source
 
     return render_builtin_source(
-        spec, preamble=_PREAMBLE, integer_matmul=_INT_MATMUL,
-        parametric_linear=_PARAMETRIC_LINEAR, bodies=_OP_BODIES,
+        spec,
+        preamble=_PREAMBLE,
+        integer_matmul=_INT_MATMUL,
+        parametric_linear=_PARAMETRIC_LINEAR,
+        bodies=_OP_BODIES,
         input_names=_OP_INPUT_NAMES | _FUSED_OP_INPUT_NAMES,
     )
 
@@ -1477,6 +1480,8 @@ def _capture_spec(entry: dict, binding) -> dict:
     }
     if "shape" in entry:
         spec["shape"] = list(entry["shape"])
+    if "permutation" in entry:
+        spec["permutation"] = list(entry["permutation"])
     # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
     # for int8 is weight-only, which emits a float matmul over dequantized weights -- correct for a
     # model ladder, wrong for a capsule meant to exercise an integer datapath, and not fixable by

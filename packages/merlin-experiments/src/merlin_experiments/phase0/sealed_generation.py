@@ -37,6 +37,10 @@ def configured() -> dict[str, Any] | None:
     required = {"m2m_root", "venv", "runs_root"}
     if not isinstance(config, dict) or not required <= set(config):
         raise ValueError(f"{CONFIG_ENV} must name {sorted(required)}")
+    if "execution_timeout_seconds" in config:
+        from .m2m_runtime import capture_timeout
+
+        capture_timeout(config["execution_timeout_seconds"])
     return config
 
 
@@ -162,6 +166,8 @@ class SealedCaptureSource(PytorchRefSource):
             dtype=str(request["dtype"]),
             recipe=recipe,
             bwrap_binary=Path(self.config["bwrap"]) if self.config.get("bwrap") else None,
+            # Absent: the historical fixed 120 s and unchanged selection bytes.
+            execution_timeout_seconds=self.config.get("execution_timeout_seconds"),
             worker_options={
                 **({"agreement_tolerance": [float(value) for value in tolerance]} if tolerance else {}),
                 **({"stage_fp32": True} if stage_fp32 else {}),

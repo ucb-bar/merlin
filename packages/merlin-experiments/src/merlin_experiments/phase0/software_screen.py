@@ -155,6 +155,15 @@ def screen_entry(
         decision = admit_host_operation(
             host_capabilities, {"mlir_operation": op, "frontend_op": entry.get("frontend_op")}, signature
         )
+        if decision["status"] == "unsupported" and from_op(op) == "movement":
+            # Data movement is a support lowering, not a host compute operation, and the written
+            # program's own admission (program_admission.screen_written) reads it that way. Before
+            # writing, the absence of a host COMPUTE declaration for it decides nothing.
+            decision = {
+                **decision,
+                "status": "unknown",
+                "reason": "data movement: decided by the written program's admission, not a host compute declaration",
+            }
         return {
             **decision,
             "constraints_status": "refused" if decision["status"] == "unsupported" else "unknown",

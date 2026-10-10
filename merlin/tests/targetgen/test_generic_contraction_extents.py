@@ -295,7 +295,9 @@ def test_microvits_last_unsynthesizable_site_is_closed():
     assert all(d.has_shape for d in contractions), "every contraction now carries an extent"
     assert all(tile_builder_op(d)[0] is not None for d in contractions)
 
-    (conv,) = [d for d in contractions if d.op == "convolution_im2col_matmul"]
+    from merlin.targetgen.legacy_labels import is_gathered_conv_op
+
+    (conv,) = [d for d in contractions if is_gathered_conv_op(d.op)]
     assert (conv.batch, conv.m, conv.k, conv.n) == (48, 1, 9, 16)
     # ...and the tile it now synthesizes is in the op's OWN format, not the model's declared int8.
     assert conv.in_fmt == "int8" and conv.elem_fmt == "fp32" and conv.tile_fmt == "fp32"

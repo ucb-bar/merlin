@@ -95,6 +95,10 @@ def entry_refusal_is_final(entry: dict, decision: dict) -> bool:
     """
     probe = entry.get("generalization") or {}
     host_probe = probe.get("must_accelerate") is False and probe.get("eligible") is False
+    # A MUST-REFUSE member is refused by the declarations on purpose: that refusal is what it grades,
+    # so it is never moved out of the graded cohort for it (merlin.targetgen.expected_refusal).
+    if entry.get("outcome") == "refuse":
+        return False
     return decision.get("status") == "unsupported" and not host_probe
 
 

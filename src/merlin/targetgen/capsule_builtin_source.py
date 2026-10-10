@@ -7,6 +7,21 @@ import math
 from . import component_sources
 
 
+def _permutation(spec: dict, rank: int) -> list[int]:
+    """The axis order a ``permute`` program applies: the spec's, else the last two axes swapped (for
+    the historic ``[M, K]`` form, the plain transpose)."""
+    raw = spec.get("permutation")
+    if raw is None:
+        return [*range(rank - 2), rank - 1, rank - 2] if rank >= 2 else list(range(rank))
+    if (
+        not isinstance(raw, (list, tuple))
+        or any(isinstance(axis, bool) or not isinstance(axis, int) for axis in raw)
+        or sorted(raw) != list(range(rank))
+    ):
+        raise ValueError(f"permutation must order every axis of the rank-{rank} shape exactly once, got {raw!r}")
+    return [int(axis) for axis in raw]
+
+
 def render_builtin_source(
     spec: dict,
     *,
@@ -55,6 +70,7 @@ def render_builtin_source(
         # Elementwise programs preserve the captured rank. Most synthetic probes use the historic
         # MxK form; an application-derived probe may instead carry its exact static shape.
         "shape_args": ", ".join(str(int(d)) for d in raw_shape),
+        "perm_args": ", ".join(str(axis) for axis in _permutation(spec, len(raw_shape))),
     }
     for name in ("M", "K", "N", "Dv", "B", "Cin", "Himg", "Wimg", "P", "Pool"):
         if type(fields[name]) is not int or fields[name] < 1:

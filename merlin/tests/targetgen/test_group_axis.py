@@ -99,3 +99,33 @@ def test_each_uncovered_combination_is_synthesized_as_one_member() -> None:
     )
     with pytest.raises(CS.SynthesisError, match="softcap"):
         CS.synthesize(doc)
+
+
+def test_signatures_that_differ_only_in_their_carrier_share_one_member() -> None:
+    """A contraction and a convolution with the same readout are written as the same matmul program,
+    so they are one member (two same-named entries would be the same capsule twice)."""
+    root = merlin_dir() / "contract/capsules/conformance"
+    doc = yaml.safe_load(next(iter(sorted(root.glob("*.yaml")))).read_text(encoding="utf-8"))
+    dtype = next(str(c["dtype"]) for c in doc["cells"] if c.get("family") == "contraction")
+    conv = {**_REQUIRED[0], "signature": "conv2d|bias_add+relu|i8", "op": "conv2d", "groups": 4, "dtype": dtype}
+    doc["groups"] = {"required": [{**_REQUIRED[0], "dtype": dtype}, conv]}
+    members = [
+        e
+        for e in CS.synthesize(doc)["capsules"]
+        if (e.get("generalization") or {}).get("generalization_axis") == "groups"
+    ]
+    assert [m["name"] for m in members] == [f"SY_group_bias_add_relu_{dtype}"]
+    assert "36 compute group(s)" in members[0]["source_reference"]
+    assert "_group_count" not in members[0]
+
+
+def test_every_generalization_axis_the_synthesis_writes_is_in_the_capsule_schema() -> None:
+    """A synthesized capsule whose axis the schema does not name fails the cohort scan at generation."""
+    import json
+    import re
+
+    schema = json.loads((merlin_dir() / "contract/schemas/capsule.schema.json").read_text(encoding="utf-8"))
+    allowed = set(schema["properties"]["semantic"]["properties"]["generalization_axis"]["enum"])
+    source = Path(CS.__file__).read_text(encoding="utf-8")
+    written = set(re.findall(r'"generalization_axis": "([a-z_]+)"', source))
+    assert written and written <= allowed, sorted(written - allowed)
