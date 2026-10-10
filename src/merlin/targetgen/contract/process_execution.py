@@ -19,6 +19,7 @@ from weakref import WeakKeyDictionary
 from merlin.common import invocation_record as I
 
 from .build_service import file_digest
+from .prepared_process_readback import OPERANDS, PreparedProcessReadbackPlan, validate_request
 
 _EXECUTED = WeakKeyDictionary()
 _ELF = "{elf}"
@@ -50,6 +51,10 @@ class _Executed:
     elf_path: Path
     elf_sha256: str
     selection_json: str
+    request: dict | None
+    request_json: str | None
+    input_pins: tuple
+    argv: tuple[str, ...]
 
 
 @dataclass(frozen=True, eq=False)
@@ -63,6 +68,7 @@ class RecordedProcessExecution:
     record_root: Path
     stream: str
     source_pins: tuple[tuple[str, str], ...]
+    prepared_readback: PreparedProcessReadbackPlan | None = None
 
     def verify(self):
         if (
@@ -70,9 +76,18 @@ class RecordedProcessExecution:
             or type(self.argv_template) is not tuple
             or not self.argv_template
             or self.argv_template.count(_ELF) != 1
+            or self.prepared_readback is not None
+            and type(self.prepared_readback) is not PreparedProcessReadbackPlan
             or any(
-                type(token) is not str or "\0" in token or token != _ELF and ("{" in token or "}" in token)
+                type(token) is not str
+                or "\0" in token
+                or token not in (_ELF, *OPERANDS)
+                and ("{" in token or "}" in token)
                 for token in self.argv_template
+            )
+            or any(
+                self.argv_template.count(token) != (1 if self.prepared_readback is not None else 0)
+                for token in OPERANDS
             )
             or type(self.environment) is not tuple
             or any(
@@ -97,12 +112,14 @@ class RecordedProcessExecution:
         if root.exists() and (not root.is_dir() or root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o077):
             raise ValueError("recorded process evidence root must be private and owned")
         required = {str(self.executable): executable["sha256"], str(owner): file_digest(owner)}
+        if self.prepared_readback is not None:
+            required.update((str(path), file_digest(path)) for path in self.prepared_readback.source_paths())
         if any(pins.get(path) != digest for path, digest in required.items()):
             raise ValueError("recorded process omits its selected tool or fixed source owner")
         for path, expected in self.source_pins:
             if _pin(Path(path))["sha256"] != expected:
                 raise ValueError("recorded process selected source/tool changed")
-        return {
+        record = {
             "executable": executable,
             "argv_template": list(self.argv_template),
             "cwd": str(self.cwd),
@@ -112,9 +129,13 @@ class RecordedProcessExecution:
             "source_pins": [{"path": path, "sha256": digest} for path, digest in self.source_pins],
             "scope": _SCOPE,
         }
+        if self.prepared_readback is not None:
+            record["prepared_readback"] = self.prepared_readback.record()
+        return record
 
     def run_elf(self, elf, *, timeout, capture_bytes=False, **kwargs):
         kwargs.pop("simulator", None)  # Service verifies its selected identity; this owner never selects by name.
+        request = kwargs.pop("memory_readback", None) if self.prepared_readback is not None else None
         if kwargs or type(capture_bytes) is not bool or type(timeout) not in (int, float):
             raise ValueError("recorded process received unsupported invocation options")
         if not math.isfinite(timeout) or not 0 < timeout <= 600:
@@ -122,19 +143,30 @@ class RecordedProcessExecution:
         selection = self.verify()
         artifact = _pin(Path(elf))
         _EXECUTED.pop(self, None)
+        inputs, outputs = (Path(elf),), ()
+        operands = {_ELF: str(elf)}
+        request_json = None
+        if self.prepared_readback is not None:
+            _, paths = validate_request(self.prepared_readback, request, Path(elf), completed=False)
+            inputs += paths[:2]
+            outputs = paths[2:]
+            operands.update(zip(OPERANDS, (str(paths[1]), str(paths[2])), strict=True))
+            request_json = json.dumps(request, sort_keys=True, separators=(",", ":"))
+        input_pins = tuple(sorted((_pin(path) for path in inputs), key=lambda row: Path(row["path"])))
         if not self.record_root.exists():
             self.record_root.mkdir(mode=0o700)
         self.verify()
         call = self.record_root / uuid.uuid4().hex
         call.mkdir(mode=0o700)
-        argv = [str(self.executable), *(str(elf) if token == _ELF else token for token in self.argv_template)]
+        argv = [str(self.executable), *(operands.get(token, token) for token in self.argv_template)]
         result = I.run(
             argv,
             directory=call,
             stage="recorded_functional_process",
             cwd=self.cwd,
             env=dict(self.environment),
-            inputs=(Path(elf),),
+            inputs=inputs,
+            outputs=outputs,
             dependencies=tuple(Path(path) for path, _ in self.source_pins),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT if self.stream == "combined" else subprocess.PIPE,
@@ -150,6 +182,10 @@ class RecordedProcessExecution:
             Path(elf),
             artifact["sha256"],
             json.dumps(selection, sort_keys=True, separators=(",", ":")),
+            request,
+            request_json,
+            input_pins,
+            tuple(argv),
         )
         console = result.stdout if capture_bytes else result.stdout.decode("utf-8")
         self.consumption(elf=Path(elf), console=console)
@@ -169,15 +205,28 @@ class RecordedProcessExecution:
         record_pin = _pin(executed.record)
         if record_pin["sha256"] != executed.record_sha256 or not executed.record.is_relative_to(self.record_root):
             raise ValueError("recorded process actual invocation changed or escaped")
+        prepared = None
+        if self.prepared_readback is not None:
+            if json.dumps(executed.request, sort_keys=True, separators=(",", ":")) != executed.request_json:
+                raise ValueError("recorded process prepared request changed after native execution")
+            wire, paths = validate_request(self.prepared_readback, executed.request, Path(elf), completed=True)
+            prepared = {
+                "request": _pin(paths[1]),
+                "output": _pin(paths[2]),
+                "objects": wire["objects"],
+                "payload_bytes": wire["payload_bytes"],
+                "product_bytes": wire["product_bytes"],
+                "scope": wire["plan"]["scope"],
+            }
         observed = I.verify(executed.record)
-        argv = [str(self.executable), *(str(elf) if token == _ELF else token for token in self.argv_template)]
         if (
             observed["kind"] != "subprocess"
-            or observed["argv"] != argv
-            or observed["inputs"] != [expected]
+            or observed["argv"] != list(executed.argv)
+            or observed["inputs"] != list(executed.input_pins)
+            or observed["outputs"] != ([] if prepared is None else [prepared["output"]])
             or observed["executable"] != selection["executable"]
             or observed["cwd"] != str(self.cwd)
-            or observed["dependencies"] != sorted(selection["source_pins"], key=lambda row: row["path"])
+            or observed["dependencies"] != sorted(selection["source_pins"], key=lambda row: Path(row["path"]))
         ):
             raise ValueError("recorded process actual tool/argv/input differs from its original selection")
         I.require_environment(executed.record, environment=dict(self.environment))
@@ -187,7 +236,7 @@ class RecordedProcessExecution:
         data = console if type(console) is bytes else console.encode("utf-8") if type(console) is str else None
         if data is None or data != stdout.read_bytes() or self.stream == "combined" and stderr.read_bytes():
             raise ValueError("recorded process returned console differs from its actual selected captured stream")
-        return {
+        result = {
             "record": record_pin,
             "elf": expected,
             "executable": selection["executable"],
@@ -196,3 +245,6 @@ class RecordedProcessExecution:
             "stream": self.stream,
             "scope": _SCOPE,
         }
+        if prepared is not None:
+            result["prepared_readback"] = prepared
+        return result

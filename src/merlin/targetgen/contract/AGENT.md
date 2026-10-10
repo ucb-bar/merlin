@@ -93,6 +93,22 @@ descendant cleanup, runtime qualification, effects, hardware or timing. The
 native timeout bounds the selected subprocess; it is not an OS deadline or a
 process-tree cleanup guarantee, and captured output has no aggregate byte limit.
 
+An optional exact `PreparedProcessReadbackPlan` derives a values-free object
+roster and complete file budget from the original typed direct harness ABI and
+repeat/counter/phase plans. Only this explicit selection admits one whole-token
+request operand and one output operand beside the single ELF operand. Its
+private preparation files, original command buffer, selected sources and actual
+ELF are rechecked before dispatch; the output must be absent before execution
+and complete afterward. Actual invocation inputs, product bytes, tool, argv,
+environment identity and captured stream are reopened at consumption. Source
+pins do not prove imports or bytecode. The external source-owned loader and
+decoder still owe exact ELF symbol resolution, packet grammar, original values,
+histories, completion, isolation, resource and physical correspondence. This
+transport issues no stage, runtime, cold/warm, measurement or timing authority.
+Absent selection preserves the original unsupported-options refusal and serial
+route. V1 supports one bounded exact-size readback file, not inherited channels
+or arbitrary prepared commands.
+
 The build-only renderer must be an actual Python function or bound method whose
 inspected file and current bytes belong to the selected source roster. Unwrap
 only exact stdlib `functools.partial`, never supplied wrapper/source attributes.

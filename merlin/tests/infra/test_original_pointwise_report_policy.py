@@ -80,9 +80,9 @@ def _child(tmp_path, *, original=False, omit=False):
 def test_new_suite_requires_report_without_native_tools_and_preserves_optional_suites():
     assert Q.native_test_report_required("original-pointwise-host", {"native_tools": {}})
     for name, configured in Q.SUITES.items():
-        if name == "original-pointwise-host":
-            continue
-        assert not Q.native_test_report_required(name, {"native_tools": {}})
+        assert Q.native_test_report_required(name, {"native_tools": {}}) is bool(
+            configured.get("mandatory_test_report")
+        )
         if configured.get("native_tools"):
             assert Q.native_test_report_required(name, {"native_tools": {"selected": {}}})
 

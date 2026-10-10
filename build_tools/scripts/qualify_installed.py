@@ -357,10 +357,18 @@ SUITES = {
     "recorded-process-consumption": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_recorded_process_execution.py", "test_explicit_execution_service.py"),
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("clang", "readelf"),
+        "native_test_files": ("test_prepared_process_readback.py",),
+        "tests": (
+            "test_recorded_process_execution.py",
+            "test_explicit_execution_service.py",
+            "test_prepared_process_readback.py",
+        ),
         "core_extras": ("xdsl", "targetgen"),
         "probe_modules": (
             "merlin.targetgen.contract.process_execution",
+            "merlin.targetgen.contract.prepared_process_readback",
             "merlin.targetgen.contract.execution_service",
             "merlin.targetgen.contract.compile",
         ),
@@ -1661,6 +1669,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "mlir-opt": "MERLIN_TEST_MLIR_OPT",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
     "llvm-llc": "MERLIN_LLVM_LLC",
+    "readelf": "MERLIN_TEST_READELF",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
     "vvp": "MERLIN_TEST_VVP",
 }
