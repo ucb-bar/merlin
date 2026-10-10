@@ -131,6 +131,71 @@ def test_a_worker_importing_its_sibling_by_bare_name_counts_as_a_caller(tmp_path
     assert "merlin.targetgen.json" not in gate._imports(worker)  # no such sibling file
 
 
+@pytest.mark.parametrize(
+    "selection",
+    [
+        'from merlin.common.paths import module_source_path\nreader = module_source_path("merlin.perf.reader")\n',
+        'from merlin.common.paths import module_source_path as select\nreader = select(module="merlin.perf.reader")\n',
+        'import merlin.common.paths\nreader = merlin.common.paths.module_source_path("merlin.perf.reader")\n',
+        'import merlin.common.paths as P\nreader = P.module_source_path("merlin.perf.reader")\n',
+        'from merlin.common import paths as P\nreader = P.module_source_path("merlin.perf.reader")\n',
+    ],
+)
+def test_canonical_literal_source_selection_wires_an_isolated_reader(tmp_path, selection):
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "build_tools/worker.py": selection,
+            },
+        )
+    )
+    assert gate.unwired() == []
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        'from other.paths import module_source_path\nmodule_source_path("merlin.perf.reader")\n',
+        'module_source_path("merlin.perf.reader")\n',
+        "from merlin.common.paths import module_source_path\n"
+        'request = "merlin.perf.reader"\nmodule_source_path(request)\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path("merlin.perf." + "reader")\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path("merlin.perf.reader", extra=True)\n',
+        'from merlin.common.paths import module_source_path\nmodule_source_path(other="merlin.perf.reader")\n',
+        'from merlin.common.paths import module_source_path\n"module_source_path(merlin.perf.reader)"\n',
+    ],
+)
+def test_computed_or_unbound_source_requests_do_not_wire_a_module(tmp_path, selection):
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "build_tools/worker.py": selection,
+            },
+        )
+    )
+    assert gate.unwired() == [f"{_PERF}/reader.py"]
+
+
+def test_a_test_only_source_selection_is_not_a_production_caller(tmp_path):
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                f"{_PERF}/reader.py": "def main(): ...\n",
+                "merlin/tests/infra/test_reader.py": (
+                    "from merlin.common.paths import module_source_path\n"
+                    'reader = module_source_path("merlin.perf.reader")\n'
+                ),
+            },
+        )
+    )
+    assert gate.unwired() == [f"{_PERF}/reader.py"]
+
+
 def test_a_target_workflow_under_examples_is_a_production_caller(tmp_path: Path) -> None:
     """Target workflows moved from ``merlin/targets`` to ``examples/<name>``; their documented
     operator commands still wire what they import. A sample with no ``target/`` and no
