@@ -12,7 +12,9 @@ retain their original paths; the legacy descriptor path is only a compatibility 
 `contracts/` owns the public prototype selected contract and its derivation residual;
 `evidence_concepts.yaml` owns the evidence vocabulary. These inputs contain no
 runtime backend or private oracle implementation. Shared metadata discovery is
-layout-based; runtime support still requires explicit selection of the OOT provider.
+layout-based. Runtime execution requires explicitly reviewed contract/facts data
+for shared tooling or an independently reviewed execution provider. Handwritten
+compiler support cannot serve as the independent grader.
 Do not promote hand-authored metadata to extracted facts or certification evidence.
 The optional `rtl_extraction` block in `contracts/target_contract.yaml` names this
 example's Scala funct span, accumulator HW ports and Boolean build gate. Those are source-location

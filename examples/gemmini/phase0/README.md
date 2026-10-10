@@ -5,6 +5,12 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/aws_phase0_phase1.md)
+and its operator-only deployment and verified-definition templates. This retained
+diagnostic example does not supply a reviewed execution contract or native launch
+evidence. The shared neutral tooling needs explicit contract/facts data and no
+handwritten support package.
+
 ## 1. Select the inputs
 
 | Input | Responsibility |
@@ -154,17 +160,17 @@ captures and layer frequencies do not select or tune the derivation corpus.
 
 With installed `merlin-experiments`, explicit captures and fresh facts:
 
-Select the *same* out-of-tree support package and capability contract for
-derivation and the subsequent Phase 0 run. For example, leave
-`MERLIN_TARGET_PATH` explicitly set to independently derived external support, selecting the same
-support directory for both, and set
-`MERLIN_TARGET_CONTRACT` to
-`examples/gemmini/target/contracts/target_contract.yaml` before both commands.
-The support package's raw contract alone omits the example's corpus command
-issue order and cannot materialize this corpus. The generated requirement binds
-raw facts, the contract, effective readout facets and support-source bytes;
-changing a provider requires a fresh
-derivation, not a resumed corpus run. The selected Gemmini readout supports
+Select the *same* reviewed execution contract and original RTL facts for
+derivation and the subsequent Phase 0 run. Set `MERLIN_TARGET_CONTRACT` and
+`MERLIN_RTL_FACTS` to those exact inputs. A contract declaring
+`runner.backend: chipyard_rocc`, logical harness ABI v2, operand roles and pinned
+toolchain/engines uses Merlin's shared neutral tooling without executable
+support. The checked-in prototype contract is reference metadata and does not
+already provide this deployment selection. See the
+[AWS handoff](../../../docs/guides/aws_gsim.md).
+The generated requirement binds raw facts, the contract, effective readout
+facets and selected tooling source bytes. Changing those inputs requires fresh
+derivation rather than a resumed corpus run. The selected Gemmini readout supports
 `acc_scale` but not the distinct integer-shift `requant` epilogue, so the latter
 must remain an explicit rejected/host obligation rather than a fabricated
 accelerator capability.
@@ -401,14 +407,14 @@ tensors and intermediate lowering snapshots.
 ### Check a generated kernel on the oracle ladder
 
 With `merlin-experiments` and its AET dependency installed, select the same
-support provider, example contract and exact facts used by derivation. The
+reviewed neutral contract and exact facts used by derivation. The
 compiler interpreter and LLVM tools are independent of the PyTorch capture
 interpreter. An installed Merlin checkout does not imply they are installed or
 selected; check `python -c 'import aet'` and resolve these paths before grading.
 
 ```sh
-MERLIN_TARGET_PATH="${MERLIN_INDEPENDENT_TARGET_SUPPORT:?independent runtime support required}" \
-MERLIN_TARGET_CONTRACT="$PWD/examples/gemmini/target/contracts/target_contract.yaml" \
+MERLIN_TARGET_PATH= \
+MERLIN_TARGET_CONTRACT="${PREPARED_CONTRACT:?reviewed neutral execution contract required}" \
 MERLIN_RTL_FACTS="$RTL_ROOT/facts.json" \
 MERLIN_EXT_CHIPYARD="$SIMULATOR_CHIPYARD_ROOT" \
 MERLIN_COMPILER_PYTHON="$COMPILER_PYTHON" \

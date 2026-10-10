@@ -42,6 +42,15 @@ from merlin.runtime.backends._chipyard_memory_readback import (  # noqa: F401 --
     prepare_memory_readback,
 )
 from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register, target_class_for
+from merlin.runtime.backends.chipyard_rocc_bound import (  # noqa: F401 -- explicit bound-contract API
+    _HEADERS,
+    _RUNTIME,
+    BoundRoCCBackend,
+    RoCCExecutionError,
+    _check_pin,
+    _resource,
+    bind,
+)
 
 _OOT_PREFIX = "merlin._oot_backends."
 

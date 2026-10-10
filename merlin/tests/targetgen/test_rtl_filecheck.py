@@ -21,7 +21,7 @@ import yaml
 
 from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RR
-from merlin.targetgen import rtl_checks as SHAPES
+from merlin.targetgen import rtl_checks_generic as SHAPES
 from merlin.targetgen.corpora import capsule_corpus_roots
 from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
@@ -41,7 +41,9 @@ _ARC = MB.arc_available("gemmini")
 
 def _mesh() -> tuple[int, int]:
     """The array geometry from the RTL-derived facts projection the checks read (never a literal)."""
-    rows, cols = CC._facts_to_rc(_FACTS)["mesh"]
+    facts = _FACTS.get("facts", _FACTS)
+    mesh = next(array for array in facts.get("arrays", []) if array["name"] == "mesh")
+    rows, cols = mesh["rows"], mesh["cols"]
     return int(rows), int(cols)
 
 def _matmul_capsule(min_tiles: int = 1):
@@ -143,21 +145,13 @@ def test_compiled_checks_observe_changed_capsule_and_provider(monkeypatch):
     assert RR.compiled_checks(_FACTS, cap, "gemmini") == {"geometry": 2, "provider": "replacement"}
 
 
-@pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")
-def test_provenance_flags_derived_vs_handpicked():
-    """Every check family is tagged with its source + whether it is genuinely DERIVED. For gemmini the
-    legality/ABI/coverage families are grounded in mlc facts, and — now that ``semantic_roles`` regenerates
-    the behavioural effect-probe cache on demand from the live arc — the opcode->role family is DERIVED too,
-    and those derived roles VERIFY the hand ABI semantic_class (no disagreements). This is how we audit 'did
-    we hand-pick this?' — every family names its source and the role family is cross-checked, not declared."""
+def test_provenance_describes_decoder_evidence_only():
+    """Shared provenance reports decoder evidence without claiming a preferred schedule."""
     cap = _matmul_capsule()
     prov = CC.compile_checks(_FACTS, cap, target="gemmini")["provenance"]
     assert prov["isa_legality"]["derived"] is True
     assert prov["abi_encoding"]["derived"] is True
-    assert prov["tile_coverage"]["derived"] is True
-    assert prov["semantic_roles"]["derived"] is True  # regenerated behavioural probe -> derived
-    assert prov["semantic_roles"]["n_roles"] >= 9
-    assert MB.crosscheck_semantic_class("gemmini") == []  # derived roles verify the hand ABI labels
+    assert set(prov) == {"isa_legality", "abi_encoding"}
 
 
 @pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")
@@ -179,4 +173,4 @@ def test_non_rocc_target_drops_rocc_shaped_checks():
     cc = CC.compile_checks(simt, _matmul_capsule(), target="radiance")
     assert "dialect" not in cc and cc["trace"] is None
     assert cc["provenance"]["isa_legality"]["derived"] is False
-    assert "no discovered_roles cache" in cc["provenance"]["semantic_roles"]["reason"]
+    assert set(cc["provenance"]) == {"isa_legality", "abi_encoding"}

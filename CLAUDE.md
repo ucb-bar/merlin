@@ -39,6 +39,11 @@ reference provider must not leave instructions to rediscover it through a legacy
 default. Compiler candidates stay in their OOT repositories. See
 `docs/guides/target_resolution.md`.
 
+Generic toolchain/simulator plumbing, logical tensor harnesses and fact-bound
+instruction decoding may live in Merlin. Select their target values as data;
+never import compiler-bearing support to grade a from-scratch candidate. These
+mechanisms supply no device kernels, packing, schedules or optimization hints.
+
 The OOT dialect is a **general compiler backend**, not a workload-specific kernel generator.
 Production passes derive choices from input operation semantics, shapes, layouts, numeric
 contracts and hardware capabilities. Never select production behavior by model name, captured

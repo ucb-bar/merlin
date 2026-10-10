@@ -151,5 +151,8 @@ tool, accuracy and budget selections through startup, canary and authoring.
 
 The explicit runtime binds the pinned Codex executable at its
 `codex-linux-sandbox` helper alias and grants that exact path read access.
-The selected helper search path is recorded and rechecked. Client credentials
-and other client-home state retain their candidate-tool denials.
+The selected helper search path is recorded and rechecked. Session startup uses
+a read-only empty `tmp/arg0` directory to select the pinned executable fallback;
+its nested Bubblewrap must support `--argv0`. The selected Bubblewrap executable
+and installed sibling code-mode host are pinned and mounted explicitly. Client
+credentials and other client-home state retain their candidate-tool denials.

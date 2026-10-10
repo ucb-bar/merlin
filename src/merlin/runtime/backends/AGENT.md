@@ -24,6 +24,10 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 ## Invariants
 
+- A selected `runner.backend: chipyard_rocc` binds generic tooling directly from
+  the selected contract and existing RTL facts before executable discovery. It
+  imports no target provider. Missing or malformed selected data refuses; native
+  binaries and receipt identities are checked when requested, without RTL builds.
 - Target plugin execution requires a selected support provider on `MERLIN_TARGET_PATH`
   (unset, the checkout's vendored `examples/*/support` providers; see
   `target_registry.in_repo_support`). Reference metadata and generated-package discovery alone

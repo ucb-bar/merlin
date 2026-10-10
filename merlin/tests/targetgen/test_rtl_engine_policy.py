@@ -998,3 +998,66 @@ def test_operator_cpu_slot_restores_affinity_after_failure(monkeypatch):
         with P._gsim_cpu_slot(0):
             raise RuntimeError("native failed")
     assert os.sched_getaffinity(0) == original
+
+
+@pytest.mark.parametrize(
+    "fault", (None, "shared_cpu", "broad_cpu", "missing_cpu", "changed_cpu", "grandchild", "extra_child"),
+)
+def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, monkeypatch, fault):
+    root, proc = tmp_path / "slots", tmp_path / "proc"
+    root.mkdir()
+    proc.mkdir()
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 3)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", "57,58,59")
+    held = []
+    owner = _fake_proc_member(proc, 100, 1, 10, [b"/neutral/owner"])
+    (owner / "fd").mkdir()
+    children = []
+    for index in range(2):
+        path = root / f"slot_{index}.lock"
+        path.touch()
+        info = path.stat()
+        held.append(P._HeldSlot(index, info.st_dev, info.st_ino))
+        (owner / "fd" / str(index + 7)).symlink_to(path)
+        child = _fake_proc_member(
+            proc, 201 + index, 201 if fault == "grandchild" and index == 1 else 100, 20 + index,
+            [b"/neutral/native", b"+loadmem=/neutral/input", b"+max-cycles=100"],
+        )
+        with (child / "status").open("a") as stream:
+            stream.write(f"Cpus_allowed_list:\t{57 + index}\n")
+        children.append(child)
+    if fault in ("shared_cpu", "broad_cpu", "missing_cpu", "grandchild"):
+        path = children[1] / "status"
+        text = path.read_text()
+        replacement = {"shared_cpu": "57", "broad_cpu": "57-58", "missing_cpu": "", "grandchild": "58"}[fault]
+        text = text.replace("Cpus_allowed_list:\t58", "Cpus_allowed_list:\t" + replacement)
+        path.write_text(text)
+    if fault == "extra_child":
+        extra = _fake_proc_member(
+            proc, 203, 100, 23, [b"/neutral/native", b"+loadmem=/neutral/input", b"+max-cycles=100"],
+        )
+        with (extra / "status").open("a") as stream:
+            stream.write("Cpus_allowed_list:\t57\n")
+        children.append(extra)
+    slots = P._SlotCensus(3, tuple(held))
+    identities = tuple(P._fresh_identity(child, uid=os.getuid(), native=True) for child in children)
+    assert all(identity is not None for identity in identities)
+    natives = P._NativeCensus(len(children), identities)
+    monkeypatch.setattr(P, "_lock_owners", lambda *_args: {slot: 100 for slot in held})
+    if fault == "changed_cpu":
+        original = P._native_cpu_matches
+        reads = 0
+
+        def change_between_observations(member, cpu):
+            nonlocal reads
+            if member == children[0]:
+                reads += 1
+                if reads > 1:
+                    return False
+            return original(member, cpu)
+
+        monkeypatch.setattr(P, "_native_cpu_matches", change_between_observations)
+    lock_file = tmp_path / "locks"
+    lock_file.write_bytes(b"")
+    observed = P._verified_native_slot_overlap(root, slots, natives, proc_root=proc, locks_path=lock_file)
+    assert observed == (2 if fault is None else 0 if fault == "shared_cpu" else 1)
