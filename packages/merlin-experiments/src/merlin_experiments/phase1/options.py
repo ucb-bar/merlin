@@ -62,6 +62,7 @@ class RunOptions:
     public_object_build_budget_s: int = 0
     preflight_only: bool = False
     corpus_seal: str = ""
+    instruction_selection: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -280,6 +281,12 @@ def build_parser(
         default="",
         metavar="FILE",
         help="operator-only frozen complete-network validation declaration for the official post-freeze gate",
+    )
+    ap.add_argument(
+        "--instruction-selection",
+        default="",
+        metavar="FILE",
+        help="operator-private source-bound instruction policy for formal full-model grading",
     )
     ap.add_argument(
         "--experiment",

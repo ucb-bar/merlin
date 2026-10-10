@@ -177,6 +177,7 @@ class PreparedRun:
     transport: WorkspaceTransport
     stage_task: TaskStager
     private_full_model_spec: Path | None = None
+    instruction_selection: Path | None = None
 
     @property
     def scope_roots(self) -> dict:
@@ -226,6 +227,21 @@ class PreparedRun:
                     root=self.run_dir / "private_full_model_input" / "sources",
                     target=self.request.context.target,
                 )
+        instruction = self.environment.get("private_instruction_selection")
+        if instruction is not None:
+            from merlin.compile.model_execution_inputs import file_sha256
+
+            from .feedback import private_instruction_declaration
+
+            if (
+                self.instruction_selection is None
+                or str(self.instruction_selection) != instruction.get("frozen_path")
+                or file_sha256(self.instruction_selection) != instruction.get("sha256")
+            ):
+                raise RuntimeError("frozen operator-private instruction selection changed")
+            private_instruction_declaration.read(
+                self.instruction_selection, target=self.request.context.target
+            ).verify()
         corpus_record = self.environment.get("public_corpus_input")
         if corpus_record is not None:
             view = CI.resolve(
@@ -370,6 +386,8 @@ def validate_preflight_options(a: RunOptions) -> None:
 def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
     validate_preflight_options(a)
+    if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
+        raise ValueError("instruction selection requires a sandboxed private full-model declaration")
     if a.qualify_submission:
         if a.resume or a.seed_submission or a.seal_current or a.continuous:
             raise RuntimeError("unpaid qualification requires a fresh run and one selected submission")
@@ -665,6 +683,16 @@ def prepare(
     if _resuming and _environment_record.get("private_full_model_spec") != _private_full_model_record:
         raise RuntimeError("resume refused: operator-private full-model specification changed")
 
+    from .feedback import private_instruction_declaration
+
+    _instruction_selection, _instruction_record = private_instruction_declaration.freeze_for_run(
+        a.instruction_selection,
+        target=context.target,
+        run_dir=run_dir,
+        prior=_environment_record.get("private_instruction_selection") if _resuming else None,
+        resuming=_resuming,
+    )
+
     if _resuming and _environment_record.get("corpus_review") != _corpus_review:
         raise RuntimeError("resume refused: operator corpus-review identity changed or was removed")
 
@@ -800,6 +828,7 @@ def prepare(
             "hidden_capsule_snapshot": _hidden_snapshot_record,
             "model_host_lane_snapshot": _model_host_lane_snapshot,
             "private_full_model_spec": _private_full_model_record,
+            "private_instruction_selection": _instruction_record,
             "repo_sha": repo_sha(repo=context.repo),
             "bundle_id": bundle["bundle_id"],
             "condition": bundle.get("condition", "legacy"),
@@ -973,4 +1002,5 @@ def prepare(
         transport,
         stage_task,
         _private_full_model_spec,
+        _instruction_selection,
     )

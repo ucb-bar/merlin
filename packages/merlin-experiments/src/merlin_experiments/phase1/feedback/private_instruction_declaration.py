@@ -180,3 +180,29 @@ def read(path, *, target):
         return declaration
     except (OSError, TypeError, KeyError, ValueError) as error:
         raise ValueError("instruction coordinator requires unchanged reviewed public source selections") from error
+
+
+def freeze_for_run(path, *, target, run_dir, prior=None, resuming=False):
+    """Copy a verified operator selection privately, preserving its original source pins."""
+    from merlin_experiments.corpus.preparation import copy_input
+
+    if not path:
+        if resuming and prior is not None:
+            raise ValueError("resume refused: operator-private instruction selection removed")
+        return None, None
+    original = Path(path).absolute()
+    declaration = read(original, target=target)
+    declaration.verify()
+    frozen = Path(run_dir) / "private_instruction_input" / "selection.json"
+    digest = _bytes(original)
+    sha256 = hashlib.sha256(digest).hexdigest()
+    record = {"source": str(original), "sha256": sha256, "frozen_path": str(frozen)}
+    if resuming:
+        if prior != record or _bytes(frozen) != digest:
+            raise ValueError("resume refused: operator-private instruction selection changed")
+    else:
+        copy_input(original, frozen, private=True, expected_sha256=sha256)
+        frozen.parent.chmod(0o700)
+        frozen.chmod(0o400)
+    read(frozen, target=target).verify()
+    return frozen, record

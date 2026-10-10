@@ -84,6 +84,9 @@ def run(
         command.append("--no-oracle")
     if prepared.private_full_model_spec is not None:
         command += ["--private-full-model-spec", str(prepared.private_full_model_spec)]
+    instruction_selection = getattr(prepared, "instruction_selection", None)
+    if instruction_selection is not None:
+        command += ["--instruction-selection", str(instruction_selection)]
     if options.skip_hidden:
         command.append("--skip-hidden")
     if selected_rtl_facts is not None:

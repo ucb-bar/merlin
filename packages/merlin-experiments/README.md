@@ -99,3 +99,11 @@ refuses unknown declared engines, missing callbacks, or unproved inference safet
 error; it never guesses tiers or substitutes ARC for a missing declared plugin.
 An existing plugin can add metadata or the corpus author can declare explicit
 required tiers. Metadata callbacks are trusted support code, not candidate grants.
+
+Formal private-model runs may explicitly select `--instruction-selection FILE`
+beside `--private-full-model-spec FILE`. The ordinary sandboxed launcher privately
+freezes the source-bound declaration, reopens its selected dependency pins, rejects
+changed or removed selections on resume, and passes the frozen path to formal
+grading. Catalog definitions accept the corresponding `instruction_selection` and
+`private_full_model_spec` input fields. No selection is discovered from candidate
+metadata, and the declaration alone establishes no instruction or runtime authority.

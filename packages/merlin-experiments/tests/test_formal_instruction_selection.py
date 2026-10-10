@@ -428,3 +428,29 @@ def test_absent_selection_keeps_legacy_formal_call_shape_unqualified(selected, m
     _manifest, calls, seen, prepared = _formal_attempt(selected, monkeypatch, choose=False)
     assert not calls and not prepared and len(seen) == 1
     assert "linked_elf_admission" not in seen[0]
+
+
+def test_run_freeze_keeps_instruction_selection_private_and_reopens_dependencies(selected, tmp_path):
+    run = tmp_path / "run"
+    frozen, record = D.freeze_for_run(selected.path, target=selected.target, run_dir=run)
+    assert frozen.read_bytes() == selected.path.read_bytes()
+    assert frozen.stat().st_mode & 0o077 == 0
+    assert record["sha256"] == file_digest(frozen)
+    assert D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True) == (
+        frozen,
+        record,
+    )
+    with pytest.raises(ValueError, match="removed"):
+        D.freeze_for_run("", target=selected.target, run_dir=run, prior=record, resuming=True)
+    Path(selected.document["policy"]["path"]).write_text("changed independently selected policy")
+    with pytest.raises(ValueError):
+        D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True)
+
+
+def test_run_freeze_refuses_changed_frozen_instruction_declaration(selected, tmp_path):
+    run = tmp_path / "run"
+    frozen, record = D.freeze_for_run(selected.path, target=selected.target, run_dir=run)
+    frozen.chmod(0o600)
+    frozen.write_text("changed frozen selection")
+    with pytest.raises(ValueError, match="changed"):
+        D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True)
