@@ -39,8 +39,12 @@ def selected(tmp_path, monkeypatch, *, llc):
 
 
 @pytest.mark.parametrize("llc", (False, True))
-def test_exact_original_three_child_boundaries_and_input_product_roles(tmp_path, monkeypatch, llc):
+@pytest.mark.parametrize("explicit_cc", (False, True))
+def test_exact_original_three_child_boundaries_and_input_product_roles(tmp_path, monkeypatch, llc, explicit_cc):
     source, runtime, environment, calls = selected(tmp_path, monkeypatch, llc=llc)
+    selected_cc = str(tmp_path / "tools/clang") if explicit_cc else "cc"
+    if explicit_cc:
+        monkeypatch.setenv("CC", selected_cc)
     result = codegen.build_host_shared(source, tmp_path / "model.so")
     records = [I.verify(path) for path in tmp_path.rglob("invocation.json")]
     assert len(records) == 3
@@ -59,8 +63,8 @@ def test_exact_original_three_child_boundaries_and_input_product_roles(tmp_path,
         I.require_environment(Path(record["stdout"]["path"]).parent / "invocation.json", environment=environment)
         actual = next(call for call in calls if call[0] == record["argv"])
         assert actual[1]["env"] == environment and str(actual[1]["cwd"]) == record["cwd"]
-    assert calls[1][0] == ["cc", "-O2", "-fPIC", "-c", str(runtime), "-o", str(runtime_object)]
-    assert calls[2][0] == ["cc", "-shared", str(model), str(runtime_object), "-lm", "-o", str(result)]
+    assert calls[1][0] == [selected_cc, "-O2", "-fPIC", "-c", str(runtime), "-o", str(runtime_object)]
+    assert calls[2][0] == [selected_cc, "-shared", str(model), str(runtime_object), "-lm", "-o", str(result)]
 
 
 @pytest.mark.parametrize("drift", ("environment", "cwd", "argv"))
