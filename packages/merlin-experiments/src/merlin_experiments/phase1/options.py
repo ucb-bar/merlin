@@ -60,6 +60,8 @@ class RunOptions:
     private_full_model_spec: str = ""
     readback_policy: str = ""
     public_object_build_budget_s: int = 0
+    preflight_only: bool = False
+    corpus_seal: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -356,6 +358,12 @@ def build_parser(
         default=environment.get("CLAUDE_CONFIG_DIR", ""),
         help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)",
     )
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="run ordinary sealed native readiness, then stop before authoring or completion",
+    )
+    ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
     return ap
 
 

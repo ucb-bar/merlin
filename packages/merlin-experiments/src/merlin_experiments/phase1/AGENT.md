@@ -20,6 +20,13 @@ call this same owner; they must not retain a second execution composition. Initi
 context before execution imports. Installed callers provide operator paths explicitly.
 `__main__.py` is the installed command using the same option parser and controller.
 Keep parsing/help target-inert; require explicit operator inputs instead of native defaults.
+`--preflight-only` uses the same ordinary `session.prepare` and stops before authoring
+or submission qualification. Require an explicit reviewed corpus seal and exact bundle
+identity, native bwrap, oracle and hidden checks, without candidate/resume/bypass modes.
+An explicit seal must agree with an existing environment selection; absent CLI selection
+preserves legacy behavior. The private `preflight.py` continuation reopens complete prepared
+inputs and the frozen manifest/snapshot/seal. Its result records only startup checks;
+it is not a compiler verdict, fresh-client canary, runtime or phase qualification.
 `workspace_transport.py` owns frozen friendly views, copy grants and mask probes. Resolve grants
 through the shared resolver and inspect frozen membership for frozen views. Missing probe
 completion, failed execution or unreadable public controls are not successful isolation evidence.

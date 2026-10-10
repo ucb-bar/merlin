@@ -120,6 +120,10 @@ def run(
         )
         if isinstance(prepared, int):
             return prepared
+        if options.preflight_only:
+            from . import preflight
+
+            return preflight.complete(prepared)
         if options.qualify_submission:
             from . import qualification
 
