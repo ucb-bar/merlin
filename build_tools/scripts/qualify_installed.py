@@ -1981,6 +1981,16 @@ SUITES = {
         ),
         "required_modules": ("xdsl",),
     },
+    "automatic-linked-elf-policy": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "tests": ("test_private_linked_elf_selection.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase1.feedback.private_full_models",
+            "merlin_experiments.phase1.feedback.private_linked_elf_selection",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "host-output": {
         "include_experiments": False,
         "tests_root": "merlin/tests",

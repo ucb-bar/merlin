@@ -43,6 +43,17 @@ whole-model build. The shared post-build verifier still checks linked bytes and
 source obligations, but an old receipt without exact producer/toolchain closure
 cannot become a full-roster gate result or a build-cache hit.
 
+The automatic private build caller accepts an explicitly supplied live
+`LinkedElfAdmissionService`. `private_linked_elf_selection.py` freezes and
+reopens its target, callback and source selection, and requires the exact same
+service on the planned `DeviceRouting` before and after the ordinary saved-model
+build. An active route without that selection refuses. This supplies no default
+policy, native decoder or instruction/effect/runtime authority. The formal
+coordinator currently supplies no issued instruction service: independently
+selected public command/predicate/accessor intakes, protected source-symbol
+prohibitions and an explicit decoder selection are still required. Diagnostic
+prebuilt inspection cannot establish actual final-image policy evaluation.
+
 The private complete-model build gate consumes the producer-bound completed
 compilation recipe and independently rehashes its explicit compiler/link inputs
 and final ELF. Missing historical recipes remain diagnostic-only, never newly
