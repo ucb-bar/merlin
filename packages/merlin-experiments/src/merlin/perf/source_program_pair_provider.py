@@ -14,6 +14,17 @@ from .source_contraction_witness import evaluate_source_contraction, extract_sou
 from .source_program_pair import bind_source_program_pair, document_digest, text_digest
 
 
+def _sandbox_dependencies(command):
+    """The sandbox capability a prepared GSIM command grants: its own builder when it has one, else
+    the plain fields a core-side command describes (core never imports the optional sandbox)."""
+    built = getattr(command, "sandbox_dependencies", None)
+    if callable(built):
+        return built()
+    from merlin.targetgen.sandbox.executable_dependencies import HostExecutableDependencies
+
+    return HostExecutableDependencies(**command.sandbox_dependency_fields())
+
+
 def _read(path, expected, limit):
     with Path(path).open("rb") as stream:
         data = stream.read(limit + 1)
@@ -300,7 +311,7 @@ class SourceProgramPairProvider:
                         arm_work,
                         command.argv,
                         timeout_s=min(60, remaining()),
-                        _execution_dependencies=command.sandbox_dependencies(),
+                        _execution_dependencies=_sandbox_dependencies(command),
                     )
                     (arm_work / "runtime.stdout").write_text(execution.stdout)
                     (arm_work / "runtime.stderr").write_text(execution.stderr)

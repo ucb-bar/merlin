@@ -223,23 +223,11 @@ def group_shapes(model_capsule: str | Path, *, target: str) -> dict[str, dict[st
 
 
 def compute_floor(m: int, k: int, n: int, *, array_rows: int, array_cols: int) -> dict[str, Any]:
-    """The array's floor for ``M x K x N`` (see the module docstring), minimised over orientation."""
+    """The array's floor for ``M x K x N`` -- one implementation, shared with the per-capsule roofline
+    (:func:`merlin.perf.capsule_roofline.compute_floor`)."""
+    from merlin.perf.capsule_roofline import compute_floor as _floor
 
-    def oriented(streamed: int, held: int) -> tuple[int, int]:
-        depths = [min(array_rows, k - start) for start in range(0, k, array_rows)]
-        blocks_wide = _ceil(held, array_cols)
-        cycles = blocks_wide * sum(max(streamed, depth) for depth in depths)
-        computes = _ceil(streamed, array_rows) * len(depths) * blocks_wide
-        return cycles, computes
-
-    options = {"stream_m": oriented(m, n), "stream_n": oriented(n, m)}
-    best = min(options, key=lambda o: options[o][0])
-    return {
-        "cycles": options[best][0],
-        "min_computes": min(c for _, c in options.values()),
-        "orientation": best,
-        "options": {o: {"cycles": c, "computes": u} for o, (c, u) in options.items()},
-    }
+    return _floor(m, k, n, array_rows=array_rows, array_cols=array_cols)
 
 
 def group_roofline(shape: Mapping[str, Any], machine: Mapping[str, Any]) -> dict[str, Any]:

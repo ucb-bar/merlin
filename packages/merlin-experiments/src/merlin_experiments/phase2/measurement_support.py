@@ -689,3 +689,21 @@ def probe_counter_byte_bindings(rtl_identity: Mapping, *, target: str) -> dict:
             "probe": artifact,
         }
     return dict(artifact)
+
+
+def executed_profile(workspace: Path, *, target: str, timeout_s: int) -> dict:
+    """What the measured program EXECUTED: its functional run replayed with a commit log
+    (:func:`merlin.perf.executed_trace.profile_elf`) on the exact image the arm built."""
+    from merlin.perf import executed_trace as ET  # noqa: PLC0415
+    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME  # noqa: PLC0415
+
+    images = {}
+    for path in sorted(Path(workspace).rglob(PACKAGE_ELF_NAME)):
+        if path.is_file() and not path.is_symlink():
+            images.setdefault(hashlib.sha256(path.read_bytes()).hexdigest(), path)
+    if len(images) != 1:
+        return {"status": "unknown", "why": f"{len(images)} distinct program images were built for this arm"}
+    try:
+        return ET.profile_elf(next(iter(images.values())), target=target, timeout_s=timeout_s)
+    except Exception as exc:  # noqa: BLE001 - a profile failure leaves the profile UNKNOWN
+        return {"status": "unknown", "why": f"executed profile failed ({type(exc).__name__})"}

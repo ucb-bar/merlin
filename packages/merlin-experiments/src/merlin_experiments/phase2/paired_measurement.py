@@ -21,9 +21,10 @@ from typing import Any, Protocol
 from merlin.benchharness import hash_tree
 from merlin.common.artifacts import cache_dir
 from merlin.targetgen import capsule_runner as CR
-from merlin.targetgen.contract import compile as OOT
+from merlin.targetgen.contract import compile as OOT  # noqa: F401 -- the oracle tests patch here
 
 from . import campaign as PC
+from . import gsim_digest_readback as DIGEST
 from . import gsim_gate as GATE
 from . import gsim_workload as CERTPROD
 from . import measurement_evidence as ME
@@ -108,6 +109,9 @@ class ExecutionSpec:
     workload: dict[str, Any]
     gsim_decision: GATE.EvaluationDecision
     gsim_certificate: GATE.CertificateRecord
+    #: Which gSIM observation this replicate is. ``None``: its own (the replicate id). A member over the
+    #: declared single-observation threshold shares one observation across its replicates.
+    observation_scope: str | None = None
 
     @property
     def simulators(self) -> tuple[str, ...]:
@@ -131,6 +135,7 @@ class ExecutionSpec:
             "timing_authority": "gsim",
             "workload_sha256": self.gsim_decision.workload_sha256,
             "gsim_decision": self.gsim_decision.to_dict(),
+            **({"gsim_observation": self.observation_scope} if self.observation_scope is not None else {}),
         }
 
 
@@ -179,7 +184,61 @@ def gsim_workload(member: FrozenMember) -> dict[str, Any]:
         raise PC.CampaignGateError(f"cannot derive GSIM workload {member.family}/{member.capsule}: {exc}") from exc
 
 
-def build_measurement_plan(inputs: PairedInputs) -> MeasurementPlan:
+SINGLE_OBSERVATION_SCOPE = "single_gsim_observation"
+
+
+@dataclass(frozen=True)
+class ReplicatePolicy:
+    """One gSIM observation for members whose roofline floor exceeds a declared threshold.
+
+    gSIM is deterministic: the same ELF on the same pinned engine returns the same cycles, so for a
+    member above the threshold (its predeclared roofline floor, a lower bound that needs no
+    measurement) the second replicate identity is served from the first's observation through the L3
+    memo and stamped as carried. Members at or below it keep one gSIM observation per replicate, which
+    still measures replicate dispersion where it is cheap to.
+    """
+
+    threshold_roofline_cycles: int
+    machine: Mapping[str, Any]
+
+    def floor(self, member: Any) -> int | None:
+        from . import feedback_metrics as FM
+
+        value = FM.capsule_roofline(getattr(member, "descriptor", None) or {}, self.machine).get("roofline_cycles")
+        return value if type(value) is int else None
+
+    def single(self, member: Any) -> bool:
+        floor = self.floor(member)
+        return floor is not None and floor > self.threshold_roofline_cycles
+
+    def record(self, members: Mapping[tuple[str, str], Any]) -> dict[str, Any]:
+        return {
+            "rule": "one gSIM observation per member whose roofline floor exceeds the threshold; both "
+            "replicate identities cite it (gSIM is deterministic); every other member is observed per replicate",
+            "threshold_roofline_cycles": self.threshold_roofline_cycles,
+            "estimate": "declared-work roofline floor on the RTL-derived machine bounds (a lower bound)",
+            "single_observation": sorted(
+                {"family": family, "capsule": capsule, "roofline_floor_cycles": self.floor(member)}
+                for (family, capsule), member in members.items()
+                if self.single(member)
+            ),
+        }
+
+
+def replicate_policy(
+    threshold_roofline_cycles: int | None, *, rtl_facts: Path, certificate: Any, target: str
+) -> ReplicatePolicy | None:
+    """The declared single-observation policy, or None (every replicate observed) when unset."""
+    if threshold_roofline_cycles is None:
+        return None
+    if type(threshold_roofline_cycles) is not int or threshold_roofline_cycles <= 0:
+        raise PC.CampaignGateError("the single-observation threshold must be a positive cycle count")
+    from .development_feedback import derive_machine_bounds
+
+    return ReplicatePolicy(threshold_roofline_cycles, derive_machine_bounds(rtl_facts, certificate, target))
+
+
+def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePolicy | None = None) -> MeasurementPlan:
     """Side-effect-free preflight: read frozen descriptors and launch no tools."""
     if inputs.phase not in PHASES:
         raise PC.CampaignGateError(f"phase must be one of {PHASES}")
@@ -232,6 +291,9 @@ def build_measurement_plan(inputs: PairedInputs) -> MeasurementPlan:
                     workload,
                     decisions[workload_sha],
                     inputs.gsim_certificate,
+                    SINGLE_OBSERVATION_SCOPE
+                    if replicate_policy is not None and replicate_policy.single(member)
+                    else None,
                 )
             )
     expected = tuple(
@@ -249,6 +311,7 @@ def build_measurement_plan(inputs: PairedInputs) -> MeasurementPlan:
         "correctness_screen": "spike_no_timing",
         "equivalence_evidence": {
             "certificate_sha256": inputs.gsim_certificate.sha256,
+            "certification": GATE.certification_of(inputs.gsim_certificate),
             "phase": "prelaunch_and_post_reveal_qualification",
             "runtime_recorroboration": False,
         },
@@ -257,6 +320,8 @@ def build_measurement_plan(inputs: PairedInputs) -> MeasurementPlan:
         "schedule": [spec.as_dict() for spec in schedule],
         "expected_results": [identity.__dict__ for identity in expected],
     }
+    if replicate_policy is not None:
+        declaration["replicate_policy"] = replicate_policy.record(member_by_key)
     return MeasurementPlan(
         inputs.phase, tuple(schedule), expected, declaration, sha256_bytes(canonical_bytes(declaration))
     )
@@ -444,6 +509,15 @@ def _observed_engine_binaries(oracle: Any) -> dict[str, Any]:
     return {"status": "observed", "digests": sorted(str(v) for v in binaries.values())}
 
 
+_KEY_LOCKS: dict[str, threading.Lock] = {}
+_KEY_LOCKS_GUARD = threading.Lock()
+
+
+def _key_lock(key: str) -> threading.Lock:
+    with _KEY_LOCKS_GUARD:
+        return _KEY_LOCKS.setdefault(key, threading.Lock())
+
+
 def _gsim_l3_adapter(
     target: str,
     evidence: dict[str, Any],
@@ -473,84 +547,89 @@ def _gsim_l3_adapter(
             raise RuntimeError("runtime GSIM binary differs from the GSIM certificate pin")
         pinned = engine["gsim_binary"]
         key = _l3_memo_key(cb, llvm_text, pinned, reuse_scope)
-        cached = _L3_MEMO.get(key)
-        if cached is None:
-            # NOT IN THIS PROCESS, so ask the one that outlives it. Promoted into the table on the
-            # way through, because the next lookup in this process should not go back to disk.
-            cached = store.get(key, engine)
+        # ONE RUN PER KEY AT A TIME: a second request for the same observation (a replicate sharing a
+        # single observation, run by another worker) waits for the first and is served from the memo.
+        with _key_lock(key):
+            cached = _L3_MEMO.get(key)
+            if cached is None:
+                # NOT IN THIS PROCESS, so ask the one that outlives it. Promoted into the table on the
+                # way through, because the next lookup in this process should not go back to disk.
+                cached = store.get(key, engine)
+                if cached is not None:
+                    _L3_MEMO[key] = cached
             if cached is not None:
-                _L3_MEMO[key] = cached
-        if cached is not None:
-            # ALREADY MEASURED, so return the measurement rather than repeating it. Everything the
-            # cycles depend on -- the emitted program and the pinned engine -- is in the key, and
-            # this engine is deterministic, so re-running is guaranteed to return this same number.
-            evidence["gsim"] = copy.deepcopy(cached["evidence"])
-            # THIS RUN BUILT NO ELF, so it must not name one. The digest stays -- it identifies the
-            # program the cycles belong to -- but the path is dropped, because a record pointing at
-            # a file this run did not produce reads as evidence it did.
-            evidence["gsim"]["elf"] = None
-            evidence["gsim"]["reused_measurement"] = {
-                "basis": (
-                    "an identical emitted program was already measured on this pinned engine "
-                    "in this stage; the cycle count is the one it returned, not an estimate"
+                # ALREADY MEASURED, so return the measurement rather than repeating it. Everything the
+                # cycles depend on -- the emitted program and the pinned engine -- is in the key, and
+                # this engine is deterministic, so re-running is guaranteed to return this same number.
+                evidence["gsim"] = copy.deepcopy(cached["evidence"])
+                # THIS RUN BUILT NO ELF, so it must not name one. The digest stays -- it identifies the
+                # program the cycles belong to -- but the path is dropped, because a record pointing at
+                # a file this run did not produce reads as evidence it did.
+                evidence["gsim"]["elf"] = None
+                evidence["gsim"]["reused_measurement"] = {
+                    "basis": (
+                        "an identical emitted program was already measured on this pinned engine "
+                        "in this stage; the cycle count is the one it returned, not an estimate"
+                    ),
+                    "measured_program_sha256": key,
+                }
+                reused = copy.deepcopy(cached["result"])
+                reused["elf"] = None
+                reused["reused_measurement"] = True
+                # THE TIMING BLOCK IS THE ONLY PART OF THIS RETURN THE TIER RECORD KEEPS, so it is the
+                # only place a reader of `capsule_result.json` can be told that `sim_active_s` is time an
+                # EARLIER run spent. Without it the record shows 138 s of simulation beside an adapter
+                # wall of 0.02 s and nothing says which of the two this run actually paid -- which is how
+                # a reuse that was working the whole time read as one that had never fired: every run
+                # tree on disk was grepped for the stamp and returned nothing, because nothing on the
+                # loop path ever wrote it down.
+                timing = dict(reused.get("timing") or {})
+                timing["reused_measurement"] = True
+                reused["timing"] = timing
+                return reused
+            # The outputs come back as Spike-verified digests of the same ELF unless that fails or is off.
+            primary = DIGEST.run_gsim(cb, llvm_text, target=target, workdir=workdir, timeout=timeout)
+            elf = Path(str(primary["elf"])).resolve(strict=True)
+            digest = sha256_file(elf)
+            output_sha, output_tensors = CERTPROD.encode_declared_outputs(primary.get("outputs"), cb)
+            primary_oracle = primary.get("oracle")
+            evidence["gsim"] = {
+                "engine": "gsim",
+                "status": "pass",
+                "elf": str(elf),
+                "elf_sha256": digest,
+                "output_sha256": output_sha,
+                "output_encoding": CERTPROD.OUTPUT_ENCODING,
+                "output_tensors": output_tensors,
+                "oracle": copy.deepcopy(primary.get("oracle")),
+                "cycles": primary.get("cycles"),
+                "derived_from_rtl": (
+                    primary_oracle.get("derived_from_rtl") is True if isinstance(primary_oracle, Mapping) else False
                 ),
-                "measured_program_sha256": key,
+                "cycle_accurate": True,
+                # THESE THREE ARE COPIED FROM THE CERTIFICATE, and `GATE.validate_execution` then
+                # compares them back to that same certificate -- three checks that read as verification
+                # and cannot fail. The engine build that actually produced the number is recorded
+                # separately below, so the comparison has something to be about.
+                "binary_sha256": certificate.pins["gsim_binary"]["sha256"],
+                "firrtl_sha256": certificate.pins["gsim_firrtl"]["sha256"],
+                "model_sha256": certificate.pins["gsim_model"]["sha256"],
+                # WHAT THE RUN ACTUALLY LOADED. `program_oracle._engine_provenance` digests every
+                # executable in the engine home it was loaded from, so the pinned binary must appear
+                # among them. Absent provenance is recorded as UNKNOWN rather than asserted away: an
+                # engine whose home could not be established is a fact about this run, not a match.
+                "observed_engine_binaries": _observed_engine_binaries(primary_oracle),
+                # SAID EXPLICITLY, so that SILENCE is not one of the answers. A hit writes a
+                # ``reused_measurement`` block here and a fresh measurement wrote nothing, which left an
+                # absent key meaning BOTH "this run measured it" and "nobody recorded which" -- and a
+                # reader cannot audit either one. False is a claim this run makes; None is now only ever
+                # a defect, and :func:`reuse_report` refuses a campaign that produces one.
+                "reused_measurement": False,
+                "readback": copy.deepcopy(primary.get("readback")),
             }
-            reused = copy.deepcopy(cached["result"])
-            reused["elf"] = None
-            reused["reused_measurement"] = True
-            # THE TIMING BLOCK IS THE ONLY PART OF THIS RETURN THE TIER RECORD KEEPS, so it is the
-            # only place a reader of `capsule_result.json` can be told that `sim_active_s` is time an
-            # EARLIER run spent. Without it the record shows 138 s of simulation beside an adapter
-            # wall of 0.02 s and nothing says which of the two this run actually paid -- which is how
-            # a reuse that was working the whole time read as one that had never fired: every run
-            # tree on disk was grepped for the stamp and returned nothing, because nothing on the
-            # loop path ever wrote it down.
-            timing = dict(reused.get("timing") or {})
-            timing["reused_measurement"] = True
-            reused["timing"] = timing
-            return reused
-        primary = OOT.run_on_oracle(cb, llvm_text, simulator="gsim", target=target, workdir=workdir, timeout=timeout)
-        elf = Path(str(primary["elf"])).resolve(strict=True)
-        digest = sha256_file(elf)
-        output_sha, output_tensors = CERTPROD.encode_declared_outputs(primary.get("outputs"), cb)
-        primary_oracle = primary.get("oracle")
-        evidence["gsim"] = {
-            "engine": "gsim",
-            "status": "pass",
-            "elf": str(elf),
-            "elf_sha256": digest,
-            "output_sha256": output_sha,
-            "output_encoding": CERTPROD.OUTPUT_ENCODING,
-            "output_tensors": output_tensors,
-            "oracle": copy.deepcopy(primary.get("oracle")),
-            "cycles": primary.get("cycles"),
-            "derived_from_rtl": (
-                primary_oracle.get("derived_from_rtl") is True if isinstance(primary_oracle, Mapping) else False
-            ),
-            "cycle_accurate": True,
-            # THESE THREE ARE COPIED FROM THE CERTIFICATE, and `GATE.validate_execution` then
-            # compares them back to that same certificate -- three checks that read as verification
-            # and cannot fail. The engine build that actually produced the number is recorded
-            # separately below, so the comparison has something to be about.
-            "binary_sha256": certificate.pins["gsim_binary"]["sha256"],
-            "firrtl_sha256": certificate.pins["gsim_firrtl"]["sha256"],
-            "model_sha256": certificate.pins["gsim_model"]["sha256"],
-            # WHAT THE RUN ACTUALLY LOADED. `program_oracle._engine_provenance` digests every
-            # executable in the engine home it was loaded from, so the pinned binary must appear
-            # among them. Absent provenance is recorded as UNKNOWN rather than asserted away: an
-            # engine whose home could not be established is a fact about this run, not a match.
-            "observed_engine_binaries": _observed_engine_binaries(primary_oracle),
-            # SAID EXPLICITLY, so that SILENCE is not one of the answers. A hit writes a
-            # ``reused_measurement`` block here and a fresh measurement wrote nothing, which left an
-            # absent key meaning BOTH "this run measured it" and "nobody recorded which" -- and a
-            # reader cannot audit either one. False is a claim this run makes; None is now only ever
-            # a defect, and :func:`reuse_report` refuses a campaign that produces one.
-            "reused_measurement": False,
-        }
-        _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]), "result": copy.deepcopy(primary)}
-        store.put(key, engine, _L3_MEMO[key])
-        return primary
+            _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]), "result": copy.deepcopy(primary)}
+            store.put(key, engine, _L3_MEMO[key])
+            return primary
 
     return run
 
@@ -778,7 +857,7 @@ def run_execution(
                 rtl_identity=rtl_identity,
                 decision=spec.gsim_decision,
                 certificate=spec.gsim_certificate,
-                reuse_scope=f"{spec.replicate}/{name}",
+                reuse_scope=f"{spec.observation_scope or spec.replicate}/{name}",
                 workers=workers,
             )
 
@@ -1052,6 +1131,14 @@ def schedule_fanout(requested: int, plan: MeasurementPlan, *, hardware_counters:
     }
 
 
+def _submission_key(spec: ExecutionSpec) -> tuple[int, int, int]:
+    from . import feedback_metrics as FM
+
+    macs, _basis = FM.declared_capsule_macs(getattr(spec.member, "descriptor", None) or {})
+    follow_up = spec.observation_scope is not None and spec.replicate != REPLICATES[0]
+    return (1 if follow_up else 0, -(macs or 0), spec.execution_index)
+
+
 def execute_schedule(
     plan: MeasurementPlan,
     out_dir: Path,
@@ -1111,7 +1198,13 @@ def execute_schedule(
             record_one(spec, measure(spec))
         return rows, roofline
     with ThreadPoolExecutor(max_workers=width, thread_name_prefix="perf-execution") as pool:
-        launched = [(spec, pool.submit(measure, spec)) for spec in plan.schedule]
+        # LONGEST FIRST across the slots (declared MACs), recorded in schedule order all the same. A
+        # replicate citing a shared observation goes last: it is a memo hit once the first finishes,
+        # and submitted early it would hold a slot waiting for that.
+        futures = {
+            spec.execution_index: pool.submit(measure, spec) for spec in sorted(plan.schedule, key=_submission_key)
+        }
+        launched = [(spec, futures[spec.execution_index]) for spec in plan.schedule]
         try:
             for spec, future in launched:
                 progress(f"[{spec.execution_index + 1}/{len(plan.schedule)}] {spec.pair_id} {spec.arm}")

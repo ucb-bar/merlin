@@ -111,8 +111,13 @@ def predeclare(
     primary_simulator: str = DEFAULT_PERFORMANCE_SIMULATOR,
     schema: str | None = None,
     oracle_binding: Mapping[str, str] | None = None,
+    replicate_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the exact deterministic elaborated-RTL matrix before measurements exist.
+
+    ``replicate_policy`` (optional) records which members get ONE gSIM observation cited by both of
+    their replicate identities: the matrix keeps both identities, and the policy says which of them
+    carry one observation, so an analysis never reads zero dispersion there as measured.
 
     The historical v4 declaration retains GSIM as its sole timing authority.  V5
     binds an explicitly selected RTL simulator before measurements exist.
@@ -185,9 +190,37 @@ def predeclare(
     }
     if selected_schema == TARGET_SELECTED_SCHEMA:
         declaration["oracle_binding"] = dict(oracle_binding)
+    if replicate_policy is not None:
+        problem = _replicate_policy_issue(replicate_policy, set(capsule_keys))
+        if problem:
+            raise EvidenceError(problem)
+        declaration["replicate_policy"] = json.loads(json.dumps(dict(replicate_policy), sort_keys=True))
     declaration["matrix_sha256"] = _sha256(matrix)
     declaration["declaration_sha256"] = _sha256(declaration)
     return declaration
+
+
+_REPLICATE_POLICY_FIELDS = frozenset({"rule", "threshold_roofline_cycles", "estimate", "single_observation"})
+
+
+def _replicate_policy_issue(policy: Any, capsule_keys: set[tuple[str, str]]) -> str | None:
+    if not isinstance(policy, Mapping) or set(policy) != _REPLICATE_POLICY_FIELDS:
+        return "replicate policy must declare exactly rule/threshold_roofline_cycles/estimate/single_observation"
+    threshold = policy["threshold_roofline_cycles"]
+    if type(threshold) is not int or threshold <= 0:
+        return "replicate policy threshold must be a positive cycle count"
+    rows = policy["single_observation"]
+    if not isinstance(rows, list):
+        return "replicate policy single_observation must be a list"
+    for row in rows:
+        if not isinstance(row, Mapping) or set(row) != {"family", "capsule", "roofline_floor_cycles"}:
+            return "replicate policy rows must name family/capsule/roofline_floor_cycles"
+        if (row["family"], row["capsule"]) not in capsule_keys:
+            return f"replicate policy names an undeclared member {row['family']}/{row['capsule']}"
+        floor = row["roofline_floor_cycles"]
+        if type(floor) is not int or floor <= threshold:
+            return f"replicate policy member {row['capsule']} is not above the declared threshold"
+    return None
 
 
 def _declaration(declaration: Any) -> tuple[list[MatrixIdentity], list[dict[str, Any]], list[str]]:
@@ -260,6 +293,12 @@ def _declaration(declaration: Any) -> tuple[list[MatrixIdentity], list[dict[str,
             issues.append(f"L3 cell {key} baseline/candidate replicate sets differ")
         if len(subjects["baseline"]) < MIN_PAIRED_REPLICATES:
             issues.append(f"L3 cell {key} has fewer than {MIN_PAIRED_REPLICATES} paired replicates")
+    if "replicate_policy" in declaration:
+        problem = _replicate_policy_issue(
+            declaration["replicate_policy"], {(identity.family, identity.capsule) for identity in identities}
+        )
+        if problem:
+            issues.append(problem)
     if declaration.get("declaration_sha256") != _sha256(
         {key: value for key, value in declaration.items() if key != "declaration_sha256"}
     ):

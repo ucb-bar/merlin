@@ -428,3 +428,45 @@ def test_completion_refuses_non_rtl_primary(tmp_path: Path) -> None:
 def test_final_plan_has_no_verilator_sampling_api(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="unexpected keyword"):
         PME.build_measurement_plan(_inputs(tmp_path), verilator_sample_per_family=1)
+
+
+def test_a_member_over_the_declared_floor_gets_one_gsim_observation_for_both_replicates(tmp_path: Path) -> None:
+    """gSIM is deterministic: above the declared roofline-floor threshold both replicate identities cite
+    one observation; the schedule and expected results keep both identities, and the plan records why."""
+    inputs = _inputs(tmp_path)
+    floors = {"wide": 5_000_000, "deep": 1_000}
+
+    class Policy(PME.ReplicatePolicy):
+        def floor(self, member):
+            return floors[member.capsule]
+
+    plan = PME.build_measurement_plan(inputs, Policy(1_000_000, {}))
+    scopes = {(spec.capsule, spec.replicate): spec.observation_scope for spec in plan.schedule}
+    assert scopes[("wide", "r000")] == scopes[("wide", "r001")] == PME.SINGLE_OBSERVATION_SCOPE
+    assert scopes[("deep", "r000")] is None and scopes[("deep", "r001")] is None
+    assert {spec.replicate for spec in plan.schedule if spec.capsule == "wide"} == set(PME.REPLICATES)
+    record = plan.declaration["replicate_policy"]
+    assert record["threshold_roofline_cycles"] == 1_000_000
+    assert record["single_observation"] == [{"family": "shape", "capsule": "wide", "roofline_floor_cycles": 5_000_000}]
+    assert "replicate_policy" not in PME.build_measurement_plan(inputs).declaration, "unset keeps the plan unchanged"
+
+
+def test_the_statistics_predeclaration_records_and_checks_the_replicate_policy() -> None:
+    from merlin_experiments.phase2 import statistics as STATS
+
+    trials = [{"trial": f"t{i}", "agent_run_id": f"run{i}"} for i in range(3)]
+    capsules = [{"family": "tuning:PW", "capsule": "PW01"}, {"family": "tuning:PW", "capsule": "PW05"}]
+    policy = {
+        "rule": "one observation above the threshold",
+        "threshold_roofline_cycles": 200_000,
+        "estimate": "roofline floor",
+        "single_observation": [{"family": "tuning:PW", "capsule": "PW01", "roofline_floor_cycles": 1_280_000}],
+    }
+    declaration = STATS.predeclare(
+        trials=trials, capsules=capsules, replicates=("r000", "r001"), replicate_policy=policy
+    )
+    assert declaration["replicate_policy"] == policy
+    assert not STATS._declaration(declaration)[2]
+    below = {**policy, "single_observation": [{**policy["single_observation"][0], "roofline_floor_cycles": 100}]}
+    with pytest.raises(STATS.EvidenceError, match="not above the declared threshold"):
+        STATS.predeclare(trials=trials, capsules=capsules, replicates=("r000", "r001"), replicate_policy=below)

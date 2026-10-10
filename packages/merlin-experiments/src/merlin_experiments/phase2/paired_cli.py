@@ -18,6 +18,7 @@ from typing import Any
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 from merlin_experiments.phase2 import bottleneck_priority as BP
 from merlin_experiments.phase2 import campaign as PC
+from merlin_experiments.phase2 import gsim_gate as GATE
 from merlin_experiments.phase2 import measurement_evidence as ME
 from merlin_experiments.phase2 import measurement_support as MS
 from merlin_experiments.phase2 import paired_inputs as PI
@@ -84,6 +85,22 @@ def main(
         metavar="N",
         help="how many executions may run at once (default 1 = serial)",
     )
+    parser.add_argument(
+        "--single-observation-above-roofline-cycles",
+        type=int,
+        default=None,
+        metavar="CYCLES",
+        help="members whose roofline floor exceeds CYCLES get one gSIM observation cited by both "
+        "replicate identities (gSIM is deterministic); recorded in the plan (default: every replicate observed)",
+    )
+    parser.add_argument(
+        "--reference-cycles",
+        type=Path,
+        default=None,
+        metavar="JSON",
+        help="operator-only: a merlin_perf_reference_v1 document; writes reference_comparison.json "
+        "beside the campaign (never agent-visible, never a gate)",
+    )
     args = parser.parse_args(argv)
     PM.simple_component(args.run_id, label="run id")
     if args.timeout <= 0:
@@ -117,7 +134,13 @@ def main(
         waive_functional_gate=tuple(args.waive_functional_gate or ()),
         functional_runs_root=layout["functional_runs_root"],
     )
-    plan = PM.build_measurement_plan(inputs)
+    policy = PM.replicate_policy(
+        args.single_observation_above_roofline_cycles,
+        rtl_facts=args.rtl_facts,
+        certificate=inputs.gsim_certificate,
+        target=target.target,
+    )
+    plan = PM.build_measurement_plan(inputs, **({"replicate_policy": policy} if policy is not None else {}))
     fanout = PM.schedule_fanout(args.sim_workers, plan, hardware_counters=args.hardware_counters)
     rtl = MS.load_rtl_identity(args.rtl_facts, target.target)
     counter_binding = MS.probe_counter_byte_bindings(rtl, target=target.target) if args.hardware_counters else None
@@ -150,6 +173,7 @@ def main(
             "rtl_execution_backends": ["gsim"],
             "timing_authority": "gsim",
             "verilator": "prelaunch_certificate_qualification_only",
+            "certification": GATE.certification_of(inputs.gsim_certificate),
         },
         "execution_fanout": dict(fanout),
         "rtl_identity": rtl,
@@ -265,6 +289,17 @@ def main(
                 print(f"bottleneck priority unavailable: {priority['reason']}")
         except Exception as exc:
             print(f"bottleneck priority unavailable: {type(exc).__name__}: {exc}")
+    if args.reference_cycles is not None:
+        # OPERATOR REPORT COLUMN: the candidate's cycles over a reference implementation's, joined in
+        # the host-side campaign directory after GO. It is not part of the campaign's evidence.
+        try:
+            from merlin_experiments.phase2 import reference_comparison as RC  # noqa: PLC0415
+
+            pin = (getattr(inputs.gsim_certificate, "pins", None) or {}).get("gsim_binary") or {}
+            path = RC.write_comparison(out_dir, args.reference_cycles, campaign_engine_sha256=pin.get("sha256"))
+            print(f"reference comparison: {path}")
+        except Exception as exc:
+            print(f"reference comparison unavailable: {type(exc).__name__}: {exc}")
     print(f"GO: {manifest['completion']['expected']} cells")
     return 0
 
