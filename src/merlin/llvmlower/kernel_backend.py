@@ -97,7 +97,7 @@ def host_scalar_result_dtype(kernel_module, entry: str = "forward") -> str | Non
     return dtype
 
 
-def compile_host(kernel_module, workdir: str | Path):
+def compile_host(kernel_module, workdir: str | Path, *, retain_llvm_dialect: bool = False):
     """Lower one kernel module to a host ``.so`` and load it (RTLD_LOCAL)."""
     from ..xdsl_dialects._common import text as to_text
     from .abi import HostModel, PrivateHostImagePolicy
@@ -107,7 +107,7 @@ def compile_host(kernel_module, workdir: str | Path):
     # first so the selected private sibling retains the compiler's exact origin.
     result_dtype = host_scalar_result_dtype(kernel_module)
     workdir = Path(workdir).resolve()
-    res = lower_model(to_text(kernel_module), workdir, targets=("host",))
+    res = lower_model(to_text(kernel_module), workdir, targets=("host",), retain_llvm_dialect=retain_llvm_dialect)
     return HostModel.load(
         str(res.host_so),
         image_policy=PrivateHostImagePolicy(workdir.resolve(strict=True)),

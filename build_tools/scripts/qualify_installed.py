@@ -83,6 +83,30 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "serial-llvm-products": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/ir",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("compiler-python", "llvm-llc", "clang"),
+        "native_python_entries": ("compiler-python",),
+        "native_test_files": ("test_serial_llvm_dialect_product.py",),
+        "tests": (
+            "test_serial_llvm_dialect_product.py",
+            "test_host_llc_selection.py",
+            "test_ir_audit.py",
+            "test_lowering_recipe.py",
+        ),
+        "core_extras": ("xdsl",),
+        "probe_modules": (
+            "merlin.llvmlower.llvm_dialect_product",
+            "merlin.llvmlower.pipeline",
+            "merlin.llvmlower.lower",
+            "merlin.llvmlower.kernel_backend",
+        ),
+        "required_modules": ("xdsl", "numpy"),
+    },
     "original-pointwise-host": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,

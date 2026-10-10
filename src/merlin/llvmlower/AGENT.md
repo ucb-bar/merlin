@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`llvm_dialect_product` optionally retains the serial upstream runner's actual
+post-pass generic module and raw in-process translation in one subprocess
+record. Fresh product paths preserve raw bytes through later normalization;
+the ordinary text/file/host APIs return its custody receipt. Selected parallel
+and scalar-rewrite transports refuse; absent selection keeps ordinary emission.
+This observes IR products, not source semantics, descriptor/storage premises,
+resource legality, import closure, object/link equivalence or runtime authority.
+
 `counted_copy_check` proves only a closed original integer tensor identity/copy
 to scalar LLVM counted loop under explicit original software pointer objects.
 It checks complete source/body/CFG, ordinal/byte bounds, pointer bases, loaded
