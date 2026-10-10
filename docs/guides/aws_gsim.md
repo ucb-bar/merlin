@@ -160,6 +160,10 @@ capture workflow. A small simulator bringup bundle alone does not make an EL4 fu
 
 ## Prepare the catalog Phase 0 and Phase 1 handoff
 
+The [worker preparation procedure](aws_phase0_phase1.md) lists the complete input
+closure and the neutral contract pinning command. Fetch the completed source
+handoff before preparing the worker; native checks run on AWS afterward.
+
 Use a reviewed experiment definition with explicit recipe, conformance and synthesis
 inputs, verified evidence mode, exact facts and capability contract, and an
 operator-owned hidden cohort. The retained diagnostic example cannot be promoted
@@ -194,6 +198,8 @@ actual operator review, seal the exact inspected digest:
 merlin experiment corpus seal "$RELEASE" \
   --expected-digest "$REVIEW_DIGEST" \
   --reviewed-by "$OPERATOR" --review-note "$REVIEW_NOTE"
+export MERLIN_TARGET_CONTRACT="$RELEASE/payload/experiment/contracts/target_contract.yaml"
+export MERLIN_RTL_FACTS="$RELEASE/payload/experiment/rtl_facts/facts.json"
 merlin experiment preflight "$SPEC" --phase 1 --run-dir "$P1" \
   --corpus-seal "$RELEASE/private/seal.json" \
   --bundle-manifest "$RELEASE/payload/experiment/input_bundles/$BUNDLE/input_bundle_manifest.yaml"
@@ -206,6 +212,11 @@ inspection, preflight and execution. See the
 [reviewed handoff](../../experiments/README.md#reviewed-phase-0-handoff) for the
 available flags.
 
+The exports above rebind the operator selections to the staged members before
+Phase 1. The original Phase 0 contract path conflicts with the released descriptor;
+equal content does not waive path ownership. Native startup subsequently
+restores the facts from its verified frozen bundle snapshot.
+
 Catalog preflight reports `engine_readiness: not_executed`. It checks configuration
 and recorded timing bindings without launching a simulator or an author. The
 execution worker still needs a genuine target/config/engine/binary-bound Chipyard
@@ -215,7 +226,10 @@ on the selected engine. Version 2 timing also binds gSIM's strict receipt and se
 FIRRTL facts; legacy Verilator records apply only to a Verilator selection. These
 observations size timeouts, not accelerator cycle predictions. Producing one requires
 an explicitly selected independent operator-only probe backend; a simulator binary
-alone cannot provide it.
+alone cannot provide it. The [focused probe command](aws_phase0_phase1.md#4-run-the-independent-native-probe-and-startup-checks)
+selects its actual capsules, incorrect-output and prohibited-instruction controls,
+deadline and fresh timing destination. Keep that destination outside the sealed
+release payload.
 
 To exercise ordinary startup on the worker and stop before authoring, invoke the
 installed continuation with the released descriptor, seal and regenerated bundle:

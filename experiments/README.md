@@ -154,7 +154,12 @@ performance-cohort coverage. It does not establish numerical correctness, graded
 admission, or whole-model compilation.
 
 For Phase 1, the catalog examples require a reviewed release and a newly generated
-bundle. Keep the authored definition unchanged and select both inputs explicitly:
+bundle. When selecting the neutral data runtime, rebind `MERLIN_TARGET_CONTRACT`
+and `MERLIN_RTL_FACTS` to this release's `payload/experiment/contracts/target_contract.yaml`
+and `payload/experiment/rtl_facts/facts.json`. The original Phase 0 contract path
+conflicts with the release descriptor even if its bytes match. Follow the
+[worker preparation guide](../docs/guides/aws_phase0_phase1.md).
+Keep the authored definition unchanged and select both release inputs explicitly:
 
 ```sh
 merlin experiment preflight TARGET_FUNCTIONAL_ID --phase 1 \

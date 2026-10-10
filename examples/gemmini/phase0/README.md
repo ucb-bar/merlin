@@ -5,6 +5,12 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/aws_phase0_phase1.md)
+and its operator-only deployment and verified-definition templates. This retained
+diagnostic example does not supply a reviewed execution contract or native launch
+evidence. The shared neutral tooling needs explicit contract/facts data and no
+handwritten support package.
+
 ## 1. Select the inputs
 
 | Input | Responsibility |
@@ -401,14 +407,14 @@ tensors and intermediate lowering snapshots.
 ### Check a generated kernel on the oracle ladder
 
 With `merlin-experiments` and its AET dependency installed, select the same
-support provider, example contract and exact facts used by derivation. The
+reviewed neutral contract and exact facts used by derivation. The
 compiler interpreter and LLVM tools are independent of the PyTorch capture
 interpreter. An installed Merlin checkout does not imply they are installed or
 selected; check `python -c 'import aet'` and resolve these paths before grading.
 
 ```sh
-MERLIN_TARGET_PATH="${MERLIN_INDEPENDENT_TARGET_SUPPORT:?independent runtime support required}" \
-MERLIN_TARGET_CONTRACT="$PWD/examples/gemmini/target/contracts/target_contract.yaml" \
+MERLIN_TARGET_PATH= \
+MERLIN_TARGET_CONTRACT="${PREPARED_CONTRACT:?reviewed neutral execution contract required}" \
 MERLIN_RTL_FACTS="$RTL_ROOT/facts.json" \
 MERLIN_EXT_CHIPYARD="$SIMULATOR_CHIPYARD_ROOT" \
 MERLIN_COMPILER_PYTHON="$COMPILER_PYTHON" \
