@@ -35,6 +35,19 @@ operations:
       semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
                   transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded}
       evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+  - id: host_f32_exp_rank1
+    status: reviewed
+    ops: [aten.exp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded, all_input_accuracy: unqualified, device_execution: unqualified}
+      evidence:
+        reviewed_by: "codex-operator for copparihollmann, 2026-10-10"
+        review_sha256: 8feeba17bc5692a634b7009b86f669b0223d508e904b7b8780e993fd197bb28d
+        basis: "Exact rank-1 f32 math.exp source without fast-math; stock libm lowering matched independently rounded math.exp on 1038 finite native probes (maximum 0 ulp). The same IR built an object with the selected scalar RV64 flags. RV64 execution, nonfinite behavior and all-input accuracy remain unqualified; candidate lowering and numerical execution are separate mandatory gates."
   - id: host_f32_reduction
     ops: [aten.native_layer_norm.default, aten._softmax.default, aten.mean.dim]
     families: [reduction, elementwise_map]
