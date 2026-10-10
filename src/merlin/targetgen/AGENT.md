@@ -5,7 +5,11 @@ CPU strided f32 mul/div Tensor call with one SSA input and a finite Python
 FloatLiteral. Preserve literal kind/hex, ordered argument/result bindings and
 storage; refuse unsupported promotion, alias, scalar kinds and second SSA.
 Explicit fresh extent and complete logical input/output plus rank costs bound
-allocation. No registered scalar conversion, numeric policy, reviewed owner,
+allocation. Opt-in form v2 also preserves signed64 Python integers when the
+exact original native Tensor-binding row proves wrapped signed64 storage; no
+float coercion or Tensor SSA substitution is allowed. Its correspondence reader
+checks the original i64 constant, direct f32 cast, ordered arithmetic and actual
+native wrapper/promotion/readout observations separately from numerical admission. No registered scalar conversion, numeric policy, reviewed owner,
 effects or target admission follows from construction.
 
 `original_broadcast_add_sources` derives only original positive right-aligned

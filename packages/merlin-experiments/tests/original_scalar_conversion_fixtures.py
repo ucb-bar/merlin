@@ -20,6 +20,40 @@ from test_original_scalar_binary_sources import declarations
 
 from merlin.targetgen.rtl.source_selection import produce_selection
 
+DECLARED_CALLS = (
+    ("aten.mul.Tensor", 1.0),
+    ("aten.div.Tensor", 2.23606797749979),
+    ("aten.mul.Tensor", -0.0),
+    ("aten.div.Tensor", 0.1),
+    ("aten.mul.Tensor", 1.0 + 2**-24),
+    ("aten.mul.Tensor", 1),
+)
+
+
+def conversion_budget(*, version=1):
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("native scalar fixture requires its explicit supported version")
+    budget = {
+        "max_source_bytes": 2000000,
+        "max_nesting": 64,
+        "max_operations": 30,
+        "max_tensor_elements": 1000,
+        "max_members": 100,
+        "max_total_tensor_elements": 10000,
+        "max_total_source_bytes": 100000000,
+        "timeout_s": 180,
+    }
+    if version == 2:
+        source_slots = len(DECLARED_CALLS) * len(C.required_source_cohorts())
+        if source_slots > budget["max_members"]:
+            raise ValueError("complete native fixture exceeds its original slot bound")
+        # Every original slot reserves one complete source and three conversion
+        # products. The enclosing observation frame gets its own full bound.
+        product_slots = 3 * source_slots + 1
+        budget["max_total_source_bytes"] = (source_slots + product_slots) * budget["max_source_bytes"]
+        budget.update(max_promotion_tensor_elements=1000, max_total_promotion_tensor_elements=10000)
+    return budget
+
 
 def write(path, value):
     from hashlib import sha256
@@ -31,6 +65,18 @@ def write(path, value):
 
 @pytest.fixture(scope="module")
 def native_originals(tmp_path_factory):
+    return prepare_native_originals(tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def integer_native_originals(tmp_path_factory):
+    return prepare_native_originals(tmp_path_factory, version=2)
+
+
+def prepare_native_originals(tmp_path_factory, *, version=1):
+    """Keep v1 defaults; v2 freshly observes the original integer Tensor binding."""
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("native scalar fixture requires its explicit supported version")
     names = (
         "MERLIN_TEST_TORCH_PYTHON",
         "MERLIN_TEST_M2M_ROOT",
@@ -40,9 +86,11 @@ def native_originals(tmp_path_factory):
         "MERLIN_TEST_FIRTOOL",
         "MERLIN_TEST_MLIR_OPT",
     )
+    if version == 2:
+        names += ("MERLIN_TEST_TENSOR_ARGUMENT_COMPILER",)
     if any(not os.environ.get(name) for name in names):
         pytest.skip("registered scalar controls require explicit public/native source and tool selections")
-    python, capture, commit, declarations_path, checkout, firtool, parser = (os.environ[name] for name in names)
+    python, capture, commit, declarations_path, checkout, firtool, parser = (os.environ[name] for name in names[:7])
     owner = tmp_path_factory.mktemp("independent-original-scalar-conversion")
     source = owner / "unit.fir"
     source.write_text(
@@ -69,16 +117,8 @@ def native_originals(tmp_path_factory):
         forbidden_roots=forbidden,
         output=owner / "hardware",
     )
-    cases = (
-        ("aten.mul.Tensor", 1.0),
-        ("aten.div.Tensor", 2.23606797749979),
-        ("aten.mul.Tensor", -0.0),
-        ("aten.div.Tensor", 0.1),
-        ("aten.mul.Tensor", 1.0 + 2**-24),
-        ("aten.mul.Tensor", 1),
-    )
     members, links = [], []
-    for index, (target, literal) in enumerate(cases):
+    for index, (target, literal) in enumerate(DECLARED_CALLS):
         trace = declarations(target, literal)[0]
         pin = write(owner / f"declared-{index}.json", trace)
         members.append(
@@ -140,7 +180,7 @@ def native_originals(tmp_path_factory):
     write(
         schema_selection,
         {
-            "schema": O.SELECTION_SCHEMA,
+            "schema": O.TENSOR_SELECTION_SCHEMA if version == 2 else O.SELECTION_SCHEMA,
             "status": "reviewed",
             "software_intake_sha256": software.sha256,
             "namespace": "aten",
@@ -150,6 +190,11 @@ def native_originals(tmp_path_factory):
                 "commit": "449b1768410104d3ed79d3bcfe4ba1d65c7f22c0",
                 "path": declarations_path,
             },
+            **(
+                {"tensor_arguments": {"compiler": os.environ["MERLIN_TEST_TENSOR_ARGUMENT_COMPILER"]}}
+                if version == 2
+                else {}
+            ),
         },
     )
     intake = O.issue_independent_operator_schema_intake(
@@ -161,29 +206,20 @@ def native_originals(tmp_path_factory):
         numerical_semantics=numerics,
         budget={"schema": C.BUDGET_SCHEMA, **dict.fromkeys(C._LIMITS, 100000)},
         destination=owner / "sources",
-        version=6,
+        version=7 if version == 2 else 6,
     )
     selection = owner / "conversion-selection.json"
     write(
         selection,
         {
-            "schema": V.SELECTION_SCHEMA,
+            "schema": V.INTEGER_SELECTION_SCHEMA if version == 2 else V.SELECTION_SCHEMA,
             "source_record_sha256": V._digest(sources),
             "operator_schema_intake_sha256": intake.sha256,
             "semantic_basis_sha256": basis.source.sha256,
             "capture_checkout": capture,
             "capture_commit": commit,
             "mlir_opt": parser,
-            "budget": {
-                "max_source_bytes": 2000000,
-                "max_nesting": 64,
-                "max_operations": 30,
-                "max_tensor_elements": 1000,
-                "max_members": 100,
-                "max_total_tensor_elements": 10000,
-                "max_total_source_bytes": 100000000,
-                "timeout_s": 180,
-            },
+            "budget": conversion_budget(version=version),
         },
     )
     return V.prepare(

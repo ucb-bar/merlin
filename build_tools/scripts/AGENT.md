@@ -45,6 +45,11 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   Preserve original literal/typed argument/body checks and all numerical policy,
   reference, owner, effect, resource and mandatory admission unknowns; packaging
   and finite registered construction never establish those premises.
+- `original-integer-scalar-binary-sources` preserves those 116 legacy cases and
+  adds all 142 integer and fixture controls, with an explicitly selected C++
+  getter compiler. All 260 identities must execute with zero skips. Keep the
+  default legacy fixture and its six native cases unchanged; getter compilation,
+  installed provenance and numerical admission remain separate requirements.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must

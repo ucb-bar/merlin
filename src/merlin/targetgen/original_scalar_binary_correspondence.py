@@ -18,7 +18,9 @@ from . import original_scalar_binary_sources as S
 from .frontend_trace import _graph, join_frontend_trace
 
 SCHEMA = "merlin.original_scalar_binary_correspondence.v1"
+INTEGER_SCHEMA = "merlin.original_scalar_binary_correspondence.v2"
 REGISTRY_SCHEMA = "merlin.native_scalar_binary_registry.v1"
+INTEGER_REGISTRY_SCHEMA = "merlin.native_scalar_binary_registry.v2"
 REGISTRY_FUNCTIONS = {
     "aten.mul.Tensor": "decompose_mul_tensor",
     "aten.div.Tensor": "decompose_div_tensor",
@@ -27,7 +29,7 @@ _LIMITS = {"max_source_bytes", "max_nesting", "max_operations", "max_tensor_elem
 _SCOPE = "exact registered scalar source construction only; no numerical, effect, compiled or hardware admission"
 
 
-def coefficient_bits(literal):
+def coefficient_bits(literal, *, version=1):
     """Represent the original finite Python binary64 FloatLiteral in f32.
 
     This checks typed constant representation, not the operator's arithmetic or
@@ -36,6 +38,26 @@ def coefficient_bits(literal):
     from .frontend_original_call import default_value
 
     value = default_value(literal)
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("scalar coefficient needs its explicit representation version")
+    if version == 2 and type(value) is int:
+        if not -(1 << 63) <= value < (1 << 63):
+            raise ValueError("integer scalar coefficient is outside signed64")
+        # IEEE f32 RNE from exact integer bits, without an intermediate f64.
+        magnitude = abs(value)
+        if not magnitude:
+            return "00000000"
+        exponent = magnitude.bit_length() - 1
+        shift = max(0, exponent - 23)
+        significant, remainder = divmod(magnitude, 1 << shift)
+        if shift and (remainder > (1 << (shift - 1)) or remainder == (1 << (shift - 1)) and significant % 2):
+            significant += 1
+        if significant == 1 << 24:
+            significant >>= 1
+            exponent += 1
+        significant <<= max(0, 23 - exponent)
+        bits = (int(value < 0) << 31) | ((exponent + 127) << 23) | (significant - (1 << 23))
+        return bits.to_bytes(4, "big").hex()
     if type(value) is not float or not math.isfinite(value):
         raise ValueError("registered scalar correspondence needs its finite FloatLiteral")
     try:
@@ -106,8 +128,8 @@ def _trace_call(snapshot, stage, form, shape):
         or call.get("kwargs") != {}
         or type(call.get("args")) is not list
         or len(call["args"]) != 2
-        or type(call["args"][1]) is not float
-        or call["args"][1].hex() != scalar.hex()
+        or type(call["args"][1]) is not type(scalar)
+        or canonical_json(call["args"][1]) != canonical_json(scalar)
     ):
         raise ValueError("actual frontend call changed original target, schema, scalar kind or argument order")
     for row in (inputs[0], call):
@@ -135,11 +157,15 @@ def _trace_call(snapshot, stage, form, shape):
     return call["id"]
 
 
-def _registry(registry, *, form, tensor_type, prepared, origins, source_inventory):
+def _registry(registry, *, form, shape, tensor_type, prepared, origins, source_inventory):
+    version = 2 if form["form_schema"] == S.INTEGER_FORM_SCHEMA else 1
+    fields = {"schema", "target", "function", "importer", "events"}
+    if version == 2:
+        fields.add("tensor_argument")
     if (
         type(registry) is not dict
-        or set(registry) != {"schema", "target", "function", "importer", "events"}
-        or registry["schema"] != REGISTRY_SCHEMA
+        or set(registry) != fields
+        or registry["schema"] != (INTEGER_REGISTRY_SCHEMA if version == 2 else REGISTRY_SCHEMA)
         or registry["target"] != form["target"]
     ):
         raise ValueError("scalar correspondence lacks its actual registered conversion observation")
@@ -165,9 +191,36 @@ def _registry(registry, *, form, tensor_type, prepared, origins, source_inventor
         "result_type": tensor_type,
         "source_node_id": prepared,
         "origin_node_ids": origins,
-        "emitted_operations": ["arith.constant", "tensor.splat", "tensor.empty", "linalg.generic"],
+        "emitted_operations": ["arith.constant"]
+        + (["arith.sitofp"] if form["parameters"]["other"]["kind"] == "int" else [])
+        + ["tensor.splat", "tensor.empty", "linalg.generic"],
         "dynamic_overrides": [],
     }
+    if version == 2:
+        binding = form.get("tensor_binding")
+        if binding is None:
+            if registry["tensor_argument"] is not None:
+                raise ValueError("floating source cannot inherit an integer wrapped-number observation")
+        else:
+            descriptor = {
+                "kind": "tensor",
+                "dtype": "torch.float32",
+                "shape": shape,
+                "layout": "torch.strided",
+                "device": "cpu",
+            }
+            promotion = {
+                "original_binding": binding,
+                "native_binding": binding["native"],
+                "common_dtype": "torch.float32",
+                "input": descriptor,
+                "outputs": [descriptor],
+                "boxed_outputs": [descriptor],
+            }
+            if canonical_json(registry["tensor_argument"]) != canonical_json(promotion):
+                raise ValueError(
+                    "integer scalar lacks exact native boxing, promotion and complete readout observations"
+                )
     if canonical_json(registry["events"]) != canonical_json([expected]):
         raise ValueError(
             "actual registered invocation changed original literal, operands, result or registry selection"
@@ -184,12 +237,14 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
     expected = S.scalar_binary_source(form, extent=extent, max_tensor_elements=limits["max_tensor_elements"])
     if source.loader != expected.loader or canonical_json(source.metadata()) != canonical_json(expected.metadata()):
         raise ValueError("scalar correspondence source differs from the complete original factory")
-    bits = coefficient_bits(form["parameters"]["other"])
+    version = 2 if form["form_schema"] == S.INTEGER_FORM_SCHEMA else 1
+    integer = form["parameters"]["other"]["kind"] == "int"
+    bits = coefficient_bits(form["parameters"]["other"], version=version)
     if len(canonical_json(trace)) > limits["max_source_bytes"]:
         raise ValueError("scalar frontend trace exceeds its complete byte budget")
     module, operations = _parse(text, limits)
     from xdsl.dialects import arith, linalg, tensor
-    from xdsl.dialects.builtin import FloatAttr, NoneAttr, TensorType, f32
+    from xdsl.dialects.builtin import FloatAttr, IntegerAttr, NoneAttr, TensorType, f32, i64
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import IteratorType
     from xdsl.ir.affine import AffineMap
@@ -209,18 +264,35 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
         or tuple(entry.function_type.inputs) != (value_type,)
         or tuple(entry.function_type.outputs) != (value_type,)
         or tuple(type(op) for op in body)
-        != (arith.ConstantOp, tensor.SplatOp, tensor.EmptyOp, linalg.GenericOp, ReturnOp)
-        or len(operations) != 9
+        != (arith.ConstantOp,)
+        + ((arith.SIToFPOp,) if integer else ())
+        + (tensor.SplatOp, tensor.EmptyOp, linalg.GenericOp, ReturnOp)
+        or len(operations) != (10 if integer else 9)
     ):
         raise ValueError("scalar conversion changed its complete original ABI or supported operation roster")
-    constant, splat, empty, generic, returned = body
+    constant = body[0]
+    converted = body[1] if integer else None
+    splat, empty, generic, returned = body[-4:]
     value = constant.value
-    if (
+    if integer:
+        if (
+            type(value) is not IntegerAttr
+            or value.type != i64
+            or value.value.data != S.default_value(form["parameters"]["other"])
+            or constant.result.type != i64
+            or tuple(converted.operands) != (constant.result,)
+            or converted.result.type != f32
+        ):
+            raise ValueError("integer scalar conversion changed original signed64 constant or direct f32 cast")
+    elif (
         type(value) is not FloatAttr
         or value.type != f32
         or struct.pack(">f", value.value.data).hex() != bits
         or constant.result.type != f32
-        or tuple(splat.operands) != (constant.result,)
+    ):
+        raise ValueError("scalar conversion changed original f32 coefficient bits")
+    if (
+        tuple(splat.operands) != ((converted.result if integer else constant.result),)
         or splat.result.type != value_type
         or tuple(empty.operands)
         or empty.results[0].type != value_type
@@ -263,6 +335,8 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
         (yielded, set()),
         (returned, set()),
     )
+    if integer:
+        allowed_properties += ((converted, set()),)
     for op, allowed in allowed_properties:
         if any(not key.startswith("prov.") for key in op.attributes) or set(op.properties) - allowed:
             raise ValueError("scalar conversion carries unsupported semantic attributes or properties")
@@ -293,7 +367,7 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
     # The selected tensor.empty custom printer omits decoration. Its exact
     # typed output allocation and SSA use are checked above; absent IDs confer
     # no separate effect or ownership correspondence.
-    for op in (constant, splat, generic, calculation, yielded):
+    for op in (constant, splat, generic, calculation, yielded) + ((converted,) if integer else ()):
         if [item.data for item in op.attributes.get("prov.source_node_ids", ())] != [calls["prepared"]] or [
             item.data for item in op.attributes.get("prov.origin_node_ids", ())
         ] != origins:
@@ -301,13 +375,14 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
     _registry(
         registry,
         form=form,
+        shape=shape,
         tensor_type=str(value_type),
         prepared=calls["prepared"],
         origins=origins,
         source_inventory=source_inventory,
     )
     return {
-        "schema": SCHEMA,
+        "schema": INTEGER_SCHEMA if version == 2 else SCHEMA,
         "target": form["target"],
         "original_node": form["node"],
         "frontend_nodes": calls,

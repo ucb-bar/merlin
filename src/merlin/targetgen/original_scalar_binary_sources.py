@@ -16,6 +16,7 @@ from .frontend_original_call import call_contracts, default_value
 from .original_operator_sources import SOURCE_SCHEMA, OriginalOperatorSource
 
 FORM_SCHEMA = "merlin.original_scalar_binary_form.v1"
+INTEGER_FORM_SCHEMA = "merlin.original_scalar_binary_form.v2"
 TARGETS = frozenset({"aten.mul.Tensor", "aten.div.Tensor"})
 
 
@@ -37,7 +38,55 @@ def _tensor(value):
     return value["rank"]
 
 
-def _binding(call):
+def integer_tensor_binding(call, rows):
+    """Join one original signed64 literal to its observed Tensor argument.
+
+    This is a data reader. The live schema intake must separately replay its
+    complete native request, original source and getter before construction.
+    Wrapped storage establishes no promotion or operator arithmetic contract.
+    """
+    literal = call["arguments"][1]["value"]
+    scalar = default_value(literal)
+    if type(scalar) is not int or not -(1 << 63) <= scalar < (1 << 63):
+        raise ValueError("scalar binary v2 requires an exact original signed64 Python integer")
+    expected = {
+        "node": call["node"],
+        "target": call["target"],
+        "schema": call["schema"],
+        "argument_index": 1,
+        "argument_path": "args/1",
+        "literal": {"type": "int", "value": str(scalar)},
+    }
+    if type(rows) is not list:
+        raise ValueError("integer scalar source requires its original native Tensor-binding row")
+    matches = [
+        row
+        for row in rows
+        if type(row) is dict
+        and type(row.get("request")) is dict
+        and row["request"].get("node") == call["node"]
+        and row["request"].get("argument_path") == "args/1"
+    ]
+    if len(matches) != 1:
+        raise ValueError("integer scalar source needs exactly one original Tensor-binding row")
+    row = matches[0]
+    native = {
+        "schema": call["schema"],
+        "argument_name": "other",
+        "source_allows_number": True,
+        "wrapped_number": True,
+        "shape": [],
+        "dtype": "torch.int64",
+        "element_bytes": 8,
+        "literal": expected["literal"],
+        "disjoint_from_prior_live_boxes": True,
+    }
+    if canonical_json(row) != canonical_json({"request": expected, "status": "observed", "native": native}):
+        raise ValueError("integer scalar source changed original literal, native wrapped storage or argument identity")
+    return copy.deepcopy(row)
+
+
+def _binding(call, *, version=1):
     target = call["target"]
     arguments = call["arguments"]
     if (
@@ -79,26 +128,40 @@ def _binding(call):
         raise ValueError("scalar binary requires exactly one original Tensor SSA first argument")
     rank = _tensor(first["value"])
     literal = arguments[1]["value"]
-    if type(literal) is not dict or literal.get("kind") != "float":
+    if type(literal) is not dict or literal.get("kind") not in ({"float", "int"} if version == 2 else {"float"}):
         raise ValueError("scalar binary requires the explicit original finite FloatLiteral, not a second SSA")
     scalar = default_value(literal)
+    if literal["kind"] == "int":
+        integer_tensor_binding(call, [call.get("tensor_binding")])
+    elif version == 2 and call.get("tensor_binding") is not None:
+        raise ValueError("floating scalar source cannot inherit an integer Tensor-binding row")
     result = call["result_roster"][0]
     if _tensor(result) != rank or result["id"] == first["value"]["id"]:
         raise ValueError("scalar binary must preserve original input/result rank and distinct result identity")
     return rank, literal, scalar
 
 
-def scalar_binary_forms(trace, observation, defaults, *, numerical_semantics=None, zero_returns=None):
+def scalar_binary_forms(
+    trace, observation, defaults, *, numerical_semantics=None, zero_returns=None, version=1, tensor_bindings=None
+):
     """Retain every selected mul/div call, including unsupported literal domains."""
+    if type(version) is not int or version not in {1, 2}:
+        raise ValueError("scalar binary forms require their explicit supported source version")
     forms = []
     for call in call_contracts(trace, observation, defaults, zero_returns=zero_returns):
         if call["target"] not in TARGETS:
             continue
-        form = {"form_schema": FORM_SCHEMA, **call, "source_numerical_semantics": copy.deepcopy(numerical_semantics)}
+        form = {
+            "form_schema": FORM_SCHEMA if version == 1 else INTEGER_FORM_SCHEMA,
+            **call,
+            "source_numerical_semantics": copy.deepcopy(numerical_semantics),
+        }
         try:
             if call["status"] != "bound":
                 raise ValueError(call["reason"])
-            rank, literal, _ = _binding(call)
+            if version == 2 and call["arguments"][1]["value"].get("kind") == "int":
+                form["tensor_binding"] = integer_tensor_binding(call, tensor_bindings)
+            rank, literal, _ = _binding(form, version=version)
             form.update(
                 status="supported",
                 rank=rank,
@@ -120,7 +183,7 @@ def scalar_binary_source(form, *, extent, max_tensor_elements):
     """
     if (
         type(form) is not dict
-        or form.get("form_schema") != FORM_SCHEMA
+        or form.get("form_schema") not in {FORM_SCHEMA, INTEGER_FORM_SCHEMA}
         or form.get("status") != "supported"
         or type(extent) is not int
         or extent < 1
@@ -129,7 +192,7 @@ def scalar_binary_source(form, *, extent, max_tensor_elements):
     ):
         raise ValueError("scalar binary source needs its supported original form and positive geometry/budget")
     try:
-        rank, literal, scalar = _binding(form)
+        rank, literal, scalar = _binding(form, version=2 if form["form_schema"] == INTEGER_FORM_SCHEMA else 1)
         expected = {"other": literal, "shape_relation": "same_tensor_shape"}
         if (
             type(form["rank"]) is not int
@@ -164,6 +227,9 @@ def scalar_binary_source(form, *, extent, max_tensor_elements):
         "scalar_products": count,
         "scope": "typed scalar source only; conversion, numerical policy, owner, effects and hardware unqualified",
     }
+    if form["form_schema"] == INTEGER_FORM_SCHEMA:
+        metadata["original_form_schema"] = INTEGER_FORM_SCHEMA
+        metadata["original_tensor_binding"] = copy.deepcopy(form.get("tensor_binding"))
     loader = (
         "import torch\n\nclass Model(torch.nn.Module):\n"
         "    def forward(self, X):\n"

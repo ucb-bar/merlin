@@ -723,11 +723,59 @@ def test_original_scalar_qualification_preserves_complete_source_native_and_supp
     )
 
 
+def test_integer_scalar_qualification_keeps_every_legacy_and_integer_identity():
+    from collections import Counter
+
+    legacy = Q.SUITES["original-scalar-binary-sources"]
+    suite = Q.SUITES["original-integer-scalar-binary-sources"]
+    expected = {
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py": 30,
+        "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py": 44,
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py": 6,
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py": 47,
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py": 45,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py": 16,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py": 20,
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py": 9,
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py": 7,
+    }
+    assert suite["tests"] == suite["native_test_files"] == tuple(expected)
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == expected
+    assert len(set(suite["native_test_cases"])) == 260
+    assert suite["native_test_cases"][:116] == legacy["native_test_cases"]
+    assert suite["native_tools"] == (*legacy["native_tools"], "tensor-argument-compiler")
+    assert Q.NATIVE_TOOL_ENVIRONMENT["tensor-argument-compiler"] == "MERLIN_TEST_TENSOR_ARGUMENT_COMPILER"
+    for key in (
+        "tests_root",
+        "test_fixture_imports",
+        "collect_selected_tests",
+        "mandatory_test_report",
+        "native_python_entries",
+        "native_sources",
+        "test_input_environment_keys",
+        "support_files",
+        "core_extras",
+        "probe_modules",
+        "required_modules",
+    ):
+        assert suite[key] == legacy[key]
+
+
 @pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
 def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_integer_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-integer-scalar-binary-sources", defect)
+
+
+def _check_scalar_qualification_report(tmp_path, suite, defect):
     import xml.etree.ElementTree as ET
 
-    suite = "original-scalar-binary-sources"
     rows = Q.SUITES[suite]["native_test_cases"]
     root = ET.Element("testsuites")
     group = ET.SubElement(root, "testsuite")
@@ -757,7 +805,8 @@ def test_scalar_qualification_requires_each_original_member_identity_and_zero_sk
     report = {}
     if defect is None:
         Q.check_native_test_report(suite, path, report)
-        assert report["native_test_counts"] == {"tests": 116, "skipped": 0}
+        expected = 116 if suite == "original-scalar-binary-sources" else 260
+        assert report["native_test_counts"] == {"tests": expected, "skipped": 0}
         assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
     else:
         with pytest.raises(Q.QualificationFailed):

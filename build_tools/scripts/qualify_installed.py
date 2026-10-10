@@ -20,6 +20,9 @@ Its explicit compiler pairs expose conditional structural facts, without packing
 original-scalar-binary-sources requires the exact 110 source and six registered
 conversion controls with explicit original public sources and native selections.
 Construction/body correspondence does not admit numerical policy or coverage.
+original-integer-scalar-binary-sources preserves all 116 legacy identities and adds
+142 integer/fixture controls, including seven actual native controls and explicit
+C++ getter compiler selection. All 260 cases require zero skips.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -2874,7 +2877,6 @@ SUITES = {
     },
 }
 
-
 SUITES["rtl-source-bindings"] = {
     "include_experiments": False,
     "tests_root": "merlin/tests/targetgen",
@@ -3566,6 +3568,346 @@ SUITES["rtl-source-bindings"] = {
         for suffix in suffixes
     ),
 }
+
+# Preserve the complete legacy scalar suite; integer replay extends its roster.
+SUITES["original-integer-scalar-binary-sources"] = {
+    **SUITES["original-scalar-binary-sources"],
+    "native_tools": ("operator-python", "firtool", "mlir-opt", "tensor-argument-compiler"),
+    "native_test_files": SUITES["original-scalar-binary-sources"]["native_test_files"]
+    + (
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+    ),
+    "tests": SUITES["original-scalar-binary-sources"]["tests"]
+    + (
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+    ),
+    "native_test_cases": SUITES["original-scalar-binary-sources"]["native_test_cases"]
+    + tuple(
+        (filename, method + suffix)
+        for filename, methods in (
+            (
+                "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+                (
+                    (
+                        "test_exact_integer_kind_complete_storage_and_native_binding_survive_bounded_construction",
+                        (
+                            "[0-aten.div.Tensor]",
+                            "[0-aten.mul.Tensor]",
+                            "[1-aten.div.Tensor]",
+                            "[1-aten.mul.Tensor]",
+                            "[-1-aten.div.Tensor]",
+                            "[-1-aten.mul.Tensor]",
+                            "[9007199791611905-aten.div.Tensor]",
+                            "[9007199791611905-aten.mul.Tensor]",
+                            "[-1152921573326323713-aten.div.Tensor]",
+                            "[-1152921573326323713-aten.mul.Tensor]",
+                            "[-9223372036854775808-aten.div.Tensor]",
+                            "[-9223372036854775808-aten.mul.Tensor]",
+                            "[9223372036854775807-aten.div.Tensor]",
+                            "[9223372036854775807-aten.mul.Tensor]",
+                        ),
+                    ),
+                    (
+                        "test_integer_requires_exact_original_native_row_without_kind_storage_or_identity_substitution",
+                        (
+                            "[missing]",
+                            "[duplicate]",
+                            "[node]",
+                            "[path]",
+                            "[index_bool]",
+                            "[target]",
+                            "[schema]",
+                            "[literal]",
+                            "[float_kind]",
+                            "[native_literal]",
+                            "[wrapped]",
+                            "[allowed]",
+                            "[dtype]",
+                            "[bytes_bool]",
+                            "[shape]",
+                            "[name]",
+                            "[disjoint]",
+                            "[unknown]",
+                            "[extra]",
+                        ),
+                    ),
+                    (
+                        "test_boolean_and_outside_signed64_forms_stay_required",
+                        (
+                            "[True]",
+                            "[9223372036854775808]",
+                            "[-9223372036854775809]",
+                        ),
+                    ),
+                    (
+                        "test_legacy_integer_remains_unavailable_and_v2_float_preserves_literal_policy",
+                        ("",),
+                    ),
+                    (
+                        "test_reconstruction_reopens_the_exact_binding_before_any_source_allocation",
+                        (
+                            "[binding]",
+                            "[literal]",
+                            "[rank]",
+                            "[storage]",
+                            "[budget]",
+                        ),
+                    ),
+                    (
+                        "test_unsupported_original_storage_and_scalar_rank_are_not_widened_by_integer_binding",
+                        (
+                            "[float16-shape0]",
+                            "[bfloat16-shape1]",
+                            "[float64-shape2]",
+                            "[float32-shape3]",
+                        ),
+                    ),
+                    (
+                        "test_floating_form_cannot_inherit_integer_boxing_evidence",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+                (
+                    (
+                        "test_direct_exact_signed64_constant_cast_body_and_complete_promoted_roster",
+                        (
+                            "[aten.div.Tensor-0]",
+                            "[aten.div.Tensor-1]",
+                            "[aten.div.Tensor--1]",
+                            "[aten.div.Tensor-9007199791611903]",
+                            "[aten.div.Tensor-9007199791611904]",
+                            "[aten.div.Tensor-9007199791611905]",
+                            "[aten.div.Tensor--9007199791611905]",
+                            "[aten.div.Tensor-1152921573326323711]",
+                            "[aten.div.Tensor-1152921573326323712]",
+                            "[aten.div.Tensor-1152921573326323713]",
+                            "[aten.div.Tensor--1152921573326323713]",
+                            "[aten.div.Tensor--9223372036854775808]",
+                            "[aten.div.Tensor-9223372036854775807]",
+                            "[aten.mul.Tensor-0]",
+                            "[aten.mul.Tensor-1]",
+                            "[aten.mul.Tensor--1]",
+                            "[aten.mul.Tensor-9007199791611903]",
+                            "[aten.mul.Tensor-9007199791611904]",
+                            "[aten.mul.Tensor-9007199791611905]",
+                            "[aten.mul.Tensor--9007199791611905]",
+                            "[aten.mul.Tensor-1152921573326323711]",
+                            "[aten.mul.Tensor-1152921573326323712]",
+                            "[aten.mul.Tensor-1152921573326323713]",
+                            "[aten.mul.Tensor--1152921573326323713]",
+                            "[aten.mul.Tensor--9223372036854775808]",
+                            "[aten.mul.Tensor-9223372036854775807]",
+                        ),
+                    ),
+                    (
+                        "test_same_type_coefficients_order_cast_wrapper_and_complete_promotion_cannot_be_substituted",
+                        (
+                            "[integer]",
+                            "[float_constant]",
+                            "[cast_input]",
+                            "[cast_type]",
+                            "[cast_attr]",
+                            "[splat_input]",
+                            "[div_order]",
+                            "[missing_promotion]",
+                            "[promoted_dtype]",
+                            "[wrapped]",
+                            "[native_literal]",
+                            "[output_drop]",
+                            "[boxed_shape]",
+                            "[original_binding]",
+                            "[trace_float]",
+                            "[trace_integer]",
+                            "[registry_float]",
+                            "[source_inventory]",
+                        ),
+                    ),
+                    (
+                        "test_v2_float_keeps_exact_legacy_body_without_integer_box_or_cast",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+                (
+                    (
+                        "test_v7_adds_only_bound_signed64_source_slots_and_keeps_every_unsupported_cohort",
+                        ("",),
+                    ),
+                    (
+                        "test_old_version_or_missing_bridge_cannot_grant_integer_slots",
+                        (
+                            "[6-True-3]",
+                            "[7-False-3]",
+                        ),
+                    ),
+                    (
+                        "test_original_membership_and_live_schema_bindings_are_replayed_without_integer_aliases",
+                        (
+                            "[schema]",
+                            "[row_drop]",
+                            "[binding]",
+                            "[float_kind]",
+                            "[cohort]",
+                            "[extent]",
+                            "[source]",
+                        ),
+                    ),
+                    (
+                        "test_v2_request_preserves_exact_integer_native_row_and_original_unavailable_slots",
+                        ("",),
+                    ),
+                    (
+                        "test_explicit_selection_version_cannot_widen_v1_or_relax_original_policy",
+                        (
+                            "[selection_v1]",
+                            "[source_v6]",
+                            "[extra]",
+                        ),
+                    ),
+                    (
+                        "test_extra_native_readouts_are_reserved_before_allocation_and_denied_slots_remain",
+                        (
+                            "[max_promotion_tensor_elements-18-4-7]",
+                            "[max_total_promotion_tensor_elements-62-5-26]",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+                (
+                    (
+                        "test_exact_literal_profile_keeps_python_integer_kind_without_binary64_conversion",
+                        ("",),
+                    ),
+                    (
+                        "test_new_profile_does_not_license_boolean_unsigned_or_unbound_literals",
+                        (
+                            "[True]",
+                            "[9223372036854775808]",
+                            "[-9223372036854775809]",
+                            "[None]",
+                        ),
+                    ),
+                    (
+                        "test_fresh_native_wrapper_and_both_direct_and_boxed_dispatch_preserve_original_int_argument",
+                        ("",),
+                    ),
+                    (
+                        "test_fresh_getter_drift_cannot_reuse_original_binding_metadata",
+                        (
+                            "[dtype]",
+                            "[wrapped]",
+                            "[literal]",
+                            "[schema]",
+                            "[kind]",
+                            "[noncanonical]",
+                            "[alias]",
+                        ),
+                    ),
+                    (
+                        "test_v2_request_refuses_absent_or_extra_getter_before_any_upstream_import",
+                        ("",),
+                    ),
+                    (
+                        "test_complete_promotion_budgets_refuse_before_imports_or_allocations",
+                        (
+                            "[max_promotion_tensor_elements-18]",
+                            "[max_total_promotion_tensor_elements-37]",
+                            "[max_tensor_elements-11]",
+                            "[promotion_tensor_elements-True]",
+                            "[shape-value4]",
+                            "[shape-value5]",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+                (
+                    (
+                        "test_existing_fixture_default_keeps_v1_selection",
+                        ("",),
+                    ),
+                    (
+                        "test_integer_fixture_requires_explicit_v2_selection",
+                        ("",),
+                    ),
+                    (
+                        "test_unsupported_fixture_version_refuses_before_source_creation",
+                        (
+                            "[0]",
+                            "[3]",
+                            "[True]",
+                            "[2.0]",
+                        ),
+                    ),
+                    (
+                        "test_v2_requires_explicit_getter_compiler_before_source_creation",
+                        ("",),
+                    ),
+                    (
+                        "test_v1_budget_and_all_prior_limits_remain_unchanged",
+                        ("",),
+                    ),
+                    (
+                        "test_v2_reserves_complete_six_call_eighteen_slot_products_before_native_conversion",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+                (
+                    (
+                        "test_actual_v2_public_getter_registered_importer_all_original_calls_and_slots",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_original_int1_wrapper_promotion_complete_storage_and_direct_cast",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_registered_bodies_refuse_coefficient_or_operand_order_substitution",
+                        (
+                            "[same_type_integer_coefficient]",
+                            "[reversed_division]",
+                        ),
+                    ),
+                    (
+                        "test_actual_integer_binding_cannot_be_replaced_by_a_float_literal",
+                        ("",),
+                    ),
+                    (
+                        "test_complete_original_slot_and_readout_budgets_refuse_before_another_native_execution",
+                        ("",),
+                    ),
+                    (
+                        "test_copied_live_owner_and_modified_saved_v2_receipt_cannot_issue_conversion",
+                        ("",),
+                    ),
+                ),
+            ),
+        )
+        for method, suffixes in methods
+        for suffix in suffixes
+    ),
+}
 LIMITATIONS = [
     "Tool source is assumed static while Python initially imports it; observed hashes are rechecked at completion.",
     "Packaging and selected functional regressions only; no numerical/hardware certification.",
@@ -3624,6 +3966,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "operator-python": "MERLIN_TEST_TORCH_PYTHON",
     "readelf": "MERLIN_TEST_READELF",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
+    "tensor-argument-compiler": "MERLIN_TEST_TENSOR_ARGUMENT_COMPILER",
     "vvp": "MERLIN_TEST_VVP",
 }
 

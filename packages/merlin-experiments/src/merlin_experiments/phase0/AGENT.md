@@ -15,6 +15,14 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+Original call-source v7 and scalar-conversion selection/receipt v2 explicitly
+select signed64 integer-literal construction through the same original live
+schema Tensor getter. Retain every original cohort and require exact native
+wrapped storage, fresh promotion/readout observations, registered importer/body
+joins and separate complete preallocation bounds for both dispatch outputs.
+Prior source, automatic, reference, review and numerical policies are unchanged;
+finite observed promotion establishes no whole-domain or mandatory admission.
+
 Original call-source v6 / automatic policy and receipt v13 explicitly adds the
 bounded scalar mul/div factory. Every original call and guard/private slot,
 aggregate cost and missing admission remains required. Keep old versions and
