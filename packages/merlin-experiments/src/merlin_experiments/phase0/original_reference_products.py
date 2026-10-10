@@ -111,7 +111,11 @@ def verify(record, *, schema_intake, basis, selection):
 
     schema = R._originals(schema_intake, basis)
     selected = P.validate(loads(R._plain(selection).read_bytes()))
-    equal = _pointwise_equal if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA} else operator.eq
+    equal = (
+        _pointwise_equal
+        if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}
+        else operator.eq
+    )
     if (
         set(record)
         != {

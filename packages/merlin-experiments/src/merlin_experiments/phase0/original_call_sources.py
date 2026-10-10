@@ -31,6 +31,7 @@ SCHEMA = "merlin.original_call_sources.v1"
 LINEAR_SCHEMA = "merlin.original_call_sources.v2"
 POINTWISE_SCHEMA = "merlin.original_call_sources.v3"
 TRANSPOSE_SCHEMA = "merlin.original_call_sources.v4"
+BROADCAST_SCHEMA = "merlin.original_call_sources.v5"
 BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
@@ -62,12 +63,13 @@ def required_source_cohorts():
 
 
 def reader_modules(version):
-    if type(version) is not int or version not in {1, 2, 3, 4}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
         raise ValueError("original source readers need an explicit supported factory version")
     return (
         READER_MODULES
         + (("merlin.targetgen.original_pointwise_sources",) if version >= 3 else ())
-        + (("merlin.targetgen.original_transpose_sources",) if version == 4 else ())
+        + (("merlin.targetgen.original_transpose_sources",) if version >= 4 else ())
+        + (("merlin.targetgen.original_broadcast_add_sources",) if version == 5 else ())
     )
 
 
@@ -83,12 +85,17 @@ def validate_budget(budget):
 
 
 def _forms(trace, schemas, defaults, *, numerical_semantics, version):
-    factories = [conv2d_forms] if version == 1 else [conv2d_forms, matmul_forms, original_add_forms]
+    add_forms = original_add_forms
+    if version == 5:
+        from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
+
+        add_forms = broadcast_add_forms
+    factories = [conv2d_forms] if version == 1 else [conv2d_forms, matmul_forms, add_forms]
     if version >= 3:
         from merlin.targetgen.original_pointwise_sources import pointwise_forms
 
         factories.append(pointwise_forms)
-    if version == 4:
+    if version >= 4:
         from merlin.targetgen.original_transpose_sources import transpose_forms
 
         factories.append(transpose_forms)
@@ -107,11 +114,16 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
         from merlin.targetgen.original_pointwise_sources import pointwise_source
 
         pointwise = {POINTWISE_FORM_SCHEMA: pointwise_source}
-    if version == 4:
+    if version >= 4:
         from merlin.targetgen.original_transpose_sources import FORM_SCHEMA as TRANSPOSE_FORM_SCHEMA
         from merlin.targetgen.original_transpose_sources import transpose_source
 
         pointwise[TRANSPOSE_FORM_SCHEMA] = transpose_source
+    if version == 5:
+        from merlin.targetgen.original_broadcast_add_sources import FORM_SCHEMA as BROADCAST_FORM_SCHEMA
+        from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
+
+        pointwise[BROADCAST_FORM_SCHEMA] = broadcast_add_source
     indexed = {form["node"]: form for form in forms}
     result = []
     for call in calls:
@@ -163,7 +175,7 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
 def observe(*, schema_record, basis, numerical_semantics, budget, destination, version=1):
     """Write source-only original forms through the selected normal observer."""
     validate_budget(budget)
-    if type(version) is not int or version not in {1, 2, 3, 4}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
         raise ValueError("original source observation requires an explicit supported factory version")
     destination = Path(destination)
     rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
@@ -192,7 +204,7 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination, v
                 member["source"] = {"path": str(path), "sha256": member["source_sha256"]}
             row["source_members"].append(member)
     record = {
-        "schema": {1: SCHEMA, 2: LINEAR_SCHEMA, 3: POINTWISE_SCHEMA, 4: TRANSPOSE_SCHEMA}[version],
+        "schema": {1: SCHEMA, 2: LINEAR_SCHEMA, 3: POINTWISE_SCHEMA, 4: TRANSPOSE_SCHEMA, 5: BROADCAST_SCHEMA}[version],
         "budget": budget,
         "members": rows,
     }
@@ -204,11 +216,13 @@ def verify(record, *, schema_record, basis, numerical_semantics):
     if (
         not isinstance(record, dict)
         or set(record) != {"schema", "budget", "members"}
-        or record["schema"] not in {SCHEMA, LINEAR_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA}
+        or record["schema"] not in {SCHEMA, LINEAR_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
     ):
         raise ValueError("original call sources require their closed observation version")
     budget = validate_budget(record["budget"])
-    version = {SCHEMA: 1, LINEAR_SCHEMA: 2, POINTWISE_SCHEMA: 3, TRANSPOSE_SCHEMA: 4}[record["schema"]]
+    version = {SCHEMA: 1, LINEAR_SCHEMA: 2, POINTWISE_SCHEMA: 3, TRANSPOSE_SCHEMA: 4, BROADCAST_SCHEMA: 5}[
+        record["schema"]
+    ]
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)

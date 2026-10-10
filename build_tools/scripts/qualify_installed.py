@@ -112,6 +112,42 @@ SUITES = {
         ),
         "required_modules": ("xdsl",),
     },
+    "original-broadcast-add-sources": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("operator-python", "firtool", "mlir-opt"),
+        "native_python_entries": ("operator-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}},
+        "test_input_environment_keys": (
+            "MERLIN_TEST_M2M_COMMIT",
+            "MERLIN_TEST_OPERATOR_DECLARATIONS",
+            "MERLIN_TEST_TORCH_SOURCE_ROOT",
+        ),
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_broadcast_add.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_plan.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_broadcast_add.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_plan.py",
+            "packages/merlin-experiments/tests/test_original_broadcast_add_flow.py",
+        ),
+        "support_files": (
+            "packages/merlin-experiments/tests/original_broadcast_add_fixtures.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_broadcast_add_sources",
+            "merlin.targetgen.original_operator_reference",
+            "merlin_experiments.phase0.original_reference_roster",
+            "merlin_experiments.phase0.original_reference_standard_ir",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
     "original-transpose-sources": {
         "tests_root": ".",
         "test_fixture_imports": True,

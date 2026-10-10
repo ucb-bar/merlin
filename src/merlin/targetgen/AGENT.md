@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+`original_broadcast_add_sources` derives only original positive right-aligned
+singleton/equality relations and exact ordered Tensor storage/unit alpha. Fresh
+extents and complete input/output plus rank metadata costs precede allocation.
+Its versioned reference projects every logical output through the same selected
+add arithmetic; legacy rank-two forms and policy meaning remain unchanged.
+Source construction and finite comparison do not establish original numerical
+domain, reviewed ownership, promotion, alias, physical effects or target support.
+
 ## Purpose
 
 TargetGen pipeline: ingest -> evidence -> synthesize -> generate -> validate. Turns a

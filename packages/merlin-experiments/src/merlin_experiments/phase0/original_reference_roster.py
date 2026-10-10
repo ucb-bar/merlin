@@ -34,6 +34,7 @@ SCHEMA = "merlin.original_reference_roster.v1"
 BATCH_SCHEMA = "merlin.original_reference_roster.v2"
 POINTWISE_SCHEMA = "merlin.original_reference_roster.v3"
 TRANSPOSE_SCHEMA = "merlin.original_reference_roster.v4"
+BROADCAST_SCHEMA = "merlin.original_reference_roster.v5"
 _ISSUED = weakref.WeakKeyDictionary()
 _UNKNOWN = (
     "original_numerical_domain",
@@ -91,12 +92,14 @@ def _sources(selection):
     if os.environ.get("MERLIN_QUANT_FORMATS") is not None:
         raise ValueError("original reference roster has no explicitly selected format overlay")
     readers = list(_READERS)
-    if loads(Path(selection).read_bytes())["schema"] == P.TRANSPOSE_SCHEMA:
+    if loads(Path(selection).read_bytes())["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
         readers += [
             "merlin.targetgen.original_transpose_sources",
             "merlin.targetgen.original_transpose_reference",
             "merlin_experiments.phase0.original_transpose_reference_observer",
         ]
+    if loads(Path(selection).read_bytes())["schema"] == P.BROADCAST_SCHEMA:
+        readers.append("merlin.targetgen.original_broadcast_add_sources")
     if P.transport(loads(Path(selection).read_bytes())) == "batch.v1":
         readers += [
             "merlin_experiments.phase0.original_schema_batch",
@@ -111,7 +114,9 @@ def _sources(selection):
 
 
 def record_schema(selection):
-    if selection["schema"] == P.TRANSPOSE_SCHEMA:
+    if selection["schema"] == P.BROADCAST_SCHEMA:
+        return BROADCAST_SCHEMA
+    if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
         return TRANSPOSE_SCHEMA
     if selection["schema"] == P.POINTWISE_SCHEMA:
         return POINTWISE_SCHEMA
@@ -119,7 +124,7 @@ def record_schema(selection):
 
 
 def _observer(selection):
-    if selection["schema"] == P.TRANSPOSE_SCHEMA:
+    if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
         return module_source_path("merlin_experiments.phase0.original_transpose_reference_observer")
     name = (
         "original_pointwise_reference_observer"
@@ -185,16 +190,21 @@ def _drafts(defaults, *, schema, basis, selection):
         trace, schemas, observed = D.verify_member(
             row, schema_record=schema, version=2, transport=P.transport(selection)
         )
+        add_forms = S.original_add_forms
+        if selection["schema"] == P.BROADCAST_SCHEMA:
+            from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
+
+            add_forms = broadcast_add_forms
         forms = [
             form
-            for factory in (S.matmul_forms, S.original_add_forms, S.conv2d_forms)
+            for factory in (S.matmul_forms, add_forms, S.conv2d_forms)
             for form in factory(trace, schemas, observed)
         ]
-        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
+        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
             from merlin.targetgen.original_pointwise_sources import pointwise_forms
 
             forms += pointwise_forms(trace, schemas, observed, version=2)
-        if selection["schema"] == P.TRANSPOSE_SCHEMA:
+        if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
             from merlin.targetgen.original_transpose_sources import transpose_forms
 
             forms += transpose_forms(trace, schemas, observed)
@@ -224,15 +234,19 @@ def _drafts(defaults, *, schema, basis, selection):
                             "aten.add.Tensor": S.add_source,
                             "aten.conv2d.default": S.conv2d_source,
                         }
-                        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
+                        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
                             from merlin.targetgen.original_pointwise_reference import OPERATIONS
                             from merlin.targetgen.original_pointwise_sources import pointwise_source
 
                             factories.update(dict.fromkeys(OPERATIONS, pointwise_source))
-                        if selection["schema"] == P.TRANSPOSE_SCHEMA:
+                        if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
                             from merlin.targetgen.original_transpose_sources import TARGET, transpose_source
 
                             factories[TARGET] = transpose_source
+                        if selection["schema"] == P.BROADCAST_SCHEMA:
+                            from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
+
+                            factories["aten.add.Tensor"] = broadcast_add_source
                         factory = factories[form["target"]]
                         source = factory(
                             form, extent=extent, max_tensor_elements=selection["source_budget"]["max_tensor_elements"]

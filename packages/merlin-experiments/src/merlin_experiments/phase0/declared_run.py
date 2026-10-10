@@ -157,7 +157,13 @@ def validate(request):
         not isinstance(automatic, dict)
         or set(automatic) != {"schema", "status", "budget", "execution_budget", "original_source_budget"}
         or automatic["schema"]
-        not in {A.ORIGINAL_POLICY_SCHEMA, A.LINEAR_POLICY_SCHEMA, A.POINTWISE_POLICY_SCHEMA, A.TRANSPOSE_POLICY_SCHEMA}
+        not in {
+            A.ORIGINAL_POLICY_SCHEMA,
+            A.LINEAR_POLICY_SCHEMA,
+            A.POINTWISE_POLICY_SCHEMA,
+            A.TRANSPOSE_POLICY_SCHEMA,
+            A.BROADCAST_POLICY_SCHEMA,
+        }
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)
         or set(automatic["budget"]) != {"max_members", "max_interaction_cells"}

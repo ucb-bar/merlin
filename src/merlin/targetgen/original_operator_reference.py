@@ -122,6 +122,10 @@ def _source(form, extent, budget):
     factory = {"aten.matmul.default": S.matmul_source, "aten.conv2d.default": S.conv2d_source}.get(form["target"])
     if form["target"] == "aten.add.Tensor":
         factory = getattr(S, "add_source", None)
+        if form.get("form_schema") == "merlin.original_broadcast_add_form.v1":
+            from .original_broadcast_add_sources import broadcast_add_source
+
+            factory = broadcast_add_source
     from .original_pointwise_reference import OPERATIONS
 
     if form["target"] in OPERATIONS:
@@ -415,7 +419,29 @@ def _evaluate(metadata, values, arithmetic, byteorder):
             for j in range(n)
         ]
     elif metadata["target"] == "aten.add.Tensor":
-        result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
+        if metadata["parameters"].get("broadcasting") == "right_aligned":
+            shape = metadata["outputs"][0]["shape"]
+
+            def index(operand_shape, flat):
+                selected, stride = 0, 1
+                offset = len(shape) - len(operand_shape)
+                for axis in reversed(range(len(shape))):
+                    coordinate, flat = flat % shape[axis], flat // shape[axis]
+                    if axis >= offset:
+                        width = operand_shape[axis - offset]
+                        selected += (coordinate if width != 1 else 0) * stride
+                        stride *= width
+                return selected
+
+            result = [
+                arithmetic.add(
+                    values[0][index(metadata["inputs"][0]["shape"], flat)],
+                    arithmetic.product(1, values[1][index(metadata["inputs"][1]["shape"], flat)]),
+                )
+                for flat in range(math.prod(shape))
+            ]
+        else:
+            result = [arithmetic.add(a, arithmetic.product(1, b)) for a, b in zip(*values, strict=True)]
     elif metadata["target"] in OPERATIONS:
         result = [arithmetic.pointwise(metadata["target"], value, metadata["parameters"]) for value in values[0]]
     else:
