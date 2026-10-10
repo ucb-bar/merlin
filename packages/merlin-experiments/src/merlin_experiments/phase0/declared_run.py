@@ -35,6 +35,8 @@ PACKING_SCHEMA = "merlin.independent_phase0_run.v6"
 INTEGER_SCALAR_SCHEMA = "merlin.independent_phase0_run.v7"
 METADATA_SCHEMA = "merlin.independent_phase0_run.v8"
 TRIANGULAR_SCHEMA = "merlin.independent_phase0_run.v9"
+RESHAPE_SCHEMA = "merlin.independent_phase0_run.v10"
+REDUCTION_SCHEMA = "merlin.independent_phase0_run.v11"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -68,7 +70,8 @@ def _has_original_references(request):
     return isinstance(request, dict) and (
         request.get("schema") in {REFERENCE_SCHEMA, PACKING_SCHEMA}
         or (
-            request.get("schema") in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA}
+            request.get("schema")
+            in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA, RESHAPE_SCHEMA, REDUCTION_SCHEMA}
             and "original_references" in request
         )
     )
@@ -78,7 +81,8 @@ def _has_memory_packing(request):
     return isinstance(request, dict) and (
         request.get("schema") == PACKING_SCHEMA
         or (
-            request.get("schema") in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA}
+            request.get("schema")
+            in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA, RESHAPE_SCHEMA, REDUCTION_SCHEMA}
             and "packing" in request
         )
     )
@@ -95,6 +99,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         fields.add("release_purpose")
     if isinstance(request, dict) and request.get("schema") in {
@@ -104,6 +110,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         fields.add("source_performance")
     if _has_original_references(request):
@@ -114,6 +122,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         fields.add("original_scalar_conversion")
     if (
@@ -130,6 +140,8 @@ def validate(request):
             INTEGER_SCALAR_SCHEMA,
             METADATA_SCHEMA,
             TRIANGULAR_SCHEMA,
+            RESHAPE_SCHEMA,
+            REDUCTION_SCHEMA,
         }
         or not isinstance(request["target"], str)
         or not request["target"]
@@ -151,6 +163,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         from .source_requirement_ledger import PURPOSES
 
@@ -163,6 +177,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         from .component_source_performance import SCHEMA as source_schema
 
@@ -209,6 +225,8 @@ def validate(request):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
@@ -247,6 +265,8 @@ def validate(request):
             A.INTEGER_SCALAR_POLICY_SCHEMA,
             A.METADATA_POLICY_SCHEMA,
             A.TRIANGULAR_POLICY_SCHEMA,
+            A.RESHAPE_POLICY_SCHEMA,
+            A.REDUCTION_POLICY_SCHEMA,
         }
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)
@@ -254,7 +274,13 @@ def validate(request):
         or any(type(value) is not int or value < 1 for value in automatic["budget"].values())
     ):
         raise ValueError("full original Phase 0 needs explicit supported automatic construction budgets")
-    if request["schema"] in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA}:
+    if request["schema"] in {
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         selected = request["original_scalar_conversion"]
         if (
             automatic["schema"]
@@ -262,13 +288,21 @@ def validate(request):
                 INTEGER_SCALAR_SCHEMA: A.INTEGER_SCALAR_POLICY_SCHEMA,
                 METADATA_SCHEMA: A.METADATA_POLICY_SCHEMA,
                 TRIANGULAR_SCHEMA: A.TRIANGULAR_POLICY_SCHEMA,
+                RESHAPE_SCHEMA: A.RESHAPE_POLICY_SCHEMA,
+                REDUCTION_SCHEMA: A.REDUCTION_POLICY_SCHEMA,
             }[request["schema"]]
             or not tensor
             or type(selected) is not dict
             or set(selected) != {"path", "sha256"}
         ):
             raise ValueError("integer construction needs v14, native Tensor bindings and exact converter inputs")
-    elif automatic["schema"] in {A.INTEGER_SCALAR_POLICY_SCHEMA, A.METADATA_POLICY_SCHEMA, A.TRIANGULAR_POLICY_SCHEMA}:
+    elif automatic["schema"] in {
+        A.INTEGER_SCALAR_POLICY_SCHEMA,
+        A.METADATA_POLICY_SCHEMA,
+        A.TRIANGULAR_POLICY_SCHEMA,
+        A.RESHAPE_POLICY_SCHEMA,
+        A.REDUCTION_POLICY_SCHEMA,
+    }:
         raise ValueError("original integer construction requires its explicit v7 declared caller")
     validate_execution_budget(automatic["execution_budget"])
     validate_source_budget(automatic["original_source_budget"])
@@ -515,6 +549,8 @@ def run(request_path, *, output):
         INTEGER_SCALAR_SCHEMA,
         METADATA_SCHEMA,
         TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         performance_paths, objectives, sweep_template = _source_performance_inputs(
             request["source_performance"], forbidden=forbidden
@@ -525,13 +561,25 @@ def run(request_path, *, output):
 
         reference_inputs = read_selection(request["original_references"], forbidden=forbidden)
     scalar_inputs, scalar_conversion = None, None
-    if request["schema"] in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA}:
+    if request["schema"] in {
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         from . import original_scalar_conversion_flow
 
         scalar_inputs = original_scalar_conversion_flow.read_selection(
             request["original_scalar_conversion"],
             forbidden=forbidden,
-            version={INTEGER_SCALAR_SCHEMA: 1, METADATA_SCHEMA: 2, TRIANGULAR_SCHEMA: 3}[request["schema"]],
+            version={
+                INTEGER_SCALAR_SCHEMA: 1,
+                METADATA_SCHEMA: 2,
+                TRIANGULAR_SCHEMA: 3,
+                RESHAPE_SCHEMA: 4,
+                REDUCTION_SCHEMA: 5,
+            }[request["schema"]],
         )
     output = Path(output).absolute()
     _outside(output, forbidden)
@@ -807,21 +855,35 @@ def run(request_path, *, output):
             INTEGER_SCALAR_SCHEMA,
             METADATA_SCHEMA,
             TRIANGULAR_SCHEMA,
+            RESHAPE_SCHEMA,
+            REDUCTION_SCHEMA,
         }:
             from .source_requirement_ledger import (
                 prepare_metadata_prerequisite_ledger,
                 prepare_prerequisite_ledger,
+                prepare_reduction_prerequisite_ledger,
                 prepare_requirement_ledger,
+                prepare_reshape_prerequisite_ledger,
                 prepare_triangular_prerequisite_ledger,
             )
 
             prepare_ledger = prepare_requirement_ledger
             prerequisite_inputs = {}
-            if request["schema"] in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA}:
+            if request["schema"] in {
+                INTEGER_SCALAR_SCHEMA,
+                METADATA_SCHEMA,
+                TRIANGULAR_SCHEMA,
+                RESHAPE_SCHEMA,
+                REDUCTION_SCHEMA,
+            }:
                 from .component_semantic_basis import ComponentSemanticBasis
 
                 prepare_ledger = (
-                    prepare_triangular_prerequisite_ledger
+                    prepare_reduction_prerequisite_ledger
+                    if request["schema"] == REDUCTION_SCHEMA
+                    else prepare_reshape_prerequisite_ledger
+                    if request["schema"] == RESHAPE_SCHEMA
+                    else prepare_triangular_prerequisite_ledger
                     if request["schema"] == TRIANGULAR_SCHEMA
                     else prepare_metadata_prerequisite_ledger
                     if request["schema"] == METADATA_SCHEMA

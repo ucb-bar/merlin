@@ -12,8 +12,11 @@ module's name appears in comments and docstrings of code that never imports it) 
 module under the instrumented packages to have a PRODUCTION importer: code under the library, the
 experiments, the targets (``merlin/targets`` and the target workflows under ``examples/``) or the
 build tools, excluding the test suite and the module itself. A declared console script or an
-executable ``python -m`` command in the shared runtime-rendered task prompt counts as wired. Tests
-do not: a test proves a module works, not that anything uses it.
+executable ``python -m`` command in the shared runtime-rendered task prompt counts as wired.
+A literal module selected through the canonical ``module_source_path`` helper is a source
+dependency too: isolated workers execute its file under another interpreter. This static
+dependency scan establishes no actual execution or grading authority. Tests do not: a test proves
+a module works, not that anything uses it.
 
 TWO GRANULARITIES, BECAUSE MODULE GRANULARITY HAS A BLIND SPOT THE SIZE OF A MODULE. An imported
 module is "wired" whatever is inside it, so a function nobody calls hides inside one perfectly:
@@ -132,8 +135,52 @@ def _tree(path: Path) -> ast.AST | None:
         return None
 
 
+def _source_path_selections(tree: ast.AST) -> set[str]:
+    """Literal source dependencies selected by the explicitly imported canonical helper.
+
+    Do not interpret arbitrary strings, similarly named helpers or computed requests.
+    Like imports, this records a source reference rather than proving execution.
+    """
+    selectors: set[tuple[str, ...]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and not node.level:
+            for alias in node.names:
+                if node.module == "merlin.common.paths" and alias.name == "module_source_path":
+                    selectors.add((alias.asname or alias.name,))
+                elif node.module == "merlin.common" and alias.name == "paths":
+                    selectors.add((alias.asname or alias.name, "module_source_path"))
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "merlin.common.paths":
+                    prefix = (alias.asname,) if alias.asname else tuple(alias.name.split("."))
+                    selectors.add((*prefix, "module_source_path"))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        parts: list[str] = []
+        function = node.func
+        while isinstance(function, ast.Attribute):
+            parts.append(function.attr)
+            function = function.value
+        if not isinstance(function, ast.Name) or (function.id, *reversed(parts)) not in selectors:
+            continue
+        argument = None
+        if len(node.args) == 1 and not node.keywords:
+            argument = node.args[0]
+        elif not node.args and len(node.keywords) == 1 and node.keywords[0].arg == "module":
+            argument = node.keywords[0].value
+        if (
+            isinstance(argument, ast.Constant)
+            and isinstance(argument.value, str)
+            and all(part.isidentifier() for part in argument.value.split("."))
+        ):
+            found.add(argument.value)
+    return found
+
+
 def _imports(path: Path) -> set[str]:
-    """Every dotted module name ``path`` imports, with relative imports resolved."""
+    """Imported and fixed source-selected module names, with relative imports resolved."""
     tree = _tree(path)
     if tree is None:
         return set()
@@ -141,7 +188,7 @@ def _imports(path: Path) -> set[str]:
     package = None
     if own is not None:
         package = own if path.name == "__init__.py" else own.rpartition(".")[0]
-    found: set[str] = set()
+    found = _source_path_selections(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)

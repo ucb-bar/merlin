@@ -21,6 +21,8 @@ SCHEMA = "merlin.phase0.source_requirement_ledger.v1"
 PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v3"
 METADATA_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v4"
 TRIANGULAR_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v5"
+RESHAPE_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v6"
+REDUCTION_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v7"
 PURPOSES = ("source_diagnostic", "source_preparation", "performance_campaign")
 
 # These are compiler verdict owners, not evidence that a source case exists.
@@ -373,7 +375,13 @@ def _prepare_prerequisite_ledger(
     if not set(original) <= set(union):
         raise ValueError("stable prerequisites omitted an original coverage ID")
     result.update(
-        schema={1: PREREQUISITE_SCHEMA, 2: METADATA_PREREQUISITE_SCHEMA, 3: TRIANGULAR_PREREQUISITE_SCHEMA}[version],
+        schema={
+            1: PREREQUISITE_SCHEMA,
+            2: METADATA_PREREQUISITE_SCHEMA,
+            3: TRIANGULAR_PREREQUISITE_SCHEMA,
+            4: RESHAPE_PREREQUISITE_SCHEMA,
+            5: REDUCTION_PREREQUISITE_SCHEMA,
+        }[version],
         coverage_projection_schema=result["schema"],
         original_prerequisite_ids=union,
         original_factory_prerequisites=observation,
@@ -419,4 +427,38 @@ def verify_metadata_prerequisite_ledger(ledger, **inputs):
     actual = prepare_metadata_prerequisite_ledger(**inputs)
     if canonical_json(actual.record()) != canonical_json(ledger.record()):
         raise ValueError("metadata original prerequisite roster or source bytes changed")
+    return actual.record()
+
+
+def prepare_reshape_prerequisite_ledger(**inputs):
+    """Replay explicit source-v10/v6, keeping every original call/cohort identity."""
+    return _prepare_prerequisite_ledger(**inputs, version=4)
+
+
+def verify_reshape_prerequisite_ledger(ledger, **inputs):
+    """Reopen all reshape prerequisites beside unchanged original coverage gaps."""
+    from merlin.common.jsonio import canonical_json
+
+    if type(ledger) is not SourceRequirementLedger:
+        raise ValueError("reshape prerequisite comparison needs the exact diagnostic data type")
+    actual = prepare_reshape_prerequisite_ledger(**inputs)
+    if canonical_json(actual.record()) != canonical_json(ledger.record()):
+        raise ValueError("reshape prerequisite roster or unchanged coverage projection changed")
+    return actual.record()
+
+
+def prepare_reduction_prerequisite_ledger(**inputs):
+    """Replay explicit source-v11/v7 with every original call/cohort identity."""
+    return _prepare_prerequisite_ledger(**inputs, version=5)
+
+
+def verify_reduction_prerequisite_ledger(ledger, **inputs):
+    """Reopen reduction prerequisites beside all unchanged coverage blockers."""
+    from merlin.common.jsonio import canonical_json
+
+    if type(ledger) is not SourceRequirementLedger:
+        raise ValueError("reduction prerequisite comparison needs the exact diagnostic data type")
+    actual = prepare_reduction_prerequisite_ledger(**inputs)
+    if canonical_json(actual.record()) != canonical_json(ledger.record()):
+        raise ValueError("reduction prerequisite roster or unchanged coverage projection changed")
     return actual.record()

@@ -139,6 +139,17 @@ An explicit empty original input tuple or logical input map represents a zero-in
 program; it is distinct from absent input data. The original output roster stays
 nonempty and complete, with every output pointer and tensor type checked.
 
+`source_observation` keeps the original straight-line reader contract when no
+control-flow plan is selected. An explicit `ControlFlowObservationPlan` freezes
+the whole LLVM input, entry, layout declaration and every reader budget. Its
+separate versioned `observe_control_flow` method receives the complete bounded
+static CFG, including cyclic joins and dead blocks, through the ordinary prepared
+source-verifier call. The actual graph and input invocation are retained. Layout
+declarations, callback attribution and graph inventory do not prove same-object
+DataLayout/storage correspondence, source semantics, dynamic paths, output
+coverage, ownership, effects, resources, stages or runtime. Unsupported module
+metadata remains refused; do not strip it or silently reinterpret old readers.
+
 `pointer_storage` declares original logical pointer storage only from explicit
 software choices and original static tensor types. No contiguous/noalias/order,
 endian, alignment or extent default comes from candidate output. The shared

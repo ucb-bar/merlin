@@ -115,7 +115,9 @@ def compile_host(kernel_module, workdir: str | Path, *, retain_llvm_dialect: boo
     result_dtype = host_scalar_result_dtype(kernel_module)
     workdir = Path(workdir).resolve()
     res = lower_model(
-        to_text(kernel_module),
+        # Some custom operation printers omit attribute dictionaries. Preserve
+        # the full typed source before preprocessing records its correspondence.
+        to_text(kernel_module, generic=True),
         workdir,
         targets=("host",),
         retain_llvm_dialect=retain_llvm_dialect or descriptor_selection is not None,

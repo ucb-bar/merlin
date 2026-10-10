@@ -205,6 +205,21 @@ The installed `value-binding-observation` operator command requires a closed
 original selection request, explicit input/output byte bounds and a fresh output.
 It reopens request/source identities after export without granting source roles.
 
+`hw_conditional_value_cones.prepare_conditional_value_cones` composes explicitly
+selected typed source sinks under a complete exact roster of original integer
+state, memory-read and opaque-result cuts. Only boundaries discovered by the
+fresh structural reader can become conditional inputs; clock, noninteger and
+unsupported reachable values refuse. Source hashes, occurrence paths, producer
+ordinals, result slots and types must agree. Whole-source and rooted hierarchy
+bounds precede parsing/expansion; complete case/output work precedes evaluation.
+The metadata byte limit also bounds the complete returned canonical record,
+including wrapper input/output/cut identities and original source membership.
+Shared primitive semantics evaluate known bits only. Complete source operation,
+state and effect membership and every unknown remain recorded. Supplied cut
+values do not establish initialization, state transfers, history, collision
+validity, opaque implementation, events, roles, ownership, physical costs or
+admission. Existing value-binding and closed-module reader semantics stay fixed.
+
 `hw_array_selection` preflights all rooted creation/get occurrences against
 explicit operation, element and aggregate-bit budgets before scalar expansion.
 Only exact single-level signless scalar arrays created in the same block are

@@ -84,3 +84,16 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   selection. Preserve every prior qualification suite and original source ID.
   Native issuers and conversion seams are substituted in these controls;
   packaging grants no numerical, effect, packing, hardware or phase admission.
+- `original-reshape-source-flow` retains all 105 reshape-source and versioned
+  ordinary-caller controls with zero skips. Archive the exact eleven fixture
+  siblings, including the literal `original_reference_fixtures.py` selection.
+  Preserve every prior qualification suite, original source/cohort ID and
+  exact shape literal. Fixed-product factorizations do not show larger capacity;
+  construction and installed wiring grant no alias, effect, numerical, packing,
+  hardware, runtime or phase admission. Native seams are diagnostic substitutes.
+- `source-cfg-caller-controls` retains the exact 60 new bounded CFG and
+  ordinary-caller source controls plus four fixture siblings, with zero skips.
+  Preserve every existing suite, including the independent `emitted-dataflow`
+  native optimizer gate. This pure source suite observes complete static graphs
+  and refusals; it does not compile or execute a candidate, establish an actual
+  object DataLayout, or grant numerical, effect, runtime or phase admission.
