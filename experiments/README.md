@@ -107,11 +107,15 @@ The catalog workflow below uses `capsule_derivation` for Phase 0 and the install
 derivation and `FreshPhase1Inputs` authoring are a separate qualification route;
 their diagnostic ledgers do not establish or replace this catalog handoff.
 
-Select independently reviewed target support through `MERLIN_TARGET_PATH` before
-preparation or EL4 preflight. A metadata-only target example does not supply an
-executable `plugin.backend`. Configuration preflight checks selected files and
-bindings and reports `engine_readiness: not_executed`; native tool, oracle and
-sandbox probes remain required on the execution worker before authoring.
+Select the same reviewed execution contract and RTL facts for derivation,
+preparation and EL4 preflight. A contract declaring `runner.backend: chipyard_rocc`
+uses [shared neutral tooling](../docs/reference/neutral_runtime_tooling.md) without
+an executable support provider. Other execution providers require independent
+review and explicit selection through `MERLIN_TARGET_PATH`; compiler-bearing
+handwritten support cannot grade a fresh compiler. The metadata-only target
+example is not a ready execution contract. Configuration preflight reports
+`engine_readiness: not_executed`; native tool, oracle and sandbox probes remain
+required on the execution worker before authoring.
 
 After a complete phase-0 run, prepare a fresh release under the configured
 artifact root. New target workflows use `--generated-only`: the released public
@@ -124,7 +128,8 @@ broker shims, regenerate bundles, refuse unresolved provenance and collisions,
 and leave the original inputs unchanged.
 
 ```sh
-merlin experiment run gemmini-functional --phase 0 --run-dir /absolute/phase0-run
+# SPEC names the reviewed verified definition, not an unchanged diagnostic example.
+merlin experiment run "$SPEC" --phase 0 --run-dir /absolute/phase0-run
 merlin experiment corpus coverage /absolute/phase0-run --spec /absolute/selected-conformance.yaml
 merlin experiment corpus prepare /absolute/phase0-run --generated-only \
   --output /configured/out/artifacts/protocols/review-1
