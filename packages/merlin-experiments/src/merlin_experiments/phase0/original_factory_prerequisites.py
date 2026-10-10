@@ -25,6 +25,7 @@ from .software_intake import IndependentSoftwareIntake
 
 SCHEMA = "merlin.original_factory_prerequisites.v1"
 METADATA_SCHEMA = "merlin.original_factory_prerequisites.v2"
+TRIANGULAR_SCHEMA = "merlin.original_factory_prerequisites.v3"
 _KIND = "original_operator_factory"
 
 
@@ -36,9 +37,10 @@ def _requests(source_record, basis, *, version=1):
     """Derive all identities before reading any factory status or source pin."""
     if (
         type(version) is not int
-        or version not in {1, 2}
+        or version not in {1, 2, 3}
         or type(source_record) is not dict
-        or source_record.get("schema") != (C.METADATA_SCHEMA if version == 2 else C.INTEGER_SCALAR_SCHEMA)
+        or source_record.get("schema")
+        != {1: C.INTEGER_SCALAR_SCHEMA, 2: C.METADATA_SCHEMA, 3: C.TRIANGULAR_SCHEMA}[version]
     ):
         raise ValueError("stable factory prerequisites require the explicit original source vocabulary")
     originals = loads(basis.declaration_json)["members"]
@@ -131,11 +133,9 @@ def _record(schema_intake, basis, source_record, *, version=1):
         elif slot["status"] != "unknown":
             raise ValueError("factory prerequisite has no supported original construction outcome")
         rows.append(row)
-    readers = [
-        _pin(module_source_path(name)) for name in (__name__, A.__name__, *C.reader_modules(8 if version == 2 else 7))
-    ]
+    readers = [_pin(module_source_path(name)) for name in (__name__, A.__name__, *C.reader_modules(version + 6))]
     document = {
-        "schema": METADATA_SCHEMA if version == 2 else SCHEMA,
+        "schema": {1: SCHEMA, 2: METADATA_SCHEMA, 3: TRIANGULAR_SCHEMA}[version],
         "operator_schema_intake_sha256": schema_intake.sha256,
         "semantic_basis_sha256": basis.source.sha256,
         "software_intake_sha256": software.sha256,
@@ -148,7 +148,7 @@ def _record(schema_intake, basis, source_record, *, version=1):
         "admission": "not_issued",
         "scope": "exact original source construction only; all other original requirements remain separate",
     }
-    if version == 2:
+    if version >= 2:
         # Derive call identities independently of their observed status. The
         # historical missing zero-return identity remains in the union when
         # the selected live bridge now supplies the complete logical join.

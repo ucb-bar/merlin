@@ -78,3 +78,9 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   retained sibling loader; direct AST imports alone do not close that edge.
   The controls substitute native issuers and conversions. Installed wiring
   establishes no numerical, alias, effect, hardware, runtime or phase admission.
+- `original-triangular-source-flow` retains all 79 triangular-source and
+  versioned ordinary-caller controls with zero skips. Archive the exact eleven
+  fixture siblings, including the literal `original_reference_fixtures.py`
+  selection. Preserve every prior qualification suite and original source ID.
+  Native issuers and conversion seams are substituted in these controls;
+  packaging grants no numerical, effect, packing, hardware or phase admission.

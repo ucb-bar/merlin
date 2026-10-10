@@ -175,6 +175,14 @@ invocation remains unavailable rather than gaining an evidence exception.
 
 ## Interfaces
 
+`original_triangular_sources` preserves exact original `aten.triu.default`
+Tensor/int/result bindings, signed64 diagonal/default, positive rank of at least
+two, CPU strided storage and the same-shape relation. Fresh bounded dimensions
+come only from explicit extent; the triangular axes are always the last two.
+Bound complete input/output counts and rank metadata before geometry allocation.
+Source construction grants no numerical, alias, effect, packing or hardware
+admission; unsupported types and source relations remain explicit unknowns.
+
 `original_scalar_binary_correspondence` checks actual parsed standard IR for the
 bounded original one-Tensor/right-FloatLiteral mul/div form. Reopen exact f32
 coefficient bits, input/splat/body operand order, identity maps and complete

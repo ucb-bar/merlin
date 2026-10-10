@@ -15,6 +15,17 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
+construction for the exact original signed diagonal/default, positive rank of
+at least two and same input/result storage and shape relation. Preserve the
+last-two-axis semantics with independent fresh geometry and complete rank,
+logical input/output and aggregate source budgets. Stable factory v3/ledger v5
+retain all original call/cohort IDs, including fulfilled source prerequisites;
+scalar-conversion selection/receipt v4 and declared selection v3 retain the
+unchanged scalar sub-roster and observer v2. Earlier versions retain their
+meanings. Construction grants no reference, effect, packing, numerical or phase
+admission, and unsupported original formats remain required.
+
 Original call-source v8 / automatic v15 / declared v8 explicitly select bounded
 typed `to.dtype` and metadata-assertion factories. Retain original storage/rank,
 cast flags and dtype/device/layout conditions; non-None size/stride requirements

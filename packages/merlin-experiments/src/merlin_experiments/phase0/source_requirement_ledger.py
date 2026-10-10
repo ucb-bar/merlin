@@ -20,6 +20,7 @@ from .component_generation import digest
 SCHEMA = "merlin.phase0.source_requirement_ledger.v1"
 PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v3"
 METADATA_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v4"
+TRIANGULAR_PREREQUISITE_SCHEMA = "merlin.phase0.source_requirement_ledger.v5"
 PURPOSES = ("source_diagnostic", "source_preparation", "performance_campaign")
 
 # These are compiler verdict owners, not evidence that a source case exists.
@@ -351,13 +352,13 @@ def _prepare_prerequisite_ledger(
         raise ValueError("stable prerequisites lost or duplicated an original coverage ID")
     observation = factory.record()
     factories = {row["id"]: row for row in observation["factory_prerequisites"]}
-    if version == 2:
+    if version >= 2:
         factories.update({row["id"]: row for row in observation["call_prerequisites"]})
     for row in result["requirements"]:
         selected = factories.get(row["original_id"])
         if (
             row["kind"] == "original_operator_factory"
-            or (version == 2 and row["kind"] == "original_call_binding")
+            or (version >= 2 and row["kind"] == "original_call_binding")
             or selected is not None
         ):
             if (
@@ -372,7 +373,7 @@ def _prepare_prerequisite_ledger(
     if not set(original) <= set(union):
         raise ValueError("stable prerequisites omitted an original coverage ID")
     result.update(
-        schema=METADATA_PREREQUISITE_SCHEMA if version == 2 else PREREQUISITE_SCHEMA,
+        schema={1: PREREQUISITE_SCHEMA, 2: METADATA_PREREQUISITE_SCHEMA, 3: TRIANGULAR_PREREQUISITE_SCHEMA}[version],
         coverage_projection_schema=result["schema"],
         original_prerequisite_ids=union,
         original_factory_prerequisites=observation,
@@ -390,6 +391,11 @@ def prepare_prerequisite_ledger(**inputs):
 def prepare_metadata_prerequisite_ledger(**inputs):
     """Replay explicit source-v8/v4 without changing any original selector ID."""
     return _prepare_prerequisite_ledger(**inputs, version=2)
+
+
+def prepare_triangular_prerequisite_ledger(**inputs):
+    """Replay explicit source-v9/v5 with all original call/cohort identities."""
+    return _prepare_prerequisite_ledger(**inputs, version=3)
 
 
 def verify_prerequisite_ledger(ledger, **inputs):
