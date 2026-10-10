@@ -14,6 +14,8 @@ Sections (each is an independent pass/fail; a failure does not abort the rest):
 
 Exit 0 = GO. Non-zero = NO-GO. For Chipyard, pass
 ``--reference-backend /absolute/path/to/oot/package``.
+``--oracle-probe-only`` instead checks an explicitly selected operator probe set;
+its exit status covers that finite oracle gate, not full experiment readiness.
 """
 
 from __future__ import annotations
@@ -1104,7 +1106,7 @@ def _oracle_sim_via() -> str:
     return (load_target_experiment(desc).sim_via or "").strip() if desc.is_file() else ""
 
 
-def test_oracles_endtoend(reference_backend: str | None = None):
+def test_oracles_endtoend(reference_backend: str | None = None, *, probes: dict | None = None):
     """G. Prove the target's REAL grading oracle can produce a verdict — the safeguard abc7 lacked.
     Routed by the target's oracle kind (contract, no target literal):
 
@@ -1127,6 +1129,9 @@ def test_oracles_endtoend(reference_backend: str | None = None):
     from merlin.targetgen import capsule_runner as CR
 
     sim_via = _oracle_sim_via()
+    if probes is not None and sim_via != "chipyard":
+        _ok("explicit capsule probes require the Chipyard grading route", False)
+        return
     if sim_via != "chipyard":
         # self-hosted-ISA program oracle (arc cosim + model venv); no chipyard reference backend exists.
         # Probe oracle_available in a FRESH interpreter — exactly how the launcher runs its preflight.
@@ -1233,7 +1238,13 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
         return
-    from readiness_reference import select_reference_backend
+    from readiness_reference import (
+        probe_row,
+        rejected_probe,
+        select_reference_backend,
+        verify_probe_inputs,
+        verify_timing_output,
+    )
 
     try:
         ref, ref_manifest = select_reference_backend(reference_backend, target=TARGET)
@@ -1245,8 +1256,10 @@ def test_oracles_endtoend(reference_backend: str | None = None):
     # The separate graded-path check below must still reject Phase-0 admission inputs until
     # an operator has prepared and reviewed a release. Without an explicit probe root the
     # self-check attempts that release first, so no L2/L3 simulator timing can be measured.
-    probe_root = REPO / "merlin/contract/capsules/isa"
-    probe_names = ("A1_mvin_mvout", "A2_single_tile_matmul")
+    probe_root = probes["root"] if probes is not None else REPO / "merlin/contract/capsules/isa"
+    probe_names = (
+        (probes["screen"], probes["timing"]) if probes is not None else ("A1_mvin_mvout", "A2_single_tile_matmul")
+    )
     if not all((probe_root / name / "capsule.yaml").is_file() for name in probe_names):
         _ok("reference ISA simulator probes present", False, f"missing {probe_names} under {probe_root}")
         return
@@ -1259,9 +1272,13 @@ def test_oracles_endtoend(reference_backend: str | None = None):
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
-    def _grade(sub, sim, to, cap="A1_mvin_mvout"):
+    def _grade(sub, sim, to, cap=None):
         from merlin_experiments.frozen_python import inherited_python_command
 
+        if probes is not None:
+            verify_probe_inputs(probes)
+            to = probes["timeout_s"]
+        cap = probe_names[0] if cap is None else cap
         r = subprocess.run(
             inherited_python_command(
                 [
@@ -1292,6 +1309,8 @@ def test_oracles_endtoend(reference_backend: str | None = None):
             text=True,
             timeout=to + 120,
         )
+        if probes is not None:
+            verify_probe_inputs(probes)
         # The grader prints human diagnostics ("tier plan: ...", "model gate: ...") on the same stdout
         # that carries the verdict, so a bare loads() of the whole stream fails and every oracle check
         # here reported n=None -- a NO-GO that blamed the oracles for a stream-parsing bug. Scan for the
@@ -1343,11 +1362,15 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         # no adapter for it, so a screen-only grade correctly reports the capsule as not certified. Reading
         # the tier's own result keeps this a check on the oracle rather than on the pass bar.
         sp = _grade(ref, "spike", 300)
-        c = (sp.get("per_capsule") or [{}])[0]
+        c = (
+            probe_row(sp, capsule=probe_names[0], sim="spike")
+            if probes is not None
+            else (sp.get("per_capsule") or [{}])[0]
+        )
         _spike_tier = (c.get("tiers") or {}).get("L2") or c.get("barrier_status")
         _ok(
             "spike RUNS to a real L2=pass on the reference backend",
-            sp.get("n_capsules") == 1 and _spike_tier == "pass",
+            sp.get("n_capsules") == 1 and _spike_tier == "pass" and (probes is None or c.get("pass") is True),
             f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error', '')[:50]}",
         )
         # The compute capsule reaches the declared L3 tier. Measure exactly the engine the normal
@@ -1360,9 +1383,13 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         engine = before["engine"]
         reference_manifest_sha256 = sha256_file(ref / "manifest.yaml")
         t0 = _time.monotonic()
-        ve = _grade(ref, engine, 900, cap="A2_single_tile_matmul")
+        ve = _grade(ref, engine, 900, cap=probe_names[1])
         dt = _time.monotonic() - t0
-        cv = (ve.get("per_capsule") or [{}])[0]
+        cv = (
+            probe_row(ve, capsule=probe_names[1], sim=engine, returncodes=(0,))
+            if probes is not None
+            else (ve.get("per_capsule") or [{}])[0]
+        )
         l3 = (
             ve.get("all_pass") is True
             and type(ve.get("n_capsules")) is int
@@ -1376,10 +1403,24 @@ def test_oracles_endtoend(reference_backend: str | None = None):
             f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
             f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}",
         )
-        if l3:
+        negatives_passed = True
+        if probes is not None:
+            wrong = _grade(probes["incorrect_backend"], engine, 900, cap=probe_names[1])
+            wrong_rejected = rejected_probe(wrong, capsule=probe_names[1], sim=engine, category="FUNCTIONAL_MISMATCH")
+            _ok("supplied incorrect-output package rejected by complete numerical comparison", wrong_rejected)
+            forbidden = _grade(probes["prohibited_backend"], engine, 900, cap=probes["prohibited_probe"])
+            forbidden_rejected = rejected_probe(
+                forbidden, capsule=probes["prohibited_probe"], sim=engine, category="PROHIBITED_INSTRUCTION"
+            )
+            _ok("supplied prohibited-instruction package rejected by linked-program policy", forbidden_rejected)
+            verify_probe_inputs(probes)
+            negatives_passed = wrong_rejected and forbidden_rejected
+        if l3 and negatives_passed and (probes is None or c.get("pass") is True and _spike_tier == "pass"):
             if sha256_file(ref / "manifest.yaml") != reference_manifest_sha256:
                 raise ValueError("selected reference manifest changed during the timing observation")
-            selected = timing_path(EXP, TARGET)
+            selected = probes["timing_output"] if probes is not None else timing_path(EXP, TARGET)
+            if probes is not None:
+                verify_timing_output(selected, resource_root=probes["resource_root"])
             write_observed_timing(
                 selected,
                 descriptor=C.DESCRIPTOR,
@@ -1387,7 +1428,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
                 before=before,
                 elapsed_s=dt,
                 report=ve,
-                measured_capsule="A2_single_tile_matmul",
+                measured_capsule=probe_names[1],
                 measured_by="readiness_check",
                 reference={
                     "backend": str(ref),
@@ -1561,29 +1602,75 @@ def main(argv: list[str] | None = None) -> int:
         "--reference-backend",
         help="absolute path to an operator-selected MLIR OOT backend for Chipyard L2/L3 timing",
     )
+    parser.add_argument(
+        "--oracle-probe-only", action="store_true", help="run only the explicitly selected oracle probe gate"
+    )
+    parser.add_argument("--probe-capsules-root", help="absolute operator-only probe capsule root")
+    parser.add_argument("--screen-probe", help="one selected L2 probe capsule name")
+    parser.add_argument("--timing-probe", help="one selected L3 timing capsule name")
+    parser.add_argument(
+        "--incorrect-output-backend", help="absolute operator package producing incorrect timing-probe outputs"
+    )
+    parser.add_argument(
+        "--prohibited-instruction-backend", help="absolute operator package carrying a prohibited instruction"
+    )
+    parser.add_argument("--prohibited-probe", help="one selected capsule for the instruction-policy negative control")
+    parser.add_argument(
+        "--probe-timeout-s",
+        type=int,
+        help="explicit per-grade oracle timeout (1..600 seconds), within each selected engine budget",
+    )
+    parser.add_argument("--oracle-timing-output", help="fresh absolute timing artifact outside descriptor resources")
     args = parser.parse_args(argv)
+    from readiness_reference import select_probe_inputs
+
+    try:
+        probes = select_probe_inputs(
+            target=TARGET,
+            root=args.probe_capsules_root,
+            screen=args.screen_probe,
+            timing=args.timing_probe,
+            incorrect_backend=args.incorrect_output_backend,
+            prohibited_backend=args.prohibited_instruction_backend,
+            prohibited_probe=args.prohibited_probe,
+            timeout_s=args.probe_timeout_s,
+            timing_output=args.oracle_timing_output,
+            resource_root=EXP,
+            required=args.oracle_probe_only,
+        )
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        parser.error(str(exc))
     sys.path.insert(0, str(REPO / "merlin" / "python"))
-    print("READINESS CHECK — exercising all tooling (no agent launched)")
-    for fn in (
-        test_starter_kit,
-        test_generators,
-        test_circt_gate,
-        test_harness,
-        test_oracles_endtoend,
-        test_verify_no_cheat,
-        test_corpus_fits_the_endpoint,
-        test_graded_path_is_the_declared_one,
-        test_contract_provenance,
-        test_isa_encoding_agrees_with_rtl,
-        test_bundles,
-        test_sandbox_authoring_tools,
-        test_every_declared_grant_resolves,
-        test_every_grant_survives_the_assembled_sandbox,
-        test_semantic_coverage_measurable,
-        test_the_launch_interpreter_runs_this_checkout,
-    ):
+    print(
+        "ORACLE PROBE CHECK — selected probes only (no agent launched)"
+        if args.oracle_probe_only
+        else "READINESS CHECK — exercising all tooling (no agent launched)"
+    )
+    checks = (
+        (test_oracles_endtoend,)
+        if args.oracle_probe_only
+        else (
+            test_starter_kit,
+            test_generators,
+            test_circt_gate,
+            test_harness,
+            test_oracles_endtoend,
+            test_verify_no_cheat,
+            test_corpus_fits_the_endpoint,
+            test_graded_path_is_the_declared_one,
+            test_contract_provenance,
+            test_isa_encoding_agrees_with_rtl,
+            test_bundles,
+            test_sandbox_authoring_tools,
+            test_every_declared_grant_resolves,
+            test_every_grant_survives_the_assembled_sandbox,
+            test_semantic_coverage_measurable,
+            test_the_launch_interpreter_runs_this_checkout,
+        )
+    )
+    for fn in checks:
         try:
-            fn(args.reference_backend) if fn is test_oracles_endtoend else fn()
+            fn(args.reference_backend, probes=probes) if fn is test_oracles_endtoend else fn()
         except Exception as e:
             _ok(f"{fn.__name__} (uncaught)", False, f"{type(e).__name__}: {e}")
     n_pass = sum(1 for _, ok, _ in results if ok is True)
@@ -1599,11 +1686,18 @@ def main(argv: list[str] | None = None) -> int:
     go = n_fail == 0 and n_pass > 0
     if n_fail == 0 and n_pass == 0:
         print("  [FAIL] readiness recorded no pass/fail verdict — nothing was actually checked")
-    print(
-        "🟢 GO — all tooling verified; ready for an A/B run pending your approval."
-        if go
-        else "🔴 NO-GO — resolve the FAILs above before launching."
-    )
+    if args.oracle_probe_only:
+        print(
+            "ORACLE PROBES PASS — finite selected timing/output/policy gate only; not full readiness."
+            if go
+            else "ORACLE PROBES NO-GO — selected gate failed."
+        )
+    else:
+        print(
+            "🟢 GO — all tooling verified; ready for an A/B run pending your approval."
+            if go
+            else "🔴 NO-GO — resolve the FAILs above before launching."
+        )
     return 0 if go else 1
 
 
