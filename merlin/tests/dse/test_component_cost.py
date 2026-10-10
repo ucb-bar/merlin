@@ -190,6 +190,119 @@ def test_default_screening_requires_held_ranking_error_and_interval_coverage():
     assert failed["interval_coverage"]["rate"] == 0
 
 
+@pytest.mark.parametrize("known", [False, True])
+def test_held_report_preserves_complete_group_membership_and_unknowns(known):
+    class SelectedPrediction:
+        def predict(self, features, *, domain_sha256):
+            return Exact().predict(features, domain_sha256=domain_sha256) if known else CycleInterval.unknown("scope")
+
+    report = qualify_component_screen(
+        held_rows(), lambda _train: SelectedPrediction(), calibration_sha256=sha("calibration")
+    )
+    assert validate_component_screen_report(report) == report
+    assert len(report["predictions"]) == 30
+    assert report["exposable"] is known
+    assert report["policy"] == ComponentScreenPolicy().to_dict()
+
+
+@pytest.mark.parametrize("row_index", [0, 10, 20])
+def test_held_report_refuses_one_workload_split_across_groups(row_index):
+    report = qualify_component_screen(held_rows(), lambda _train: Exact(), calibration_sha256=sha("calibration"))
+    report["predictions"][row_index]["group"] = "changed group"
+    with pytest.raises(ValueError, match="all variants of a workload must share one held-out group"):
+        validate_component_screen_report(report)
+
+
+def test_screen_producer_refuses_split_workloads_before_fitting():
+    rows = held_rows()
+    rows[0] = replace(rows[0], group="changed group")
+
+    def fit(_training):
+        pytest.fail("split held workload reached model fitting")
+
+    with pytest.raises(ValueError, match="all variants of a workload must share one held-out group"):
+        qualify_component_screen(rows, fit, calibration_sha256=sha("calibration"))
+
+
+def _partial_held_report():
+    class PartialPrediction:
+        def predict(self, features, *, domain_sha256):
+            count = features["/count"]
+            if count == 10:
+                return CycleInterval.unknown("source diagnostic unknown feature")
+            return CycleInterval.point(count * 10 + (0.1 if count == 1 else 0), "synthetic reader control")
+
+    return qualify_component_screen(
+        held_rows(), lambda _train: PartialPrediction(), calibration_sha256=sha("calibration")
+    )
+
+
+def test_unresolved_held_rows_preserve_complete_original_counts():
+    report = _partial_held_report()
+    assert validate_component_screen_report(report) == report
+    assert len(report["predictions"]) == 30
+    assert report["interval_coverage"] == {"n": 27, "contains": 24, "rate": 24 / 27}
+    assert report["ranking"]["overall"]["decided"] == 108
+    assert all(row["decided"] == 36 for row in report["ranking"]["slices"].values())
+    assert report["exposable"] is False
+    assert report["policy"] == ComponentScreenPolicy().to_dict()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("contains_observation", False), ("contains_observation", True), ("relative_error", 0.0), ("relative_error", 1.0)],
+)
+def test_unresolved_held_predictions_cannot_claim_metrics(field, value):
+    report = _partial_held_report()
+    unknown = next(row for row in report["predictions"] if not row["prediction"]["resolved"])
+    unknown[field] = value
+    with pytest.raises(ValueError, match="unresolved held prediction cannot claim error or coverage"):
+        validate_component_screen_report(report)
+
+
+def _shared_program_held_report(known=True):
+    rows = [replace(row, program=sha(row.features["/count"])) for row in held_rows()]
+
+    class SelectedPrediction:
+        def predict(self, features, *, domain_sha256):
+            return Exact().predict(features, domain_sha256=domain_sha256) if known else CycleInterval.unknown("scope")
+
+    def fit(training):
+        assert len(training) == len({row.id for row in training}) == 20
+        assert len({row.program for row in training}) == 10
+        return SelectedPrediction()
+
+    return qualify_component_screen(rows, fit, calibration_sha256=sha("calibration"))
+
+
+@pytest.mark.parametrize("known", [False, True])
+def test_held_training_roster_preserves_repeated_programs_and_order_permutations(known):
+    report = _shared_program_held_report(known)
+    for row in report["predictions"]:
+        assert len(row["training_programs"]) == 20
+        assert len(set(row["training_programs"])) == 10
+        row["training_programs"].reverse()
+    assert validate_component_screen_report(report) == report
+    assert len(report["predictions"]) == 30 and report["exposable"] is known
+    assert report["policy"] == ComponentScreenPolicy().to_dict()
+
+
+@pytest.mark.parametrize("change", ["missing", "extra", "mapping"])
+def test_held_training_roster_refuses_changed_multiplicity_or_representation(change):
+    report = _shared_program_held_report()
+    row = report["predictions"][0]
+    training = row["training_programs"]
+    row["training_programs"] = (
+        list(dict.fromkeys(training))
+        if change == "missing"
+        else [*training, training[0]]
+        if change == "extra"
+        else dict.fromkeys(training, 2)
+    )
+    with pytest.raises(ValueError, match="component prediction training roster"):
+        validate_component_screen_report(report)
+
+
 def test_independent_priority_retains_diversity_overlap_and_negative_results():
     def point(n):
         return CycleInterval.point(n, "controlled complete cost")
