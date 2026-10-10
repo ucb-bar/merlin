@@ -139,6 +139,22 @@ def run_canary(
     except Exception as exc:  # noqa: BLE001 — a canary reports, it does not crash
         checks.append(_check("mask_selftest", False, f"{type(exc).__name__}: {exc}"))
 
+    if not checks[-1]["ok"]:
+        report = {
+            "verdict": "NO-GO",
+            "sandbox": sandbox,
+            "bundle": bundle_info,
+            "timestamp": stamp,
+            "checks": checks,
+            "agent_report": "",
+            "codex_summary": {},
+            "transcript": None,
+            "workspace": str(ws),
+            "provider_started": False,
+        }
+        (work / "canary_report.json").write_text(json.dumps(report, indent=2))
+        return 1, report
+
     # --- Run one real Codex round through the driver under test ---
     os.environ.setdefault("CODEX_CANARY", "1")
     rc, tpath = CA.run_round(
@@ -156,7 +172,7 @@ def run_canary(
         "then reply with the contents of canary_report.txt and nothing else. "
         "Do not modify probe.sh. This is an isolation check, not a build task.",
     )
-    records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
+    records = [json.loads(line) for line in tpath.read_text().splitlines() if line.strip()]
     summary = next((r for r in records if r.get("type") == "codex_summary"), {})
     report_path = ws / "canary_report.txt"
     agent_report = report_path.read_text() if report_path.is_file() else ""

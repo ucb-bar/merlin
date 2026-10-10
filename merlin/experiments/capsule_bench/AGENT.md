@@ -105,3 +105,9 @@ weaken a mask to make a run work.
 ## Before running anything
 `preflight.py` and `readiness_check.py` are the GO/NO-GO gate. A NO_GO that produced results anyway
 has happened; treat the verdict as binding.
+
+`harness/codex_canary.py` writes its operator-only `NO-GO` report and returns
+before provider dispatch unless the workspace mask observation is exactly `OK`.
+Missing, malformed, failed or unavailable observations cannot start a paid turn.
+Its source controls block the provider; they establish dispatch ordering only,
+not native isolation, authentication, fresh compiler origin or runtime authority.
