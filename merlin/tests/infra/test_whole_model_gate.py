@@ -404,6 +404,15 @@ def test_the_gate_and_its_roles_are_read_from_the_declarations(tmp_path, monkeyp
     assert G.gate_for("t", descriptor=descriptor) == (None, ())
 
 
+def test_a_block_holding_only_another_gates_declaration_is_no_capsule_model_gate(tmp_path):
+    descriptor = tmp_path / "target_experiment.yaml"
+    descriptor.write_text(
+        "target: t\nphase1_gates:\n  whole_model:\n    private_full_models: {required: true, programs: {}}\n"
+    )
+    assert G.gate_for("t", descriptor=descriptor) == (None, ())
+    assert G.main(["--target", "t", "--descriptor", str(descriptor)]) == 2
+
+
 def test_the_command_refuses_a_target_that_declares_no_gate(tmp_path, capsys):
     descriptor = tmp_path / "target_experiment.yaml"
     descriptor.write_text("target: t\n")

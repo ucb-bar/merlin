@@ -312,7 +312,7 @@ def test_coordinator_readers_remain_in_registered_private_grader_identity():
         assert not any(module_matches(module.__name__, prefix) for prefix in declared_modules("agent"))
 
 
-def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
+def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_passes=False):
     calls, _hardware = _substitute_issuers(selected, monkeypatch)
     run = selected.output.with_name("formal-run")
     (run / "submission").mkdir(parents=True)
@@ -362,7 +362,7 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
         seen.append(kwargs)
         if fault == "callback":
             object.__setattr__(kwargs["linked_elf_admission"], "evaluator", _never_substituted_evaluator)
-        return {"passed": False, "models": [], "reason": "owned diagnostic: no actual build or qualification"}
+        return {"passed": build_passes, "models": [], "reason": "owned diagnostic: no actual build or qualification"}
 
     monkeypatch.setattr(formal.PFM, "run", build)
     arguments = [
@@ -382,7 +382,7 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
     assert formal.main(arguments, context=context) == 1
     manifest = yaml.safe_load((run / "run_manifest.yaml").read_text())
     assert manifest["completion"]["formal_grade_complete"] is False
-    assert manifest["private_full_models"]["passed"] is False
+    assert manifest["private_full_models"]["passed"] is build_passes
     return manifest, calls, seen, prepared
 
 
@@ -391,6 +391,26 @@ def test_actual_formal_caller_forwards_the_fresh_service_in_process(selected, mo
     assert len(calls) == 5 and len(seen) == len(prepared) == 1
     assert seen[0]["linked_elf_admission"] is prepared[0].service
     assert manifest["private_full_models"]["instruction_selection"]["schema"] == D.SCHEMA
+
+
+def test_instruction_selection_preserves_required_numerical_execution_gate(selected, monkeypatch):
+    gate = {"required": True}
+    options = {"first": {"model": {"readback": "full"}}}
+    executed = []
+    monkeypatch.setattr(formal.PFX, "gate_for", lambda *args, **kwargs: gate)
+    monkeypatch.setattr(formal.PFX, "build_options", lambda selected_gate: options)
+    monkeypatch.setattr(formal.PFX, "not_run", lambda *args: {"passed": False})
+
+    def execute(models, selected_gate, **kwargs):
+        executed.append((models, selected_gate))
+        return {"passed": False, "reason": "diagnostic numerical execution refusal"}
+
+    monkeypatch.setattr(formal.PFX, "run", execute)
+    manifest, _calls, seen, prepared = _formal_attempt(selected, monkeypatch, build_passes=True)
+    assert seen[0]["linked_elf_admission"] is prepared[0].service
+    assert seen[0]["build_options"] is options
+    assert len(executed) == 1 and executed[0][1] is gate
+    assert "private_full_model_execution:incomplete" in manifest["completion"]["failures"]
 
 
 @pytest.mark.parametrize("fault", ["facts", "callback"])

@@ -167,7 +167,11 @@ ROLES_ENV = "MERLIN_PROHIBITED_INSTRUCTION_ROLES"
 def gate_for(target: str, *, descriptor: str | Path | None = None) -> tuple[dict[str, Any] | None, tuple[str, ...]]:
     """``(whole-model gate, prohibited roles)``: the gate the target's descriptor declares
     (``phase1_gates.whole_model``), and the roles the experiment declares (handed to graders in
-    :data:`ROLES_ENV`).  No gate declared is ``None``; no roles declared is an empty tuple."""
+    :data:`ROLES_ENV`).  No gate declared is ``None``; no roles declared is an empty tuple.
+
+    The same descriptor block may carry declarations other gates own (the Phase 1 private full-model
+    execution gate keeps its own sub-block there), so a block that declares no ``models`` is no
+    capsule-model gate: a gate over no model could never pass, and would read as a failing one."""
     import os
 
     import yaml
@@ -179,7 +183,7 @@ def gate_for(target: str, *, descriptor: str | Path | None = None) -> tuple[dict
     document = yaml.safe_load(Path(descriptor).read_text(encoding="utf-8")) or {}
     gate = (document.get("phase1_gates") or {}).get("whole_model") if isinstance(document, Mapping) else None
     roles = tuple(r for r in (os.environ.get(ROLES_ENV) or "").split(",") if r.strip())
-    return (dict(gate) if isinstance(gate, Mapping) else None), roles
+    return (dict(gate) if isinstance(gate, Mapping) and gate.get("models") else None), roles
 
 
 # ---------------------------------------------------------------------------------------- coverage
