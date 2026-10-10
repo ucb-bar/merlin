@@ -29,6 +29,11 @@ source and process pins with JSON scalar types preserved; completed parser
 refusals and interrupted deadlines remain distinct. Unsupported original slots
 stay required. This private data checks neither compiled body semantics nor
 candidate execution, numerical stress, physical effects or Phase 1 release.
+Pointwise standard-IR replay explicitly shares only its selected canonical
+stock-parser tool pin during one bounded verification. Reopen complete tool
+content before and after, retain every original invocation/ENV/argv/role/member
+join and every fresh reader/input/output pin. Actual native observation remains
+fresh; historical v1 and absence of this opt-in retain their original behavior.
 
 `memory_port_intake` observes the complete local typed Seq memory/port roster
 from the same live independently reproduced public core. Fixed native generic
@@ -513,3 +518,13 @@ conversion failure, opaque frontend output and stock parser refusal give no
 source credit. These finite private observations do not grant original semantic
 ownership, numerical admission, stress-domain coverage, hardware or runtime
 effects, compiled semantics, or Phase 1 release.
+
+Original semantic review/cases v2 explicitly admits pointwise policy v2 while
+preserving legacy v1. Pin every selected tracked public implementation context,
+complete original schema/default/type/policy selector and unchanged input domain.
+The fixed pointwise probe producer requires fresh bounded extents and explicit
+complete logical/source/output budgets before shaped allocation. Supplementary
+native full-output checks and actual reference-traversal stress never replace an
+original guard/private slot. Source preparation v2 carries these finite reviewed
+facets through the same live source chain; all original mandatory unknown domains,
+effects, mappings, runtime and pending candidate predicates survive unchanged.

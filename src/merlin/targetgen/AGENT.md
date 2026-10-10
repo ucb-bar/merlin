@@ -318,3 +318,11 @@ stress without inventing cancellation or reduction evidence. Policy v1 and old
 source form v1 remain unchanged; form v2 adds int16/int32/int64. The shared
 plain signed64 storage declaration grants no quantization or target support. These private
 reference implementations stay masked in checkout and installed layouts.
+
+`original_pointwise_stress` adds a separate versioned finite storage-boundary
+profile and actual reference-traversal predicates. Derive samples from the exact
+storage and original scalar arguments, with direct original conversion. Join
+real scalar visits across the selected finite union; never invent both signs in
+one scalar. Complete typed extrema, signed zeros, RNE ties, subnormals and feasible
+ordered clamp branches remain explicit obligations. This grader stays masked;
+realized finite partitions do not establish whole-domain or compiled semantics.

@@ -305,10 +305,14 @@ SUITES = {
         "collect_selected_tests": True,
         "tests": (
             "packages/merlin-experiments/tests/test_original_semantic_review.py",
+            "packages/merlin-experiments/tests/test_original_pointwise_semantic_review.py",
             "merlin/tests/targetgen/test_original_reference_stress.py",
             "merlin/tests/targetgen/test_original_operator_reference.py",
         ),
         "support_files": (
+            "packages/merlin-experiments/tests/test_original_pointwise_reference_flow.py",
+            "packages/merlin-experiments/tests/original_pointwise_reference_fixtures.py",
+            "packages/merlin-experiments/tests/test_original_reference_requirement_join.py",
             "packages/merlin-experiments/tests/test_original_reference_standard_ir.py",
             "packages/merlin-experiments/tests/original_reference_fixtures.py",
         ),
@@ -316,6 +320,9 @@ SUITES = {
         "probe_modules": (
             "merlin_experiments.phase0.original_semantic_review",
             "merlin_experiments.phase0.original_semantic_review_plan",
+            "merlin_experiments.phase0.original_pointwise_semantic_probes",
+            "merlin_experiments.phase0.original_pointwise_stress_observer",
+            "merlin.targetgen.original_pointwise_stress",
             "merlin.targetgen.original_operator_reference",
         ),
         "required_modules": ("xdsl", "jsonschema"),
@@ -623,9 +630,19 @@ SUITES = {
     "original-pointwise": {
         "include_experiments": False,
         "tests_root": "merlin/tests/targetgen",
-        "tests": ("test_original_pointwise_sources.py",),
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "tests": (
+            "test_original_pointwise_sources.py",
+            "test_original_pointwise_reference.py",
+            "test_original_pointwise_stress.py",
+        ),
         "core_extras": (),
-        "probe_modules": ("merlin.targetgen.original_pointwise_sources",),
+        "probe_modules": (
+            "merlin.targetgen.original_pointwise_sources",
+            "merlin.targetgen.original_pointwise_reference",
+            "merlin.targetgen.original_pointwise_stress",
+        ),
         "required_modules": (),
     },
     "original-reference-roster": {
@@ -773,6 +790,18 @@ SUITES = {
         "tests": ("infra/test_invocation_record.py",),
         "core_extras": (),
         "probe_modules": ("merlin.common.invocation_record",),
+        "required_modules": (),
+    },
+    "selected-pin-replay": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/infra",
+        "collect_selected_tests": True,
+        "native_tools": ("circt-opt",),
+        "native_tool_path_lists": {"MERLIN_TEST_PIN_REPLAY_TOOLS": ("circt-opt",)},
+        "native_test_files": ("test_selected_pin_replay.py",),
+        "tests": ("test_selected_pin_replay.py", "test_invocation_record.py"),
+        "core_extras": (),
+        "probe_modules": ("merlin.common.selected_pin_replay", "merlin.common.invocation_record"),
         "required_modules": (),
     },
     "pinned-files": {
@@ -1819,7 +1848,7 @@ def verify_native_inputs(report):
         raise QualificationFailed(f"selected native source changed or unavailable: {exc}") from exc
 
 
-def native_environment(report):
+def native_environment(report, *, suite=None):
     environment = {
         tool["environment_key"]: tool["selected_path"] if "python_entry" in tool else tool["path"]
         for tool in report.get("native_tools", {}).values()
@@ -1827,6 +1856,12 @@ def native_environment(report):
     environment.update(
         (source["environment_key"], source["identity"]["path"]) for source in report.get("native_sources", {}).values()
     )
+    if suite is not None and report.get("native_tools"):
+        selected = report["native_tools"]
+        for key, names in SUITES[suite].get("native_tool_path_lists", {}).items():
+            if key in environment or any(name not in selected for name in names):
+                raise QualificationFailed("declared native tool list lacks its complete selections")
+            environment[key] = json.dumps([selected[name]["path"] for name in names])
     return environment
 
 
@@ -1979,7 +2014,7 @@ class Recorder:
     def __init__(self, output, report, timeout):
         self.output, self.report, self.timeout = output, report, timeout
         self.environment = clean_environment()
-        self.environment.update(native_environment(report))
+        self.environment.update(native_environment(report, suite=report.get("suite")))
 
     def save(self):
         (self.output / "report.json").write_text(json.dumps(self.report, indent=2) + "\n")
@@ -2150,8 +2185,8 @@ def qualify(
     try:
         report["native_tools"] = capture_native_tools(suite, native_tools)
         report["native_sources"] = capture_native_sources(suite, native_sources)
-        runner.environment.update(native_environment(report))
-        report["native_environment"] = native_environment(report)
+        runner.environment.update(native_environment(report, suite=suite))
+        report["native_environment"] = native_environment(report, suite=suite)
         runner.save()
         copied_helper = output / "installed_qualification_probe.py"
         shutil.copyfile(helper, copied_helper)

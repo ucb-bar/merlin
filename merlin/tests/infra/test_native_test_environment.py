@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -93,3 +94,47 @@ def test_registered_coherent_suite_archives_complete_fixture_and_tool_rosters():
     }
     assert set(suite["native_test_files"]) <= set(suite["tests"])
     assert Q.NATIVE_TOOL_ENVIRONMENT["cpu-simulator"] == "MERLIN_TEST_STOCK_CPU_SIMULATOR"
+
+
+def test_declared_tool_list_reaches_actual_child_and_stale_bytes_block_launch(tmp_path):
+    # This tests executable custody and list transport. The separate selected
+    # parser roster establishes actual native parser behavior.
+    tool = tmp_path / "selected-tool"
+    shutil.copyfile("/usr/bin/cat", tool)
+    tool.chmod(0o700)
+    report = {
+        "commands": [],
+        "suite": "selected-pin-replay",
+        "native_tools": Q.capture_native_tools("selected-pin-replay", ("circt-opt=" + str(tool),)),
+    }
+    selected = {**ENV, **Q.native_environment(report, suite=report["suite"])}
+    script = "import json,os;print(json.dumps(json.loads(os.environ['MERLIN_TEST_PIN_REPLAY_TOOLS'])))"
+    result = I.run(
+        [sys.executable, "-I", "-c", script],
+        directory=tmp_path / "list-child",
+        stage="declared_native_tool_list_transport",
+        env=selected,
+        cwd=tmp_path,
+        dependencies=(tool,),
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 0 and json.loads(result.stdout) == [str(tool)]
+    record = next((tmp_path / "list-child/invocations").glob("*/invocation.json"))
+    observed = I.require_environment(record, environment=selected)
+    assert observed["dependencies"] == [I._pin(tool)]
+    Q.verify_native_inputs(report)
+    tool.write_bytes(tool.read_bytes() + b"changed executable")
+    recorder = Q.Recorder(tmp_path, report, 5)
+    recorder.environment = selected
+    with pytest.raises(Q.QualificationFailed, match="executable changed"):
+        recorder.run("must-not-launch", [sys.executable, "-c", "raise SystemExit(0)"], tmp_path)
+    assert report["commands"] == []
+
+
+def test_unselected_or_incomplete_tool_list_cannot_supply_native_selection():
+    assert Q.native_environment({"native_tools": {}}, suite="selected-pin-replay") == {}
+    unrelated = {"native_tools": {"clang": {"environment_key": "MERLIN_CLANG", "path": "/explicit/tool"}}}
+    with pytest.raises(Q.QualificationFailed, match="complete selections"):
+        Q.native_environment(unrelated, suite="selected-pin-replay")
+    assert Q.native_environment(unrelated) == {"MERLIN_CLANG": "/explicit/tool"}

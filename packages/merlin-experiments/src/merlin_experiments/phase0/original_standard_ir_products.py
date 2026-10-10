@@ -11,11 +11,11 @@ from . import original_reference_roster as R
 from . import original_standard_ir_plan as P
 
 
-def completed_process(path):
+def completed_process(path, pin_replay=None):
     """Retain a true completed nonzero refusal without calling it successful."""
     native = loads(R._plain(path).read_bytes())
     if native.get("returncode") == 0:
-        return I.require_environment(path, environment=R.D.ENVIRONMENT)
+        return I.require_environment(path, environment=R.D.ENVIRONMENT, pin_replay=pin_replay)
     if (
         native.get("schema") != I.SCHEMA
         or native.get("kind") != "subprocess"
@@ -28,34 +28,35 @@ def completed_process(path):
         )
     ):
         raise ValueError("standard IR refusal lacks an actual unchanged completed native process")
-    for pin in [
-        native["executable"],
-        native["stdout"],
-        native["stderr"],
-        *native["inputs"],
-        *native["outputs"],
-        *native["dependencies"],
-    ]:
+    roles = [(native["executable"], True), (native["stdout"], False), (native["stderr"], False)]
+    roles.extend((pin, False) for pin in (*native["inputs"], *native["outputs"]))
+    roles.extend((pin, True) for pin in native["dependencies"])
+    for pin, selected_role in roles:
         if pin.get("sha256") is None and pin in native["outputs"] and not Path(pin["path"]).exists():
             continue
-        if R._pin(pin["path"]) != pin:
+        from .original_reference_standard_ir import _tool_pin
+
+        actual = _tool_pin(pin["path"], pin_replay) if selected_role else R._pin(pin["path"])
+        if actual != pin:
             raise ValueError("standard IR refusal native source/product changed")
     return native
 
 
-def parse_invocation(owner, paths, selected):
+def parse_invocation(owner, paths, selected, pin_replay=None):
+    from .original_reference_standard_ir import _tool_pin
+
     candidates = tuple((owner / "parse/invocations").glob("*/invocation.json"))
     if len(candidates) != 1:
         raise ValueError("standard IR requires exactly one actual stock parsing invocation")
     invocation = R._pin(candidates[0])
-    native = completed_process(candidates[0])
+    native = completed_process(candidates[0], pin_replay)
     if (
         native["argv"] != [selected["mlir_opt"], str(paths["source"]), "--verify-each", "-o", str(paths["verified"])]
         or native["stage"] != "original_standard_ir_native_parse"
         or native["inputs"] != [R._pin(paths["source"])]
         or native["outputs"] != ([R._pin(paths["verified"])] if paths["verified"].is_file() else [])
-        or native["dependencies"] != [R._pin(selected["mlir_opt"])]
-        or native["executable"]["sha256"] != R._pin(selected["mlir_opt"])["sha256"]
+        or native["dependencies"] != [_tool_pin(selected["mlir_opt"], pin_replay)]
+        or native["executable"]["sha256"] != _tool_pin(selected["mlir_opt"], pin_replay)["sha256"]
     ):
         raise ValueError("stock parsing invocation lost its exact complete source/tool/output join")
     if native["returncode"] == 0 and not paths["verified"].is_file():
@@ -63,7 +64,7 @@ def parse_invocation(owner, paths, selected):
     return invocation, native["returncode"]
 
 
-def verify(document, *, references, selection):
+def verify(document, *, references, selection, pin_replay=None):
     from merlin.common.paths import module_source_path
 
     from . import original_reference_standard_ir as S
@@ -72,7 +73,7 @@ def verify(document, *, references, selection):
     record = P.required_members(references)
     selected = P.validate(loads(R._plain(selection).read_bytes()), references)
     capture = P.capture_sources(selected)
-    pins = S._pin_sources(selection, capture)
+    pins = S._pin_sources(selection, capture, pin_replay)
     members, decisions, totals = P.preflight(record, selected)
     destination = Path(document["destination"])
     if (
@@ -140,7 +141,7 @@ def verify(document, *, references, selection):
             str(reference_observer),
             str(destination),
         ]
-        native = completed_process(path)
+        native = completed_process(path, pin_replay)
         if (
             native["argv"] != argv
             or {pin["path"] for pin in native["inputs"]} != {str(Path(path).resolve()) for path in inputs}
@@ -199,6 +200,7 @@ def verify(document, *, references, selection):
                     returncode,
                     references=references,
                     run_parse=False,
+                    pin_replay=pin_replay,
                 )
             )
         if canonical_json(actual) != canonical_json(expected):

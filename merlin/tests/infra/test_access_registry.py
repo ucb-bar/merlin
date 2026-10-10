@@ -418,6 +418,7 @@ def test_installed_and_shadowed_evaluators_and_bytecode_are_masked(tmp_path, iso
         "original_operator_reference",
         "original_reference_values",
         "original_pointwise_reference",
+        "original_pointwise_stress",
         "torch_schema_batch_observer",
     ],
 )
@@ -446,6 +447,8 @@ def test_original_reference_source_and_installed_answers_are_masked(tmp_path, is
         "original_reference_products",
         "original_reference_observer",
         "original_pointwise_reference_observer",
+        "original_pointwise_semantic_probes",
+        "original_pointwise_stress_observer",
         "original_schema_batch",
         "original_reference_standard_ir",
         "original_standard_ir_plan",
