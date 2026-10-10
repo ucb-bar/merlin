@@ -1115,8 +1115,8 @@ def test_oracles_endtoend(reference_backend: str | None = None):
       the exact preflight the launcher runs) and that ``oracle_adapters`` resolves BOTH graded tiers to
       the program oracle — the precise wiring a graded round uses. That is the honest pre-launch proof;
       the numeric bit-exact check runs against a known-good npu_model program at grade time.
-    * ``chipyard`` (gemmini): actually RUN spike + verilator on an operator-selected backend to a real
-      verdict, measure verilator's per-capsule time, and NO-GO on the abc7 signature (0 capsules/timeout).
+    * ``chipyard``: run Spike and the selected cert engine on an operator-selected backend to a real
+      verdict, measure that cert grade's host wall time, and refuse 0 capsules/timeouts.
     """
     import json as _json
     import os as _os
@@ -1297,7 +1297,10 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         # here reported n=None -- a NO-GO that blamed the oracles for a stream-parsing bug. Scan for the
         # document instead (structurally, no regex).
         try:
-            return _json.loads(r.stdout)
+            _obj = _json.loads(r.stdout)
+            if isinstance(_obj, dict):
+                _obj["_readiness_returncode"] = r.returncode
+                return _obj
         except Exception:
             pass
         _dec, _i = _json.JSONDecoder(), (r.stdout or "").find("{")
@@ -1305,6 +1308,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
             try:
                 _obj, _ = _dec.raw_decode(r.stdout, _i)
                 if isinstance(_obj, dict):
+                    _obj["_readiness_returncode"] = r.returncode
                     return _obj
             except Exception:
                 pass
@@ -1346,65 +1350,52 @@ def test_oracles_endtoend(reference_backend: str | None = None):
             sp.get("n_capsules") == 1 and _spike_tier == "pass",
             f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error', '')[:50]}",
         )
-        # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it
-        # can never certify verilator's numerical tier. And agent_selfcheck reports the reached tier on its
-        # per-capsule record as barrier_tier/barrier_status (there is NO "tiers" map — the same field the
-        # spike check above reads), so the old tiers["L3"] read was a field-name bug that ALWAYS yielded
-        # None: a false NO-GO that also blocked .oracle_timing.json, which the launcher refuses to start
-        # without. Verilator was running fine the whole time.
+        # The compute capsule reaches the declared L3 tier. Measure exactly the engine the normal
+        # policy selected; a different engine's pass or missing actual provenance cannot supply timing.
+        from merlin_experiments.phase1.timing import selected_engine_binding, timing_path, write_observed_timing
+
+        from merlin.common.digest import sha256_file
+
+        before = selected_engine_binding(descriptor=C.DESCRIPTOR, target=TARGET)
+        engine = before["engine"]
+        reference_manifest_sha256 = sha256_file(ref / "manifest.yaml")
         t0 = _time.monotonic()
-        ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul")
+        ve = _grade(ref, engine, 900, cap="A2_single_tile_matmul")
         dt = _time.monotonic() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
         l3 = (
-            ve.get("all_pass")
-            and ve.get("n_capsules") == 1
+            ve.get("all_pass") is True
+            and type(ve.get("n_capsules")) is int
+            and ve["n_capsules"] == 1
             and cv.get("barrier_tier") == "L3"
             and cv.get("barrier_status") == "pass"
         )
         _ok(
-            "verilator RUNS to a real L3=pass (not 0-capsules / timeout)",
+            f"{engine} RUNS to a real L3=pass (not 0-capsules / timeout)",
             l3,
             f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
             f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}",
         )
         if l3:
-            from merlin_experiments.phase1.timing import timing_path
-
-            from merlin.common.digest import sha256_file
-            from merlin.targetgen.target_experiment import declared_vs_resolved_contract, load_capability_manifest
-
-            _, contract_path, agreement = declared_vs_resolved_contract(_TE)
-            config = (
-                (load_capability_manifest(TARGET, contract_path=contract_path).contract.get("runtime") or {}).get(
-                    "rtl_sim_config"
-                )
-                if agreement == "agree" and contract_path is not None
-                else None
+            if sha256_file(ref / "manifest.yaml") != reference_manifest_sha256:
+                raise ValueError("selected reference manifest changed during the timing observation")
+            selected = timing_path(EXP, TARGET)
+            write_observed_timing(
+                selected,
+                descriptor=C.DESCRIPTOR,
+                target=TARGET,
+                before=before,
+                elapsed_s=dt,
+                report=ve,
+                measured_capsule="A2_single_tile_matmul",
+                measured_by="readiness_check",
+                reference={
+                    "backend": str(ref),
+                    "package_id": ref_manifest.get("package_id"),
+                    "manifest_sha256": reference_manifest_sha256,
+                },
             )
-            sim = _cy / "sims" / "verilator" / f"simulator-chipyard.harness-{config}" if config else None
-            if not isinstance(config, str) or not config.strip() or sim is None or not sim.is_file():
-                _ok("target-bound oracle timing record", False, "declared RTL sim config/binary unavailable")
-            else:
-                selected = timing_path(EXP, TARGET)
-                selected.write_text(
-                    _json.dumps(
-                        {
-                            "target": TARGET,
-                            "config": config,
-                            "verilator_per_capsule_s": round(dt, 1),
-                            "simulator_sha256": sha256_file(sim),
-                            "reference_backend": str(ref),
-                            "reference_package_id": ref_manifest.get("package_id"),
-                            "reference_manifest_sha256": sha256_file(ref / "manifest.yaml"),
-                            "measured_capsule": "A2_single_tile_matmul",
-                            "measured_by": "readiness_check",
-                        },
-                        sort_keys=True,
-                    )
-                    + "\n"
-                )
-                _ok("wrote target-bound oracle timing record", True, f"{selected} T_obs={dt:.0f}s")
+            _ok("wrote target/engine-bound oracle timing record", True, f"{selected} T_obs={dt:.0f}s")
         # WHICH ENGINE WOULD CERTIFY, AND WHAT IT WAS CHOSEN OVER — reported, never gated.
         #
         # Gating would be wrong: any elaborated-RTL engine is a valid L3, so a target with only Verilator

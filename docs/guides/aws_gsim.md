@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py]
 ---
 
 # Provisioning Gemmini gSIM on a Linux worker
@@ -15,10 +15,11 @@ worker, storage and access controls yourself. Use an x86-64 Linux worker for the
 model; an x86-64 emulator does not run natively on an ARM/Graviton worker. Keep private inputs,
 credentials and generated simulator artifacts outside Git and candidate-visible workspaces.
 
-The native fork procedure below is retained inspection material. Fresh compiler
-experiments require independently issued hardware, minimal software and runtime
-authorities; these build commands alone do not admit an engine or its helpers.
-See [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
+The native fork procedure below is retained inspection material. Ordinary catalog
+experiments require verified hardware inputs, independent target support and the
+selected session's actual startup checks. These build commands alone do not admit
+an engine or its helpers. The additional component qualification route is described
+in [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
 support provider and copied kernel headers have been removed from Merlin.
 
 ## Clone and install the source stack
@@ -28,7 +29,7 @@ Flex with `FlexLexer.h`, Bison and GMP development files. Follow [getting starte
 to install Merlin and `packages/merlin-experiments` into a Python environment:
 
 ```sh
-git clone https://github.com/ucb-bar/merlin.git merlin
+git clone --branch feat/compiler-readiness https://github.com/ucb-bar/merlin.git merlin
 cd merlin
 git rev-parse HEAD  # record and review the full source commit before freezing a run
 uv venv
@@ -202,13 +203,49 @@ available flags.
 
 Catalog preflight reports `engine_readiness: not_executed`. It checks configuration
 and recorded timing bindings without launching a simulator or an author. The
-execution worker still needs a genuine target/config/binary-bound Chipyard oracle
-timing record, usable compiler tools, exact bundle snapshots and successful native
-sandbox checks. Current timing admission checks Verilator even when gSIM is selected;
-gSIM engine selection alone does not satisfy that prerequisite.
-Ordinary startup performs those checks before authoring; configuration
-preflight alone does not establish them. Only a subsequent Phase 1 `run` starts
-the author experiment.
+execution worker still needs a genuine target/config/engine/binary-bound Chipyard
+oracle timing record, usable compiler tools, exact bundle snapshots and successful
+native sandbox checks. Readiness records the actual passed L3 grade's host wall time
+on the selected engine. Version 2 timing also binds gSIM's strict receipt and selected
+FIRRTL facts; legacy Verilator records apply only to a Verilator selection. These
+observations size timeouts, not accelerator cycle predictions. Producing one requires
+an explicitly selected independent operator-only probe backend; a simulator binary
+alone cannot provide it.
+
+To exercise ordinary startup on the worker and stop before authoring, invoke the
+installed continuation with the released descriptor, seal and regenerated bundle:
+
+```sh
+python -m merlin_experiments.phase1 \
+  --descriptor "$RELEASE/payload/experiment/target_experiment.yaml" \
+  --repo "$OPERATOR_ROOT" --bundle "$BUNDLE" \
+  --bundle-manifest "$RELEASE/payload/experiment/input_bundles/$BUNDLE/input_bundle_manifest.yaml" \
+  --corpus-seal "$RELEASE/private/seal.json" --oracle-timing "$ORACLE_TIMING" \
+  --level EL4 --sandbox bwrap --run-id "$FRESH_PREFLIGHT_ID" --preflight-only
+```
+
+Retain the same provider, treatment and optional tool selections as the intended
+experiment. The explicit seal must agree with any `MERLIN_CORPUS_SEAL` selection.
+The private `preflight_result.json` records startup completion with
+`formal_complete: false` and `provider_started: false`. It cannot certify a compiler
+or fresh-client isolation. Use another fresh run ID for the author experiment;
+preflight-only sessions cannot resume into authoring.
+
+## Launch readiness boundary
+
+Handoff is ready when one pinned source revision installs, the selected verified
+Phase 0 inputs produce a reviewed release covering its mandatory obligations, an
+independent nonzero probe checks complete outputs and rejects an incorrect output
+on the selected engine, and ordinary native preflight passes on the execution
+worker without bypasses. A short fresh-client canary must separately verify usable
+tools and inaccessible protected inputs. Retain exact selections, budgets, digest
+and logs. This establishes launch readiness, not compiler correctness or final
+performance.
+
+The additional component qualification ledger, Phase 2 calibration and final
+whole-model performance comparison remain their own acceptance work. They are
+not additional prerequisites of the ordinary catalog launcher. After this handoff,
+expand preparation only when the selected run reports a concrete missing requirement.
 
 ## Worker isolation and access
 

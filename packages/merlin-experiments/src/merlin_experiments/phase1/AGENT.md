@@ -85,6 +85,13 @@ invocation options. Propagate them through ordinary/fast QA, treatment callbacks
 probes and in-process L3 repairs; never mutate core scanner defaults, weaken AST restrictions,
 read policy from candidates or silently extend fresh official/selfcheck child policy.
 
+`timing.py` binds readiness's actual passed L3 grade wall-time observation to the
+selected engine/config/binary before and after measurement. gSIM additionally
+requires existing strict-v3 receipt and byte-verified selected FIRRTL facts;
+these file/transcript checks grant no emitter-build, counter, runtime or physical
+authority. Selfcheck exposes only actual barrier engine/digests, never raw paths.
+Legacy Verilator observations apply only to Verilator selection.
+
 `audit.py` owns `AnswerAudit`: immutable descriptor-derived tokens plus an explicit absolute
 bundle directory. Grant files are reread at their historical observation points. Importing
 these owners never selects a target or imports native controllers. All are host-private,

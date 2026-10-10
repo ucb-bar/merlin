@@ -422,7 +422,12 @@ def _verilator_per_capsule_timeout(context, *, timing_file: Path | None = None) 
     promoted capsules' own emitted size, because a flat bound fails a large capsule for being large."""
     import math
 
-    from merlin_experiments.phase1.timing import read_verified_timing, requires_chipyard_timing, timing_path
+    from merlin_experiments.phase1.timing import (
+        observed_seconds,
+        read_verified_timing,
+        requires_chipyard_timing,
+        timing_path,
+    )
 
     tgt = context.target
     if not requires_chipyard_timing(getattr(context, "descriptor", None)):
@@ -443,7 +448,7 @@ def _verilator_per_capsule_timeout(context, *, timing_file: Path | None = None) 
     selected = Path(timing_file) if timing_file is not None else timing_path(context.experiment, tgt)
     try:
         d = read_verified_timing(selected, descriptor=getattr(context, "descriptor", None), target=tgt)
-        return max(900, int(math.ceil(2 * float(d["verilator_per_capsule_s"]))))
+        return max(900, int(math.ceil(2 * observed_seconds(d))))
     except ValueError as exc:
         print(f"[timeout] ignoring oracle timing: {exc}", file=sys.stderr)
     legacy = Path(context.experiment) / "scripts/.oracle_timing.json"
