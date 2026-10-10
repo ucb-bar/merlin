@@ -508,9 +508,17 @@ def capture_case(
     timeout: int = 3600,
     reference_timeout: int | None = None,
     backend: Any = None,
-    build_elf: Callable[[Mapping[str, Any], str, Path], Path] | None = None,
+    build_elf: Callable[..., Path] | None = None,
+    readback: str | None = None,
 ) -> dict[str, Any]:
     """Build one ELF and run that exact file on Verilator and GSIM through the backend seam.
+
+    ``readback`` (default ``MERLIN_PHASE2_GSIM_READBACK``, itself ``digest``): with ``digest`` the shared
+    ELF's grader harness prints one XXH64 per output instead of every value -- a full-value readback on
+    the reference engine (about 210 cycles/s) is days for a performance-scale output. The values are read
+    once on Spike from the full-value build of the same program, must match the reference there, and
+    BOTH engines' digests must equal the digest of those values. ``full`` keeps the historical text frame.
+    Each engine's ``cycles`` are recorded either way (engine qualification compares them).
 
     THE TWO ENGINES NEED DIFFERENT DEADLINES, and giving them one is how a capture dies on a member
     that was working. The reference engine executes a small multiple of a hundred cycles a second
@@ -536,13 +544,31 @@ def capture_case(
     llvm_text = llvm_path.read_text(encoding="utf-8")
     case_work = Path(workdir)
     case_work.mkdir(parents=True, exist_ok=True)
+    from merlin.targetgen.contract import readback_policy as RB
+    from merlin_experiments.phase2 import gsim_digest_readback as DIGEST
+
+    if readback is None:
+        import inspect
+
+        # An injected builder that cannot build the digest harness can only take the full-value capture.
+        accepts = build_elf is None or "readback_policy" in inspect.signature(build_elf).parameters
+        readback = DIGEST.mode() if accepts else "full"
+    if readback not in ("digest", "full"):
+        raise WORKLOAD.ProducerError(f"capture readback must be 'digest' or 'full', got {readback!r}")
+    digest_policy = RB.ReadbackPolicy(RB.OUT_DIGEST_V1)
     if build_elf is None:
         from merlin.targetgen.contract.compile import compile_lowered_to_elf
 
-        def build_elf(buffer: Mapping[str, Any], llvm: str, destination: Path) -> Path:
-            return Path(compile_lowered_to_elf(buffer, llvm, destination, target=target))
+        def build_elf(buffer: Mapping[str, Any], llvm: str, destination: Path, readback_policy=None) -> Path:
+            destination.mkdir(parents=True, exist_ok=True)
+            return Path(
+                compile_lowered_to_elf(buffer, llvm, destination, target=target, readback_policy=readback_policy)
+            )
 
-    elf = Path(build_elf(cb, llvm_text, case_work)).resolve(strict=True)
+    if readback == "digest":
+        elf = Path(build_elf(cb, llvm_text, case_work / "digest", readback_policy=digest_policy)).resolve(strict=True)
+    else:
+        elf = Path(build_elf(cb, llvm_text, case_work)).resolve(strict=True)
     elf_digest = _sha_file(elf)
     if backend is None:
         from merlin.runtime.backends import base as backends
@@ -577,6 +603,23 @@ def capture_case(
             "workload": _workload,
             "workload_sha256": _identity,
         }
+    values = None
+    readback_record: dict[str, Any] = {"mode": readback}
+    if readback == "digest":
+        # THE VALUES, read once where reading them is cheap, from the full-value build of this program.
+        values_elf = Path(build_elf(cb, llvm_text, case_work / "spike_full_values")).resolve(strict=True)
+        if not backend.available("spike"):
+            raise WORKLOAD.ProducerError("spike is unavailable; digest capture needs its full-value readback")
+        try:
+            values, _ = backend.parse_output(backend.run_elf(values_elf, simulator="spike", timeout=timeout))
+        except Exception as exc:  # noqa: BLE001 - backend result is untrusted evidence
+            raise WORKLOAD.ProducerError(f"spike full-value readback failed: {exc}") from exc
+        values = backends.decode_float_readback(values, declared_output_dtypes(cb))
+        if not matches_expected(values):
+            raise WORKLOAD.ProducerError("spike did not produce the reference output")
+        readback_record.update(
+            policy=digest_policy.record(), values_engine="spike", values_elf_sha256=_sha_file(values_elf)
+        )
     runs = {}
     for side, engine, binary_pin, firrtl_pin in (
         ("reference", GATE.REFERENCE_ENGINE, "verilator_binary", "verilator_firrtl"),
@@ -593,15 +636,27 @@ def capture_case(
         if _sha_file(elf) != elf_digest:
             raise WORKLOAD.ProducerError(f"shared ELF changed while {engine} ran")
         try:
-            outputs, _ = backend.parse_output(console)
+            outputs, raw_metrics = backend.parse_output(console)
         except Exception as exc:  # noqa: BLE001 - backend result is untrusted evidence
             raise WORKLOAD.ProducerError(f"{engine} console is not gradeable: {exc}") from exc
-        # Bare-metal harnesses print a float destination's exact container word. Decode from the
-        # command buffer's declared dtype before applying the capsule's numeric policy; integer
-        # outputs and backends that already return floats remain byte-identical.
-        outputs = backends.decode_float_readback(outputs, declared_output_dtypes(cb))
-        if not matches_expected(outputs):
-            raise WORKLOAD.ProducerError(f"{engine} did not produce the reference output")
+        digests = None
+        if values is not None:
+            try:
+                roster = RB.require_digest_roster(cb, str(console), outputs)
+                mismatched = RB.digest_mismatches(roster, values)
+            except ValueError as exc:
+                raise WORKLOAD.ProducerError(f"{engine} digest readback is not gradeable: {exc}") from exc
+            if mismatched:
+                raise WORKLOAD.ProducerError(f"{engine} output digests differ from the Spike-verified values")
+            digests = {name: row["digest"] for name, row in roster.items()}
+            outputs = values
+        else:
+            # Bare-metal harnesses print a float destination's exact container word. Decode from the
+            # command buffer's declared dtype before applying the capsule's numeric policy; integer
+            # outputs and backends that already return floats remain byte-identical.
+            outputs = backends.decode_float_readback(outputs, declared_output_dtypes(cb))
+            if not matches_expected(outputs):
+                raise WORKLOAD.ProducerError(f"{engine} did not produce the reference output")
         output_digest, output_rows = WORKLOAD.encode_declared_outputs(outputs, cb)
         runs[side] = {
             "engine": engine,
@@ -616,6 +671,8 @@ def capture_case(
             "output_encoding": WORKLOAD.OUTPUT_ENCODING,
             "output_tensors": output_rows,
             "console_sha256": WORKLOAD._sha_bytes(str(console).encode("utf-8")),
+            "cycles": raw_metrics.get("cycles") if isinstance(raw_metrics, Mapping) else None,
+            "readback": {**readback_record, **({"output_digests": digests} if digests is not None else {})},
         }
         if engine == GATE.GSIM_ENGINE:
             runs[side]["model_sha256"] = pins["gsim_model"]["sha256"]
@@ -799,6 +856,12 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="deadline for the reference (cycle-accurate, much slower) engine; defaults to --timeout",
     )
+    capture.add_argument(
+        "--readback",
+        choices=("digest", "full"),
+        default=None,
+        help="output readback on both engines (default MERLIN_PHASE2_GSIM_READBACK, itself digest)",
+    )
     _add_artifact_args(capture)
     capture.add_argument("--output", required=True)
 
@@ -886,6 +949,7 @@ def main(argv: list[str] | None = None) -> int:
             artifacts=artifacts,
             timeout=args.timeout,
             reference_timeout=args.reference_timeout,
+            readback=args.readback,
         )
     elif args.action == "certificate":
         report = produce_certificate(

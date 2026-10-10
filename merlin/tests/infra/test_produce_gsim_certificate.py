@@ -623,3 +623,217 @@ def test_adopted_firrtl_receipt_warning_is_load_bearing(tmp_path: Path) -> None:
     receipt.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(WORKLOAD.ProducerError, match="contradicts its provenance boundary"):
         PRODUCER.validate_build_receipt(receipt, pins=artifacts.pinned())
+
+
+def test_a_digest_capture_reads_values_once_on_spike_and_binds_both_engines_to_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A performance-scale output cannot be printed on the reference engine (about 210 cycles/s):
+    the shared ELF prints one digest per output, the values come once from Spike's full-value build,
+    and both engines' digests must equal the digest of those values. Cycles are recorded per engine."""
+    from merlin.perf import capture_store
+    from merlin.runtime.out_digest import container_bytes, xxh64
+
+    (tmp_path / "captures" / "test_target").mkdir(parents=True)
+    monkeypatch.setattr(capture_store, "store_root", lambda target: tmp_path / "captures" / target)
+    capsule = _capsule(tmp_path)
+    artifact_dir = tmp_path / "lowered"
+    artifact_dir.mkdir()
+    command_buffer = {"tensors": {"Y0": {"role": "output", "shape": [2, 2], "dtype": "i32"}}}
+    from merlin.targetgen.contract import readback_policy as RB
+
+    # This fixture buffer has no commands to derive a logical interface from; its declared output is the roster.
+    monkeypatch.setattr(RB, "_console_output_roster", lambda cb: (["Y0"], {"Y0": {"shape": [2, 2], "dtype": "i32"}}))
+    (artifact_dir / "command_buffer.json").write_text(json.dumps(command_buffer), encoding="utf-8")
+    (artifact_dir / "lowered.llvm.mlir").write_text("module {}", encoding="utf-8")
+    artifacts, receipt = _artifacts(tmp_path)
+    import merlin.runtime.reference as reference
+
+    values = [[1, 2], [3, 4]]
+    monkeypatch.setattr(reference, "reference_outputs", lambda cb: {"Y0": values})
+    monkeypatch.setattr(reference, "outputs_match", lambda got, expected: got == expected)
+    digest = f"{xxh64(container_bytes([1, 2, 3, 4], 4)):016x}"
+    built = []
+
+    def build_elf(cb, llvm, destination, readback_policy=None):
+        destination.mkdir(parents=True, exist_ok=True)
+        elf = destination / ("digest.elf" if readback_policy else "values.elf")
+        elf.write_bytes(b"digest elf" if readback_policy else b"values elf")
+        built.append(readback_policy.transport if readback_policy else "full")
+        return elf
+
+    class DigestBackend:
+        gsim_holds = [1, 2, 3, 4]
+
+        def available(self, engine):
+            return engine in ("spike", "gsim", "verilator")
+
+        def run_elf(self, elf, *, simulator, timeout):
+            if simulator == "spike":
+                assert elf.read_bytes().startswith(b"values elf")
+                return "values"
+            assert elf.read_bytes().startswith(b"digest elf"), "both engines run the one digest ELF"
+            held = self.gsim_holds if simulator == "gsim" else [1, 2, 3, 4]
+            line = f"OUT_DIGEST Y0 16 {xxh64(container_bytes(held, 4)):016x}"
+            return f"METRIC cycles {900 if simulator == 'gsim' else 900}\n{line}\nDONE\n"
+
+        def parse_output(self, console):
+            if console == "values":
+                return {"Y0": values}, {}
+            return {}, {"cycles": 900}
+
+    capture = PRODUCER.capture_case(
+        target="test_target",
+        capsule_manifest=capsule,
+        artifact_dir=artifact_dir,
+        workdir=tmp_path / "work",
+        artifacts=artifacts,
+        backend=DigestBackend(),
+        build_elf=build_elf,
+    )
+    assert built == ["out_digest_v1", "full"]
+    for side in ("reference", "candidate"):
+        assert capture[side]["readback"]["mode"] == "digest"
+        assert capture[side]["readback"]["output_digests"] == {"Y0": digest}
+        assert capture[side]["cycles"] == 900
+    assert capture["reference"]["output_sha256"] == capture["candidate"]["output_sha256"]
+    capture_path = tmp_path / "case.json"
+    capture_path.write_text(json.dumps(capture, sort_keys=True), encoding="utf-8")
+    PRODUCER.produce_certificate(
+        target="test_target", captures=[capture_path], artifacts=artifacts, build_receipt=receipt
+    )
+
+    wrong = DigestBackend()
+    wrong.gsim_holds = [1, 2, 3, 5]
+
+    def build_other_elf(cb, llvm, destination, readback_policy=None):  # new bytes: no stored capture answers
+        elf = build_elf(cb, llvm, destination, readback_policy)
+        elf.write_bytes(elf.read_bytes() + b" v2")
+        return elf
+
+    with pytest.raises(WORKLOAD.ProducerError, match="digests differ"):
+        PRODUCER.capture_case(
+            target="test_target",
+            capsule_manifest=capsule,
+            artifact_dir=artifact_dir,
+            workdir=tmp_path / "w2",
+            artifacts=artifacts,
+            backend=wrong,
+            build_elf=build_other_elf,
+            readback="digest",
+        )
+
+
+# ---------------------------------------------------------------------------------------------
+# engine-level qualification (``--certification engine_qualified``)
+# ---------------------------------------------------------------------------------------------
+def _qualification_captures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cycles: dict[int, tuple[int, int]]):
+    """One same-ELF capture per K, with (Verilator, gSIM) kernel cycles as given."""
+    from merlin.perf import capture_store
+
+    (tmp_path / "captures" / "test_target").mkdir(parents=True)
+    monkeypatch.setattr(capture_store, "store_root", lambda target: tmp_path / "captures" / target)
+    import merlin.runtime.reference as reference
+
+    monkeypatch.setattr(reference, "reference_outputs", lambda cb: {"Y0": [[1, 2], [3, 4]]})
+    monkeypatch.setattr(reference, "outputs_match", lambda got, expected: got == expected)
+    artifacts, receipt = _artifacts(tmp_path)
+    paths = []
+    for k, (verilator_cycles, gsim_cycles) in cycles.items():
+        case = tmp_path / f"case{k}"
+        case.mkdir()
+        capsule = _capsule(case, k=k)
+        lowered = case / "lowered"
+        lowered.mkdir()
+        (lowered / "command_buffer.json").write_text(
+            json.dumps({"tensors": {"Y0": {"role": "output", "shape": [2, 2], "dtype": "i32"}}}), encoding="utf-8"
+        )
+        (lowered / "lowered.llvm.mlir").write_text("module {}", encoding="utf-8")
+
+        class CycleBackend(_Backend):
+            def run_elf(self, elf, *, simulator, timeout):
+                return simulator
+
+            def parse_output(self, console):
+                n = gsim_cycles if console == "gsim" else verilator_cycles
+                return {"Y0": [[1, 2], [3, 4]]}, {"cycles": n}
+
+        def build_elf(cb, llvm, destination, _k=k):
+            elf = destination / "case.elf"
+            elf.write_bytes(f"elf {_k}".encode())
+            return elf
+
+        capture = PRODUCER.capture_case(
+            target="test_target",
+            capsule_manifest=capsule,
+            artifact_dir=lowered,
+            workdir=case / "work",
+            artifacts=artifacts,
+            backend=CycleBackend(),
+            build_elf=build_elf,
+        )
+        path = case / "capture.json"
+        path.write_text(json.dumps(capture, sort_keys=True), encoding="utf-8")
+        paths.append(path)
+    return paths, artifacts, receipt
+
+
+def test_an_engine_qualification_admits_covered_strata_and_refuses_the_rest(tmp_path, monkeypatch):
+    from merlin_experiments.phase2 import engine_qualification as EQ
+
+    paths, artifacts, receipt = _qualification_captures(tmp_path, monkeypatch, {32: (4100, 4100)})
+    document = EQ.produce_qualification(
+        target="test_target", captures=paths, artifacts=artifacts, build_receipt=receipt, cycle_budget=10_000
+    )
+    path = tmp_path / "engine_qualification.json"
+    path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+    record = GATE.load_certificate(path)
+    assert record.certification == "engine_qualified" and len(record.coverage) == 1
+
+    qualified = WORKLOAD.derive_workload(_capsule(tmp_path / "case32", k=32))
+    bigger = json.loads(json.dumps(qualified))
+    bigger["shape"]["k"] = 8192  # same stratum and form, performance scale
+    assert EQ.coverage_key(bigger) == EQ.coverage_key(qualified)
+    other_form = json.loads(json.dumps(qualified))
+    other_form["semantics"]["operation_attributes"]["epilogue"] = ["relu"]
+    assert record.admits(bigger) and not record.admits(other_form)
+    assert GATE.plan_evaluation(record, bigger, phase="final_performance", gsim_available=True).eligible
+    refused = GATE.plan_evaluation(record, other_form, phase="final_performance", gsim_available=True)
+    assert not refused.eligible and not refused.final_cycle_authority
+
+    tampered = json.loads(path.read_text())
+    tampered["coverage"][0]["key"]["form"]["epilogue"] = ["relu"]
+    path.write_text(json.dumps(tampered, sort_keys=True), encoding="utf-8")
+    with pytest.raises(GATE.GsimGateError, match="coverage"):
+        GATE.load_certificate(path)
+
+
+@pytest.mark.parametrize(
+    "cycles, budget, why", [((4100, 4116), 10_000, "Verilator 4100"), ((4100, 4100), 4000, "over the 4000 budget")]
+)
+def test_engine_qualification_needs_identical_cycles_within_its_budget(tmp_path, monkeypatch, cycles, budget, why):
+    from merlin_experiments.phase2 import engine_qualification as EQ
+
+    paths, artifacts, receipt = _qualification_captures(tmp_path, monkeypatch, {32: cycles})
+    with pytest.raises(EQ.EngineQualificationError, match=why):
+        EQ.produce_qualification(
+            target="test_target", captures=paths, artifacts=artifacts, build_receipt=receipt, cycle_budget=budget
+        )
+
+
+def test_the_host_suite_takes_the_largest_affordable_member_per_key_and_names_gaps(tmp_path):
+    from merlin_experiments.phase2 import engine_qualification as EQ
+
+    w = {}
+    for k in (32, 64, 128):
+        (tmp_path / f"k{k}").mkdir()
+        w[k] = WORKLOAD.derive_workload(_capsule(tmp_path / f"k{k}", k=k))
+    relu = json.loads(json.dumps(w[32]))
+    relu["semantics"]["operation_attributes"]["epilogue"] = ["relu"]
+    plan = EQ.plan_suite(
+        {"big": w[128], "relu_member": relu},
+        {"small": (w[32], 900), "medium": (w[64], 1800), "too_big": (w[128], 9000)},
+        cycle_budget=2000,
+    )
+    assert plan["selected"] == ["medium"]
+    assert plan["uncovered"] == [EQ.coverage_key(relu)]
