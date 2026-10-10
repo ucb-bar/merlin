@@ -38,6 +38,24 @@ class _Member:
     family, capsule = "PX", "PX00_skipped"
 
 
+#: A declared 16x16x16 i8 contraction on a 16x16 array with 16-byte read and write channels.
+_DESCRIPTOR = {
+    "inputs": [
+        {"name": "W", "role": "weight", "shape": [16, 16], "dtype": "i8"},
+        {"name": "A0", "role": "input", "shape": [16, 16], "dtype": "i8"},
+    ],
+    "operation": {"op": "matmul", "attributes": {"lhs": "A0", "weight": "W", "output_dtype": "i32"}},
+}
+_MACHINE = {
+    "array_rows": 16,
+    "array_cols": 16,
+    "read_bytes_per_cycle": 16,
+    "write_bytes_per_cycle": 16,
+    "basis": {"compute": "test geometry", "movement": "test widths"},
+    "unresolved": {},
+}
+
+
 def _measured_cell(family: str = "PK", capsule: str = "PK00_k16") -> dict:
     return {
         "family": family,
@@ -64,6 +82,8 @@ def _measured_cell(family: str = "PK", capsule: str = "PK00_k16") -> dict:
         "ideal_cycles_at_achievable": 51.2,
         "cycles_saved": 50,
         "gap_closed": 50 / (300 - 51.2),
+        "roofline": FM.roofline_cell(_DESCRIPTOR, _MACHINE, baseline_cycles=300, candidate_cycles=250),
+        "executed_commands": FM.executed_commands_cell(None, None),
         "measured": True,
         "skip_reason": None,
     }
@@ -91,6 +111,7 @@ def _document(cells: list[dict]) -> dict:
             "achievable_macs_per_cycle": 80.0,
             "achievable_basis": "measured",
             "recoverable": FM.recoverable_cycles(cells, 80.0),
+            "roofline_machine": FM.roofline_machine_summary(_MACHINE),
         },
         "stopping": {
             "status": "continue",
@@ -619,3 +640,23 @@ def test_an_unreadable_fan_out_is_refused_rather_than_guessed(tmp_path, monkeypa
     monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "0")
     with pytest.raises(PAS.StageGateError, match="positive"):
         DF.sweep_workers()
+
+
+def test_members_over_the_authoring_budget_are_never_swept_on_gsim(tmp_path, monkeypatch):
+    """A large member never blocks an agent's tool call: above the declared roofline-floor budget it is
+    not executed during authoring, and its cell says it is measured in the final cells only."""
+    members = _many(tmp_path)
+    cycles = {m.capsule: {"baseline": 100, "candidate": 90} for m in members}
+    large = members[0].capsule
+    floors = {m.capsule: (5_000_000 if m.capsule == large else 1_000) for m in members}
+    monkeypatch.setattr(DF.DevelopmentGsimFeedback, "roofline_floor", lambda self, member: floors[member.capsule])
+    monkeypatch.setenv(DF.AUTHORING_GSIM_FLOOR_BUDGET_ENV, "50000")
+    cand = tmp_path / "cand"
+    (cand / "performance").mkdir(parents=True)
+    (cand / "compiler.py").write_text("# c\n", encoding="utf-8")
+    ev, seen = _evaluator_for(tmp_path / "e", members, cycles=cycles)
+    document = ev.evaluate(cand, round_index=0, call_index=0, timeout_s=600)
+    assert large not in {capsule for capsule, _, _ in seen}, "a member over the budget was executed"
+    cell = next(c for c in document["cells"] if c["capsule"] == large)
+    assert cell["measured"] is False and "final measurement cells" in cell["skip_reason"]
+    assert sum(c["measured"] for c in document["cells"]) == len(members) - 1

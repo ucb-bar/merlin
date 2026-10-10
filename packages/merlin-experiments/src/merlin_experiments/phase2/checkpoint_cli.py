@@ -60,6 +60,32 @@ def main(argv: list[str] | None = None, *, resolve_context=None, invocation: tup
     parser.add_argument("--perf-profile", type=Path, required=True)
     parser.add_argument("--gsim-certificate", type=Path, required=True)
     parser.add_argument("--gsim-certificate-sha256", required=True)
+    parser.add_argument(
+        "--authoring-gsim-floor-budget",
+        type=int,
+        default=50_000,
+        metavar="CYCLES",
+        help="tuning members whose roofline floor exceeds CYCLES are not swept on gSIM during authoring; "
+        "they are measured on gSIM only in the final cells (default 50000; 0 sweeps every member)",
+    )
+    parser.add_argument(
+        "--single-observation-above-roofline-cycles",
+        type=int,
+        default=None,
+        metavar="CYCLES",
+        help="members whose predeclared roofline floor exceeds CYCLES get one gSIM observation cited by both "
+        "replicate identities (gSIM is deterministic); recorded in the statistics predeclaration and every "
+        "measurement plan (default: every replicate observed)",
+    )
+    parser.add_argument(
+        "--certification",
+        choices=("per_workload", "engine_qualified"),
+        default="per_workload",
+        help="gSIM timing admission policy, recorded in the declaration: per_workload (every measured "
+        "workload captured on Verilator and gSIM; --gsim-certificate is a certificate) or "
+        "engine_qualified (one gSIM build qualified on a stratified suite; a workload is admitted when "
+        "its stratum and form are covered; --gsim-certificate is an engine qualification).",
+    )
     parser.add_argument("--functional-gsim-certificate", type=Path)
     parser.add_argument("--functional-gsim-certificate-sha256")
     parser.add_argument(
@@ -90,6 +116,27 @@ def main(argv: list[str] | None = None, *, resolve_context=None, invocation: tup
         help="executions in flight per measurement cell (default 1 = serial)",
     )
     parser.add_argument("--generalization-count", type=int, default=4)
+    form = parser.add_argument_group(
+        "form-scale holdout",
+        "an optional second held-out cohort, committed and revealed beside the PK holdout; "
+        "absent, the campaign is unchanged",
+    )
+    form.add_argument(
+        "--form-holdout-spec",
+        type=Path,
+        help="private YAML/JSON mapping with generated_root, applications and optional family; "
+        "keeps the roster out of the recorded invocation",
+    )
+    form.add_argument(
+        "--form-holdout-generated-root",
+        type=Path,
+        help="host-private Phase 0 run that generated the form-scale members",
+    )
+    form.add_argument(
+        "--form-holdout-applications",
+        help="comma-separated private performance-scale roster (recorded in the invocation; prefer the spec)",
+    )
+    form.add_argument("--form-holdout-family", help="form family to select (default PW)")
     parser.add_argument("--measurement-timeout", type=int, default=600)
     parser.add_argument("--gsim-max-cycles", type=int)
     parser.add_argument("--codex-binary", default="codex")
@@ -121,6 +168,8 @@ def main(argv: list[str] | None = None, *, resolve_context=None, invocation: tup
     _raw = {key: value for key, value in vars(args).items() if key not in (*resource_names, "suite", "dry_run")}
     _raw["context"] = context
     _raw["waive_functional_gate"] = tuple(_raw.pop("waive_functional_gate", ()) or ())
+    _raw["authoring_gsim_floor_budget"] = _raw.get("authoring_gsim_floor_budget") or None  # 0: sweep every member
+    _raw.update(_form_holdout_fields(_raw.pop("form_holdout_spec"), _raw))
     config = AD.Config(**_raw)
     try:
         outcome = CTRL.run(config, dry_run=args.dry_run)
@@ -129,6 +178,32 @@ def main(argv: list[str] | None = None, *, resolve_context=None, invocation: tup
         return 2
     print(json.dumps(outcome if isinstance(outcome, dict) else {"manifest": str(outcome)}, indent=2))
     return 0
+
+
+def _form_holdout_fields(spec: Path | None, raw: dict) -> dict:
+    """Config fields of the optional form-scale holdout, from a private spec or explicit flags."""
+    root = raw.pop("form_holdout_generated_root")
+    applications = raw.pop("form_holdout_applications")
+    family = raw.pop("form_holdout_family")
+    if spec is not None:
+        if root is not None or applications is not None:
+            raise SystemExit("--form-holdout-spec excludes --form-holdout-generated-root/--form-holdout-applications")
+        try:
+            fields = AD.load_form_holdout_spec(spec)
+        except AD.ExperimentError as exc:
+            raise SystemExit(f"NO-GO: {exc}") from exc
+    elif root is None and applications is None:
+        fields = {}
+    else:
+        if root is None or applications is None:
+            raise SystemExit("--form-holdout-generated-root and --form-holdout-applications go together")
+        labels = tuple(label.strip() for label in applications.split(",") if label.strip())
+        fields = {"form_holdout_generated_root": root, "form_holdout_applications": labels}
+    if family is not None:
+        if not fields:
+            raise SystemExit("--form-holdout-family needs a configured form-scale holdout")
+        fields["form_holdout_family"] = family
+    return fields
 
 
 if __name__ == "__main__":

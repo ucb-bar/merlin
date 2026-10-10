@@ -510,8 +510,13 @@ def run_stage(
     waive_functional_gate: tuple[str, ...] = (),
     workflow_id: str = BP.CORPUS_FEEDBACK_V1,
     component_launch=None,
+    whole_model_profile_inputs: Path | None = None,
 ) -> Path:
-    """Run bounded authoring rounds and return the sealed candidate-record path."""
+    """Run bounded authoring rounds and return the sealed candidate-record path.
+
+    ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
+    (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
+    unavailable."""
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
@@ -597,7 +602,16 @@ def run_stage(
     frozen_functional = FI.load_frozen_functional_inputs(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
     )
-    prepared_actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, base, target_experiment)
+    prepared_actions = BP.action_registry(
+        BP.CORPUS_FEEDBACK_V1,
+        base,
+        target_experiment,
+        unavailable=(
+            {BP.WHOLE_MODEL_PROFILE_ACTION: BP.WHOLE_MODEL_PROFILE_UNAVAILABLE}
+            if whole_model_profile_inputs is None
+            else None
+        ),
+    )
     prepared_action_contract = action_registry_contract(prepared_actions, base)
     minimum_calls = rounds * sum(action.required for action in prepared_actions)
     if max_tool_calls < minimum_calls:
@@ -620,6 +634,7 @@ def run_stage(
         # true remaining spend instead of "unbounded".
         tuning_call_budget=max_tool_calls,
         functional_run_dir=functional.run_dir,
+        whole_model_inputs=whole_model_profile_inputs,
     )
     prompt_inputs = INPUTS.prepare_prompt_inputs(
         functional,

@@ -600,6 +600,13 @@ def test_child_environment_uses_certificate_pin_and_not_ambient_selection(
     assert environment["MERLIN_REQUIRED_RTL_ENGINE"] == "gsim"
     assert environment["MERLIN_CACHE_STATE"] == "warm"
     assert environment["SYNTHETIC_MAXCYCLES"] == "9000"
+    assert environment["MERLIN_PHASE2_GSIM_READBACK"] == "digest", "children read gSIM outputs back as digests"
+    assert environment["MERLIN_GSIM_L3_READBACK"] == "digest", "the functional regrade's gSIM L3 too"
+    monkeypatch.setenv("MERLIN_PERF_AUTHORING_GSIM_FLOOR_BUDGET", "1")
+    assert "MERLIN_PERF_AUTHORING_GSIM_FLOOR_BUDGET" not in AD.child_environment(_config(tmp_path), certificate)
+    budgeted = dataclasses.replace(_config(tmp_path), authoring_gsim_floor_budget=50_000)
+    declared = AD.child_environment(budgeted, certificate)
+    assert declared["MERLIN_PERF_AUTHORING_GSIM_FLOOR_BUDGET"] == "50000", "declared, never ambient"
     no_cap = AD.child_environment(_config(tmp_path, max_cycles=None), certificate)
     assert "SYNTHETIC_MAXCYCLES" not in no_cap
 
@@ -1333,4 +1340,43 @@ def test_a_narrowed_campaign_still_needs_its_own_members_certified(monkeypatch: 
             SimpleNamespace(members={"i0": {}, "i1": {}, "i2": {}, "foreign": {}}),
             SimpleNamespace(target="gemmini"),
             capsules="PM00,PM01",
+        )
+
+
+def _engine_qualification(covered_identities):
+    """An engine-qualified record whose coverage admits exactly these workload identities."""
+    return SimpleNamespace(
+        certification="engine_qualified",
+        sha256="q" * 64,
+        members={},
+        admits=lambda workload: AD.GATE.workload_sha256(workload) in covered_identities,
+    )
+
+
+def test_engine_qualified_admission_needs_every_tuning_member_covered(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [("PK", "PK00_k16"), ("PW", "PW01_large")]
+    _identity_by_capsule({"PK00_k16": "i16", "PW01_large": "iL"}, monkeypatch)
+    monkeypatch.setattr(P2_CORPUS, "discover_performance_corpus", lambda *_args, **_kwargs: _fake_corpus(rows))
+    monkeypatch.setattr(AD.GATE, "admits", lambda record, workload: record.admits(workload))
+    covered = _engine_qualification({"i16", "iL"})
+    covered.coverage = {"k": {}}
+    assert AD._verify_tuning_certificate(covered, SimpleNamespace(target="gemmini"))["certification"] == (
+        "engine_qualified"
+    )
+    with pytest.raises(AD.ExperimentError, match="does not cover the stratum/form of: PW/PW01_large=iL"):
+        AD._verify_tuning_certificate(_engine_qualification({"i16"}), SimpleNamespace(target="gemmini"))
+
+
+def test_engine_qualified_reveal_is_checked_for_coverage_without_extension_captures(tmp_path: Path) -> None:
+    holdout = tmp_path / "heldout"
+    reveal, manifests = _revealed_corpus(holdout, [("k17", 17), ("k31", 31)])
+    identities = [AD.GATE.workload_sha256(WORKLOAD.derive_workload(path)) for path in manifests]
+
+    coverage = CTRL._verify_engine_coverage(
+        _engine_qualification(set(identities)), reveal, manifest_sha256=None, corpus_sha256=None, target=None
+    )
+    assert coverage["certification"] == "engine_qualified" and coverage["heldout_workloads_covered"] == 2
+    with pytest.raises(AD.ExperimentError, match="does not cover the stratum/form of: k31"):
+        CTRL._verify_engine_coverage(
+            _engine_qualification({identities[0]}), reveal, manifest_sha256=None, corpus_sha256=None, target=None
         )

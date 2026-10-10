@@ -25,6 +25,8 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from merlin.common.paths import module_source_path
 from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.targetgen.capsule_common import discover_capsules
@@ -32,10 +34,12 @@ from merlin.targetgen.contract.materialize import materialize_public_cohort
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
 from merlin.targetgen.target_experiment import load_target_experiment
+from merlin_experiments.measured_launch import without_unsealed_board_catalog
 from merlin_experiments.phase2 import authoring as AUTHORING
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import contracts as P2_CONTRACTS
 from merlin_experiments.phase2 import corpus as P2_CORPUS
+from merlin_experiments.phase2 import form_holdout as FORM_HOLDOUT
 from merlin_experiments.phase2 import functional_cohort as FC
 from merlin_experiments.phase2 import functional_inputs as FI
 from merlin_experiments.phase2 import gsim_gate as GATE
@@ -45,13 +49,14 @@ from merlin_experiments.phase2 import measurement_evidence as ME
 from merlin_experiments.phase2 import published_payload as PUBLISHED
 from merlin_experiments.phase2 import telemetry as TEL
 from merlin_experiments.phase2.chia_launch import PYTHON_SOURCE_ENVIRONMENT_KEYS
-from merlin_experiments.measured_launch import without_unsealed_board_catalog
 from merlin_experiments.phase2.contracts import PerformanceExperimentError as ExperimentError
 
 TRIALS = ("trial_00", "trial_01", "trial_02")
 REPLICATES = ("r000", "r001")
 SCHEMA = "merlin.agentic-performance-experiment.v1"
 MEASUREMENT_CACHE_CONDITION = "warm"
+# Measurement cells of the form-scale holdout: phase ``held_out``, addressed apart from the PK cells.
+FORM_HOLDOUT_MEASUREMENT_LABEL = "held_out_form"
 
 
 @dataclass(frozen=True)
@@ -141,6 +146,26 @@ class Config:
     # One by default, because a formal campaign's width is DECLARED rather than inferred.
     sim_workers: int = 1
     published_compiler_root: Path | None = None
+    # A form-scale holdout cohort committed and revealed beside the PK holdout. The generated root is
+    # a separate host-private Phase 0 run; the applications are its private performance-scale roster.
+    # Unset (None and empty) leaves the campaign, and every record it writes, exactly as before.
+    form_holdout_generated_root: Path | None = None
+    form_holdout_applications: tuple[str, ...] = ()
+    form_holdout_family: str = "PW"
+    #: OPERATOR-PRIVATE held-out layer shapes; the form-holdout commit and reveal refuse a member
+    #: that reproduces one (merlin_experiments.phase0.heldout_layers).
+    form_holdout_heldout_layers: Path | None = None
+    #: The recorded gSIM admission policy: ``per_workload`` (every measured workload captured on both
+    #: engines) or ``engine_qualified`` (one build qualified on a stratified suite; a workload is admitted
+    #: when its stratum and form are covered). ``--gsim-certificate`` names the matching document.
+    certification: str = "per_workload"
+    #: Members whose predeclared roofline floor exceeds this many cycles get ONE gSIM observation cited
+    #: by both replicate identities (gSIM is deterministic). None: every replicate is observed.
+    single_observation_above_roofline_cycles: int | None = None
+    #: Tuning members whose roofline floor exceeds this many cycles are not swept on gSIM during
+    #: authoring (measured there only in the final cells), so a large member never blocks an agent's
+    #: tool call. None sweeps every member, as before.
+    authoring_gsim_floor_budget: int | None = None
 
 
 @dataclass(frozen=True)
@@ -258,10 +283,130 @@ def _config_document(config: Config) -> dict[str, Any]:
     for key in ("telemetry_price_table", "chia_python", "published_compiler_root"):
         if document[key] is not None:
             document[key] = str(document[key])
+    # Absent, the form holdout adds nothing, so an unconfigured campaign keeps its exact identity.
+    # Present, the roster is bound by digest: this document is checkpoint evidence, not a place for
+    # the private labels.
+    generated = document.pop("form_holdout_generated_root")
+    applications = document.pop("form_holdout_applications")
+    family = document.pop("form_holdout_family")
+    layers = document.pop("form_holdout_heldout_layers")
+    if form_holdout_configured(config):
+        document["form_holdout"] = {
+            "generated_root": str(generated),
+            "roster_sha256": FORM_HOLDOUT.roster_sha256(applications),
+            "family": family,
+        }
+        if layers is not None:
+            # The operator-private layer file is bound by digest only; its shapes are never evidence text.
+            document["form_holdout"]["heldout_layer_shapes_sha256"] = (
+                _sha_file(Path(layers)) if Path(layers).is_file() else None
+            )
     document["trials"] = list(TRIALS)
     document["replicates"] = list(REPLICATES)
     document["selection"] = "all_three_trials_no_best_of_no_failed_cell_dropping"
     return document
+
+
+FORM_HOLDOUT_SPEC_KEYS = frozenset({"generated_root", "applications", "family", "heldout_layer_shapes"})
+
+
+def form_holdout_configured(config: Config) -> bool:
+    """Whether the campaign commits and reveals a form-scale holdout; a half-declared one refuses."""
+    root = config.form_holdout_generated_root
+    applications = tuple(config.form_holdout_applications or ())
+    if root is None and not applications:
+        return False
+    if root is None or not applications:
+        raise ExperimentError("a form-scale holdout needs both its private generated root and its private roster")
+    if not isinstance(root, Path) or not root.is_absolute():
+        raise ExperimentError("form-scale holdout generated root must be an absolute Path")
+    if any(not isinstance(label, str) or not label.strip() for label in applications):
+        raise ExperimentError("form-scale holdout roster labels must be non-empty strings")
+    if len(set(applications)) != len(applications):
+        raise ExperimentError("form-scale holdout roster repeats a label")
+    if not isinstance(config.form_holdout_family, str) or not config.form_holdout_family.strip():
+        raise ExperimentError("form-scale holdout family must be explicit")
+    return True
+
+
+def load_form_holdout_spec(path: Path) -> dict[str, Any]:
+    """Read a private form-holdout spec (YAML or JSON mapping) into Config fields.
+
+    The spec keeps the roster off the command line, which is recorded in the launch receipt.
+    """
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ExperimentError(f"form-scale holdout spec is absent, linked or not a file: {path}")
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ExperimentError("form-scale holdout spec is unreadable") from exc
+    if not isinstance(document, Mapping) or set(document) - FORM_HOLDOUT_SPEC_KEYS:
+        raise ExperimentError(f"form-scale holdout spec must be a mapping of {sorted(FORM_HOLDOUT_SPEC_KEYS)}")
+    root = document.get("generated_root")
+    applications = document.get("applications")
+    if isinstance(applications, str):
+        applications = [label.strip() for label in applications.split(",")]
+    if not isinstance(root, str) or not isinstance(applications, list):
+        raise ExperimentError("form-scale holdout spec needs a generated_root path and an applications list")
+    fields: dict[str, Any] = {
+        "form_holdout_generated_root": Path(root),
+        "form_holdout_applications": tuple(str(label) for label in applications),
+    }
+    if document.get("family") is not None:
+        fields["form_holdout_family"] = str(document["family"])
+    if document.get("heldout_layer_shapes") is not None:
+        fields["form_holdout_heldout_layers"] = Path(str(document["heldout_layer_shapes"]))
+    return fields
+
+
+def agent_reachable_roots(config: Config) -> tuple[Path, ...]:
+    """Roots an authoring agent reads or writes: the controller's agent view and the stage root."""
+    return (Path(config.root) / "agent_visible", Path(config.context.stage_root))
+
+
+def form_holdout_tuning_root(target: object) -> Path:
+    """The sealed tuning release the form cohort must be disjoint from: the target's corpus root."""
+    return Path(getattr(target, "capsule_corpus")).resolve().parent
+
+
+def form_holdout_blockers(config: Config, target: object) -> list[str]:
+    """Read-only checks that the private form-scale cohort can be committed before authoring."""
+    root = Path(config.form_holdout_generated_root or "")
+    if root.is_symlink() or not root.is_dir():
+        return [f"form-scale holdout generated root is absent or linked: {root}"]
+    blockers = []
+    for reachable in agent_reachable_roots(config):
+        if HOLDOUT._inside(root, reachable):
+            blockers.append(f"form-scale holdout generated root is inside an agent-reachable root: {reachable}")
+    tuning = form_holdout_tuning_root(target) / FORM_HOLDOUT.PERFORMANCE_CATEGORY
+    if tuning.is_symlink() or not tuning.is_dir():
+        blockers.append("the sealed tuning release has no performance category to check the form cohort against")
+    try:
+        members = FORM_HOLDOUT.select_members(
+            root, applications=config.form_holdout_applications, family=config.form_holdout_family
+        )
+    except (HOLDOUT.HoldoutError, OSError, ValueError, yaml.YAMLError) as exc:
+        blockers.append(f"form-scale holdout members cannot be selected: {exc}")
+    else:
+        if len(members) < HOLDOUT.MIN_MEMBERS:
+            blockers.append(f"form-scale holdout has {len(members)} member(s); need {HOLDOUT.MIN_MEMBERS}")
+    return blockers
+
+
+def form_holdout_declaration(config: Config) -> dict[str, Any] | None:
+    """The predeclared form-scale cohort: identity by digest, never a member or roster label."""
+    if not form_holdout_configured(config):
+        return None
+    return {
+        "cohort": FORM_HOLDOUT.COHORT,
+        "family": config.form_holdout_family,
+        "roster_sha256": FORM_HOLDOUT.roster_sha256(config.form_holdout_applications),
+        "commit_before_authoring": True,
+        "reveal_after_all_candidate_seals": True,
+        "measurement_label": FORM_HOLDOUT_MEASUREMENT_LABEL,
+        "holdout_verdict": "requires_both_pk_and_form_scale_cohorts",
+    }
 
 
 class Checkpoints:
@@ -363,6 +508,19 @@ def child_environment(config: Config, certificate: GATE.CertificateRecord) -> di
         # and model tile dispatch to that engine.
         "MERLIN_REQUIRED_RTL_ENGINE": "gsim",
     }
+    from merlin.targetgen.oracle_readback import GSIM_L3_READBACK_ENV
+    from merlin_experiments.phase2 import gsim_digest_readback as DIGEST
+
+    # Every gSIM run of a child reads outputs back as Spike-verified digests (the functional regrade
+    # included), unless the operator kept full readback; pinned here so ambient settings never decide.
+    environment[DIGEST.MODE_ENV] = DIGEST.mode()
+    from merlin_experiments.phase2.development_feedback import AUTHORING_GSIM_FLOOR_BUDGET_ENV
+
+    environment.pop(AUTHORING_GSIM_FLOOR_BUDGET_ENV, None)  # declared, never ambient
+    budget = getattr(config, "authoring_gsim_floor_budget", None)
+    if budget is not None:
+        environment[AUTHORING_GSIM_FLOOR_BUDGET_ENV] = str(int(budget))
+    environment[GSIM_L3_READBACK_ENV] = "digest" if DIGEST.enabled() else "auto"
     if config.telemetry_price_table is None:
         raise ExperimentError("the child environment lacks a pinned telemetry price table")
     environment["AET_PRICE_TABLE"] = str(Path(config.telemetry_price_table).resolve())
@@ -627,6 +785,25 @@ def _verify_tuning_certificate(
         full_identities = {
             GATE.workload_sha256(WORKLOAD.derive_workload(member.source_dir / "capsule.yaml"))
             for member in P2_CORPUS.discover_performance_corpus(target).capsules
+        }
+    if GATE.certification_of(certificate) != "per_workload":
+        # ENGINE QUALIFIED: every member must fall in a stratum and form the qualified build covers.
+        derived = [WORKLOAD.derive_workload(member.source_dir / "capsule.yaml") for member in corpus.capsules]
+        workloads = {GATE.workload_sha256(workload): workload for workload in derived}
+        uncovered = sorted(
+            identity for identity, workload in workloads.items() if not GATE.admits(certificate, workload)
+        )
+        if uncovered:
+            raise ExperimentError(
+                "the gSIM engine qualification does not cover the stratum/form of: "
+                + ", ".join(f"{'+'.join(identities[identity])}={identity}" for identity in uncovered)
+            )
+        return {
+            "certification": GATE.certification_of(certificate),
+            "workload_sha256": sorted(identities),
+            "members": len(identities),
+            "corpus_capsules": sum(len(names) for names in identities.values()),
+            "covered_keys": sorted(certificate.coverage),
         }
     missing = sorted(set(identities) - set(certificate.members))
     extras = sorted(set(certificate.members) - full_identities)
@@ -918,6 +1095,11 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     certificate = GATE.load_certificate(config.gsim_certificate, expected_sha256=config.gsim_certificate_sha256)
     if certificate.target != target.target:
         raise ExperimentError("GSIM certificate target differs from the experiment target")
+    if GATE.certification_of(certificate) != config.certification:
+        raise ExperimentError(
+            f"--certification {config.certification} was declared, but --gsim-certificate is a "
+            f"{GATE.certification_of(certificate)} document"
+        )
     tuning_coverage = _verify_tuning_certificate(certificate, target, config.perf_capsules, config.perf_families)
     pinned_gsim = Path(certificate.pins["gsim_binary"]["path"])
     if not pinned_gsim.is_file() or _sha_file(pinned_gsim) != certificate.pins["gsim_binary"]["sha256"]:
@@ -1055,6 +1237,13 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
             "GSIM/Verilator output evidence, and emits an extension certificate; the tuning "
             "certificate cannot qualify them"
         )
+    form_declaration = None
+    try:
+        form_declaration = form_holdout_declaration(config)
+    except ExperimentError as exc:
+        blockers.append(f"form-scale holdout configuration is invalid: {exc}")
+    if form_declaration is not None:
+        blockers.extend(form_holdout_blockers(config, target))
     declaration = {
         "schema": SCHEMA,
         "status": "GO" if not blockers else "NO_GO",
@@ -1070,6 +1259,7 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
         "holdout_domain_sha256": _sha_bytes(_canonical(domain)),
         "rtl_facts_provenance": rtl_provenance,
         "gsim_certificate_sha256": certificate.sha256,
+        "certification": GATE.certification_of(certificate),
         "tuning_gsim_coverage": tuning_coverage,
         "functional_gsim_certificate_sha256": (functional_certificate.sha256 if functional_certificate else None),
         "functional_gsim_coverage": functional_coverage,
@@ -1097,4 +1287,6 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
         },
         "selection": "all_trials_all_cells_no_best_of_no_drop",
     }
+    if form_declaration is not None:
+        declaration["form_holdout"] = form_declaration
     return {**declaration, "declaration_sha256": _sha_bytes(_canonical(declaration))}

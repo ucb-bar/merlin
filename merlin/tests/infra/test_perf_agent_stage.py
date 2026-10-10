@@ -195,6 +195,31 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                 "ideal_cycles_at_achievable": 51.2,
                 "cycles_saved": 20.0,
                 "gap_closed": 20.0 / (120 - 51.2),
+                # Where each arm sits against the machine's derived bound for the declared work.
+                "roofline": {
+                    "status": "derived",
+                    "roofline_cycles": 64,
+                    "limiter": "movement",
+                    "compute_floor_cycles": 16,
+                    "movement_floor_cycles": 64.0,
+                    "compulsory_read_bytes": 512,
+                    "compulsory_write_bytes": 1024,
+                    "baseline_over_roofline": 120 / 64,
+                    "candidate_over_roofline": 100 / 64,
+                    "basis": "work: declared matmul operand shapes (M x K x N); bytes: declared inputs",
+                    "unresolved": [],
+                },
+                "executed_commands": {
+                    arm: {
+                        "status": "unknown",
+                        "accelerator_commands": None,
+                        "retired_instructions": None,
+                        "by_class": None,
+                        "local_memory": None,
+                        "why": "no executed profile was recorded for this arm",
+                    }
+                    for arm in ("baseline", "candidate")
+                },
                 # A cell says whether the sweep paid for it. Omitting these made every test in this file
                 # that builds a document fail on the key set rather than on what it meant to assert.
                 "measured": True,
@@ -229,6 +254,14 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                 "priced_members": 1,
                 "basis": "test",
                 "licence": "test",
+            },
+            "roofline_machine": {
+                "array_rows": 16,
+                "array_cols": 16,
+                "read_bytes_per_cycle": 16,
+                "write_bytes_per_cycle": 16,
+                "basis": ["compute: test geometry", "movement: test widths"],
+                "unresolved": [],
             },
         },
     }
@@ -1993,6 +2026,7 @@ def test_development_adapter_preserves_paired_request(tmp_path, monkeypatch, har
         "contract_root": tmp_path / "explicit-contract",
         "hardware_counters": hardware_counters,
         "workers": workers,
+        **({"counter_binding": None} if hardware_counters else {}),
     }
 
 
@@ -2217,7 +2251,11 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
         BP.ANALYSIS_ACTION,
         BP.INVENTORY_ACTION,
         BP.OCCUPANCY_PROFILE_ACTION,
+        BP.MEMBER_PROFILE_ACTION,
+        BP.WHOLE_MODEL_PROFILE_ACTION,
     ]
+    member_profile = next(action for action in actions if action.name == BP.MEMBER_PROFILE_ACTION)
+    assert member_profile.placeholders == ("member",) and member_profile.required is False
     assert actions[0].argv_template == (str(tool), "parse", "{input_mlir}")
     macro = BP.action_registry(BP.WHOLE_MODEL_V1, candidate, SimpleNamespace())
     preparation = next(action for action in macro if action.name == BP.SOURCE_CONVOLUTION_PREPARATION_ACTION)
