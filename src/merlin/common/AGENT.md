@@ -50,6 +50,12 @@ never swallowed as a per-group failure.
 - Frozen imports never fall through to a live owner or unchecked bytecode. This
   provenance boundary is not a Python sandbox and does not propagate to subprocesses
   without an explicit bootstrap. Keep experiment-specific launch policy out of core.
+Selected interpreter bootstraps may use `frozen_imports.activate` with
+`expose_roots_to_path=False`: protected namespaces and resources use their pinned
+roots without adding an outer interpreter's dependency directory to `sys.path`.
+Split protected packages still merge only their declared ordinary source roots.
+The caller owns existing search paths and the selected interpreter's dependencies;
+this option grants no dependency, sandbox or compilation authority.
 
 `strict_json` rejects ambiguous keys, non-finite numbers and oversized authority
 records before consumers interpret them; it does not confer provenance or admission.

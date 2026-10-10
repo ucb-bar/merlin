@@ -187,6 +187,8 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.corpus_inputs", "grader"),
     _module("merlin_experiments.phase1.source_inputs", "grader"),
     _module("merlin_experiments.phase1.component_qualification_domain", "grader"),
+    _module("merlin_experiments.phase1.component_original_members", "grader"),
+    _module("merlin_experiments.phase1.component_qualification_members", "grader"),
     _module("merlin_experiments.phase1.providers", "grader", directory=True),
     _module("merlin_experiments.phase1.brokers", "grader", directory=True),
     _module("merlin_experiments.phase1.feedback", "grader", directory=True),
@@ -222,7 +224,9 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.trace_check", "grader"),
     _module("merlin.targetgen.capsule_grade", "grader"),
     _module("merlin.targetgen.native_model_execution", "grader"),
-    _module("merlin.targetgen.native_component_execution", "grader"),
+    _module(
+        "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
+    ),
     _module("merlin.targetgen.native_dispatch_accounting", "grader"),
     _module(
         "merlin.targetgen.capsule_golden",
@@ -237,6 +241,7 @@ MODULE_ACCESS = (
             "merlin.targetgen.original_reference_values",
             "merlin.targetgen.original_pointwise_reference",
             "merlin.targetgen.original_pointwise_stress",
+            "merlin.targetgen.original_transpose_reference",
         ),
     ),
     _module(
@@ -247,6 +252,7 @@ MODULE_ACCESS = (
             "merlin_experiments.phase0.original_reference_products",
             "merlin_experiments.phase0.original_reference_observer",
             "merlin_experiments.phase0.original_pointwise_reference_observer",
+            "merlin_experiments.phase0.original_transpose_reference_observer",
             "merlin_experiments.phase0.original_pointwise_semantic_probes",
             "merlin_experiments.phase0.original_pointwise_stress_observer",
             "merlin_experiments.phase0.original_schema_batch",

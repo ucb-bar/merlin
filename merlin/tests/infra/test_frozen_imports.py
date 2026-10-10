@@ -19,7 +19,7 @@ def _write(root, relative, source):
     return path
 
 
-def _run(root, code, *, roots=("src",), names=(), before="", sources=None):
+def _run(root, code, *, roots=("src",), names=(), before="", sources=None, expose_roots=True):
     config = {
         "snapshot_root": str(root),
         "import_roots": [str(root / relative) for relative in roots],
@@ -30,6 +30,7 @@ def _run(root, code, *, roots=("src",), names=(), before="", sources=None):
             for path in root.rglob("*.py")
         },
         "legacy_names": names,
+        "expose_roots_to_path": expose_roots,
     }
     script = (
         "import json,runpy,sys\n"
@@ -67,6 +68,56 @@ def test_split_frozen_owners_and_root_precedence(tmp_path):
         roots=("src", "extra"),
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_project_only_roots_preserve_runtime_dependency_and_split_packages(tmp_path):
+    frozen = tmp_path / "frozen"
+    runtime = tmp_path / "runtime"
+    _write(
+        frozen, "src/merlin/__init__.py", "from pkgutil import extend_path\n__path__=extend_path(__path__,__name__)\n"
+    )
+    _write(frozen, "src/merlin/value.py", "VALUE='core'\n")
+    _write(frozen, "extra/merlin/optional.py", "VALUE='extension'\n")
+    _write(frozen, "extra/merlin_experiments/data/value.json", '"pinned resource"')
+    _write(frozen, "src/runtime_dependency.py", "raise AssertionError('foreign interpreter dependency loaded')\n")
+    _write(frozen, "extra/runtime_dependency.py", "raise AssertionError('foreign extension dependency loaded')\n")
+    _write(runtime, "runtime_dependency.py", "VALUE='selected interpreter'\n")
+    result = _run(
+        frozen,
+        "from merlin import value,optional\nimport runtime_dependency\n"
+        "from importlib.resources import files\n"
+        "assert (value.VALUE,optional.VALUE,runtime_dependency.VALUE)==('core','extension','selected interpreter')\n"
+        "assert files('merlin_experiments').joinpath('data/value.json').read_text()=='\"pinned resource\"'\n"
+        "assert all(root not in sys.path for root in config['import_roots'])\n",
+        roots=("src", "extra"),
+        before=f"sys.path.insert(0,{str(runtime)!r})",
+        sources={
+            path.relative_to(frozen).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in frozen.rglob("*")
+            if path.is_file()
+        },
+        expose_roots=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_project_root_exposure_rejects_ambiguous_policy(tmp_path, value):
+    _write(tmp_path, "src/merlin/value.py", "VALUE=1\n")
+    result = _run(tmp_path, "raise AssertionError('policy accepted')", expose_roots=value)
+    assert result.returncode != 0 and "exact boolean" in result.stderr
+
+
+def test_project_only_roots_preserve_regular_subpackage_ownership(tmp_path):
+    _write(
+        tmp_path, "src/merlin/__init__.py", "from pkgutil import extend_path\n__path__=extend_path(__path__,__name__)\n"
+    )
+    _write(tmp_path, "src/merlin/common/__init__.py", "")
+    _write(tmp_path, "extra/merlin/common/foreign.py", "raise AssertionError('regular package widened')\n")
+    result = _run(tmp_path, "import merlin.common.foreign", roots=("src", "extra"), expose_roots=False)
+    assert result.returncode != 0
+    assert "module unavailable in frozen source receipt: merlin.common.foreign" in result.stderr
+    assert "regular package widened" not in result.stderr
 
 
 @pytest.mark.parametrize("owner", ["merlin", "merlin_experiments", "merlin_analysis", "merlin_dse", "merlin_mining"])

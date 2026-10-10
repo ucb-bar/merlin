@@ -41,3 +41,12 @@ execution, original output comparison and result publication. Failed attempt
 evidence is retained after expiry; it cannot become a completed result.
 Boundary checks do not preempt arbitrary in-process callbacks or confer any
 semantic, physical or performance authority.
+
+`native_component_inputs` owns the shared error identity and ordered tensor
+binder reexported by `native_component_execution`; both import orders must work.
+An explicitly selected original member supplies exact typed input storage and
+the original full-output comparator without entering legacy golden dispatch.
+Reopen that live owner before and after ordinary lowering/execution and keep
+reference details in private evidence; caller-visible original failures contain
+no expected values or private paths. Opaque pointer arity does not prove flat
+tensor storage or a ranked memref descriptor bridge.

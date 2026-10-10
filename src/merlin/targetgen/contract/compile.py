@@ -1353,19 +1353,15 @@ def run_on_oracle(
     if memory and oracle_revalidate() != memory_engine:
         raise ValueError("memory oracle engine changed during output decoding")
     check_budget()
-    # DECODE A FLOAT RESULT THAT CAME BACK AS ITS CONTAINER WORD. `parse_output` yields whatever the
-    # console carried; a target whose harness has integer-only formatting prints a float destination
-    # buffer's stored PATTERN, so an f32 result arrives as its 32-bit word and a bf16 result as its
-    # 16-bit one. That is a lossless hand-back, not a broken one -- but only once the pattern is read
-    # back as the value, which needs the dtype the buffer was DECLARED in. Read here, from the command
-    # buffer itself (the same declaration the harness sized the buffer from), so the writer and the
-    # reader cannot disagree; keyed on that dtype and on nothing target-specific. A no-op for an
-    # integer-declared output and for a backend that already prints decimals, so every existing
-    # readback is byte-identical.
+    # Decode float storage words using the command buffer's declared dtype,
+    # which also sizes the harness. Integer outputs and already decoded float
+    # values retain their original representation.
     from merlin.runtime.commandbuffer import declared_output_dtypes
 
     outputs = _backends.decode_float_readback(outputs, declared_output_dtypes(cb))
     verify_execution()
+    if admission is not None:
+        _elf_admission.revalidate(elf=elf, result=admission, target=target)
     if (
         _execution_service is not None
         and _execution_service.consumption(elf=elf, console=console) != process_consumption

@@ -5,6 +5,7 @@ source-to-bytecode equivalence, dependency provenance, or runtime correctness.
 """
 
 import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -100,3 +101,31 @@ def verify_sources(selected):
         current = source_record(expected["path"], expected["commit"], expected["package"])
         if current != expected:
             raise ValueError("selected native source changed")
+
+
+def test_inputs_record(path, names):
+    """Pin one caller-selected closed test mapping; no source/runtime authority."""
+    path = Path(path)
+    if not path.is_absolute() or path.resolve(strict=True) != path or not path.is_file():
+        raise ValueError("native test inputs need a canonical regular file")
+    with path.open("rb") as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("native test input mapping exceeds its bounded envelope")
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("native test input mapping repeats a key")
+            result[key] = value
+        return result
+
+    mapping = json.loads(raw, object_pairs_hook=unique)
+    if (
+        type(mapping) is not dict
+        or set(mapping) != set(names)
+        or any(type(value) is not str or not value or "\0" in value for value in mapping.values())
+    ):
+        raise ValueError("native test inputs differ from the complete suite-declared string mapping")
+    return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "environment": mapping}

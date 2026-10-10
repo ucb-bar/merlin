@@ -1,5 +1,6 @@
 """Fixed complete replay of private original-reference products and decisions."""
 
+import hashlib
 import math
 import operator
 from pathlib import Path
@@ -39,10 +40,13 @@ def native_outputs(contract, path):
     if path.stat().st_size > contract.budget.max_source_bytes + 2 * contract.budget.max_payload_bytes:
         raise ValueError("original native output exceeds explicit predecode transfer limits")
     observed = loads(path.read_bytes())
+    transpose = contract.policy.operation == "aten.transpose.int"
+    keys = {"schema", "outputs", "runtime"} | ({"alias_observation"} if transpose else set())
     if (
         not isinstance(observed, dict)
-        or set(observed) != {"schema", "outputs", "runtime"}
-        or observed["schema"] != "merlin.original_reference_native_output.v1"
+        or set(observed) != keys
+        or observed["schema"]
+        != ("merlin.original_reference_native_output.v2" if transpose else "merlin.original_reference_native_output.v1")
         or not isinstance(observed["runtime"], dict)
         or set(observed["runtime"]) != {"torch_version", "git_version"}
         or any(type(value) is not str for value in observed["runtime"].values())
@@ -68,12 +72,46 @@ def native_outputs(contract, path):
     return _decode_outputs(observed["outputs"])
 
 
+def finite_transpose_alias(contract, inputs, path):
+    """Reopen a distinct finite storage observation; equality grants no alias fact."""
+    metadata = contract.verify()
+    from merlin.targetgen.original_operator_reference import _roster
+    from merlin.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
+
+    if type(contract.policy) is not OriginalTransposeReferencePolicy:
+        raise ValueError("finite transpose alias observation needs its exact original reference contract")
+    _roster(inputs, metadata["inputs"])
+    # Bounds/schema/complete output storage are independently checked first.
+    native_outputs(contract, path)
+    observed = loads(path.read_bytes())["alias_observation"]
+    shape = metadata["inputs"][0]["shape"]
+    strides = [shape[1], 1]
+    expected = {
+        "schema": "merlin.finite_transpose_alias_observation.v1",
+        "input_index": 0,
+        "output_index": 0,
+        "input_strides": strides,
+        "output_strides": [strides[axis] for axis in metadata["permutation"]],
+        "input_storage_offset": 0,
+        "output_storage_offset": 0,
+        "input_storage_bytes": len(inputs[0].data),
+        "output_storage_bytes": len(inputs[0].data),
+        "same_storage_base": True,
+        "input_bytes_sha256_before": hashlib.sha256(inputs[0].data).hexdigest(),
+        "input_bytes_sha256_after": hashlib.sha256(inputs[0].data).hexdigest(),
+        "scope": "actual finite native storage/stride contact only; no effect-domain or physical authority",
+    }
+    if canonical_json(observed) != canonical_json(expected):
+        raise ValueError("finite original transpose alias/storage/stride observation differs")
+    return {"contract_sha256": contract.sha256, "source_schema_alias": metadata["schema_alias"], **observed}
+
+
 def verify(record, *, schema_intake, basis, selection):
     from . import original_reference_roster as R
 
     schema = R._originals(schema_intake, basis)
     selected = P.validate(loads(R._plain(selection).read_bytes()))
-    equal = _pointwise_equal if selected["schema"] == P.POINTWISE_SCHEMA else operator.eq
+    equal = _pointwise_equal if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA} else operator.eq
     if (
         set(record)
         != {

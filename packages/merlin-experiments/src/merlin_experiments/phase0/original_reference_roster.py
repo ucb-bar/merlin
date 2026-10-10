@@ -33,6 +33,7 @@ from .rtl_intake import RtlIntakePin
 SCHEMA = "merlin.original_reference_roster.v1"
 BATCH_SCHEMA = "merlin.original_reference_roster.v2"
 POINTWISE_SCHEMA = "merlin.original_reference_roster.v3"
+TRANSPOSE_SCHEMA = "merlin.original_reference_roster.v4"
 _ISSUED = weakref.WeakKeyDictionary()
 _UNKNOWN = (
     "original_numerical_domain",
@@ -90,6 +91,12 @@ def _sources(selection):
     if os.environ.get("MERLIN_QUANT_FORMATS") is not None:
         raise ValueError("original reference roster has no explicitly selected format overlay")
     readers = list(_READERS)
+    if loads(Path(selection).read_bytes())["schema"] == P.TRANSPOSE_SCHEMA:
+        readers += [
+            "merlin.targetgen.original_transpose_sources",
+            "merlin.targetgen.original_transpose_reference",
+            "merlin_experiments.phase0.original_transpose_reference_observer",
+        ]
     if P.transport(loads(Path(selection).read_bytes())) == "batch.v1":
         readers += [
             "merlin_experiments.phase0.original_schema_batch",
@@ -104,12 +111,16 @@ def _sources(selection):
 
 
 def record_schema(selection):
+    if selection["schema"] == P.TRANSPOSE_SCHEMA:
+        return TRANSPOSE_SCHEMA
     if selection["schema"] == P.POINTWISE_SCHEMA:
         return POINTWISE_SCHEMA
     return BATCH_SCHEMA if P.transport(selection) == "batch.v1" else SCHEMA
 
 
 def _observer(selection):
+    if selection["schema"] == P.TRANSPOSE_SCHEMA:
+        return module_source_path("merlin_experiments.phase0.original_transpose_reference_observer")
     name = (
         "original_pointwise_reference_observer"
         if selection["schema"] == P.POINTWISE_SCHEMA
@@ -137,9 +148,12 @@ def _products(paths):
 
 
 def _comparison(contract, inputs, path):
-    from .original_reference_products import native_outputs
+    from .original_reference_products import finite_transpose_alias, native_outputs
 
-    return contract.compare(inputs, native_outputs(contract, path))
+    comparison = contract.compare(inputs, native_outputs(contract, path))
+    if contract.policy.operation == "aten.transpose.int":
+        comparison["finite_alias_observation"] = finite_transpose_alias(contract, inputs, path)
+    return comparison
 
 
 def _originals(intake, basis):
@@ -176,10 +190,14 @@ def _drafts(defaults, *, schema, basis, selection):
             for factory in (S.matmul_forms, S.original_add_forms, S.conv2d_forms)
             for form in factory(trace, schemas, observed)
         ]
-        if selection["schema"] == P.POINTWISE_SCHEMA:
+        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
             from merlin.targetgen.original_pointwise_sources import pointwise_forms
 
             forms += pointwise_forms(trace, schemas, observed, version=2)
+        if selection["schema"] == P.TRANSPOSE_SCHEMA:
+            from merlin.targetgen.original_transpose_sources import transpose_forms
+
+            forms += transpose_forms(trace, schemas, observed)
         indexed = {form["node"]: form for form in forms}
         for call in call_contracts(trace, schemas, observed):
             for cohort in P.COHORTS:
@@ -206,11 +224,15 @@ def _drafts(defaults, *, schema, basis, selection):
                             "aten.add.Tensor": S.add_source,
                             "aten.conv2d.default": S.conv2d_source,
                         }
-                        if selection["schema"] == P.POINTWISE_SCHEMA:
+                        if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA}:
                             from merlin.targetgen.original_pointwise_reference import OPERATIONS
                             from merlin.targetgen.original_pointwise_sources import pointwise_source
 
                             factories.update(dict.fromkeys(OPERATIONS, pointwise_source))
+                        if selection["schema"] == P.TRANSPOSE_SCHEMA:
+                            from merlin.targetgen.original_transpose_sources import TARGET, transpose_source
+
+                            factories[TARGET] = transpose_source
                         factory = factories[form["target"]]
                         source = factory(
                             form, extent=extent, max_tensor_elements=selection["source_budget"]["max_tensor_elements"]

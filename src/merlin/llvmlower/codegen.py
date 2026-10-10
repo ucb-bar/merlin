@@ -55,7 +55,7 @@ STAGES = compile_trace.declare(
 )
 
 
-def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=()) -> None:
+def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(), stage="object") -> None:
     if timeout_s is not None and (
         isinstance(timeout_s, bool)
         or not isinstance(timeout_s, (int, float))
@@ -71,15 +71,26 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
     if not outputs:
         _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
         return
+    argv = tuple(str(token) for token in cmd)
+    cwd, environment = Path.cwd(), dict(os.environ)
     with invocation_record.observe(
         Path(outputs[0]).parent,
-        stage="object",
-        argv=cmd,
+        stage=stage,
+        argv=argv,
+        cwd=cwd,
+        env=environment,
         inputs=inputs,
         outputs=outputs,
         dependencies=(Path(__file__),),
     ) as record:
-        result = _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
+        result = _proc.run_checked(
+            argv,
+            error=CodegenError,
+            timeout=limit,
+            timeout_hint=" (pathological compile)",
+            cwd=cwd,
+            env=environment,
+        )
         record.complete(result)
 
 
@@ -114,7 +125,11 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     rt_o = out_so.with_name("mlir_runtime_host.o")
     selected_llc = host_llc()
     if selected_llc is None:
-        _run([clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o])
+        _run(
+            [clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o],
+            inputs=(ll_path,),
+            outputs=(model_o,),
+        )
     else:
         _run(
             [selected_llc, "-O2", "-filetype=obj", "-relocation-model=pic", ll_path, "-o", model_o],
@@ -122,7 +137,18 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
             outputs=(model_o,),
         )
     compile_trace.artifact("object", [model_o], pipeline="codegen")
-    _run(["cc", "-O2", "-fPIC", "-c", str(mlir_runtime_c()), "-o", rt_o])
-    _run(["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so])
+    runtime = mlir_runtime_c()
+    _run(
+        ["cc", "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
+        inputs=(runtime,),
+        outputs=(rt_o,),
+        stage="runtime_object",
+    )
+    _run(
+        ["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so],
+        inputs=(model_o, rt_o),
+        outputs=(out_so,),
+        stage="link",
+    )
     compile_trace.artifact("link", [out_so], pipeline="codegen")
     return out_so

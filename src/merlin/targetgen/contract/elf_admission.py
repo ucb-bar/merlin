@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from merlin.common.strict_json import loads
 
 from .build_service import file_digest
+from .execution_service import _callback_selection, _same_callback
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,10 @@ class LinkedElfAdmissionService:
     target: str
     evaluator: Callable
     source_pins: tuple[tuple[str, str], ...]
+    _evaluator_selection: tuple | None = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "_evaluator_selection", _callback_selection(self.evaluator))
 
     def verify(self, target):
         if (
@@ -41,7 +46,12 @@ class LinkedElfAdmissionService:
                 or file_digest(member) != digest
             ):
                 raise ValueError("linked ELF admission source pin changed: " + str(path))
-        owner = inspect.getsourcefile(self.evaluator) if callable(self.evaluator) else None
+        current = _callback_selection(self.evaluator)
+        if current is None:
+            raise ValueError("linked ELF admission evaluator must be an actual Python function or bound method")
+        if not _same_callback(current, self._evaluator_selection):
+            raise ValueError("linked ELF admission selected evaluator implementation or partial bindings changed")
+        owner = inspect.getsourcefile(current[1])
         if owner is None or (str(Path(owner).resolve()), file_digest(Path(owner))) not in self.source_pins:
             raise ValueError("linked ELF admission evaluator has no pinned inspected source owner")
         return {"target": target, "source_pins": self.source_pins}

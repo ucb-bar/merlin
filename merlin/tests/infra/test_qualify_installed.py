@@ -128,7 +128,7 @@ def test_environment_removes_source_and_provider_overrides(monkeypatch):
     assert not {"UV_OVERRIDE", "UV_EXCLUDE", "UV_CONSTRAINT", "UV_BUILD_CONSTRAINT"} & environment.keys()
 
 
-@pytest.mark.parametrize("suite", ["compile-only", "component-convergence"])
+@pytest.mark.parametrize("suite", ["compile-only", "component-convergence", "original-candidate-members"])
 def test_explicit_native_roster_is_closed_complete_and_bound_to_actual_bytes(tmp_path, monkeypatch, suite):
     selections = []
     for name in Q.SUITES[suite]["native_tools"]:
@@ -184,6 +184,26 @@ def test_versions_and_assisted_extra_come_from_projects(tmp_path):
     assert projects[0]["extras"] == ["xdsl"] and projects[1]["extras"] == []
     with pytest.raises(Q.QualificationFailed, match="does not declare"):
         Q.projects(tmp_path, ("undeclared",))
+
+
+def test_analysis_project_is_explicit_and_uses_declared_distribution(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="core"\nversion="1"\n')
+    analysis = tmp_path / "packages/merlin-analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "pyproject.toml").write_text('[project]\nname="analysis"\nversion="2"\n')
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False)] == ["core"]
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False, include_analysis=True)] == [
+        "core",
+        "analysis",
+    ]
+    suite = Q.SUITES["capture-contraction-formats"]
+    assert suite["include_analysis"] is True and suite["include_experiments"] is False
+    assert suite["tests"] == (
+        "targetgen/test_contraction_formats.py",
+        "dse/test_capture_format_freezing.py",
+        "dse/test_capture_format_policy.py",
+    )
+    assert "merlin.compare.freeze" in suite["probe_modules"]
 
 
 def test_failed_child_keeps_terminal_record_and_log(tmp_path):
@@ -281,6 +301,7 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         ("compile-only", True),
         ("component-convergence", True),
         ("original-pointwise-host", True),
+        ("original-candidate-members", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -300,11 +321,14 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
-        if suite == "original-pointwise-host" and native:
+        if suite in ("original-pointwise-host", "original-candidate-members") and native:
             assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
             assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
             assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")
             assert self.environment["MERLIN_M2M_DIR"] == str(frontend)
+            if suite == "original-candidate-members":
+                assert self.environment["MERLIN_TEST_BWRAP"] == str(tmp_path / "bwrap")
+                assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
         if label == "resource-manifest":
             Path(stdout).write_text('{"files": []}')
         elif label == "source-archive":
@@ -314,6 +338,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             files = {
                 "pyproject.toml": core,
                 "packages/merlin-experiments/pyproject.toml": '[project]\nname="merlin-experiments"\nversion="9.8.7"\n',
+                "packages/merlin-analysis/pyproject.toml": '[project]\nname="merlin-analysis"\nversion="2.3.4"\n',
             }
             for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
                 tests_root = Q.SUITES[suite].get("tests_root", "packages/merlin-experiments/tests")
@@ -372,7 +397,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
             selections.append(name + "=" + str(tool))
-        if suite == "original-pointwise-host":
+        if suite in ("original-pointwise-host", "original-candidate-members"):
             frontend = tmp_path / "frontend"
             (frontend / "m2m").mkdir(parents=True)
             (frontend / "m2m/__init__.py").write_text("# owned source identity fixture\n")
@@ -418,6 +443,8 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         return
     assert success
     versions = ["7.8.9", "9.8.7"] if Q.SUITES[suite].get("include_experiments", True) else ["7.8.9"]
+    if Q.SUITES[suite].get("include_analysis"):
+        versions.append("2.3.4")
     assert [p["version"] for p in report["projects"]] == versions
     labels = [name for name, _ in calls]
     assert (
@@ -471,7 +498,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     assert report["test_process_policy"] == ("deny_processes_and_listeners" if guarded else "suite_defined")
     assert test_command[test_command.index("--basetemp") + 1] == str(external / "test-tmp")
     if not Q.SUITES[suite].get("include_experiments", True):
-        assert len(report["projects"]) == 1
+        assert len(report["projects"]) == (2 if Q.SUITES[suite].get("include_analysis") else 1)
         assert not any("experiments" in label for label in labels)
         assert not any(module.startswith("merlin_experiments") for module in report["probe_modules"])
     assert "--source-root" in dict(calls)["layout"]
@@ -531,3 +558,97 @@ def test_interrupted_pipeline_records_terminal_status(monkeypatch, tmp_path):
     monkeypatch.setattr(Q.Recorder, "run", interrupted)
     assert not Q.qualify(repo_root(), tmp_path, "b" * 40, "phase1", 5)
     assert json.loads((tmp_path / "report.json").read_text())["status"] == "interrupted"
+
+
+def _native_test_input_file(tmp_path):
+    path = tmp_path / "native-inputs.json"
+    keys = Q.SUITES["original-transpose-sources"]["test_input_environment_keys"]
+    path.write_text(json.dumps({key: "explicit original input" for key in keys}))
+    return path
+
+
+def test_native_test_inputs_are_explicit_closed_and_reopened(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    report = {"native_test_inputs": selected}
+    assert Q.native_environment(report) == json.loads(path.read_bytes())
+    Q.verify_native_inputs(report)
+    path.write_text(path.read_text() + "\n")
+    with pytest.raises(Q.QualificationFailed, match="test inputs changed"):
+        Q.verify_native_inputs(report)
+    assert Q.capture_native_test_inputs("phase1", None) == {}
+
+
+@pytest.mark.parametrize("defect", ["missing", "extra", "duplicate", "boolean", "null", "empty", "nul"])
+def test_native_test_inputs_reject_ambiguous_or_undeclared_mappings(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    mapping = json.loads(path.read_bytes())
+    key = next(iter(mapping))
+    if defect == "missing":
+        mapping.pop(key)
+    elif defect == "extra":
+        mapping["UNDECLARED_OVERRIDE"] = "unselected"
+    elif defect == "duplicate":
+        path.write_text(path.read_text()[:-1] + "," + json.dumps(key) + ':"repeated"}')
+    else:
+        mapping[key] = {"boolean": True, "null": None, "empty": "", "nul": "a\0b"}[defect]
+    if defect != "duplicate":
+        path.write_text(json.dumps(mapping))
+    with pytest.raises(Q.QualificationFailed, match="complete closed suite mapping"):
+        Q.capture_native_test_inputs("original-transpose-sources", str(path))
+
+
+@pytest.mark.parametrize("defect", ["relative", "symlink", "oversized", "wrong_suite"])
+def test_native_test_input_selection_requires_bounded_regular_admitted_file(tmp_path, defect):
+    path = _native_test_input_file(tmp_path)
+    suite = "original-transpose-sources"
+    if defect == "relative":
+        path = Path("unselected.json")
+    elif defect == "symlink":
+        link = tmp_path / "alias.json"
+        link.symlink_to(path)
+        path = link
+    elif defect == "oversized":
+        path.write_bytes(b" " * 65537)
+    else:
+        suite = "phase1"
+    with pytest.raises(Q.QualificationFailed):
+        Q.capture_native_test_inputs(suite, str(path))
+
+
+def test_native_test_inputs_cannot_replace_tool_or_source_environment(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    selected = Q.capture_native_test_inputs("original-transpose-sources", str(path))
+    key = next(iter(selected["environment"]))
+    with pytest.raises(Q.QualificationFailed, match="conflict"):
+        Q.native_environment(
+            {"native_test_inputs": selected, "native_tools": {"owned": {"environment_key": key, "path": "/tool"}}}
+        )
+
+
+def test_actual_child_mutation_is_rejected_after_qualification_command(tmp_path):
+    path = _native_test_input_file(tmp_path)
+    report = {
+        "commands": [],
+        "native_test_inputs": Q.capture_native_test_inputs("original-transpose-sources", str(path)),
+    }
+    recorder = Q.Recorder(tmp_path, report, 5)
+    script = "from pathlib import Path; Path(" + repr(str(path)) + ").write_text('{}')"
+    with pytest.raises(Q.QualificationFailed, match="test inputs"):
+        recorder.run("owned-input-mutation", [sys.executable, "-I", "-B", "-c", script], tmp_path)
+    assert report["commands"][-1]["status"] == "inputs_changed"
+
+
+def test_native_test_input_cli_forwards_explicit_selection(monkeypatch, tmp_path):
+    path = _native_test_input_file(tmp_path)
+    seen = {}
+    monkeypatch.setattr(Q, "resolve_ref", lambda *_: "a" * 40)
+    monkeypatch.setattr(Q, "reserve_output", lambda *_: tmp_path)
+
+    def qualify(*args, **kwargs):
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr(Q, "qualify", qualify)
+    assert Q.main(["--ref", "HEAD", "--suite", "original-transpose-sources", "--test-inputs", str(path)]) == 0
+    assert seen["test_inputs"] == str(path)
