@@ -522,6 +522,23 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## Testing expectations
 
+### Explicit pure integer scalar correspondence
+
+`integer_scalar_contract.py` declares an independently selected original source,
+complete ordered integer scalar ABI, modular bitvector numeric contract and
+explicit reader limits. These declarations issue no authority. The opt-in
+`integer_scalar_correspondence.py` reader reopens the actual ordinary serial
+translation products and proves only complete typed straight-line constant,
+arithmetic, bitwise, compare and select DAGs with an exact scalar C-interface
+call/return. Equality is structural over typed values, including large integer
+constants and repeated operands; differing or unsupported DAGs remain UNKNOWN.
+Overflow promises, opaque operations, loops, aggregate returns, tensors and
+memory are unsupported. Original result slots persist on supported-contract
+refusals. This conditional IR facet establishes neither object/link semantics,
+physical ABI realization, numerical framework equivalence, effects, resource
+bounds nor any phase/runtime qualification. The caller supplies original source
+and ABI ownership; this utility chooses no source, lowering or execution policy.
+
 - radix_integer_reconstruct.py emits explicitly selected signed-i64 weighted
   group updates followed by one exact binary64 conversion. It rederives the
   canonical i32 group and binary64 prefix proof, requires original RNE/+0

@@ -83,6 +83,23 @@ _INPUTS = importlib.util.module_from_spec(_INPUT_SPEC)
 _INPUT_SPEC.loader.exec_module(_INPUTS)
 
 SUITES = {
+    "integer-scalar-correspondence": {
+        "include_experiments": False,
+        "tests_root": "merlin/tests/ir",
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("compiler-python", "llvm-llc", "clang"),
+        "native_python_entries": ("compiler-python",),
+        "native_test_files": ("test_integer_scalar_native.py",),
+        "tests": ("test_integer_scalar_correspondence.py", "test_integer_scalar_native.py"),
+        "core_extras": ("xdsl",),
+        "probe_modules": (
+            "merlin.llvmlower.integer_scalar_contract",
+            "merlin.llvmlower.integer_scalar_correspondence",
+            "merlin.llvmlower.llvm_dialect_product",
+        ),
+        "required_modules": ("xdsl", "numpy"),
+    },
     "coherent-measurement": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,
