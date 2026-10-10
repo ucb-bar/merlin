@@ -29,7 +29,8 @@ submission/
 The frozen contract `merlin/contract/` (schemas, `interface_grammar.md`, `command_buffer_abi.yaml`,
 `integrity_policy.md`), the **public/dev capsules** under `merlin/contract/capsules/{isa,layers,
 model_slices}/` (each has `capsule.yaml` + `capsule.interface.mlir` + `expected_instruction_coverage.yaml`),
-the public Gemmini ISA header (`include/gemmini.h`, `gemmini_params.h`), and the LLVM/MLIR toolchain.
+the hardware facts your bundle grants (for example RTL-derived facts or a target contract; no Gemmini
+C ISA headers are provided), and the LLVM/MLIR toolchain.
 
 ## How you are graded (capsule_bench_v0)
 For each capsule: parse → gemmini dialect (parses+verifies) → `command_buffer.json` (schema-valid) →
@@ -43,7 +44,7 @@ pass**. Hidden capsules are run only after your submission is frozen.
 - `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.reference` /
   `merlin.runtime.simulator` / `reference_outputs` in your sources.
 - The device implementation must be **MLIR-lowered RoCC** — **no C compute kernels**, **no copying or
-  calling bareMetalC**, **no high-level Gemmini C library kernels** (e.g. `tiled_matmul_auto`) as the
+  calling bareMetalC**, **no high-level vendor C library kernels** as the
   answer. Integer math is **exact** (no tolerance).
 - Do not read hidden capsules/goldens or any prior backend.
 

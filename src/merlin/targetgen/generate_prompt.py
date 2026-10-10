@@ -596,8 +596,8 @@ Make **every** public/dev capsule under the declared corpus pass. Families are d
 {corpus_families}
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
 target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
-Derive everything (rounding, tiling, dtypes, im2col, padding) from the contract + the target's own docs
-below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
+Derive everything (rounding rules and dtypes included) from the granted facts and contracts and the
+target docs below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
 Build ONE general backend for every family — do not special-case individual capsules.
 
 {general_compiler_contract}
@@ -890,10 +890,11 @@ data path with the lite debugger:
 _ROCC_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
 You have a derived RoCC toolset (oracle-free; it encodes the syntax YOU choose and inspects YOUR OWN
 emitted MLIR — never a golden). Use it so you never hand-write a wrong `.insn` op:
-- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line, e.g.
-  `CONFIG_EX 0 0`, `MVIN 0x80000000 16`, `PRELOAD 256 0`, `COMPUTE_PRELOADED 0 0`, `MVOUT 0xA0000000 16`,
-  `FLUSH 0 0`, `FENCE`) into the CANONICAL `llvm.inline_asm` MLIR — each operand a
-  `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with this target's derived opcode/func3/func7.
+- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line: an instruction
+  class name from this target's derived ISA facts and two integer operands, decimal or hex, e.g.
+  `<CLASS> 0x10 4`; a class that takes no operands is written alone) into the CANONICAL
+  `llvm.inline_asm` MLIR — each operand a `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with
+  this target's derived opcode/func3/func7.
   It REFUSES rather than emit a wrong instruction (unknown class, or a CONFIG whose rs1 subtype bits don't
   match). Paste its output into your emitted `.mlir` — NEVER hand-write inline-integer-literal operands like
   `"r,r" (65540, 16)`: that is invalid MLIR that neither assembles NOR decodes (it reads back as UNKNOWN and

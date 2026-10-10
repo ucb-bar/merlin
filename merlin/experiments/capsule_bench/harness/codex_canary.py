@@ -50,6 +50,20 @@ from merlin_experiments.phase1 import workspace_transport as WT  # noqa: E402
 from merlin_experiments.phase1.providers import codex_agent as CA  # noqa: E402
 from merlin_experiments.phase1.providers import execution as EX  # noqa: E402
 
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
+
+
+def _corpus_probe_golden(context) -> Path:
+    """A real answer file of the descriptor-selected corpus: the file the agent must NOT be able to read."""
+    corpus = load_target_experiment(context.descriptor).capsule_corpus
+    if corpus is None:
+        raise SystemExit("NO-GO: the descriptor selects no capsule corpus, so there is no golden to probe")
+    for path in sorted(Path(corpus).rglob("golden.*")):
+        if path.is_file() and path.stat().st_size:
+            return path
+    raise SystemExit(f"NO-GO: no golden file under the selected corpus {corpus}; generate the corpus first")
+
+
 #: What the agent is asked to probe. Each line appends to a report file inside
 #: the workspace, so a partial run still shows how far it got.
 _PROBE_SCRIPT = """set +e
@@ -118,8 +132,8 @@ def run_canary(
     else:
         bundle = {"allowed": [], "denied": []}
 
-    golden, _iface = R._corpus_probe_paths()
-    corpus = golden.parent.parent.parent  # the capsule corpus root
+    golden = _corpus_probe_golden(R.C.CONTEXT)
+    corpus = Path(load_target_experiment(R.C.CONTEXT.descriptor).capsule_corpus)
     (ws / "TASK.md").write_text(
         "This is an isolation canary, not a build task. Run the shell script in probe.sh "
         "exactly as given, then reply with the contents of canary_report.txt and nothing else.\n"

@@ -343,6 +343,21 @@ def _family_table(families: tuple[PerfFamily, ...]) -> str:
     return "\n".join(rows)
 
 
+def _final_cells_only_note() -> str:
+    """Stated only when the stage declares an authoring gSIM budget; neutral about the members it names."""
+    from .development_feedback import authoring_gsim_floor_budget
+
+    budget = authoring_gsim_floor_budget()
+    if budget is None:
+        return ""
+    return (
+        "\n   Tuning members whose roofline floor exceeds this stage's authoring gSIM budget "
+        f"({budget} cycles) are measured on gSIM only in the final measurement cells. For those members "
+        "`tuning-gsim-feedback` returns an unmeasured cell that says so, with its roofline; Spike "
+        "correctness, the static analyses and the reduced witnesses are the feedback available for them."
+    )
+
+
 def render_initial_prompt(inputs: PerfPromptInputs) -> str:
     """Render deterministic TASK.md bytes after validating every launch prerequisite."""
     validate_prompt_inputs(inputs)
@@ -375,14 +390,13 @@ compiler transformation, and must preserve the complete functional grade.
 
 ## What you are being asked to do
 
-**Improve the frozen compiler's complete-model plan: delete avoidable work and movement, choose
-compatible encodings across producer/consumer boundaries, and keep the accelerator occupied by
-overlapping independent movement with compute—without changing a single output byte or losing a
-single functional capsule.**
+**Improve the frozen compiler's complete-model plan so the program takes fewer measured cycles,
+without changing a single output byte or losing a single functional capsule.** What to change is
+yours to find from the measurements below.
 
 The fixed complete-model sentinel in the sealed stage supplement is the primary optimization unit.
-The generated families are reduced mechanism witnesses: use them to calibrate or refute a scheduling,
-movement, fusion, or representation hypothesis quickly, never as a weighted substitute for an E2E
+The generated families are reduced mechanism witnesses: use them to calibrate or refute a hypothesis
+quickly, never as a weighted substitute for an E2E
 result. The declared family contract decides whether a local *claim* can be promoted; it is not itself
 the objective. A candidate that wins capsules while degrading or leaving the complete-model plan
 unchanged has not closed the global gap.
@@ -466,6 +480,41 @@ of different size. Each tuning verdict therefore also reports, per member:
 **Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
 peak for context only.
 
+### The machine's bound for each member: `roofline`
+
+Each cell also carries a `roofline` block. It is derived from this machine and the member's declared
+work only, so it is the same for every program that computes the member:
+
+- `compute_floor_cycles` -- the fewest cycles the discovered compute array needs to issue the member's
+  declared contractions, from the array geometry in the RTL facts.
+- `movement_floor_cycles` -- the fewest cycles the accelerator's memory path needs to read
+  `compulsory_read_bytes` and write `compulsory_write_bytes` once each, from the read and write widths
+  of the elaborated circuit the timing engine was built from. `summary.roofline_machine` states the
+  geometry, the widths and their basis.
+- `roofline_cycles` -- the larger of the two floors; `limiter` names which one it is (`compute` or
+  `movement`).
+- `baseline_over_roofline` and `candidate_over_roofline` -- each correct arm's measured cycles divided
+  by `roofline_cycles`; 1.0 is the bound itself.
+- `status` -- `derived`; `unknown` when an input was not derivable (`unresolved` says which); or
+  `refuted` when a measured count fell below the bound, which means an input it was derived from does
+  not describe the machine, and no positions are stated.
+
+Both floors leave out fill/drain delay and fixed per-invocation cost, so they are lower bounds, not
+predictions. A null is "not derived", never zero.
+
+### What each arm executed: `executed_commands`
+
+Each cell also carries `executed_commands.baseline` and `executed_commands.candidate`, read from a
+replay of that arm's measured program image on the functional engine with a commit log:
+
+- `accelerator_commands` and `by_class` -- how many accelerator commands the program actually
+  executed, in total and per instruction class (a loop body counts every time it runs).
+- `retired_instructions` -- every host instruction the run retired, harness included.
+- `local_memory` -- the rows of each local memory the executed commands addressed:
+  `*_rows_touched` (distinct rows), `*_rows_high_water` (highest row, exclusive) and
+  `*_rows_capacity` (from the RTL facts).
+- `status` / `why` -- `unknown` with the reason when the replay could not be read completely.
+
 ### Where the objective's cycles are: `summary.recoverable`
 
 A share of achievable tells you how ONE member is doing. It does not tell you what that member is
@@ -511,7 +560,8 @@ and you should call it before spending a measurement. It returns, per arm:
 - `barriers` -- how many completion points the candidate removed or added versus the baseline, or
   UNKNOWN when the stream carries no countable completion opcode. UNKNOWN is not zero.
 - `lower_bound.<arm>` -- cycles this arm cannot go below, from its declared demand against the
-  derived ceiling.
+  derived ceiling: `compute_floor_cycles`, and, when this stage derived the memory-path widths,
+  `movement_floor_cycles` for the declared input/output bytes, with `limiter` naming the larger.
 - `work_delta` -- present only when the two arms do DIFFERENT amounts of arithmetic, in which case a
   cycle comparison between them is not a schedule comparison and you should say so.
 
@@ -593,9 +643,7 @@ than about the machine. Read it:
 - A `stop` on the very first queries means the search never had room, not that you succeeded. Say
   so plainly rather than reporting a win.
 
-Low utilization is information about WHERE the cycles went. If utilization climbs with problem size,
-a fixed per-invocation cost dominates the small members and the lever is that overhead, not the inner
-loop. If it is flat and low, the machine is starved and the lever is the feed. Say which of these your
+Low utilization is information about WHERE the cycles went, not about what to change. Say what your
 measurements support before choosing a lever.
 
 ### The optimisation ladder, including the rungs this corpus cannot measure
@@ -605,13 +653,13 @@ about that is the point: a level nothing asks you about is a level you will not 
 
 | rung | what lives there | evidence in this loop |
 |---|---|---|
-| `L1_tile` | tile shape, parallel extents, contraction depth | reduced family witnesses |
-| `L1_separation_floor` | irreducible separation between dependent commands | reduced family witnesses |
-| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | reduced family + trace/counter evidence |
-| `L3_inter_layer` | keeping values resident across dependent operations | E2E command buffer + reduced pipeline witness |
-| `L4_boundary` | what crosses the host/accelerator boundary, and when | exact E2E declared movement + emitted trace |
-| `L5_fusion` | folding stages into a producer or multi-op region | E2E region plan + fused/unfused reduced witness |
-| `L6_global` | whole-program placement, encoding, and overlap choices | complete-model analytical plan calibrated by warm reduced witnesses |
+| `L1_tile` | one command-sized unit of work | reduced family witnesses |
+| `L1_separation_floor` | the spacing between dependent commands | reduced family witnesses |
+| `L2_intra_layer` | everything inside one layer | reduced family + trace/counter evidence |
+| `L3_inter_layer` | dependent operations taken together | E2E command buffer + reduced pipeline witness |
+| `L4_boundary` | the host/accelerator boundary | exact E2E declared movement + emitted trace |
+| `L5_fusion` | multi-op regions | E2E region plan + reduced witnesses of the region |
+| `L6_global` | the whole program | complete-model analytical plan calibrated by warm reduced witnesses |
 
 **What this means for what you may claim.** A reduced measured member establishes the cost of a
 mechanism only within its declared validity domain. The full-model projection must retain exact event
@@ -622,9 +670,8 @@ Phase 2. Never extend an inner-loop timeout to manufacture one.
 
 **What you should do about every global rung.** Three things, in order:
 
-1. **Do not regress them.** A change that improves a measured tile-level number by introducing a
-   memory round trip, re-staging a value, or splitting a fusable pair has bought a measured win with
-   an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
+1. **Do not regress them.** A change that improves a measured tile-level number while adding cost at
+   a wider rung has bought a measured win with an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
    tagged with the rung they sit at -- check it before and after every change you make.
 2. **Price it globally.** Preserve the complete model's exact repetitions and dependencies while
    calibrating stage costs on the smallest witness that keeps the same pressure signature.
@@ -633,7 +680,13 @@ Phase 2. Never extend an inner-loop timeout to manufacture one.
    the lever when the emitted delta, legality check, or warm cycles falsifies its mechanism. When
    occupancy or overlap is the deciding UNKNOWN, invoke `profile-reduced-global-witness`; the host
    preselects its pressure-preserving witness before candidate measurement and exposes that choice in
-   `STAGE_CONTEXT.json`.
+   `STAGE_CONTEXT.json`. `profile-tuning-member member=<family>/<capsule>` runs the same warm counter
+   profile on a frozen tuning member you name.
+   When the stage lists `profile-whole-model` as available, it builds each declared whole-model program
+   with the frozen baseline and with your candidate, runs both once on the timing engine, and returns,
+   per program, per device-group `cycles`, `gap_before` (cycles since the previous group ended),
+   `share_of_window` and a derived `roofline`, plus `window_cycles`, `group_cycles` and `gap_cycles`
+   for each arm.
 4. **Keep full sizes out of the search loop.** Full-size FireSim is optional post-freeze validation,
    not a Phase-2 prerequisite. If it is explicitly available and requested, submit it only through
    the queue's atomic `runworkload-full` operation. The queue owns exactly `firesim kill` ->
@@ -645,6 +698,26 @@ capsules commit each accumulator once and never read it back -- so treat a findi
 YOUR change introduced something, not as a pre-existing defect to hunt. `by_level` reports every
 rung including the zeros, so silence about a rung is visible rather than absent. A count is never a
 cycle saving.
+
+### Well-known optimizations to try (target-agnostic)
+
+These are well-known optimization classes from the compiler literature. They apply to any accelerator;
+none is known to pay on this machine, and the list is neither complete nor ranked. Try the ones your
+measurements point to, and use the right-hand column to confirm or refute each attempt. Record every
+class you tried, and what the measurements said, in `REPORT.md`.
+
+| optimization | what to look at in the measurements |
+|---|---|
+| tiling and blocking | does the work per command use the local memories' capacity (`local_memory` rows vs capacity)? |
+| loop order and data reuse | are operands re-read from main memory more than the arithmetic needs (movement bytes vs compulsory bytes)? |
+| residency across operations | are values written out and read back between dependent operations (E2E declared movement, `structural_levels`)? |
+| overlapping movement with compute | do movement and compute run at the same time (counter profile: busy cycles, overlap)? |
+| fusion of adjacent operations | do intermediate results cross a boundary they need not cross (group profile gaps, boundary movement)? |
+| layout and encoding propagation | are layouts or encodings converted repeatedly between producer and consumer (`representation_activity`)? |
+| hoisting invariant setup | is the same configuration or setup issued repeatedly (executed commands by class)? |
+| host/accelerator placement | how much of the window is spent between device groups or on the host (`gap_cycles`, retired instructions)? |
+| synchronization | are there completion points that no dependency requires (`barriers`)? |
+| fixed per-invocation overhead | does utilization climb with problem size, i.e. a fixed cost dominating small members? |
 
 ### Choose the cheapest change that can express the improvement
 
@@ -810,7 +883,7 @@ machine.
    representation, dependency, and source-surface analysis. The broker allows at most one optional
    reduced occupancy profile and two tuning GSIM calls per round: at most one exploratory promotion
    check, then one reserved for the exact final bytes. Do not spend either to discover that an edit
-   was inert or added work; the free analysis already answers those questions.
+   was inert or added work; the free analysis already answers those questions.{_final_cells_only_note()}
 4. Before declaring ready, re-check the full functional contract, frozen-input digests, required tool
    receipts, and exact expected identity set. Summarize scope and honest limitations in
    `submission/performance/REPORT.md`. The harness then owns L2/L3 execution and final evidence.
