@@ -135,7 +135,10 @@ def _tensor_bindings(schema_record, graph_path, version):
         return None
     # Missing native selection remains a factory refusal in every original
     # cohort. This record is data; live schema ownership is replayed separately.
-    if schema_record.get("schema") != "merlin.independent_operator_schema_intake.v2":
+    if schema_record.get("schema") not in {
+        "merlin.independent_operator_schema_intake.v2",
+        "merlin.independent_operator_schema_intake.v3",
+    }:
         return None
     rows = [row for row in schema_record["members"] if row["graph_path"] == graph_path]
     if len(rows) != 1:

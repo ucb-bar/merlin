@@ -763,6 +763,51 @@ def test_integer_scalar_qualification_keeps_every_legacy_and_integer_identity():
         assert suite[key] == legacy[key]
 
 
+def test_original_automatic_flow_qualification_keeps_complete_controls_and_exact_fixture_support():
+    from collections import Counter
+
+    suite = Q.SUITES["original-scalar-automatic-flow"]
+    assert suite["tests_root"] == "."
+    assert (
+        suite["tests"]
+        == suite["native_test_files"]
+        == (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+        )
+    )
+    assert Counter(filename for filename, _ in suite["native_test_cases"]) == dict(
+        zip(suite["tests"], (17, 21), strict=True)
+    )
+    assert len(set(suite["native_test_cases"])) == 38
+    assert suite["support_files"] == (
+        "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+        "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+        "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+    )
+    assert suite["mandatory_test_report"] == "merlin.installed_mandatory_tests.v1"
+    assert suite["test_fixture_imports"] is True and suite["collect_selected_tests"] is True
+    assert suite["core_extras"] == ("xdsl", "targetgen")
+    assert suite["probe_modules"] == (
+        "merlin_experiments.phase0.component_automatic",
+        "merlin_experiments.phase0.declared_run",
+        "merlin_experiments.phase0.original_call_sources",
+        "merlin_experiments.phase0.original_scalar_conversion_flow",
+    )
+    assert not suite.get("native_tools") and not suite.get("native_sources")
+
+
+@pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
+def test_original_automatic_flow_requires_each_member_with_zero_skips(tmp_path, defect):
+    _check_scalar_qualification_report(tmp_path, "original-scalar-automatic-flow", defect)
+
+
 @pytest.mark.parametrize("defect", [None, "missing", "extra", "duplicate", "module", "skip", "failure"])
 def test_scalar_qualification_requires_each_original_member_identity_and_zero_skips(tmp_path, defect):
     _check_scalar_qualification_report(tmp_path, "original-scalar-binary-sources", defect)
@@ -805,7 +850,7 @@ def _check_scalar_qualification_report(tmp_path, suite, defect):
     report = {}
     if defect is None:
         Q.check_native_test_report(suite, path, report)
-        expected = 116 if suite == "original-scalar-binary-sources" else 260
+        expected = len(rows)
         assert report["native_test_counts"] == {"tests": expected, "skipped": 0}
         assert report["missing_native_test_cases"] == report["unexpected_native_test_cases"] == []
     else:

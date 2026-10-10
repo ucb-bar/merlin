@@ -1459,6 +1459,131 @@ SUITES = {
         ),
         "required_modules": ("xdsl", "jsonschema"),
     },
+    "original-scalar-automatic-flow": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+        ),
+        "tests": (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+        ),
+        "support_files": (
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+            "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion_flow",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+        "native_test_cases": tuple(
+            (filename, method + suffix)
+            for filename, methods in (
+                (
+                    "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+                    (
+                        ("test_selected_inputs_reopen_complete_source_parser_and_public_commit", ("",)),
+                        (
+                            "test_input_declaration_cannot_import_statuses_or_remove_complete_budgets",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "schema",
+                                    "saved_source",
+                                    "saved_schema",
+                                    "saved_basis",
+                                    "factory",
+                                    "missing_limit",
+                                    "bool_limit",
+                                    "timeout",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_each_verification_detects_input_tool_and_complete_source_drift",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "selection_bytes",
+                                    "parser_bytes",
+                                    "source_bytes",
+                                    "source_added",
+                                    "source_alias",
+                                )
+                            ),
+                        ),
+                        ("test_excluded_checkout_refuses_before_upstream_source_reader", ("",)),
+                        ("test_preparation_derives_current_live_identities_and_invokes_existing_v2_converter", ("",)),
+                        ("test_new_flow_refuses_v6_source_even_with_selected_v2_converter", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+                    (
+                        ("test_explicit_v14_selects_v7_without_widening_any_prior_automatic_policy", ("",)),
+                        (
+                            "test_new_caller_requires_same_original_tensor_facet_and_retains_zero_result_selection",
+                            ("[False]", "[True]"),
+                        ),
+                        (
+                            "test_old_versions_or_missing_original_native_inputs_cannot_acquire_v7",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "old_request",
+                                    "old_automatic",
+                                    "old_schema",
+                                    "missing_converter",
+                                    "saved_owner",
+                                    "bare_path",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_same_exact_tensor_binding_supports_original_v7_on_both_declared_intake_versions",
+                            (
+                                "[merlin.independent_operator_schema_intake.v2]",
+                                "[merlin.independent_operator_schema_intake.v3]",
+                            ),
+                        ),
+                        (
+                            "test_v3_tensor_facet_drift_never_grants_integer_source_slots",
+                            ("[binding]", "[native_false]", "[missing_graph]", "[v1]"),
+                        ),
+                        (
+                            "test_connected_caller_passes_exact_generated_original_sources_to_registered_conversion",
+                            ("",),
+                        ),
+                        (
+                            "test_v7_source_construction_does_not_require_a_new_reference_or_memory_policy",
+                            ("[False-False]", "[True-False]", "[False-True]", "[True-True]"),
+                        ),
+                        (
+                            "test_ordinary_v7_generation_keeps_complete_original_missing_selectors_and_blocked_phases",
+                            ("",),
+                        ),
+                    ),
+                ),
+            )
+            for method, suffixes in methods
+            for suffix in suffixes
+        ),
+    },
     "original-reference-flow": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,

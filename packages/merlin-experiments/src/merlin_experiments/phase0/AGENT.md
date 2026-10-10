@@ -23,6 +23,16 @@ joins and separate complete preallocation bounds for both dispatch outputs.
 Prior source, automatic, reference, review and numerical policies are unchanged;
 finite observed promotion establishes no whole-domain or mandatory admission.
 
+Automatic policy/receipt v14 explicitly selects original call-source v7 and
+the same native Tensor-binding facet in schema intake v2 or v3. Declared run v7
+connects the complete original source roster to the actual fixed registered
+scalar converter with input-only public source/parser and complete product/
+promotion budget declarations; live original owners derive all selection hashes.
+Its source-construction route retains v4 performance and mandatory requirements.
+Reference and local-memory selections are independent explicit additions, never
+fallbacks. Their absence preserves all missing numeric/effect/packing premises
+and blocked phases. Old v13/v6 factories and v5/v6 caller grammars are unchanged.
+
 Original call-source v6 / automatic policy and receipt v13 explicitly adds the
 bounded scalar mul/div factory. Every original call and guard/private slot,
 aggregate cost and missing admission remains required. Keep old versions and

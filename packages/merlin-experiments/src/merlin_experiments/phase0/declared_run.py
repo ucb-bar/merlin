@@ -32,6 +32,7 @@ REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
 PERFORMANCE_SCHEMA = "merlin.independent_phase0_run.v4"
 REFERENCE_SCHEMA = "merlin.independent_phase0_run.v5"
 PACKING_SCHEMA = "merlin.independent_phase0_run.v6"
+INTEGER_SCALAR_SCHEMA = "merlin.independent_phase0_run.v7"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -61,6 +62,20 @@ def _pin(value, *, forbidden, runtime=False):
     return path
 
 
+def _has_original_references(request):
+    return isinstance(request, dict) and (
+        request.get("schema") in {REFERENCE_SCHEMA, PACKING_SCHEMA}
+        or (request.get("schema") == INTEGER_SCALAR_SCHEMA and "original_references" in request)
+    )
+
+
+def _has_memory_packing(request):
+    return isinstance(request, dict) and (
+        request.get("schema") == PACKING_SCHEMA
+        or (request.get("schema") == INTEGER_SCALAR_SCHEMA and "packing" in request)
+    )
+
+
 def validate(request):
     """Close source and policy declarations before any authority is issued."""
     fields = {"schema", "target", "inputs", "operator_schemas", "circt_opt", "forbidden_roots", "automatic"}
@@ -69,19 +84,35 @@ def validate(request):
         PERFORMANCE_SCHEMA,
         REFERENCE_SCHEMA,
         PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
     }:
         fields.add("release_purpose")
-    if isinstance(request, dict) and request.get("schema") in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if isinstance(request, dict) and request.get("schema") in {
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+    }:
         fields.add("source_performance")
-    if isinstance(request, dict) and request.get("schema") in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if _has_original_references(request):
         fields.add("original_references")
-    if isinstance(request, dict) and request.get("schema") == PACKING_SCHEMA:
+    if _has_memory_packing(request):
         fields.add("packing")
+    if isinstance(request, dict) and request.get("schema") == INTEGER_SCALAR_SCHEMA:
+        fields.add("original_scalar_conversion")
     if (
         not isinstance(request, dict)
         or set(request) != fields
         or request["schema"]
-        not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}
+        not in {
+            SCHEMA,
+            BRIDGE_SCHEMA,
+            REQUIREMENT_SCHEMA,
+            PERFORMANCE_SCHEMA,
+            REFERENCE_SCHEMA,
+            PACKING_SCHEMA,
+            INTEGER_SCALAR_SCHEMA,
+        }
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -94,12 +125,18 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
-    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if request["schema"] in {
+        REQUIREMENT_SCHEMA,
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+    }:
         from .source_requirement_ledger import PURPOSES
 
         if request["release_purpose"] not in PURPOSES:
             raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA, INTEGER_SCALAR_SCHEMA}:
         from .component_source_performance import SCHEMA as source_schema
 
         selection = request["source_performance"]
@@ -114,7 +151,7 @@ def validate(request):
             )
         ):
             raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
-    if request["schema"] in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if _has_original_references(request):
         selection = request["original_references"]
         if (
             type(selection) is not dict
@@ -122,7 +159,7 @@ def validate(request):
             or any(type(pin) is not dict or set(pin) != {"path", "sha256"} for pin in selection.values())
         ):
             raise ValueError("original reference flow requires two closed explicit source selections")
-    if request["schema"] == PACKING_SCHEMA:
+    if _has_memory_packing(request):
         validate_memory_selection(request["packing"])
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
@@ -136,7 +173,14 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if request["schema"] in {
+        BRIDGE_SCHEMA,
+        REQUIREMENT_SCHEMA,
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+    }:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -171,6 +215,7 @@ def validate(request):
             A.TRANSPOSE_POLICY_SCHEMA,
             A.BROADCAST_POLICY_SCHEMA,
             A.SCALAR_BINARY_POLICY_SCHEMA,
+            A.INTEGER_SCALAR_POLICY_SCHEMA,
         }
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)
@@ -178,6 +223,17 @@ def validate(request):
         or any(type(value) is not int or value < 1 for value in automatic["budget"].values())
     ):
         raise ValueError("full original Phase 0 needs explicit supported automatic construction budgets")
+    if request["schema"] == INTEGER_SCALAR_SCHEMA:
+        selected = request["original_scalar_conversion"]
+        if (
+            automatic["schema"] != A.INTEGER_SCALAR_POLICY_SCHEMA
+            or not tensor
+            or type(selected) is not dict
+            or set(selected) != {"path", "sha256"}
+        ):
+            raise ValueError("integer construction needs v14, native Tensor bindings and exact converter inputs")
+    elif automatic["schema"] == A.INTEGER_SCALAR_POLICY_SCHEMA:
+        raise ValueError("original integer construction requires its explicit v7 declared caller")
     validate_execution_budget(automatic["execution_budget"])
     validate_source_budget(automatic["original_source_budget"])
     return request
@@ -373,7 +429,7 @@ def _verify_diagnostic_products(root, coverage, paths, *, target, hardware, soft
 
 
 def _issue_packing(request, *, hardware, circt_opt, forbidden_roots, output):
-    selected = validate_memory_selection(request["packing"]) if request["schema"] == PACKING_SCHEMA else None
+    selected = validate_memory_selection(request["packing"]) if _has_memory_packing(request) else None
     return issue_independent_packing_intake(
         hardware=hardware,
         circt_opt=circt_opt,
@@ -381,6 +437,20 @@ def _issue_packing(request, *, hardware, circt_opt, forbidden_roots, output):
         output=output,
         **({"memory_selection": selected} if selected is not None else {}),
     )
+
+
+def _issue_scalar_conversion(selected, *, schemas, basis, coverage, numerical_semantics, output):
+    from . import original_scalar_conversion_flow as F
+
+    owner = F.prepare(
+        selected,
+        schema_intake=schemas,
+        basis=basis,
+        source_record=coverage["automatic_derivation"]["original_call_sources"],
+        numerical_semantics=numerical_semantics,
+        destination=output / "original-scalar-conversion",
+    )
+    return owner, F.summary(owner)
 
 
 def run(request_path, *, output):
@@ -402,15 +472,22 @@ def run(request_path, *, output):
     declarations = _pin(canonical["declarations"], forbidden=forbidden)
     circt_opt = _pin(request["circt_opt"], forbidden=forbidden)
     performance_paths, objectives, sweep_template = {}, [], {"sweeps": []}
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA, INTEGER_SCALAR_SCHEMA}:
         performance_paths, objectives, sweep_template = _source_performance_inputs(
             request["source_performance"], forbidden=forbidden
         )
     reference_inputs, standard_ir = None, None
-    if request["schema"] in {REFERENCE_SCHEMA, PACKING_SCHEMA}:
+    if _has_original_references(request):
         from .original_reference_flow import read_selection
 
         reference_inputs = read_selection(request["original_references"], forbidden=forbidden)
+    scalar_inputs, scalar_conversion = None, None
+    if request["schema"] == INTEGER_SCALAR_SCHEMA:
+        from . import original_scalar_conversion_flow
+
+        scalar_inputs = original_scalar_conversion_flow.read_selection(
+            request["original_scalar_conversion"], forbidden=forbidden
+        )
     output = Path(output).absolute()
     _outside(output, forbidden)
     if output.exists() or ".." in output.parts or any(path.is_symlink() for path in (output, *output.parents)):
@@ -424,6 +501,7 @@ def run(request_path, *, output):
         checkout,
         *performance_paths.values(),
         *(reference_inputs.paths if reference_inputs is not None else ()),
+        *(scalar_inputs.paths if scalar_inputs is not None else ()),
     ]
     if compiler is not None:
         selected_paths.append(compiler)
@@ -516,7 +594,7 @@ def run(request_path, *, output):
                 output=output / "packing",
             ),
         )
-        if request["schema"] == PACKING_SCHEMA:
+        if _has_memory_packing(request):
             report["conditional_memory_bindings"] = {
                 "path": str(output / "packing" / "intake.json"),
                 "sha256": packing.sha256,
@@ -587,6 +665,20 @@ def run(request_path, *, output):
         )
         coverage_path = generated / "_evidence" / "coverage" / "component-coverage.json"
         coverage = json.loads(coverage_path.read_bytes())
+        if scalar_inputs is not None:
+            from .component_semantic_basis import ComponentSemanticBasis
+
+            scalar_conversion, report["original_scalar_construction"] = step(
+                "fresh_original_registered_scalar_conversion",
+                lambda: _issue_scalar_conversion(
+                    scalar_inputs,
+                    schemas=schemas,
+                    basis=ComponentSemanticBasis.from_recipe(recipe, routing={}),
+                    coverage=coverage,
+                    numerical_semantics=software.public_facts()["numerical_semantics"],
+                    output=output,
+                ),
+            )
         if reference_inputs is not None:
             from . import original_reference_flow
             from .component_semantic_basis import ComponentSemanticBasis
@@ -662,7 +754,13 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
-        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA, PACKING_SCHEMA}:
+        if request["schema"] in {
+            REQUIREMENT_SCHEMA,
+            PERFORMANCE_SCHEMA,
+            REFERENCE_SCHEMA,
+            PACKING_SCHEMA,
+            INTEGER_SCALAR_SCHEMA,
+        }:
             from .source_requirement_ledger import prepare_requirement_ledger
 
             ledger = step(
@@ -703,6 +801,9 @@ def run(request_path, *, output):
         if reference_inputs is not None:
             reference_inputs.verify()
             standard_ir.verify()
+        if scalar_inputs is not None:
+            scalar_inputs.verify()
+            scalar_conversion.record()
     except Exception as error:
         details = {"type": type(error).__name__, "message": str(error)}
         stderr = getattr(error, "stderr", None)

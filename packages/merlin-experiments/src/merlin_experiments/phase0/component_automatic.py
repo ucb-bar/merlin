@@ -38,6 +38,7 @@ POINTWISE_POLICY_SCHEMA = "merlin.component_automatic_policy.v10"
 TRANSPOSE_POLICY_SCHEMA = "merlin.component_automatic_policy.v11"
 BROADCAST_POLICY_SCHEMA = "merlin.component_automatic_policy.v12"
 SCALAR_BINARY_POLICY_SCHEMA = "merlin.component_automatic_policy.v13"
+INTEGER_SCALAR_POLICY_SCHEMA = "merlin.component_automatic_policy.v14"
 RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v1"
 EFFECT_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v2"
 ARITHMETIC_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v3"
@@ -51,6 +52,7 @@ POINTWISE_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v10"
 TRANSPOSE_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v11"
 BROADCAST_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v12"
 SCALAR_BINARY_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v13"
+INTEGER_SCALAR_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v14"
 _FIELDS = {
     "schema",
     "status",
@@ -71,6 +73,7 @@ def _original_source_version(policy):
         TRANSPOSE_POLICY_SCHEMA: 4,
         BROADCAST_POLICY_SCHEMA: 5,
         SCALAR_BINARY_POLICY_SCHEMA: 6,
+        INTEGER_SCALAR_POLICY_SCHEMA: 7,
     }[policy["schema"]]
 
 
@@ -111,6 +114,7 @@ def _closed_policy(policy):
     additions[TRANSPOSE_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
     additions[BROADCAST_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
     additions[SCALAR_BINARY_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[INTEGER_SCALAR_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
     fields = _FIELDS | additions.get(policy.get("schema") if isinstance(policy, dict) else None, set())
     if isinstance(policy, dict) and policy.get("schema") in {
         LOGICAL_POLICY_SCHEMA,
@@ -142,6 +146,7 @@ def _closed_policy(policy):
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         }
         or policy["status"] != "reviewed"
     ):
@@ -156,6 +161,7 @@ def _closed_policy(policy):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from .original_call_sources import validate_budget as validate_original_budget
 
@@ -185,6 +191,7 @@ def _selected_effects(policy):
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         }
         and "operator_schema_intake_sha256" in policy
     )
@@ -204,6 +211,7 @@ def _selected_arithmetic(policy):
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         }
         and "arithmetic_intake_sha256" in policy
     )
@@ -250,6 +258,7 @@ def require_basis_selection(path, *, recipe, software_intake):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         return
     if type(software_intake) is not IndependentSoftwareIntake:
@@ -297,6 +306,7 @@ def resolve(
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         if arithmetic_intake is not None or operator_schema_intake is not None or packing_intake is not None:
             raise ValueError("independent source observations require an explicit versioned automatic policy")
@@ -358,6 +368,7 @@ def resolve(
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from .packing_intake import IndependentPackingIntake
 
@@ -378,6 +389,7 @@ def resolve(
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from . import typed_add_sources as T
 
@@ -395,6 +407,7 @@ def resolve(
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from . import original_call_sources as O
 
@@ -426,6 +439,7 @@ def resolve(
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         },
         typed_add=T.forms(typed_record, basis=semantic_basis) if typed_record is not None else None,
         packing=packing_record["facts"] if packing_record is not None else None,
@@ -438,6 +452,7 @@ def resolve(
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         },
     )
     if original_record is not None:
@@ -502,7 +517,9 @@ def resolve(
         ]
     record = {
         "schema": (
-            SCALAR_BINARY_RECEIPT_SCHEMA
+            INTEGER_SCALAR_RECEIPT_SCHEMA
+            if policy["schema"] == INTEGER_SCALAR_POLICY_SCHEMA
+            else SCALAR_BINARY_RECEIPT_SCHEMA
             if policy["schema"] == SCALAR_BINARY_POLICY_SCHEMA
             else BROADCAST_RECEIPT_SCHEMA
             if policy["schema"] == BROADCAST_POLICY_SCHEMA
@@ -582,6 +599,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_RECEIPT_SCHEMA,
         BROADCAST_RECEIPT_SCHEMA,
         SCALAR_BINARY_RECEIPT_SCHEMA,
+        INTEGER_SCALAR_RECEIPT_SCHEMA,
     } or digest({k: v for k, v in record.items() if k != "sha256"}) != record.get("sha256"):
         raise ValueError("automatic component derivation identity changed")
     identity = report["generation_identity"]
@@ -620,6 +638,8 @@ def verify(record, *, report, verify_sources=True):
         raise ValueError("pointwise original source derivation requires its explicit versioned policy")
     if (policy["schema"] == BROADCAST_POLICY_SCHEMA) != (record["schema"] == BROADCAST_RECEIPT_SCHEMA):
         raise ValueError("broadcast original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == INTEGER_SCALAR_POLICY_SCHEMA) != (record["schema"] == INTEGER_SCALAR_RECEIPT_SCHEMA):
+        raise ValueError("integer scalar original source derivation requires its explicit versioned policy")
     if (policy["schema"] == SCALAR_BINARY_POLICY_SCHEMA) != (record["schema"] == SCALAR_BINARY_RECEIPT_SCHEMA):
         raise ValueError("scalar binary original source derivation requires its explicit versioned policy")
     if (policy["schema"] == TRANSPOSE_POLICY_SCHEMA) != (record["schema"] == TRANSPOSE_RECEIPT_SCHEMA):
@@ -677,6 +697,7 @@ def verify(record, *, report, verify_sources=True):
             TRANSPOSE_RECEIPT_SCHEMA,
             BROADCAST_RECEIPT_SCHEMA,
             SCALAR_BINARY_RECEIPT_SCHEMA,
+            INTEGER_SCALAR_RECEIPT_SCHEMA,
         } or not {
             "operator_schema_intake",
             "operator_effect_semantics",
@@ -698,6 +719,7 @@ def verify(record, *, report, verify_sources=True):
                 TRANSPOSE_POLICY_SCHEMA,
                 BROADCAST_POLICY_SCHEMA,
                 SCALAR_BINARY_POLICY_SCHEMA,
+                INTEGER_SCALAR_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(schema_record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -746,6 +768,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     } or set(record) & {
         "operator_schema_intake",
         "operator_effect_semantics",
@@ -764,6 +787,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_RECEIPT_SCHEMA,
         BROADCAST_RECEIPT_SCHEMA,
         SCALAR_BINARY_RECEIPT_SCHEMA,
+        INTEGER_SCALAR_RECEIPT_SCHEMA,
     }:
         from .arithmetic_intake import verify_record
 
@@ -784,6 +808,7 @@ def verify(record, *, report, verify_sources=True):
                 TRANSPOSE_POLICY_SCHEMA,
                 BROADCAST_POLICY_SCHEMA,
                 SCALAR_BINARY_POLICY_SCHEMA,
+                INTEGER_SCALAR_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(selected, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -805,6 +830,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from .packing_intake import verify_record
 
@@ -840,6 +866,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from . import typed_add_sources as T
 
@@ -861,6 +888,7 @@ def verify(record, *, report, verify_sources=True):
         TRANSPOSE_POLICY_SCHEMA,
         BROADCAST_POLICY_SCHEMA,
         SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
     }:
         from . import original_call_sources as O
 
@@ -879,6 +907,7 @@ def verify(record, *, report, verify_sources=True):
             4: O.TRANSPOSE_SCHEMA,
             5: O.BROADCAST_SCHEMA,
             6: O.SCALAR_BINARY_SCHEMA,
+            7: O.INTEGER_SCALAR_SCHEMA,
         }[_original_source_version(policy)]
         if original_record["schema"] != expected_schema:
             raise ValueError("original source factory version differs from the explicitly selected policy")
@@ -908,6 +937,7 @@ def verify(record, *, report, verify_sources=True):
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         },
         typed_add=T.forms(typed_record, basis=basis) if typed_record is not None else None,
         packing=packing,
@@ -920,6 +950,7 @@ def verify(record, *, report, verify_sources=True):
             TRANSPOSE_POLICY_SCHEMA,
             BROADCAST_POLICY_SCHEMA,
             SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
         },
     )
     if original_record is not None:
