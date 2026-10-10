@@ -27,6 +27,7 @@ from pathlib import Path
 
 from merlin.common import compile_trace
 
+from .llvm_dialect_product import run_translation, select_retention
 from .source_scalar_carrier_binding import host_admitted
 from .toolchain import m2m_python
 
@@ -1549,32 +1550,31 @@ def lower_to_llvm_ir(
     masked_contraction_effects=None,
     source_observation_effects=None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
-    ``data_layout`` (the target's LLVM layout string, :mod:`.target_data_layout`) is set on the module
-    before translation, so accesses carry the target's alignment; ``None`` keeps LLVM's default.
-
-    ``masked_contraction_effects`` is required only with the explicit closed-mask
-    feature. Its nontrapping/unobserved-flags permission allows omission of dead
-    contraction tiles; all observed arithmetic retains source order and precision.
-    Without the feature the default lowering and emitted objects are unchanged.
-
-    ``vectorize=True`` selects the native RVV path: writes the transform schedule into
-    ``workdir`` and uses :func:`build_rvv_pipeline` so the IR carries fixed-width vector
-    ops (real RVV under ``-march=rv64gcv``). ``transform_schedule`` overrides the default
-    matmul/batch_matmul schedule (e.g. the elementwise/reduction schedule for the vector
-    family) without disturbing it. An explicit ``pipeline`` overrides both defaults.
-
-    ``parallel_harts=N`` (>= 2) additionally makes the RVV path MULTICORE: an outer
-    ``scf.forall`` over N chunks is layered under the package schedule and lowered to
-    OpenMP, so the emitted object carries both real RVV vectors and ``__kmpc_*`` calls.
-    Unlike ``parallel=True`` (the scalar-only OpenMP path used for K1 big models) it
-    COMPOSES with ``vectorize`` — vector and threads, not one or the other. Default None
-    keeps the pipeline string byte-identical to the shipping serial codegen.
+    ``data_layout`` sets the selected module layout before translation; None
+    retains LLVM's default. Explicit ``index_bits`` binds index conversion.
+    ``retain_llvm_dialect=True`` prints the actual serial post-pass module before
+    the same in-process translation, retaining custody without correctness proof.
+    ``masked_contraction_effects`` separately requires the closed-mask feature;
+    dead-tile omission needs nontrapping/unobserved-flags permission and retains
+    observed arithmetic order/types. Default lowering is unchanged.
+    ``vectorize`` selects fixed-width vector lowering with a workdir schedule;
+    ``transform_schedule`` overrides its schedule and ``pipeline`` overrides
+    either default pipeline. ``parallel_harts`` additionally layers OpenMP
+    forall chunks under vector scheduling; ``parallel`` selects scalar OpenMP.
+    See :func:`merlin.llvmlower.lower.lower_model` for the end-to-end options.
     """
+    if type(retain_llvm_dialect) is not bool:
+        raise ValueError("retain_llvm_dialect requires an explicit bool")
+    if lowering_selection is not None:
+        lowering_selection.pop("llvm_dialect_product", None)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
+    if retain_llvm_dialect:
+        work = work.resolve()
     from .lowering_recipe import FILENAME as _RECIPE_FILENAME
     from .lowering_recipe import LoweringRecipe
 
@@ -1586,7 +1586,10 @@ def lower_to_llvm_ir(
 
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
-    recipe_sources = {"pipeline_driver": Path(__file__)}
+    recipe_sources = {
+        "pipeline_driver": Path(__file__),
+        "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
+    }
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
@@ -1767,6 +1770,7 @@ def lower_to_llvm_ir(
     src = work / "model.mlir"
     out = work / "model.ll"
     runner = work / "run_lowering.py"
+    retention = select_retention(work, retain_llvm_dialect, omp=omp, scalar_stage=scalar_stage)
     src.write_text(mlir_text, encoding="utf-8")
 
     # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
@@ -1792,7 +1796,7 @@ def lower_to_llvm_ir(
     runner_src = _select_runner(
         pipeline,
         feats,
-        emit=EMIT_DUMP if omp else EMIT_TRANSLATE,
+        emit=retention.emitter(EMIT_TRANSLATE) if retention is not None else (EMIT_DUMP if omp else EMIT_TRANSLATE),
         inspection_dir=inspection_dir or (str(native[0]) if native is not None else None),
         keep_exact=audit is not None and audit.mode == "both",
         printing=(native[1], native[2]) if native is not None else (True, True),
@@ -1927,7 +1931,7 @@ def lower_to_llvm_ir(
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
-    stage_out = (work / "model.llvmdialect.mlir") if omp else out
+    stage_out = retention.translation if retention is not None else ((work / "model.llvmdialect.mlir") if omp else out)
     command = [
         str(m2m_python()),
         str(runner),
@@ -1970,27 +1974,17 @@ def lower_to_llvm_ir(
         from ..targetgen.provenance import toolchain_provenance
 
         audit.command(command, sources=(__file__, runner), provenance=toolchain_provenance())
-    try:
-        if scalar_stage is None:
-            proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        else:
-            from .source_stage_transport import run_command as _run_scalar_command
-
-            proc = _run_scalar_command(
-                command,
-                directory=scalar_stage,
-                callback=source_scalar_carrier.callback,
-                max_source_bytes=source_scalar_carrier.max_source_bytes,
-                max_response_bytes=source_scalar_carrier.max_response_bytes,
-                timeout=timeout,
-            )
-    except BaseException as exc:
-        if audit is not None:
-            try:
-                audit.collect_views()
-            except (OSError, ValueError) as audit_error:
-                exc.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
-        raise
+    proc = run_translation(
+        command,
+        timeout=timeout,
+        audit=audit,
+        retention=retention,
+        source=src,
+        runner=runner,
+        dependencies=recipe_sources.values(),
+        scalar_stage=scalar_stage,
+        scalar_carrier=source_scalar_carrier,
+    )
     if proc.returncode != 0 or not stage_out.is_file():
         error = PipelineError(
             f"upstream lowering failed (returncode={proc.returncode}, "
@@ -2029,6 +2023,8 @@ def lower_to_llvm_ir(
         if lowering_selection is not None:
             lowering_selection["source_observation"] = observed_source
     if audit is not None:
+        if retention is not None:
+            audit.stage("llvm-dialect", retention.module.read_text(encoding="utf-8"))
         audit.stage(
             "llvm-dialect" if omp else "llvm-translated",
             stage_out.read_text(encoding="utf-8"),
@@ -2141,7 +2137,7 @@ def lower_to_llvm_ir(
         tproc = subprocess.run(translate_command, capture_output=True, text=True, timeout=timeout)
         if tproc.returncode != 0 or not out.is_file():
             raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
-    result = _fix_float_literals(out.read_text(encoding="utf-8"))
+    result = _fix_float_literals((retention.translation if retention is not None else out).read_text(encoding="utf-8"))
     if audit is not None:
         audit.stage("llvm-normalized", result, format="llvm-ir")
     if _OUTLINE_LOOPS in feats or _OUTLINE_MERGE_LOOPS in feats:
@@ -2152,6 +2148,8 @@ def lower_to_llvm_ir(
             audit=audit,
             merge_identical=_OUTLINE_MERGE_LOOPS in feats,
         )
+    if retention is not None:
+        retention.bind(recipe, lowering_selection, source=src, runner=runner, llvm_ir=result)
     recipe.returned(result)
     return result
 

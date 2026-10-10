@@ -233,7 +233,11 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.original_operator_reference",
         "grader",
-        aliases=("merlin.targetgen.original_reference_values", "merlin.targetgen.original_pointwise_reference"),
+        aliases=(
+            "merlin.targetgen.original_reference_values",
+            "merlin.targetgen.original_pointwise_reference",
+            "merlin.targetgen.original_pointwise_stress",
+        ),
     ),
     _module(
         "merlin_experiments.phase0.original_reference_roster",
@@ -243,6 +247,8 @@ MODULE_ACCESS = (
             "merlin_experiments.phase0.original_reference_products",
             "merlin_experiments.phase0.original_reference_observer",
             "merlin_experiments.phase0.original_pointwise_reference_observer",
+            "merlin_experiments.phase0.original_pointwise_semantic_probes",
+            "merlin_experiments.phase0.original_pointwise_stress_observer",
             "merlin_experiments.phase0.original_schema_batch",
             "merlin_experiments.phase0.original_reference_standard_ir",
             "merlin_experiments.phase0.original_standard_ir_plan",

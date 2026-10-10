@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`llvm_dialect_product` optionally retains the serial upstream runner's actual
+post-pass generic module and raw in-process translation in one subprocess
+record. Fresh product paths preserve raw bytes through later normalization;
+the ordinary text/file/host APIs return its custody receipt. Selected parallel
+and scalar-rewrite transports refuse; absent selection keeps ordinary emission.
+This observes IR products, not source semantics, descriptor/storage premises,
+resource legality, import closure, object/link equivalence or runtime authority.
+
 `counted_copy_check` proves only a closed original integer tensor identity/copy
 to scalar LLVM counted loop under explicit original software pointer objects.
 It checks complete source/body/CFG, ordinal/byte bounds, pointer bases, loaded
@@ -513,6 +521,23 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - Fresh `kernel_backend.compile_host` loads select `PrivateHostImagePolicy` for their exact invocation-owned build directory, canonicalized before lowering. The private sibling snapshot gives each compilation a byte-identified load path; fd/path stability checks and cleanup retain source bytes. This opt-in requires temporary creation and cleanup in the selected directory and refuses aliased source parents. Sibling placement preserves relative dependency lookup, but neither dependencies nor build/execution provenance are frozen. Do not silently select it for cached, sealed or read-only artifact readers or substitute an external temporary directory that changes `$ORIGIN`.
 
 ## Testing expectations
+
+### Explicit pure integer scalar correspondence
+
+`integer_scalar_contract.py` declares an independently selected original source,
+complete ordered integer scalar ABI, modular bitvector numeric contract and
+explicit reader limits. These declarations issue no authority. The opt-in
+`integer_scalar_correspondence.py` reader reopens the actual ordinary serial
+translation products and proves only complete typed straight-line constant,
+arithmetic, bitwise, compare and select DAGs with an exact scalar C-interface
+call/return. Equality is structural over typed values, including large integer
+constants and repeated operands; differing or unsupported DAGs remain UNKNOWN.
+Overflow promises, opaque operations, loops, aggregate returns, tensors and
+memory are unsupported. Original result slots persist on supported-contract
+refusals. This conditional IR facet establishes neither object/link semantics,
+physical ABI realization, numerical framework equivalence, effects, resource
+bounds nor any phase/runtime qualification. The caller supplies original source
+and ABI ownership; this utility chooses no source, lowering or execution policy.
 
 - radix_integer_reconstruct.py emits explicitly selected signed-i64 weighted
   group updates followed by one exact binary64 conversion. It rederives the

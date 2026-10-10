@@ -12,7 +12,9 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common import strict_json as json_owner
+from merlin.perf import component_coherent_measurement as coherent_owner
 from merlin.perf import component_measurement_stream as stream_owner
+from merlin.perf.component_coherent_measurement import CoherentMeasurementPlan
 from merlin.perf.component_measurement_stream import RawMeasurementPlan, parse_measurement_stream
 from merlin.runtime import commandbuffer as types_owner
 from merlin.runtime.backends import base as parser_owner
@@ -25,6 +27,25 @@ from merlin.targetgen.contract import readback_policy as RB
 from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
 from merlin.targetgen.contract.execution_service import FunctionalExecutionService
 from merlin.targetgen.native_component_execution import _bind, _tree, execute_component
+
+from . import component_decode_products as decode_owner
+
+
+def _selection(plan, service, policy):
+    if type(plan) is RawMeasurementPlan:
+        if policy.transport != RB.FULL_VALUES_B64:
+            raise ValueError("raw measurement accounting requires selected complete text full-value readback")
+    elif type(plan) is CoherentMeasurementPlan:
+        if (
+            policy.transport != RB.COHERENT_DUMP_V1
+            or service.process_transport is None
+            or service.process_transport.prepared_readback is None
+            or not _same_json(service.process_transport.prepared_readback.record(), plan.readback.record())
+        ):
+            raise ValueError("coherent measurement requires the same explicitly selected prepared process plan")
+    else:
+        raise TypeError("measurement accounting requires its explicit raw observation plan")
+    plan.record()
 
 
 def _member(path, *, owner=None):
@@ -88,8 +109,8 @@ def collect_component_measurement(
     *, result_path, plan, build_service, execution_service, native_environments, original_inputs
 ):
     """Reopen fixed ordinary products and the live actual process consumption."""
-    if type(plan) is not RawMeasurementPlan:
-        raise TypeError("measurement accounting requires its explicit raw event plan")
+    if type(plan) not in (RawMeasurementPlan, CoherentMeasurementPlan):
+        raise TypeError("measurement accounting requires its explicit raw observation plan")
     plan.record()
     environments = _environments(native_environments)
     if type(build_service) is not BuildOnlyService or type(execution_service) is not FunctionalExecutionService:
@@ -204,8 +225,7 @@ def collect_component_measurement(
         elif pin not in linked[0]["inputs"]:
             raise ValueError("measurement accounting selected support was not consumed by the actual linker")
     policy = RB.ReadbackPolicy.from_record(result["readback_policy"])
-    if policy.transport != RB.FULL_VALUES_B64:
-        raise ValueError("raw measurement accounting requires selected complete text full-value readback")
+    _selection(plan, execution_service, policy)
     # Replay the original ordinary binding and selected parser; saved output/report
     # fields cannot substitute for the actual process stream or original answers.
     capsule = CC.load_capsule(owners["capsule"], contract=owners["contract"])
@@ -222,7 +242,29 @@ def collect_component_measurement(
         raise ValueError("measurement accounting original complete input/ABI projection changed")
     text = console.decode("utf-8")
     parsed, metrics = execution_service.parse_output(text)
-    RB.require_full_value_roster(bound, text, parsed, policy=policy)
+    coherent = None
+    if type(plan) is CoherentMeasurementPlan:
+        joined = decode_owner.join_component_decode_products(result_path=result_path, execution_root=root)
+        decoder = joined.record()
+        prepared = consumed.get("prepared_readback")
+        if (
+            type(prepared) is not dict
+            or decoder["elf"] != elf
+            or decoder["payload"] != prepared["output"]
+            or prepared["objects"] != [{"symbol": name, "bytes": size} for name, size in plan.readback.bind(bound)]
+            or prepared["payload_bytes"] != prepared["product_bytes"]
+        ):
+            raise ValueError("coherent measurement decoder differs from the actual complete prepared output")
+        payload_pin = _member(decoder["payload"]["path"], owner=root)
+        payload = _bounded_bytes(payload_pin["path"], plan.readback.max_payload_bytes)
+        coherent = plan.decode(payload, cb=bound, inputs=inputs)
+        parsed = coherent["outputs"]
+        RB.require_memory_value_roster(bound, parsed)
+        pins.extend(_member(decoder[name]["path"], owner=root) for name in ("decoder_product", "payload"))
+        pins.append(_member(prepared["request"]["path"], owner=root))
+        coherent["decoder_products"] = decoder
+    else:
+        RB.require_full_value_roster(bound, text, parsed, policy=policy)
     RB.require_current_build_receipt(
         cb=bound,
         target=target,
@@ -248,7 +290,22 @@ def collect_component_measurement(
     )
     if report["status"] != "pass" or not _same_json(report, result["numeric_report"]):
         raise ValueError("measurement accounting returned numerical report differs from original complete comparison")
-    events = parse_measurement_stream(console, plan=plan)
+    if coherent is None:
+        events = parse_measurement_stream(console, plan=plan)
+    else:
+        reports = [
+            CG.compare(
+                expected,
+                {name: values[emitted] for name, emitted in bindings["outputs"].items()},
+                numeric_policy,
+                golden_source=CG.golden_source(capsule, owners["capsule"]),
+            )
+            for values in coherent["call_outputs"]
+        ]
+        if any(row["status"] != "pass" for row in reports):
+            raise ValueError("coherent measurement failed an original complete per-call numerical gate")
+        coherent["per_call_numeric_reports"] = reports
+        events = coherent
     # Reopen actual parsing/output invocation pins; raw returned text cannot substitute.
     build_service.verify(target)
     if execution_service.verify(target, execution_service.simulator) != service:
@@ -261,7 +318,9 @@ def collect_component_measurement(
     if any(_tree(owner) != original_inputs[name] for name, owner in owners.items()):
         raise ValueError("measurement accounting original input tree changed during output replay")
     return {
-        "schema": "merlin.component_measurement_execution.v1",
+        "schema": "merlin.component_measurement_execution.v1"
+        if coherent is None
+        else "merlin.component_measurement_execution.v2",
         "ordinary_result": result_pin,
         "source_and_product_pins": pins,
         "ordinary_invocations": records,
@@ -280,12 +339,12 @@ def collect_component_measurement(
 
 def execute_component_measurement(*, plan, out_dir, native_environments, **ordinary_arguments):
     """Run one fresh arm through the existing ordinary compiler/runtime path."""
-    if type(plan) is not RawMeasurementPlan:
+    if type(plan) not in (RawMeasurementPlan, CoherentMeasurementPlan):
         raise TypeError("measurement execution requires an explicit raw plan")
     plan.record()
     _environments(native_environments)
     policy = ordinary_arguments["readback_policy"]
-    if type(policy) is not RB.ReadbackPolicy or policy.transport != RB.FULL_VALUES_B64:
+    if type(policy) is not RB.ReadbackPolicy:
         raise ValueError("raw measurement execution requires selected complete text full-value readback")
     output = Path(out_dir)
     if (
@@ -298,6 +357,7 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
     service = ordinary_arguments["execution_service"]
     if type(service) is not FunctionalExecutionService or service.process_transport is None:
         raise ValueError("measurement execution requires actual selected recorded process consumption")
+    _selection(plan, service, policy)
     for name in ("package_dir", "capsule_dir", "contract_root"):
         original = Path(ordinary_arguments[name])
         if output.is_relative_to(original) or original.is_relative_to(output):
@@ -322,6 +382,21 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
         "functional_selection_sha256": RB.canonical_sha256(service.verify(result["target"], service.simulator)),
     }
     fixed_owners = (stream_owner, json_owner, parser_owner, types_owner, CC, CG, binding_owner, RB)
+    extra_inputs, extra_dependencies = (), ()
+    if type(plan) is CoherentMeasurementPlan:
+        prepared = service.consumption(
+            elf=Path(result["elf"]["path"]), console=_bounded_bytes(result["console"]["path"], plan.max_console_bytes)
+        )["prepared_readback"]
+        joined = decode_owner.join_component_decode_products(
+            result_path=output / "ordinary/result.json", execution_root=output / "ordinary"
+        )
+        extra_inputs = (
+            Path(prepared["request"]["path"]),
+            joined.payload[0],
+            joined.decoder_product[0],
+            joined.decoder_record[0],
+        )
+        extra_dependencies = (Path(coherent_owner.__file__), Path(decode_owner.__file__), *plan.readback.source_paths())
     with I.observe_call(
         output / "accounting",
         stage="component_raw_measurement_accounting",
@@ -332,12 +407,14 @@ def execute_component_measurement(*, plan, out_dir, native_environments, **ordin
             *inputs,
             *(Path(row["path"]) for tree in original_inputs.values() for row in tree.values()),
             *(Path(row["path"]) for row in result["emission"].values()),
+            *extra_inputs,
         ),
         outputs=(product,),
         dependencies=(
             Path(__file__),
             *(Path(owner.__file__) for owner in fixed_owners),
             *(Path(path) for path, _ in (*ordinary_arguments["build_service"].source_pins, *service.source_pins)),
+            *extra_dependencies,
         ),
     ) as invocation:
         observed = collect_component_measurement(

@@ -625,7 +625,12 @@ Original input trees are selected before execution. The fixed consumer reparses
 the actual full serial stream, rederives the original ABI/input projection and
 recomputes the complete original numerical comparison. Edited saved outputs,
 metrics or reports cannot replace those products. Coherent-memory consumption
-is unsupported in this raw serial slice and requires its separate original owner.
+requires an explicit `CoherentMeasurementPlan` and the same selected prepared
+process/readback plan. The fixed consumer rejoins the actual decoder, request,
+same ELF and complete original object bytes, rechecks original immutable inputs,
+and recomputes every call's full numerical comparison from its complete history.
+Unframed ordered bytes are the only supported coherent grammar here; a framed
+or implicit selection refuses. The original full-value serial route is unchanged.
 Bounded reads precede decoding. Missing/moved events refuse accounting even when
 original outputs match. Source-produced labels and raw getters cannot certify
 actual complete-cost boundaries, cold/warm state, timer integrity, runtime14,

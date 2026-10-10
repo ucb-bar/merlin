@@ -29,6 +29,7 @@ from .original_call_sources import required_source_cohorts
 from .rtl_intake import RtlIntakePin, _exclusion_prefix, _outside
 
 SCHEMA = "merlin.original_source_semantic_cases.v1"
+POINTWISE_SCHEMA = "merlin.original_source_semantic_cases.v2"
 _ISSUED = weakref.WeakKeyDictionary()
 _SCOPE = "checked finite original source/review/reference cases only; no target/global numeric or phase release"
 _UNKNOWN = {
@@ -39,7 +40,7 @@ _UNKNOWN = {
 
 
 def _read(selection, budget, forbidden):
-    if type(budget) is not Q.OriginalSemanticReviewBudget:
+    if type(budget) not in {Q.OriginalSemanticReviewBudget, Q.OriginalPointwiseReviewBudget}:
         raise ValueError("original semantic review needs its explicit typed source-reader budget")
     budget.verify()
     path = Path(selection).absolute()
@@ -70,11 +71,16 @@ def _palette(selection, policy):
     return [{"dtype": dtype, "values": P.palette(selection, dtype)} for dtype in dict.fromkeys(policy.operand_dtypes)]
 
 
-def _stress(contract, selected, source):
+def _stress(contract, selected, source, *, pointwise=False):
     inputs = R._stimulus(contract, selected)
     if loads(Path(source["products"]["inputs"]["path"]).read_bytes()) != [R._tensor_record(t) for t in inputs]:
         raise ValueError("semantic stress changed the original full input storage roster")
-    stress = contract.observe_stress(inputs)
+    if pointwise:
+        from merlin.targetgen.original_pointwise_stress import observe
+
+        stress = observe(contract, inputs)
+    else:
+        stress = contract.observe_stress(inputs)
     comparison = loads(R._plain(source["products"]["comparison"]["path"]).read_bytes())
     if (
         stress["input_sha256"] != comparison["input_sha256"]
@@ -84,7 +90,19 @@ def _stress(contract, selected, source):
     return stress
 
 
-def _record(standard_ir, document, forbidden):
+def _record(standard_ir, document, forbidden, probes=None):
+    version2 = document["schema"] == Q.POINTWISE_SCHEMA
+    supplementary = None
+    if version2:
+        from .original_pointwise_semantic_probes import OriginalPointwiseStressProbes
+
+        if type(probes) is not OriginalPointwiseStressProbes or probes.standard_ir is not standard_ir:
+            raise ValueError("pointwise semantic review needs its actual same-original stress probe owner")
+        if canonical_json(loads(probes.review.read_bytes())) != canonical_json(document):
+            raise ValueError("pointwise stress selected a different protected original review")
+        supplementary = probes.record()
+    elif probes is not None:
+        raise ValueError("legacy semantic review cannot acquire pointwise stress probes")
     emitted = standard_ir.record()
     references = standard_ir.references
     original = references.record_without_verification()
@@ -100,7 +118,7 @@ def _record(standard_ir, document, forbidden):
     defaults = _defaults(original)
     owners = {canonical_json(row["selector"]): row for row in document["owners"]}
     rows, planned, used, groups = [], {}, set(), {}
-    totals = dict.fromkeys(E._METRICS, 0)
+    totals = copy.deepcopy(supplementary["logical_totals"]) if supplementary else dict.fromkeys(E._METRICS, 0)
     for index, (source, ir) in enumerate(zip(original["members"], emitted["members"], strict=True)):
         identity = {
             key: source[key] for key in ("original_member_id", "graph_path", "node", "target", "cohort", "extent")
@@ -144,7 +162,11 @@ def _record(standard_ir, document, forbidden):
         if source["state"] != "reference_checked" or ir["state"] != "source_reference_ir_checked":
             row["reason"] = "original complete numerical comparison or ordered upstream source ABI is unavailable"
             continue
-        cost = Q.measure_stress(contracts[index], selected)
+        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+        original_pointwise = version2 and type(contracts[index].policy) is OriginalPointwiseReferencePolicy
+        measure = Q.measure_pointwise_stress if original_pointwise else Q.measure_stress
+        cost = measure(contracts[index], selected)
         exceeded = E._exceeded(document["execution_budget"], cost, totals)
         if (
             len(rows) > document["budget"]["max_members"]
@@ -164,8 +186,20 @@ def _record(standard_ir, document, forbidden):
     # or reference-stress allocation. Unsupported and denied rows still exist.
     for index, contract in planned.items():
         source, row = original["members"][index], rows[index]
-        stress = _stress(contract, selected, source)
-        realized = Q.realized(stress)
+        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+
+        original_pointwise = version2 and type(contract.policy) is OriginalPointwiseReferencePolicy
+        stress = (
+            _stress(contract, selected, source, pointwise=True)
+            if original_pointwise
+            else _stress(contract, selected, source)
+        )
+        if original_pointwise:
+            from merlin.targetgen.original_pointwise_stress import realized as pointwise_realized
+
+            realized = pointwise_realized(stress)
+        else:
+            realized = Q.realized(stress)
         missing = [name for name in row["required_stress"]["per_member"] if not realized[name]]
         row.update(
             stress=stress,
@@ -183,6 +217,9 @@ def _record(standard_ir, document, forbidden):
             ],
         )
     family_rows = []
+    probe_families = (
+        {canonical_json(row["original_call"]): row for row in supplementary["families"]} if supplementary else {}
+    )
     for group, indices in groups.items():
         cases = [rows[index] for index in indices]
         if [(case["original"]["cohort"], case["original"]["extent"]) for case in cases] != list(
@@ -190,10 +227,26 @@ def _record(standard_ir, document, forbidden):
         ):
             raise ValueError("semantic source review lost the exact full original cohort denominator")
         complete = all(case["state"] == "source_case_checked" for case in cases)
+        probe = probe_families.get(canonical_json(list(group)))
+        if version2 and probe is None:
+            raise ValueError("pointwise semantic review lost an original supplementary family")
+        realizations = [case.get("realized_stress", {}) for case in cases]
+        if probe and probe["owner"] is not None:
+            complete = complete and probe["state"] == "finite_probes_checked"
+            realizations += [row.get("realized_stress", {}) for row in probe["members"]]
+        if complete and version2 and probe and probe["owner"] is not None:
+            from merlin.targetgen.original_pointwise_stress import combined_realized
+
+            # Scalar sources visit one element per probe. Signed coverage must
+            # join real positive and negative visits across those original
+            # cases, rather than require both signs in a single scalar value.
+            traces = [case["stress"] for case in cases]
+            traces += [row["stress"] for row in probe["members"]]
+            realizations = [combined_realized(traces)]
         missing = []
         if complete:
             for name in cases[0]["required_stress"]["across_complete_cohorts"]:
-                if not any(case["realized_stress"][name] for case in cases):
+                if not any(realized.get(name, False) for realized in realizations):
                     missing.append(name)
         family_rows.append(
             {
@@ -204,8 +257,12 @@ def _record(standard_ir, document, forbidden):
                 "scope": "complete selected finite original cases only; not whole original domain or target admission",
             }
         )
+        if version2:
+            family_rows[-1]["supplementary_stress"] = copy.deepcopy(probe)
+    if version2 and len(probe_families) != len(groups):
+        raise ValueError("pointwise semantic review added or removed an original stress family")
     return {
-        "schema": SCHEMA,
+        "schema": POINTWISE_SCHEMA if version2 else SCHEMA,
         "reference_roster_sha256": references.sha256,
         "standard_ir_roster_sha256": standard_ir.sha256,
         "software_intake_sha256": references.schema_intake.software.sha256,
@@ -216,10 +273,20 @@ def _record(standard_ir, document, forbidden):
         "stress_logical_totals": totals,
         "remaining_by_phase": copy.deepcopy(_UNKNOWN),
         "scope": _SCOPE,
+        **(
+            {
+                "supplementary_stress_probes": {
+                    "sha256": probes.sha256,
+                    "product": R._pin(probes.destination / "probes.json"),
+                }
+            }
+            if version2
+            else {}
+        ),
     }
 
 
-def _sources(review, contexts):
+def _sources(review, contexts, *, pointwise=False):
     paths = [Path(review), *(Path(row["source"]["path"]) for row in contexts)]
     paths += [
         module_source_path(name)
@@ -232,6 +299,17 @@ def _sources(review, contexts):
             E.__name__,
         )
     ]
+    if pointwise:
+        paths += [
+            module_source_path(name)
+            for name in (
+                "merlin_experiments.phase0.original_pointwise_semantic_probes",
+                "merlin_experiments.phase0.original_pointwise_stress_observer",
+                "merlin.targetgen.original_pointwise_stress",
+                "merlin.targetgen.original_pointwise_reference",
+                "merlin.targetgen.original_pointwise_sources",
+            )
+        ]
     return tuple(
         RtlIntakePin("private-original-semantic-review", str(path), R._pin(path)["sha256"])
         for path in sorted(set(paths))
@@ -247,6 +325,7 @@ class OriginalSourceSemanticCases:
     source_pins: tuple[RtlIntakePin, ...]
     receipt_json: bytes
     output: Path
+    pointwise_probes: object | None = None
 
     @property
     def sha256(self):
@@ -260,7 +339,7 @@ class OriginalSourceSemanticCases:
         if R._plain(self.output).read_bytes() != self.receipt_json + b"\n":
             raise ValueError("original semantic case product changed its complete private record")
         document = _read(self.review, self.budget, self.forbidden_roots)
-        actual = _record(self.standard_ir, document, self.forbidden_roots)
+        actual = _record(self.standard_ir, document, self.forbidden_roots, self.pointwise_probes)
         actual["review"] = R._pin(self.review)
         if canonical_json(actual) != self.receipt_json:
             raise ValueError("original semantic source cases changed actual complete review/stress membership")
@@ -278,20 +357,35 @@ def prepare(*, standard_ir, review, budget, forbidden_roots, destination):
         raise ValueError("original semantic review requires actual live original reference/standard sources")
     forbidden = tuple(_exclusion_prefix(root) for root in forbidden_roots)
     document = _read(review, budget, forbidden)
-    actual = _record(standard_ir, document, forbidden)
-    actual["review"] = R._pin(review)
-    source_pins = _sources(review, actual["implementation_contexts"])
+    version2 = document["schema"] == Q.POINTWISE_SCHEMA
+    actual = None if version2 else _record(standard_ir, document, forbidden)
     output = Path(destination).absolute()
     _outside(output, forbidden)
     if any(path.is_symlink() for path in (output, *output.parents)):
         raise ValueError("original semantic products require an ordinary fresh private owner")
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
+    probes = None
+    if version2:
+        from . import original_pointwise_semantic_probes as B
+
+        Q.contexts(document, references=standard_ir.references, forbidden=forbidden)
+        probes = B.prepare(
+            standard_ir=standard_ir,
+            review=review,
+            document=document,
+            forbidden=forbidden,
+            destination=output / "stress-probes",
+        )
+    if version2:
+        actual = _record(standard_ir, document, forbidden, probes)
+    actual["review"] = R._pin(review)
+    source_pins = _sources(review, actual["implementation_contexts"], pointwise=version2)
     raw = canonical_json(actual)
     product = output / "source-semantic-cases.json"
     product.write_bytes(raw + b"\n")
     product.chmod(0o600)
     result = OriginalSourceSemanticCases(
-        standard_ir, Path(review).absolute(), budget, forbidden, source_pins, raw, product
+        standard_ir, Path(review).absolute(), budget, forbidden, source_pins, raw, product, probes
     )
     _ISSUED[result] = result.sha256
     result.verify()

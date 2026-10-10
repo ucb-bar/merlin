@@ -4,6 +4,7 @@ These observations confer no correctness or stage applicability. Callers own
 which inputs/dependencies are complete and the verifier owns semantic lift.
 Records are written outside invoked packages and never accepted from stdout.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -48,8 +49,11 @@ def environment_identity(environment) -> dict:
     for key, value in environment.items():
         encoded_key, encoded_value = os.fsencode(key), os.fsencode(value)
         if (
-            not encoded_key or b"=" in encoded_key or b"\0" in encoded_key
-            or b"\0" in encoded_value or encoded_key in members
+            not encoded_key
+            or b"=" in encoded_key
+            or b"\0" in encoded_key
+            or b"\0" in encoded_value
+            or encoded_key in members
         ):
             raise ValueError("environment has an invalid or ambiguous process mapping")
         members[encoded_key] = encoded_value
@@ -59,7 +63,8 @@ def environment_identity(environment) -> dict:
             digest.update(len(part).to_bytes(8, "big"))
             digest.update(part)
     return {
-        "schema": "merlin.process_environment.v1", "sha256": digest.hexdigest(),
+        "schema": "merlin.process_environment.v1",
+        "sha256": digest.hexdigest(),
         "keys": [os.fsdecode(key) for key in sorted(members)],
         "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
     }
@@ -67,7 +72,16 @@ def environment_identity(environment) -> dict:
 
 class Invocation:
     def __init__(
-        self, directory: Path, *, stage: str, argv, cwd=None, env=None, inputs=(), outputs=(), dependencies=(),
+        self,
+        directory: Path,
+        *,
+        stage: str,
+        argv,
+        cwd=None,
+        env=None,
+        inputs=(),
+        outputs=(),
+        dependencies=(),
     ):
         if not stage or not argv:
             raise ValueError("invocation observation requires a stage and command")
@@ -89,10 +103,15 @@ class Invocation:
                 found = shutil.which(command[0], path=os.pathsep.join(search))
                 executable = Path(found) if found else work / executable
         self.document = {
-            "schema": SCHEMA, "stage": stage, "argv": command, "cwd": str(work),
+            "schema": SCHEMA,
+            "stage": stage,
+            "argv": command,
+            "cwd": str(work),
             "kind": "subprocess",
-            "executable": _pin(executable), "inputs": _pins(self.inputs),
-            "dependencies": _pins(self.dependencies), "status": "running",
+            "executable": _pin(executable),
+            "inputs": _pins(self.inputs),
+            "dependencies": _pins(self.dependencies),
+            "status": "running",
             "started_ns": time.time_ns(),
             "environment": environment_identity(selected_env),
         }
@@ -110,8 +129,10 @@ class Invocation:
             path.write_bytes(data)
             self.document[name] = _pin(path)
         self.document.update(
-            status="completed" if result.returncode == 0 else "failed", returncode=result.returncode,
-            finished_ns=time.time_ns(), outputs=_pins(path for path in self.outputs if path.is_file()),
+            status="completed" if result.returncode == 0 else "failed",
+            returncode=result.returncode,
+            finished_ns=time.time_ns(),
+            outputs=_pins(path for path in self.outputs if path.is_file()),
             inputs_unchanged=_pins(self.inputs) == self.document["inputs"],
             dependencies_unchanged=_pins(self.dependencies) == self.document["dependencies"],
             executable_unchanged=_pin(Path(self.document["executable"]["path"])) == self.document["executable"],
@@ -126,8 +147,10 @@ class Invocation:
 
 class CallInvocation(Invocation):
     """An observed Python dispatch, distinct from a subprocess command claim."""
-    def __init__(self, directory: Path, *, stage: str, function, arguments: dict,
-                 inputs=(), outputs=(), dependencies=()):
+
+    def __init__(
+        self, directory: Path, *, stage: str, function, arguments: dict, inputs=(), outputs=(), dependencies=()
+    ):
         try:
             origin = inspect.getsourcefile(function)
         except TypeError:
@@ -135,14 +158,21 @@ class CallInvocation(Invocation):
         # An uninspectable callable remains an unavailable observation; it does
         # not turn optional lineage into a new functional refusal.
         source = origin or "/unavailable-callable-source"
-        super().__init__(directory, stage=stage, argv=(source,), inputs=inputs, outputs=outputs,
-                         dependencies=(*dependencies, Path(source)))
+        super().__init__(
+            directory,
+            stage=stage,
+            argv=(source,),
+            inputs=inputs,
+            outputs=outputs,
+            dependencies=(*dependencies, Path(source)),
+        )
         name = (
             f"{getattr(function, '__module__', type(function).__module__)}."
             f"{getattr(function, '__qualname__', type(function).__qualname__)}"
         )
-        self.document.update(kind="python_call", callable=name, callable_source_available=origin is not None,
-                             arguments=arguments)
+        self.document.update(
+            kind="python_call", callable=name, callable_source_available=origin is not None, arguments=arguments
+        )
         self.document.pop("argv")
         self.document.pop("environment")
         self._write()
@@ -172,8 +202,16 @@ def run(argv, *, directory: Path, stage: str, inputs=(), outputs=(), dependencie
     # Observe and execute the same immutable snapshot, even if a caller's
     # mutable mapping or ambient environment changes at the observation point.
     kwargs["env"] = dict(os.environ if kwargs.get("env") is None else kwargs["env"])
-    with observe(directory, stage=stage, argv=argv, inputs=inputs, outputs=outputs,
-                 dependencies=dependencies, cwd=kwargs.get("cwd"), env=kwargs.get("env")) as record:
+    with observe(
+        directory,
+        stage=stage,
+        argv=argv,
+        inputs=inputs,
+        outputs=outputs,
+        dependencies=dependencies,
+        cwd=kwargs.get("cwd"),
+        env=kwargs.get("env"),
+    ) as record:
         result = subprocess.run(argv, **kwargs)
         record.complete(result)
         return result
@@ -192,31 +230,45 @@ def observe_call(directory: Path, **kwargs):
             record.failed(RuntimeError("call did not report its return"))
 
 
-def verify(path: Path) -> dict:
+def verify(path: Path, *, pin_replay=None) -> dict:
     """Reopen exact observation bytes; completeness/applicability remain caller-owned."""
     document = json.loads(Path(path).read_text(encoding="utf-8"))
     returned = (
-        document.get("returncode") == 0 if document.get("kind") == "subprocess"
+        document.get("returncode") == 0
+        if document.get("kind") == "subprocess"
         else document.get("outcome") == "returned"
     )
     unchanged = ("inputs_unchanged", "dependencies_unchanged", "executable_unchanged")
-    if (document.get("schema") != SCHEMA or document.get("status") != "completed"
-        or not returned or any(document.get(name) is not True for name in unchanged)):
+    if (
+        document.get("schema") != SCHEMA
+        or document.get("status") != "completed"
+        or not returned
+        or any(document.get(name) is not True for name in unchanged)
+    ):
         raise ValueError("invocation did not complete with unchanged observed inputs")
-    for pin in [document["executable"], document["stdout"], document["stderr"], *document["inputs"],
-                *document["outputs"], *document["dependencies"]]:
-        if not pin.get("sha256") or _pin(Path(pin["path"])) != pin:
+    roles = [(document["executable"], True), (document["stdout"], False), (document["stderr"], False)]
+    roles.extend((pin, False) for pin in (*document["inputs"], *document["outputs"]))
+    roles.extend((pin, True) for pin in document["dependencies"])
+    for pin, selected_role in roles:
+        actual = None
+        if selected_role and pin_replay is not None:
+            from .selected_pin_replay import replayed_pin
+
+            actual = replayed_pin(pin_replay, Path(pin["path"]))
+        if actual is None:
+            actual = _pin(Path(pin["path"]))
+        if not pin.get("sha256") or actual != pin:
             raise ValueError("invocation input, dependency or product changed")
     return document
 
 
-def require_environment(path: Path, *, environment) -> dict:
+def require_environment(path: Path, *, environment, pin_replay=None) -> dict:
     """Reopen an actual successful process and compare its protected selection.
 
     Older observations without this binding cannot establish environment
     identity. A matching saved record alone confers no live execution authority.
     """
-    document = verify(path)
+    document = verify(path, pin_replay=pin_replay)
     if document.get("kind") != "subprocess" or document.get("environment") != environment_identity(environment):
         raise ValueError("invocation has no matching effective process environment binding")
     return document

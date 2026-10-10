@@ -68,6 +68,17 @@ receipts cannot supply that identity. A matching environment is not a runtime,
 dependency-closure, secret-management or sandbox qualification. Python call
 observations do not claim a child process environment.
 
+`selected_pin_replay` issues an explicit bounded same-thread/same-process call
+owner for selected canonical file content. It binds the actual Thread identity
+and issuing process ID, preventing recycled thread IDs and fork inheritance.
+Invocation verification may reuse that content
+only in executable/dependency roles; complete pre/post rereads remain mandatory,
+including exceptional exits. Every unselected input, product and record stays
+fresh. Actual observation/run/completion always hash independently. There is no
+ambient selection, mtime inference or reuse across calls, nested owners, threads or
+processes.
+This controls replay cost and grants no source, stage or runtime authority.
+
 `provenance_lost` records explicitly declared unrecoverable artifact identities.
 Pin and artifact loaders reject redeclaring those identities as live; build products
 use ordinary checkout-relative paths and are hashed independently of git status.

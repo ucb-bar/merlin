@@ -203,3 +203,9 @@ Shared-tool readiness selects the existing `strict_tool_policy` with
 `candidate_writable=False`; do not rewrite a constructed mount argument list.
 Native client readiness keeps its disposable copy for temporary mountpoints and
 read-only original source members, then rechecks complete source membership.
+
+`component_source_applicability` treats rank-zero tensors as one logical element
+under the registered tensor SSA contract. This source-only observation grants no
+native ABI, numerical, tail/resource, physical ownership or runtime effects.
+The `original-pointwise-host` installed suite retains ordinary source factory,
+upstream conversion and complete host value controls with explicit tool selection.

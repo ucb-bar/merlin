@@ -95,7 +95,15 @@ def _raw(spec, values, *, count, width, dtype, byte_order):
 
 
 def render_direct_kernel(
-    cb, *, inputs, readback_policy, abi: DirectKernelAbi, original_storage=None, invocation_plan=None, counter_plan=None
+    cb,
+    *,
+    inputs,
+    readback_policy,
+    abi: DirectKernelAbi,
+    original_storage=None,
+    invocation_plan=None,
+    counter_plan=None,
+    phase_plan=None,
 ):
     """Render complete pointer-call storage with explicitly selected readback.
 
@@ -167,6 +175,13 @@ def render_direct_kernel(
         if type(counter_plan) is not DirectKernelCounterPlan or not memory:
             raise ValueError("counter capture requires an explicit typed plan and complete coherent object reader")
         counter_roster = counter_plan.bind(cb, abi=abi, invocation_plan=invocation_plan)
+    phase_roster = None
+    if phase_plan is not None:
+        from .direct_kernel_phases import DirectKernelPhasePlan
+
+        if type(phase_plan) is not DirectKernelPhasePlan or not memory or phase_plan.counter_plan is not counter_plan:
+            raise ValueError("harness phases require coherent readback and the same explicit counter plan")
+        phase_roster = phase_plan.bind(cb, abi=abi, invocation_plan=invocation_plan)
     declarations = [
         "#include <stdint.h>",
         '#include "htif.h"',
@@ -192,12 +207,27 @@ def render_direct_kernel(
         declarations.extend(f"unsigned char {history.symbol}[{history.byte_extent}]={{0}};" for history in histories)
     if counter_roster is not None:
         declarations.extend(counter_plan.declarations(counter_roster))
+    if phase_roster is not None:
+        declarations.extend(phase_plan.declarations(phase_roster))
     body = (
         ["int main(unsigned long context_id){", "  if(context_id) return 0;"]
         if abi.main_convention == "primary_context_id"
         else ["int main(void){"]
     )
+    if phase_roster is not None:
+        body.extend(
+            [
+                "  uint64_t phase_main_start,phase_main_end,phase_main_state_before,phase_main_state_after;",
+                "  uint64_t phase_value_start,phase_value_end,phase_value_state_before,phase_value_state_after;",
+                *phase_plan.begin("main_body", "  "),
+                *phase_plan.begin("console_setup", "  "),
+            ]
+        )
     body.append("  console_init();")
+    if phase_roster is not None:
+        body.extend(phase_plan.end("console_setup", "  "))
+        body.extend(phase_plan.store("console_setup", index="0", byte_order=abi.byte_order, indent="  "))
+        body.extend(phase_plan.begin("calibration_loop", "  "))
     if counter_roster is not None:
         body.extend(
             [
@@ -212,6 +242,9 @@ def render_direct_kernel(
                 "  }",
             ]
         )
+    if phase_roster is not None:
+        body.extend(phase_plan.end("calibration_loop", "  "))
+        body.extend(phase_plan.store("calibration_loop", index="0", byte_order=abi.byte_order, indent="  "))
     call = f"{abi.entry_symbol}({', '.join('tensor_' + str(index) for index in range(len(args)))});"
     if invocation_plan is None:
         if counter_roster is not None:
@@ -239,6 +272,8 @@ def render_direct_kernel(
             body.extend(counter_plan.end("    "))
             body.extend(counter_plan.store(kind="call", index="invocation", byte_order=abi.byte_order, indent="    "))
             body.extend(counter_plan.count("invocation+1", byte_order=abi.byte_order, indent="    "))
+        if phase_roster is not None:
+            body.extend(phase_plan.begin("history_copy", "    "))
         for history in histories:
             index = slots[history.emitted_tensor][0]
             width = history.bytes_per_invocation
@@ -255,9 +290,12 @@ def render_direct_kernel(
                 "    for(unsigned byte=0;byte<8;byte++)",
                 f"      {invocation_plan.count_symbol}[{count_offset}]="
                 "(unsigned char)(invocation_completed>>(byte*8));",
-                "  }",
             ]
         )
+        if phase_roster is not None:
+            body.extend(phase_plan.end("history_copy", "    "))
+            body.extend(phase_plan.store("history_copy", index="invocation", byte_order=abi.byte_order, indent="    "))
+        body.append("  }")
     # The selected coherent reader resolves these actual linked static objects.
     # It owns full-value admission; DONE alone supplies no output or effect proof.
     for name in () if memory else outputs:
@@ -288,5 +326,16 @@ def render_direct_kernel(
                 "  }",
             ]
         )
-    body.extend(['  htif_puts("DONE\\n");', "  htif_exit(0);", "  return 0;", "}"])
+    if phase_roster is not None:
+        body.extend(phase_plan.begin("done_publication", "  "))
+    body.append('  htif_puts("DONE\\n");')
+    if phase_roster is not None:
+        body.extend(phase_plan.end("done_publication", "  "))
+        body.extend(phase_plan.store("done_publication", index="0", byte_order=abi.byte_order, indent="  "))
+        body.extend(phase_plan.end("main_body", "  "))
+        # These writes and the selected exit/parent readback are outside the
+        # main bracket. Their unknown cost must not be represented as zero.
+        body.extend(phase_plan.store("main_body", index="0", byte_order=abi.byte_order, indent="  "))
+        body.extend(phase_plan.count(str(invocation_plan.count), byte_order=abi.byte_order, indent="  "))
+    body.extend(["  htif_exit(0);", "  return 0;", "}"])
     return "\n".join((*declarations, "", *body)) + "\n"

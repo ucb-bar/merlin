@@ -50,6 +50,15 @@ the per-backend adapters under `backends/`.
   budgets apply before storage rendering. Accessor implementations remain in
   selected runtime support. No counter units, integrity, cold/warm status,
   calibrated overhead or complete-stage cost authority follows from these data.
+- `direct_kernel_phases.py` — opt-in raw samples at fixed generated console,
+  calibration, output-history/count and DONE boundaries, plus inclusive main.
+  It requires the same explicit counter plan and original repeated ABI/history
+  roster; combined buffer/history/sample budgets precede rendering. Entry and
+  selected completion retain their original counter bracket. Main includes
+  inner instrumentation but ends before its own sample storage/count, exit and
+  parent readback. Static initialization/loading and these excluded operations
+  remain unknown, never free. Raw values do not grant completion, counter units,
+  cold/warm, full eleven-stage costs or runtime/held qualification.
 - `out_bin.py` — separate opt-in byte-oriented full-value framing. It consumes
   exact length-delimited raw payloads without text-decoding their NUL/non-UTF-8
   contents, checks the transport checksum, and requires END/DONE and a closed
