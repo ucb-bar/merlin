@@ -26,7 +26,10 @@ import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
 __all__ = [
     "FROM_EXTENTS",
@@ -93,6 +96,70 @@ class DeviceRouting:
     final_elf_audit: Callable[[Path], None] | None = None
     #: Provider-owned host ABI preparation after source-bound offload declarations.
     post_offload_transform: Callable[[Path, Path, Path], Path] | None = None
+    #: Explicit independently selected final linked-image policy. Every active
+    #: ordinary device build requires it; the legacy callback cannot replace it.
+    linked_elf_admission: LinkedElfAdmissionService | None = None
+
+
+def freeze_device_elf_admission(device):
+    """Freeze supplied policy selection; an empty host route needs no policy."""
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    service = getattr(device, "linked_elf_admission", None)
+    if service is None:
+        return None
+    if type(service) is not LinkedElfAdmissionService:
+        raise ValueError("device linked ELF admission requires an explicitly selected service")
+    return device.device, service, service.verify(device.device)
+
+
+def require_device_elf_admission(device, selection):
+    """An active routed program cannot downgrade or replace its selected policy."""
+    if selection is None:
+        raise ValueError("active device route requires independent linked ELF admission")
+    target, service, identity = selection
+    if (
+        device is None
+        or device.device != target
+        or getattr(device, "linked_elf_admission", None) is not service
+        or service.verify(target) != identity
+    ):
+        raise ValueError("device linked ELF admission selection changed during build")
+    return service
+
+
+def admit_linked_device_elf(device, selection, *, elf, linked_sha256, directory):
+    """Enforce the selected policy on unchanged final link bytes, not objects.
+
+    The selected evaluator owns ISA facts and the original protected policy.
+    This caller retains actual evaluation and refuses absent or changed evidence;
+    it supplies no default decoder, instruction/effect or runtime authority.
+    """
+    import json
+
+    from merlin.common import invocation_record
+    from merlin.common.digest import sha256_file
+
+    service = require_device_elf_admission(device, selection)
+    if sha256_file(elf) != linked_sha256:
+        raise ValueError("device linked ELF changed after its actual link")
+    with invocation_record.observe_call(
+        directory,
+        stage="device_final_linked_elf_policy",
+        function=service.evaluate,
+        arguments={"target": selection[0], "scope": "selected final linked-artifact policy"},
+        inputs=(elf,),
+        dependencies=tuple(Path(path) for path, _digest in service.source_pins),
+    ) as observation:
+        result = service.evaluate(elf=elf, target=selection[0], evidence_root=observation.directory / "policy")
+        observation.outputs = (Path(result["report_path"]),)
+        observation.returned(stdout=json.dumps(result, sort_keys=True))
+    require_device_elf_admission(device, selection)
+    if service.revalidate(elf=elf, result=result, target=selection[0]) != "accepted":
+        raise ValueError("device linked ELF was refused by its selected policy")
+    if sha256_file(elf) != linked_sha256:
+        raise ValueError("device linked ELF changed during its selected policy")
+    return result
 
 
 def routing_for_placement(
@@ -104,6 +171,7 @@ def routing_for_placement(
     granularity: str = "contraction",
     capture: str | Path | None = None,
     model: str = "",
+    linked_elf_admission: LinkedElfAdmissionService | None = None,
 ) -> DeviceRouting:
     """The ``DeviceRouting`` a whole-model build needs, derived from a placement rather than declared.
 
@@ -161,6 +229,7 @@ def routing_for_placement(
         granularity=str(granularity),
         capture=capture,
         model=str(model),
+        linked_elf_admission=linked_elf_admission,
     )
 
 

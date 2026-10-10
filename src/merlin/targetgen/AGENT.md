@@ -1,5 +1,24 @@
 # AGENT.md — src/merlin/targetgen
 
+`original_metadata_sources` constructs exact typed original dtype casts and
+metadata assertions with independently bounded rank-based geometry. Preserve
+cast flags, Tensor(a) schema possibility and original metadata conditions; no
+alias/copy/exception/numerical authority follows. Assertions with unimplemented
+size/stride conditions refuse. Their actual call and observed Python None slot
+remain separate from the empty dispatcher result, never a synthesized tensor.
+
+`original_scalar_binary_sources` constructs the exact original positive-rank
+CPU strided f32 mul/div Tensor call with one SSA input and a finite Python
+FloatLiteral. Preserve literal kind/hex, ordered argument/result bindings and
+storage; refuse unsupported promotion, alias, scalar kinds and second SSA.
+Explicit fresh extent and complete logical input/output plus rank costs bound
+allocation. Opt-in form v2 also preserves signed64 Python integers when the
+exact original native Tensor-binding row proves wrapped signed64 storage; no
+float coercion or Tensor SSA substitution is allowed. Its correspondence reader
+checks the original i64 constant, direct f32 cast, ordered arithmetic and actual
+native wrapper/promotion/readout observations separately from numerical admission. No registered scalar conversion, numeric policy, reviewed owner,
+effects or target admission follows from construction.
+
 `original_broadcast_add_sources` derives only original positive right-aligned
 singleton/equality relations and exact ordered Tensor storage/unit alpha. Fresh
 extents and complete input/output plus rank metadata costs precede allocation.
@@ -155,6 +174,22 @@ invocation remains unavailable rather than gaining an evidence exception.
 - The Merlin core dialects or runtime ABI (those live elsewhere in the repo).
 
 ## Interfaces
+
+`original_triangular_sources` preserves exact original `aten.triu.default`
+Tensor/int/result bindings, signed64 diagonal/default, positive rank of at least
+two, CPU strided storage and the same-shape relation. Fresh bounded dimensions
+come only from explicit extent; the triangular axes are always the last two.
+Bound complete input/output counts and rank metadata before geometry allocation.
+Source construction grants no numerical, alias, effect, packing or hardware
+admission; unsupported types and source relations remain explicit unknowns.
+
+`original_scalar_binary_correspondence` checks actual parsed standard IR for the
+bounded original one-Tensor/right-FloatLiteral mul/div form. Reopen exact f32
+coefficient bits, input/splat/body operand order, identity maps and complete
+yield/return, in addition to full original/prepared trace and registered-source
+joins. Provenance IDs and matching types cannot prove those semantic bindings.
+The reader grants no numerical policy, wrapped-number source ownership,
+compiled semantics, effects, resource mapping or mandatory admission.
 
 `original_transpose_sources` binds the exact original rank-two CPU strided
 `aten.transpose.int` schema, ordered result and signed axis arguments. Fresh

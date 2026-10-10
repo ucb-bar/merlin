@@ -1,8 +1,84 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Local packing intake v2 explicitly selects source-byte, local-memory,
+hierarchy and interval metadata budgets. Reuse the freshly serialized original
+core and its exact live hardware production root/container; preserve v1 local
+partitions and add separate conditional occurrence-to-memory bit facts. Retain
+every memory port and state/read/opaque/unsupported cut, original undefined
+memory domains and all command/axis/capacity/effect UNKNOWNs. Declared Phase 0
+run v6 carries this selector through the ordinary packing intake while keeping
+all v5 source/reference and mandatory requirements. Structural data grants no
+packing-domain, numerical, physical or grading admission; saved records cannot
+recreate live source authority or upgrade prior observations.
+
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
+
+Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
+construction for the exact original signed diagonal/default, positive rank of
+at least two and same input/result storage and shape relation. Preserve the
+last-two-axis semantics with independent fresh geometry and complete rank,
+logical input/output and aggregate source budgets. Stable factory v3/ledger v5
+retain all original call/cohort IDs, including fulfilled source prerequisites;
+scalar-conversion selection/receipt v4 and declared selection v3 retain the
+unchanged scalar sub-roster and observer v2. Earlier versions retain their
+meanings. Construction grants no reference, effect, packing, numerical or phase
+admission, and unsupported original formats remain required.
+
+Original call-source v8 / automatic v15 / declared v8 explicitly select bounded
+typed `to.dtype` and metadata-assertion factories. Retain original storage/rank,
+cast flags and dtype/device/layout conditions; non-None size/stride requirements
+remain unavailable rather than borrowing example geometry. Replay the selected
+native zero-return bridge and preserve the Python None slot separately from zero
+dispatcher results. Stable factory v2/ledger v4 keep every original selector ID,
+cohort and candidate blocker, including fulfilled original call-binding IDs.
+Binding state does not discharge effects or numerical admission. Scalar-conversion selection/receipt v3 replays the
+complete v8 source roster and the unchanged scalar sub-roster/native observer v2.
+Old versions, independent reference/packing choices and all numerical, alias,
+effect, hardware and phase-admission requirements keep their meanings.
+
+Original call-source v7 and scalar-conversion selection/receipt v2 explicitly
+select signed64 integer-literal construction through the same original live
+schema Tensor getter. Retain every original cohort and require exact native
+wrapped storage, fresh promotion/readout observations, registered importer/body
+joins and separate complete preallocation bounds for both dispatch outputs.
+Prior source, automatic, reference, review and numerical policies are unchanged;
+finite observed promotion establishes no whole-domain or mandatory admission.
+
+Automatic policy/receipt v14 explicitly selects original call-source v7 and
+the same native Tensor-binding facet in schema intake v2 or v3. Declared run v7
+connects the complete original source roster to the actual fixed registered
+scalar converter with input-only public source/parser and complete product/
+promotion budget declarations; live original owners derive all selection hashes.
+Its source-construction route retains v4 performance and mandatory requirements.
+Reference and local-memory selections are independent explicit additions, never
+fallbacks. Their absence preserves all missing numeric/effect/packing premises
+and blocked phases. Old v13/v6 factories and v5/v6 caller grammars are unchanged.
+
+Declared run v7 additionally selects source requirement ledger v3. The fixed
+`original_factory_prerequisites` owner derives every original call and all three
+cohorts before inspecting construction outcomes, then replays live schema/basis
+owners and exact source bytes. Stable selector IDs include fulfilled factories;
+the full `original_prerequisite_ids` union retains every coverage ID. Historical
+`original_required_ids`, ledger APIs, missing-row semantics and nonfactory or
+candidate blockers remain unchanged. Constructed source is separate from all
+numerical, hardware, effect, runtime and phase admission.
+
+Original call-source v6 / automatic policy and receipt v13 explicitly adds the
+bounded scalar mul/div factory. Every original call and guard/private slot,
+aggregate cost and missing admission remains required. Keep old versions and
+numeric/reference/review meanings unchanged; FloatLiteral preservation and a
+constructed loader grant no registered conversion or numerical/domain authority.
+
+`original_scalar_conversion` is a separate opt-in live consumer of that complete
+scalar guard/private source roster. The fixed observer records real registered
+importer entry/return without replacing registry functions; overrides refuse.
+Check exact public source bytes, original typed arguments, complete native
+products, the core SSA/body relation and actual selected stock parser before
+issuing construction data. Keep wrapped-number source correspondence,
+numeric/reference/owner, effects/resources and every mandatory admission unknown.
+Old source, reference and automatic versions keep their meanings.
 
 Original call-source v5 / automatic policy v12 selects typed broadcast-add forms;
 original reference selection/roster v5 and standard-IR v4 explicitly select the

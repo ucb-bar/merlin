@@ -14,6 +14,7 @@ def plan_before_build(
     model: str = "",
     capture: str | Path | None = None,
     granularity: str = "contraction",
+    linked_elf_admission=None,
 ) -> dict:
     """Everything the EMISSION needs decided BEFORE it runs: where each op goes, and what the device
     is asked to build.
@@ -123,6 +124,7 @@ def plan_before_build(
                     granularity=granularity,
                     capture=capture,
                     model=model,
+                    linked_elf_admission=linked_elf_admission,
                 )
             except Exception as exc:  # noqa: BLE001 -- named, never silently absent
                 record["device_routing_why"] = f"{type(exc).__name__}: {exc}"

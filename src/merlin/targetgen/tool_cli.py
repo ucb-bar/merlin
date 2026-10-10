@@ -236,6 +236,116 @@ def _counter_source_observation(args: argparse.Namespace) -> int:
     return 0
 
 
+def _value_binding_observation(args: argparse.Namespace) -> int:
+    """Export exact source value bindings without assigning endpoint roles."""
+    import os
+    import stat
+    from dataclasses import fields
+
+    from merlin.common.strict_json import loads
+
+    from .rtl.hw_value_bindings import OriginalValueSelection, ValueBindingLimits, prepare_value_bindings
+
+    def positive(value):
+        if type(value) is not int or not 0 < value < 1 << 63:
+            raise ValueError("Value observation byte bound is unavailable.")
+        return value
+
+    def identity(value):
+        return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+
+    def read(path, maximum):
+        path = Path(path).absolute()
+        try:
+            if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+                raise ValueError("Value observation input path identity differs.")
+            before = path.stat()
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("Value observation input is not a regular file.")
+            with path.open("rb") as stream:
+                if identity(before) != identity(os.fstat(stream.fileno())):
+                    raise ValueError("Value observation input changed before reading.")
+                raw = stream.read(positive(maximum) + 1)
+                if identity(before) != identity(os.fstat(stream.fileno())) or identity(before) != identity(path.stat()):
+                    raise ValueError("Value observation input changed during reading.")
+        except OSError:
+            raise ValueError("Value observation input is unavailable.") from None
+        if len(raw) > maximum:
+            raise ValueError("Value observation input exceeds its byte bound.")
+        return raw, identity(before)
+
+    def record(cls, value):
+        if type(value) is not dict or set(value) != {field.name for field in fields(cls)}:
+            raise ValueError("Value observation request fields are incomplete.")
+        if cls is OriginalValueSelection:
+            if type(value["occurrence"]) is not list:
+                raise ValueError("Value observation occurrence roster is unavailable.")
+            value = {**value, "occurrence": tuple(value["occurrence"])}
+        return cls(**value)
+
+    request_bytes, request_identity = read(args.request, positive(args.max_request_bytes))
+    request = loads(request_bytes, max_bytes=args.max_request_bytes)
+    if (
+        type(request) is not dict
+        or set(request) != {"schema", "root", "selections", "limits"}
+        or request["schema"] != "merlin.value_binding_request.v1"
+    ):
+        raise ValueError("Value observation request schema is unsupported.")
+    limits = record(ValueBindingLimits, request["limits"])
+    if type(request["selections"]) is not list or not 0 < len(request["selections"]) <= limits.selections:
+        raise ValueError("Value observation original selection roster is incomplete.")
+    selections = tuple(record(OriginalValueSelection, value) for value in request["selections"])
+    source_bytes, source_identity = read(args.source, limits.source_bytes)
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeError:
+        raise ValueError("Value observation source encoding is unsupported.") from None
+    output_bound = positive(args.max_output_bytes)
+    observation = prepare_value_bindings(source, root=request["root"], selections=selections, limits=limits)
+    rendered = {
+        "schema": "merlin.value_binding_observation.v1",
+        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "observation": observation,
+        "scope": "source connectivity only; endpoint roles, runtime, physical units and timing remain unknown",
+    }
+
+    def recheck():
+        if read(args.request, args.max_request_bytes) != (request_bytes, request_identity) or read(
+            args.source, limits.source_bytes
+        ) != (source_bytes, source_identity):
+            raise ValueError("Value observation selected inputs changed during observation.")
+
+    recheck()
+    encoder = json.JSONEncoder(indent=2, sort_keys=True, allow_nan=False)
+    size = 1
+    for piece in encoder.iterencode(rendered):
+        size += len(piece.encode("utf-8"))
+        if size > output_bound:
+            raise ValueError("Value observation output exceeds its byte bound.")
+    destination = Path(args.out).absolute()
+    if destination.is_symlink() or any(parent.is_symlink() for parent in destination.parents):
+        raise ValueError("Value observation output path identity differs.")
+    with destination.open("xb") as handle:
+        for piece in encoder.iterencode(rendered):
+            handle.write(piece.encode("utf-8"))
+        handle.write(b"\n")
+    recheck()
+    return 0
+
+
+def _plain_word_relation(args: argparse.Namespace) -> int:
+    from .rtl.plain_word_request import write_plain_word_observation
+
+    write_plain_word_observation(
+        request=args.request,
+        out=args.out,
+        max_request_bytes=args.max_request_bytes,
+        max_output_bytes=args.max_output_bytes,
+    )
+    return 0
+
+
 def _semantic_search(args: argparse.Namespace) -> int:
     """Inspect real linalg-on-tensors MLIR with a selected instruction model."""
     from .contract.linalg_iface import parse_linalg_mlir
@@ -516,6 +626,21 @@ def build_parser() -> argparse.ArgumentParser:
     counter.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
     counter.add_argument("--out", required=True, help="fresh data-only JSON observation destination")
     counter.set_defaults(func=_counter_source_observation)
+
+    values = sub.add_parser("value-binding-observation", help="export bounded original source value bindings")
+    values.add_argument("--source", required=True, help="exact selected generic HW MLIR source")
+    values.add_argument("--request", required=True, help="closed original selections and explicit limit JSON")
+    values.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    values.add_argument("--max-output-bytes", required=True, type=int, help="explicit observation byte bound")
+    values.add_argument("--out", required=True, help="fresh data-only JSON observation destination")
+    values.set_defaults(func=_value_binding_observation)
+
+    word = sub.add_parser("plain-word-relation", help="observe bounded conditional source word declarations")
+    word.add_argument("--request", required=True, help="closed source declaration, cast, premises and limits JSON")
+    word.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    word.add_argument("--max-output-bytes", required=True, type=int, help="explicit observation byte bound")
+    word.add_argument("--out", required=True, help="fresh conditional source observation destination")
+    word.set_defaults(func=_plain_word_relation)
 
     selection = sub.add_parser(
         "semantic-search", help="inspect linalg-on-tensors kernels against selected OOT instruction semantics"

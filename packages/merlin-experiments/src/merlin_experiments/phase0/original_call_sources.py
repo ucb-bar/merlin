@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from merlin.common.jsonio import canonical_json
 from merlin.targetgen.frontend_original_call import call_contracts
 from merlin.targetgen.original_operator_sources import (
     ADD_FORM_SCHEMA,
@@ -32,6 +33,10 @@ LINEAR_SCHEMA = "merlin.original_call_sources.v2"
 POINTWISE_SCHEMA = "merlin.original_call_sources.v3"
 TRANSPOSE_SCHEMA = "merlin.original_call_sources.v4"
 BROADCAST_SCHEMA = "merlin.original_call_sources.v5"
+SCALAR_BINARY_SCHEMA = "merlin.original_call_sources.v6"
+INTEGER_SCALAR_SCHEMA = "merlin.original_call_sources.v7"
+METADATA_SCHEMA = "merlin.original_call_sources.v8"
+TRIANGULAR_SCHEMA = "merlin.original_call_sources.v9"
 BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
@@ -53,6 +58,12 @@ _LIMITS = {
 _COHORTS = (("functional_guard", 1), ("functional_guard", 2), ("withheld_transfer", 3))
 
 
+def _same(actual, expected, *, version):
+    # Preserve historical equality exactly. The new literal source record
+    # compares validated finite JSON with scalar types and signed zero intact.
+    return canonical_json(actual) == canonical_json(expected) if version >= 6 else actual == expected
+
+
 def required_source_cohorts():
     """Ordered original teaching-source membership; never hardware tail evidence.
 
@@ -63,13 +74,24 @@ def required_source_cohorts():
 
 
 def reader_modules(version):
-    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
         raise ValueError("original source readers need an explicit supported factory version")
     return (
         READER_MODULES
         + (("merlin.targetgen.original_pointwise_sources",) if version >= 3 else ())
         + (("merlin.targetgen.original_transpose_sources",) if version >= 4 else ())
-        + (("merlin.targetgen.original_broadcast_add_sources",) if version == 5 else ())
+        + (("merlin.targetgen.original_broadcast_add_sources",) if version >= 5 else ())
+        + (("merlin.targetgen.original_scalar_binary_sources",) if version >= 6 else ())
+        + (
+            (
+                "merlin.targetgen.original_metadata_sources",
+                "merlin_experiments.phase0.zero_return_intake",
+                "merlin.targetgen.torch_zero_return_observer",
+            )
+            if version >= 8
+            else ()
+        )
+        + (("merlin.targetgen.original_triangular_sources",) if version >= 9 else ())
     )
 
 
@@ -84,9 +106,9 @@ def validate_budget(budget):
     return budget
 
 
-def _forms(trace, schemas, defaults, *, numerical_semantics, version):
+def _forms(trace, schemas, defaults, *, numerical_semantics, version, tensor_bindings=None, zero_returns=None):
     add_forms = original_add_forms
-    if version == 5:
+    if version >= 5:
         from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
 
         add_forms = broadcast_add_forms
@@ -99,11 +121,67 @@ def _forms(trace, schemas, defaults, *, numerical_semantics, version):
         from merlin.targetgen.original_transpose_sources import transpose_forms
 
         factories.append(transpose_forms)
-    return [
+    forms = [
         form
         for factory in factories
         for form in factory(trace, schemas, defaults, numerical_semantics=numerical_semantics)
     ]
+    if version >= 6:
+        from merlin.targetgen.original_scalar_binary_sources import scalar_binary_forms
+
+        forms.extend(
+            scalar_binary_forms(
+                trace,
+                schemas,
+                defaults,
+                numerical_semantics=numerical_semantics,
+                version=2 if version >= 7 else 1,
+                tensor_bindings=tensor_bindings,
+            )
+        )
+    if version >= 8:
+        from merlin.targetgen.original_metadata_sources import metadata_forms
+
+        forms.extend(
+            metadata_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, zero_returns=zero_returns)
+        )
+    if version >= 9:
+        from merlin.targetgen.original_triangular_sources import triu_forms
+
+        forms.extend(triu_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
+    return forms
+
+
+def _tensor_bindings(schema_record, graph_path, version):
+    if version not in {7, 8, 9}:
+        return None
+    # Missing native selection remains a factory refusal in every original
+    # cohort. This record is data; live schema ownership is replayed separately.
+    if schema_record.get("schema") not in {
+        "merlin.independent_operator_schema_intake.v2",
+        "merlin.independent_operator_schema_intake.v3",
+    }:
+        return None
+    rows = [row for row in schema_record["members"] if row["graph_path"] == graph_path]
+    if len(rows) != 1:
+        raise ValueError("integer scalar sources require the exact original graph's native bindings")
+    return rows[0]["tensor_bindings"]
+
+
+def _zero_returns(schema_record, graph_path, trace, schemas, version):
+    if version not in {8, 9} or schema_record.get("schema") != "merlin.independent_operator_schema_intake.v3":
+        return None
+    from .zero_return_intake import verify_returns
+
+    rows = [row for row in schema_record["members"] if row["graph_path"] == graph_path]
+    if len(rows) != 1:
+        raise ValueError("metadata sources lost their complete original zero-return graph member")
+    return verify_returns(
+        trace=trace,
+        schema_observation=schemas,
+        getter=schema_record["zero_return_getter"],
+        member=rows[0]["zero_returns"],
+    )
 
 
 def _sources(calls, forms, *, budget, total, requested, version=1):
@@ -119,11 +197,25 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
         from merlin.targetgen.original_transpose_sources import transpose_source
 
         pointwise[TRANSPOSE_FORM_SCHEMA] = transpose_source
-    if version == 5:
+    if version >= 5:
         from merlin.targetgen.original_broadcast_add_sources import FORM_SCHEMA as BROADCAST_FORM_SCHEMA
         from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
 
         pointwise[BROADCAST_FORM_SCHEMA] = broadcast_add_source
+    if version >= 6:
+        from merlin.targetgen.original_scalar_binary_sources import FORM_SCHEMA as SCALAR_BINARY_FORM_SCHEMA
+        from merlin.targetgen.original_scalar_binary_sources import INTEGER_FORM_SCHEMA, scalar_binary_source
+
+        pointwise[SCALAR_BINARY_FORM_SCHEMA if version == 6 else INTEGER_FORM_SCHEMA] = scalar_binary_source
+    if version >= 8:
+        from merlin.targetgen.original_metadata_sources import ASSERTION_SCHEMA, CAST_SCHEMA, metadata_source
+
+        pointwise.update({CAST_SCHEMA: metadata_source, ASSERTION_SCHEMA: metadata_source})
+    if version >= 9:
+        from merlin.targetgen.original_triangular_sources import FORM_SCHEMA as TRIANGULAR_FORM_SCHEMA
+        from merlin.targetgen.original_triangular_sources import triu_source
+
+        pointwise[TRIANGULAR_FORM_SCHEMA] = triu_source
     indexed = {form["node"]: form for form in forms}
     result = []
     for call in calls:
@@ -175,14 +267,23 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
 def observe(*, schema_record, basis, numerical_semantics, budget, destination, version=1):
     """Write source-only original forms through the selected normal observer."""
     validate_budget(budget)
-    if type(version) is not int or version not in {1, 2, 3, 4, 5}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
         raise ValueError("original source observation requires an explicit supported factory version")
     destination = Path(destination)
     rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
     for ordinal, row in enumerate(rows):
         trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
-        calls = call_contracts(trace, schemas, defaults)
-        forms = _forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, version=version)
+        zero_returns = _zero_returns(schema_record, row["graph_path"], trace, schemas, version)
+        calls = call_contracts(trace, schemas, defaults, zero_returns=zero_returns)
+        forms = _forms(
+            trace,
+            schemas,
+            defaults,
+            numerical_semantics=numerical_semantics,
+            version=version,
+            tensor_bindings=_tensor_bindings(schema_record, row["graph_path"], version),
+            zero_returns=zero_returns,
+        )
         row.update(
             calls=calls,
             forms=forms,
@@ -204,7 +305,17 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination, v
                 member["source"] = {"path": str(path), "sha256": member["source_sha256"]}
             row["source_members"].append(member)
     record = {
-        "schema": {1: SCHEMA, 2: LINEAR_SCHEMA, 3: POINTWISE_SCHEMA, 4: TRANSPOSE_SCHEMA, 5: BROADCAST_SCHEMA}[version],
+        "schema": {
+            1: SCHEMA,
+            2: LINEAR_SCHEMA,
+            3: POINTWISE_SCHEMA,
+            4: TRANSPOSE_SCHEMA,
+            5: BROADCAST_SCHEMA,
+            6: SCALAR_BINARY_SCHEMA,
+            7: INTEGER_SCALAR_SCHEMA,
+            8: METADATA_SCHEMA,
+            9: TRIANGULAR_SCHEMA,
+        }[version],
         "budget": budget,
         "members": rows,
     }
@@ -216,13 +327,32 @@ def verify(record, *, schema_record, basis, numerical_semantics):
     if (
         not isinstance(record, dict)
         or set(record) != {"schema", "budget", "members"}
-        or record["schema"] not in {SCHEMA, LINEAR_SCHEMA, POINTWISE_SCHEMA, TRANSPOSE_SCHEMA, BROADCAST_SCHEMA}
+        or record["schema"]
+        not in {
+            SCHEMA,
+            LINEAR_SCHEMA,
+            POINTWISE_SCHEMA,
+            TRANSPOSE_SCHEMA,
+            BROADCAST_SCHEMA,
+            SCALAR_BINARY_SCHEMA,
+            INTEGER_SCALAR_SCHEMA,
+            METADATA_SCHEMA,
+            TRIANGULAR_SCHEMA,
+        }
     ):
         raise ValueError("original call sources require their closed observation version")
     budget = validate_budget(record["budget"])
-    version = {SCHEMA: 1, LINEAR_SCHEMA: 2, POINTWISE_SCHEMA: 3, TRANSPOSE_SCHEMA: 4, BROADCAST_SCHEMA: 5}[
-        record["schema"]
-    ]
+    version = {
+        SCHEMA: 1,
+        LINEAR_SCHEMA: 2,
+        POINTWISE_SCHEMA: 3,
+        TRANSPOSE_SCHEMA: 4,
+        BROADCAST_SCHEMA: 5,
+        SCALAR_BINARY_SCHEMA: 6,
+        INTEGER_SCALAR_SCHEMA: 7,
+        METADATA_SCHEMA: 8,
+        TRIANGULAR_SCHEMA: 9,
+    }[record["schema"]]
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")
     total = dict.fromkeys(("tensor_elements", "scalar_products", "source_bytes"), 0)
@@ -240,11 +370,27 @@ def verify(record, *, schema_record, basis, numerical_semantics):
         }:
             raise ValueError("original call source member fields changed")
         trace, schemas, defaults = D.verify_member(row, schema_record=schema_record, version=2)
-        calls = call_contracts(trace, schemas, defaults)
-        forms = _forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, version=version)
+        zero_returns = _zero_returns(schema_record, row["graph_path"], trace, schemas, version)
+        calls = call_contracts(trace, schemas, defaults, zero_returns=zero_returns)
+        forms = _forms(
+            trace,
+            schemas,
+            defaults,
+            numerical_semantics=numerical_semantics,
+            version=version,
+            tensor_bindings=_tensor_bindings(schema_record, row["graph_path"], version),
+            zero_returns=zero_returns,
+        )
         compatibility = [{"node": form["node"], **policy_compatibility(form, numerical_semantics)} for form in forms]
         expected = _sources(calls, forms, budget=budget, total=total, requested=requested, version=version)
-        if row["calls"] != calls or row["forms"] != forms or row["policy_compatibility"] != compatibility:
+        if not all(
+            _same(actual, expected, version=version)
+            for actual, expected in (
+                (row["calls"], calls),
+                (row["forms"], forms),
+                (row["policy_compatibility"], compatibility),
+            )
+        ):
             raise ValueError("original typed bindings/forms/policy differ from actual original schema replay")
         if len(row["source_members"]) != len(expected):
             raise ValueError("original source preparation lost a requested guard or private transfer member")
@@ -261,7 +407,7 @@ def verify(record, *, schema_record, basis, numerical_semantics):
                 if path.read_bytes() != loader.encode() or pin["sha256"] != wanted["source_sha256"]:
                     raise ValueError("original typed source differs from its independently reconstructed loader")
                 wanted["source"] = pin
-            if member != wanted:
+            if not _same(member, wanted, version=version):
                 raise ValueError("original typed source metadata or missing member differs from original replay")
     return record
 

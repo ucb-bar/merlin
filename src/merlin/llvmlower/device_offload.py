@@ -179,7 +179,7 @@ def load_sidecar(directory: str | Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
-def build_arguments(sidecar: dict) -> dict[str, Any]:
+def build_arguments(sidecar: dict, *, expected_granularity: str | None = None) -> dict[str, Any]:
     """``{signatures, dtypes, entries}`` -- what a device build takes from one offload sidecar.
 
     One reader, shared by every build that links a device side, because the interesting argument is
@@ -191,10 +191,47 @@ def build_arguments(sidecar: dict) -> dict[str, Any]:
     which the build rejects.
     """
     routed = sidecar.get("routed") or []
+    signatures = {sym: tuple(key) for sym, key in (sidecar.get("signatures") or {}).items()}
+    if expected_granularity is not None and expected_granularity not in (BY_CONTRACTION, BY_GROUP):
+        raise ValueError("selected device build granularity is unsupported")
+    if signatures or routed:
+        granularity = sidecar.get("granularity", BY_CONTRACTION)
+        if granularity not in (BY_CONTRACTION, BY_GROUP) or (
+            expected_granularity is not None and granularity != expected_granularity
+        ):
+            raise ValueError("device sidecar differs from selected build granularity")
+    dtypes = {}
+    for row in routed:
+        if not isinstance(row, dict) or not isinstance(row.get("symbol"), str) or row["symbol"] not in signatures:
+            raise ValueError("device build routed kernel membership differs from declared signatures")
+        symbol, precision = row["symbol"], row.get("dtypes")
+        if (
+            not isinstance(precision, (list, tuple))
+            or len(precision) != 3
+            or any(not isinstance(token, str) or not token for token in precision)
+            or symbol in dtypes
+            and dtypes[symbol] != tuple(precision)
+        ):
+            raise ValueError("device build routed precision is missing or inconsistent for a shared kernel")
+        dtypes[symbol] = tuple(precision)
+    if set(dtypes) != set(signatures):
+        raise ValueError("device build routed kernel membership differs from declared signatures")
+    entries = sidecar.get("entries")
+    if sidecar.get("granularity") == BY_GROUP:
+        # Group signatures do not state the original readout. Losing their
+        # entries must not turn them into the distinct contraction-only route.
+        if (
+            not isinstance(entries, dict)
+            or set(entries) != set(signatures)
+            or any(not isinstance(entry, dict) or not entry for entry in entries.values())
+        ):
+            raise ValueError("device build needs a complete stated group program for every routed symbol")
+    else:
+        entries = entries or None
     return {
-        "signatures": {sym: tuple(key) for sym, key in (sidecar.get("signatures") or {}).items()},
-        "dtypes": {str(row["symbol"]): tuple(row.get("dtypes") or ()) for row in routed if row.get("symbol")},
-        "entries": sidecar.get("entries") or None,
+        "signatures": signatures,
+        "dtypes": dtypes,
+        "entries": entries,
     }
 
 

@@ -15,6 +15,14 @@ missing native tools or unavailable namespace isolation cannot qualify the suite
 host-ranked-descriptors requires all 46 selection controls and both ordinary
 native descriptor cases with explicit compiler/source selections and zero skips.
 This checks finite storage transport, not body, effects or runtime authority.
+packing-memory-intake requires the complete 107 pure and 22 both-era native control roster.
+Its explicit compiler pairs expose conditional structural facts, without packing/domain admission.
+original-scalar-binary-sources requires the exact 110 source and six registered
+conversion controls with explicit original public sources and native selections.
+Construction/body correspondence does not admit numerical policy or coverage.
+original-integer-scalar-binary-sources preserves all 116 legacy identities and adds
+142 integer/fixture controls, including seven actual native controls and explicit
+C++ getter compiler selection. All 260 cases require zero skips.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -142,6 +150,799 @@ SUITES = {
             "merlin.targetgen.tool_cli",
         ),
         "required_modules": ("xdsl",),
+    },
+    "packing-memory-intake": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("firtool", "circt-opt", "firtool-modern", "circt-opt-modern"),
+        # All original pure and both-era native controls are mandatory. Source
+        # fixtures and explicit reader budgets are retained in the same archive.
+        "native_test_files": (
+            "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+        ),
+        "native_test_cases": (
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_port_roster_and_distinct_intermediate_occurrences",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_original_concat_order_changes_exact_intervals_without_default_widening",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_partial_source_interval_does_not_fill_unproved_destination_bits",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_read_write_port_retains_mode_and_read_result_without_value_credit",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_intermediate_bits_remain_conditional_behind_original_stops[state-state_result]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_intermediate_bits_remain_conditional_behind_original_stops[opaque-opaque_instance_result]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_intermediate_bits_remain_conditional_behind_original_stops[read-memory_read_result]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_intermediate_bits_remain_conditional_behind_original_stops[unsupported-unsupported_result]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_intermediate_bits_remain_conditional_behind_original_stops[mux-combinational]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_parameterized_body_is_retained_as_a_stop_without_memory_port_invention",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_wire_budgets_precede_local_partition_expansion[operations]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_wire_budgets_precede_local_partition_expansion[extractions]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_wire_budgets_precede_local_partition_expansion[local_trace_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_wire_budgets_precede_local_partition_expansion[expression_depth]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_small_shared_dag_cannot_expand_an_exponential_local_trace_tree",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[partitions]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[slices]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[root_match_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[interval_pieces]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[cut_memberships]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_complete_join_and_materialization_budgets_refuse[traversal_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[operations]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[extractions]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[partitions]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[slices]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[local_trace_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[root_match_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[interval_pieces]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[cut_memberships]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[traversal_work]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_boolean_limits_cannot_replace_integer_budgets[expression_depth]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_original_named_binding_and_type_membership_is_required[missing]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_original_named_binding_and_type_membership_is_required[duplicate]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_original_named_binding_and_type_membership_is_required[reordered]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_original_named_binding_and_type_membership_is_required[type]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[negative]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[too_wide]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[field_type]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[signed]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[unknown_field]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_malformed_original_extract_cannot_issue_bit_intervals[duplicate_field]",
+            ),
+            (
+                "merlin/tests/targetgen/test_hw_partition_memory_bindings.py",
+                "test_fresh_derivation_observes_source_changes_without_record_upgrade",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_request_cannot_import_authority_or_remove_construction_limits[saved_authority]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_request_cannot_import_authority_or_remove_construction_limits[missing_source_budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_request_cannot_import_authority_or_remove_construction_limits[missing_execution_budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_request_cannot_import_authority_or_remove_construction_limits[extra_command]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_pointwise_policy_request_keeps_both_limits_and_cannot_import_admission[None]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_pointwise_policy_request_keeps_both_limits_and_cannot_import_admission[source_budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_pointwise_policy_request_keeps_both_limits_and_cannot_import_admission[execution_budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_pointwise_policy_request_keeps_both_limits_and_cannot_import_admission[saved_status]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_changed_declared_bytes_refuse_before_issuer",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_forbidden_inputs_refuse_before_issuer",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_actual_issuer_failure_is_private_and_does_not_advance_phases",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_arbitrary_generator_error_cannot_be_a_completed_diagnostic[other_failure]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_arbitrary_generator_error_cannot_be_a_completed_diagnostic[complete]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_arbitrary_generator_error_cannot_be_a_completed_diagnostic[missing_manifest]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_arbitrary_generator_error_cannot_be_a_completed_diagnostic[no_unknown]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_request_preserves_closed_version_and_same_compiler[False]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_request_preserves_closed_version_and_same_compiler[True]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[bare_path]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[extra_authority]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[other_namespace]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[different_zero_compiler]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[missing_zero]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_declaration_cannot_import_authority_or_change_sdk_selection[extra_facet]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_compiler_membership_refuses_before_live_issuance[changed]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_compiler_membership_refuses_before_live_issuance[forbidden]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_compiler_membership_refuses_before_live_issuance[alias]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_bridge_compiler_membership_refuses_before_live_issuance[parent_component]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_normal_bridge_route_forwards_selection_to_existing_native_issuer[False]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_normal_bridge_route_forwards_selection_to_existing_native_issuer[True]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_changed_compiler_after_native_issuer_cannot_advance_to_rtl_observers",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_is_explicit_and_does_not_change_legacy_fields[source_diagnostic]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_is_explicit_and_does_not_change_legacy_fields[source_preparation]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_is_explicit_and_does_not_change_legacy_fields[performance_campaign]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_refuses_absent_purpose_or_saved_readiness[absent]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_refuses_absent_purpose_or_saved_readiness[unknown]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+                "test_requirement_request_refuses_absent_purpose_or_saved_readiness[saved_ready]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_actual_typed_source_binding_retains_all_ports_and_undefined_memory_domains",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_selection_snapshot_does_not_alias_mutable_caller_budgets",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_complete_source_consumer_retains_state_read_opaque_and_unsupported_cuts[state_result]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_complete_source_consumer_retains_state_read_opaque_and_unsupported_cuts[memory_read_result]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_complete_source_consumer_retains_state_read_opaque_and_unsupported_cuts[opaque_instance_result]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_complete_source_consumer_retains_state_read_opaque_and_unsupported_cuts[unsupported_result]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[schema]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[saved_facts]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[root]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[source_bool]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[source_zero]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[missing_limits]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[missing_field]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[extra_field]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[bool_limit]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[float_limit]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_mapping_answers_and_incomplete_or_aliased_budgets_cannot_enter_selection[zero_limit]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_source_budget_precedes_parser_and_geometry_work",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_occurrence_budget_precedes_partition_expansion",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_ordinary_declared_caller_passes_only_explicit_v2_snapshot",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[None]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[missing]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[legacy]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[answer]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[missing_reference]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_new_declared_selector_preserves_every_legacy_requirement[missing_performance]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_exported_record_version_and_unknown_membership_refuse_before_native_replay[v1_extra]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_exported_record_version_and_unknown_membership_refuse_before_native_replay[v2_missing]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+                "test_exported_record_version_and_unknown_membership_refuse_before_native_replay[unknown_removed]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_same_source_v2_consumer_keeps_v1_partitions_and_every_memory_port[legacy]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_v2_data_does_not_change_existing_conditional_source_or_missing_mapping_roster[legacy]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-missing_port]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-false_as_zero]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-interval]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-unknown]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-source_owner]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-original_container]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[legacy-new_facts_in_v1]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_exported_record_cannot_recreate_live_same_hardware_authority[legacy]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_same_source_v2_consumer_keeps_v1_partitions_and_every_memory_port[modern]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_v2_data_does_not_change_existing_conditional_source_or_missing_mapping_roster[modern]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-missing_port]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-false_as_zero]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-interval]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-unknown]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-source_owner]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-original_container]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-budget]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_original_source_owner_types_budgets_and_complete_membership_cannot_be_substituted[modern-new_facts_in_v1]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_packing_memory_intake_native.py",
+                "test_actual_exported_record_cannot_recreate_live_same_hardware_authority[modern]",
+            ),
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.rtl.hw_partition_memory_bindings",
+            "merlin_experiments.phase0.packing_intake",
+            "merlin_experiments.phase0.declared_run",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
+    "original-scalar-binary-sources": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("operator-python", "firtool", "mlir-opt"),
+        "native_python_entries": ("operator-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_TEST_M2M_ROOT"}},
+        "test_input_environment_keys": (
+            "MERLIN_TEST_M2M_COMMIT",
+            "MERLIN_TEST_OPERATOR_DECLARATIONS",
+            "MERLIN_TEST_TORCH_SOURCE_ROOT",
+        ),
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py",
+        ),
+        "native_test_cases": tuple(
+            (filename, method + suffix)
+            for filename, methods in (
+                (
+                    "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+                    (
+                        (
+                            "test_minimal_original_float_literal_call_has_one_input_and_complete_typed_result",
+                            ("[aten.mul.Tensor-1.0]", "[aten.div.Tensor-2.23606797749979]"),
+                        ),
+                        (
+                            "test_float_literal_kind_and_signed_zero_survive_without_tensorization_or_pre_rounding",
+                            ("[0.0]", "[-0.0]", "[0.1]", "[-3.5]"),
+                        ),
+                        (
+                            "test_unimplemented_literal_kinds_remain_required_unknown_forms",
+                            ("[True]", "[1]", "[None]", "[1.0]", "[scalar4]"),
+                        ),
+                        (
+                            "test_original_bindings_types_order_and_complete_result_roster_cannot_be_substituted",
+                            (
+                                "[literal]",
+                                "[rank]",
+                                "[storage]",
+                                "[promotion]",
+                                "[second_ssa]",
+                                "[reversed]",
+                                "[argument_schema]",
+                                "[alias]",
+                                "[result_roster]",
+                                "[result_rank]",
+                                "[dtype]",
+                                "[default]",
+                                "[arity_bool]",
+                            ),
+                        ),
+                        (
+                            "test_complete_logical_payload_and_rank_budgets_precede_geometry_allocation",
+                            ("[2-2-11]", "[1000000000-1-100]", "[2-1000000000-100]"),
+                        ),
+                        (
+                            "test_boolean_cannot_replace_an_explicit_positive_integer_budget",
+                            ("[extent]", "[max_tensor_elements]"),
+                        ),
+                        (
+                            "test_source_freezes_policy_literal_and_fresh_geometry_never_copies_original_extents",
+                            ("",),
+                        ),
+                    ),
+                ),
+                (
+                    "merlin/tests/targetgen/test_original_scalar_binary_correspondence.py",
+                    (
+                        (
+                            "test_complete_literal_order_result_and_registered_construction_is_separate_from_admission",
+                            (
+                                "[1.0-aten.mul.Tensor]",
+                                "[1.0-aten.div.Tensor]",
+                                "[2.23606797749979-aten.mul.Tensor]",
+                                "[2.23606797749979-aten.div.Tensor]",
+                                "[-0.0-aten.mul.Tensor]",
+                                "[-0.0-aten.div.Tensor]",
+                                "[0.1-aten.mul.Tensor]",
+                                "[0.1-aten.div.Tensor]",
+                                "[1.0000000596046448-aten.mul.Tensor]",
+                                "[1.0000000596046448-aten.div.Tensor]",
+                                "[1.401298464324817e-45-aten.mul.Tensor]",
+                                "[1.401298464324817e-45-aten.div.Tensor]",
+                            ),
+                        ),
+                        (
+                            "test_type_and_digest_equivalent_products_cannot_substitute_actual_scalar_body_relations",
+                            (
+                                "[coefficient]",
+                                "[generic_order]",
+                                "[empty_output]",
+                                "[div_order]",
+                                "[yield]",
+                                "[return]",
+                                "[map]",
+                                "[iterator]",
+                                "[fastmath]",
+                                "[opaque_attr]",
+                            ),
+                        ),
+                        (
+                            "test_complete_actual_frontend_stage_semantics_must_match_the_original_call",
+                            ("[literal]", "[kind]", "[second_ssa]", "[dtype]", "[schema]", "[result]", "[transition]"),
+                        ),
+                        (
+                            "test_registry_source_and_actual_invocation_joins_cannot_be_replaced_by_matching_ids",
+                            (
+                                "[callable]",
+                                "[source]",
+                                "[literal]",
+                                "[override]",
+                                "[result]",
+                                "[duplicate]",
+                                "[missing]",
+                            ),
+                        ),
+                        (
+                            "test_complete_preallocation_and_source_roster_budgets_cannot_be_relaxed",
+                            ("[max_tensor_elements-11]", "[max_operations-8]", "[max_source_bytes-100]"),
+                        ),
+                        (
+                            "test_boolean_is_not_a_parser_or_logical_budget",
+                            ("[max_nesting]", "[max_operations]", "[max_source_bytes]", "[max_tensor_elements]"),
+                        ),
+                        (
+                            "test_literal_underflow_preserves_signed_zero_and_overflow_is_not_licensed",
+                            ("",),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+                    (
+                        (
+                            "test_opt_in_observer_preserves_all_calls_cohorts_and_policy_without_new_admissions",
+                            ("",),
+                        ),
+                        (
+                            "test_legacy_v5_keeps_all_scalar_factory_gaps_and_exact_old_reader_roster",
+                            ("",),
+                        ),
+                        (
+                            "test_complete_original_roster_and_payload_budgets_retain_every_denied_slot",
+                            ("[max_sources-8-0]", "[max_tensor_elements-11-2]", "[max_total_tensor_elements-79-5]"),
+                        ),
+                        (
+                            "test_live_reconstruction_refuses_original_source_row_substitution",
+                            (
+                                "[cohort]",
+                                "[literal]",
+                                "[rank]",
+                                "[storage]",
+                                "[second_ssa]",
+                                "[cost_bool]",
+                                "[ordinal_bool]",
+                                "[loader]",
+                                "[member_drop]",
+                                "[version]",
+                            ),
+                        ),
+                        (
+                            "test_automatic_new_version_preserves_closed_legacy_policy_fields_and_facets",
+                            ("",),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+                    (
+                        (
+                            "test_original_unsupported_slot_and_complete_three_cohorts_remain_with_no_admission",
+                            ("",),
+                        ),
+                        (
+                            "test_original_slot_denominator_and_old_vocabulary_cannot_be_changed",
+                            ("[drop]", "[reorder]", "[cohort]", "[extent_bool]", "[legacy]"),
+                        ),
+                        (
+                            "test_full_member_and_future_product_bounds_refuse_before_native_expansion",
+                            ("[max_members-8]", "[max_total_source_bytes-1000000]"),
+                        ),
+                        (
+                            "test_aggregate_logical_denial_preserves_original_request_slots",
+                            ("",),
+                        ),
+                        (
+                            "test_preflight_cannot_construct_a_substituted_original_source",
+                            ("[literal]", "[storage]", "[loader]", "[metadata_alias]"),
+                        ),
+                        (
+                            "test_closed_independent_selection_retains_exact_owners_and_budgets",
+                            ("[source]", "[schema]", "[basis]", "[extra]", "[bool]", "[deadline]"),
+                        ),
+                        (
+                            "test_saved_or_copied_records_cannot_mint_live_execution_authority",
+                            ("",),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_scalar_conversion_native.py",
+                    (
+                        (
+                            "test_actual_public_schema_factory_registered_importer_complete_products_and_stock_parser",
+                            ("",),
+                        ),
+                        (
+                            "test_copied_live_object_and_modified_saved_receipt_cannot_issue_registered_conversion",
+                            ("",),
+                        ),
+                        (
+                            "test_actual_observed_product_drift_cannot_be_accepted",
+                            ("[source]", "[trace]", "[registry]"),
+                        ),
+                        (
+                            "test_selection_drift_cannot_change_original_members_or_native_bounds",
+                            ("",),
+                        ),
+                    ),
+                ),
+            )
+            for method, suffixes in methods
+            for suffix in suffixes
+        ),
+        "support_files": ("packages/merlin-experiments/tests/original_scalar_conversion_fixtures.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_scalar_binary_sources",
+            "merlin.targetgen.original_scalar_binary_correspondence",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion",
+            "merlin_experiments.phase0.original_scalar_conversion_observer",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
     },
     "original-broadcast-add-sources": {
         "tests_root": ".",
@@ -657,6 +1458,850 @@ SUITES = {
             "merlin_experiments.phase0.transition_connectivity_intake",
         ),
         "required_modules": ("xdsl", "jsonschema"),
+    },
+    "original-scalar-automatic-flow": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
+        ),
+        "tests": (
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+            "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
+        ),
+        "support_files": (
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+            "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion_flow",
+            "merlin_experiments.phase0.original_factory_prerequisites",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+        "native_test_cases": tuple(
+            (filename, method + suffix)
+            for filename, methods in (
+                (
+                    "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+                    (
+                        ("test_selected_inputs_reopen_complete_source_parser_and_public_commit", ("",)),
+                        (
+                            "test_input_declaration_cannot_import_statuses_or_remove_complete_budgets",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "schema",
+                                    "saved_source",
+                                    "saved_schema",
+                                    "saved_basis",
+                                    "factory",
+                                    "missing_limit",
+                                    "bool_limit",
+                                    "timeout",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_each_verification_detects_input_tool_and_complete_source_drift",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "selection_bytes",
+                                    "parser_bytes",
+                                    "source_bytes",
+                                    "source_added",
+                                    "source_alias",
+                                )
+                            ),
+                        ),
+                        ("test_excluded_checkout_refuses_before_upstream_source_reader", ("",)),
+                        ("test_preparation_derives_current_live_identities_and_invokes_existing_v2_converter", ("",)),
+                        ("test_new_flow_refuses_v6_source_even_with_selected_v2_converter", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+                    (
+                        ("test_explicit_v14_selects_v7_without_widening_any_prior_automatic_policy", ("",)),
+                        (
+                            "test_new_caller_requires_same_original_tensor_facet_and_retains_zero_result_selection",
+                            ("[False]", "[True]"),
+                        ),
+                        (
+                            "test_old_versions_or_missing_original_native_inputs_cannot_acquire_v7",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "old_request",
+                                    "old_automatic",
+                                    "old_schema",
+                                    "missing_converter",
+                                    "saved_owner",
+                                    "bare_path",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_same_exact_tensor_binding_supports_original_v7_on_both_declared_intake_versions",
+                            (
+                                "[merlin.independent_operator_schema_intake.v2]",
+                                "[merlin.independent_operator_schema_intake.v3]",
+                            ),
+                        ),
+                        (
+                            "test_v3_tensor_facet_drift_never_grants_integer_source_slots",
+                            ("[binding]", "[native_false]", "[missing_graph]", "[v1]"),
+                        ),
+                        (
+                            "test_connected_caller_passes_exact_generated_original_sources_to_registered_conversion",
+                            ("",),
+                        ),
+                        (
+                            "test_v7_source_construction_does_not_require_a_new_reference_or_memory_policy",
+                            ("[False-False]", "[True-False]", "[False-True]", "[True-True]"),
+                        ),
+                        (
+                            "test_ordinary_v7_generation_keeps_complete_original_missing_selectors_and_blocked_phases",
+                            ("",),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_factory_prerequisites.py",
+                    (
+                        ("test_complete_roster_keeps_fulfilled_and_unavailable_factories_without_admission", ("",)),
+                        (
+                            "test_original_membership_refuses_before_reading_factory_status",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "missing",
+                                    "extra",
+                                    "reordered",
+                                    "cohort",
+                                    "extent_bool",
+                                    "node",
+                                    "target",
+                                    "duplicate_call",
+                                    "graph",
+                                    "member_id",
+                                    "old_schema",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_live_original_sources_and_selected_native_bindings_cannot_drift",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "source_bytes",
+                                    "source_alias",
+                                    "graph_bytes",
+                                    "basis_bytes",
+                                    "native_binding",
+                                    "basis_selection",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_saved_factory_rows_or_statuses_are_never_replay_authority",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "drop",
+                                    "extra",
+                                    "order",
+                                    "source_state",
+                                    "mandatory_int",
+                                    "candidate_pass",
+                                    "selector_bool",
+                                )
+                            ),
+                        ),
+                        ("test_real_construction_budget_transition_keeps_all_prerequisite_ids", ("",)),
+                        ("test_plain_saved_inputs_are_not_live_schema_ownership", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_source_prerequisite_ledger.py",
+                    (
+                        (
+                            "test_new_union_retains_original_coverage_and_every_fulfilled_prerequisite",
+                            (
+                                "[merlin.phase0.source_requirement_ledger.v1]",
+                                "[merlin.phase0.source_requirement_ledger.v2]",
+                            ),
+                        ),
+                        (
+                            "test_original_projection_ids_and_selector_collisions_refuse",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "duplicate_id",
+                                    "omitted_id",
+                                    "omitted_row_and_id",
+                                    "kind",
+                                    "selector",
+                                    "mandatory_int",
+                                    "extra_factory",
+                                )
+                            ),
+                        ),
+                        (
+                            "test_resigned_or_saved_ledger_cannot_replace_full_live_replay",
+                            tuple(
+                                "[" + value + "]"
+                                for value in (
+                                    "union_drop",
+                                    "union_extra",
+                                    "union_reorder",
+                                    "factory_drop",
+                                    "factory_state",
+                                    "candidate_pass",
+                                    "blocker_drop",
+                                )
+                            ),
+                        ),
+                        ("test_unchanged_standard_owner_is_forwarded_and_never_replaced_by_factory_state", ("",)),
+                        (
+                            "test_complete_union_is_stable_when_a_real_factory_budget_refuses_previous_construction",
+                            ("",),
+                        ),
+                        (
+                            "test_different_live_selection_refuses_before_coverage_producer",
+                            ("[schema]", "[software]", "[hardware]"),
+                        ),
+                        ("test_plain_saved_ledger_is_not_fixed_prerequisite_replay", ("",)),
+                    ),
+                ),
+            )
+            for method, suffixes in methods
+            for suffix in suffixes
+        ),
+    },
+    "original-metadata-source-flow": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_metadata_sources.py",
+            "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+        ),
+        "support_files": (
+            "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.targetgen.original_metadata_sources",
+            "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion",
+            "merlin_experiments.phase0.original_scalar_conversion_flow",
+            "merlin_experiments.phase0.original_factory_prerequisites",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+        "native_test_cases": tuple(
+            (filename, method + suffix)
+            for filename, methods in (
+                (
+                    "merlin/tests/targetgen/test_original_metadata_sources.py",
+                    (
+                        (
+                            "test_same_rank_different_original_cast_result_shape_is_not_rewritten_as_equal",
+                            (
+                                "[shape0]",
+                                "[None]",
+                                "[shape2]",
+                            ),
+                        ),
+                        (
+                            "test_cast_source_rechecks_the_bound_shape_relation_before_construction",
+                            (
+                                "[missing]",
+                                "[operand]",
+                                "[result]",
+                                "[rank]",
+                                "[scalar_alias]",
+                            ),
+                        ),
+                        (
+                            "test_cast_preserves_actual_original_storage_flags_and_fresh_geometry",
+                            (
+                                "[flags0-int8-int32]",
+                                "[flags0-float32-float16]",
+                                "[flags0-int64-float32]",
+                                "[flags0-float32-float32]",
+                                "[flags1-int8-int32]",
+                                "[flags1-float32-float16]",
+                                "[flags1-int64-float32]",
+                                "[flags1-float32-float32]",
+                                "[flags2-int8-int32]",
+                                "[flags2-float32-float16]",
+                                "[flags2-int64-float32]",
+                                "[flags2-float32-float32]",
+                                "[flags3-int8-int32]",
+                                "[flags3-float32-float16]",
+                                "[flags3-int64-float32]",
+                                "[flags3-float32-float32]",
+                            ),
+                        ),
+                        (
+                            "test_assertion_is_retained_as_actual_zero_result_call_with_one_none_metadata_slot",
+                            (
+                                "[conditions0]",
+                                "[conditions1]",
+                                "[conditions2]",
+                                "[conditions3]",
+                            ),
+                        ),
+                        (
+                            "test_unsupported_original_conditions_remain_required_unknown",
+                            (
+                                "[aten.to.dtype-conditions0]",
+                                "[aten.to.dtype-conditions1]",
+                                "[aten.to.dtype-conditions2]",
+                                "[aten._assert_tensor_metadata.default-conditions3]",
+                                "[aten._assert_tensor_metadata.default-conditions4]",
+                                "[aten._assert_tensor_metadata.default-conditions5]",
+                                "[aten._assert_tensor_metadata.default-conditions6]",
+                                "[aten._assert_tensor_metadata.default-conditions7]",
+                            ),
+                        ),
+                        (
+                            "test_source_rechecks_complete_original_bindings_and_exact_scalar_types",
+                            (
+                                "[parameters-aten.to.dtype]",
+                                "[parameters-aten._assert_tensor_metadata.default]",
+                                "[ordinal-aten.to.dtype]",
+                                "[ordinal-aten._assert_tensor_metadata.default]",
+                                "[rank-aten.to.dtype]",
+                                "[rank-aten._assert_tensor_metadata.default]",
+                                "[storage-aten.to.dtype]",
+                                "[storage-aten._assert_tensor_metadata.default]",
+                                "[alias-aten.to.dtype]",
+                                "[alias-aten._assert_tensor_metadata.default]",
+                                "[result-aten.to.dtype]",
+                                "[result-aten._assert_tensor_metadata.default]",
+                                "[arity-aten.to.dtype]",
+                                "[arity-aten._assert_tensor_metadata.default]",
+                                "[form-aten.to.dtype]",
+                                "[form-aten._assert_tensor_metadata.default]",
+                            ),
+                        ),
+                        (
+                            "test_zero_result_source_requires_the_original_native_bridge_and_metadata",
+                            (
+                                "[missing]",
+                                "[not_none]",
+                                "[other_id]",
+                                "[container]",
+                                "[unknown]",
+                                "[native_count]",
+                            ),
+                        ),
+                        (
+                            "test_complete_logical_budget_precedes_shape_and_loader_allocation",
+                            (
+                                "[aten.to.dtype-2-2-11]",
+                                "[aten._assert_tensor_metadata.default-2-2-5]",
+                                "[aten.to.dtype-1000000000-1-100]",
+                                "[aten._assert_tensor_metadata.default-2-1000000000-100]",
+                            ),
+                        ),
+                        (
+                            "test_scalar_sources_keep_one_logical_input_and_no_invented_assertion_tensor",
+                            (
+                                "[aten.to.dtype]",
+                                "[aten._assert_tensor_metadata.default]",
+                            ),
+                        ),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_metadata_source_flow.py",
+                    (
+                        (
+                            "test_budget_denials_keep_every_stable_prerequisite_and_all_original_admission_blockers",
+                            (
+                                "[max_sources-0]",
+                                "[max_total_tensor_elements-3]",
+                            ),
+                        ),
+                        (
+                            "test_v7_reproduces_all_twelve_missing_cast_assertion_source_slots_without_changing_legacy",
+                            ("",),
+                        ),
+                        (
+                            "test_connected_v8_replays_zero_bridge_and_retains_complete_unsupported_and_admission_roster",
+                            ("",),
+                        ),
+                        (
+                            "test_complete_original_slots_source_bytes_types_and_native_zero_member_cannot_change",
+                            (
+                                "[missing]",
+                                "[extra]",
+                                "[order]",
+                                "[dtype]",
+                                "[none]",
+                                "[scalar_alias]",
+                                "[source]",
+                                "[bridge]",
+                                "[version]",
+                            ),
+                        ),
+                        ("test_new_factory_owner_preserves_status_independent_ids_and_refuses_old_vocabulary", ("",)),
+                        ("test_exact_zero_return_join_keeps_the_original_binding_identity_without_admission", ("",)),
+                        (
+                            "test_binding_roster_cannot_be_edited_to_replace_complete_live_replay",
+                            (
+                                "[missing]",
+                                "[extra]",
+                                "[order]",
+                                "[status]",
+                                "[scalar_alias]",
+                            ),
+                        ),
+                        ("test_v4_ledger_keeps_original_blockers_and_all_twelve_factory_prerequisites", ("",)),
+                    ),
+                ),
+                (
+                    "packages/merlin-experiments/tests/test_original_metadata_automatic_flow.py",
+                    (
+                        (
+                            "test_v8_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion",
+                            (
+                                "[False-False]",
+                                "[True-False]",
+                                "[False-True]",
+                                "[True-True]",
+                            ),
+                        ),
+                        (
+                            "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority",
+                            (
+                                "[old_request]",
+                                "[old_policy]",
+                                "[old_schema]",
+                                "[saved_converter]",
+                                "[default_factory]",
+                            ),
+                        ),
+                        ("test_automatic_policy_selects_only_the_new_source_version_and_keeps_complete_facets", ("",)),
+                        ("test_full_v8_source_keeps_exact_old_scalar_subroster_request_and_payload_budgets", ("",)),
+                        ("test_new_declared_converter_pins_full_v8_record_and_old_selection_refuses_it", ("",)),
+                        (
+                            "test_actual_v8_declared_caller_keeps_complete_missing_rows_and_invokes_versioned_fixed_producers",
+                            ("",),
+                        ),
+                    ),
+                ),
+            )
+            for method, suffixes in methods
+            for suffix in suffixes
+        ),
+    },
+    "original-triangular-source-flow": {
+        "tests_root": ".",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "merlin/tests/targetgen/test_original_triangular_sources.py",
+            "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+        ),
+        "tests": (
+            "merlin/tests/targetgen/test_original_triangular_sources.py",
+            "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+            "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+        ),
+        "support_files": (
+            "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+            "merlin/tests/targetgen/test_original_scalar_binary_sources.py",
+            "packages/merlin-experiments/tests/test_declared_original_reference_flow.py",
+            "packages/merlin-experiments/tests/test_declared_original_scalar_conversion_flow.py",
+            "packages/merlin-experiments/tests/test_declared_phase0_run.py",
+            "packages/merlin-experiments/tests/test_original_integer_automatic_flow.py",
+            "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_binary_plan.py",
+            "packages/merlin-experiments/tests/test_original_scalar_conversion_plan.py",
+            "packages/merlin-experiments/tests/test_packing_memory_intake.py",
+            "packages/merlin-experiments/tests/original_reference_fixtures.py",
+        ),
+        "core_extras": (
+            "xdsl",
+            "targetgen",
+        ),
+        "probe_modules": (
+            "merlin.targetgen.original_triangular_sources",
+            "merlin_experiments.phase0.component_automatic",
+            "merlin_experiments.phase0.declared_run",
+            "merlin_experiments.phase0.original_call_sources",
+            "merlin_experiments.phase0.original_scalar_conversion",
+            "merlin_experiments.phase0.original_scalar_conversion_flow",
+            "merlin_experiments.phase0.original_factory_prerequisites",
+            "merlin_experiments.phase0.source_requirement_ledger",
+        ),
+        "required_modules": (
+            "xdsl",
+            "jsonschema",
+        ),
+        "native_test_cases": (
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape0-fresh0-0-float32-32]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape0-fresh0-0-int8-8]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape0-fresh0-0-int16-16]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape0-fresh0-0-int32-32]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape0-fresh0-0-int64-64]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape1-fresh1--3-float32-32]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape1-fresh1--3-int8-8]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape1-fresh1--3-int16-16]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape1-fresh1--3-int32-32]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_rank_storage_and_last_two_axes_choose_independent_geometry[shape1-fresh1--3-int64-64]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[None]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[-9223372036854775808]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[-9]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[-1]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[0]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[1]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[9]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_default_and_full_signed_diagonal_are_not_clamped_or_normalized[9223372036854775807]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unimplemented_scalar_kinds_or_signed64_overflow_stay_unknown[True]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unimplemented_scalar_kinds_or_signed64_overflow_stay_unknown[1.0]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unimplemented_scalar_kinds_or_signed64_overflow_stay_unknown[-9223372036854775809]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unimplemented_scalar_kinds_or_signed64_overflow_stay_unknown[9223372036854775808]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unimplemented_scalar_kinds_or_signed64_overflow_stay_unknown[1]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_missing_nonpositive_or_low_rank_shapes_stay_unknown[shape0]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_missing_nonpositive_or_low_rank_shapes_stay_unknown[shape1]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_missing_nonpositive_or_low_rank_shapes_stay_unknown[shape2]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_missing_nonpositive_or_low_rank_shapes_stay_unknown[shape3]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_missing_nonpositive_or_low_rank_shapes_stay_unknown[shape4]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[float16]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[bfloat16]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[float64]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[uint8]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[bool]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_unsupported_storage_is_retained_without_promotion[complex64]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_original_same_shape_relation_is_required_before_fresh_geometry",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[rank]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[axes]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[shape_relation]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[parameters]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[result_storage]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[input_storage]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[input_alias]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[result_alias]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[argument_type]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[argument_order]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[result_count]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[result_kind]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_factory_reopens_complete_original_arguments_types_and_result_roster[dtype_list]",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_complete_logical_counts_and_rank_metadata_are_bounded_before_allocation",
+            ),
+            (
+                "merlin/tests/targetgen/test_original_triangular_sources.py",
+                "test_policy_is_copied_without_becoming_a_numeric_or_effect_admission",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_opt_in_v9_constructs_all_supported_cohorts_and_keeps_numeric_and_unsupported_rows",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_prior_v8_keeps_all_nine_factory_gaps_and_every_prior_reader",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_reservations_refuse_before_omitting_any_required_original_slot[max_sources-8-0]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_reservations_refuse_before_omitting_any_required_original_slot[max_tensor_elements-11-0]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_reservations_refuse_before_omitting_any_required_original_slot[max_total_tensor_elements-60-2]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_reservations_refuse_before_omitting_any_required_original_slot[max_total_source_bytes-1-0]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[missing]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[extra]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[order]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[source]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[diagonal]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[axes]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[dtype]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_complete_source_members_types_literal_bindings_and_bytes_are_replayed[version]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_stable_factory_and_call_ids_survive_new_construction_and_unavailable_formats",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_source_flow.py",
+                "test_new_ledger_retains_every_original_requirement_and_completed_factory_prerequisite",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_v9_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion[False-False]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_v9_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion[True-False]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_v9_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion[False-True]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_v9_keeps_explicit_reference_memory_choices_and_mandatory_scalar_conversion[True-True]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority[old_request]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority[old_policy]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority[old_schema]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority[saved_converter]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_vocabularies_cannot_widen_prior_callers_or_accept_saved_authority[default_factory]",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_automatic_policy_selects_only_the_new_source_version_and_keeps_complete_facets",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_full_v9_source_keeps_exact_old_scalar_subroster_request_and_payload_budgets",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_new_declared_converter_pins_full_v9_record_and_old_selection_refuses_it",
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_triangular_automatic_flow.py",
+                "test_actual_v9_declared_caller_keeps_complete_missing_rows_and_invokes_versioned_fixed_producers",
+            ),
+        ),
     },
     "original-reference-flow": {
         "tests_root": "packages/merlin-experiments/tests",
@@ -1433,6 +3078,42 @@ SUITES = {
         ),
         "required_modules": ("xdsl",),
     },
+    "formal-instruction-selection": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "test_formal_instruction_selection.py",
+            "test_private_linked_elf_selection.py",
+            "test_phase1_formal.py",
+            "test_phase1_formal_handoff.py",
+        ),
+        "tests": (
+            "test_formal_instruction_selection.py",
+            "test_private_linked_elf_selection.py",
+            "test_phase1_formal.py",
+            "test_phase1_formal_handoff.py",
+        ),
+        "support_files": ("test_phase1_feedback.py", "phase1_feedback_fixtures.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase1.feedback.formal",
+            "merlin_experiments.phase1.feedback.private_instruction_declaration",
+            "merlin_experiments.phase1.feedback.private_instruction_coordinator",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
+    "automatic-linked-elf-policy": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "tests": ("test_private_linked_elf_selection.py",),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase1.feedback.private_full_models",
+            "merlin_experiments.phase1.feedback.private_linked_elf_selection",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "host-output": {
         "include_experiments": False,
         "tests_root": "merlin/tests",
@@ -1451,12 +3132,15 @@ SUITES = {
             "ir/test_linalg_extremum_patterns.py",
             "ir/test_linalg_f32_maximum_patterns.py",
             "ir/test_device_build.py",
+            "ir/test_device_build_arguments.py",
+            "ir/test_device_routed_roster.py",
             "infra/test_device_abi_resources.py",
             "ir/test_bucketize_source.py",
             "targetgen/test_host_capability_evidence.py",
             "targetgen/test_bucketize_host_source_body.py",
             "targetgen/test_f32_maximum_host_source_body.py",
             "runtime/test_whole_model_device_offload.py",
+            "runtime/test_device_linked_elf_admission.py",
         ),
         "core_extras": ("xdsl",),
         "probe_modules": (
@@ -1465,6 +3149,8 @@ SUITES = {
             "merlin.runtime.backends.spike_model",
             "merlin.llvmlower.link_supplier_trace",
             "merlin.llvmlower.device_build",
+            "merlin.llvmlower.device_offload",
+            "merlin.targetgen.contract.elf_admission",
             "merlin.targetgen.contract.resident_interface_abi",
             "merlin.targetgen.host_linkage_contract",
             "merlin.frontends.linalg_composite_math",
@@ -2034,6 +3720,1038 @@ SUITES = {
         "required_modules": ("xdsl",),
     },
 }
+
+SUITES["rtl-source-bindings"] = {
+    "include_experiments": False,
+    "tests_root": "merlin/tests/targetgen",
+    "test_fixture_imports": True,
+    "collect_selected_tests": True,
+    "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+    "tests": (
+        "test_hw_value_bindings.py",
+        "test_value_binding_tool.py",
+        "test_counter_source_tool.py",
+        "test_plain_word_relation.py",
+        "test_plain_word_request.py",
+        "test_source_predicates.py",
+        "test_plain_word_tool.py",
+        "test_plain_word_files.py",
+    ),
+    "native_test_files": (
+        "test_hw_value_bindings.py",
+        "test_value_binding_tool.py",
+        "test_counter_source_tool.py",
+        "test_plain_word_relation.py",
+        "test_plain_word_request.py",
+        "test_source_predicates.py",
+        "test_plain_word_tool.py",
+        "test_plain_word_files.py",
+    ),
+    "support_files": (
+        "test_hw_counter_intervals.py",
+        "test_hw_counter_state_timelines.py",
+        "test_hw_state_effects.py",
+    ),
+    "core_extras": ("xdsl",),
+    "probe_modules": (
+        "merlin.targetgen.rtl.hw_value_bindings",
+        "merlin.targetgen.rtl.plain_word_relation",
+        "merlin.targetgen.rtl.plain_word_request",
+        "merlin.targetgen.tool_cli",
+    ),
+    "required_modules": ("xdsl",),
+    "native_test_cases": tuple(
+        (filename, method + suffix)
+        for filename, methods in (
+            (
+                "test_hw_value_bindings.py",
+                (
+                    (
+                        "test_exact_instances_follow_combinational_values_but_keep_distinct_states",
+                        ("",),
+                    ),
+                    (
+                        "test_raw_word_extract_concat_path_is_structural_and_reuses_original_expression_reader",
+                        ("",),
+                    ),
+                    (
+                        "test_complete_original_state_unused_effect_and_nested_metadata_membership_retained",
+                        ("",),
+                    ),
+                    (
+                        "test_opaque_body_cut_retains_exact_incoming_metadata_and_types",
+                        (
+                            "[True-False-external_body]",
+                            "[False-True-parameterized_body]",
+                        ),
+                    ),
+                    (
+                        "test_exact_original_operand_selection_retains_clock_cut",
+                        ("",),
+                    ),
+                    (
+                        "test_changed_original_identity_or_endpoint_refuses",
+                        (
+                            "[identity]",
+                            "[path]",
+                            "[module]",
+                            "[ordinal]",
+                            "[slot]",
+                            "[type]",
+                        ),
+                    ),
+                    (
+                        "test_complete_original_instance_membership_changes_refuse",
+                        (
+                            "[replacement0]",
+                            "[replacement1]",
+                            "[replacement2]",
+                            "[replacement3]",
+                        ),
+                    ),
+                    (
+                        "test_complete_original_bounds_refuse_without_partial_products",
+                        (
+                            "[operations-2]",
+                            "[modules-1]",
+                            "[occurrences-2]",
+                            "[port_bindings-7]",
+                            "[hierarchy_depth-1]",
+                            "[nodes-1]",
+                            "[scalar_bits-4]",
+                            "[bit_work-1]",
+                            "[expression_depth-1]",
+                            "[metadata_bytes-1]",
+                            "[source_bytes-16]",
+                        ),
+                    ),
+                    (
+                        "test_unused_malformed_module_binding_is_not_skipped",
+                        ("",),
+                    ),
+                    (
+                        "test_unknown_combinational_metadata_is_retained_as_cut",
+                        ("",),
+                    ),
+                    (
+                        "test_selection_closed_types_refuse_boolean_substitution",
+                        (
+                            "[change0]",
+                            "[change1]",
+                            "[change2]",
+                            "[change3]",
+                            "[change4]",
+                        ),
+                    ),
+                    (
+                        "test_duplicate_or_empty_selection_roster_refuses",
+                        ("",),
+                    ),
+                    (
+                        "test_memory_read_remains_cut_with_all_original_operand_identities",
+                        ("",),
+                    ),
+                    (
+                        "test_recursive_unused_definition_refuses_before_roster_expansion",
+                        ("",),
+                    ),
+                    (
+                        "test_unused_duplicate_module_identity_refuses",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "test_value_binding_tool.py",
+                (
+                    (
+                        "test_actual_operator_route_exports_complete_typed_memberships_and_explicit_cuts",
+                        ("",),
+                    ),
+                    (
+                        "test_real_command_refuses_incomplete_changed_or_unsupported_source_request",
+                        (
+                            "[field]",
+                            "[schema]",
+                            "[root]",
+                            "[empty]",
+                            "[duplicate_selection]",
+                            "[field_selection]",
+                            "[occurrence]",
+                            "[module]",
+                            "[kind]",
+                            "[ordinal]",
+                            "[slot]",
+                            "[type]",
+                            "[identity]",
+                            "[limit_field]",
+                            "[bool_limit]",
+                            "[operation_bound]",
+                            "[metadata_bound]",
+                            "[dense]",
+                            "[encoding]",
+                            "[duplicate_key]",
+                        ),
+                    ),
+                    (
+                        "test_actual_operator_resource_bounds_refuse_before_output",
+                        (
+                            "[--max-request-bytes-0]",
+                            "[--max-request-bytes-1]",
+                            "[--max-request-bytes--1]",
+                            "[--max-output-bytes-0]",
+                            "[--max-output-bytes-1]",
+                            "[--max-output-bytes--1]",
+                        ),
+                    ),
+                    (
+                        "test_actual_alias_refuses_and_preserves_all_original_bytes",
+                        (
+                            "[source]",
+                            "[request]",
+                            "[output]",
+                            "[output_parent]",
+                        ),
+                    ),
+                    (
+                        "test_actual_missing_or_nonregular_inputs_refuse",
+                        (
+                            "[source]",
+                            "[request]",
+                        ),
+                    ),
+                    (
+                        "test_actual_growth_at_input_open_refuses",
+                        (
+                            "[source]",
+                            "[request]",
+                        ),
+                    ),
+                    (
+                        "test_changed_inputs_after_actual_export_refuse",
+                        (
+                            "[source]",
+                            "[request]",
+                        ),
+                    ),
+                    (
+                        "test_changed_inputs_after_output_are_not_returned_as_success",
+                        ("",),
+                    ),
+                    (
+                        "test_exclusive_actual_output_preserves_existing_observation",
+                        ("",),
+                    ),
+                    (
+                        "test_no_implicit_selection_or_extra_option_route",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "test_counter_source_tool.py",
+                (
+                    (
+                        "test_operator_command_evaluates_complete_rows_and_retains_unknowns",
+                        (
+                            "[unit_counter]",
+                            "[state_getter]",
+                        ),
+                    ),
+                    (
+                        "test_operator_request_refuses_changed_incomplete_or_unbounded_inputs",
+                        (
+                            "[field]",
+                            "[sample]",
+                            "[result]",
+                            "[limit]",
+                            "[selection]",
+                            "[kind]",
+                            "[duplicate]",
+                            "[bytes]",
+                        ),
+                    ),
+                    (
+                        "test_operator_output_requires_a_fresh_destination",
+                        ("",),
+                    ),
+                    (
+                        "test_explicit_operator_macro_premise_retains_complete_effects_and_exact_bytes",
+                        ("",),
+                    ),
+                    (
+                        "test_explicit_operator_inactive_effects_require_actual_supplied_premise",
+                        (
+                            "[setting0]",
+                            "[setting1]",
+                        ),
+                    ),
+                    (
+                        "test_explicit_request_handles_both_readers_without_changing_old_values",
+                        (
+                            "[unit_counter]",
+                            "[state_getter]",
+                        ),
+                    ),
+                    (
+                        "test_explicit_operator_request_refuses_unresolved_or_changed_full_source_rows",
+                        (
+                            "[missing]",
+                            "[null]",
+                            "[mapping]",
+                            "[legacy_field]",
+                            "[legacy_default]",
+                            "[unknown_field]",
+                            "[stale_macro_source]",
+                            "[missing_macro]",
+                            "[duplicate_macro_key]",
+                            "[phase]",
+                            "[states]",
+                            "[outputs]",
+                            "[limit]",
+                            "[termination]",
+                            "[source]",
+                        ),
+                    ),
+                    (
+                        "test_unit_reader_does_not_claim_emission_semantics_from_new_request",
+                        (
+                            "[{}]",
+                            "[False]",
+                            "[0]",
+                            "[premise3]",
+                        ),
+                    ),
+                    (
+                        "test_changed_explicit_macro_bytes_change_identity_without_mutating_source_or_request",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "test_plain_word_relation.py",
+                (
+                    (
+                        "test_complete_ordered_fields_cast_and_explicit_unknowns",
+                        ("",),
+                    ),
+                    (
+                        "test_each_explicit_packing_rule_is_retained_as_conditional_data",
+                        (
+                            "[definition-low_to_high-offsets0]",
+                            "[definition-high_to_low-offsets1]",
+                            "[reverse_definition-low_to_high-offsets2]",
+                            "[reverse_definition-high_to_low-offsets3]",
+                        ),
+                    ),
+                    (
+                        "test_independent_names_order_widths_and_selected_fixed_width",
+                        ("",),
+                    ),
+                    (
+                        "test_changed_full_original_source_bytes_refuse",
+                        (
+                            "[declaration]",
+                            "[cast]",
+                            "[construction]",
+                            "[width]",
+                            "[packing]",
+                        ),
+                    ),
+                    (
+                        "test_incomplete_or_computed_original_field_rosters_refuse",
+                        (
+                            "[]",
+                            "[val x = Cell(0.W)]",
+                            "[val x = Cell(-2.W)]",
+                            "[val x = Cell(N.W)]",
+                            "[val x = Cell(4.W)\\nval x = Flag()]",
+                            "[var x = Cell(4.W)]",
+                            "[val x = Missing(4.W)]",
+                            "[val x = Cell(4.W).cloneType]",
+                            "[val x = old]",
+                            "[val x = Option(Cell(4.W))]",
+                            "[val x = Cell(2.W)\\ndef helper = Flag()]",
+                            "[val x = Cell(2.W)\\nlaunch()]",
+                            "[val x = Cell(2.W)\\nif (cond) { val y = Flag() }]",
+                            "[val x = Cell(1.W)\\nval y = Cell(1.W)\\n}]",
+                        ),
+                    ),
+                    (
+                        "test_exact_plain_original_class_identity_and_lexical_membership_refuse",
+                        (
+                            "[class Parcel(n: Int) extends Packet { val x = Cell(2.W) }]",
+                            "[class Parcel extends Other { val x = Cell(2.W) }]",
+                            "[class Parcel extends Packet with Extra { val x = Cell(2.W) }]",
+                            "[class Parcel extends Packet { val x = Cell(2.W) }\\n"
+                            "class Parcel extends Packet { val y = Flag() }]",
+                            '[val text = """class Parcel extends Packet { val x = Cell(2.W) }"""]',
+                            "[/* class Parcel extends Packet { val x = Cell(2.W) } */]",
+                        ),
+                    ),
+                    (
+                        "test_actual_cast_source_receiver_destination_and_return_class_refuse",
+                        (
+                            "[output.inst := other.word.retype(new Parcel())]",
+                            "[output.inst := input.word.retype(new Other())]",
+                            "[other.inst := input.word.retype(new Parcel())]",
+                            "[output.inst := input.word.retype(new Parcel(1))]",
+                            "[output.inst := input.word.retype(new Parcel()); launch()]",
+                            "[/* output.inst := input.word.retype(new Parcel()) */]",
+                            '[val text = "output.inst := input.word.retype(new Parcel())"]',
+                        ),
+                    ),
+                    (
+                        "test_preallocation_and_complete_original_roster_budgets_refuse",
+                        (
+                            "[source_bytes-1]",
+                            "[aggregate_source_bytes-4]",
+                            "[tokens-2]",
+                            "[fields-2]",
+                            "[word_bits-8]",
+                            "[nesting-1]",
+                        ),
+                    ),
+                    (
+                        "test_giant_width_refuses_before_integer_conversion",
+                        ("",),
+                    ),
+                    (
+                        "test_absent_conflicting_and_scalar_alias_selections_refuse",
+                        (
+                            "[missing_role]",
+                            "[duplicate_role]",
+                            "[duplicate_primitive]",
+                            "[bool_width]",
+                            "[bool_limit]",
+                            "[absent_source]",
+                            "[bad_span]",
+                            "[source_alias]",
+                        ),
+                    ),
+                    (
+                        "test_mutation_during_actual_structural_parse_refuses",
+                        ("",),
+                    ),
+                    (
+                        "test_comment_and_string_lookalikes_do_not_change_original_order",
+                        ("",),
+                    ),
+                    (
+                        "test_malformed_semantics_refuse_consistently",
+                        (
+                            "[order]",
+                            "[role]",
+                            "[numeric]",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "test_plain_word_request.py",
+                (
+                    (
+                        "test_actual_request_retains_full_relation_and_all_unknowns",
+                        ("",),
+                    ),
+                    (
+                        "test_missing_original_top_level_roster_refuses_before_output",
+                        (
+                            "[schema]",
+                            "[declaration]",
+                            "[cast]",
+                            "[semantics]",
+                            "[limits]",
+                        ),
+                    ),
+                    (
+                        "test_unselected_authority_or_factory_fields_refuse",
+                        (
+                            "[accepted]",
+                            "[opcode]",
+                            "[policy]",
+                            "[runtime_authority]",
+                            "[factory]",
+                        ),
+                    ),
+                    (
+                        "test_nested_extra_or_missing_selected_fields_refuse",
+                        (
+                            "[path0]",
+                            "[path1]",
+                            "[path2]",
+                            "[path3]",
+                            "[path4]",
+                            "[path5]",
+                            "[path6]",
+                            "[path7]",
+                        ),
+                    ),
+                    (
+                        "test_duplicate_nonfinite_and_deep_requests_refuse",
+                        (
+                            '[{"schema":1,"schema":2}]',
+                            '[{"limits":NaN}]',
+                            "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+                        ),
+                    ),
+                    (
+                        "test_invalid_explicit_command_bounds_refuse",
+                        (
+                            "[True-max_request_bytes]",
+                            "[True-max_output_bytes]",
+                            "[1.0-max_request_bytes]",
+                            "[1.0-max_output_bytes]",
+                            "[0-max_request_bytes]",
+                            "[0-max_output_bytes]",
+                            "[-1-max_request_bytes]",
+                            "[-1-max_output_bytes]",
+                        ),
+                    ),
+                    (
+                        "test_actual_complete_input_and_output_byte_bounds_refuse",
+                        (
+                            "[max_request_bytes]",
+                            "[max_output_bytes]",
+                        ),
+                    ),
+                    (
+                        "test_linked_paths_refuse_without_overwriting_owned_files",
+                        (
+                            "[request]",
+                            "[source]",
+                            "[out]",
+                            "[parent]",
+                        ),
+                    ),
+                    (
+                        "test_existing_source_destination_never_overwrites_original",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_selected_bytes_mutation_after_observation_refuses",
+                        (
+                            "[request]",
+                            "[declaration]",
+                            "[packing]",
+                        ),
+                    ),
+                    (
+                        "test_relative_selected_source_cannot_acquire_cwd_identity",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_bytes_mutation_during_publication_is_never_success",
+                        (
+                            "[request]",
+                            "[source]",
+                            "[out]",
+                        ),
+                    ),
+                    (
+                        "test_unrepresentable_request_read_is_explicitly_unavailable",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "test_source_predicates.py",
+                (
+                    (
+                        "test_selected_operand_comparisons_boolean_precedence_and_multiline_ranges",
+                        ("",),
+                    ),
+                    (
+                        "test_boolean_precedence_comes_from_actual_source",
+                        ("",),
+                    ),
+                    (
+                        "test_unknown_or_effectful_source_expressions_refuse",
+                        (
+                            "[other === FIRST]",
+                            "[code === MISSING]",
+                            "[code === 7.U]",
+                            "[code === FIRST; launch()]",
+                            "[code === FIRST // a comment]",
+                            "[code == FIRST]",
+                            "[code >= FIRST &&]",
+                            "[helper(code)]",
+                            "[(code === FIRST]",
+                            "[code === FIRST || true.B]",
+                        ),
+                    ),
+                    (
+                        "test_ambiguous_binding_or_symbol_domain_refuses",
+                        ("",),
+                    ),
+                    (
+                        "test_commented_or_quoted_text_cannot_impersonate_a_selected_source_binding",
+                        (
+                            "[/*\\nval selected = code === FIRST\\n*/]",
+                            '[val documentation = """\\nval selected = code === FIRST\\n"""]',
+                            "[/* outer /* nested */\\nval selected = code === FIRST\\n*/]",
+                        ),
+                    ),
+                    (
+                        "test_original_active_binding_and_line_spans_survive_unrelated_nested_comments_and_strings",
+                        ("",),
+                    ),
+                    (
+                        "test_unclosed_lexical_text_refuses_source_membership",
+                        (
+                            '[val text = """unclosed]',
+                            "[/* unclosed]",
+                            '[val text = "unclosed]',
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "test_plain_word_tool.py",
+                (
+                    (
+                        "test_actual_operator_dispatch_retains_complete_original_source_relation",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_has_no_implicit_inputs_or_bounds",
+                        (
+                            "[--request]",
+                            "[--out]",
+                            "[--max-request-bytes]",
+                            "[--max-output-bytes]",
+                        ),
+                    ),
+                    (
+                        "test_actual_operator_has_no_unselected_role_option",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_refuses_changed_original_source",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_refuses_unselected_request_fields",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_retains_bounded_input_output_refusals",
+                        (
+                            "[--max-request-bytes]",
+                            "[--max-output-bytes]",
+                        ),
+                    ),
+                    (
+                        "test_actual_operator_output_alias_does_not_overwrite_original",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_preserves_existing_output",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_operator_refuses_source_change_after_actual_observation",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "test_plain_word_files.py",
+                (
+                    (
+                        "test_declaration_fifo_refuses_without_any_open",
+                        ("",),
+                    ),
+                    (
+                        "test_request_and_output_fifo_refuse_without_any_open",
+                        (
+                            "[request]",
+                            "[out]",
+                        ),
+                    ),
+                    (
+                        "test_directories_are_not_selected_file_members",
+                        (
+                            "[request]",
+                            "[out]",
+                        ),
+                    ),
+                    (
+                        "test_source_replaced_with_fifo_refuses_without_opening_fifo",
+                        (
+                            "[parser]",
+                            "[publication]",
+                        ),
+                    ),
+                    (
+                        "test_unrepresentable_source_reader_budgets_refuse_before_open",
+                        (
+                            "[source_bytes]",
+                            "[aggregate_source_bytes]",
+                            "[tokens]",
+                            "[fields]",
+                            "[word_bits]",
+                            "[nesting]",
+                        ),
+                    ),
+                    (
+                        "test_unrepresentable_command_budgets_refuse_before_open",
+                        (
+                            "[max_request_bytes]",
+                            "[max_output_bytes]",
+                        ),
+                    ),
+                    (
+                        "test_representable_budget_boundary_is_reader_scope_only",
+                        ("",),
+                    ),
+                ),
+            ),
+        )
+        for method, suffixes in methods
+        for suffix in suffixes
+    ),
+}
+
+# Preserve the complete legacy scalar suite; integer replay extends its roster.
+SUITES["original-integer-scalar-binary-sources"] = {
+    **SUITES["original-scalar-binary-sources"],
+    "native_tools": ("operator-python", "firtool", "mlir-opt", "tensor-argument-compiler"),
+    "native_test_files": SUITES["original-scalar-binary-sources"]["native_test_files"]
+    + (
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+    ),
+    "tests": SUITES["original-scalar-binary-sources"]["tests"]
+    + (
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+        "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+        "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+        "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+    ),
+    "native_test_cases": SUITES["original-scalar-binary-sources"]["native_test_cases"]
+    + tuple(
+        (filename, method + suffix)
+        for filename, methods in (
+            (
+                "merlin/tests/targetgen/test_original_integer_scalar_binary_sources.py",
+                (
+                    (
+                        "test_exact_integer_kind_complete_storage_and_native_binding_survive_bounded_construction",
+                        (
+                            "[0-aten.div.Tensor]",
+                            "[0-aten.mul.Tensor]",
+                            "[1-aten.div.Tensor]",
+                            "[1-aten.mul.Tensor]",
+                            "[-1-aten.div.Tensor]",
+                            "[-1-aten.mul.Tensor]",
+                            "[9007199791611905-aten.div.Tensor]",
+                            "[9007199791611905-aten.mul.Tensor]",
+                            "[-1152921573326323713-aten.div.Tensor]",
+                            "[-1152921573326323713-aten.mul.Tensor]",
+                            "[-9223372036854775808-aten.div.Tensor]",
+                            "[-9223372036854775808-aten.mul.Tensor]",
+                            "[9223372036854775807-aten.div.Tensor]",
+                            "[9223372036854775807-aten.mul.Tensor]",
+                        ),
+                    ),
+                    (
+                        "test_integer_requires_exact_original_native_row_without_kind_storage_or_identity_substitution",
+                        (
+                            "[missing]",
+                            "[duplicate]",
+                            "[node]",
+                            "[path]",
+                            "[index_bool]",
+                            "[target]",
+                            "[schema]",
+                            "[literal]",
+                            "[float_kind]",
+                            "[native_literal]",
+                            "[wrapped]",
+                            "[allowed]",
+                            "[dtype]",
+                            "[bytes_bool]",
+                            "[shape]",
+                            "[name]",
+                            "[disjoint]",
+                            "[unknown]",
+                            "[extra]",
+                        ),
+                    ),
+                    (
+                        "test_boolean_and_outside_signed64_forms_stay_required",
+                        (
+                            "[True]",
+                            "[9223372036854775808]",
+                            "[-9223372036854775809]",
+                        ),
+                    ),
+                    (
+                        "test_legacy_integer_remains_unavailable_and_v2_float_preserves_literal_policy",
+                        ("",),
+                    ),
+                    (
+                        "test_reconstruction_reopens_the_exact_binding_before_any_source_allocation",
+                        (
+                            "[binding]",
+                            "[literal]",
+                            "[rank]",
+                            "[storage]",
+                            "[budget]",
+                        ),
+                    ),
+                    (
+                        "test_unsupported_original_storage_and_scalar_rank_are_not_widened_by_integer_binding",
+                        (
+                            "[float16-shape0]",
+                            "[bfloat16-shape1]",
+                            "[float64-shape2]",
+                            "[float32-shape3]",
+                        ),
+                    ),
+                    (
+                        "test_floating_form_cannot_inherit_integer_boxing_evidence",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "merlin/tests/targetgen/test_original_integer_scalar_binary_correspondence.py",
+                (
+                    (
+                        "test_direct_exact_signed64_constant_cast_body_and_complete_promoted_roster",
+                        (
+                            "[aten.div.Tensor-0]",
+                            "[aten.div.Tensor-1]",
+                            "[aten.div.Tensor--1]",
+                            "[aten.div.Tensor-9007199791611903]",
+                            "[aten.div.Tensor-9007199791611904]",
+                            "[aten.div.Tensor-9007199791611905]",
+                            "[aten.div.Tensor--9007199791611905]",
+                            "[aten.div.Tensor-1152921573326323711]",
+                            "[aten.div.Tensor-1152921573326323712]",
+                            "[aten.div.Tensor-1152921573326323713]",
+                            "[aten.div.Tensor--1152921573326323713]",
+                            "[aten.div.Tensor--9223372036854775808]",
+                            "[aten.div.Tensor-9223372036854775807]",
+                            "[aten.mul.Tensor-0]",
+                            "[aten.mul.Tensor-1]",
+                            "[aten.mul.Tensor--1]",
+                            "[aten.mul.Tensor-9007199791611903]",
+                            "[aten.mul.Tensor-9007199791611904]",
+                            "[aten.mul.Tensor-9007199791611905]",
+                            "[aten.mul.Tensor--9007199791611905]",
+                            "[aten.mul.Tensor-1152921573326323711]",
+                            "[aten.mul.Tensor-1152921573326323712]",
+                            "[aten.mul.Tensor-1152921573326323713]",
+                            "[aten.mul.Tensor--1152921573326323713]",
+                            "[aten.mul.Tensor--9223372036854775808]",
+                            "[aten.mul.Tensor-9223372036854775807]",
+                        ),
+                    ),
+                    (
+                        "test_same_type_coefficients_order_cast_wrapper_and_complete_promotion_cannot_be_substituted",
+                        (
+                            "[integer]",
+                            "[float_constant]",
+                            "[cast_input]",
+                            "[cast_type]",
+                            "[cast_attr]",
+                            "[splat_input]",
+                            "[div_order]",
+                            "[missing_promotion]",
+                            "[promoted_dtype]",
+                            "[wrapped]",
+                            "[native_literal]",
+                            "[output_drop]",
+                            "[boxed_shape]",
+                            "[original_binding]",
+                            "[trace_float]",
+                            "[trace_integer]",
+                            "[registry_float]",
+                            "[source_inventory]",
+                        ),
+                    ),
+                    (
+                        "test_v2_float_keeps_exact_legacy_body_without_integer_box_or_cast",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_binary_plan.py",
+                (
+                    (
+                        "test_v7_adds_only_bound_signed64_source_slots_and_keeps_every_unsupported_cohort",
+                        ("",),
+                    ),
+                    (
+                        "test_old_version_or_missing_bridge_cannot_grant_integer_slots",
+                        (
+                            "[6-True-3]",
+                            "[7-False-3]",
+                        ),
+                    ),
+                    (
+                        "test_original_membership_and_live_schema_bindings_are_replayed_without_integer_aliases",
+                        (
+                            "[schema]",
+                            "[row_drop]",
+                            "[binding]",
+                            "[float_kind]",
+                            "[cohort]",
+                            "[extent]",
+                            "[source]",
+                        ),
+                    ),
+                    (
+                        "test_v2_request_preserves_exact_integer_native_row_and_original_unavailable_slots",
+                        ("",),
+                    ),
+                    (
+                        "test_explicit_selection_version_cannot_widen_v1_or_relax_original_policy",
+                        (
+                            "[selection_v1]",
+                            "[source_v6]",
+                            "[extra]",
+                        ),
+                    ),
+                    (
+                        "test_extra_native_readouts_are_reserved_before_allocation_and_denied_slots_remain",
+                        (
+                            "[max_promotion_tensor_elements-18-4-7]",
+                            "[max_total_promotion_tensor_elements-62-5-26]",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_observer.py",
+                (
+                    (
+                        "test_exact_literal_profile_keeps_python_integer_kind_without_binary64_conversion",
+                        ("",),
+                    ),
+                    (
+                        "test_new_profile_does_not_license_boolean_unsigned_or_unbound_literals",
+                        (
+                            "[True]",
+                            "[9223372036854775808]",
+                            "[-9223372036854775809]",
+                            "[None]",
+                        ),
+                    ),
+                    (
+                        "test_fresh_native_wrapper_and_both_direct_and_boxed_dispatch_preserve_original_int_argument",
+                        ("",),
+                    ),
+                    (
+                        "test_fresh_getter_drift_cannot_reuse_original_binding_metadata",
+                        (
+                            "[dtype]",
+                            "[wrapped]",
+                            "[literal]",
+                            "[schema]",
+                            "[kind]",
+                            "[noncanonical]",
+                            "[alias]",
+                        ),
+                    ),
+                    (
+                        "test_v2_request_refuses_absent_or_extra_getter_before_any_upstream_import",
+                        ("",),
+                    ),
+                    (
+                        "test_complete_promotion_budgets_refuse_before_imports_or_allocations",
+                        (
+                            "[max_promotion_tensor_elements-18]",
+                            "[max_total_promotion_tensor_elements-37]",
+                            "[max_tensor_elements-11]",
+                            "[promotion_tensor_elements-True]",
+                            "[shape-value4]",
+                            "[shape-value5]",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_scalar_conversion_fixture_versions.py",
+                (
+                    (
+                        "test_existing_fixture_default_keeps_v1_selection",
+                        ("",),
+                    ),
+                    (
+                        "test_integer_fixture_requires_explicit_v2_selection",
+                        ("",),
+                    ),
+                    (
+                        "test_unsupported_fixture_version_refuses_before_source_creation",
+                        (
+                            "[0]",
+                            "[3]",
+                            "[True]",
+                            "[2.0]",
+                        ),
+                    ),
+                    (
+                        "test_v2_requires_explicit_getter_compiler_before_source_creation",
+                        ("",),
+                    ),
+                    (
+                        "test_v1_budget_and_all_prior_limits_remain_unchanged",
+                        ("",),
+                    ),
+                    (
+                        "test_v2_reserves_complete_six_call_eighteen_slot_products_before_native_conversion",
+                        ("",),
+                    ),
+                ),
+            ),
+            (
+                "packages/merlin-experiments/tests/test_original_integer_scalar_conversion_native.py",
+                (
+                    (
+                        "test_actual_v2_public_getter_registered_importer_all_original_calls_and_slots",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_original_int1_wrapper_promotion_complete_storage_and_direct_cast",
+                        ("",),
+                    ),
+                    (
+                        "test_actual_registered_bodies_refuse_coefficient_or_operand_order_substitution",
+                        (
+                            "[same_type_integer_coefficient]",
+                            "[reversed_division]",
+                        ),
+                    ),
+                    (
+                        "test_actual_integer_binding_cannot_be_replaced_by_a_float_literal",
+                        ("",),
+                    ),
+                    (
+                        "test_complete_original_slot_and_readout_budgets_refuse_before_another_native_execution",
+                        ("",),
+                    ),
+                    (
+                        "test_copied_live_owner_and_modified_saved_v2_receipt_cannot_issue_conversion",
+                        ("",),
+                    ),
+                ),
+            ),
+        )
+        for method, suffixes in methods
+        for suffix in suffixes
+    ),
+}
 LIMITATIONS = [
     "Tool source is assumed static while Python initially imports it; observed hashes are rechecked at completion.",
     "Packaging and selected functional regressions only; no numerical/hardware certification.",
@@ -2079,10 +4797,12 @@ def clean_environment():
 NATIVE_TOOL_ENVIRONMENT = {
     "bwrap": "MERLIN_TEST_BWRAP",
     "circt-opt": "MERLIN_TEST_CIRCT_OPT",
+    "circt-opt-modern": "MERLIN_TEST_CIRCT_OPT_MODERN",
     "clang": "MERLIN_CLANG",
     "compiler-python": "MERLIN_COMPILER_PYTHON",
     "cpu-simulator": "MERLIN_TEST_STOCK_CPU_SIMULATOR",
     "firtool": "MERLIN_TEST_FIRTOOL",
+    "firtool-modern": "MERLIN_TEST_FIRTOOL_MODERN",
     "iverilog": "MERLIN_TEST_IVERILOG",
     "mlir-opt": "MERLIN_TEST_MLIR_OPT",
     "mlir-translate": "MERLIN_MLIR_TRANSLATE",
@@ -2090,6 +4810,7 @@ NATIVE_TOOL_ENVIRONMENT = {
     "operator-python": "MERLIN_TEST_TORCH_PYTHON",
     "readelf": "MERLIN_TEST_READELF",
     "riscv-gcc": "MERLIN_TEST_RISCV_GCC",
+    "tensor-argument-compiler": "MERLIN_TEST_TENSOR_ARGUMENT_COMPILER",
     "vvp": "MERLIN_TEST_VVP",
 }
 

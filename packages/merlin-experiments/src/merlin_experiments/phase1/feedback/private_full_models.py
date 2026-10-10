@@ -30,6 +30,7 @@ from merlin_experiments.phase1.feedback import private_index_host_support as ind
 from merlin_experiments.phase1.feedback import private_integer_reduction_support as integer_support
 from merlin_experiments.phase1.feedback import private_linalg_support as linalg_support
 from merlin_experiments.phase1.feedback import private_linkage_support as linkage_support
+from merlin_experiments.phase1.feedback import private_linked_elf_selection as linked_policy
 from merlin_experiments.phase1.feedback import private_literal_arange_admission as arange_support
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan_support
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
@@ -698,8 +699,7 @@ def _source_obligations(
     eligible = []
     for index, (op, descriptor) in enumerate(zip(operations, descriptors, strict=True)):
         if id(op) in proven_movement:
-            # Typed yield-only movement is a linked-build support obligation,
-            # never an arithmetic eligibility or host-compute waiver.
+            # Typed movement requires linking; it waives no compute admission.
             continue
         verdict = is_eligible(descriptor, cap_map)
         if verdict.undetermined:
@@ -727,9 +727,7 @@ def _source_obligations(
                 and observed["ordered_result_dtypes"]
                 and all(isinstance(dtype, str) and dtype for dtype in observed["ordered_result_dtypes"])
             ):
-                # The independent typed, source-joined screen positively excludes
-                # this arithmetic from the selected hardware. Its exact reviewed
-                # host admission is still mandatory in the loop below.
+                # Source-joined hardware exclusion still requires reviewed host admission below.
                 continue
             raise ValueError(f"source operation {index} has unknown hardware eligibility")
         if not verdict.eligible:
@@ -752,8 +750,7 @@ def _source_obligations(
         if ordered_scan_ordinals.intersection(row["ordinals"]):
             if not set(row["ordinals"]) <= ordered_scan_ordinals:
                 raise ValueError("source ordered scan row mixes proved and unproved operations")
-            # The exact source algorithm root was reviewed before iteration;
-            # only its source-proved closed body belongs to that admission.
+            # Only the reviewed root's source-proved closed body belongs to its admission.
             continue
         if row["disposition"] in {"structural", "component"}:
             continue
@@ -761,14 +758,11 @@ def _source_obligations(
             continue
         if row["disposition"] == "support_required":
             if row["mlir_operation"] == "linalg.transpose":
-                # Every source occurrence was joined to a parsed, typed,
-                # yield-only permutation above. The whole-program build below
-                # must still lower and link this data movement.
+                # The typed yield-only permutation still requires lowering and linking below.
                 support_lowering += row["count"]
                 continue
             elif row["mlir_operation"] == "linalg.generic" and row.get("semantic_family") == "movement":
-                # Every such source ordinal has a typed, yield-only projected
-                # copy proof above; the exact linked build is still required.
+                # The typed projected copy proof still requires the exact linked build.
                 support_lowering += row["count"]
                 continue
             elif _noncompute_support(row):
@@ -1003,6 +997,7 @@ def run(
     prebuilt_receipts: Mapping[str, str | Path] | None = None,
     source_freeze: Mapping[str, Any] | None = None,
     source_freeze_root: str | Path | None = None,
+    linked_elf_admission=None,
 ) -> dict[str, Any]:
     """Build the frozen roster, or inspect one prebuilt model without producer attribution."""
     from merlin.compile.baremetal_model import compile_saved_model
@@ -1011,6 +1006,7 @@ def run(
     from merlin.llvmlower.device_offload import BY_GROUP
     from merlin.targetgen import target_registry
 
+    instruction_selection = linked_policy.freeze(linked_elf_admission, target=target)
     spec = Path(private_spec)
     if spec.is_symlink() or not spec.is_file():
         raise ValueError("operator-private full-model specification is absent or indirect")
@@ -1205,12 +1201,14 @@ def run(
                             model=f"{name}:{program}",
                             capture=stage / "model.mlir",
                             granularity=BY_GROUP,
+                            linked_elf_admission=linked_elf_admission,
                         )
                     device = routed.get("device_routing")
                     if device is None or routed.get("offload") is None:
                         raise ValueError(
                             f"{program} has no buildable accelerator route: {routed.get('device_routing_why')}"
                         )
+                linked_policy.require_route(device, instruction_selection)
                 if diagnostic:
                     receipt_path = Path(prebuilt_receipts[program])
                     receipt = load_diagnostic_receipt(
@@ -1250,6 +1248,7 @@ def run(
                             device=device,
                             **({"math_archive_symbols": math_symbols} if math_symbols else {}),
                         )
+                linked_policy.require_route(device, instruction_selection)
                 compiled.append(
                     _verify_compiled_program(
                         receipt,
@@ -1327,6 +1326,7 @@ def run(
             }
             if diagnostic:
                 item["checks"]["prebuilt_receipts"] = diagnostic_receipts
+            linked_policy.unchanged(instruction_selection)
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)

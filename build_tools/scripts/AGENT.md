@@ -39,7 +39,48 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   selected entry/prefix; llc, clang and clean model2MLIR source are explicit
   selections. Packaging proves finite descriptor transport only; logical body,
   physical storage, dependency closure and runtime/effect authority stay separate.
+- `original-scalar-binary-sources` archives the exact five source/conversion test
+  modules and their scalar fixture support. Its complete 110 pure plus six native
+  identities require zero skips and explicit public source/tool selections.
+  Preserve original literal/typed argument/body checks and all numerical policy,
+  reference, owner, effect, resource and mandatory admission unknowns; packaging
+  and finite registered construction never establish those premises.
+- `original-integer-scalar-binary-sources` preserves those 116 legacy cases and
+  adds all 142 integer and fixture controls, with an explicitly selected C++
+  getter compiler. All 260 identities must execute with zero skips. Keep the
+  default legacy fixture and its six native cases unchanged; getter compilation,
+  installed provenance and numerical admission remain separate requirements.
 - Numeric falsifiability uses the optional evaluator's constant-candidate audit.
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must
   still fail on measured accepted constants or malformed public declarations.
+
+- `formal-instruction-selection` retains the four complete declaration/caller
+  control modules and their exact sibling fixture support. Every selected case
+  must execute without skips. The native issuers and model builds in these
+  controls are diagnostic substitutes; installed wiring grants no instruction,
+  source-role, numerical, runtime, physical or experiment qualification.
+- `rtl-source-bindings` is core-only and retains all 266 original reader,
+  operator-command and file-boundary controls with zero skips. Archive the exact
+  three counter fixture siblings; production reader/command imports must come
+  from the own-site package. Installed source observations grant no instruction,
+  endpoint role, counter sample, numerical, runtime or performance authority.
+- `original-scalar-automatic-flow` retains all 87 declared-input, ordinary
+  caller and stable-prerequisite controls with their exact nine fixture siblings
+  and zero skips. Preserve all 38 prior controls and every original factory ID,
+  including fulfilled construction and budget-refused slots. The
+  controls substitute native issuers and conversion processes explicitly;
+  installed wiring establishes no fresh original numerical, hardware, runtime,
+  complete-coverage or author-session qualification.
+- `original-metadata-source-flow` retains all 98 cast/assertion and versioned
+  ordinary-caller controls with zero skips. Archive the ten direct fixture
+  siblings and the exact `original_reference_fixtures.py` file selected by the
+  retained sibling loader; direct AST imports alone do not close that edge.
+  The controls substitute native issuers and conversions. Installed wiring
+  establishes no numerical, alias, effect, hardware, runtime or phase admission.
+- `original-triangular-source-flow` retains all 79 triangular-source and
+  versioned ordinary-caller controls with zero skips. Archive the exact eleven
+  fixture siblings, including the literal `original_reference_fixtures.py`
+  selection. Preserve every prior qualification suite and original source ID.
+  Native issuers and conversion seams are substituted in these controls;
+  packaging grants no numerical, effect, packing, hardware or phase admission.
