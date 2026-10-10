@@ -49,10 +49,23 @@ reopens its target, callback and source selection, and requires the exact same
 service on the planned `DeviceRouting` before and after the ordinary saved-model
 build. An active route without that selection refuses. This supplies no default
 policy, native decoder or instruction/effect/runtime authority. The formal
-coordinator currently supplies no issued instruction service: independently
+coordinator supplies no service without explicit source selection: independently
 selected public command/predicate/accessor intakes, protected source-symbol
 prohibitions and an explicit decoder selection are still required. Diagnostic
 prebuilt inspection cannot establish actual final-image policy evaluation.
+
+`formal.py --instruction-selection` explicitly selects the protected closed
+`private_instruction_selection.v1` declaration. `private_instruction_declaration.py`
+checks its complete pinned source/tool roster before any selected issuance;
+`private_instruction_coordinator.py` delegates only the existing fixed fresh
+hardware, command, source-predicate, native accessor and source-symbol policy
+issuers. It forwards their exact live service to the private automatic build in
+the same process, after joining original byte-checked FIRRTL/configuration and
+reopens the selection afterward. No saved intake/report, provider callback or
+minimal-software-spec field supplies authority. Declaration and observation
+products remain in the private grader identity. A reviewed original selector
+set and actual native replay are still required; this wiring grants no policy
+role completeness, source-to-RTL/physical correspondence or 4/11/14 authority.
 
 The private complete-model build gate consumes the producer-bound completed
 compilation recipe and independently rehashes its explicit compiler/link inputs

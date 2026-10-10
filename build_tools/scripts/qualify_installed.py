@@ -2231,6 +2231,32 @@ SUITES = {
         ),
         "required_modules": ("xdsl",),
     },
+    "formal-instruction-selection": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "test_formal_instruction_selection.py",
+            "test_private_linked_elf_selection.py",
+            "test_phase1_formal.py",
+            "test_phase1_formal_handoff.py",
+        ),
+        "tests": (
+            "test_formal_instruction_selection.py",
+            "test_private_linked_elf_selection.py",
+            "test_phase1_formal.py",
+            "test_phase1_formal_handoff.py",
+        ),
+        "support_files": ("test_phase1_feedback.py", "phase1_feedback_fixtures.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin_experiments.phase1.feedback.formal",
+            "merlin_experiments.phase1.feedback.private_instruction_declaration",
+            "merlin_experiments.phase1.feedback.private_instruction_coordinator",
+        ),
+        "required_modules": ("xdsl", "jsonschema"),
+    },
     "automatic-linked-elf-policy": {
         "tests_root": "packages/merlin-experiments/tests",
         "tests": ("test_private_linked_elf_selection.py",),

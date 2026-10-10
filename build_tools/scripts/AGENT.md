@@ -49,3 +49,9 @@ Maintenance/validation scripts (e.g. `check_structure.py`).
   Its default public scope is tracked capsule declarations outside hidden paths.
   Missing oracle outputs are unmeasured; an explicitly partial CI invocation must
   still fail on measured accepted constants or malformed public declarations.
+
+- `formal-instruction-selection` retains the four complete declaration/caller
+  control modules and their exact sibling fixture support. Every selected case
+  must execute without skips. The native issuers and model builds in these
+  controls are diagnostic substitutes; installed wiring grants no instruction,
+  source-role, numerical, runtime, physical or experiment qualification.

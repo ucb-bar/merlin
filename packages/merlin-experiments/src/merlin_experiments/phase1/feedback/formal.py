@@ -28,6 +28,8 @@ from merlin_experiments.phase1.context import (
 )
 from merlin_experiments.phase1.feedback import freeze as freeze_run
 from merlin_experiments.phase1.feedback import private_full_models as PFM
+from merlin_experiments.phase1.feedback import private_instruction_coordinator as instruction_coordinator
+from merlin_experiments.phase1.feedback import private_instruction_declaration as instruction_declaration
 from merlin_experiments.phase1.feedback.private_facts import selected_input_facts
 
 # This is the certification tier for the Arm-4 functional experiment.  A cheaper-tier pass is
@@ -411,7 +413,14 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         type=Path,
         help="operator-only frozen validation input; never passed to an authoring workspace",
     )
+    ap.add_argument(
+        "--instruction-selection",
+        type=Path,
+        help="operator-only reviewed public instruction source/tool/policy declaration; no saved authority",
+    )
     a = ap.parse_args(argv)
+    if a.instruction_selection is not None and a.private_full_model_spec is None:
+        ap.error("--instruction-selection requires --private-full-model-spec")
     if a.qa_timeout < 1:
         ap.error("--qa-timeout must be positive")
     if a.rtl_facts is not None:
@@ -422,6 +431,11 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         select(a.workspace, a.rtl_facts)
     legacy_context = context is not None
     context = resolve_context(a, ap, context)
+    instruction_inputs = (
+        instruction_declaration.read(a.instruction_selection, target=context.target)
+        if a.instruction_selection is not None
+        else None
+    )
     if a.capsules is None:
         if not legacy_context:
             ap.error("installed formal grading requires explicit --capsules")
@@ -533,9 +547,20 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
             )
             if source_freeze is None:
                 raise ValueError("private full-model certification requires a fresh run-owned authored-source freeze")
+            instruction_selection = (
+                instruction_coordinator.prepare(
+                    instruction_inputs,
+                    target=context.target,
+                    output=run_dir.absolute() / "grading_private_instruction_selection",
+                )
+                if instruction_inputs is not None
+                else None
+            )
             with selected_input_facts(
                 a.private_full_model_spec, target=context.target, required_models=required_full_models
             ) as facts_binding:
+                if instruction_selection is not None:
+                    instruction_selection.require_facts(facts_binding)
                 private_models = PFM.run(
                     pkg,
                     a.private_full_model_spec,
@@ -546,7 +571,15 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
                     out=run_dir / "grading_private_full_models",
                     source_freeze=source_freeze,
                     source_freeze_root=(run_dir / "private_full_model_input" / "sources") if source_freeze else None,
+                    **(
+                        {"linked_elf_admission": instruction_selection.service}
+                        if instruction_selection is not None
+                        else {}
+                    ),
                 )
+                if instruction_selection is not None:
+                    instruction_selection.require_facts(facts_binding)
+                    private_models["instruction_selection"] = instruction_selection.record()
             private_models["fact_reader_binding"] = facts_binding
             if (
                 _private_source_freeze_for_formal(
