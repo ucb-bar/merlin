@@ -38,7 +38,11 @@ import yaml
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
 
+from merlin.targetgen.package_runtime import NotMeasuredFailure
+from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
+
 from . import oracle_policy as _oracle_policy
+from . import partial_console as _partial_console
 from . import tier_policy as _tier_policy
 from .oracle_policy import (  # noqa: F401 — stable public/legacy registry identity
     _SIM_ORACLES,
@@ -89,7 +93,7 @@ from .capsule_common import (  # noqa: F401
     make_run_paths,
     run_entrypoints,
 )
-from .contract import compile as oot_compile
+from .contract import compile as oot_compile  # noqa: F401 -- tests patch the oracle here
 from .contract import schemas
 from .oot_runner import (
     INFRASTRUCTURE_PLANE,
@@ -534,7 +538,7 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
     keeps, and then discarded; a cert that ran on the slow engine because the fast one was missing looked
     exactly like one that ran on the slow engine because it was the only one."""
 
-    from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
+    from merlin.targetgen.contract.readback_policy import selected
 
     readback_policy = selected(readback_policy)
 
@@ -550,28 +554,11 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
             exact, reason = gsim_emulator.selected_firrtl_status(target, env_var=getattr(backend, "GSIM_EMU_ENV", None))
             if not exact:
                 raise OracleUnavailable(reason)
-        policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
-        if readback_policy is not None and readback_policy.transport in MEMORY_TRANSPORTS:
-            from merlin_experiments.phase1.feedback.native_memory_readback import (
-                NativeMemoryReadback,
-                select_memory_engine,
-            )
+        from .oracle_readback import run_with_readback
 
-            from merlin.targetgen.rtl.facts import rtl_facts_path
-
-            facts_path = rtl_facts_path(target)
-            citation, revalidate = select_memory_engine(
-                target=target, simulator=sim, backend=backend, facts_path=facts_path
-            )
-
-            def revalidate_memory_engine():
-                revalidate()
-                return citation
-
-            policy_kwargs["memory_readback"] = NativeMemoryReadback(facts_path=facts_path, policy=readback_policy)
-            policy_kwargs["oracle_revalidate"] = revalidate_memory_engine
-        res = oot_compile.run_on_oracle(
-            cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **policy_kwargs
+        res = run_with_readback(
+            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout,
+            policy=readback_policy,
         )
         if selection and isinstance(res.get("oracle"), dict):
             res["oracle"]["selection"] = dict(selection)
@@ -4811,6 +4798,11 @@ def _finalize_capsule_result(
         for _r in tiers.values():
             if getattr(_r, "submission", None) is None:
                 _r.submission = dict(submission)
+    # A MUST-REFUSE CAPSULE INVERTS THE GRADE, after every other rule has spoken: its only correct
+    # answer is the backend's stated decline, and an emitted program -- right-looking or not -- fails.
+    from merlin.targetgen import expected_refusal as _ER
+
+    status, failure, _refusal_record = _ER.verdict(capsule, status, failure, declined)
     result = {
         "capsule": name,
         "kind": capsule.get("kind"),
@@ -4843,6 +4835,8 @@ def _finalize_capsule_result(
     # rather than reporting a numeric mismatch on a program that was never emitted.
     if declined:
         result["declined"] = declined
+    if _refusal_record is not None:
+        result["expected_refusal"] = _refusal_record
     # Caller-supplied evidence (the whole-model path attaches its routing plan and mesh counters).
     # Merged AFTER status and failure are decided, and with setdefault so it can never overwrite an
     # authoritative field: a routing plan is something a reader interprets, never an input to the
@@ -5832,10 +5826,15 @@ def run_capsule(
                 # link), not infra -- and the ld error is the whole diagnostic, so it must not be clipped
                 # to the same short budget as a generic crash.
                 _link_failed = "link failed" in _msg and not _did_not_halt
+                # A STOPPED run keeps its partial console and the kernel's cycles printed before it.
+                _partial = _partial_console.recover(paths.generated) if _timed_out else None
+                _partial_log = _record_console(paths, f"{_sim}_partial", _partial)[0]
                 tiers[tier] = TierResult(
                     tier,
                     "fail",
                     mand,
+                    cycles=_partial_console.metrics(_partial).get("cycles"),
+                    evidence=_partial_log,
                     reason=(
                         _did_not_halt_reason(_msg)
                         if _did_not_halt
@@ -5887,7 +5886,12 @@ def run_capsule(
                         # Still fails CLOSED -- a mandatory tier that produced no verdict is not a pass
                         # (`not_run_is_not_pass`) -- but it is reported for what it is. Calling this a
                         # tool crash sends the agent to debug a tool that did not break.
-                        raise CertFailure(_sim, _cat("TESTBENCH_TIMEOUT"), _oracle_timeout_reason(_sim, _msg)) from e
+                        raise NotMeasuredFailure(
+                            _sim, _cat("TESTBENCH_TIMEOUT"), _why := _oracle_timeout_reason(_sim, _msg),
+                            status=CERT_NOT_MEASURED if tier in cfg.rtl_tiers else "budget_exhausted",
+                            tier=tier, tier_reason=_why,
+                            cycles_before_stop=_partial_console.metrics(_partial).get("cycles"),
+                        ) from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"), f"{_sim} invocation failed: {_clip(_msg, 400)}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
@@ -6217,9 +6221,9 @@ def run_capsule(
         cat = inf.category.value if hasattr(inf.category, "value") else str(inf.category)
         failure = {"plane": inf.plane, "category": cat, "detail": inf.detail}
     except CertFailure as cf:
-        status = "fail"
+        status = getattr(cf, "status", "fail")  # a NotMeasuredFailure names its not-measured status
         cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
-        failure = {"plane": cf.plane, "category": cat, "detail": cf.detail}
+        failure = {"plane": cf.plane, "category": cat, "detail": cf.detail, **getattr(cf, "facts", {})}
     except Exception as e:  # internal harness bug
         status = "error"
         failure = {
@@ -6575,51 +6579,20 @@ def _run_suite(
                 workers=workers,
             )
 
-    def _run_independent(caps: list[dict]) -> list[dict]:
-        if max_workers <= 1 or not caps:
-            return [_one(c) for c in caps]
-        # CALIBRATE BEFORE FANNING OUT. Tier order is learned from observed cost, and a worker that
-        # starts before any tier has a price runs the ladder in the arbitrary order -- so a wide fan-out
-        # means the ENTIRE first wave pays the expensive tier. Measured with 8 workers: 7 of the 12
-        # refutable capsules paid the 24.5 s tier before the 0.29 s one had ever been priced, 171 s of a
-        # 614 s suite, against a floor of ~444 s. Running the head serially bounds that to one or two.
-        #
-        # Self-terminating rather than a fixed count: keep going only while a capsule PRICES A TIER
-        # nothing had priced before, and stop the moment one teaches us nothing new. A capsule that is
-        # refuted early prices only the tier that refuted it, which is exactly why one capsule is not
-        # always enough -- and why a hard cap still bounds the worst case.
-        head: list[dict] = []
-        seen = set(_tier_policy.priced_tiers(target or ""))
-        i = 0
-        while i < len(caps) and i < _CALIBRATION_CAP:
-            _r = _one(caps[i])
-            head.append(_r)
-            i += 1
-            # A capsule that PASSED ran every mandatory tier, so every tier now has a price and there is
-            # nothing left to learn -- stop immediately rather than spending a second serial capsule.
-            # This matters on a target whose ladder was ALREADY in cost order: it gains nothing from the
-            # reordering and pays the whole serial head, and measured that way the head cost more
-            # wall-clock (1074s -> 1195s) than the reordering saved. One passing capsule is enough.
-            if _r.get("status") == "pass":
-                break
-            now = set(_tier_policy.priced_tiers(target or ""))
-            if now == seen:
-                break
-            seen = now
-        rest = caps[i:]
-        if not rest:
-            return head
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            _n = min(max_workers, len(rest))
-            return head + list(ex.map(lambda c: _one(c, _n), rest))
-
     def _run_all(caps: list[dict]) -> list[dict]:
-        # Lexical/covering-set order alone can put an L2 extension ahead of its
-        # L3 sibling. Parallel submission order is insufficient too: a sibling
-        # must finish and publish its result before a dependent cites it.
-        return [result for wave in _capsule_dependency_waves(caps) for result in _run_independent(wave)]
+        # PIPELINED: a capsule starts as soon as a worker is free and its selected `extends` sibling has
+        # FINISHED (it cites that sibling's published result), with one short calibration head on the
+        # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
+        # the rest (merlin.targetgen.capsule_scheduling).
+        from .capsule_scheduling import run_pipelined
+
+        return run_pipelined(
+            caps,
+            lambda c, n: _one(c, n),
+            max_workers=max_workers,
+            calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
+            calibration_cap=_CALIBRATION_CAP,
+        )
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
     # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the

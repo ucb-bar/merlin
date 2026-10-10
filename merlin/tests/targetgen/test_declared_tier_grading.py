@@ -284,3 +284,31 @@ def test_materialized_required_tiers_are_a_subset_of_the_declared_ones():
             checked += 1
     if not checked:
         pytest.skip("no target's corpus materialized in this environment")
+
+
+def test_a_mandatory_tier_stopped_by_its_clock_is_not_measured_and_keeps_its_cycles(tmp_path, monkeypatch):
+    """A wall-clock stop is no verdict: not a numeric `fail`, never a pass, and the cycles it printed
+    before the output frame survive on the failure."""
+    import subprocess
+
+    from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES
+
+    _stub_front_half(monkeypatch)
+    tier = "L3"
+
+    def stopped(cb, llvm_text, workdir, timeout):
+        (workdir / "oracle_console.log").write_text("METRIC cycles 465895\nOUT Y0 32 32 1 2 3")
+        raise subprocess.TimeoutExpired(["emulator", "prog.elf"], 5)
+
+    res = CR.run_capsule(
+        _capsule_declaring(tier),
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="stopped",
+        config=_atlas_shaped_config(tier),
+        oracle_adapters={tier: stopped},
+    )
+    assert res["status"] in NOT_MEASURED_STATUSES and res["status"] == "cert_not_measured", res.get("failure")
+    assert res["failure"]["category"].lower() == "testbench_timeout"
+    assert res["failure"]["tier"] == tier and "UNMEASURED" in res["failure"]["tier_reason"]
+    assert res["failure"]["cycles_before_stop"] == 465895

@@ -1259,7 +1259,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
-    def _grade(sub, sim, to, cap="A1_mvin_mvout"):
+    def _grade(sub, sim, to, cap="A1_mvin_mvout", grade_env=None):
         from merlin_experiments.frozen_python import inherited_python_command
 
         r = subprocess.run(
@@ -1287,7 +1287,7 @@ def test_oracles_endtoend(reference_backend: str | None = None):
                 ]
             ),
             cwd=str(SCRIPTS),
-            env=env,
+            env=env if grade_env is None else grade_env,
             capture_output=True,
             text=True,
             timeout=to + 120,
@@ -1352,8 +1352,14 @@ def test_oracles_endtoend(reference_backend: str | None = None):
         # spike check above reads), so the old tiers["L3"] read was a field-name bug that ALWAYS yielded
         # None: a false NO-GO that also blocked .oracle_timing.json, which the launcher refuses to start
         # without. Verilator was running fine the whole time.
+        # The timing probe is Verilator BY DESIGN (its per-capsule cost calibrates the launcher). A campaign
+        # pin to another engine scopes certification, not this probe: lift it for the probe and prove the
+        # pinned engine separately below, so neither silently stands in for the other.
+        from readiness_reference import timing_probe_environment
+
+        probe_env, pinned_engine = timing_probe_environment(env, engine="verilator")
         t0 = _time.monotonic()
-        ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul")
+        ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul", grade_env=probe_env)
         dt = _time.monotonic() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
         l3 = (
@@ -1405,6 +1411,18 @@ def test_oracles_endtoend(reference_backend: str | None = None):
                     + "\n"
                 )
                 _ok("wrote target-bound oracle timing record", True, f"{selected} T_obs={dt:.0f}s")
+        if pinned_engine is not None:
+            pe = _grade(ref, pinned_engine, 900, cap="A2_single_tile_matmul")
+            cp = (pe.get("per_capsule") or [{}])[0]
+            _ok(
+                f"required RTL engine {pinned_engine} RUNS to a real L3=pass (the campaign pin)",
+                pe.get("all_pass")
+                and pe.get("n_capsules") == 1
+                and cp.get("barrier_tier") == "L3"
+                and cp.get("barrier_status") == "pass",
+                f"n={pe.get('n_passed')}/{pe.get('n_capsules')} barrier={cp.get('barrier_tier')}/"
+                f"{cp.get('barrier_status')} {str(pe.get('error', ''))[:60]}",
+            )
         # WHICH ENGINE WOULD CERTIFY, AND WHAT IT WAS CHOSEN OVER — reported, never gated.
         #
         # Gating would be wrong: any elaborated-RTL engine is a valid L3, so a target with only Verilator

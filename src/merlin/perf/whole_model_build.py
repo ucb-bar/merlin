@@ -553,21 +553,28 @@ def _prohibited(target: str, roles: Sequence[str]) -> dict[int, str]:
 
 
 def pointee_row_padding(target: str) -> dict[str, Any]:
-    """The row padding the backend contract declares for a kernel's pointer arguments, for ``target``.
+    """The row padding the selected kernel ABI declares for a kernel's pointer arguments, for ``target``.
 
-    The contract (``kernel_abi.pointee_layout``) states every pointee is row-major with its rows
-    zero-padded to the device's tile edge; the edge itself is the target's, derived from its RTL facts
-    the same way the capsule shim derives it (:func:`merlin.llvmlower.device_shim.tile_edge_for`).
-    ``multiple`` is None when the edge cannot be derived -- a caller must then refuse to hand a kernel
-    a buffer whose rows would need padding, never hand it the dense one."""
+    Under the logical kernel ABI (the default) every pointee is the dense logical tensor, so rows are
+    never padded (``multiple`` 1). Under the version-1 resident ABI (``kernel_abi.pointee_layout``) rows
+    are zero-padded to the device's tile edge, derived from its RTL facts the same way the capsule shim
+    derives it (:func:`merlin.llvmlower.device_shim.tile_edge_for`); ``multiple`` is then None when the
+    edge cannot be derived -- a caller must refuse to hand a kernel a buffer whose rows would need
+    padding, never hand it the dense one."""
     from merlin.llvmlower import device_shim
 
     abi = device_shim.kernel_abi_for(target)
+    if abi is not None and getattr(abi, "version", 1) == 2:
+        return {
+            "layout": abi.pointee_layout,
+            "multiple": 1,
+            "source": "logical_kernel_abi.pointee (mlir_oot_backend_contract.yaml): dense, never padded",
+        }
     edge = device_shim.tile_edge_for(target)
     return {
         "layout": abi.pointee_layout if abi is not None else None,
         "multiple": int(edge) if edge else None,
-        "source": "kernel_abi.pointee_layout (mlir_oot_backend_contract.yaml), tile edge from the RTL facts",
+        "source": "kernel_abi.pointee_layout (legacy/kernel_abi_v1.yaml), tile edge from the RTL facts",
     }
 
 

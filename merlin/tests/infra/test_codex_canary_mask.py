@@ -27,8 +27,12 @@ def canary(tmp_path, monkeypatch):
     work = tmp_path / "owned-canary-output"
     monkeypatch.setattr(module, "_now", lambda: "source-control")
     runner = ModuleType("run_baseline_qa_loop")
-    runner.C = SimpleNamespace(CONTEXT=object())
-    runner._corpus_probe_paths = lambda: (tmp_path / "own-corpus/x/y/owned.json", None)
+    corpus = tmp_path / "own-corpus"
+    golden = corpus / "x/y/golden.json"
+    golden.parent.mkdir(parents=True)
+    golden.write_text("owned mask-control answer\n")
+    runner.C = SimpleNamespace(CONTEXT=SimpleNamespace(descriptor="owned-descriptor"))
+    monkeypatch.setattr(module, "load_target_experiment", lambda _path: SimpleNamespace(capsule_corpus=corpus))
     monkeypatch.setitem(sys.modules, "run_baseline_qa_loop", runner)
     bundle = ModuleType("run_agent_experiment")
     bundle._load_bundle = lambda _arm, *, bundle_id: {

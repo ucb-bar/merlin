@@ -228,6 +228,9 @@ commit/reveal generation with an explicit catalog and source-owner context. Veri
 loaded origins and complete membership before reusing committed generation sources;
 never attest running code using an unrelated or empty source tree. Candidate seals
 must precede reveal; preserve the Phase 0 generator and exact cohort policy.
+`form_holdout.py` commits a form-scale cohort minted by a separate host-private Phase 0 run
+from a private performance-scale roster: counts and digests only in public, refusal of any
+workload a tuning member measures, and the same v2 reveal after every candidate seal.
 `gsim_certificate.py` owns build/capture validation, semantic oracle checks and same-ELF
 certificate production; native producer paths are CLI-only. `heldout_qualification.py`
 owns post-reveal lowering, qualification and completed-result admission. Supply an
@@ -333,7 +336,10 @@ corpus publication. This is trusted host code, withheld from candidate compilers
 `checkpoint_admission.py` owns explicit execution context, immutable preflight,
 provenance and checkpoints; `checkpoint_controller.py` owns ordered campaign execution
 and adoption. `checkpoint_cli.py` requires explicit resource/output/source-owner roots.
-Never replace this lifecycle with native callbacks or omit functional regrading before
+An optional form-scale holdout (private spec or generated root plus roster) is predeclared,
+committed beside the PK holdout before authoring, revealed after every seal and qualified
+and measured under its own `held_out_form` cells; any failure refuses the run, never PK-only.
+Unconfigured, records stay byte-identical. Never replace this lifecycle with native callbacks or omit functional regrading before
 reveal. `paired_cli.py` owns paired result writing and forwards its explicit contract
 root to execution; interruption must retain incomplete `NO_GO` evidence and propagate.
 `chia_launch.py` binds exact script/module commands and its own policy bytes in v2

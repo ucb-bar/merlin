@@ -306,6 +306,8 @@ def recipe_token(recipe: Any) -> "dict | None":
                 )
             ],
         }
+        # Which support objects lead the link changes code placement, so it is part of the build.
+        record["link_first"] = [Path(s).name for s in getattr(recipe, "link_first", ())]
         policy = getattr(recipe, "kernel_stack_frame", None)
         record["kernel_stack_frame"] = policy.record() if callable(getattr(policy, "record", None)) else None
         sources = {}

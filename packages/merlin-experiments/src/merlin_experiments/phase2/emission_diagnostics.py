@@ -18,7 +18,11 @@ ORDERING_REFUSED = "refused_unqualified_ordering"
 BARRIER_UNKNOWN = "UNKNOWN"
 
 
-def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | None) -> dict[str, Any]:
+def _demand_lower_bound(
+    buffer: Mapping[str, Any],
+    peak_macs_per_cycle: int | None,
+    machine_bounds: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Cycles this arm cannot beat, from its own declared work and operands.
 
     A bound, not a prediction. Compute demand is the priced MAC count over the structural peak;
@@ -45,7 +49,7 @@ def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | No
     if not macs or not isinstance(tensors, Mapping):
         return {"status": "unavailable", "reason": "the buffer declares no work or no tensors"}
     width = {"i8": 1, "u8": 1, "i16": 2, "bf16": 2, "f16": 2, "i32": 4, "f32": 4}
-    operand_bytes = 0
+    operand_bytes = written_bytes = 0
     for spec in tensors.values():
         if not isinstance(spec, Mapping):
             continue
@@ -56,9 +60,27 @@ def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | No
         for extent in shape:
             count *= int(extent)
         operand_bytes += count * width[dtype]
+        if str(spec.get("role") or "") == "output":
+            written_bytes += count * width[dtype]
+    # THE MOVEMENT FLOOR, beside the compute floor: the declared bytes over the memory path's derived
+    # read and write widths (separate channels), when this stage derived them. Null with a reason
+    # otherwise -- never a substituted width.
+    machine = machine_bounds if isinstance(machine_bounds, Mapping) else {}
+    read_width, write_width = machine.get("read_bytes_per_cycle"), machine.get("write_bytes_per_cycle")
+    movement = None
+    if read_width and write_width:
+        movement = round(max((operand_bytes - written_bytes) / read_width, written_bytes / write_width), 1)
+    compute = macs / float(peak_macs_per_cycle)
     return {
         "status": "derived",
-        "compute_floor_cycles": macs / float(peak_macs_per_cycle),
+        "compute_floor_cycles": compute,
+        "movement_floor_cycles": movement,
+        "movement_floor_basis": (
+            "declared input/output bytes over the derived memory-path widths"
+            if movement is not None
+            else "no memory-path widths were derived for this stage"
+        ),
+        "limiter": None if movement is None else ("movement" if movement > compute else "compute"),
         "declared_operand_bytes": operand_bytes,
         "exact": not bool(getattr(work, "is_lower_bound", False)),
         "licence": "a floor the arm cannot beat; never an estimate of what it will cost",
@@ -73,6 +95,7 @@ def analyze_command_buffers(
     peak_macs_per_cycle: int | None,
     achievable_macs_per_cycle: float | None,
     target: str = "",
+    machine_bounds: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compare declared work, movement and structure without claiming a timing ranking.
 
@@ -172,7 +195,9 @@ def analyze_command_buffers(
         out["barriers"] = {"status": BARRIER_UNKNOWN, "reason": f"barrier counting failed: {type(exc).__name__}"}
 
     # A lower bound on cycles from declared demand alone: what this arm cannot beat.
-    out["lower_bound"] = {arm: _demand_lower_bound(buffer, peak_macs_per_cycle) for arm, buffer in buffers.items()}
+    out["lower_bound"] = {
+        arm: _demand_lower_bound(buffer, peak_macs_per_cycle, machine_bounds) for arm, buffer in buffers.items()
+    }
 
     # Structural findings identify potential inefficiencies by level. They are not
     # cycle counts and may not be cited as measured savings.

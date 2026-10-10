@@ -147,6 +147,13 @@ def main(
     parser.add_argument("--rtl-facts", type=Path, required=True)
     parser.add_argument("--telemetry-price-table", type=Path, required=True)
     parser.add_argument(
+        "--whole-model-profile-inputs",
+        type=Path,
+        default=None,
+        help="operator-only whole-model deployment record (merlin_whole_model_profile_inputs_v1); "
+        "enables the agent's whole-model boundary profile",
+    )
+    parser.add_argument(
         "--descriptor",
         type=Path,
         required=True,
@@ -187,6 +194,7 @@ def main(
             rtl_facts=args.rtl_facts,
             telemetry_price_table=args.telemetry_price_table,
             workflow_id=args.workflow,
+            whole_model_profile_inputs=args.whole_model_profile_inputs,
         )
     except (StageGateError, PC.CampaignGateError) as exc:
         print(f"NO-GO: {exc}", file=sys.stderr)

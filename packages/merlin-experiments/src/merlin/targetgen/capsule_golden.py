@@ -308,8 +308,10 @@ def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
     if not capsule_dir:
         return None
     from merlin.targetgen.golden_store import load_golden
+    from merlin.targetgen.loader_reference import captured_reference
 
-    return load_golden(capsule_dir)
+    # A float capsule whose corpus ships no golden is graded against its own loader's host-eager output.
+    return load_golden(capsule_dir) or captured_reference(capsule_dir)
 
 
 def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | None:
@@ -477,7 +479,21 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
 
 
 def _recompute_golden(capsule: dict) -> dict[str, list]:
-    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path)."""
+    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path).
+
+    A residual-state ``prelude`` (an independent contraction issued first, so the device's stores are
+    not empty when the operation under test runs) contributes its own output; it shares no operand
+    with the operation, so the operation's expected values are exactly what they are without it.
+    """
+    prelude = ((capsule.get("operation") or {}).get("attributes") or {}).get("prelude")
+    if prelude:
+        attrs = {k: v for k, v in capsule["operation"]["attributes"].items() if k != "prelude"}
+        main = {**capsule, "operation": {**capsule["operation"], "attributes": attrs}}
+        outputs = _recompute_golden(main)
+        env = materialize_capsule_leaves(capsule)
+        product = env[prelude["lhs"]].matmul(env[prelude["weight"]])
+        outputs[prelude["out"]] = _narrow_to_dtype(product, str(prelude.get("output_dtype", "i32"))).to_list()
+        return outputs
     if capsule["operation"]["op"] == "component_program":
         from merlin_experiments.phase0.component_numerics import evaluate
 

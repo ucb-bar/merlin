@@ -926,3 +926,16 @@ def test_a_wrapper_flavour_home_still_passes(tmp_path, monkeypatch):
         ),
     )
     assert PO._rtl_engine_probe("t", "gsim")()[0] is True
+
+
+def test_gsim_cap_operator_override(monkeypatch):
+    import merlin.targetgen.rtl_engine_policy as policy
+
+    monkeypatch.delenv("MERLIN_GSIM_MAX_SLOTS", raising=False)
+    assert policy._gsim_cap_override() is None
+    monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "15")
+    assert policy._gsim_cap_override() == 15
+    for bad in ("0", "100000"):
+        monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", bad)
+        with pytest.raises(ValueError):
+            policy._gsim_cap_override()

@@ -27,6 +27,7 @@ from merlin_experiments.phase1.context import (
     verify_readback_record,
 )
 from merlin_experiments.phase1.feedback import freeze as freeze_run
+from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
 from merlin_experiments.phase1.feedback import private_full_models as PFM
 from merlin_experiments.phase1.feedback import private_instruction_coordinator as instruction_coordinator
 from merlin_experiments.phase1.feedback import private_instruction_declaration as instruction_declaration
@@ -540,6 +541,14 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         "models": [],
         "reason": "operator-private full-model validation input was not supplied",
     }
+    # The numerical half of the private gate: the static gate's linked programs, executed on the
+    # engines the descriptor declares, after the freeze. A malformed declaration is a grading error.
+    execution_gate = PFX.gate_for(context.descriptor, required_programs=required_full_programs)
+    private_execution: dict | None = (
+        None
+        if execution_gate is None
+        else PFX.not_run(execution_gate, "the static private full-model gate did not pass")
+    )
     if required_full_models and a.private_full_model_spec is not None:
         try:
             source_freeze = _private_source_freeze_for_formal(
@@ -571,6 +580,7 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
                     out=run_dir / "grading_private_full_models",
                     source_freeze=source_freeze,
                     source_freeze_root=(run_dir / "private_full_model_input" / "sources") if source_freeze else None,
+                    build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
                     **(
                         {"linked_elf_admission": instruction_selection.service}
                         if instruction_selection is not None
@@ -580,6 +590,17 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
                 if instruction_selection is not None:
                     instruction_selection.require_facts(facts_binding)
                     private_models["instruction_selection"] = instruction_selection.record()
+                if execution_gate is not None and private_models.get("passed") is True:
+                    # Inside the facts binding: an RTL engine is cited against the facts the build used.
+                    try:
+                        private_execution = PFX.run(
+                            private_models,
+                            execution_gate,
+                            target=context.target,
+                            static_out=run_dir / "grading_private_full_models",
+                        )
+                    except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
+                        private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
             private_models["fact_reader_binding"] = facts_binding
             if (
                 _private_source_freeze_for_formal(
@@ -594,13 +615,21 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
     # A descriptor with no private full-model declaration cannot silently make a new
     # Phase 1 success claim.  Older diagnostic experiments remain runnable, incomplete.
     private_models_complete = bool(required_full_models) and private_models.get("passed") is True
+    # A declared, required execution gate holds completion; a declared deferral is recorded on it.
+    private_execution_complete = (
+        execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
+    )
     formal_grade_complete = bool(
-        public_phase["formal_complete"] and hidden_phase["formal_complete"] and private_models_complete
+        public_phase["formal_complete"]
+        and hidden_phase["formal_complete"]
+        and private_models_complete
+        and private_execution_complete
     )
     completion_failures = [
         *(f"public:{reason}" for reason in public_phase["completion_failures"]),
         *(f"hidden:{reason}" for reason in hidden_phase["completion_failures"]),
         *([] if private_models_complete else ["private_full_models:incomplete"]),
+        *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
     ]
 
     # --- process metrics (from launcher), env, run_manifest ---
@@ -626,6 +655,7 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         "public_dev": public_phase,
         "hidden": hidden_phase,
         "private_full_models": private_models,
+        **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
             "formal_grade_complete": formal_grade_complete,
             **({"phase1_authoring_complete": False} if qualification_only else {}),
