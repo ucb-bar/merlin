@@ -3,7 +3,7 @@ title: Shared compiler authoring plan and launch-specific tool guidance
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [component_scale_generalization, fresh_compiler_origin, component_phase2_workflow]
 code_refs:
   - src/merlin/targetgen/generalization_prompt.py

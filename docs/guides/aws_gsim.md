@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py]
 ---
 
 # Provisioning Gemmini gSIM on a Linux worker
@@ -18,8 +18,10 @@ credentials and generated simulator artifacts outside Git and candidate-visible 
 The native fork procedure below is retained inspection material. Fresh compiler
 experiments require independently issued hardware, minimal software and runtime
 authorities; these build commands alone do not admit an engine or its helpers.
-See [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
-support provider and copied kernel headers have been removed from Merlin.
+See [fresh compiler origin](../design/fresh_compiler_origin.md). The former
+support provider and copied kernel headers have been removed from Merlin; the
+in-repo `examples/gemmini/support` provider is data only, served by the generic
+`merlin.runtime.backends.chipyard_rocc` backend.
 
 ## Clone and install the source stack
 
@@ -41,9 +43,10 @@ checkpoints. Use the [LLVM toolchain guide](llvm_toolchain.md) and the selected 
 configuration. If regenerating frontend captures, also follow the [model2MLIR guide](model2mlir.md)
 and record its source and framework versions independently.
 
-Select independently derived and qualified target support explicitly. A Merlin
-clone supplies shared orchestration and runtime mechanisms; target implementation
-and the private handwritten reference remain out of tree.
+Select target support explicitly. A Merlin clone supplies shared orchestration and the
+generic chipyard RoCC runtime; `examples/gemmini/support` is the data-only provider that
+selects it (contract copy, plugin pointers, and an ISA-headers spec that references the
+pinned bare-metal runtime by digest).
 
 Clone the [public gSIM fork](https://github.com/copparihollmann/gsim) at an exact commit of its
 `merlin` branch (not `master`). The published Merlin integration commit below is an example pin;
@@ -98,10 +101,10 @@ binary and requires its own receipt and qualification. The builder's `native/bui
 it does **not** prove which RTL revision originally elaborated the FIRRTL. Retain that source recipe,
 Chipyard/toolchain revisions and the generated ABI header separately.
 
-From the Merlin checkout, select admitted independent support, exact model and facts explicitly:
+From the Merlin checkout, select the data-only support provider, exact model and facts explicitly:
 
 ```sh
-export MERLIN_TARGET_PATH=${MERLIN_INDEPENDENT_TARGET_SUPPORT:?independent runtime support required}
+export MERLIN_TARGET_PATH="$PWD/examples/gemmini/support"
 export MERLIN_EXT_GSIM=/absolute/pinned/gsim
 export MERLIN_CHIPYARD=/absolute/selected/chipyard
 export MERLIN_EXT_CHIPYARD="$MERLIN_CHIPYARD"

@@ -139,6 +139,13 @@ writes two derived stages into the byte-bound plan:
   `phase2-capsule-coverage.json` → `form_perf_coverage` lists every class at or above the
   template's share threshold and whether it has a member and a vendor bar.
 
+A descriptor may also declare `workload_spec.performance_applications`: independent workloads, disjoint
+from the iteration roster, whose captures are passed with `corpus derive --performance-capture LABEL=PATH`.
+They feed only the form-perf scope, so the Phase 2 cohort can carry the same forms at the extents where
+on-chip capacity, tiling and movement decide the cost, while Phase 1 model forms and source capsules still
+read the iteration roster alone. The declared roster must be selected exactly; each application records its
+`workload_role` in the scope.
+
 Both stages refuse held-out models by name (the descriptor's claim roster and the reviewed
 evaluation-only models in `merlin/contract/claim_models.yaml`). A group capsule reaches disk only
 through `phase0.group_forms.write_group_capsule`, under `group_binding` -- the corpus binding with an

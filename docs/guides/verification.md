@@ -3,7 +3,7 @@ title: Verify a compiler transformation
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-07
+last_verified: 2026-10-09
 related: [phase0_specification, model_lowering, simulator_selection]
 code_refs:
   - src/merlin/verify/receipts.py
