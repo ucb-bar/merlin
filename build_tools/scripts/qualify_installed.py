@@ -100,6 +100,36 @@ SUITES = {
         ),
         "required_modules": ("xdsl", "numpy"),
     },
+    "capture-contraction-formats": {
+        "include_experiments": False,
+        "include_analysis": True,
+        "tests_root": "merlin/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_test_files": (
+            "targetgen/test_contraction_formats.py",
+            "dse/test_capture_format_freezing.py",
+            "dse/test_capture_format_policy.py",
+        ),
+        "tests": (
+            "targetgen/test_contraction_formats.py",
+            "dse/test_capture_format_freezing.py",
+            "dse/test_capture_format_policy.py",
+        ),
+        "support_files": ("fixtures/capture_contraction_inputs.py",),
+        "core_extras": ("xdsl",),
+        "probe_modules": (
+            "merlin.capture.contraction_formats",
+            "merlin.compare.paper_measurement_freeze",
+            "merlin.compare.freeze",
+            "merlin.compare.capture_format_policy",
+            "merlin.compare.paper",
+            "merlin.compare.capture_workflow",
+            "merlin.compare.cli",
+        ),
+        "required_modules": ("xdsl", "numpy", "yaml"),
+    },
     "coherent-measurement": {
         "tests_root": "packages/merlin-experiments/tests",
         "test_fixture_imports": True,
@@ -2075,9 +2105,11 @@ class Recorder:
             raise QualificationFailed(f"{label}: {record['status']}; see {log}")
 
 
-def projects(snapshot, extras, *, include_experiments=True):
+def projects(snapshot, extras, *, include_experiments=True, include_analysis=False):
     result = []
     roots = (Path("."), Path("packages/merlin-experiments")) if include_experiments else (Path("."),)
+    if include_analysis:
+        roots = (*roots, Path("packages/merlin-analysis"))
     for relative in roots:
         directory = snapshot / relative
         project = tomllib.loads((directory / "pyproject.toml").read_text())["project"]
@@ -2212,6 +2244,11 @@ def qualify(
             "packages/merlin-experiments/src",
             "packages/merlin-experiments/setup.py",
             "packages/merlin-experiments/pyproject.toml",
+            *(
+                ["packages/merlin-analysis/src", "packages/merlin-analysis/pyproject.toml"]
+                if SUITES[suite].get("include_analysis")
+                else []
+            ),
             *[(tests_root / n).as_posix() for n in test_files],
             *source_input_archive_roots(source_inputs),
             *resources,
@@ -2232,6 +2269,7 @@ def qualify(
             snapshot,
             SUITES[suite]["core_extras"],
             include_experiments=SUITES[suite].get("include_experiments", True),
+            include_analysis=SUITES[suite].get("include_analysis", False),
         )
         runner.save()
         wheels, install = [], []

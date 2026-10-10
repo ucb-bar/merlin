@@ -186,6 +186,26 @@ def test_versions_and_assisted_extra_come_from_projects(tmp_path):
         Q.projects(tmp_path, ("undeclared",))
 
 
+def test_analysis_project_is_explicit_and_uses_declared_distribution(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="core"\nversion="1"\n')
+    analysis = tmp_path / "packages/merlin-analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "pyproject.toml").write_text('[project]\nname="analysis"\nversion="2"\n')
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False)] == ["core"]
+    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False, include_analysis=True)] == [
+        "core",
+        "analysis",
+    ]
+    suite = Q.SUITES["capture-contraction-formats"]
+    assert suite["include_analysis"] is True and suite["include_experiments"] is False
+    assert suite["tests"] == (
+        "targetgen/test_contraction_formats.py",
+        "dse/test_capture_format_freezing.py",
+        "dse/test_capture_format_policy.py",
+    )
+    assert "merlin.compare.freeze" in suite["probe_modules"]
+
+
 def test_failed_child_keeps_terminal_record_and_log(tmp_path):
     report = {"commands": []}
     recorder = Q.Recorder(tmp_path, report, 5)
@@ -314,6 +334,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             files = {
                 "pyproject.toml": core,
                 "packages/merlin-experiments/pyproject.toml": '[project]\nname="merlin-experiments"\nversion="9.8.7"\n',
+                "packages/merlin-analysis/pyproject.toml": '[project]\nname="merlin-analysis"\nversion="2.3.4"\n',
             }
             for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
                 tests_root = Q.SUITES[suite].get("tests_root", "packages/merlin-experiments/tests")
@@ -418,6 +439,8 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         return
     assert success
     versions = ["7.8.9", "9.8.7"] if Q.SUITES[suite].get("include_experiments", True) else ["7.8.9"]
+    if Q.SUITES[suite].get("include_analysis"):
+        versions.append("2.3.4")
     assert [p["version"] for p in report["projects"]] == versions
     labels = [name for name, _ in calls]
     assert (
@@ -471,7 +494,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     assert report["test_process_policy"] == ("deny_processes_and_listeners" if guarded else "suite_defined")
     assert test_command[test_command.index("--basetemp") + 1] == str(external / "test-tmp")
     if not Q.SUITES[suite].get("include_experiments", True):
-        assert len(report["projects"]) == 1
+        assert len(report["projects"]) == (2 if Q.SUITES[suite].get("include_analysis") else 1)
         assert not any("experiments" in label for label in labels)
         assert not any(module.startswith("merlin_experiments") for module in report["probe_modules"])
     assert "--source-root" in dict(calls)["layout"]

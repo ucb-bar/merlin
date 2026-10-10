@@ -6,12 +6,13 @@ import copy
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
 from merlin.capture import bundle
+from merlin.capture.contraction_formats import CaptureContractionSelection
 from merlin.common.artifacts import utc_stamp
 from merlin.common.paths import repo_root
 from merlin.common.yaml import write_yaml
@@ -154,7 +155,7 @@ def sha256_paths(paths: Iterable[str | Path]) -> str:
         )
         for path in files:
             rel = path.name if root.is_file() else path.relative_to(root).as_posix()
-            prefix = f"{root_index}:{rel}".encode("utf-8")
+            prefix = f"{root_index}:{rel}".encode()
             if path.is_symlink():
                 digest.update(b"L\0" + prefix + b"\0" + str(path.readlink()).encode("utf-8") + b"\0")
             elif path.is_file():
@@ -180,6 +181,8 @@ def freeze_study(
     runtime_paths: Iterable[str | Path],
     toolchain_authority_path: str | Path,
     output_path: str | Path,
+    contraction_selections: Mapping[tuple[str, str], CaptureContractionSelection] | None = None,
+    contraction_originals: Mapping | None = None,
 ) -> PaperStudySpec:
     """Resolve all mutable inputs and write a new frozen study spec.
 
@@ -187,6 +190,16 @@ def freeze_study(
     FP32 cannot accidentally refer to different unrecorded artifacts. Every capture must provide a
     complete, paper-ready semantic session before it can be frozen.
     """
+    from .capture_format_policy import (
+        declared_format_cells,
+        prepare_declared_formats,
+        selection_records,
+        validate_format_selection_membership,
+    )
+
+    validate_format_selection_membership(
+        spec.canonical_dict(), originals=contraction_originals, prepared=contraction_selections
+    )
     if spec.source_path is None:
         raise ValueError("cannot freeze: paper study source path is absent")
     study_bytes = spec.source_path.read_bytes()
@@ -455,15 +468,24 @@ def freeze_study(
     from .paper_measurement_freeze import construct_measurement_evidence
 
     raw["freeze"]["compiler_source_sha256"] = compiler_digest
+    selected_formats = prepare_declared_formats(
+        raw, capture_roots, originals=contraction_originals, prepared=contraction_selections
+    )
     measurement_io, measurement_paths = construct_measurement_evidence(
         raw,
         capture_roots=capture_roots,
         output_path=Path(output_path).resolve(),
         toolchain_authority_path=authority_path,
         toolchain_authority_sha256=authority_digest,
+        contraction_selections=selected_formats,
     )
     for path in measurement_paths:
         long_lived_inputs.append((f"measurement evidence {path.name}", [path], sha256_paths([path])))
+    required_formats = declared_format_cells(raw)
+    if required_formats:
+        raw["freeze"]["contraction_format_selections"] = selection_records(
+            {key: selected_formats[key] for key in required_formats}
+        )
 
     baseline_sources = root / "merlin" / "benchmarks" / "rvv_paper" / "baseline_sources.yaml"
     if not baseline_sources.is_file():

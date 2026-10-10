@@ -15,17 +15,24 @@ import os
 import subprocess
 import time
 import tomllib
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from merlin.capture import bundle as capture_bundle
+from merlin.capture import contraction_formats as F
 from merlin.common import jsonio as _mjson
 from merlin.common.artifacts import ProductDir, new_product
 from merlin.common.paths import bench_dir, repo_root
 from merlin.common.yaml import write_yaml
 
+from .capture_format_policy import (
+    declared_format_cells,
+    load_original_format_selections,
+    validate_format_selection_membership,
+)
 from .freeze import sha256_paths
 from .host_experiment import HostExperimentSpec
 from .paper import ModelSpec, PaperStudySpec
@@ -56,10 +63,12 @@ class CaptureTask:
     command: tuple[str, ...]
     environment: dict[str, str]
     loader_sha256: str
+    contraction_policy: str | None = None
+    contraction_originals: F.CaptureContractionOriginalSelection | None = None
 
     def to_dict(self) -> dict[str, Any]:
         command = list(self.command)
-        return {
+        record = {
             "model": self.model.name,
             "capture": self.model.capture,
             "checkpoint": self.model.checkpoint,
@@ -76,10 +85,18 @@ class CaptureTask:
             "loader_sha256": self.loader_sha256,
             "expected_provenance": dict(self.model.expected_provenance),
         }
+        if self.contraction_policy is not None:
+            if self.contraction_originals is None:
+                raise ValueError("Declared contraction format selection is unavailable.")
+            selected = F.original_contraction_selection_record(self.contraction_originals)
+            record["contraction_format_requirement"] = self.contraction_policy
+            record["contraction_original_selection"] = selected
+            record["contraction_original_selection_sha256"] = _json_sha256(selected)
+        return record
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _json_sha256(value: Any) -> str:
@@ -223,10 +240,22 @@ def _preflight(
 
 
 def _tasks(
-    study: PaperStudySpec, record: dict[str, Any], paper_inputs: Path, model2mlir: Path, product: ProductDir
+    study: PaperStudySpec,
+    record: dict[str, Any],
+    paper_inputs: Path,
+    model2mlir: Path,
+    product: ProductDir,
+    contraction_originals: Mapping | None = None,
 ) -> tuple[list[CaptureTask], list[str]]:
     tasks: list[CaptureTask] = []
     errors: list[str] = []
+    try:
+        originals, _ = validate_format_selection_membership(study.canonical_dict(), originals=contraction_originals)
+        for selected in originals.values():
+            F.verify_original_contraction_selection(selected)
+    except ValueError as error:
+        return [], [str(error)]
+    requirements = declared_format_cells(study.canonical_dict())
     script = (model2mlir / "workloads" / "capture_consistent.py").resolve()
     records = record.get("models") if isinstance(record.get("models"), dict) else {}
     for model in study.models:
@@ -264,6 +293,8 @@ def _tasks(
                     command=command,
                     environment=exact_environment,
                     loader_sha256=loader_digest,
+                    contraction_policy=requirements.get((model.name, precision)),
+                    contraction_originals=originals.get((model.name, precision)),
                 )
             )
     expected = sum(len(model.precisions) for model in study.models)
@@ -278,6 +309,11 @@ _write_json = _mjson.write_pretty_json
 
 
 def _validate_output(task: CaptureTask, source: dict[str, Any], elapsed_ns: int) -> dict[str, Any]:
+    format_selection = None
+    if task.contraction_policy is not None:
+        if task.contraction_originals is None or task.contraction_originals.policy != task.contraction_policy:
+            raise ValueError("Declared contraction format selection is unavailable.")
+        format_selection = F.prepare_capture_contraction_selection(task.output, task.contraction_originals)
     sidecar = {
         "version": 1,
         "model": task.model.name,
@@ -307,7 +343,11 @@ def _validate_output(task: CaptureTask, source: dict[str, Any], elapsed_ns: int)
     from .paper_measurement_freeze import write_capture_measurement_source_receipt
 
     source_receipt = write_capture_measurement_source_receipt(
-        task.output, model=task.model.name, precision=task.precision, observations=task.model.session.observations
+        task.output,
+        model=task.model.name,
+        precision=task.precision,
+        observations=task.model.session.observations,
+        contraction_selection=format_selection,
     )
     return {
         "path": str(task.output.resolve()),
@@ -334,6 +374,7 @@ def materialize(
     execute: bool = False,
     runner: Callable[[CaptureTask, dict[str, str], Path, Path], int] | None = None,
     product: ProductDir | None = None,
+    contraction_originals: Mapping | None = None,
 ) -> Path:
     """Plan or execute the complete five-model/two-precision paper capture set.
 
@@ -354,7 +395,7 @@ def materialize(
     plan_path = product.add_artifact("capture-plan.json")
     paper_inputs = _resolve_paper_inputs(study)
     errors, evidence, record = _preflight(study, host, model2mlir, paper_inputs)
-    tasks, task_errors = _tasks(study, record, paper_inputs, model2mlir, product)
+    tasks, task_errors = _tasks(study, record, paper_inputs, model2mlir, product, contraction_originals)
     errors.extend(task_errors)
     started_at = _utc_now()
     plan: dict[str, Any] = {
@@ -391,6 +432,14 @@ def materialize(
     total_start_ns = time.monotonic_ns()
     failure: str | None = None
     for task in tasks:
+        # Reopen the immutable original selection immediately before dispatch.
+        # Post-capture metadata cannot shrink or replace this denominator.
+        try:
+            dispatch_record = task.to_dict()
+        except ValueError as error:
+            failure = str(error)
+            break
+        original_identity = dispatch_record.get("contraction_original_selection_sha256")
         log_base = f"logs/{task.model.name}/{task.variant}"
         stdout_path = product.add_artifact(log_base + ".stdout.log")
         stderr_path = product.add_artifact(log_base + ".stderr.log")
@@ -403,7 +452,7 @@ def materialize(
         returncode = run_task(task, _sanitized_environment(task.environment), stdout_path, stderr_path)
         elapsed_ns = time.monotonic_ns() - task_start_ns
         result = {
-            **task.to_dict(),
+            **dispatch_record,
             "started_at": task_start_wall,
             "finished_at": _utc_now(),
             "elapsed_ns": elapsed_ns,
@@ -416,6 +465,8 @@ def materialize(
             failure = f"{task.model.name}/{task.precision}: capture command returned {returncode}"
         else:
             try:
+                if task.to_dict().get("contraction_original_selection_sha256") != original_identity:
+                    raise ValueError("Declared contraction format membership is incomplete.")
                 result.update(_validate_output(task, source, elapsed_ns))
                 result["status"] = "validated"
             except (OSError, ValueError) as exc:
@@ -483,13 +534,27 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--model2mlir", type=Path, default=capture_bundle.model2mlir_root())
     parser.add_argument(
+        "--contraction-originals", type=Path, help="explicit original-program file/SHA selection descriptor (data only)"
+    )
+    parser.add_argument("--contraction-originals-sha256", help="independently selected SHA-256 of that descriptor")
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="run all ten heavy captures; without this flag only a timestamped preflight is written",
     )
     args = parser.parse_args(argv)
+    originals = None
+    if (args.contraction_originals is None) != (args.contraction_originals_sha256 is None):
+        parser.error("Declared contraction format selection is unavailable.")
+    if args.contraction_originals is not None:
+        from merlin.common.pinned_files import PinnedFile
+
+        descriptor = PinnedFile(args.contraction_originals, args.contraction_originals_sha256)
+        originals = load_original_format_selections(descriptor)
     try:
-        output = materialize(args.study, args.host_experiment, args.model2mlir, execute=args.execute)
+        output = materialize(
+            args.study, args.host_experiment, args.model2mlir, execute=args.execute, contraction_originals=originals
+        )
     except CaptureWorkflowNotReady as exc:
         print(f"merlin-paper-capture: BLOCKED — {exc}")
         print(f"  {exc.output_dir / 'capture-plan.json'}")
