@@ -9,7 +9,7 @@ from pathlib import Path
 from merlin.common import invocation_record
 from merlin_experiments.phase2 import contracts as C
 
-from .component_qualification_domain import selected_obligations
+from .component_qualification_members import obligations as selected_obligations
 from .component_witness import (
     REQUIRED_EXECUTION_EFFECTS,
     ComponentStageFile,
@@ -65,11 +65,11 @@ def invocation_members(root):
     return records
 
 
-def require_member_invocations(report, grade_root, records, *, preparation=None):
+def require_member_invocations(report, grade_root, records, *, preparation=None, original_members=None):
     """Each original mandatory case must have its own actual observed execution path."""
     grade_root = _direct_directory(grade_root)
     paths = tuple(Path(row["path"]) for row in records)
-    for obligation in selected_obligations(report, preparation=preparation):
+    for obligation in selected_obligations(report, preparation=preparation, original_members=original_members):
         for member in obligation["members"]:
             name = Path(member["name"])
             if name.is_absolute() or len(name.parts) != 1 or name.parts[0] in {".", ".."}:
@@ -80,12 +80,20 @@ def require_member_invocations(report, grade_root, records, *, preparation=None)
 
 
 def replay_stage_witnesses(
-    *, rows, report, corpus_root, grade_root, candidate_sha256, descriptor_sha256, preparation=None
+    *,
+    rows,
+    report,
+    corpus_root,
+    grade_root,
+    candidate_sha256,
+    descriptor_sha256,
+    preparation=None,
+    original_members=None,
 ):
     """Recheck every complete original admitted member and source/effect join."""
     declarations = {row["id"]: row for row in report.get("declaration", {}).get("obligations", [])}
     selected = {}
-    for obligation in selected_obligations(report, preparation=preparation):
+    for obligation in selected_obligations(report, preparation=preparation, original_members=original_members):
         if obligation["expectation"] == "unsupported_program":
             continue
         for member in obligation["members"]:
@@ -138,7 +146,16 @@ def replay_stage_witnesses(
 
 
 def verify_execution_evidence(
-    *, document, compiler_root, grade_root, candidate_sha256, report, corpus_root, descriptor_sha256, preparation=None
+    *,
+    document,
+    compiler_root,
+    grade_root,
+    candidate_sha256,
+    report,
+    corpus_root,
+    descriptor_sha256,
+    preparation=None,
+    original_members=None,
 ):
     """Require current source and all actual recorded inputs/products to match issuance."""
     if (
@@ -150,7 +167,9 @@ def verify_execution_evidence(
         records = invocation_members(grade_root)
         if records != document.get("invocation_evidence"):
             raise C.StageGateError("component actual invocation membership changed after qualification")
-        require_member_invocations(report, grade_root, records, preparation=preparation)
+        require_member_invocations(
+            report, grade_root, records, preparation=preparation, original_members=original_members
+        )
         replay_stage_witnesses(
             rows=document["stage_witnesses"],
             report=report,
@@ -159,6 +178,7 @@ def verify_execution_evidence(
             candidate_sha256=candidate_sha256,
             descriptor_sha256=descriptor_sha256,
             preparation=preparation,
+            original_members=original_members,
         )
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise C.StageGateError("component actual execution evidence changed: " + str(error)) from error

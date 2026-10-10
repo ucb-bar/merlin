@@ -128,7 +128,7 @@ def test_environment_removes_source_and_provider_overrides(monkeypatch):
     assert not {"UV_OVERRIDE", "UV_EXCLUDE", "UV_CONSTRAINT", "UV_BUILD_CONSTRAINT"} & environment.keys()
 
 
-@pytest.mark.parametrize("suite", ["compile-only", "component-convergence"])
+@pytest.mark.parametrize("suite", ["compile-only", "component-convergence", "original-candidate-members"])
 def test_explicit_native_roster_is_closed_complete_and_bound_to_actual_bytes(tmp_path, monkeypatch, suite):
     selections = []
     for name in Q.SUITES[suite]["native_tools"]:
@@ -301,6 +301,7 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         ("compile-only", True),
         ("component-convergence", True),
         ("original-pointwise-host", True),
+        ("original-candidate-members", True),
     ],
 )
 def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
@@ -320,11 +321,14 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
 
     def run(self, label, argv, cwd, *, stdout=None):
         calls.append((label, list(map(str, argv))))
-        if suite == "original-pointwise-host" and native:
+        if suite in ("original-pointwise-host", "original-candidate-members") and native:
             assert self.environment["MERLIN_COMPILER_PYTHON"] == str(tmp_path / "compiler-python")
             assert self.environment["MERLIN_MLIR_TRANSLATE"] == str(tmp_path / "mlir-translate")
             assert self.environment["MERLIN_LLVM_LLC"] == str(tmp_path / "llvm-llc")
             assert self.environment["MERLIN_M2M_DIR"] == str(frontend)
+            if suite == "original-candidate-members":
+                assert self.environment["MERLIN_TEST_BWRAP"] == str(tmp_path / "bwrap")
+                assert self.environment["MERLIN_CLANG"] == str(tmp_path / "clang")
         if label == "resource-manifest":
             Path(stdout).write_text('{"files": []}')
         elif label == "source-archive":
@@ -393,7 +397,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o700)
             selections.append(name + "=" + str(tool))
-        if suite == "original-pointwise-host":
+        if suite in ("original-pointwise-host", "original-candidate-members"):
             frontend = tmp_path / "frontend"
             (frontend / "m2m").mkdir(parents=True)
             (frontend / "m2m/__init__.py").write_text("# owned source identity fixture\n")

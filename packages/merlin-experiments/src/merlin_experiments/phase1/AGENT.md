@@ -191,6 +191,18 @@ mandatory development, needs fresh numerical/executable/stage evidence and
 actual invocation reopening. Source completion never grants candidate static,
 numerical, effect, hardware or runtime authority; source-only guards remain
 unestablished for Phase 2. Missing source premises refuse before the grader.
+`component_original_members` binds the exact live standard-IR/reference roster
+to private ordinary candidate inputs. Preserve every original call, guard and
+private slot, exact ordered types and original operation-local numerical policy;
+unsupported or budget-denied slots remain unavailable. Only the current standard
+source file enters the compiler namespace. Reference bytes, replay/comparison
+owners and private envelopes remain grader-only. `component_qualification_members`
+joins those slots to all original requirement IDs and requires actual candidate
+execution and stage evidence for each; complete source inputs cannot qualify a
+compiler or establish descriptor storage, resources, effects or hardware runtime.
+The `original-candidate-members` installed suite requires the complete selected
+test roster, including the actual source-only namespace check. An unavailable
+namespace is retained as a prerequisite failure, never an isolation qualification.
 The `source-preparation-qualification` installed suite retains actual native
 clone/dependency/output controls and preparation refusals. Its positive wiring
 facets use synthetic author/runtime/static authority and cannot admit an

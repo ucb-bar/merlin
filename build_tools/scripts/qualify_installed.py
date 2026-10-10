@@ -9,6 +9,9 @@ source-preparation-qualification replays versioned source domain selection and r
 dependency/clone/output controls with synthetic author/runtime facets; it cannot qualify an experiment.
 original-pointwise-host requires all seven original execution members with zero skips,
 including without an optional native-tool inventory; missing compiler selections refuse.
+original-candidate-members checks full typed transport and original qualification membership.
+Every selected test is mandatory, including the actual source-only namespace check;
+missing native tools or unavailable namespace isolation cannot qualify the suite.
 compile-only checks ordinary source/object/link transport without tensor values or semantic authority.
 Its optional --native-tool selections pin all three native executables and require zero test skips.
 component-convergence admits the same tools for its declared Phase-1 compile-role transport tests;
@@ -209,6 +212,41 @@ SUITES = {
         "probe_modules": (
             "merlin_experiments.phase1.component_source_applicability",
             "merlin.llvmlower.kernel_backend",
+        ),
+        "required_modules": ("xdsl", "jsonschema", "numpy"),
+    },
+    "original-candidate-members": {
+        "tests_root": "packages/merlin-experiments/tests",
+        "test_fixture_imports": True,
+        "collect_selected_tests": True,
+        "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
+        "native_tools": ("compiler-python", "mlir-translate", "llvm-llc", "clang", "bwrap", "firtool"),
+        "native_python_entries": ("compiler-python",),
+        "native_sources": {"m2m": {"package": "m2m", "environment_key": "MERLIN_M2M_DIR"}},
+        "native_test_files": (
+            "test_component_original_members.py",
+            "test_component_original_member_transport.py",
+            "test_component_original_member_host.py",
+            "test_component_qualification.py",
+            "test_component_runtime_support.py",
+        ),
+        "tests": (
+            "test_component_original_members.py",
+            "test_component_original_member_transport.py",
+            "test_component_original_member_host.py",
+            "test_component_qualification.py",
+            "test_component_runtime_support.py",
+        ),
+        "support_files": ("test_component_original_pointwise_execution.py", "test_component_experiment.py"),
+        "core_extras": ("xdsl", "targetgen"),
+        "probe_modules": (
+            "merlin.common.access",
+            "merlin.targetgen.native_component_inputs",
+            "merlin.targetgen.native_component_execution",
+            "merlin_experiments.phase1.component_original_members",
+            "merlin_experiments.phase1.component_qualification_members",
+            "merlin_experiments.phase1.component_qualification",
+            "merlin_experiments.phase2.component_runtime_support",
         ),
         "required_modules": ("xdsl", "jsonschema", "numpy"),
     },
@@ -1787,6 +1825,7 @@ def clean_environment():
 
 
 NATIVE_TOOL_ENVIRONMENT = {
+    "bwrap": "MERLIN_TEST_BWRAP",
     "circt-opt": "MERLIN_TEST_CIRCT_OPT",
     "clang": "MERLIN_CLANG",
     "compiler-python": "MERLIN_COMPILER_PYTHON",
