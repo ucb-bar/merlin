@@ -249,6 +249,21 @@ class InfraFailure(CertFailure):
     """
 
 
+class NotMeasuredFailure(CertFailure):
+    """A gate that produced NO verdict -- e.g. a mandatory tier stopped by its wall clock.
+
+    It still fails closed (never a pass), but ``status`` is one of the not-measured statuses
+    (``capsule_common.NOT_MEASURED_STATUSES``), so a timeout is neither counted against the submission
+    as a numeric failure nor allowed to certify it. ``facts`` (tier, tier_reason, cycles the run printed
+    before it was stopped, ...) are copied onto the recorded failure.
+    """
+
+    def __init__(self, plane: str, category, detail: str, *, status: str, **facts):
+        super().__init__(plane, category, detail)
+        self.status = status
+        self.facts = facts
+
+
 class BackendDeclined(Exception):
     """The backend STATED that it does not handle this capsule, instead of emitting a wrong program.
 

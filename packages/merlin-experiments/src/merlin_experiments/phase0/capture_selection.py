@@ -92,15 +92,15 @@ def select(
 ) -> dict:
     """Write one owner-only selection before any capture output exists.
 
-    V1 selects checkpoint-free loaders. V2 inventories one explicit checkpoint,
+    V1 selects checkpoint-free loaders; it may bind an operator-selected execution timeout
+    (120..14400 s), which issue and the attestation replay then both use, and otherwise keeps
+    the historical fixed 120 s and its historical bytes. V2 inventories one explicit checkpoint,
     any additional input files, and all declared loader environment reads before
     the sandbox sees them. Neither selection grants compilation admission.
     """
     if checkpoint is not None and checkpoint_guest_member is None:
         raise ValueError("selected checkpoint requires an exact guest member")
-    if checkpoint is None and any(
-        value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env, execution_timeout_seconds)
-    ):
+    if checkpoint is None and any(value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env)):
         raise ValueError("declared loader environment and extra inputs require a selected checkpoint")
     run = _canonical_path(Path(run_dir), exists=False)
     destination = _canonical_path(Path(output_dir), exists=False)
@@ -225,7 +225,11 @@ def issue(path: Path, *, expected_sha256: str) -> Path:
                 "execution_timeout_seconds": plan["execution_timeout_seconds"],
             }
             if selected["schema"] == SCHEMA_V2
-            else {}
+            else (
+                {"execution_timeout_seconds": plan["execution_timeout_seconds"]}
+                if "execution_timeout_seconds" in plan
+                else {}
+            )
         ),
     )
     bwrap = _bwrap_binary(Path(selected["bwrap"]["path"]))
@@ -331,3 +335,51 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path) -> dict:
     if _digest(Path(path).read_bytes()) != expected_sha256:
         raise ValueError("capture selection changed during replay")
     return result
+
+
+def attest(path: Path, *, expected_sha256: str, output: Path) -> dict:
+    """Replay one issued selected capture and write its sealed execution attestation.
+
+    A v1 selection (checkpoint-free loader) yields the ``merlin.sealed_m2m_cpu`` attestation of its
+    ``model.mlir``; a v2 selection (explicit checkpoint, extra inputs and loader environment) yields
+    the v3 attestation of the complete capture root, single program or saved session. Either is
+    issued only from a fresh :func:`verify` replay of these exact selected bytes, and is written to a
+    fresh owner-only file outside the selected run, so the attestation never alters what it attests.
+    """
+    from .capture_execution_attestation import attest_sealed_m2m, attest_sealed_m2m_v3
+
+    selected = load(path, expected_sha256=expected_sha256)
+    run = _canonical_path(Path(selected["run_dir"]), exists=True)
+    destination = _canonical_path(Path(output), exists=False)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("capture attestation output must be fresh")
+    if not destination.parent.is_dir():
+        raise ValueError("capture attestation output parent must already exist")
+    selection_path = _canonical_path(Path(path), exists=True)
+    if destination.is_relative_to(run / "capture") or destination.is_relative_to(run / "snapshots"):
+        raise ValueError("capture attestation output may not enter the attested capture or its snapshots")
+    if destination.parent == selection_path.parent:
+        raise ValueError("capture attestation output may not enter the owner-only selection directory")
+    if selected["schema"] == SCHEMA_V2:
+        capture = run / "capture"
+        replay = verify(path, expected_sha256=expected_sha256, model_path=capture)
+        document = attest_sealed_m2m_v3(replay, selection_path=selection_path, capture_path=capture)
+    else:
+        model = run / "capture/model.mlir"
+        replay = verify(path, expected_sha256=expected_sha256, model_path=model)
+        document = attest_sealed_m2m(replay, selection_path=selection_path, model_path=model)
+    raw = _json(document) + b"\n"
+    with destination.open("xb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    destination.chmod(0o400)
+    if _digest(Path(path).read_bytes()) != expected_sha256:
+        raise ValueError("capture selection changed during attestation")
+    return {
+        "capture_execution_attestation": str(destination),
+        "capture_execution_attestation_sha256": _digest(raw),
+        "issuer": document["issuer"],
+        "selection_sha256": expected_sha256,
+        "capture": document["capture"],
+    }

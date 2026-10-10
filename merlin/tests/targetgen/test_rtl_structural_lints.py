@@ -14,9 +14,10 @@ from __future__ import annotations
 import copy
 
 import pytest
+import selected_driver
 from gemmini_rtl_test_support import checks as RC
 
-pytestmark = pytest.mark.target("gemmini")
+pytestmark = [pytest.mark.target("gemmini"), selected_driver.requires_package_owned_support("gemmini")]
 
 #: RTL-shaped facts, passed as the explicit override so these tests exercise the CHECKS rather than the
 #: fact extractor. The mesh here plays the role of "whatever the target's array turns out to be": every

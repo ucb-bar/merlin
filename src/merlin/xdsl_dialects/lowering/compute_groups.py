@@ -404,10 +404,24 @@ def classify(op) -> Stage | None:
     return Stage(ELEMENTWISE, detail=" ".join(sorted(kinds)))
 
 
+def _is_scalar_fill(owner) -> bool:
+    """``tensor.splat`` / ``linalg.fill`` whose filled value is a rank-0 scalar."""
+    operands = list(owner.operands)
+    if not operands:
+        return False
+    shape, _ = mq.type_shape_dtype(operands[0].type)
+    return not shape
+
+
 def _broadcast_dims(value) -> tuple[int, ...] | None:
     """Output dims a broadcast's SOURCE varies over, or ``None`` when ``value`` is not a broadcast."""
     owner = getattr(value, "owner", None)
-    if owner is None or not hasattr(owner, "operands") or mq.op_name(owner) != "linalg.generic":
+    if owner is None or not hasattr(owner, "operands"):
+        return None
+    if mq.op_name(owner) in ("tensor.splat", "linalg.fill") and _is_scalar_fill(owner):
+        # A scalar spread to the full shape varies over no dim: it is a per-tensor value.
+        return ()
+    if mq.op_name(owner) != "linalg.generic":
         return None
     if CC.classify_generic(owner) != "movement" or _n_inputs(owner) != 1:
         return None
@@ -592,11 +606,23 @@ class Admission:
 class TargetOracle:
     """The target's answers, asked through the same oracles the rest of the system uses."""
 
-    def __init__(self, target: str, *, readout: Any | None = None, prohibited_roles=(), semantic_facts=None):
+    def __init__(
+        self,
+        target: str,
+        *,
+        readout: Any | None = None,
+        prohibited_roles=(),
+        semantic_facts=None,
+        routes: Sequence[Any] | None = None,
+    ):
         from merlin.targetgen import eligibility as E
         from merlin.targetgen import readout_facet
 
         self.target = target
+        # The target's declared non-readout stage routes (a bias seeded into the accumulator before
+        # the contraction, say). A stage no readout applies is still carried by the group when one
+        # of these routes composes it with a contraction.
+        self.routes = tuple(routes) if routes is not None else tuple(readout_facet.epilogue_stage_routes(target))
         # The experiment's prohibited instruction roles: a standalone form that needs one is refused.
         self.prohibited_roles, self.semantic_facts = tuple(prohibited_roles), semantic_facts
         self._E = E
@@ -638,8 +664,17 @@ class TargetOracle:
                                    semantic_facts=self.semantic_facts)  # fmt: skip
 
     def absorbs(self, kind: str) -> Admission:
-        """Does a readout this target DECLARES carry ``kind`` out of a contraction with it?"""
-        return readout_absorbs(kind, self.readout, target=self.target)
+        """Does a readout, or a declared stage route, carry ``kind`` out of a contraction with it?"""
+        verdict = readout_absorbs(kind, self.readout, target=self.target)
+        if verdict.admitted or verdict.refusal != READOUT_DOES_NOT_APPLY:
+            return verdict
+        stage = declared_stage_name(kind)
+        if any(
+            getattr(route, "stage", None) == stage and getattr(route, "composed_with", None) == "contraction"
+            for route in self.routes
+        ):
+            return Admission(True)
+        return verdict
 
     def ask(
         self,
@@ -1222,6 +1257,12 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
     axes = _root_axes(root)
     value = root.results[0] if root.results else None
     pending_pad: Any | None = None
+    # An integer accumulator converted to a wider float BEFORE its output scale is the first half of
+    # a scaled store written as dequantize -> scale (`float(acc) * s_in * s_w`), which is how a
+    # static integerization emits every contraction's readout. It is held, like a pad, and kept only
+    # when an output scale is the next stage; anything else leaves it on the host as before.
+    pending_cast: list[Any] | None = None
+    converted_at: int | None = None  # where an accepted accumulator conversion entered ``members``
     views: list[Any] = []  # looked through; kept only if a stage follows them
     while value is not None:
         users = _users(value)
@@ -1239,12 +1280,31 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
         stage = stage_of.get(id(user))
         if stage is None or id(user) in taken:
             break
-        if stage.kind == VIEW:
+        if stage.kind == VIEW or (stage.kind == MOVEMENT and mq.op_name(user) == "linalg.transpose"):
+            # A pure permutation only relabels the result's axes (the capture's layout convention);
+            # like a reshape it is looked through and kept only if a stage follows it.
             views.append(user)
             value = user.results[0]
             continue
         if stage.kind == PAD and pending_pad is None:
             pending_pad, value = user, user.results[0]  # kept only if a pool follows
+            continue
+        if pending_cast is not None and stage.kind != SCALE:
+            group.stopped_by, group.stopped_at = CAST, pending_cast[-1]
+            group.refusal = READOUT_REQUIRES_SCALE
+            group.reason = (
+                f"'cast' is a conversion of a scaled store, but this group has no output scale (the "
+                f"conversion is followed by {stage.kind!r}); the conversion must remain on the host"
+            )
+            break
+        if (
+            stage.kind == CAST
+            and pending_cast is None
+            and pending_pad is None
+            and not any(stage_of[id(member)].kind == SCALE for member in members)
+        ):
+            pending_cast, views = [*views, user], []
+            value = user.results[0] if user.results else None
             continue
         if stage.kind in CONVERSION_OF_SCALED_STORE and not any(
             stage_of[id(member)].kind == SCALE for member in members
@@ -1298,6 +1358,10 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
                 break
             members.append(pending_pad)
             pending_pad = None
+        if pending_cast is not None:
+            converted_at = len(members)
+            members += pending_cast
+            pending_cast = None
         members += views
         views = []
         members.append(user)
@@ -1307,6 +1371,25 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
         value = user.results[0] if user.results else None
         if stage.kind == QUANTIZE:
             break  # the region is closed: integers out
+    if converted_at is not None and not any(stage_of[id(member)].kind == QUANTIZE for member in members):
+        # The chain converted and scaled the accumulator and never quantized it: the result is a
+        # float tensor, which no integer readout writes. The whole chain stays on the host.
+        stopped = members[converted_at]
+        members = members[:converted_at]
+        earlier = f" (growth had stopped at {group.stopped_by!r}: {group.reason})" if group.refusal else ""
+        group.stopped_by, group.stopped_at = CAST, stopped
+        group.refusal = READOUT_REQUIRES_SCALE
+        group.reason = (
+            "'cast' is a conversion of a scaled store, but no quantize closes this group's scale, so its "
+            "result is a float tensor no integer readout writes; the conversion must remain on the host" + earlier
+        )
+    elif pending_cast is not None and group.refusal is None:
+        group.stopped_by, group.stopped_at = CAST, pending_cast[-1]
+        group.refusal = READOUT_REQUIRES_SCALE
+        group.reason = (
+            "'cast' is a conversion of a scaled store, but this group has no output scale; "
+            "the conversion must remain on the host"
+        )
     group.members = members
     return group
 

@@ -244,6 +244,22 @@
           "additionalProperties": {
             "type": "boolean"
           }
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["compute", "refuse"],
+          "description": "What a correct backend does with this capsule. Absent or 'compute': emit a program and match the golden. 'refuse': the operation needs something the target's evidence says it cannot perform under this capsule's placement, so the only correct answer is the backend's stated decline; an emitted program fails as MUST_REFUSE_VIOLATED (merlin.targetgen.expected_refusal)."
+        },
+        "refusal": {
+          "type": "object",
+          "description": "For outcome 'refuse': what is refused and the derived evidence for it.",
+          "required": ["reason", "evidence"],
+          "properties": {
+            "reason": {"type": "string"},
+            "evidence": {"type": "string"},
+            "stage": {"type": "string"}
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -377,6 +393,10 @@
             "application_operation",
             "host_lane",
             "carried_state",
+            "epilogue_refusal",
+            "residual_state",
+            "multi_block",
+            "groups",
             "roster",
             "model",
             "kernel"

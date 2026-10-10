@@ -244,6 +244,107 @@ def _validate_capture_recipes(
     return selected_policies
 
 
+def performance_scale_selection(
+    workload_spec: dict | None, captures: dict[str, Path], performance_captures: dict[str, Path] | None
+) -> dict[str, Path]:
+    """The selected Phase-2-only captures, checked against the declared performance roster.
+
+    ``workload_spec.performance_applications`` names independent workloads whose forms enter only
+    ``scope.performance.forms``: the Phase 2 cohort's sources, never Phase 1 forms or source capsules.
+    The roster is declared, like the iteration roster, so a selection can be neither silently partial
+    nor silently extra; the labels and capture paths must be disjoint from the iteration selection.
+    Held-out models are refused by the form-scope derivation like any other source.
+    """
+    declared = (workload_spec or {}).get("performance_applications")
+    selected = dict(performance_captures or {})
+    if declared is None:
+        if selected:
+            raise ValueError("performance-scale captures need a declared workload_spec.performance_applications")
+        return {}
+    if not isinstance(declared, (list, tuple)) or not declared or len(declared) != len(set(declared)):
+        raise ValueError("workload_spec.performance_applications must be a nonempty list of unique labels")
+    declared = [str(label) for label in declared]
+    if overlap := sorted(set(declared) & set((workload_spec or {}).get("applications") or ())):
+        raise ValueError(f"performance applications {overlap} are also iteration applications")
+    if set(selected) != set(declared):
+        raise ValueError(
+            f"performance roster mismatch: missing={sorted(set(declared) - set(selected))}, "
+            f"extra={sorted(set(selected) - set(declared))}"
+        )
+    iteration_paths = {str(Path(path).resolve()) for path in captures.values()}
+    resolved = [str(Path(path).resolve()) for path in selected.values()]
+    if len(set(resolved)) != len(resolved) or set(resolved) & iteration_paths:
+        raise ValueError("performance-scale captures must be distinct files, disjoint from the iteration captures")
+    return {label: Path(selected[label]) for label in sorted(selected)}
+
+
+def _screen_defaults(entry: dict, semantics: dict) -> dict:
+    """The numeric defaults a candidate is screened with before it is written.
+
+    The accelerator's numerical semantics describe accelerator work. A host-only probe (a program that
+    must NOT be accelerated) is written through the float host path in its own operand format, so it is
+    screened in that format and with no accelerator accumulator -- the same binding generation's
+    writer selects (``generation._screen_selected_entry``); otherwise a float host contraction is
+    refused before it exists for not accumulating in the accelerator's integer format."""
+    probe = entry.get("generalization") or {}
+    if probe.get("must_accelerate") is False and probe.get("eligible") is False:
+        return {"operand_dtype": entry.get("operand_dtype") or semantics.get("operand_dtype")}
+    return semantics
+
+
+def incomplete_inventory_blocker(full: dict, host_capabilities: dict | None) -> str | None:
+    """The reason a detailed inventory is incomplete, by application and operation, or ``None``.
+
+    An unclassified operation is usually one whose accelerator admission is undetermined and which only
+    a reviewed host declaration can place. When the host lane's capability declaration was not selected
+    (its package is absent, for instance), no such operation can be placed, and the useful statement is
+    that one -- not a bare count."""
+    if full.get("status") == "inventoried":
+        return None
+    rows = []
+    for label, app in sorted((full.get("applications") or {}).items()):
+        if not isinstance(app, dict) or app.get("status") == "inventoried":
+            continue
+        unclassified = Counter(
+            str(row.get("operation"))
+            for row in app.get("signatures") or ()
+            for _ in range(int(row.get("count") or 1))
+            if row.get("disposition") == "unclassified"
+        )
+        rows.append(f"{label}: {', '.join(f'{op} x{n}' for op, n in sorted(unclassified.items())) or 'unreadable'}")
+    unselected = [
+        f"{name}: {profile.get('reason')}"
+        for name, profile in sorted((host_capabilities or {}).items())
+        if isinstance(profile, dict) and profile.get("capability_spec") is None
+    ]
+    why = (
+        f"; the host lane's capability declaration was not selected ({'; '.join(unselected)}), so no "
+        "reviewed host declaration could place them"
+        if unselected
+        else ""
+    )
+    return f"declared iteration captures are not fully inventoried: unclassified {'; '.join(rows)}{why}"
+
+
+def unresolved_epilogue_blocker(requirement: dict) -> str | None:
+    """A blocker naming the epilogue stages the requirement could not decide, or ``None``.
+
+    An undetermined stage is neither required nor refused, so the derived corpus asks nothing about
+    it. That is acceptable for a diagnostic census and never for a verified derivation: a backend that
+    cannot fuse the stage would then fail nothing. The usual cause is a derivation run without the
+    target's support provider, whose readout declaration is the stage-granular evidence.
+    """
+    rows = ((requirement.get("epilogue") or {}).get("unresolved")) or []
+    stages = sorted({str(row.get("stage")) for row in rows if isinstance(row, dict) and row.get("stage")})
+    if not stages:
+        return None
+    return (
+        f"epilogue stages {stages} are undetermined: no readout declaration and no derived instruction "
+        "taxonomy were readable, so the requirement can neither demand nor refuse them; select the "
+        "target's support provider and derive again"
+    )
+
+
 def grouping_oracle(target: str, prohibited_roles):
     """The grouping's target oracle under the experiment's prohibited instruction roles.
 
@@ -269,15 +370,37 @@ def derive(
     native_qualifications: dict[str, Path] | None = None,
     capture_preselections: dict[str, tuple[Path, str]] | None = None,
     quantization_policies: dict[str, tuple[Path, str]] | None = None,
+    performance_captures: dict[str, Path] | None = None,
+    performance_preselections: dict[str, tuple[Path, str]] | None = None,
+    heldout_layers: str | Path | None = None,
 ) -> dict:
     """Write a byte-bound requirement, complete census and diagnostic candidate plan.
 
     All declared iteration applications must be supplied. Old synthesis/private
     profiles and historical corpus members are deliberately not inputs. Repeating
     the same selection produces identical bytes; changed inputs need a new root.
+
+    ``performance_captures`` are the descriptor's declared ``performance_applications``:
+    independent captures that feed only the Phase 2 form scope (see
+    :func:`performance_scale_selection`).
     """
     declaration = from_definition(definition)
     te = load_target_experiment(declaration.descriptor)
+    performance_captures = performance_scale_selection(te.workload_spec, captures, performance_captures)
+    layer_guard = None
+    if heldout_layers is not None:
+        # Operator-private: the held-out networks' exact layer shapes, read before any derivation work.
+        from merlin.common.paths import repo_root
+
+        from . import heldout_layers as HL
+
+        try:
+            layer_guard = HL.load(heldout_layers, repository=repo_root())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HL.HeldoutLayerError(f"held-out layer file is unreadable: {exc}") from exc
+    performance_preselections = performance_preselections or {}
+    if performance_preselections and set(performance_preselections) != set(performance_captures):
+        raise ValueError("performance capture preselection must cover the entire declared performance roster")
     declared = (te.workload_spec or {}).get("applications")
     if not isinstance(declared, (list, tuple)) or not declared or len(declared) != len(set(declared)):
         raise ValueError("deterministic derivation needs an explicit nonempty, unique application roster")
@@ -313,6 +436,22 @@ def derive(
             if capture_python is not None and capture_python != interpreter:
                 raise ValueError("iteration captures select different PyTorch interpreters")
             capture_python = interpreter
+    performance_capture_evidence, performance_attestations = {}, {}
+    if performance_preselections:
+        # The same pre-execution selection and sealed-replay attestation as an iteration capture; a
+        # performance-scale capture feeds only the Phase 2 form scope, never the Phase 1 sources.
+        from .capture_execution_attestation import attest_sealed_m2m
+        from .capture_selection import verify
+
+        for label, (selection_path, selected_sha256) in sorted(performance_preselections.items()):
+            performance_capture_evidence[label] = verify(
+                selection_path, expected_sha256=selected_sha256, model_path=performance_captures[label]
+            )
+            performance_attestations[label] = attest_sealed_m2m(
+                performance_capture_evidence[label],
+                selection_path=selection_path,
+                model_path=performance_captures[label],
+            )
     spec = load_spec(definition)
     config = spec.document["phases"]["0"]["config"]
     software = selected_software_spec_path(
@@ -367,8 +506,12 @@ def derive(
             certification_floor=certification_floor,
             application_inventory_options=options,
         )
-    if full["status"] != "inventoried" and config.get("evidence_mode") != "diagnostic":
-        raise ValueError("one or more declared iteration captures could not be fully inventoried")
+    inventory_blocker = incomplete_inventory_blocker(full, selected.host_capabilities)
+    if inventory_blocker is not None and config.get("evidence_mode") != "diagnostic":
+        raise ValueError(inventory_blocker)
+    epilogue_blocker = unresolved_epilogue_blocker(requirement)
+    if epilogue_blocker is not None and config.get("evidence_mode") != "diagnostic":
+        raise ValueError(epilogue_blocker)
     digest = hashlib.sha256(json.dumps(full, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     if digest != requirement["application_demands"]["full_inventory_sha256"]:
         raise ValueError("capture bytes changed while deriving requirements")
@@ -399,6 +542,14 @@ def derive(
         },
     )
     selected_recipes = capture_recipe_candidates(selected.software_spec, quantization)
+    if performance_captures:
+        # A performance-scale capture is held to the same provider-derived recipe as an iteration
+        # capture; external quantization policies are an iteration-roster selection only.
+        _validate_capture_recipes(
+            performance_captures,
+            {row["recipe"]["recipe_sha256"] for row in selected_recipes},
+            software_spec_sha256=hashlib.sha256(software.read_bytes()).hexdigest(),
+        )
     selected_policies = _validate_capture_recipes(
         captures,
         {row["recipe"]["recipe_sha256"] for row in selected_recipes},
@@ -432,6 +583,14 @@ def derive(
         # The replay records above stay nonadmissible; the separately issued
         # attestations are what the coverage gate re-verifies from disk.
         requirement["capture_execution_attestations"] = capture_attestations
+    if performance_capture_evidence:
+        requirement["performance_capture_preselections"] = {
+            "schema": "merlin.phase0.capture_preselections.v1",
+            "status": "replay_verified_nonadmissible",
+            "applications": performance_capture_evidence,
+            "attestations": performance_attestations,
+            "phase0_admission": "not_granted",
+        }
     requirement = intersect_requirement(requirement, selected.software_spec, selected.contract)
     # The recipe's tier ladder is an authored PLAN, not evidence that an oracle
     # was constructed. Keep it separate from ``oracle_tiers`` (which remains
@@ -477,7 +636,19 @@ def derive(
             held_out=held_out,
             facts=selected.refreshed_facts,
             oracle=oracle,
+            performance_scale=performance_captures,
+            performance_scale_roster=sorted(performance_captures),
         )
+        if layer_guard is not None:
+            from . import heldout_layers as HL
+
+            forms = requirement["scope"]["performance"]["forms"]
+            HL.refuse(HL.form_scope_collisions(forms, layer_guard), what="performance form")
+            requirement["heldout_layer_guard"] = {
+                **layer_guard.summary(),
+                "status": "no_member_reproduces_a_heldout_layer",
+                "members_checked": sum(len(row.get("members") or []) for row in forms.get("classes") or []),
+            }
         model_forms = derive_model_forms(
             te.target,
             captures,
@@ -532,7 +703,7 @@ def derive(
         decision = screen_entry(
             selected.software_spec,
             entry,
-            defaults=selected.software_spec["numerical_semantics"],
+            defaults=_screen_defaults(entry, selected.software_spec["numerical_semantics"]),
             host_capabilities=selected.host_capabilities,
         )
         screens.append({"capsule": entry.get("name"), **decision})
@@ -596,6 +767,7 @@ def derive(
         "raw_facts_sha256": selected.raw_facts_sha256,
         "evidence_artifacts": len(manifest["artifacts"]),
         "applications": sorted(captures),
+        "performance_scale_applications": sorted(performance_captures),
         "native_baseline_observations": {
             label: {
                 key: value
@@ -623,7 +795,12 @@ def derive(
         "application_operation_plan": {
             key: value for key, value in operation_plan.items() if key not in {"obligations", "missing_mapping"}
         },
-        "blockers": [*selected.qualification_blockers, *([plan["reason"]] if plan.get("status") == "blocked" else [])],
+        "blockers": [
+            *selected.qualification_blockers,
+            *([epilogue_blocker] if epilogue_blocker is not None else []),
+            *([inventory_blocker] if inventory_blocker is not None else []),
+            *([plan["reason"]] if plan.get("status") == "blocked" else []),
+        ],
         "qualification": "derivation only; no compiler execution, oracle or release approval",
     }
     _materialize_evidence(root, {"derivation.json": _json(report)})

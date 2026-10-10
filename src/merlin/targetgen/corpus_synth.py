@@ -799,6 +799,22 @@ def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
 _PYTORCH_REGIMES = ("simt",)
 
 
+#: A permutation probe's layout when the captures state none: rank four, swapping the two middle axes
+#: (the shape of a head split or merge), small enough for any host.
+DEFAULT_PERMUTE_LAYOUT = {"shape": [1, 4, 8, 16], "permutation": [0, 2, 1, 3]}
+
+
+def permute_probe_layout(observed: dict | None) -> dict:
+    """``{shape, permutation}`` for a host-lane permutation probe: the most frequent rank-3/4 layout the
+    captured regions carry, else :data:`DEFAULT_PERMUTE_LAYOUT`. Never the rank-2 transpose of a weight
+    view, which is not the host movement the captures contain."""
+    for layout in (observed or {}).get("layouts") or ():
+        shape, order = list(layout.get("shape") or ()), list(layout.get("permutation") or ())
+        if len(shape) in (3, 4) and sorted(order) == list(range(len(shape))) and order != sorted(order):
+            return {"shape": shape, "permutation": order}
+    return dict(DEFAULT_PERMUTE_LAYOUT)
+
+
 def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[str]) -> tuple[str | None, dict | None]:
     """``(op, observed row)`` for a host probe: an observed host operation a PyTorch writer can express.
 
@@ -1303,6 +1319,61 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
     return entries, refused
 
 
+def _multi_block_members(output_bound: dict, op: str, dtype: str, sibling: str, spec_doc: dict) -> list[dict]:
+    """Members whose output spans several blocks on BOTH parallel axes, with tails, derived from facts.
+
+    The accumulator-output boundary asks for one output row across many column tiles. A blocked
+    schedule fails elsewhere too: per-block indexing of the accumulate decision, block edges that fall
+    inside a tail, and the pass in which the live output tiles exceed what the accumulator holds. Two
+    members, sized in tiles from the RTL-derived capacity (never a model shape): one whose output tile
+    count stays inside one accumulator buffer with several blocks per axis, and one just beyond it.
+    Both carry a non-multiple of the tile on M, N and K and a multi-tile reduction.
+    """
+    edge = int(output_bound.get("tile_edge") or 0)
+    rows = int(output_bound.get("capacity_rows") or 0)
+    if edge < 1 or rows < edge:
+        return []
+    capacity_tiles = rows // edge  # output tiles one accumulator buffer holds at once
+    side = 1
+    while (side + 1) * (side + 1) <= capacity_tiles:
+        side += 1
+    within = max(2, side - 1)
+    beyond = side + 1  # beyond * beyond > capacity_tiles by construction
+    members = []
+    for label, m_tiles, n_tiles in (
+        ("within", within, within - 1 if within > 2 else within),
+        ("beyond", beyond, beyond),
+    ):
+        entry = {
+            "cat": "layers",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_multi_block_{label}",
+            "op": op,
+            "operand_dtype": dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "M": f"{m_tiles}*tile-3",
+            "N": f"{n_tiles}*tile+5",
+            "K": "3*tile+1",
+            "stimulus_range": list(_signed_stimulus_range()),
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the multi-block axis: the RTL-derived accumulator holds {capacity_tiles} "
+                f"output tiles; this member's output spans about {m_tiles}x{n_tiles} tiles "
+                f"({'inside' if label == 'within' else 'beyond'} one buffer) with tails on M, N and K"
+            ),
+            "label": "public",
+            "generalization": {"generalization_axis": "multi_block"},
+        }
+        why = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if why:
+            entry["source_reference"] += f". {why}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
+
+
 def synthesize(
     spec_doc: dict,
     *,
@@ -1554,6 +1625,7 @@ def synthesize(
                 entry["source_reference"] += f". {why}"
             entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
             entries.append(entry)
+            entries.extend(_multi_block_members(output_bound, output_op, output_dtype, sibling, spec_doc))
 
     # ---- the NEGATIVE lane ------------------------------------------------------------------------
     # Families a real capture CONTAINS and this target's manifest does NOT admit. The compiler must leave
@@ -1641,6 +1713,8 @@ def synthesize(
             },
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
+        if op == "permute":
+            entry.update(permute_probe_layout(observed))
         if observed is not None:
             entry["frontend_op"] = observed.get("frontend_op")
             entry["source_reference"] += (
@@ -1882,6 +1956,51 @@ def synthesize(
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the MUST-REFUSE side of the epilogue axis -----------------------------------------------
+    # A stage the requirement REJECTS on evidence (a declared readout that does not apply it, a derived
+    # taxonomy with no class for it) is a computation this hardware does not perform. A backend that
+    # emits it anyway either computes something the unit cannot do or silently moves pinned work, and
+    # nothing would catch either: no capsule asked. One member per such stage asks, and its only
+    # correct answer is the backend's stated decline (merlin.targetgen.expected_refusal). A stage left
+    # UNRESOLVED is not evidence of anything and gets no member.
+    from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES as _refusable
+
+    for _st in (spec_doc.get("epilogue") or {}).get("rejected") or ():
+        stage = str(_st.get("stage") or "")
+        if not stage or stage not in set(_refusable):
+            continue
+        dtype = kept[0] if kept else narrowest_admitted(admitted_dtypes)
+        if not dtype:
+            continue
+        entry = {
+            "cat": "layers",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_refuse_{stage}",
+            "op": "matmul",
+            "operand_dtype": dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "epilogue": [stage],
+            "outcome": "refuse",
+            "refusal": {
+                "stage": stage,
+                "reason": f"no readout or contraction-scoped route this target declares performs {stage!r}",
+                "evidence": str(_st.get("why") or "rejected by the derived requirement's epilogue axis"),
+            },
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the epilogue axis: the requirement rejects {stage!r} on this target's "
+                "own evidence, so the correct answer is a stated refusal and an emitted program fails"
+            ),
+            "label": "public",
+            "stimulus_range": list(_signed_stimulus_range()),
+            "generalization": {"generalization_axis": "epilogue_refusal"},
+            **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
+        }
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     # ---- the GROUP axis -----------------------------------------------------------------------------
     # The stage COMBINATIONS real models form on this target. The epilogue axis above writes one
     # contraction per stage, so a backend that fuses any single stage and no two passes it, while a
@@ -1895,6 +2014,10 @@ def synthesize(
     from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES as _builder_stages
 
     _stage_names = set(_builder_stages)
+    # ONE MEMBER PER (STAGES, DTYPE). Signatures that differ only in their carrier (a contraction and
+    # a convolution with the same readout) are written as the same matmul program, so they share one
+    # member: two entries with the same name and the same program would be the same capsule twice.
+    _group_members: dict[str, dict] = {}
     for _group in (spec_doc.get("groups") or {}).get("required") or ():
         stages = [str(x) for x in (_group.get("epilogue") or ())]
         if len(stages) < 2:
@@ -1909,10 +2032,20 @@ def synthesize(
         if not dtype:
             unexpressable.append(f"group axis: no dtype to build {_group.get('signature')} at")
             continue
+        name = f"{SYNTH_PREFIX}_group_{'_'.join(stages)}_{dtype}"
+        if name in _group_members:
+            member = _group_members[name]
+            member["_group_count"] += int(_group.get("groups") or 0)
+            member["source_reference"] = (
+                f"synthesized for the group axis: selected captures form {member['_group_count']} "
+                "compute group(s) with this stage combination on this "
+                f"target, and no per-stage member demands a combination"
+            )
+            continue
         entry = {
             "cat": "layers",
             "kind": "layer",
-            "name": f"{SYNTH_PREFIX}_group_{'_'.join(stages)}_{dtype}",
+            "name": name,
             "op": "matmul",
             "operand_dtype": dtype,
             "lhs": "A0",
@@ -1938,7 +2071,11 @@ def synthesize(
         declare_pool_window(entry)
         declare_residual_add_params(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entry["_group_count"] = int(_group.get("groups") or 0)
+        _group_members[name] = entry
         entries.append(entry)
+    for entry in _group_members.values():
+        entry.pop("_group_count", None)
 
     # ---- the CARRIED-STATE axis ---------------------------------------------------------------------
     # Two commands over one resident weight: the configuration-only stage on the FIRST, nothing on the
@@ -2051,9 +2188,9 @@ def synthesize(
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the convolution-window axis: window {sig}, recovered structurally "
-                f"from {_cw.get('n_regions')} region(s) in selected captures. torch-mlir emits "
-                f"im2col, so a captured convolution carries no padding/stride/dilation attribute at "
-                f"all and the geometry comes from the gather's affine map and its padding producer"
+                f"from {_cw.get('n_regions')} region(s) in selected captures. A captured convolution "
+                f"carries no padding/stride/dilation attribute, so the geometry comes from the "
+                f"indexing of its windows and the producer of its padding"
                 + (
                     ""
                     if pad_known
@@ -2076,6 +2213,64 @@ def synthesize(
         declare_residual_add_params(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
+
+    # ---- the RESIDUAL-STATE axis ----------------------------------------------------------------------
+    # What the device's stores held BEFORE the operation. A padded convolution that reads rows it never
+    # wrote, or a first reduction step that accumulates onto rows it never cleared, is right on a device
+    # whose stores start empty and wrong after any earlier command -- and the tensor-level tiers, which
+    # model no store, cannot tell. Each padded window member and one partial contraction get a sibling
+    # that runs an independent, signed, non-zero contraction first (a `prelude`), sized in tiles to
+    # cover at least the rows the operation itself occupies, so stale state is non-zero when it runs.
+    state_tile = int((spec_doc.get("boundaries") or {}).get("tile_edge") or 0)
+
+    def _tiles(extent: int) -> str:
+        return f"{max(1, -(-int(extent) // state_tile))}*tile"
+
+    if state_tile > 0:
+        for source in [
+            e for e in entries if (e.get("generalization") or {}).get("generalization_axis") == "conv_window"
+        ]:
+            if source.get("op") != "conv2d" or not any(int(v) for v in source.get("padding") or ()):
+                continue
+            ci = int(source.get("ci", 4))
+            stateful = {
+                **copy.deepcopy(source),
+                "name": f"{SYNTH_PREFIX}_residual_state_{source['name'].removeprefix(SYNTH_PREFIX + '_')}",
+                "prelude": {
+                    "M": _tiles(int(source["Himg"]) * int(source["Wimg"])),
+                    "K": _tiles(int(source["kh"]) * int(source["kw"]) * ci),
+                    "N": "tile",
+                },
+                "stimulus_range": list(_signed_stimulus_range()),
+                "source_reference": (
+                    f"synthesized for the residual-state axis: {source['name']} run after an independent "
+                    "contraction leaves the operand and accumulator stores non-zero, so a padded border "
+                    "read from rows the program never wrote is wrong"
+                ),
+                "generalization": {"generalization_axis": "residual_state"},
+            }
+            stateful["pass_requirements"] = pass_requirements_for(stateful, spec_doc)
+            entries.append(stateful)
+        partial = next(
+            (e for e in entries if e.get("name") == f"{SYNTH_PREFIX}_contraction_{conv_dtype}_partial"), None
+        )
+        if partial is not None:
+            stateful = {
+                **copy.deepcopy(partial),
+                "name": f"{SYNTH_PREFIX}_residual_state_contraction_partial",
+                "cat": "layers",
+                "kind": "layer",
+                "prelude": {"M": "2*tile", "K": "2*tile", "N": "2*tile"},
+                "stimulus_range": list(_signed_stimulus_range()),
+                "source_reference": (
+                    "synthesized for the residual-state axis: a partial-tile contraction run after an "
+                    "independent contraction leaves the accumulator non-zero, so a first reduction step "
+                    "that accumulates instead of overwriting is wrong"
+                ),
+                "generalization": {"generalization_axis": "residual_state"},
+            }
+            stateful["pass_requirements"] = pass_requirements_for(stateful, spec_doc)
+            entries.append(stateful)
 
     # A small window capsule establishes convolution semantics, but cannot expose
     # a scheduler that keeps the *entire* im2col image in the operand store. Ask
@@ -2134,8 +2329,7 @@ def synthesize(
                     "synthesized for the convolution operand-capacity boundary: "
                     f"the RTL-derived operand store holds {capacity_rows} rows, while "
                     f"{side * side} output windows need at least {side * side * rows_per_window} "
-                    f"rows if materialized together; window geometry comes from {source['name']}. "
-                    "A streaming schedule can pass without retaining the whole im2col image"
+                    f"rows if materialized together; window geometry comes from {source['name']}"
                 ),
             )
             why = cap_to_affordable(entry, spec_doc, extends=source["name"])
@@ -2559,10 +2753,16 @@ def synthesize(
     # Measured: a relu member returned 126 of 256 outputs negative on hardware, activation never
     # applied, and passed. A scale stage with no multiplier is the same defect one step over: every
     # engine reads it as 1.0 and certifies a bare saturating cast.
-    from merlin.targetgen.sign_sensitivity import is_sign_sensitive
+    # The same holds one step earlier, at the operand load: a signed integer operand that is
+    # zero-extended instead of sign-extended agrees with the reference on every non-negative input,
+    # so a bare integer contraction, convolution or movement on the default stimulus cannot fail it.
+    from merlin.targetgen.corpus_spec import BUILDERS
+    from merlin.targetgen.sign_sensitivity import has_signed_integer_operands, is_sign_sensitive
 
     for entry in entries:
         if not is_sign_sensitive(entry):
+            if str(entry.get("op") or "") in BUILDERS and has_signed_integer_operands(entry):
+                entry.setdefault("stimulus_range", list(_signed_stimulus_range()))
             continue
         entry.setdefault("stimulus_range", list(_signed_stimulus_range()))
         staged = [entry, *(m for m in entry.get("matmuls") or () if isinstance(m, dict))]

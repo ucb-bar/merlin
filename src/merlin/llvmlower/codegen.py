@@ -118,7 +118,8 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     """Host .so (ctypes execution on x86), with the MLIR C-runtime shim.
 
     clang-23 (the IREE build) has no host C headers, so it only compiles the .ll;
-    the runtime C and the final link use the system compiler.
+    the runtime C and the final link use the system compiler (``$CC``, else ``cc``), which must
+    know the ``__bf16`` type on x86 (GCC 13+ or clang).
     """
     out_so = Path(out_so)
     model_o = out_so.with_suffix(".o")
@@ -137,15 +138,16 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
             outputs=(model_o,),
         )
     compile_trace.artifact("object", [model_o], pipeline="codegen")
+    host_cc = os.environ.get("CC", "").strip() or "cc"
     runtime = mlir_runtime_c()
     _run(
-        ["cc", "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
+        [host_cc, "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
         inputs=(runtime,),
         outputs=(rt_o,),
         stage="runtime_object",
     )
     _run(
-        ["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so],
+        [host_cc, "-shared", model_o, rt_o, "-lm", "-o", out_so],
         inputs=(model_o, rt_o),
         outputs=(out_so,),
         stage="link",

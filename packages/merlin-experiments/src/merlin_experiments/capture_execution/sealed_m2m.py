@@ -60,6 +60,18 @@ _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
 _MAX_SNAPSHOT_BYTES = 16_000_000_000
 _MAX_FULL_CAPTURE_SECONDS = 43_200
+#: Upper bound for an operator-selected timeout on a checkpoint-free (v2) capture. Absent, a v2
+#: capture keeps the historical fixed timeout and its plan bytes stay unchanged.
+_MAX_SELECTED_CAPTURE_SECONDS = 14_400
+
+
+def _selected_timeout_valid(schema: str, value: Any) -> bool:
+    """Whether a plan's selected execution timeout is in its schema's bounds."""
+    if schema == SCHEMA_V3:
+        return type(value) is int and _TIMEOUT_SECONDS <= value <= _MAX_FULL_CAPTURE_SECONDS
+    return value is None or (type(value) is int and _TIMEOUT_SECONDS <= value <= _MAX_SELECTED_CAPTURE_SECONDS)
+
+
 _LAUNCH_PREFIX = (
     "import runpy,sys;"
     "sys.path[:0]=['/source/m2m-src','/opt/capture-venv/lib/python3.12/site-packages'];"
@@ -737,8 +749,11 @@ def prepare_plan(
             or not _TIMEOUT_SECONDS <= execution_timeout_seconds <= _MAX_FULL_CAPTURE_SECONDS
         ):
             raise SealedM2MError("v3 capture requires a selected timeout between 120 and 43200 seconds")
-    elif execution_timeout_seconds is not None:
-        raise SealedM2MError("v2 capture retains its historical fixed timeout")
+    elif not _selected_timeout_valid(version, execution_timeout_seconds):
+        raise SealedM2MError(
+            f"v2 capture timeout must be absent (historical {_TIMEOUT_SECONDS} s) or between "
+            f"{_TIMEOUT_SECONDS} and {_MAX_SELECTED_CAPTURE_SECONDS} seconds"
+        )
     merlin_root = worker.parents[1]
     if worker != merlin_root / "targetgen/_m2m_capture_worker.py" or not (merlin_root / "__init__.py").is_file():
         raise SealedM2MError("selected worker must belong to the selected Merlin source package")
@@ -858,7 +873,13 @@ def prepare_plan(
             if version == SCHEMA_V3
             else {}
         ),
-        **({"execution_timeout_seconds": execution_timeout_seconds} if version == SCHEMA_V3 else {}),
+        # V3 always selects a timeout; v2 records one only when the operator selected it, so an
+        # unselected v2 plan keeps its historical bytes and fixed timeout.
+        **(
+            {"execution_timeout_seconds": execution_timeout_seconds}
+            if version == SCHEMA_V3 or execution_timeout_seconds is not None
+            else {}
+        ),
         # Present only when selected, so a plan without options keeps its historical bytes.
         **({"worker_options": options} if options else {}),
     }
@@ -1391,7 +1412,11 @@ def issue(
                 "execution_timeout_seconds": plan["execution_timeout_seconds"],
             }
             if plan["schema"] == SCHEMA_V3
-            else {}
+            else (
+                {"execution_timeout_seconds": plan["execution_timeout_seconds"]}
+                if "execution_timeout_seconds" in plan
+                else {}
+            )
         ),
     )
     if selected != plan:
@@ -1537,11 +1562,8 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         dtype, recipe = plan.get("dtype"), plan.get("recipe")
         if dtype not in _FLOAT_DTYPES | {"int8"} or (recipe is not None) != (dtype == "int8"):
             raise SealedM2MError("pending M2M receipt has an unsupported dtype or recipe selection")
-        if schema == SCHEMA_V3 and (
-            type(plan.get("execution_timeout_seconds")) is not int
-            or not _TIMEOUT_SECONDS <= plan["execution_timeout_seconds"] <= _MAX_FULL_CAPTURE_SECONDS
-        ):
-            raise SealedM2MError("pending full capture has no selected bounded execution timeout")
+        if not _selected_timeout_valid(schema, plan.get("execution_timeout_seconds")):
+            raise SealedM2MError("pending capture has no selected bounded execution timeout")
         selected_digest = doc.get("capture_selection_sha256")
         if selected_digest is not None and (
             not isinstance(selected_digest, str)

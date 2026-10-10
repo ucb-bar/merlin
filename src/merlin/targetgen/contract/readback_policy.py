@@ -22,6 +22,11 @@ COHERENT_DUMP_V1 = "coherent_dump_v1"
 COHERENT_PACKET_V1 = "coherent_packet_v1"
 MEMORY_TRANSPORTS = (COHERENT_DUMP_V1, COHERENT_PACKET_V1)
 READBACK_TRANSPORTS = (FULL_VALUES_B64, FULL_VALUES_BIN, *MEMORY_TRANSPORTS)
+#: Not a full-value transport: one 64-bit digest of each output's bytes (``out_digest.h``). It is for an
+#: engine where reading values back costs hours, and is never offered where a full-value transport is
+#: expected (``READBACK_TRANSPORTS`` stays the full-value set, which the Phase 1 CLI exposes).
+OUT_DIGEST_V1 = "out_digest_v1"
+DIGEST_TRANSPORTS = (OUT_DIGEST_V1,)
 BUILD_RECEIPT = "readback_build.json"
 
 
@@ -36,7 +41,7 @@ class ReadbackPolicy:
         if (
             type(self) is not ReadbackPolicy
             or self.schema != POLICY_SCHEMA
-            or self.transport not in READBACK_TRANSPORTS
+            or self.transport not in (*READBACK_TRANSPORTS, *DIGEST_TRANSPORTS)
         ):
             raise ValueError("unsupported invocation-only readback policy")
 
@@ -48,6 +53,90 @@ class ReadbackPolicy:
         if type(record) is not dict or set(record) != {"schema", "transport"}:
             raise ValueError("readback policy record must have the exact versioned fields")
         return cls(schema=record["schema"], transport=record["transport"])
+
+
+#: Engines whose console reaches the host over a SIMULATED serial link (HTIF through the elaborated
+#: design's TSI port): every printed byte, and every instruction that formats it, is a simulated cycle.
+#: Measured on a 3136x64 i32 output (spike instruction counts, kernel 0.8M): text ``OUT`` lines retire
+#: 175.9M instructions, ``out_bin_v1`` 26.3M, a coherent memory dump 1.1M -- at gSIM's few thousand
+#: cycles/s, hours against seconds. Spike's console is host-side, so it keeps the text frame.
+SERIAL_CONSOLE_ENGINES = frozenset({"gsim", "verilator", "vcs"})
+#: Output elements at or above which a serial-console engine reads results back without text lines;
+#: ``MERLIN_LARGE_OUTPUT_READBACK_ELEMENTS`` overrides it, and 0 keeps the text frame for every size.
+#: Every size, by default: each console line is one HTIF syscall, a TSI round trip through the design.
+#: Measured on gSIM, a 16x16 i32 output ran 494,792 cycles with text (311 s) against 21,892 (14.3 s)
+#: without serial values -- the kernel window was 1,110 -- and a 16x64 output through the grading
+#: adapter took 554 s as text against 53 s by memory dump, both exact. That was the "~50 s gSIM
+#: startup": the emulator itself constructs and loads in 1.3 s.
+LARGE_OUTPUT_ELEMENTS = 1
+LARGE_OUTPUT_ENV = "MERLIN_LARGE_OUTPUT_READBACK_ELEMENTS"
+
+
+def large_output_readback(
+    cb: dict, simulator: str, *, abi: Any, memory_transport: bool
+) -> tuple[dict, ReadbackPolicy | None]:
+    """``(cb, policy)``: the fastest EXACT readback for an output on a serial-console engine.
+
+    A memory dump when the engine has one and every output is a non-scalar dense tensor of a coherent
+    physical dtype (a default-ABI buffer is written out as its identical explicit whole-program
+    boundary, which the dump needs); otherwise the binary console frame. ``(cb, None)`` -- the
+    historical text frame -- for an output under the configured threshold, a host-side console, or a
+    buffer that sets a console value cap. Never changes the values
+    compared: every transport is full-value and the grader's comparison is the same.
+    """
+    import os
+
+    from merlin.runtime.commandbuffer import CONSOLE_VALUE_CAP_PARAM
+    from merlin.targetgen.contract.harness_render import (
+        _COHERENT_OUTPUT_DTYPES,
+        HarnessRenderError,
+        explicit_whole_program,
+        logical_interface,
+    )
+
+    raw = os.environ.get(LARGE_OUTPUT_ENV, "").strip()
+    threshold = int(raw) if raw else LARGE_OUTPUT_ELEMENTS
+    kind = (cb.get("kernel_abi") or {}).get("kind")
+    if (
+        simulator not in SERIAL_CONSOLE_ENGINES
+        or threshold <= 0
+        or kind not in (None, "whole_program")
+        or (cb.get("params") or {}).get(CONSOLE_VALUE_CAP_PARAM) is not None
+    ):
+        return cb, None
+    try:
+        outputs = [buf for buf in logical_interface(cb, abi) if buf.kind == "output"]
+    except HarnessRenderError:  # the renderer owns that refusal; choosing a transport adds nothing
+        return cb, None
+    if sum(buf.elements for buf in outputs) < threshold:
+        return cb, None
+    if (
+        memory_transport
+        and outputs
+        and all(buf.dtype in _COHERENT_OUTPUT_DTYPES and buf.shape for buf in outputs)
+        and "storage_encodings" not in (cb.get("params") or {})
+    ):
+        return explicit_whole_program(cb, abi), ReadbackPolicy(COHERENT_DUMP_V1)
+    return cb, ReadbackPolicy(FULL_VALUES_BIN)
+
+
+def engine_readback(cb: dict, simulator: str, *, target: str, backend: Any) -> tuple[dict, ReadbackPolicy | None]:
+    """:func:`large_output_readback` for ``target``'s selected harness ABI and ``backend``'s exporter.
+
+    Nothing to choose -- ``(cb, None)``, the text frame -- on a host-side console, or for a target whose
+    harness ABI cannot be resolved (it has no contract to render a packed frame from either).
+    """
+    if simulator not in SERIAL_CONSOLE_ENGINES:
+        return cb, None
+    from merlin.targetgen.contract import harness_render
+
+    try:
+        abi = harness_render.resolve(target)[0]
+    except Exception:  # noqa: BLE001 -- no resolvable harness ABI: keep the historical frame
+        return cb, None
+    exporter = getattr(backend, "memory_readback_transport", None)
+    memory = bool(exporter(simulator)) if callable(exporter) else False
+    return large_output_readback(cb, simulator, abi=abi, memory_transport=memory)
 
 
 def selected(policy: ReadbackPolicy | None) -> ReadbackPolicy | None:
@@ -85,6 +174,8 @@ def _codec_names(policy: ReadbackPolicy | None) -> tuple[str, ...]:
         return ()
     if policy is not None and policy.transport == COHERENT_PACKET_V1:
         return ("out_b64.h", "out_bin.h", "out_bin_memory.h")
+    if policy is not None and policy.transport == OUT_DIGEST_V1:
+        return ("out_digest.h",)
     return ("out_b64.h", "out_bin.h") if policy is not None and policy.transport == FULL_VALUES_BIN else ("out_b64.h",)
 
 
@@ -251,7 +342,7 @@ def require_build_receipt(
         or identity != canonical_sha256(body)
     ):
         raise ValueError("readback build receipt does not bind selected policy and produced bytes")
-    if policy.transport == FULL_VALUES_B64:
+    if policy.transport in (FULL_VALUES_B64, OUT_DIGEST_V1):
         if body.get("staged_codec_sha256") != recipe_record.get("readback_codec", {}).get("sha256"):
             raise ValueError("readback build receipt does not bind selected codec bytes")
     elif policy.transport == FULL_VALUES_BIN:
@@ -361,6 +452,91 @@ def require_memory_value_roster(cb: Mapping[str, Any], outputs: Mapping[str, Any
             raise ValueError("memory readback output size differs from declared tensor")
 
 
+def _console_output_roster(cb: Mapping[str, Any]) -> tuple[list[str], dict[str, dict]]:
+    """``(names, {name: {"shape": [...]}})`` of the outputs a console transport must frame.
+
+    A whole-program ABI names its outputs; the default logical ABI's outputs are its logical interface's
+    output buffers, the same ones the harness frames -- so the roster is closed either way.
+    """
+    abi = cb.get("kernel_abi") or {}
+    if abi.get("kind") == "whole_program":
+        names = abi.get("outputs")
+        if not isinstance(names, list) or not names or len(set(names)) != len(names):
+            raise ValueError("full-value readback requires a closed whole-program output roster")
+        return names, dict(cb.get("tensors") or {})
+    if abi:
+        raise ValueError("full-value readback requires the default logical or a whole-program kernel ABI")
+    from merlin.targetgen.contract.harness_render import logical_abi, logical_interface
+
+    outputs = [buf for buf in logical_interface(dict(cb), logical_abi()) if buf.kind == "output"]
+    if not outputs:
+        raise ValueError("full-value readback found no logical output")
+    roster = {buf.name: {"shape": list(buf.shape), "dtype": buf.dtype} for buf in outputs}
+    return [buf.name for buf in outputs], roster
+
+
+def require_digest_roster(cb: Mapping[str, Any], console: str, outputs: Mapping[str, Any]) -> dict[str, dict]:
+    """``{name: {"nbytes", "digest"}}``: exactly one digest per logical output, of its full byte size.
+
+    No serial value may accompany a digest (a mixed console could pass a digest beside a forged frame),
+    and each byte count must be the output's dense container size the harness hashed.
+    """
+    from merlin.runtime.out_digest import parse_digests
+    from merlin.targetgen.contract.harness_render import container_for
+
+    if type(console) is not str:
+        raise ValueError("digest readback requires a text console")
+    if outputs or any(line.split()[:1] in (["OUT"], ["OUTSUM"]) for line in console.splitlines()):
+        raise ValueError("digest readback cannot mix serial output values with digests")
+    names, tensors = _console_output_roster(cb)
+    found = parse_digests(console)
+    if set(found) != set(names):
+        raise ValueError("digest readback omitted or added an output")
+    roster = {}
+    for name in names:
+        dtype = str(tensors[name].get("dtype") or _declared_dtype(cb, name))
+        nbytes = prod(tensors[name]["shape"]) * container_for(dtype).word_bytes
+        if found[name][0] != nbytes:
+            raise ValueError(f"digest of {name!r} covers {found[name][0]} bytes, its output has {nbytes}")
+        roster[name] = {"nbytes": nbytes, "digest": found[name][1], "dtype": dtype}
+    return roster
+
+
+def _declared_dtype(cb: Mapping[str, Any], name: str) -> str | None:
+    from merlin.runtime.commandbuffer import declared_output_dtypes
+
+    return declared_output_dtypes(dict(cb)).get(name)
+
+
+def expected_digests(roster: Mapping[str, Mapping[str, Any]], expected: Mapping[str, Any]) -> dict[str, str]:
+    """The digest each output must carry if it holds ``expected`` (name -> nested or flat values)."""
+    from merlin.runtime.out_digest import container_bytes, xxh64
+    from merlin.targetgen.contract.harness_render import container_for, container_words
+
+    out = {}
+    for name, row in roster.items():
+        values = expected[name]
+        stack, flat = [values], []
+        while stack:
+            item = stack.pop()
+            if isinstance(item, list):
+                stack.extend(reversed(item))
+            else:
+                flat.append(item)
+        container = container_for(row["dtype"])
+        data = container_bytes(container_words(flat, row["dtype"]), container.word_bytes)
+        if len(data) != row["nbytes"]:
+            raise ValueError(f"expected values of {name!r} are {len(data)} bytes, the digest covers {row['nbytes']}")
+        out[name] = f"{xxh64(data):016x}"
+    return out
+
+
+def digest_mismatches(roster: Mapping[str, Mapping[str, Any]], expected: Mapping[str, Any]) -> list[str]:
+    """Names of outputs whose observed digest differs from the digest of ``expected``; empty = exact."""
+    want = expected_digests(roster, expected)
+    return sorted(name for name, row in roster.items() if row["digest"] != want[name])
+
+
 def require_full_value_roster(
     cb: Mapping[str, Any],
     console: str | bytes,
@@ -374,11 +550,7 @@ def require_full_value_roster(
     if policy is not None and policy.transport in MEMORY_TRANSPORTS:
         raise ValueError("coherent output requires independent memory admission, not serial output values")
 
-    abi = cb.get("kernel_abi") or {}
-    names = abi.get("outputs")
-    tensors = cb.get("tensors") or {}
-    if abi.get("kind") != "whole_program" or not isinstance(names, list) or not names or len(set(names)) != len(names):
-        raise ValueError("full-value readback requires a closed whole-program output roster")
+    names, tensors = _console_output_roster(cb)
     frames: dict[str, tuple[int, int]] = {}
     if policy is not None and policy.transport == FULL_VALUES_BIN:
         from merlin.common.quant_formats import storage_bits
@@ -391,7 +563,8 @@ def require_full_value_roster(
         parsed, _metrics, binary_frames = parse_binary_console_details(console)
         if set(parsed) != set(outputs):
             raise ValueError("binary output parser and full-value roster disagree")
-        dtypes = declared_output_dtypes(dict(cb))
+        roster_dtypes = {n: t["dtype"] for n, t in tensors.items() if n in names and t.get("dtype")}
+        dtypes = {**declared_output_dtypes(dict(cb)), **roster_dtypes}
         for name, frame in binary_frames.items():
             dtype = dtypes.get(name)
             if type(dtype) is not str:

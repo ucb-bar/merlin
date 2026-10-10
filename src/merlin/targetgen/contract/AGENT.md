@@ -7,11 +7,14 @@ Experiment-ABI contract layer.
 ## Modules
 
 - `compile.py` — Runner-owned compile + execute of a *package-produced* lowered LLVM/RoCC MLIR.
+- `memory_decode.py` — The selected coherent-memory output decoder, run as one observed invocation.
 - `build_recipe.py` — Pure compile/link recipe; the runtime backend re-exports this same class.
 - `build_service.py` — Typed host-only build service and isolated pure target-package loader; no backend discovery, execution or reference imports.
 - `execution_service.py` — Explicit pinned functional transport; no backend discovery or correctness, ISA, hardware timing, or counter authority.
 - `elf_admission.py` — Source-pinned linked-artifact admission before explicit simulator dispatch; rejected binaries are not executed or assigned numerical/timing results.
 - `readback_policy.py` — Explicit invocation-only full-value output transport and selected build-byte receipt; never source this choice from a candidate command buffer or ambient environment.
+- `harness_render.py` — Solution-neutral runner-owned harness renderer (logical kernel ABI v2), driven only by declared contract data.
+- `reference_kernel.py` — Naive C reference kernel (and deliberate mutants) for qualifying the harness; a test instrument, never graded.
 - `interface_emit.py` — ``merlin_iface`` interface-grammar: emit a Merlin command buffer as contract text, and
 - `schemas.py` — Fail-closed JSON-Schema validation against the ``merlin/contract/schemas/`` bundle.
 - `toolchain.py` — MLIR toolchain resolution for the experiment ABI (env-overridable).
@@ -165,6 +168,17 @@ expiry. Completed in-process work is checked at stage boundaries; Python callbac
 are not preempted. Partial console and interrupted records remain diagnostics,
 never completed values or a timer qualification. Unselected calls retain their
 existing timeout behavior.
+
+`harness_render` hands a kernel the capsule's LOGICAL tensors (dense row-major, declared
+dtype containers, 64-byte aligned) in one pointer order: inputs in declaration order, then
+results in reference order (`logical_kernel_abi` in the OOT contract). Tiling, padding, packing
+and layout are the compiler's job, and the harness includes no target header; outputs are
+poisoned before every invocation. The host completion and cycle-counter instructions come from
+the target contract's `logical_harness` block. Its correctness is gated by
+`build_tools/scripts/harness_reference_gate.py` (naive reference kernel exact on spike, mutants
+caught, no excluded-header routine visible). The version-1 `kernel_abi` lives in
+`merlin/contract/legacy/kernel_abi_v1.yaml`; only Merlin's device shim and version-1 harness
+certification (`check_kernel_abi_arg_order.py`) read it.
 
 `compile_only.require_pointer_entry` checks the actual nonvariadic external C
 entry, void result, plain pointer parameters and matching block signature.

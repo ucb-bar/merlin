@@ -102,6 +102,17 @@ for the explicit reviewed phase-0 handoff below.
 
 ## Reviewed phase-0 handoff
 
+The catalog workflow below uses `capsule_derivation` for Phase 0 and the installed
+`capsule_bench` controller for Phase 1. Explicit `component_only` / `component_coverage`
+derivation and `FreshPhase1Inputs` authoring are a separate qualification route;
+their diagnostic ledgers do not establish or replace this catalog handoff.
+
+Select independently reviewed target support through `MERLIN_TARGET_PATH` before
+preparation or EL4 preflight. A metadata-only target example does not supply an
+executable `plugin.backend`. Configuration preflight checks selected files and
+bindings and reports `engine_readiness: not_executed`; native tool, oracle and
+sandbox probes remain required on the execution worker before authoring.
+
 After a complete phase-0 run, prepare a fresh release under the configured
 artifact root. New target workflows use `--generated-only`: the released public
 corpus comes from this run's receipt-declared generated members, not the retained

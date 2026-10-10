@@ -95,6 +95,9 @@ def test_every_required_cell_becomes_an_entry(target):
         # `host_lane`, `epilogue` and `conv_geometry` be measured by the coverage gate and never reach
         # its verdict. A hand-maintained list of axes is exactly what a new axis is invisible to.
         "carried-state axis",
+        # What the stores held before the operation, and outputs larger than one accumulator buffer.
+        "residual-state axis",
+        "multi-block axis",
     )
     unattributed = [e["name"] for e in other if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -955,3 +958,29 @@ def test_a_target_deriving_no_depth_synthesizes_none():
     mm["reduction_depth"] = {"unavailable": "RuntimeError: no operand store"}
     doc["memory_mapping"] = mm
     assert _depth_axis(CS.synthesize(doc)) == []
+
+
+@pytest.mark.parametrize("target", _specs())
+def test_a_signed_integer_member_gets_a_stimulus_that_goes_negative(target):
+    """Operand sign extension is observable only below zero. A bare integer contraction on the
+    non-negative default stimulus passes a load that zero-extends where it should sign-extend."""
+    from merlin.runtime.commandbuffer import STIMULUS_RANGE_KEY, stimulus_range
+    from merlin.targetgen.corpus_spec import BUILDERS
+    from merlin.targetgen.sign_sensitivity import has_signed_integer_operands
+
+    entries = CS.synthesize(_spec(target))["capsules"]
+    integer = [e for e in entries if str(e.get("op") or "") in BUILDERS and has_signed_integer_operands(e)]
+    if not integer:
+        pytest.skip(f"{target} synthesizes no signed-integer member")
+    for entry in integer:
+        low, _high = stimulus_range({"params": {STIMULUS_RANGE_KEY: entry.get("stimulus_range")}})
+        assert low < 0, f"{entry['name']} feeds signed integer operands a non-negative stimulus"
+
+
+def test_float_and_block_scaled_operands_are_not_signed_integer_operands():
+    from merlin.targetgen.sign_sensitivity import has_signed_integer_operands
+
+    assert has_signed_integer_operands({"operand_dtype": "i8"})
+    assert has_signed_integer_operands({"operand_dtype": "int8"})
+    for token in ("f32", "bf16", "fp8_e4m3", "mxint8", "not_a_format", None):
+        assert not has_signed_integer_operands({"operand_dtype": token})

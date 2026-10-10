@@ -12,8 +12,9 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
-# Retained reference metadata does not ship an executable backend. Select the OOT
-# gemmini-mlir support provider explicitly; its contract owns plugin.backend.
+# This reviewed contract ships no executable plugin. The data-only support provider
+# examples/gemmini/support (selected by MERLIN_TARGET_PATH, or by default when it is unset) carries a
+# copy of it plus a `plugin` block naming the GENERIC runtime (merlin.runtime.backends.chipyard_rocc).
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.
@@ -61,6 +62,27 @@ runner:
   # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
   # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
   sim_via: chipyard
+  # The bare-metal toolchain the generic chipyard RoCC runtime backend
+  # (merlin.runtime.backends.chipyard_rocc) runs and links with. Paths are relative to the checkout
+  # `root_env` names (MERLIN_EXT_<root_ext> as the fallback); per-target MERLIN_GEMMINI_SPIKE /
+  # _VERILATOR / _GSIM_EMU / _GSIM_MAXCYCLES variables override, `compiler.env` overrides the compiler.
+  # The ISA headers, CRT, link script and flags are NOT here: they are the support provider's
+  # content-pinned `plugin.isa_headers` spec.
+  toolchain:
+    root_env: MERLIN_CHIPYARD
+    root_ext: chipyard
+    compiler: {path: .conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc, env: MERLIN_RISCV_GCC}
+    spike: {path: .conda-env/riscv-tools/bin/spike}
+    spike_library_dir: .conda-env/riscv-tools/lib
+    # The extension CLASS libgemmini.so registers (spike --extension=<this>). A model fact of the
+    # toolchain, distinct from the target name; a target needing other bytes declares
+    # runner.spike_extension (digest-pinned) instead.
+    spike_extension_name: gemmini
+    # chipyard's Verilator harness for the elaborated config named by runtime.rtl_sim_config.
+    verilator: {path: "sims/verilator/simulator-chipyard.harness-{rtl_sim_config}"}
+    # GSIM wall-cycle cap = the hang bound (not a performance knob). A starting bound, not measured
+    # on this harness; raise per run with MERLIN_GEMMINI_GSIM_MAXCYCLES rather than editing it here.
+    gsim_max_cycles: 20000000
 # The ABI encoding surface RTL discovery cannot ground (opcode/funct3/legal-funct/DIM come from the
 # fact bundle; THESE do not). Declared once from the Gemmini ISA doc (human-reviewed) and consumed as
 # the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
@@ -112,6 +134,165 @@ encoding:
   class_subsumes:
     LOOP_CONV: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
     LOOP_WS: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
+# RoCC OPERAND ROLES — what each decoded field of each instruction class MEANS, consumed by the generic
+# RoCC semantics (merlin.targetgen.rocc.semantics). Bit POSITIONS and WIDTHS are never written here: a
+# field names a bundle + field of the CIRCT-extracted `register_bundle_layouts` fact (this target's own
+# Scala Bundles), so the offsets follow the RTL. This block supplies only what the RTL cannot ground:
+# which operand carries which bundle, and how a value is interpreted (an int, float32 bits, a
+# local-address flag, an all-ones sentinel). A field whose bundle the facts do not carry decodes as
+# UNKNOWN, never at an assumed offset.
+rocc_operand_roles:
+  # Flag bits of a local (scratchpad/accumulator) address, counted down from the MSB of the
+  # encoding.addr_len-bit address field: gemmini.h `1<<(ADDR_LEN-1)` (accumulator select),
+  # `3<<(ADDR_LEN-2)` (accumulate, with the select bit), `full_C<<(ADDR_LEN-3)` (full-width readout).
+  local_address_flags:
+    accumulator_select: {msb_offset: 0}
+    accumulate: {msb_offset: 1}
+    full_width_readout: {msb_offset: 2}
+  # The ISA-constant names this target's consumers read, composed from the flags above (or a float32
+  # scalar). Byte-identical to the former hand-declared readout_bits.
+  isa_constants:
+    F1: {f32_bits: 1.0}
+    C_ACC: {flags: [accumulator_select, full_width_readout]}
+    ACC_I8: {flags: [accumulator_select]}
+    ACC_ACCUM: {flags: [accumulate]}
+    FULL_C_BIT: {flags: [full_width_readout]}
+  # encoding.readout_bits, as published to the generated ISA module (gen_isa_module).
+  readout_bits: {f1: F1, c_acc: C_ACC, acc_i8: ACC_I8, acc_accum: ACC_ACCUM, full_c_bit: FULL_C_BIT}
+  # A compute's B/D operand of all ones means "keep what the array already holds" (gemmini.h GARBAGE_ADDR).
+  retain_sentinel: {bundle: ComputeRs, field: local_addr, value: all_ones}
+  # encoding.semantic_class's CONFIG code is refined by an rs1 selector field (encoding.config_subtype).
+  config:
+    class: CONFIG
+    selector: {operand: rs1, bundle: ConfigMvoutRs1, field: cmd_type}
+    publish_layouts: {CONFIG_ST_LAYOUT: ConfigMvoutRs1}
+  classes:
+    MVIN: &rocc_mvin
+      fields:
+        - {name: dram, operand: rs1, as: operand}
+        - {name: rows, operand: rs2, bundle: MvinRs2, field: num_rows}
+        - {name: cols, operand: rs2, bundle: MvinRs2, field: num_cols}
+        - {name: addr, operand: rs2, bundle: MvinRs2, field: local_addr}
+        - {name: spad_addr, operand: rs2, bundle: MvinRs2, field: local_addr}
+    MVIN2: *rocc_mvin
+    MVIN3: *rocc_mvin
+    MVOUT:
+      fields:
+        - {name: dram, operand: rs1, as: operand}
+        - {name: rows, operand: rs2, bundle: MvoutRs2, field: num_rows}
+        - {name: cols, operand: rs2, bundle: MvoutRs2, field: num_cols}
+        - {name: addr, operand: rs2, bundle: MvoutRs2, field: local_addr}
+        - {name: acc_addr, operand: rs2, bundle: MvoutRs2, field: local_addr}
+        - {name: readout, operand: rs2, bundle: MvoutRs2, field: local_addr, as: flag_choice,
+           flag: full_width_readout, set: i32, clear: i8}
+    PRELOAD:
+      fields:
+        - {name: weight_spad, operand: rs1, bundle: PreloadRs, field: local_addr}
+        - {name: c_addr, operand: rs2, bundle: PreloadRs, field: local_addr}
+        - {name: accumulate, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag, flag: accumulate}
+        - {name: readout, operand: rs2, bundle: PreloadRs, field: local_addr, as: flag_choice,
+           flag: full_width_readout, set: i32, clear: i8}
+    COMPUTE_PRELOADED: &rocc_compute
+      fields:
+        - {name: a_spad, operand: rs1, bundle: ComputeRs, field: local_addr}
+        - {name: bd, operand: rs2, bundle: ComputeRs, field: local_addr}
+        - {name: garbage, operand: rs2, bundle: ComputeRs, field: local_addr, as: all_ones}
+    COMPUTE_ACCUMULATE: *rocc_compute
+    CONFIG_EX:
+      fields:
+        - {name: subtype, const: EX}
+    CONFIG_LD:
+      unresolved: "null"
+      fields:
+        - {name: subtype, const: LD}
+        # gemmini.h config_ld passes the DRAM row stride as the whole rs2 operand.
+        - {name: stride, operand: rs2, as: raw}
+        - {name: scale, operand: rs1, bundle: ConfigMvinRs1, field: scale, as: f32}
+        - {name: scale_bits, operand: rs1, bundle: ConfigMvinRs1, field: scale}
+    CONFIG_ST:
+      unresolved: "null"
+      fields:
+        - {name: subtype, const: ST}
+        - {name: acc_act, operand: rs1, bundle: ConfigMvoutRs1, field: activation}
+        - {name: relu, from: acc_act, equals: 1}
+        - {name: acc_scale, operand: rs2, bundle: ConfigMvoutRs2, field: acc_scale, as: f32}
+        - {name: acc_scale_bits, operand: rs2, bundle: ConfigMvoutRs2, field: acc_scale}
+        - {name: out_stride_bytes, operand: rs2, bundle: ConfigMvoutRs2, field: stride}
+        - operand: rs1
+          bundle: ConfigMvoutRs1
+          names: [pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad]
+# RTL CHECKS — this target's RoCC protocol for the generic HARDWARE-LEGALITY rules
+# (merlin.targetgen.rtl_checks_generic). Rule kinds are target-independent code; this block only says
+# which instruction classes play which protocol ROLE, which decoded field carries which MEANING, which
+# fields are local addresses, and which rules apply. Every bound (legal functs, memory depths, address
+# selector) is an RTL fact or a contract encoding. Nothing here describes how a program should be
+# scheduled or tiled.
+rtl_checks:
+  class_roles:
+    FENCE: [fence]
+    CONFIG_EX: [config_compute]
+    CONFIG_LD: [config_load]
+    CONFIG_ST: [config_store]
+    MVIN: [movement_in]
+    MVIN2: [movement_in]
+    MVIN3: [movement_in]
+    MVOUT: [movement_out]
+    PRELOAD: [preload]
+    COMPUTE_PRELOADED: [compute, compute_preloaded]
+    COMPUTE_ACCUMULATE: [compute]
+  role_labels:
+    fence: FENCE
+    config_compute: CONFIG_EX
+    config_load: CONFIG_LD
+    config_store: CONFIG_ST
+    movement_in: MVIN
+    movement_out: MVOUT
+    preload: PRELOAD
+    compute: COMPUTE
+    compute_preloaded: COMPUTE_PRELOADED
+  # Decoded-field names (rocc_operand_roles.classes) the rules read, by meaning.
+  fields:
+    dram: dram
+    rows: rows
+    cols: cols
+    store_pitch: out_stride_bytes
+  # Local-address operand fields, bounded by the RTL scratchpad/accumulator depths (LocalAddr: the
+  # accumulator-select flag picks the memory, the low bits are the row). `rows` names the field giving
+  # the number of consecutive rows a transfer touches; without it only the addressed row is bounded.
+  local_addresses:
+    - {role: movement_in, address: spad_addr, rows: rows}
+    - {role: movement_out, address: acc_addr, rows: rows}
+    - {role: preload, address: weight_spad}
+    - {role: preload, address: c_addr}
+    - {role: compute, address: a_spad}
+    - {role: compute, address: bd}
+  # Native store-path pooling (RTL StoreController): when the active CONFIG_ST sets a non-zero pool
+  # stride on an elaboration whose max_pool feature is enabled, one MVOUT writes porows x pocols pooled
+  # rows instead of its encoded row count.
+  native_pooling:
+    config_role: config_store
+    feature: max_pool
+    enable_field: pool_stride
+    output_positions: [porows, pocols]
+  rules:
+    - {id: T0.decode_clean, rule: decode_clean}
+    - {id: T0.decode_funct_legal, rule: funct_legal}
+    - {id: T0.local_address_bounds, rule: local_address_bounds}
+    # COMPUTE_AND_FLIP (funct 4) multiplies against the weights the preceding PRELOAD latched into the
+    # mesh; with no PRELOAD there is nothing to flip in.
+    - {id: T0.preload_before_compute, rule: precedes, first: preload, then: compute_preloaded}
+    # ExecuteController reads the dataflow/activation that CONFIG_EX writes; StoreController reads the
+    # DRAM stride/scale that CONFIG_ST writes; LoadController reads the stride CONFIG_LD writes.
+    - id: T0.config_before_use
+      rule: config_before_use
+      pairs:
+        - {use: compute, config: config_compute}
+        - {use: movement_in, config: config_load}
+        - {use: movement_out, config: config_store}
+    # RoCC commands retire asynchronously to the host: a fence before the first command orders it after
+    # the host's writes, and a fence after the last makes the stored results visible to the host.
+    - {id: T0.fence_bracket, rule: bracket, role: fence}
+    - {id: T0.output_store_coverage, rule: output_store_coverage}
 status: prototype
 features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 # No `ops`/`types` are declared: the TARGET DIALECT is a design decision the agent OWNS (it writes its
@@ -334,11 +515,17 @@ notes: >-
 # How a runner-owned harness calls into this target's kernel. These are conventions of this target's
 # own bare-metal test environment, not RTL facts, so they cannot be derived and are declared here.
 # Consumed by merlin.targetgen.contract.harness_abi; previously hardcoded in the generic compile path.
+# The includes are the C runtime plus the MINIMAL generated hardware-facts header (support provider
+# isa_headers.generated_header, merlin.targetgen.isa_header_gen): no vendor kernel library is on a
+# fresh experiment's include path. GEMMINI_FENCE is that header's completion fence.
 harness_abi:
   entry_symbol: gemmini_kernel
-  fence_symbol: gemmini_fence
+  fence_symbol: GEMMINI_FENCE
   includes:
-    - include/gemmini_testutils.h
+    - <stdint.h>
+    - <stdio.h>
+    - <stdlib.h>
+    - gemmini_isa.h
   cycle_window_metric: cycle_window_gemmini_region
 
 # Registry pins (merlin/contract/hardware_pins.yaml) this target's results depend on. Read by
@@ -354,3 +541,156 @@ unmaterializable_families:
   elementwise_map: >-
     no probe path today: an elementwise capsule is authored through the PyTorch/linalg source with a host-eager golden (needs the m2m venv, so not a deterministic offline probe), and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded at all on an exact-integer datapath.
     Needs a merlin_iface elementwise mnemonic + a recompute entry.
+
+# SOFTWARE execution capabilities of the runner-owned harness path (runtime.backends.base
+# EXECUTION_CAPABILITIES vocabulary), served by the generic chipyard RoCC backend from this block.
+# They are properties of the generic harness renderer (merlin.targetgen.contract.harness_render),
+# never of the RTL; an omitted name is false, and the renderer must implement every name kept here.
+execution_capabilities:
+  whole_program_kernel_abi: >-
+    render_harness accepts kernel_abi.kind=whole_program and calls declared tensor arguments without
+    performing model arithmetic in the runner-owned harness
+  warm_single_counter_region_cycles: >-
+    the whole-program harness executes one unmeasured warm invocation, then brackets exactly one complete
+    kernel invocation with the target cycle counter
+
+# What each readout of this design applies, as reviewed against the generated parameter header the
+# harness is built with. The header's digest is cross-checked against the support provider's
+# ISA-headers spec on every read: if the spec moves to other bytes, these facts refuse rather than
+# describe a different header. Served by the generic backend as readout_epilogue_capability /
+# epilogue_stage_routes / readout_scalar_abi / readout_operand_sum.
+readout_semantics:
+  evidence_header:
+    file: include/gemmini_params.h
+    sha256: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924
+  # The full-width readout applies NOTHING: the RoCC model writes the raw accumulator on that path
+  # (pre-scale, pre-activation), while the narrowing path applies scale and activation. A capsule
+  # declaring i32 + relu measured 126/256 negative outputs. `requant` is absent from both: Merlin's
+  # integer round-half-up shift is not the float scale this hardware computes.
+  epilogue_capability:
+    - selector: i8
+      applies: [acc_scale, relu, maxpool]
+      evidence: >-
+        the narrowing readout applies accumulator scale and activation; bias is loaded into the
+        accumulator before computation, not added during readout (GemminiRocketConfig AccumulatorScale
+        and LoopMatmulLdD/LoopConvLdBias); RTL-certified bit-exact against Tensor.requant_acc_scale
+        (decision A)
+    - selector: i32
+      applies: []
+      evidence: >-
+        the full-width readout writes the raw accumulator without applying an epilogue stage (RoCC
+        accumulator mvout path); any contraction bias already in the accumulator was loaded before
+        computation, via the separate accumulator_seed route
+  # Contraction bias is seeded through MVIN (accumulate=0) before the first PRELOAD/COMPUTE, never
+  # added by either readout; restricted to contraction paths so a RESIDUAL_ADD cannot inherit it.
+  stage_routes:
+    - stages: [bias_add, bias]
+      site: accumulator_seed
+      composed_with: contraction
+      readouts: [i8, i32]
+      producer_opcodes: [MATMUL_RESIDENT, CONV2D]
+      consumer_opcodes: [COMMIT, CONV2D]
+      operand_attribute: bias
+      operand_role: bias
+      evidence: >-
+        Selected GemminiRocketConfig FIRRTL LoopMatmulLdD and LoopConvLdBias write bias into
+        AccumulatorMem with accumulate=0; AccumulatorScale has no bias operand.
+  # gemmini_params.h: `typedef int32_t acc_t`, `typedef int8_t elem_t`, `typedef float acc_scale_t`,
+  # ACC_SCALE = ROUND_NEAR_EVEN(x * scale) saturated to [INT8_MIN, INT8_MAX].
+  scalar_abi:
+    schema: scalar_narrow_readout_contract_v1
+    accumulator_dtype: i32
+    output_dtype: i8
+    scale_dtype: f32
+    clamp_min: -128
+    clamp_max: 127
+  # gemmini_params.h: `#define HAS_MVIN_SCALE`, `typedef float scale_t`, MVIN_SCALE =
+  # ROUND_NEAR_EVEN(x * scale) saturated to elem_t. Two loads meet in the addressable accumulator: one
+  # overwriting, one accumulating (LocalAddr accumulate bit; see semantic_capabilities above).
+  operand_sum:
+    schema: operand_sum_contract_v1
+    operands: 2
+    operand_dtype: i8
+    scale_dtype: f32
+    operand_rounding: half_even
+    operand_saturates: true
+
+# Hardware performance-counter semantics the generic backend serves (counter_engine_kinds /
+# counter_partition_inputs). Kinds are DECLARED, never read off a counter's spelling: EX executes on
+# the mesh, LD and ST move operands between DRAM and the scratchpad/accumulator. `partition` names
+# the elaborated modules the generic CIRCT occupancy-partition verifier inspects; it still has to
+# prove the partition from the artifact before an overlap value is called measured.
+counter_semantics:
+  engine_kinds: {EX: compute, LD: movement, ST: movement}
+  partition: {module: Gemmini, counter_module: CounterController}
+
+# The host side of the logical (v2) runner-owned harness: how the caller reads the host cycle counter
+# and waits for every outstanding accelerator command and memory access before reading results. Both
+# are instructions of the host ISA (RISC-V `rdcycle`; `fence`, which a RoCC-attached core holds until
+# the accelerator reports idle), declared here so the harness includes NO target header.
+logical_harness:
+  cycle_counter_asm: "rdcycle %0"
+  completion_asm: "fence"
+  # The header-free HARDWARE-COUNTER bracket (opt-in by MERLIN_HW_COUNTERS; never part of a default
+  # run). Consumed by merlin.targetgen.contract.counter_bracket, which issues the counter command as a
+  # raw RoCC instruction. Only what the extracted facts cannot ground is declared here:
+  #   * `command` is a funct NAME; its CODE and the custom opcode are the RTL-decoded facts
+  #     (funct_decode_table), never a literal;
+  #   * `config_fields` is the bit layout of the command's rs1 word as the counter controller decodes it
+  #     (generators/gemmini/src/main/scala/gemmini/CounterFile.scala, CounterController: rs1[0] reset,
+  #     rs1[1] snapshot reset, rs1[2] take snapshot, rs1[3] change config, rs1[6:4] counter index,
+  #     rs1[17:12] event address, rs1[31] external flag);
+  #   * `events` are the event addresses of CounterFile.scala `object CounterEvent` (internal) and
+  #     `object CounterExternal` (external, selected with the external flag); only the ones Merlin's
+  #     occupancy and byte passes read, plus DISABLE for padding unused slots;
+  #   * `slot_capacity` names the CIRCT module and state families the slot count is DERIVED from;
+  #   * `partition` names the modules the occupancy-partition proof runs over in the elaborated CIRCT;
+  #   * `engine_kinds` says which resource each counted engine is (EX executes on the mesh; LD and ST
+  #     move data between memory and the scratchpad/accumulator).
+  counter_bracket:
+    command: COUNTER_OP
+    config_fields:
+      reset: {lsb: 0, width: 1}
+      snapshot_reset: {lsb: 1, width: 1}
+      snapshot_take: {lsb: 2, width: 1}
+      configure: {lsb: 3, width: 1}
+      slot: {lsb: 4, width: 3}
+      event: {lsb: 12, width: 6}
+      external: {lsb: 31, width: 1}
+    disabled_event: DISABLE
+    events:
+      internal:
+        DISABLE: 0
+        MAIN_LD_CYCLES: 1
+        MAIN_ST_CYCLES: 2
+        MAIN_EX_CYCLES: 3
+        MAIN_LD_ST_CYCLES: 4
+        MAIN_LD_EX_CYCLES: 5
+        MAIN_ST_EX_CYCLES: 6
+        MAIN_LD_ST_EX_CYCLES: 7
+      external:
+        RDMA_BYTES_REC: 4
+        WDMA_BYTES_SENT: 5
+    slot_capacity:
+      module: CounterFile
+      state_families: [counter_config, counter_snapshot, counters]
+    partition:
+      module: Gemmini
+      counter_module: CounterController
+    engine_kinds: {EX: compute, LD: movement, ST: movement}
+
+# WHICH elaboration this target's RTL facts are read from (merlin.targetgen.rtl.introspect
+# declared_rtl_source). The chipyard checkout named by MERLIN_EXT_CHIPYARD at the pinned revision, its
+# gemmini gitlink, and the issued elaboration's exact bytes: artifact_sha256 equals the issued
+# operator-issued elaboration's SHA256SUMS (TestHarness.fir, top_module_hierarchy.json), so a checkout whose
+# generated-src holds any other bytes is refused rather than read.
+rtl_source:
+  ext_root: chipyard
+  config: GemminiRocketConfig
+  generator: gemmini
+  source_revision: 0acc1e1de2d3284bcd4d876956932a013ffe1949
+  gitlinks:
+    generators/gemmini: 8c3f9923a44a2fe2c7930587be297d6d4f8c09ca
+  artifact_sha256:
+    fir: da2c38c1bdc5c7ddf1c12c0d4a10a41323bf420c869351e52f796d41db325485
+    hierarchy: 77693d9fdedb1bfdafb5a5a3c8998d59f4bbebef199540fd64c408abb3bc4d87

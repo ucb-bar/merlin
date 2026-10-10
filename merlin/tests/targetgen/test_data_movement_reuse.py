@@ -10,21 +10,23 @@ verdict (which rides the correctness checks). It fails closed (skipped) when mlc
 from __future__ import annotations
 
 import pytest
+import selected_driver
 import yaml
 from gemmini_rtl_test_support import checks as RC
 
 from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RR
+from merlin.targetgen.corpora import capsule_corpus_roots
 from merlin.targetgen.rtl import mlc_bridge
 from merlin.targetgen.rtl.facts import load_facts
 
-pytestmark = pytest.mark.target("gemmini")
+pytestmark = [pytest.mark.target("gemmini"), selected_driver.requires_package_owned_support("gemmini")]
 
 _FACTS = CC._facts_to_rc(load_facts("gemmini"))
 
 
 def _matmul_capsule():
-    for _name, p in sorted(RR.capsule_index(RR.capsule_corpus_roots()).items()):
+    for _name, p in sorted(RR.capsule_index(capsule_corpus_roots()).items()):
         c = yaml.safe_load(p.read_text())
         if RC._declared_op(c) in ("matmul", "matmul_resident") and RC._declared_mkn(c):
             return c
