@@ -38,6 +38,7 @@ INTEGER_SCALAR_SCHEMA = "merlin.original_call_sources.v7"
 METADATA_SCHEMA = "merlin.original_call_sources.v8"
 TRIANGULAR_SCHEMA = "merlin.original_call_sources.v9"
 RESHAPE_SCHEMA = "merlin.original_call_sources.v10"
+REDUCTION_SCHEMA = "merlin.original_call_sources.v11"
 BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
@@ -75,7 +76,7 @@ def required_source_cohorts():
 
 
 def reader_modules(version):
-    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}:
         raise ValueError("original source readers need an explicit supported factory version")
     return (
         READER_MODULES
@@ -94,6 +95,7 @@ def reader_modules(version):
         )
         + (("merlin.targetgen.original_triangular_sources",) if version >= 9 else ())
         + (("merlin.targetgen.original_reshape_sources",) if version >= 10 else ())
+        + (("merlin.targetgen.original_reduction_sources",) if version >= 11 else ())
     )
 
 
@@ -155,11 +157,15 @@ def _forms(trace, schemas, defaults, *, numerical_semantics, version, tensor_bin
         from merlin.targetgen.original_reshape_sources import reshape_forms
 
         forms.extend(reshape_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
+    if version >= 11:
+        from merlin.targetgen.original_reduction_sources import reduction_forms
+
+        forms.extend(reduction_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
     return forms
 
 
 def _tensor_bindings(schema_record, graph_path, version):
-    if version not in {7, 8, 9, 10}:
+    if version not in {7, 8, 9, 10, 11}:
         return None
     # Missing native selection remains a factory refusal in every original
     # cohort. This record is data; live schema ownership is replayed separately.
@@ -175,7 +181,7 @@ def _tensor_bindings(schema_record, graph_path, version):
 
 
 def _zero_returns(schema_record, graph_path, trace, schemas, version):
-    if version not in {8, 9, 10} or schema_record.get("schema") != "merlin.independent_operator_schema_intake.v3":
+    if version not in {8, 9, 10, 11} or schema_record.get("schema") != "merlin.independent_operator_schema_intake.v3":
         return None
     from .zero_return_intake import verify_returns
 
@@ -227,6 +233,11 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
         from merlin.targetgen.original_reshape_sources import reshape_source
 
         pointwise[RESHAPE_FORM_SCHEMA] = reshape_source
+    if version >= 11:
+        from merlin.targetgen.original_reduction_sources import FORM_SCHEMA as REDUCTION_FORM_SCHEMA
+        from merlin.targetgen.original_reduction_sources import reduction_source
+
+        pointwise[REDUCTION_FORM_SCHEMA] = reduction_source
     indexed = {form["node"]: form for form in forms}
     result = []
     for call in calls:
@@ -278,7 +289,7 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
 def observe(*, schema_record, basis, numerical_semantics, budget, destination, version=1):
     """Write source-only original forms through the selected normal observer."""
     validate_budget(budget)
-    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}:
+    if type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}:
         raise ValueError("original source observation requires an explicit supported factory version")
     destination = Path(destination)
     rows = D.observe_members(schema_record=schema_record, basis=basis, destination=destination, version=2)
@@ -327,6 +338,7 @@ def observe(*, schema_record, basis, numerical_semantics, budget, destination, v
             8: METADATA_SCHEMA,
             9: TRIANGULAR_SCHEMA,
             10: RESHAPE_SCHEMA,
+            11: REDUCTION_SCHEMA,
         }[version],
         "budget": budget,
         "members": rows,
@@ -351,6 +363,7 @@ def verify(record, *, schema_record, basis, numerical_semantics):
             METADATA_SCHEMA,
             TRIANGULAR_SCHEMA,
             RESHAPE_SCHEMA,
+            REDUCTION_SCHEMA,
         }
     ):
         raise ValueError("original call sources require their closed observation version")
@@ -366,6 +379,7 @@ def verify(record, *, schema_record, basis, numerical_semantics):
         METADATA_SCHEMA: 8,
         TRIANGULAR_SCHEMA: 9,
         RESHAPE_SCHEMA: 10,
+        REDUCTION_SCHEMA: 11,
     }[record["schema"]]
     if [row["graph_path"] for row in record["members"]] != [source.path for source in basis.graph_sources]:
         raise ValueError("original call sources changed their complete protected graph membership")

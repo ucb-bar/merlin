@@ -1,5 +1,8 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
+
+
 Original call-source v10 / automatic v17 / declared v10 opt in to exact typed
 contiguous reshape construction. Preserve original literal dimensions and -1,
 shape/stride premises, ordered storage/result and Tensor(a) declarations.
