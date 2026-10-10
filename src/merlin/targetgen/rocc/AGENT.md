@@ -17,8 +17,8 @@ The RoCC coprocessor interface: decoding a trace of it, and emitting one.
 **`target` is required and has no default.** The selected backend must expose `rocc_semantics`:
 `isa_constants(target)`, `decode_instruction(funct, rs1, rs2, isa)`, and
 `instruction_funct(name, rs1, isa)`. Operands are plain mappings with `raw`, `kind`,
-`arg_index`, and `offset`. Accelerator ABI interpretation belongs in that OOT support
-capability, not in shared transport parsing. Missing capabilities refuse; there is no
+`arg_index`, and `offset`. Accelerator ABI roles come from the selected contract;
+field offsets and widths come from its original RTL facts. Missing capabilities refuse; there is no
 fallback to another target's decoder. The provider must declare or derive its ISA facts.
 
 **Fail closed, never drop.** An instruction form the decoder does not understand is recorded as class
@@ -30,13 +30,14 @@ which read as "this backend emitted nothing" rather than "the decoder could not 
 artifact the package hands over — that is what makes it parity-clean between a baseline and an
 assisted submission.
 
-## Shared parsing, external semantics
+## Shared parsing and selected semantics
 
 Core retains MLIR/SSA resolution, R-type transport parsing, fences, UNKNOWN records and trace
 construction. CONFIG subtypes, packed addresses and transfer/compute meaning are not common
-RoCC semantics. Gemmini's implementation lives in its support provider, vendored at
-`examples/gemmini/support` and selected when `MERLIN_TARGET_PATH` is unset.
-Only parsed syntax is cached; every decode resolves support and reads facts again. Returned
+RoCC semantics. The generic data-bound decoder interprets explicit operand-to-bundle
+bindings using extracted register layouts; it supplies no preferred lowering.
+Legacy external semantics still require explicit provider selection.
+Only parsed syntax is cached; every decode resolves its selected capability. Returned
 traces never alias cache-owned dictionaries. Loaded-provider ownership checks still apply;
 this is not an attestation of arbitrary in-process mutation or complete source bytes.
 Assembly resolves an omitted kernel symbol through the selected contract's `harness_abi`.
@@ -47,3 +48,6 @@ Structural checking is a separate `rocc_semantics.rtl_checks` capability. It exp
 `compile_trace_checks(facts_rec, capsule, prefix)` and `render_trace(trace, facts_rec)`.
 Reports use Merlin's shared `Check`/`CheckReport` types. Specialized geometry and
 instruction ordering remain support-owned; missing coverage is not a passing check.
+The generic checker currently implements `decode_clean` and `legal_funct` only.
+An incomplete hardware decode table cannot establish universal instruction
+legality. Unimplemented temporal/bounds rules and strategy rules refuse.
