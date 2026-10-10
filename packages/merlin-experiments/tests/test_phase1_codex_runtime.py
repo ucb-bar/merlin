@@ -219,7 +219,7 @@ def test_ordinary_launch_consumes_the_same_live_runtime(tmp_path, monkeypatch):
     for rnd in (0, 1):
         home = Path(options.codex_home_root) / f"selected_r{rnd:02d}"
         mounts = runtime.runtime_binds(home)
-        assert mounts[-2:] == ["CODEX_HOME", str(home)]
+        assert mounts[-5:-3] == ["CODEX_HOME", str(home)]
 
 
 def test_explicit_auth_does_not_discover_real_home(tmp_path, monkeypatch):
@@ -296,8 +296,8 @@ def test_helper_alias_uses_selected_bytes_without_client_home_grants(tmp_path, m
     assert not any(Path(path).is_relative_to(Path(options.codex_home_root)) for path in runtime.read_paths)
     home = Path(options.codex_home_root) / "round"
     binds = runtime.runtime_binds(home)
-    assert ["--ro-bind", options.codex_binary, helper] == binds[3:6]
-    assert binds[6:9] == ["--setenv", "PATH", runtime.record()["helper_search_path"]]
+    assert ["--ro-bind", options.codex_binary, helper] == binds[6:9]
+    assert binds[9:12] == ["--setenv", "PATH", runtime.record()["helper_search_path"]]
 
 
 def test_helper_search_path_drift_refuses_selected_runtime(tmp_path, monkeypatch):
@@ -315,3 +315,26 @@ def test_helper_alias_cannot_overlap_selected_credential(tmp_path, monkeypatch):
     options = dataclasses.replace(options, codex_auth_source=str(helper))
     with pytest.raises(ValueError, match="private selections"):
         _select(tmp_path, monkeypatch, options)
+
+
+def test_private_alias_directory_is_readonly_after_parent_bind(tmp_path, monkeypatch):
+    options = _options(tmp_path)
+    runtime, *_ = _select(tmp_path, monkeypatch, options)
+    home = Path(options.codex_home_root) / "round"
+    binds = runtime.runtime_binds(home)
+    assert binds[-3:] == ["--ro-bind", str(home / "tmp/arg0"), str(home / "tmp/arg0")]
+    assert binds.index("--bind") < len(binds) - 3
+    (home / "tmp/arg0/unexpected").write_text("changed")
+    with pytest.raises(ValueError, match="remain empty"):
+        runtime.runtime_binds(home)
+
+
+def test_code_mode_companion_bytes_are_sealed(tmp_path, monkeypatch):
+    options = _options(tmp_path)
+    companion = Path(options.codex_binary).with_name("codex-code-mode-host")
+    companion.write_text("synthetic host")
+    runtime, *_ = _select(tmp_path, monkeypatch, options)
+    assert str(companion) in runtime.read_paths
+    companion.write_text("changed host")
+    with pytest.raises(ValueError, match="changed"):
+        runtime.verify()

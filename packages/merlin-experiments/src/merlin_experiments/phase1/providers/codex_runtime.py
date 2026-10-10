@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,7 +73,21 @@ def selection_record(options) -> dict | None:
                 digest.update(chunk)
     except OSError:
         raise ValueError("selected client executable is unreadable") from None
+    sandbox_binary = canonical_file(str(Path(shutil.which("bwrap") or "").resolve()), "client sandbox executable")
+    code_host = binary.with_name("codex-code-mode-host")
+    companion = {}
+    if code_host.exists():
+        code_host = canonical_file(str(code_host), "client code-mode host")
+        if overlap(code_host, Path(options.codex_auth_source)) or overlap(code_host, Path(options.codex_home_root)):
+            raise ValueError("client companion overlaps private selections")
+        companion = {
+            "code_mode_host": str(code_host),
+            "code_mode_host_sha256": hashlib.sha256(code_host.read_bytes()).hexdigest(),
+        }
     return {
+        "sandbox_binary": str(sandbox_binary),
+        "sandbox_binary_sha256": hashlib.sha256(sandbox_binary.read_bytes()).hexdigest(),
+        **companion,
         "schema": "phase1_codex_runtime.v1",
         "binary": str(binary),
         "binary_sha256": digest.hexdigest(),
@@ -114,7 +129,11 @@ class SelectedCodexRuntime:
             allow_unsandboxed=False,
             preflight_only=False,
         )
-        if selection_record(options) != selected:
+        try:
+            current = selection_record(options)
+        except ValueError:
+            raise ValueError("selected client executable or runtime selection changed") from None
+        if current != selected:
             raise ValueError("selected client executable or runtime selection changed")
 
     def runtime_binds(self, home: Path) -> list[str]:
@@ -123,7 +142,16 @@ class SelectedCodexRuntime:
         root = Path(selected["home_root"])
         if home.parent != root or not home.is_absolute() or home.resolve() != home:
             raise ValueError("client round home escaped its selected root")
+        alias_root = home / "tmp" / "arg0"
+        alias_root.mkdir(parents=True, exist_ok=True)
+        if alias_root.resolve() != alias_root or any(alias_root.iterdir()):
+            raise ValueError("client helper alias directory must remain empty")
+        companions = []
+        if "code_mode_host" in selected:
+            companions = ["--ro-bind", selected["code_mode_host"], selected["code_mode_host"]]
         return [
+            *companions,
+            "--ro-bind", selected["sandbox_binary"], "/usr/bin/bwrap",
             "--ro-bind",
             selected["binary"],
             selected["binary"],
@@ -142,6 +170,7 @@ class SelectedCodexRuntime:
             "--setenv",
             "CODEX_HOME",
             str(home),
+            "--ro-bind", str(alias_root), str(alias_root),
         ]
 
     def round_kwargs(self) -> dict:
@@ -191,9 +220,10 @@ def select(options, context, bundle: dict, workspace: Path, private_run: Path) -
         else:
             raise ValueError("unsupported ordinary toolchain mount selection")
     paths.append(selected["binary"])
-    # The CLI creates private argv0 aliases; its nested sandbox cannot execute
-    # those through the denied client home. Bind the same pinned executable at
-    # an exact public helper path instead, preserving all private-home denials.
+    if "code_mode_host" in selected:
+        paths.append(selected["code_mode_host"])
+    # The standalone sandbox command uses the public alias. Session startup
+    # falls back to the pinned executable when private alias creation is disabled.
     paths.append(selected["helper_path"])
     read_paths = tuple(dict.fromkeys(paths))
     for value in read_paths:
