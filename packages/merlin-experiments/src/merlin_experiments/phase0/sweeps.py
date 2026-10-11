@@ -29,6 +29,10 @@ _MAX_SWEEP_CAPSULES = 128
 _EXTENT_KEYS = ("M", "K", "N", "H", "Skv", "Dv", "B")
 
 
+class OracleSelectionError(ValueError):
+    """Required performance evidence has no consistent concrete execution route."""
+
+
 def _resolve_flat_extents(entry: dict, binding) -> dict:
     """Resolve tile-relative extent tokens on an entry and its matmul commands.
 
@@ -516,15 +520,15 @@ def _resolve_target_oracle_evidence(
     for key, placeholder in pending.items():
         tier = placeholder[len(prefix) :]
         if not tier:
-            raise ValueError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
+            raise OracleSelectionError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
         concrete = None
         if oracle_selection is not None:
             concrete = oracle_selection.get(tier) or declared.get(tier)
             if not isinstance(concrete, str) or not concrete or concrete == "elaborated_rtl":
-                raise ValueError(f"{target}: explicit Phase 0 inputs have no concrete {tier} oracle")
+                raise OracleSelectionError(f"{target}: explicit Phase 0 inputs have no concrete {tier} oracle")
             declared_engine = declared.get(tier)
             if declared_engine and declared_engine != "elaborated_rtl" and concrete != declared_engine:
-                raise ValueError(
+                raise OracleSelectionError(
                     f"{target}: selected {tier} oracle {concrete!r} conflicts with target contract {declared_engine!r}"
                 )
         elif tier == "L3":
@@ -541,7 +545,7 @@ def _resolve_target_oracle_evidence(
         if oracle_selection is None and concrete is None and declared.get(tier):
             concrete = str(declared[tier])
         if not concrete or concrete == "elaborated_rtl":
-            raise ValueError(
+            raise OracleSelectionError(
                 f"{target}: target oracle route does not resolve {tier} to a concrete simulator "
                 f"(declared={declared.get(tier)!r})"
             )
@@ -551,14 +555,14 @@ def _resolve_target_oracle_evidence(
         kind_tier = kind_placeholder.partition(":")[2]
         simulator = evidence.get("timing_simulator")
         if kind_tier != "L3" or evidence.get("timing_tier") != kind_tier:
-            raise ValueError(f"{target}: timing oracle kind must name the selected L3 tier")
+            raise OracleSelectionError(f"{target}: timing oracle kind must name the selected L3 tier")
         if (
             not isinstance(simulator, str)
             or not simulator
             or simulator.startswith("$")
             or simulator == "elaborated_rtl"
         ):
-            raise ValueError(f"{target}: selected L3 timing simulator cannot name an oracle kind")
+            raise OracleSelectionError(f"{target}: selected L3 timing simulator cannot name an oracle kind")
         evidence["timing_oracle_kind"] = f"rtl_{simulator}"
         resolved_from["timing_oracle_kind"] = kind_placeholder
     evidence["resolved_from"] = resolved_from
@@ -566,7 +570,7 @@ def _resolve_target_oracle_evidence(
     if isinstance(fit, dict) and fit.get("dependent_metric") == "$target_oracle_metric:L3":
         simulator = evidence.get("timing_simulator")
         if not isinstance(simulator, str) or evidence.get("timing_tier") != "L3":
-            raise ValueError(f"{target}: selected L3 timing oracle cannot name an affine metric")
+            raise OracleSelectionError(f"{target}: selected L3 timing oracle cannot name an affine metric")
         fit["dependent_metric"] = f"{simulator}_L3_cycles"
     return performance
 
@@ -1158,6 +1162,8 @@ def expand_sweeps(
                         _materialize_performance_entry(entry, binding, oracle_selection=profile["_performance_oracles"])
                     else:
                         _materialize_performance_entry(entry, binding)
+                except OracleSelectionError:
+                    raise  # Selection is a run prerequisite, not a per-member generation error.
                 except Exception as exc:  # noqa: BLE001 - persisted as a generation error
                     if errors is None:
                         raise
@@ -1377,6 +1383,8 @@ def expand_sweeps(
                             )
                         else:
                             _materialize_performance_entry(entry, binding)
+                    except OracleSelectionError:
+                        raise  # Refuse before any later capsule capture work.
                     except Exception as exc:  # noqa: BLE001 - persisted as a generation error
                         if errors is None:
                             raise

@@ -16,6 +16,8 @@ from typing import Any
 
 import yaml
 
+from .evidence_output import _materialize_evidence
+
 
 def _json(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -1171,16 +1173,12 @@ def select_evidence(
     )
 
 
-def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> dict:
-    """Write only already-observed bytes beneath the explicit Phase 0 run root."""
-    root = Path(artifact_root)
+def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
+    """Calculate the existing evidence artifacts without writing files."""
     if selection.archived_artifacts:
         # A newer implementation must not rewrite historical reports or widen
         # their qualification. Re-export the already validated original bytes.
-        outputs = dict(selection.archived_artifacts)
-        manifest = json.loads(outputs["evidence-manifest.json"])
-        _materialize_evidence(root, outputs)
-        return manifest
+        return dict(selection.archived_artifacts)
     outputs: dict[str, bytes] = {}
     outputs["software/selection.json"] = selection.views_json
     if selection.raw_facts is not None:
@@ -1422,32 +1420,16 @@ def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> 
         "qualification": "byte snapshots and declared/derived views only; no compiler or hardware verdict",
     }
     outputs["evidence-manifest.json"] = _json(manifest)
-    _materialize_evidence(root, outputs)
-    return manifest
+    return outputs
 
 
-def _materialize_evidence(root: Path, outputs: dict[str, bytes]) -> None:
-    """Validate all destinations before adding immutable saved evidence members."""
-    for name in outputs:
-        member = Path(name)
-        if member.is_absolute() or not member.parts or ".." in member.parts:
-            raise ValueError(f"invalid evidence output member: {name}")
-        if member.parts[0] == "private":
-            raise ValueError(f"evidence output may not occupy the private source snapshot: {name}")
-        path = root / name
-        if path.is_symlink():
-            raise ValueError(f"evidence output may not be symlinked: {path}")
-        if path.exists() and path.read_bytes() != outputs[name]:
-            raise FileExistsError(f"changed evidence output already exists: {path}")
-        if any(parent.is_symlink() for parent in path.parents):
-            raise ValueError(f"evidence output traverses a symlink: {path}")
-    for name, raw in outputs.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            continue
-        with path.open("xb") as handle:
-            handle.write(raw)
+def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> dict:
+    """Write only already-observed bytes beneath the explicit Phase 0 run root."""
+    outputs = evidence_artifacts(selection)
+    _materialize_evidence(Path(artifact_root), outputs)
+    return json.loads(outputs["evidence-manifest.json"])
+
+
 
 
 def load_exported_evidence(artifact_root: str | Path) -> EvidenceSelection:

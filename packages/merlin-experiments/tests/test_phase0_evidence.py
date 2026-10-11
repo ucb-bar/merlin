@@ -635,7 +635,10 @@ def test_export_and_reload_never_reopen_original_inputs(monkeypatch, tmp_path):
     assert selected.contract["encoding"]["corpus_issue_order"] == ["LOAD", "COMPUTE", "STORE"]
     assert any(source.path == code for source in selected.source_snapshots)
     output = tmp_path / "run"
+    artifacts = evidence.evidence_artifacts(selected)
+    assert not output.exists()
     manifest = evidence.export_evidence(selected, output)
+    assert all((output / name).read_bytes() == payload for name, payload in artifacts.items())
     raw.unlink()
     explicit.unlink()
     code.write_text("# changed live provider\n")
@@ -646,6 +649,7 @@ def test_export_and_reload_never_reopen_original_inputs(monkeypatch, tmp_path):
     assert restored.source_snapshots == selected.source_snapshots
     assert manifest["raw_facts_sha256"] == selected.raw_facts_sha256
     assert (output / "hardware/circt/facts.json").read_bytes() == selected.raw_facts
+    assert evidence.evidence_artifacts(restored) == artifacts
     assert evidence.export_evidence(restored, output) == manifest
 
 
