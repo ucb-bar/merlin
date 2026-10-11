@@ -3483,6 +3483,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
             # if a future frozen loader imports one; an attempted checkout must fail, not mutate inputs.
             env.update(
                 {
+                    "PYTHONDONTWRITEBYTECODE": "1",
                     "HF_HUB_OFFLINE": "1",
                     "TRANSFORMERS_OFFLINE": "1",
                     "HF_DATASETS_OFFLINE": "1",
@@ -3490,7 +3491,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 }
             )
             run = subprocess.run(
-                [str(torch_python), str(worker), "--request", str(request_path)],
+                [str(torch_python), "-B", str(worker), "--request", str(request_path)],
                 cwd=str(root),
                 env=env,
                 capture_output=True,
