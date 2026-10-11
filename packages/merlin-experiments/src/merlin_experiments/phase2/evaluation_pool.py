@@ -7,6 +7,7 @@ are control data; verified returned feedback retains its existing scientific tie
 from __future__ import annotations
 
 import json
+import math
 import os
 import resource
 import select
@@ -174,6 +175,7 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
                     call_index=index,
                     timeout_s=int(timeout_s),
                     retained_revision=revision,
+                    complete_roster=True,
                 )
             )
         if (
@@ -321,6 +323,7 @@ class ComponentEvaluationPool:
             raise
         self._jobs, self._lock, self._wake = {}, threading.RLock(), threading.Event()
         self._closed = False
+        self._submissions_stopped = False
         self._resource_selection = (
             self.resources,
             self.grant,
@@ -380,8 +383,10 @@ class ComponentEvaluationPool:
 
     def submit(self, revision_id, *, kind=KINDS[0], timeout_s=600):
         with self._lock:
-            if self._closed or kind not in KINDS or not 1 <= timeout_s <= 2400 or type(timeout_s) not in (int, float):
-                raise StageGateError("evaluation submission has an unsupported kind, deadline or closed pool")
+            if self._closed or self._submissions_stopped:
+                raise StageGateError("evaluation submissions stopped")
+            if kind not in KINDS or type(timeout_s) not in (int, float) or not 1 <= timeout_s <= 2400:
+                raise StageGateError("evaluation submission has an unsupported kind or deadline")
             if getattr(self.policy, "component_analytical" if kind == KINDS[0] else "component_rtl") is None:
                 raise StageGateError("selected queued component evaluation provider is unavailable")
             if sum(job.state not in TERMINAL for job in self._jobs.values()) >= self.max_pending:
@@ -734,6 +739,7 @@ class ComponentEvaluationPool:
 
     def close(self):
         with self._lock:
+            self._submissions_stopped = True
             self._closed = True
             for job in self._jobs.values():
                 self.cancel(job.job_id)
@@ -745,3 +751,29 @@ class ComponentEvaluationPool:
             if self._engine_lease is not None:
                 self._engine_lease.close()
                 self._engine_lease = None
+
+    def stop_submissions(self):
+        """Stop admission without cancelling the already issued queue."""
+        with self._lock:
+            self._submissions_stopped = True
+            self._wake.set()
+
+    def drain(self, *, timeout_s):
+        """Finish issued work during a bounded wait, then cancel/reap the remainder.
+
+        Cleanup uses the existing guardian proof; local I/O and reaping do not
+        establish an OS hard deadline. Unknown cleanup keeps ownership and raises.
+        """
+        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or not 0 <= timeout_s <= 2400:
+            raise StageGateError("evaluation drain requires a finite bounded wait")
+        deadline = time.monotonic() + timeout_s
+        self.stop_submissions()
+        while time.monotonic() < deadline:
+            with self._lock:
+                if all(job.state in TERMINAL for job in self._jobs.values()) or any(
+                    job.state == "cleanup_unknown" for job in self._jobs.values()
+                ):
+                    break
+            self._wake.wait(min(0.05, max(0, deadline - time.monotonic())))
+        self.close()
+        return self.observations()

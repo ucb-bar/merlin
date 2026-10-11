@@ -11,6 +11,7 @@ from component_baseline_fixture import unissued_baseline
 from merlin_experiments.phase2 import broker
 from merlin_experiments.phase2 import component_workflow as CW
 from merlin_experiments.phase2 import evaluation_pool as EP
+from merlin_experiments.phase2 import retained_revisions as RR
 from merlin_experiments.phase2.contracts import StageGateError, canonical_json
 from merlin_experiments.phase2.edit_authority import FrozenEditAuthority
 from merlin_experiments.phase2.retained_revisions import (
@@ -96,6 +97,11 @@ def descendants(*, root, **_kwargs):
 
 def crashing(**_kwargs):
     os._exit(9)
+
+
+def completing_feedback(**kwargs):
+    (kwargs["root"] / "continue").touch()
+    return synthetic_feedback(**kwargs)
 
 
 def wait_for(predicate, timeout=6):
@@ -353,3 +359,125 @@ def test_fixed_analytical_route_uses_the_retained_source_without_member_copies(s
     assert final["result"]["tier"] == "calibrated_component_analytical"
     assert not list((pool.root / job["job_id"]).glob("**/candidate/compiler.py"))
     assert len(list(pool.revisions.root.glob("sources/*/compiler.py"))) == 1
+
+
+@pytest.mark.parametrize("selected_pool", [completing_feedback], indirect=True)
+def test_stop_submissions_preserves_queued_work_for_drain(selected_pool):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    jobs = [pool.submit(revision.revision_id) for _ in range(3)]
+    pool.stop_submissions()
+    with pytest.raises(StageGateError, match="submissions stopped"):
+        pool.submit(revision.revision_id)
+    rows = pool.drain(timeout_s=600)
+    assert {row["job_id"] for row in rows} == {job["job_id"] for job in jobs}
+    assert all(row["terminal"] and row["state"] == "completed" and row["result"] for row in rows)
+    assert pool._engine_lease is None
+
+
+@pytest.mark.parametrize("selected_pool", [descendants], indirect=True)
+def test_drain_timeout_cancels_and_reaps_remaining_jobs(selected_pool):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    jobs = [pool.submit(revision.revision_id) for _ in range(3)]
+    root = pool.root / jobs[0]["job_id"]
+    wait_for(lambda: (root / "descendant").exists())
+    descendant = int((root / "descendant").read_text())
+    rows = pool.drain(timeout_s=0)
+    assert all(row["terminal"] and row["state"] == "cancelled" and row["result"] is None for row in rows)
+    with pytest.raises(ProcessLookupError):
+        os.kill(descendant, 0)
+    assert not storage.blockers(pool.root)
+
+
+@pytest.fixture
+def restorable_source(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "storage"))
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "compiler.py").write_text("def schedule():\n    return 1\n")
+    (candidate / "compiler.py").chmod(0o740)
+    (candidate / "helpers").mkdir()
+    (candidate / "helpers").chmod(0o750)
+    (candidate / "helpers" / "original.py").write_text("def original():\n    return 1\n")
+    authority = FrozenEditAuthority(tmp_path / "authority")
+    authority.output.mkdir()
+    authority.freeze(
+        candidate,
+        seal(
+            {
+                "schema": "compiler_edit_contract_v1",
+                "existing_symbols": [{"surface_id": "schedule", "path": "compiler.py", "symbol": "schedule"}],
+                "helper_extensions": [{"directory": "helpers", "surface_ids": ["schedule"]}],
+                "ancillary_paths": ["docs"],
+            }
+        ),
+        has_iterations=False,
+    )
+    revisions = RetainedRevisionStore(tmp_path / "revisions", edit_authority=authority, max_bytes=4096, max_files=20)
+    revision = revisions.freeze(candidate)
+    return candidate, authority, revisions, revision
+
+
+def test_restore_replays_exact_source_in_same_root_and_removes_only_authorized_extras(restorable_source):
+    candidate, authority, revisions, revision = restorable_source
+    identity = candidate.stat().st_dev, candidate.stat().st_ino
+    (candidate / "compiler.py").write_text("def schedule():\n    return 2\n")
+    (candidate / "helpers" / "extra.py").write_text("def extra():\n    return 2\n")
+    (candidate / "docs").mkdir()
+    (candidate / "docs" / "note.txt").write_text("author note")
+    authority.validate_candidate(candidate)
+    result = revisions.restore(revision.revision_id, candidate)
+    assert result == revision.public_record() and "source" not in result
+    assert hash_tree(candidate)["sha256"] == revision.source_sha256
+    assert (candidate.stat().st_dev, candidate.stat().st_ino) == identity
+    assert (candidate / "compiler.py").stat().st_mode & 0o111 == 0o100
+    assert (revision.source / "compiler.py").stat().st_mode & 0o111 == 0o100
+    assert (candidate / "helpers").stat().st_mode & 0o111 == 0o110
+    assert not (candidate / "helpers" / "extra.py").exists() and not (candidate / "docs").exists()
+    assert not list(candidate.rglob(".restore-*"))
+
+
+def test_restore_refuses_foreign_candidate_and_replaced_original_root(restorable_source):
+    candidate, _authority, revisions, revision = restorable_source
+    foreign = candidate.parent / "foreign"
+    foreign.mkdir()
+    with pytest.raises(StageGateError, match="exact original"):
+        revisions.restore(revision.revision_id, foreign)
+    original = candidate.parent / "original"
+    candidate.rename(original)
+    candidate.mkdir()
+    with pytest.raises(StageGateError, match="root inode"):
+        revisions.restore(revision.revision_id, candidate)
+    assert hash_tree(original)["sha256"] == revision.source_sha256
+
+
+@pytest.mark.parametrize("kind", ["symlink", "fifo", "unauthorized-directory"])
+def test_restore_refuses_linked_special_and_unauthorized_extra_target_entries(restorable_source, kind):
+    candidate, _authority, revisions, revision = restorable_source
+    if kind == "symlink":
+        (candidate / "helpers" / "linked").symlink_to(candidate.parent)
+    elif kind == "fifo":
+        os.mkfifo(candidate / "helpers" / "fifo")
+    else:
+        (candidate / "foreign").mkdir()
+    with pytest.raises(StageGateError, match="linked or special|lacks frozen"):
+        revisions.restore(revision.revision_id, candidate)
+
+
+def test_restore_detects_concurrent_disagreement_without_accepting_selection(restorable_source, monkeypatch):
+    candidate, _authority, revisions, revision = restorable_source
+    (candidate / "compiler.py").write_text("def schedule():\n    return 2\n")
+    replace_file = RR.os.replace
+
+    def concurrent_edit(source, destination, **kwargs):
+        result = replace_file(source, destination, **kwargs)
+        if destination == "original.py":
+            (candidate / "compiler.py").write_text("def schedule():\n    return 3\n")
+        return result
+
+    monkeypatch.setattr(RR.os, "replace", concurrent_edit)
+    with pytest.raises(StageGateError, match="differs from the exact"):
+        revisions.restore(revision.revision_id, candidate)
+    assert hash_tree(candidate)["sha256"] != revision.source_sha256
+    assert not list(candidate.rglob(".restore-*"))

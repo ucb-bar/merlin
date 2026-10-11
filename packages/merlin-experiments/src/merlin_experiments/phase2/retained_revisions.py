@@ -14,6 +14,7 @@ import os
 import shutil
 import stat
 import threading
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,53 @@ from .edit_authority import FrozenEditAuthority
 
 _ISSUER = object()
 _EXECUTING = contextvars.ContextVar("phase2_retained_compilers", default=())
+
+
+def _entry_signature(info):
+    return info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _target_records(root_fd, *, max_entries):
+    records = {}
+
+    def walk(directory_fd, prefix):
+        with os.scandir(directory_fd) as children:
+            for child in children:
+                name = (prefix / child.name).as_posix()
+                info = child.stat(follow_symlinks=False)
+                if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+                    raise StageGateError("restoration target contains a linked or special entry")
+                records[name] = _entry_signature(info)
+                if len(records) > max_entries:
+                    raise StageGateError("restoration target exceeded its entry budget")
+                if stat.S_ISDIR(info.st_mode):
+                    fd = os.open(child.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+                    try:
+                        walk(fd, prefix / child.name)
+                    finally:
+                        os.close(fd)
+
+    walk(root_fd, Path())
+    return records
+
+
+def _directory_fd(root_fd, parts, *, create=False):
+    current = os.dup(root_fd)
+    try:
+        for part in parts:
+            try:
+                selected = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o755, dir_fd=current)
+                selected = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            os.close(current)
+            current = selected
+        return current
+    except BaseException:
+        os.close(current)
+        raise
 
 
 def source_inventory(root, *, max_bytes, max_files, readonly=False, exclude_generated=False):
@@ -52,7 +100,7 @@ def source_inventory(root, *, max_bytes, max_files, readonly=False, exclude_gene
                 continue
             if readonly and mode & 0o222:
                 raise StageGateError("retained source became writable")
-            entries.append((relative, "directory" if stat.S_ISDIR(mode) else "file", bool(mode & 0o111)))
+            entries.append((relative, "directory" if stat.S_ISDIR(mode) else "file", mode & 0o111))
             if len(entries) > max_files * 4:
                 raise StageGateError("retained source exceeds its entry budget")
             if stat.S_ISDIR(mode):
@@ -131,6 +179,11 @@ class RetainedRevisionStore:
         ):
             raise StageGateError("retained revisions overlap mutable authoring or immutable edit authority")
         self.authority, self.max_bytes, self.max_files = edit_authority, max_bytes, max_files
+        candidate = edit_authority.initial_source
+        if candidate is None or candidate.resolve() != candidate or candidate.is_symlink() or not candidate.is_dir():
+            raise StageGateError("retained revision authority lacks its exact original candidate directory")
+        info = candidate.stat()
+        self._candidate_identity = info.st_dev, info.st_ino
         self.max_total_bytes = max_bytes if max_total_bytes is None else max_total_bytes
         if type(self.max_total_bytes) is not int or self.max_total_bytes < max_bytes:
             raise StageGateError("retained revision total budget is smaller than its source budget")
@@ -193,11 +246,14 @@ class RetainedRevisionStore:
                                 if copied > self.max_bytes:
                                     raise StageGateError("retained source grew beyond its copy budget")
                                 writer.write(block)
-                        target.chmod(0o555 if executable else 0o444)
+                        target.chmod(0o444 | executable)
+                    directory_modes = {
+                        name: executable for name, kind, executable in before["entries"] if kind == "directory"
+                    }
                     for path in sorted(destination.rglob("*"), key=lambda path: len(path.parts), reverse=True):
                         if path.is_dir():
-                            path.chmod(0o555)
-                    destination.chmod(0o555)
+                            path.chmod(0o444 | directory_modes[path.relative_to(destination).as_posix()])
+                    destination.chmod(0o444 | (source.stat().st_mode & 0o111))
                     after = source_inventory(
                         source, max_bytes=self.max_bytes, max_files=self.max_files, exclude_generated=True
                     )
@@ -293,6 +349,137 @@ class RetainedRevisionStore:
             }
             if binding != expected or document_sha256(binding) != revision.revision_id:
                 raise StageGateError("retained revision declaration changed")
+
+    def restore(self, revision_id, candidate):
+        """Restore an issued selection in place before the host freezes lineage.
+
+        This proves source/authority agreement, not author process shutdown. The
+        caller must arrange its author/subauthor ordering and reject later edits.
+        """
+        with self._lock:
+            revision = self.get(revision_id)
+            candidate = Path(candidate)
+            if (
+                candidate != self.authority.initial_source
+                or candidate.resolve() != candidate
+                or candidate.is_symlink()
+                or not candidate.is_dir()
+            ):
+                raise StageGateError("restoration requires the exact original candidate directory")
+            root_fd = os.open(candidate, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                if _entry_signature(os.fstat(root_fd))[:2] != self._candidate_identity:
+                    raise StageGateError("restoration candidate root inode changed")
+                before = _target_records(root_fd, max_entries=self.max_files * 4)
+                current = source_inventory(
+                    candidate, max_bytes=self.max_bytes, max_files=self.max_files, exclude_generated=True
+                )
+                self.authority.validate_candidate(candidate)
+                desired = {name: (kind, executable) for name, kind, executable in revision.inventory["entries"]}
+                existing = {name: kind for name, kind, _executable in current["entries"]}
+                if any(existing[name] != desired[name][0] for name in existing.keys() & desired.keys()):
+                    raise StageGateError("restoration refuses changed source entry types")
+                extras = existing.keys() - desired.keys()
+                contract = self.authority.contract
+                ancillary = tuple(Path(name) for name in contract.get("ancillary_paths", ()))
+                helpers = tuple(Path(row["directory"]) for row in contract.get("helper_extensions", ()))
+                for name in extras:
+                    relative, kind = Path(name), existing[name]
+                    if not (
+                        any(
+                            relative == path
+                            or relative.is_relative_to(path)
+                            or kind == "directory"
+                            and path.is_relative_to(relative)
+                            for path in ancillary
+                        )
+                        or any(relative != path and relative.is_relative_to(path) for path in helpers)
+                        and (kind == "directory" or relative.suffix == ".py")
+                    ):
+                        raise StageGateError("restoration extra source entry lacks frozen edit authority")
+                if _target_records(root_fd, max_entries=self.max_files * 4) != before:
+                    raise StageGateError("restoration target changed during admission")
+                copied = 0
+                for name, (kind, executable) in desired.items():
+                    relative = Path(name)
+                    directory_fd = _directory_fd(root_fd, relative.parts[:-1], create=True)
+                    try:
+                        if kind == "directory":
+                            try:
+                                actual = _entry_signature(
+                                    os.stat(relative.name, dir_fd=directory_fd, follow_symlinks=False)
+                                )
+                            except FileNotFoundError:
+                                actual = None
+                            if actual != before.get(name):
+                                raise StageGateError("restoration source directory changed before creation")
+                            child_fd = _directory_fd(directory_fd, (relative.name,), create=True)
+                            try:
+                                mode = stat.S_IMODE(os.fstat(child_fd).st_mode)
+                                os.fchmod(child_fd, (mode & ~0o111) | executable)
+                            finally:
+                                os.close(child_fd)
+                            continue
+                        temporary = ".restore-" + uuid.uuid4().hex
+                        expected = before.get(name)
+                        writer_fd = os.open(
+                            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd
+                        )
+                        try:
+                            with os.fdopen(writer_fd, "wb") as writer:
+                                reader_fd = os.open(revision.source / name, os.O_RDONLY | os.O_NOFOLLOW)
+                                with os.fdopen(reader_fd, "rb") as reader:
+                                    while block := reader.read(1024 * 1024):
+                                        copied += len(block)
+                                        if copied > self.max_bytes:
+                                            raise StageGateError("restoration exceeded its source byte budget")
+                                        writer.write(block)
+                                    os.fchmod(writer.fileno(), 0o644 | executable)
+                            try:
+                                actual = _entry_signature(
+                                    os.stat(relative.name, dir_fd=directory_fd, follow_symlinks=False)
+                                )
+                            except FileNotFoundError:
+                                actual = None
+                            if actual != expected:
+                                raise StageGateError("restoration source entry changed before replacement")
+                            os.replace(temporary, relative.name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+                        finally:
+                            try:
+                                os.unlink(temporary, dir_fd=directory_fd)
+                            except FileNotFoundError:
+                                pass
+                    finally:
+                        os.close(directory_fd)
+                for name in sorted(extras, key=lambda value: len(Path(value).parts), reverse=True):
+                    relative = Path(name)
+                    directory_fd = _directory_fd(root_fd, relative.parts[:-1])
+                    try:
+                        actual = _entry_signature(os.stat(relative.name, dir_fd=directory_fd, follow_symlinks=False))
+                        expected = before[name]
+                        if (actual if existing[name] == "file" else actual[:3]) != (
+                            expected if existing[name] == "file" else expected[:3]
+                        ):
+                            raise StageGateError("restoration extra source entry changed before removal")
+                        if existing[name] == "directory":
+                            os.rmdir(relative.name, dir_fd=directory_fd)
+                        else:
+                            os.unlink(relative.name, dir_fd=directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                _target_records(root_fd, max_entries=self.max_files * 4)
+                if (candidate.stat().st_dev, candidate.stat().st_ino) != self._candidate_identity:
+                    raise StageGateError("restoration changed the original candidate root inode")
+                actual = source_inventory(
+                    candidate, max_bytes=self.max_bytes, max_files=self.max_files, exclude_generated=True
+                )
+                if actual != revision.inventory:
+                    raise StageGateError("restoration differs from the exact issued source inventory")
+                self.authority.validate_candidate(candidate)
+                revision.verify(authority=self.authority)
+                return revision.public_record()
+            finally:
+                os.close(root_fd)
 
 
 @contextlib.contextmanager
