@@ -13,7 +13,12 @@ from merlin_experiments.phase2 import component_workflow as CW
 from merlin_experiments.phase2 import evaluation_pool as EP
 from merlin_experiments.phase2.contracts import StageGateError, canonical_json
 from merlin_experiments.phase2.edit_authority import FrozenEditAuthority
-from merlin_experiments.phase2.retained_revisions import RetainedRevisionStore
+from merlin_experiments.phase2.retained_revisions import (
+    RetainedRevisionStore,
+    executing_candidate_revision,
+    executing_revision,
+    executing_revisions,
+)
 from test_component_analytical import provider
 from test_component_workflow import context
 
@@ -157,6 +162,19 @@ def test_exact_sources_shared_options_separate_and_new_live_edit_does_not_change
     assert finished["result"]["promotion"] == "NO_FINAL_ACCEPTANCE"
     assert json.loads((root / "cleanup.json").read_text())["cleanup"]["complete"]
     assert list(a.source.rglob("compiler")) == [a.source / "compiler"]
+
+
+def test_verification_context_never_aliases_the_mutable_execution_path(selected_pool):
+    policy, pool, _selected, authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    (policy.candidate / "compiler.py").write_text("def schedule(\n")
+    assert executing_candidate_revision(authority) is None
+    with executing_revisions(revision, pool.baseline_revision):
+        assert executing_candidate_revision(authority) is revision
+        assert executing_revision(policy.candidate) is None
+        assert executing_revision(revision.source) is revision
+        with pytest.raises(StageGateError, match="authority"):
+            executing_candidate_revision(object())
 
 
 def test_drift_refuses_queued_and_previously_completed_results(selected_pool):

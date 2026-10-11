@@ -29,6 +29,7 @@ from .contracts import StageGateError, document_sha256, exact_tree_record, mappi
 from .edit_authority import FrozenEditAuthority
 
 _ISSUER = object()
+_DEFAULT_VERIFICATION = object()
 
 
 def _candidate_authority(admission, candidate, edit_authority):
@@ -99,7 +100,11 @@ class ComponentIndependentExecution:
             }
         )
 
-    def verify(self, *, retained_revision=None):
+    def verify(self, *, retained_revision=_DEFAULT_VERIFICATION):
+        if retained_revision is _DEFAULT_VERIFICATION:
+            from .retained_revisions import executing_candidate_revision
+
+            retained_revision = executing_candidate_revision(self.edit_authority)
         if self._issuer is not _ISSUER:
             raise StageGateError("component execution requires issued independent normal service authority")
         verify_baseline_admission(

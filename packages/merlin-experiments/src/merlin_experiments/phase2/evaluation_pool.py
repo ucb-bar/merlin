@@ -121,7 +121,8 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
     temporary.mkdir(mode=0o700)
     os.environ["TMPDIR"] = str(temporary)
     os.environ["MERLIN_PERF_SWEEP_WORKERS"] = "1"
-    policy._validate()
+    with executing_revisions(revision, baseline_revision):
+        policy._validate()
     if kind == KINDS[0]:
         from .component_analytical import _evaluate
 
@@ -372,7 +373,9 @@ class ComponentEvaluationPool:
     def _verify(self, job):
         job.revision.verify()
         self.baseline_revision.verify()
-        if self._closure() != job.closure or _environment() != job.environment:
+        with executing_revisions(job.revision, self.baseline_revision):
+            closure = self._closure()
+        if closure != job.closure or _environment() != job.environment:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
     def submit(self, revision_id, *, kind=KINDS[0], timeout_s=600):

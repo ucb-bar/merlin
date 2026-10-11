@@ -309,3 +309,17 @@ def executing_revisions(*revisions):
 def executing_revision(compiler):
     """Only the fixed evaluator's live issued context can select retained execution."""
     return next((revision for revision in _EXECUTING.get() if revision.source == compiler), None)
+
+
+def executing_candidate_revision(authority):
+    """Default verification uses only the fixed worker's first issued source.
+
+    This is verification context, never a compiler-path alias for execution.
+    The fixed owner enters candidate first, then its independently frozen seed.
+    """
+    revisions = _EXECUTING.get()
+    if not revisions:
+        return None
+    candidate = revisions[0]
+    candidate.verify(authority=authority)
+    return candidate
