@@ -262,6 +262,15 @@ and records that interpreter before authoring. `MERLIN_COMPILER_PYTHON` separate
 selects the candidate compiler interpreter; both selections must be explicit when
 the deployment uses both roles.
 
+The RTL authoring tools also require an executable named `FileCheck` on the host
+and sandbox PATH. Some LLVM distributions omit it or install only a versioned
+launcher. Select `FILECHECK_BIN` as the directory containing the actual unversioned
+binary, then keep it on PATH for preflight and authoring:
+
+```sh
+export PATH="$FILECHECK_BIN:$PATH"
+```
+
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox
 with the same provider/model/tool selections and a separate fresh run ID. See
