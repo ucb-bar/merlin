@@ -217,8 +217,11 @@ def build_catalog_objects(
     source = work / "device_catalog_shim.c"
     source.write_text(unit.text, encoding="utf-8")
     shim = work / "device_catalog_shim.o"
+    # The closed shim may call only its declared catalog kernels. At -O2 Clang
+    # can synthesize memset for struct initialization even when C names none.
+    shim_flags = [*_flags(codegen_target, cflags), "-fno-builtin-memset"]
     result = subprocess.run(
-        [clang(), *_flags(codegen_target, cflags), "-c", str(source), "-o", str(shim)],
+        [clang(), *shim_flags, "-c", str(source), "-o", str(shim)],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -250,7 +253,7 @@ def build_catalog_objects(
         "shim_object_sha256": hashlib.sha256(shim.read_bytes()).hexdigest(),
         "routed_operations": len(routed),
         "entry_to_kernel": dict(sorted(kernels.items())),
-        "compiler_flags": _flags(codegen_target, cflags),
+        "compiler_flags": shim_flags,
         **({"source_conversion_policy_sha256": data["source_conversion"]["policy_sha256"],
             "source_conversion_dtypes": list(conversion_source)} if conversion_source else {}),
     }
