@@ -9,8 +9,25 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def cached_cli_version(codex_bin: str, cache: dict) -> str | None:
+    """Retain the client's verbatim version, including unavailable observations."""
+    if codex_bin in cache:
+        return cache[codex_bin]
+    out = None
+    try:
+        proc = subprocess.run([codex_bin, "--version"], capture_output=True, text=True, timeout=30)
+        if proc.returncode == 0:
+            lines = (proc.stdout or proc.stderr or "").strip().splitlines()
+            out = lines[0].strip() if lines else None
+    except (OSError, subprocess.SubprocessError):
+        pass
+    cache[codex_bin] = out or None
+    return cache[codex_bin]
 
 
 def canonical_file(value: str, label: str) -> Path:

@@ -343,25 +343,10 @@ _CLI_VERSION: dict = {}
 
 
 def cli_version(codex_bin: str = "codex") -> str | None:
-    """The CLI's self-reported version, or ``None`` when it cannot be asked.
+    """The verbatim CLI version, or ``None`` when it cannot be observed."""
+    from .codex_runtime import cached_cli_version
 
-    ``None`` is a real answer and is recorded as such: guessing a version would put a fabricated
-    provenance stamp on every run made with that binary, which is worse than an absent one. The
-    string is stored VERBATIM (e.g. ``codex-cli 0.153.0``) and never parsed here -- a comparison is
-    somebody else's job, and a parser is one more thing to drift.
-    """
-    if codex_bin in _CLI_VERSION:
-        return _CLI_VERSION[codex_bin]
-    out = None
-    try:
-        proc = subprocess.run([codex_bin, "--version"], capture_output=True, text=True, timeout=30)
-        if proc.returncode == 0:
-            text = (proc.stdout or proc.stderr or "").strip().splitlines()
-            out = text[0].strip() if text else None
-    except (OSError, subprocess.SubprocessError):
-        out = None
-    _CLI_VERSION[codex_bin] = out or None
-    return _CLI_VERSION[codex_bin]
+    return cached_cli_version(codex_bin, _CLI_VERSION)
 
 
 def real_codex_home() -> Path:
