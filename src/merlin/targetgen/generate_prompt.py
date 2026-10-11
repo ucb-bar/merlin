@@ -670,8 +670,24 @@ Do not invent a surface to satisfy the form. If a lever does not exist yet, impl
 compiler mechanism first and then declare its real symbol. Phase 2 treats an absent or invalid mapping
 as UNKNOWN rather than guessing from a filename.
 
-### Whole-program source/task identity and host ABI
-For a whole-model capsule, preserve the source IR's `prov.region_id` wherever present through lowering. Declare
+### Model compilation ownership and source identity
+For model capsules using the provided-host grading path, Merlin compiles the original model graph,
+implements pure host layers with its fixed host provider, and links your source-bound device kernels.
+Your deliverable is a general accelerator lowering, including the host instructions needed to execute
+that accelerator work: control flow, address calculations, descriptors, marshalling, synchronization
+and contract-supported scalar assistance or epilogues. Preserve the original source regions and node
+IDs; attribute device work with `merlin.source_op_index` and the source's `prov.region_id`.
+Do not implement independent pure-host model layers in the candidate package or replace required
+accelerator computation with host computation. Unsupported source operations are routed to Merlin's
+host infrastructure; report a missing host capability rather than synthesizing a candidate host layer.
+Qualification still requires every eligible source operation to execute unavoidable matching device
+work, exact emitted/object/linked command evidence, and complete model outputs on all required tiers.
+A device opcode count, source tag or correct host reference alone does not establish acceleration.
+
+### Explicit whole-program ABI authoring (only when the selected interface requests it)
+The protocol below applies to an explicitly selected whole-program command-buffer interface.
+It is not a requirement to emit a candidate whole-model program or host tasks for provided-host
+model grading. In that explicit interface, preserve `prov.region_id` through lowering and declare
 `params.global_program_plan.tasks` with contiguous `task_index` values in emitted order, a nonempty
 `kind`, and `source_op_indices` covering every source operation exactly once. Derive each task/group's
 source regions from those indices and the source IR; do not invent IDs from capsule names, output
@@ -704,9 +720,11 @@ Renumbering tags is not a proof.
 Use `merlin.source_op_index` and the source's `prov.region_id` on device-work commands;
 several operations may share a region ID. Fused commands require independently checked
 transformation evidence, not one opcode relabelled as many source operations.
-Host address calculations, loop control and dispatch are allowed in device tasks; host arithmetic
-on tensor elements is not, including through helper calls. Explicit host islands must not absorb
-independently accelerator-eligible source work. Missing computation attribution cannot pass the veto.
+Accelerator-associated host control, addressing, descriptors, marshalling and synchronization are
+allowed. Scalar assistance and epilogues require the selected contract and independently checked
+source transformation to support them; host arithmetic cannot substitute for required accelerator
+work. Pure host model layers belong to Merlin's provided host compiler. Explicit host islands must
+not absorb independently accelerator-eligible source work. Missing attribution cannot pass the veto.
 
 If a selected host package is granted read-only, inspect its `knobs.yaml` C flags for the host
 `-march` and `-mabi`; the emitted LLVM module must agree with that selected host ISA/ABI and the
