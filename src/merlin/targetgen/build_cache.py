@@ -38,7 +38,7 @@ normal build:
 * the build recipe as it would run TODAY: its march, the exact compile and link argument vectors, the
   load address, and the BYTES of the link script and of every support source. A recipe that changes a
   flag or a support source is a different build;
-* the toolchain that would answer, by resolved path and reported version. The driver is outside the
+* the compile and link drivers that would answer, by resolved path, bytes and reported version. They are outside the
   repo and outside every git pin, so nothing else in this repo would notice it moving;
 * the bytes of the code that performs the build (:func:`build_path`) -- the lowering pipeline, the
   contract compile path, the command-buffer module, the backend registry, and the target's own backend
@@ -97,7 +97,7 @@ __all__ = [
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
-BUILD_IDENTITY_VERSION = 1
+BUILD_IDENTITY_VERSION = 2
 
 #: Version of the on-disk record shape. A record written by another version is not read.
 RECORD_VERSION = 1
@@ -267,27 +267,40 @@ def toolchain_token(compiler: "str | Path") -> "str | None":
 
     The toolchain lives outside the repo and outside every declared hardware pin, so no other identity
     in this system would notice it being upgraded underneath a stored build. Resolved path plus the
-    driver's own reported version and target triple; a driver that cannot be run has no identity and
-    the build is not cached.
+    driver's bytes, reported version and target triple. Memoization checks file identity as well as
+    timestamps: replacing a driver with the same version string must invalidate its old builds.
+    This identifies the driver, not its transitive libraries or execution environment.
     """
-    key = str(compiler)
-    if key in _TOOLCHAIN_MEMO:
-        return _TOOLCHAIN_MEMO[key]
     value = None
     try:
         import subprocess
 
-        exe = shutil.which(key) or key
-        parts = [str(Path(exe).resolve())]
+        selection = str(compiler)
+        exe = Path(shutil.which(selection) or selection).resolve(strict=True)
+        before = exe.stat()
+        key = (str(exe), before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+        if key in _TOOLCHAIN_MEMO and max(before.st_mtime_ns, before.st_ctime_ns) + _QUIESCENT_NS <= time.time_ns():
+            return _TOOLCHAIN_MEMO[key]
+        digest = _file_sha(exe)
+        if digest is None:
+            return None
+        parts = [str(exe), digest]
         for flag in ("--version", "-dumpmachine"):
-            proc = subprocess.run([exe, flag], capture_output=True, text=True, timeout=60)
+            proc = subprocess.run([str(exe), flag], capture_output=True, text=True, timeout=60)
             if proc.returncode != 0:
                 raise OSError(f"{exe} {flag} returned {proc.returncode}")
             parts.append(proc.stdout.strip())
+        after = exe.stat()
+        if key != (str(exe), after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            return None
         value = _digest_of(parts)
+        # Keep only the current identity of this selected path, not every historical replacement.
+        for old in tuple(_TOOLCHAIN_MEMO):
+            if old[0] == str(exe):
+                del _TOOLCHAIN_MEMO[old]
+        _TOOLCHAIN_MEMO[key] = value
     except Exception:  # noqa: BLE001 -- unestablished toolchain: fail closed, no key
         value = None
-    _TOOLCHAIN_MEMO[key] = value
     return value
 
 
@@ -378,8 +391,8 @@ def _build_path_digest(files) -> str:
     for p in files:
         try:
             st = p.stat()
-            signature.append((str(p), st.st_size, st.st_mtime_ns))
-            newest = max(newest, st.st_mtime_ns)
+            signature.append((str(p), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+            newest = max(newest, st.st_mtime_ns, st.st_ctime_ns)
         except OSError:
             signature.append((str(p), -1, -1))
     memo_key = _digest_of(signature)
@@ -441,9 +454,11 @@ def build_identity(
     recipe_rec = recipe_token(recipe)
     if recipe_rec is None:
         return None
-    compiler = recipe_rec["compile"][0] if recipe_rec["compile"] else ""
-    tool = toolchain_token(compiler) if compiler else None
-    if tool is None:
+    if not recipe_rec["compile"] or not recipe_rec["link"]:
+        return None
+    drivers = {recipe_rec["compile"][0], recipe_rec["link"][0]}
+    tools = {driver: toolchain_token(driver) for driver in sorted(drivers)}
+    if any(token is None for token in tools.values()):
         return None
     files = build_path(target)
     if not files:
@@ -456,7 +471,7 @@ def build_identity(
             "command_buffer": _digest_of(cb),
             "inputs": _digest_of(inputs) if inputs is not None else "",
             "recipe": recipe_rec,
-            "toolchain": tool,
+            "toolchain": tools,
             "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
