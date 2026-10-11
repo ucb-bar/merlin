@@ -219,7 +219,8 @@ def build_catalog_objects(
     shim = work / "device_catalog_shim.o"
     # The closed shim may call only its declared catalog kernels. At -O2 Clang
     # can synthesize memset for struct initialization even when C names none.
-    shim_flags = [*_flags(codegen_target, cflags), "-fno-builtin-memset"]
+    shim_flags = [*_flags(codegen_target, cflags), "-fno-builtin-memset",
+                  "-fno-builtin-memcpy", "-fno-stack-protector"]
     result = subprocess.run(
         [clang(), *shim_flags, "-c", str(source), "-o", str(shim)],
         capture_output=True,

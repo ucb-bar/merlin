@@ -149,6 +149,8 @@ extern mr2 two(void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,
 extern mr3 three(void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,
                  void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,
                  void*,void*,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t,intptr_t);
+extern void _mlir_ciface_two(mr2*, const mr2*, const mr2*, const mr2*);
+extern void _mlir_ciface_three(mr3*, const mr3*, const mr3*, const mr3*);
 static void gemm(const int8_t *a, const int8_t *b, int32_t *c, int batches) {
   for (int h=0; h<batches; ++h)
     for (int i=0; i<3; ++i) for (int j=0; j<7; ++j) {
@@ -178,6 +180,14 @@ int main(void) {
     int32_t sum=0; for (int p=0;p<5;++p) sum+=a[1+h*15+i*5+p]*b[1+h*35+p*7+j];
     if (c[1+h*21+i*7+j]!=sum) return 5;
   }
+  mr2 da={a,a,1,{3,5},{5,1}}, db={b,b,1,{5,7},{7,1}};
+  mr2 dc={c,c,1,{3,7},{7,1}}, wrapped2={0};
+  _mlir_ciface_two(&wrapped2,&da,&db,&dc);
+  if (wrapped2.aligned!=c || wrapped2.size[0]!=3 || wrapped2.size[1]!=7) return 6;
+  mr3 ba={a,a,1,{2,3,5},{15,5,1}}, bb={b,b,1,{2,5,7},{35,7,1}};
+  mr3 bc={c,c,1,{2,3,7},{21,7,1}}, wrapped3={0};
+  _mlir_ciface_three(&wrapped3,&ba,&bb,&bc);
+  if (wrapped3.aligned!=c || wrapped3.size[0]!=2 || wrapped3.size[2]!=7) return 7;
   return 0;
 }
 """)

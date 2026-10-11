@@ -329,11 +329,18 @@ def _c_interface_wrapper(symbol: str, rank: int) -> str:
         fields.extend(f"{name}->strides[{axis}]" for axis in range(rank))
         groups.append(", ".join(fields))
     call = ",\n      ".join(groups)
+    fields = ["allocated", "aligned", "offset"]
+    fields.extend(f"sizes[{axis}]" for axis in range(rank))
+    fields.extend(f"strides[{axis}]" for axis in range(rank))
+    stores = "\n".join(f"  destination->{field} = returned.{field};" for field in fields)
     return (
         f"\n/* MLIR's emitted external C interface: result first, then descriptor pointers. */\n"
         f"void _mlir_ciface_{symbol}({descriptor} *result, const {descriptor} *a,\n"
         f"                          const {descriptor} *b, const {descriptor} *c)\n"
-        f"{{\n  *result = {symbol}(\n      {call});\n}}\n"
+        f"{{\n  if (!result || !a || !b || !c) __builtin_trap();\n"
+        f"  {descriptor} returned = {symbol}(\n      {call});\n"
+        f"  volatile {descriptor} *destination = (volatile {descriptor} *)result;\n"
+        f"{stores}\n}}\n"
     )
 
 
@@ -487,6 +494,7 @@ def emit_dense_translation_unit(
                 bad_fields="\n    ".join(bad_fields),
             )
         )
+        entries.append(_c_interface_wrapper(sym, rank))
         emitted.append(sym)
     kernels = tuple(sorted({kernel_symbol_for(sym) for sym in emitted}))
     externs = "\n".join(f"extern void {k}(void *lhs, void *rhs, void *out);" for k in kernels)
