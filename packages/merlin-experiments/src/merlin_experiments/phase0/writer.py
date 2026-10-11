@@ -858,6 +858,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
         from merlin.targetgen.application_inventory import int_mm_source_is_qualified
+        from merlin.targetgen.capsule_builtin_source import native_storage_source_spec
 
         # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
         # so the float-regime restriction below does not apply to it. The restriction exists because a
@@ -867,7 +868,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         # eager then computes the same quantized math, so the golden is right by construction.
         # For operation-derived slices, the source's exact digest-bound integer arithmetic is checked
         # independently. Static and dynamic whole-model quantization remain distinct source schemes.
-        if entry.get("quant_scheme") or (
+        if native_storage_source_spec(entry) is not None or entry.get("quant_scheme") or (
             entry.get("capture_op") == "int_matmul"
             and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
         ):
