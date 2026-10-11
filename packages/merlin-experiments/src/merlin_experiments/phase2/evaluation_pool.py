@@ -149,7 +149,8 @@ def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout
     os.environ["MERLIN_PERF_SWEEP_WORKERS"] = "1"
     inputs = SearchInputs(policy)
     if inputs.ordinary:
-        os.environ["MERLIN_PERF_SWEEP_WORKERS"] = str(grant.cores)
+        workers = min(grant.cores, grant.engine_slots)
+        os.environ["MERLIN_PERF_SWEEP_WORKERS"] = str(workers)
         with executing_revisions(revision, baseline_revision):
             raw = policy.evaluate_retained(
                 revision,
@@ -157,7 +158,7 @@ def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout
                 work_root=root / "rtl",
                 call_index=index,
                 timeout_s=timeout_s,
-                workers=grant.cores,
+                workers=workers,
             )
             return inputs.validate_result(raw, revision, kind)
     with executing_revisions(revision, baseline_revision):
