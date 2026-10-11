@@ -11,7 +11,7 @@ from merlin.runtime.backends.base import EXECUTION_CAPABILITIES, execution_capab
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 
 from .capture_residency import _bound_capture_inventory, _capture_residency_sweep
-from .profiles import _DERIVED_AXES, _comparison_roles, _validate_performance_block
+from .profiles import _DERIVED_AXES, _comparison_roles, _validate_performance_block, pending_host_source_basis
 from .provenance import _document_digest
 
 #: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
@@ -382,7 +382,10 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
     if "requires" in gate:
         raise ValueError("performance gate.requires is not accepted; use canonical gate.traits")
     names = gate.get("traits")
-    if not isinstance(names, list) or not names or any(not isinstance(name, str) or not name for name in names):
+    source_decision = pending_host_source_basis(gate)
+    if not isinstance(names, list) or (not names and source_decision is None):
+        raise ValueError("performance gate.traits must be a non-empty list")
+    if any(not isinstance(name, str) or not name for name in names):
         raise ValueError("performance gate.traits must be a non-empty list")
     unknown = sorted(set(names) - set(TRAITS))
     if unknown:
@@ -437,7 +440,7 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
     execution_unestablished = [name for name, fact in selected_execution.items() if fact["satisfied"] is None]
     execution_satisfied = [name for name, fact in selected_execution.items() if fact["satisfied"] is True]
     any_refuted = bool(refuted or execution_refuted)
-    any_unknown = bool(unestablished or execution_unestablished)
+    any_unknown = bool(unestablished or execution_unestablished or source_decision)
     outcome = "refuted" if any_refuted else ("unestablished" if any_unknown else "satisfied")
     decision = {
         "outcome": outcome,
@@ -452,6 +455,8 @@ def evaluate_gate(gate: dict, trait_facts: dict | None) -> tuple[bool, dict]:
         "unestablished_execution_capabilities": execution_unestablished,
         "execution_capability_facts": selected_execution,
     }
+    if source_decision is not None:
+        decision["source_execution_basis"] = source_decision
     return outcome == "satisfied", decision
 
 
@@ -1376,7 +1381,9 @@ def expand_sweeps(
                 if is_performance:
                     try:
                         if source_preparation is not None:
-                            entry = source_performance.materialize(entry, binding, point=combo, gate=gate_decision)
+                            entry = source_performance.materialize(
+                                entry, binding, point=combo, gate=gate_decision, selection=source_preparation
+                            )
                         elif "_performance_oracles" in profile:
                             _materialize_performance_entry(
                                 entry, binding, oracle_selection=profile["_performance_oracles"]

@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+Explicit `component_program` v2 adds signed integer casts and true kept-axis
+sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
+meaning. Logical copies, fanout, aliases and state epochs are source semantics;
+physical placement, allocation, effects and timing need separate witnesses.
+`op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
+selected `Bound`, retaining impossible positive lower witnesses as missing. It
+grants no tensor-axis, physical-capacity or tiling interpretation.
+
 `original_reduction_sources` preserves exact original mean/softmax axes, dtype defaults and layer-normalization literals/affine/epsilon bindings. Fresh positive contiguous geometry uses original rank and explicit extent; normalized suffixes remain literal. Bind rank to complete original shape/stride metadata before axis expansion, and bound complete logical input/affine/output counts before fresh allocation. Unsupported storage/promotion/empty/layout cases stay unavailable. Construction grants no reference, stress, alias/effect, packing, hardware or phase admission.
 
 

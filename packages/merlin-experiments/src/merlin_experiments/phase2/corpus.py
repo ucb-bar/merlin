@@ -129,7 +129,20 @@ def _component_objectives(record, members):
         if objective != (declaration.get("objective") if isinstance(declaration, Mapping) else None):
             raise StageGateError("component objective differs from its reviewed generated family binding")
         try:
-            require_written(member.descriptor)
+            prepared = record.get("source_performance_preparation") or {}
+            if prepared.get("schema") == "merlin.phase0.source_performance_preparation.v2":
+                from merlin_experiments.phase2.test_justification import _host_basis
+
+                if _host_basis(member.descriptor, member.source_dir, performance.get("gate") or {}) is None:
+                    raise ValueError("prepared source curriculum has no independently bound source basis")
+                original = record.get("source_semantics_admission") or {}
+                screen = member.descriptor.get("source_semantics_screen") or {}
+                if any(
+                    screen.get(key) != original.get(key) for key in ("hardware_intake_sha256", "software_intake_sha256")
+                ):
+                    raise ValueError("prepared source curriculum differs from original live HW/SW selectors")
+            else:
+                require_written(member.descriptor)
             if objective is not None:
                 if not isinstance(declaration.get("operations"), list) or not declaration["operations"]:
                     raise ValueError("component objective has no reviewed operation owners")
@@ -502,7 +515,7 @@ def verify_frozen_performance_corpus(corpus: FrozenPerformanceCorpus) -> None:
             raise StageGateError("frozen performance test justification bytes changed")
         receipt = CONTRACTS.mapping_file(receipt_path)
         if (
-            receipt.get("schema") != "merlin.phase2.test_justification.v1"
+            receipt.get("schema") not in {"merlin.phase2.test_justification.v1", "merlin.phase2.test_justification.v2"}
             or receipt.get("status") != "diagnostic_unmeasured"
         ):
             raise StageGateError("frozen performance test justification claims an invalid status")

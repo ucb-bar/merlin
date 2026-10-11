@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`test_justification` v2 accepts the explicit prepared host source basis from
+source-preparation v2, reopens the complete typed component program and emitted
+bytes, and binds its full numerical-reference tree. It supplies source rationale
+without a fabricated RTL trait; actual execution, physical resource mappings,
+guard admission and timing remain UNKNOWN. Ordinary discovery/freeze supports
+these diagnostic receipts and representative selection closes over whole source
+families, including source-operation and resource-boundary distinctions. Existing
+trait-gated v1 meaning and qualification requirements remain unchanged.
+
 `supervised_feedback` runs the callback worker and retains private
 transport/exit/refusal evidence. `feedback_protocol` accepts only bounded plain
 values and the selected existing interval/analytical value types, never pickle,

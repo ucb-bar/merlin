@@ -17,6 +17,7 @@ import yaml
 from merlin.targetgen.application_inventory import verified_static_integerization
 from merlin.targetgen.performance_match import match_operation_form
 from merlin_experiments.phase0.performance_scope import validate_performance_scope
+from merlin_experiments.phase0.profiles import validate_host_source_basis
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.contracts import StageGateError
 
@@ -27,6 +28,56 @@ _BASIS = "coverage/performance-basis.json"
 _HARDWARE_SPEC = "software/hardware-spec.json"
 _SOFTWARE_SPEC = "software/software-spec.json"
 _CONTRACT = "software/contract.json"
+
+
+def _host_basis(descriptor, directory: Path, gate) -> dict | None:
+    """Reopen prepared host source premises without claiming executed host cost."""
+    selected = gate.get("source_execution_basis")
+    if selected is None:
+        return None
+    try:
+        validate_host_source_basis(selected, owner="Phase 2 test rationale")
+    except ValueError as exc:
+        raise StageGateError(str(exc)) from exc
+    preparation = (descriptor.get("performance") or {}).get("source_preparation") or {}
+    screen = descriptor.get("source_semantics_screen") or {}
+    program = descriptor.get("component_program") or {}
+    operation = descriptor.get("operation") or {}
+    original = (operation.get("attributes") or {}).get("program")
+    source = directory / "capsule.interface.mlir"
+    from merlin.targetgen.component_program import render
+
+    storage = program.get("selected_storage") or {}
+    try:
+        typed, expected = render(original, operand_dtype=storage["operand"], accumulator_dtype=storage["accumulator"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise StageGateError("host rationale cannot reopen its complete typed source") from exc
+    operations = sorted({{"alias": "copy", "update": "add"}.get(node["op"], node["op"]) for node in typed["nodes"]})
+    if (
+        preparation.get("schema") != "merlin.phase0.source_performance_preparation.v2"
+        or preparation.get("hardware_admission") != "not_established"
+        or preparation.get("measurement_admission") != "not_established"
+        or screen.get("status") != "source_admitted"
+        or screen.get("software_intake_sha256") != selected["software_intake_sha256"]
+        or sorted(selected["operations"]) != operations
+        or operation.get("op") != "component_program"
+        or typed != program
+        or source.is_symlink()
+        or source.read_bytes() != expected.encode()
+        or screen.get("program_sha256") != C.sha256_file(source)
+    ):
+        raise StageGateError("host rationale differs from the original independently prepared source basis")
+    golden = directory / "golden.yaml"
+    if not golden.is_file() or golden.is_symlink():
+        raise StageGateError("host rationale lacks its complete independent numerical reference")
+    return {
+        "selection": selected,
+        "source_sha256": C.sha256_file(source),
+        "typed_program_sha256": C.document_sha256(program),
+        "reference_sha256": C.sha256_file(golden),
+        "status": "source_prepared_execution_unknown",
+        "scope": "original source/reference only; execution, placement, complete cost and physical effects unknown",
+    }
 
 
 def scope_projection_from_requirement_bytes(
@@ -420,6 +471,7 @@ def derive_justification(corpus) -> dict:
         if isinstance(group, Mapping) and group.get("name") and group.get("role"):
             roles_by_group[(member.family, str(group["name"]))].append((str(group["role"]), member.capsule))
     rows = []
+    has_host_basis = False
     for member in sorted(corpus.capsules, key=lambda item: (item.family, item.capsule)):
         if C.exact_tree_record(member.source_dir)["sha256"] != member.source_sha256:
             raise StageGateError(f"performance member changed before test justification: {member.capsule}")
@@ -429,14 +481,22 @@ def derive_justification(corpus) -> dict:
         if any(not isinstance(value, Mapping) for value in (gate, comparand, falsifier)):
             raise StageGateError(f"malformed test claim for {member.capsule}")
         names = gate.get("traits") or []
-        if not names or not isinstance(names, list) or any(name not in (facts.get("traits") or {}) for name in names):
+        host_basis = _host_basis(descriptor, member.source_dir, gate)
+        has_host_basis |= host_basis is not None
+        if (
+            (not names and host_basis is None)
+            or not isinstance(names, list)
+            or any(name not in (facts.get("traits") or {}) for name in names)
+        ):
             raise StageGateError(f"test claim has no frozen RTL trait basis: {member.capsule}")
         selected_traits = {name: facts["traits"][name] for name in names}
-        if any(row.get("satisfied") is not True for row in selected_traits.values()):
+        if host_basis is None and any(row.get("satisfied") is not True for row in selected_traits.values()):
             raise StageGateError(f"generated performance member has an unsatisfied RTL gate: {member.capsule}")
         capabilities = gate.get("execution_capabilities") or []
         selected_execution = {name: (facts.get("execution_capabilities") or {}).get(name) for name in capabilities}
-        if any(not isinstance(row, Mapping) or row.get("satisfied") is not True for row in selected_execution.values()):
+        if host_basis is None and any(
+            not isinstance(row, Mapping) or row.get("satisfied") is not True for row in selected_execution.values()
+        ):
             raise StageGateError(f"generated performance member has an unsatisfied execution gate: {member.capsule}")
         if (
             not all(comparand.get(key) for key in ("kind", "against", "demand_equal"))
@@ -559,6 +619,19 @@ def derive_justification(corpus) -> dict:
                     "claim": performance.get("claim"),
                 },
                 "hardware_basis": {"traits": selected_traits, "execution_capabilities": selected_execution},
+                **(
+                    {
+                        "source_execution_basis": host_basis,
+                        "curriculum": performance.get("curriculum"),
+                        "evaluation_tiers": {
+                            "required_oracle_tiers": descriptor.get("required_oracle_tiers"),
+                            "execution": "UNKNOWN",
+                            "timing": "UNKNOWN",
+                        },
+                    }
+                    if host_basis is not None
+                    else {}
+                ),
                 "workload_need": workload,
                 "hypothesis": {"observation": falsifier["observation"], "falsified_when": falsifier["fires_when"]},
                 "matched_comparator": {
@@ -632,7 +705,7 @@ def derive_justification(corpus) -> dict:
         and (demand.get("semantic_family") == "contraction" or demand["macs"]["total"] is not None)
     ]
     return {
-        "schema": "merlin.phase2.test_justification.v1",
+        "schema": "merlin.phase2.test_justification.v2" if has_host_basis else "merlin.phase2.test_justification.v1",
         "target": corpus.target,
         "status": "diagnostic_unmeasured",
         "qualification": "test design and input identity only; no compiler correctness or measured speedup",
@@ -647,6 +720,15 @@ def derive_justification(corpus) -> dict:
             "skipped_inapplicable": corpus.performance_generation.get("skipped_inapplicable") or [],
             "blocked_unimplemented": corpus.performance_generation.get("blocked_unimplemented") or [],
             "errors": corpus.performance_generation.get("errors") or [],
+            **(
+                {
+                    "mandatory_unknowns": (
+                        (corpus.performance_generation.get("component_generation") or {}).get("source_curriculum") or {}
+                    ).get("required_unknowns", [])
+                }
+                if has_host_basis
+                else {}
+            ),
         },
         "workload_accounting": {
             "basis_status": basis.get("status"),

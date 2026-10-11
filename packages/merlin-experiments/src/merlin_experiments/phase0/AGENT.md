@@ -204,6 +204,19 @@ factory, receipt, target encoding or accepted status is an input. Legacy request
 versions stay closed; v4 still retains all missing requirements and blocked later
 phases, with hardware guards and measured baselines unestablished.
 
+Explicit source-preparation v2 derives the shared template and objectives from
+live minimal software and RTL intake. The declared caller selects only a pinned,
+closed construction policy; workload/query selectors and arbitrary factories
+refuse before issuance. Normal generation rederives that complete template before
+writing, then uses existing sweep, aggregate-budget, source-screen and exact
+reference owners. Real signed casts and axis reductions use component-program
+v2. Every member retains its purpose, numerical policy, complete output boundary,
+source tier and limits. Joint adjacent source probes use observed memory depth,
+volume and optional array dimensions; physical axis/capacity/tail mappings remain
+UNKNOWN. Missing semantics and metadata-budget refusals retain mandatory rows.
+The explicit host source basis substitutes for a required RTL trait only for
+source preparation; saved execution labels cannot satisfy its execution gate.
+
 `component_source_demand` is a separate explicit private v1 source-contract
 consumer. Replay the same live source selectors and every complete original
 reference before deriving core logical demand for the exact selected schedules.

@@ -448,6 +448,10 @@ def generate_target(
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )
+    from .component_source_performance import SCHEMA_V2, verify_curriculum_template
+
+    if source_preparation == SCHEMA_V2:
+        verify_curriculum_template(performance_template, software=software_intake, hardware=hardware_intake)
     if profile.get("capsule_policy") == "derived_only":
         # Never substitute the old authored/reference corpus for a missing
         # derivation. Functional membership must come from new byte-bound inputs.

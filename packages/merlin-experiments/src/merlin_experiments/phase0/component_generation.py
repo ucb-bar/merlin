@@ -218,6 +218,10 @@ def bind_entries(
             "hardware_admission": "not_established",
             "measurement_admission": "not_established",
         }
+        if source_preparation == source_performance.SCHEMA_V2:
+            identity["source_curriculum"] = source_performance.verify_curriculum_template(
+                performance_template, software=software_intake, hardware=hardware_intake
+            )
     if execution_budget is not None:
         from .component_execution_budget import validate
 

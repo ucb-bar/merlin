@@ -334,6 +334,45 @@ _PERFORMANCE_NESTED_FIELDS = {
     "cost": frozenset({"tier", "runs", "projected_cycles", "basis"}),
 }
 
+HOST_SOURCE_BASIS = "merlin.phase0.host_source_execution_basis.v1"
+
+
+def validate_host_source_basis(value, *, owner):
+    """A source/execution selection is distinct from an accelerator RTL trait."""
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema", "kind", "software_intake_sha256", "operations", "numerical_reference", "boundary"}
+        or value["schema"] != HOST_SOURCE_BASIS
+        or value["kind"] != "host"
+        or not is_sha256(value["software_intake_sha256"])
+        or value["numerical_reference"] != "integer_reference"
+        or value["boundary"] != "complete_host_call"
+        or not isinstance(value["operations"], list)
+        or not value["operations"]
+        or any(not isinstance(op, str) or not op for op in value["operations"])
+        or len(set(value["operations"])) != len(value["operations"])
+    ):
+        raise ValueError(f"{owner}: host source basis requires its exact reviewed source/reference/execution selection")
+    return value
+
+
+def pending_host_source_basis(gate):
+    """Validate a source selection without accepting saved execution labels."""
+    selected = gate.get("source_execution_basis")
+    if selected is None:
+        return None
+    validate_host_source_basis(selected, owner="performance gate")
+    # No independent host execution issuer is selected by source construction.
+    # Saved labels cannot qualify the experiment or its timing.
+    return {
+        "selection": copy.deepcopy(selected),
+        "satisfied": None,
+        "tier": "not_established",
+        "evidence": "host source selection has no observed execution owner",
+        "missing": ["independently observed execution of the same complete host source boundary"],
+    }
+
+
 # Public recipes describe workload intent. These directory categories are a
 # presentation of the existing capsule kind, not target-authored facts.
 _PUBLIC_CATEGORY_BY_KIND = {
@@ -418,7 +457,7 @@ def _validate_performance_block(block, *, owner: str, blocked: bool = False) -> 
         absent = sorted(required - value.keys())
         if absent:
             raise ValueError(f"{owner}: performance.{field} missing required field(s) {absent}")
-        for key in required - {"knobs"}:
+        for key in required - {"knobs", "traits"}:
             nested = value[key]
             if (
                 nested is None
@@ -428,7 +467,14 @@ def _validate_performance_block(block, *, owner: str, blocked: bool = False) -> 
                 raise ValueError(f"{owner}: performance.{field}.{key} must be non-empty")
     gate = block["gate"]
     names = gate["traits"]
-    if not isinstance(names, list) or not names or any(not isinstance(name, str) or not name for name in names):
+    basis = gate.get("source_execution_basis")
+    if basis is not None:
+        validate_host_source_basis(basis, owner=owner)
+    if (
+        not isinstance(names, list)
+        or (not names and basis is None)
+        or any(not isinstance(name, str) or not name for name in names)
+    ):
         raise ValueError(f"{owner}: performance.gate.traits must be a non-empty list of trait names")
     if len(set(names)) != len(names):
         raise ValueError(f"{owner}: performance.gate.traits contains duplicate names {names}")
@@ -745,6 +791,8 @@ def _merge_shared_perf(
         "families": family_records,
         "blocked_unimplemented": copy.deepcopy(blocked),
     }
+    if "curriculum_derivation" in shared:
+        profile["_performance_template"]["curriculum_derivation"] = copy.deepcopy(shared["curriculum_derivation"])
 
 
 def validate_profile_inputs(
