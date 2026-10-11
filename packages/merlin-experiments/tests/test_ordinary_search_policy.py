@@ -71,6 +71,14 @@ def ordinary_inputs(tmp_path, monkeypatch):
         path = run / name
         path.parent.mkdir(exist_ok=True)
         path.write_text("{}")
+    (run / "environment.yaml").write_text(
+        json.dumps(
+            {
+                "task_scope": {"target": target.target},
+                "public_corpus_input": {"descriptor_sha256": target.descriptor_sha256},
+            }
+        )
+    )
 
     def score(name):
         return {"per_capsule": [{"capsule": name, "tiers": {"L2": "pass", "L3": "pass"}}]}
@@ -254,4 +262,25 @@ def test_original_functional_refusal_cannot_be_replaced_with_a_saved_pass(ordina
     monkeypatch.setattr(FI, "inspect_stage_functional_run", refuse)
     with pytest.raises(StageGateError, match="original functional admission refused"):
         OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    assert not ordinary_inputs.executions
+
+
+@pytest.mark.parametrize("identity", ["target", "descriptor_sha256"])
+def test_phase1_target_selection_cannot_be_substituted(ordinary_inputs, identity):
+    f = ordinary_inputs
+    path = f.functional.run_dir / "environment.yaml"
+    environment = json.loads(path.read_text())
+    environment["task_scope" if identity == "target" else "public_corpus_input"][identity] = "another-selection"
+    path.write_text(json.dumps(environment))
+    with pytest.raises(StageGateError, match="original Phase 1 environment"):
+        OS.prepare_ordinary_search_policy(**f.arguments)
+    assert not f.executions
+
+
+def test_member_fanout_cannot_exceed_the_explicit_worker_selection(ordinary_inputs, tmp_path, monkeypatch):
+    selected = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    candidate, baseline = revisions(selected, tmp_path)
+    monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "2")
+    with pytest.raises(StageGateError, match="explicit member worker grant"):
+        selected.evaluate_retained(candidate, baseline, work_root=tmp_path / "job", call_index=0, timeout_s=10)
     assert not ordinary_inputs.executions

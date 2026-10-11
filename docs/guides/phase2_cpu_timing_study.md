@@ -28,8 +28,8 @@ separate strict component qualification ledger. Its ranking scope is simulator
 cycles for the frozen development corpus. It does not establish complete
 whole-model host cost, physical traffic, FPGA timing or a new engine
 qualification. Actual selected tools and certificate/build artifacts remain
-external run prerequisites. Retained member fanout is serial pending execution
-context propagation into the original member worker threads.
+external run prerequisites. Retained member fanout must match the queue grant
+and carry the original execution contexts into each member worker thread.
 
 Public program numerical execution is a separate route from the legacy reduced
 probe policy. `evaluate_public_program_cpu` requires a live

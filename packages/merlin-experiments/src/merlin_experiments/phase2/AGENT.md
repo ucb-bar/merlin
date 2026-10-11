@@ -10,8 +10,9 @@ roster. They return the original redacted corpus document and keep its receipt
 and final functional guards. This scope is measured simulator cycles over the
 development corpus; structural counts and executed ISA traces cannot establish
 physical traffic or whole-model host cost. This route does not require or issue
-the separate strict component-runtime roles. Retained member fanout remains
-serial until the original execution context is safely propagated to workers.
+the separate strict component-runtime roles. Retained member fanout must match
+the explicit queue grant and propagate the original execution contexts into
+every member worker.
 
 `search_configuration` pins explicit operator budgets and stopping settings to
 the actual live component policy, frozen corpus, fresh baseline and timing

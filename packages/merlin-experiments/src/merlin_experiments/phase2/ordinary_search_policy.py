@@ -65,6 +65,16 @@ def _real(path, *, label, directory=True):
     return path
 
 
+def _phase1_target(environment, target_experiment):
+    scope = environment.get("task_scope") or {}
+    corpus = environment.get("public_corpus_input") or {}
+    if (
+        scope.get("target") != target_experiment.target
+        or corpus.get("descriptor_sha256") != target_experiment.descriptor_sha256
+    ):
+        raise StageGateError("ordinary search target/descriptor differs from the original Phase 1 environment")
+
+
 class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     """Live normal corpus policy selected by ``prepare_ordinary_search_policy``.
 
@@ -231,6 +241,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             raise StageGateError("ordinary search target differs from the descriptor loaded by Phase 1")
         FI.verify_functional_host_lane_snapshot(self._functional.model_host_lane_snapshot)
         environment = mapping_file(self._functional.run_dir / "environment.yaml", yaml_file=True)
+        _phase1_target(environment, self.target_experiment)
         PC.verify_private_input_snapshot(self._functional.run_dir, environment)
         if not PC.check_fork(PC.functional_fork(self._functional), self.search_baseline).ok:
             raise StageGateError("ordinary search baseline no longer matches its original functional fork")
@@ -257,7 +268,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     def search_closure_sha256(self):
         return document_sha256(self.binding())
 
-    def evaluate_retained(self, revision, baseline_revision, *, work_root, call_index, timeout_s):
+    def evaluate_retained(self, revision, baseline_revision, *, work_root, call_index, timeout_s, workers=1):
         """Run the original complete tuning roster from issued immutable sources."""
         if (
             type(revision) is not RetainedRevision
@@ -266,6 +277,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             or call_index < 0
             or type(timeout_s) not in (int, float)
             or not 1 <= timeout_s <= ITERATION_MAX_SECONDS
+            or type(workers) is not int
+            or workers < 1
         ):
             raise StageGateError("ordinary queued feedback needs issued revisions and a reduced-witness deadline")
         work_root = Path(work_root)
@@ -281,8 +294,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         baseline_revision.verify(authority=self.edit_authority)
         if baseline_revision.source_sha256 != self._selected_feedback.baseline_sha256:
             raise StageGateError("ordinary queued feedback baseline differs from its Phase 1 functional fork")
-        if DF.sweep_workers() != 1:
-            raise StageGateError("ordinary retained feedback requires the selected serial member worker context")
+        if DF.sweep_workers() != workers:
+            raise StageGateError("ordinary retained feedback differs from its explicit member worker grant")
         deadline = time.monotonic() + timeout_s
         feedback = replace(
             self._selected_feedback,
@@ -374,6 +387,7 @@ def prepare_ordinary_search_policy(
         functional_submission_sha256,
         waive=frozenset(waive_functional_gate),
     )
+    _phase1_target(mapping_file(functional.run_dir / "environment.yaml", yaml_file=True), target_experiment)
     if not PC.check_fork(PC.functional_fork(functional), baseline).ok:
         raise StageGateError("ordinary search baseline is not the original admitted functional fork")
     FI._require_read_only_tree(baseline, label="ordinary search functional baseline")
