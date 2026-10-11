@@ -366,7 +366,19 @@ def _host_call_proof(host_ir, *, assigned, output):
     )
     if result.returncode != 0:
         raise ValueError("actual final host LLVM cannot be CFG-audited: " + result.stderr[-500:])
-    module = Parser(make_llvm_context(), translated.read_text()).parse_module()
+    # The stock importer emits module metadata with upstream custom assembly
+    # absent from xDSL. Generic printing preserves those operations/attributes
+    # and the actual CFG; do not drop metadata or rewrite LLVM instructions.
+    printer = translator.with_name("mlir-opt").resolve(strict=True)
+    printer_before = _digest(printer)
+    generic = Path(output) / "owned_host_cfg.generic.mlir"
+    printed = subprocess.run(
+        [str(printer), str(translated), "--mlir-print-op-generic", "-o", str(generic)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if printed.returncode != 0 or _digest(printer) != printer_before:
+        raise ValueError("actual host CFG cannot be printed generically with selected MLIR")
+    module = Parser(make_llvm_context(), generic.read_text()).parse_module()
     wrapper = _llvm_function(module, "_mlir_ciface_forward")
 
     def callee(op):
@@ -404,6 +416,8 @@ def _host_call_proof(host_ir, *, assigned, output):
         "host_llvm": before,
         "importer": importer_before,
         "imported_cfg": _digest(translated),
+        "generic_printer": printer_before,
+        "generic_cfg": _digest(generic),
         "mandatory_call_roster": dict(required),
         "scope": "actual final LLVM source-call dominance; not hardware commit trace",
     }
