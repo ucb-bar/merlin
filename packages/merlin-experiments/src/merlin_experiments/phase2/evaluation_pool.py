@@ -159,6 +159,7 @@ def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout
                 call_index=index,
                 timeout_s=timeout_s,
                 workers=workers,
+                kind=kind,
             )
             return inputs.validate_result(raw, revision, kind)
     with executing_revisions(revision, baseline_revision):
@@ -795,6 +796,11 @@ class ComponentEvaluationPool:
         if job.result is not None:
             self._feedback_bytes += len(canonical_json(job.result))
         job.state = state
+        if state == "completed" and self.inputs.ordinary:
+            # Only this parent path has proved guardian reaping, validated the
+            # result and durably released the original ownership. Saved cleanup
+            # reports and still-running workers cannot publish reusable entries.
+            self.policy.publish_completed_artifacts(job.root)
         # Exact feedback/cleanup and closed ownership are already durable. This
         # control index cannot undo them if the capped filesystem becomes full.
         try:
