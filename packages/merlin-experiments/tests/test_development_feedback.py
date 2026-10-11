@@ -36,8 +36,9 @@ def test_explicit_executor_required_at_use_and_custom_service_preserved(tmp_path
 
 
 @pytest.mark.parametrize("complete_roster,expected_measured", [(False, 3), (True, 4)])
+@pytest.mark.parametrize("floor_budget", [None, 100])
 def test_complete_roster_keeps_later_host_savings_after_losing_prefix(
-    tmp_path, monkeypatch, complete_roster, expected_measured
+    tmp_path, monkeypatch, complete_roster, expected_measured, floor_budget
 ):
     """Real sweep routing with synthetic arm data; no certificate or timing claim."""
     from merlin.benchharness import hash_tree
@@ -70,6 +71,11 @@ def test_complete_roster_keeps_later_host_savings_after_losing_prefix(
     monkeypatch.setattr(evaluator, "_redact_execution", lambda raw, *_args, **_kwargs: raw)
     monkeypatch.setattr(evaluator, "_refresh_achievable", lambda: None)
     monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "1")
+    if floor_budget is None:
+        monkeypatch.delenv(DF.AUTHORING_GSIM_FLOOR_BUDGET_ENV, raising=False)
+    else:
+        monkeypatch.setenv(DF.AUTHORING_GSIM_FLOOR_BUDGET_ENV, str(floor_budget))
+        monkeypatch.setattr(evaluator, "roofline_floor", lambda member: 200 if member is members[-1] else 10)
     result = evaluator.evaluate(baseline, round_index=0, call_index=0, timeout_s=10, complete_roster=complete_roster)
     assert sum(cell["measured"] for cell in result["cells"]) == expected_measured
     assert len(result["cells"]) == 4

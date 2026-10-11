@@ -46,6 +46,54 @@ _L3_CACHE_NAMESPACE = "perf_l3_measurements"
 _L3_CACHE_SCHEMA = "l3_measurement_reuse_v1"
 
 
+def development_executor(
+    *,
+    contract_root: Path,
+    arm,
+    package,
+    package_sha256,
+    member,
+    decision,
+    workspace,
+    timeout_s,
+    certificate,
+    target_experiment,
+    rtl_identity,
+    hardware_counters=False,
+    counter_binding=None,
+):
+    """Run the admitted development arm through the ordinary paired executor."""
+    from .sweep_policy import sweep_workers
+
+    spec = ExecutionSpec(
+        execution_index=0,
+        pair_index=0,
+        pair_id=f"{member.family}__{member.capsule}__development",
+        phase="tuning",
+        arm=arm,
+        family=member.family,
+        capsule=member.capsule,
+        replicate="r000",
+        package=package,
+        package_sha256=package_sha256,
+        member=member,
+        workload=gsim_workload(member),
+        gsim_decision=decision,
+        gsim_certificate=certificate,
+    )
+    return run_execution(
+        spec,
+        workspace,
+        timeout_s,
+        target_experiment,
+        rtl_identity,
+        contract_root=contract_root,
+        hardware_counters=hardware_counters,
+        **({"counter_binding": counter_binding} if hardware_counters else {}),
+        workers=1 if hardware_counters else sweep_workers(),
+    )
+
+
 class Handoff(Protocol):
     record_sha256: str
     candidate_path: Path

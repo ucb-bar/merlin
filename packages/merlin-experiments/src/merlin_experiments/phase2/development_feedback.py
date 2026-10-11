@@ -1026,7 +1026,9 @@ class DevelopmentGsimFeedback:
         # measured on gSIM only in the final cells (one of them alone runs past an hour); here it gets
         # its roofline cell and a stated reason, and static analysis, Spike and the reduced witnesses
         # remain the agent's tools for it.
-        budget = authoring_gsim_floor_budget()
+        # An explicit complete sweep is the measured selection denominator.
+        # The exploratory floor budget must not silently omit its large cases.
+        budget = None if complete_roster else authoring_gsim_floor_budget()
         deferred = []
         if budget is not None:
             floors = {(member.family, member.capsule): self.roofline_floor(member) for member in members}
@@ -1348,52 +1350,7 @@ class DevelopmentGsimFeedback:
         )
 
 
-def development_executor(
-    *,
-    contract_root: Path,
-    arm,
-    package,
-    package_sha256,
-    member,
-    decision,
-    workspace,
-    timeout_s,
-    certificate,
-    target_experiment,
-    rtl_identity,
-    hardware_counters=False,
-    counter_binding=None,
-):
-    # The installed engine uses the package-sandboxed Spike+GSIM path;
-    # the trusted caller supplies the contract resource root explicitly.
-
-    spec = PME.ExecutionSpec(
-        execution_index=0,
-        pair_index=0,
-        pair_id=f"{member.family}__{member.capsule}__development",
-        phase="tuning",
-        arm=arm,
-        family=member.family,
-        capsule=member.capsule,
-        replicate="r000",
-        package=package,
-        package_sha256=package_sha256,
-        member=member,
-        workload=PME.gsim_workload(member),
-        gsim_decision=decision,
-        gsim_certificate=certificate,
-    )
-    return PME.run_execution(
-        spec,
-        workspace,
-        timeout_s,
-        target_experiment,
-        rtl_identity,
-        contract_root=contract_root,
-        hardware_counters=hardware_counters,
-        **({"counter_binding": counter_binding} if hardware_counters else {}),
-        workers=1 if hardware_counters else sweep_workers(),
-    )
+development_executor = PME.development_executor
 
 
 def prepare_development_feedback(
