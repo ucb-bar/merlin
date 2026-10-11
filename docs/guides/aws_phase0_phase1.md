@@ -260,3 +260,22 @@ the selected worker. Preserve their exact digests, selections and logs. A failur
 requires fixing the relevant input or tool and re-running its check, not editing
 a verdict. This permits a compiler author experiment; it does not guarantee its
 functional success or final performance.
+
+## Reserve CPU pools before the fresh launch
+
+On a 32-CPU worker, an operator may reserve CPUs 8–30 for the experiment and
+leave 0–7 and 31 for other workloads. Within that reservation, pin the manager
+to 8–9, select `MERLIN_CODEX_CPUS=10,11,12,13`, and select
+`MERLIN_BUILD_CPUS=14,15` with an absolute task-local `MERLIN_BUILD_SLOT_ROOT`.
+Native builds acquire an exclusive CPU slot across processes and threads;
+slot waits consume the existing build timeout. Codex subprocesses inherit the
+author pool at startup, while the manager's launch thread restores its affinity.
+
+Select `MERLIN_GSIM_CPUS=16,17,18,19,20,21,22,23,24,25,26,27,28,29,30`,
+`MERLIN_GSIM_MAX_SLOTS=15`, and one shared `MERLIN_GSIM_SLOT_ROOT` for all runs
+using these simulator CPUs. Set `MERLIN_GRADE_WORKERS=15`; the default public
+self-check now delegates worker selection to the host, while an explicit
+`--workers` request retains its meaning. Phase 1 plans freeze these selections
+for preflight and resume. Finish or relocate older jobs in the reserved pool
+before launching the fresh experiment, and confirm actual child affinities and
+simulator concurrency under the final launcher.

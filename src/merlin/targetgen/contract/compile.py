@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -33,17 +34,31 @@ from .memory_decode import observed_memory_decode as _observed_memory_decode
 
 
 def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
+    from merlin.common import cpu_pool as cpu_owner
     from merlin.common import invocation_record
+    from merlin.common.cpu_pool import parse_roster, selected_pool
 
-    return invocation_record.run(
-        argv,
-        directory=workdir,
-        stage=stage,
-        inputs=inputs,
-        outputs=outputs,
-        dependencies=(Path(__file__), Path(_deadline_owner.__file__)),
-        **kwargs,
-    )
+    cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
+    slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
+    if cpus and not slots:
+        raise ValueError("selected build CPU pool requires an explicit slot root")
+    started = time.monotonic()
+    timeout = kwargs.get("timeout")
+    try:
+        with selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout):
+            if timeout is not None:
+                kwargs["timeout"] = max(0, timeout - (time.monotonic() - started))
+            return invocation_record.run(
+                argv,
+                directory=workdir,
+                stage=stage,
+                inputs=inputs,
+                outputs=outputs,
+                dependencies=(Path(__file__), Path(_deadline_owner.__file__), Path(cpu_owner.__file__)),
+                **kwargs,
+            )
+    except TimeoutError as exc:
+        raise subprocess.TimeoutExpired(argv, timeout) from exc
 
 
 def _module_target_abi(llvm_text: str) -> str | None:

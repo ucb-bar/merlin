@@ -3,6 +3,9 @@
 ## Purpose
 
 Shared utilities: schemas, IO, source/resource paths, storage and access identities.
+`cpu_pool` applies explicitly selected launch-thread affinity and optional exclusive
+per-CPU subprocess slots, restoring caller affinity. It chooses no role or CPU;
+trusted callers own pool selection, timeout budgets and process supervision.
 The common access registry contains only target-neutral identities; the experiments
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for
