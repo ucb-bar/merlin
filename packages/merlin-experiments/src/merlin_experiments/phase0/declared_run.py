@@ -533,8 +533,11 @@ def _issue_scalar_conversion(selected, *, schemas, basis, coverage, numerical_se
     return owner, F.summary(owner)
 
 
-def run(request_path, *, output):
+def run(request_path, *, output, operator_exclusion=None):
     """Issue selected public inputs and execute the ordinary complete diagnostic."""
+    from .operator_exclusion import require_selection
+
+    require_selection(operator_exclusion, output)
     request_path = _plain(request_path)
     request_bytes = request_path.read_bytes()
     request = validate(json.loads(request_bytes))
@@ -769,6 +772,7 @@ def run(request_path, *, output):
                     arithmetic_intake=arithmetic,
                     packing_intake=packing,
                     output_root=generated,
+                    operator_exclusion=operator_exclusion,
                     **({"source_preparation": request["source_performance"]["schema"]} if performance_paths else {}),
                 ),
                 generated,

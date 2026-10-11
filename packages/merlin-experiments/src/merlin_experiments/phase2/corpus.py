@@ -310,10 +310,18 @@ def discover_performance_corpus(
     return result
 
 
-def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) -> FrozenPerformanceCorpus:
+def freeze_performance_corpus(
+    corpus: PerformanceCorpus, snapshot_root: Path, *, operator_exclusion=None
+) -> FrozenPerformanceCorpus:
     from merlin_experiments.phase2 import test_justification as TJ
 
     snapshot_root = Path(snapshot_root).resolve()
+    from merlin_experiments.phase0.operator_exclusion import require_selection
+
+    require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
+    if operator_exclusion is not None:
+        for member in corpus.capsules:
+            operator_exclusion.check_member(member.source_dir)
     if snapshot_root.exists() or snapshot_root.is_symlink():
         raise StageGateError(f"performance snapshot is not fresh: {snapshot_root}")
     if CONTRACTS.sha256_file(corpus.provenance_manifest) != corpus.provenance_sha256:
@@ -345,6 +353,8 @@ def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) ->
         destination = capsules_root / member.source_relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(member.source_dir, destination, symlinks=False)
+        if operator_exclusion is not None:
+            operator_exclusion.check_member(destination)
         copied = CONTRACTS.exact_tree_record(destination)
         if copied != before or CONTRACTS.exact_tree_record(member.source_dir) != before:
             raise StageGateError(f"performance capsule changed during freeze: {member.capsule}")
@@ -432,6 +442,7 @@ def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) ->
             "sha256": CONTRACTS.sha256_file(receipt_path),
         }
     manifest = snapshot_root / "performance_corpus_manifest.json"
+    require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
     CONTRACTS.write_json(manifest, document)
     for path in sorted(snapshot_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         path.chmod(0o555 if path.is_dir() else 0o444)

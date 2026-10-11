@@ -358,11 +358,16 @@ def generate_target(
     arithmetic_intake=None,
     packing_intake=None,
     source_preparation: str | None = None,
+    operator_exclusion=None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
     if output_root is None:
         raise ValueError("Phase 0 requires an explicit output_root; generated capsules must not default to source data")
+    from .operator_exclusion import PublicationRefusal
+    from .operator_exclusion import require_selection as require_operator_exclusion
+
+    require_operator_exclusion(operator_exclusion, output_root, evidence_root)
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
     if component_coverage is not None and not component_only:
@@ -830,6 +835,7 @@ def generate_target(
                     lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
                     out_root,
                     member=_member_path(e),
+                    operator_exclusion=operator_exclusion,
                 )
             else:
                 from merlin.targetgen.rtl.facts import observed_facts
@@ -846,7 +852,11 @@ def generate_target(
                         lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
                         out_root,
                         member=_member_path(e),
+                        operator_exclusion=operator_exclusion,
                     )
+        except PublicationRefusal:
+            # Operator publication checks cannot become per-member author diagnostics.
+            raise
         except Exception as exc:  # noqa: BLE001 — reported, never swallowed
             detail = _capture_failure_reason(exc)
             if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:

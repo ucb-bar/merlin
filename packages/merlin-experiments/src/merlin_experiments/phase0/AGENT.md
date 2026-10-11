@@ -27,6 +27,20 @@ Profiles declare tests; sweeps expand them; writer constructs and validates caps
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
 
+`operator_exclusion.select(path, sha256)` is a fixed operator-only selection of
+an ordinary private content-pinned JSON hash list. Never discover protected
+programs or shapes, put this selection in declarations/receipts/bundles, or expose
+matches in author feedback. Its typed contraction hashes include every actual
+matmul node's ordered input/result geometry, storage and selected arithmetic;
+names, graph topology and source bundle identity cannot hide an equal node.
+The operator passes the opaque selection directly to `declared_run.run` or
+`generation.generate_target`. `staging.write_staged` checks complete emitted
+public/dev sources before any new member is promoted. Unknown source structure,
+source/policy drift and exclusions share one generic refusal; hidden source
+cohorts retain their private scope. This safeguard grants no numerical/runtime
+qualification. Generation propagates that refusal without matched-member error
+rows. Default legacy calls do not discover or select an exclusion list.
+
 Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
 construction for the exact original signed diagonal/default, positive rank of
 at least two and same input/result storage and shape relation. Preserve the

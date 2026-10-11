@@ -9,6 +9,13 @@ these diagnostic receipts and representative selection closes over whole source
 families, including source-operation and resource-boundary distinctions. Existing
 trait-gated v1 meaning and qualification requirements remain unchanged.
 
+`freeze_performance_corpus(..., operator_exclusion=selection)` privately reopens
+the fixed Phase0 operator exclusion pin before copying, checks each copied public
+source, and rechecks the pin before sealing. The selection, its file path and
+excluded hashes remain outside the snapshot and manifest. Operators must pass
+their same private selection explicitly; no protected source discovery or new
+qualification follows from a successful publication check.
+
 `supervised_feedback` runs the callback worker and retains private
 transport/exit/refusal evidence. `feedback_protocol` accepts only bounded plain
 values and the selected existing interval/analytical value types, never pickle,
