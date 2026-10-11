@@ -809,6 +809,10 @@ def for_target(
             facts = with_current_register_layouts(rtl_facts.load_facts(target))
         except Exception:  # noqa: BLE001 -- underivable facts leave every RTL rung silent
             facts = {}
+    if readout_inputs is None and (contract.get("runner") or {}).get("backend") == "chipyard_rocc":
+        from merlin.runtime.backends.chipyard_rocc import readout_metadata
+
+        readout_inputs = readout_metadata(contract)
     inputs = capture_inputs(target, facts=facts) if readout_inputs is None else readout_inputs
     units = [u for u in contract.get("compute_units") or () if isinstance(u, Mapping)] or [None]
     return [
