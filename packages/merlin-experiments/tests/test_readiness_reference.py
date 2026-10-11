@@ -245,6 +245,7 @@ def oracle_driver(tmp_path, monkeypatch, probe_inputs):
         "TARGET": "fixture_target",
         "PY": "selected-python",
         "SCRIPTS": tmp_path,
+        "cache_dir": lambda namespace: tmp_path,
         "results": [],
         "C": types.SimpleNamespace(DESCRIPTOR=tmp_path / "target.yaml", REPO=tmp_path),
     }
@@ -322,11 +323,38 @@ def test_selected_probes_reach_the_ordinary_selfcheck_and_timing_writer(oracle_d
     ]
     assert all(argv[argv.index("--capsules-root") + 1] == kwargs["root"] for argv, _ in calls)
     assert all(argv[argv.index("--timeout") + 1] == "45" and options["timeout"] == 165 for argv, options in calls)
+    work_roots = [Path(options["cwd"]) for _, options in calls]
+    assert len(set(work_roots)) == len(calls)
+    assert all(path.parent == Path(kwargs["timing_output"]).parent for path in work_roots)
+    assert all(not path.is_relative_to(kwargs["resource_root"]) for path in work_roots)
+    for (argv, _), root in zip(calls, work_roots, strict=True):
+        assert argv[argv.index("--out") + 1] == str(root / "report.json")
+        assert (root / "stdout.log").is_file()
+        assert (root / "stderr.log").is_file()
     assert len(writes) == 1
     assert writes[0][1]["measured_capsule"] == "timing"
     assert writes[0][0] == (Path(kwargs["timing_output"]),)
     assert writes[0][1]["report"]["_readiness_returncode"] == 0
     assert not any(ok is False for _, ok, _ in namespace["results"])
+
+
+@pytest.mark.parametrize("key", ["incorrect", "prohibited"])
+def test_native_failure_category_case_preserves_negative_evidence(oracle_driver, key):
+    namespace, _, writes, replies, _, _ = oracle_driver
+    failure = replies[key]["per_capsule"][0]["failure"]
+    failure["category"] = failure["category"].lower()
+    _observe(oracle_driver)
+    assert len(writes) == 1
+    assert not any(ok is False for _, ok, _ in namespace["results"])
+
+
+@pytest.mark.parametrize("value", [None, True, {"name": "FUNCTIONAL_MISMATCH"}])
+def test_nonstring_failure_category_cannot_publish_timing(oracle_driver, value):
+    namespace, _, writes, replies, _, _ = oracle_driver
+    replies["incorrect"]["per_capsule"][0]["failure"]["category"] = value
+    _observe(oracle_driver)
+    assert not writes
+    assert any(ok is False for _, ok, _ in namespace["results"])
 
 
 @pytest.mark.parametrize(

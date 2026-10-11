@@ -54,6 +54,16 @@ runner:
         max_timeout_s: REVIEWED_DEADLINE_AT_MOST_600
         max_console_bytes: REVIEWED_CONSOLE_BUDGET
         failure_markers: [REVIEWED_FAILURE_MARKERS]
+      verilator:
+        binary: {path: /REVIEWED_ENGINE/model}
+        # merlin.elaborated_rtl_build.v1: actual observed build stage joins.
+        receipt: {path: /REVIEWED_ENGINE/observed-build-receipt.json}
+        argv: [REVIEWED_EXACT_ENGINE_ARGUMENTS, '{elf}']
+        environment: {REVIEWED_EXPLICIT_ENV_KEY: REVIEWED_EXPLICIT_ENV_VALUE}
+        cwd: /REVIEWED_ENGINE
+        max_timeout_s: REVIEWED_DEADLINE_AT_MOST_600
+        max_console_bytes: REVIEWED_CONSOLE_BUDGET
+        failure_markers: [REVIEWED_FAILURE_MARKERS]
       spike:
         binary: {path: /REVIEWED_TOOLCHAIN/spike}
         argv: [REVIEWED_EXPLICIT_ISA_ARGUMENT, '{elf}']
