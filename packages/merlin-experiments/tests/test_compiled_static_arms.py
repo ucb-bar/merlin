@@ -9,6 +9,10 @@ import yaml
 from merlin_experiments.phase2 import component_compiled_arms as A
 from merlin_experiments.phase2.contracts import StageGateError, exact_tree_record
 
+from merlin.benchharness import hash_tree
+
+_ORIGINAL_VERIFY = A.CompiledStaticArmFeatures.verify
+
 
 @pytest.fixture
 def route(tmp_path, monkeypatch):
@@ -58,7 +62,7 @@ def route(tmp_path, monkeypatch):
             raise StageGateError("retained revision lacks exact issued edit authority")
 
     retained = SimpleNamespace(
-        source=paths["retained"], source_sha256=exact_tree_record(paths["retained"])["sha256"], verify=verify
+        source=paths["retained"], source_sha256=hash_tree(paths["retained"])["sha256"], verify=verify
     )
     # This fixed seam stub isolates routing. Existing live owner/qualification
     # denial controls remain responsible for authority; no fixture issues it.
@@ -121,3 +125,40 @@ def test_retained_revision_from_another_edit_authority_is_refused(route):
             compiler=retained.source, member=member, corpus=corpus, workspace=paths["private"] / "arm", timeout_s=10
         )
     assert observed == []
+
+
+def test_retained_source_uses_issued_hash_for_mixed_directory_and_file_order(route):
+    owner, paths, retained, member, corpus, observed = route
+    (retained.source / "a").mkdir()
+    (retained.source / "a" / "module.py").write_text("# synthetic nested module\n")
+    (retained.source / "a.py").write_text("# synthetic sibling module\n")
+    retained.source_sha256 = hash_tree(retained.source)["sha256"]
+    assert retained.source_sha256 != exact_tree_record(retained.source)["sha256"]
+    owner.observe(
+        compiler=retained.source,
+        member=member,
+        corpus=corpus,
+        workspace=paths["private"] / "arm",
+        timeout_s=10,
+    )
+    assert observed == [(stage, retained.source) for stage in ("mount", "compile", "extract")]
+
+
+def test_explicit_live_verification_does_not_select_retained_default(route, monkeypatch):
+    """Argument routing only; these synthetic owners cannot grant qualification."""
+    owner, _paths, _retained, _member, _corpus, observed = route
+    monkeypatch.setattr(A, "ComponentIndependentExecution", SimpleNamespace)
+    monkeypatch.setattr(A, "CompileFeatureSelection", SimpleNamespace)
+    owner.execution.verify = lambda **kwargs: observed.append(kwargs)
+    owner.execution.sha256 = "a" * 64
+    owner.execution.independent_runtime.qualification = SimpleNamespace(
+        context=SimpleNamespace(build_service=owner.selection.build_service),
+    )
+    owner.selection.verify = lambda target: None
+    owner.selection.record = lambda: {}
+    # The fixture replaced verify for source-routing tests; restore its real
+    # implementation for this separate default-versus-explicit control.
+    verify = _ORIGINAL_VERIFY
+    verify(owner)
+    verify(owner, retained_revision=None)
+    assert observed == [{}, {"retained_revision": None}]

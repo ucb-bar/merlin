@@ -25,6 +25,8 @@ from .component_compiled_features import CompileFeatureSelection, observe_compon
 from .component_execution import ComponentIndependentExecution
 from .contracts import StageGateError, document_sha256, exact_tree_record, mapping_file, sha256_file
 
+_DEFAULT_VERIFICATION = object()
+
 
 @dataclass(frozen=True, eq=False)
 class CompiledStaticArmFeatures:
@@ -60,7 +62,7 @@ class CompiledStaticArmFeatures:
             **{path: sha256_file(path) for path in paths},
         }
 
-    def verify(self, *, retained_revision=None):
+    def verify(self, *, retained_revision=_DEFAULT_VERIFICATION):
         if (
             type(self.execution) is not ComponentIndependentExecution
             or type(self.selection) is not CompileFeatureSelection
@@ -70,10 +72,11 @@ class CompiledStaticArmFeatures:
             or any(type(value) is not str or not value for value in self.feature_ids)
         ):
             raise StageGateError("compiled arms require the exact ordinary execution and static observation owners")
-        if retained_revision is None:
+        if retained_revision is _DEFAULT_VERIFICATION:
             self.execution.verify()
         else:
-            retained_revision.verify(authority=self.execution.edit_authority)
+            if retained_revision is not None:
+                retained_revision.verify(authority=self.execution.edit_authority)
             self.execution.verify(retained_revision=retained_revision)
         target = self.execution.independent_runtime.hardware_intake.target
         self.selection.verify(target)
@@ -144,7 +147,7 @@ class CompiledStaticArmFeatures:
             allowed = (self.execution.candidate, self.execution.baseline_admission.baseline)
             if before not in {exact_tree_record(path)["sha256"] for path in allowed}:
                 raise StageGateError("compiled arm selected neither the fresh baseline nor its authorized candidate")
-        elif before != retained.source_sha256:
+        elif str(hash_tree(compiler)["sha256"]) != retained.source_sha256:
             raise StageGateError("compiled arm differs from its originally issued retained source")
         descriptor = mapping_file(member.source_dir / "capsule.yaml", yaml_file=True)
         if descriptor.get("operation", {}).get("op") != "component_program":
