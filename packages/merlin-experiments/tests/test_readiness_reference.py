@@ -323,6 +323,25 @@ def test_selected_probes_reach_the_ordinary_selfcheck_and_timing_writer(oracle_d
     assert not any(ok is False for _, ok, _ in namespace["results"])
 
 
+@pytest.mark.parametrize("key", ["incorrect", "prohibited"])
+def test_native_failure_category_case_preserves_negative_evidence(oracle_driver, key):
+    namespace, _, writes, replies, _, _ = oracle_driver
+    failure = replies[key]["per_capsule"][0]["failure"]
+    failure["category"] = failure["category"].lower()
+    _observe(oracle_driver)
+    assert len(writes) == 1
+    assert not any(ok is False for _, ok, _ in namespace["results"])
+
+
+@pytest.mark.parametrize("value", [None, True, {"name": "FUNCTIONAL_MISMATCH"}])
+def test_nonstring_failure_category_cannot_publish_timing(oracle_driver, value):
+    namespace, _, writes, replies, _, _ = oracle_driver
+    replies["incorrect"]["per_capsule"][0]["failure"]["category"] = value
+    _observe(oracle_driver)
+    assert not writes
+    assert any(ok is False for _, ok, _ in namespace["results"])
+
+
 @pytest.mark.parametrize(
     "key,mutation",
     [

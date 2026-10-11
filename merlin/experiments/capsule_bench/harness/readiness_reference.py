@@ -183,7 +183,8 @@ def rejected_probe(report: dict, *, capsule: str, sim: str, category: str) -> bo
         or report["n_passed"] != 0
         or row["pass"] is not False
         or not isinstance(failure, dict)
-        or failure.get("category") != category
+        or not isinstance(failure.get("category"), str)
+        or failure["category"].upper() != category
     ):
         return False
     if category == "PROHIBITED_INSTRUCTION":
