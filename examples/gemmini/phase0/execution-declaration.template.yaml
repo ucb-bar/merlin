@@ -12,7 +12,7 @@ compute_units:
   - name: REVIEWED_UNIT_NAME
     kind: REVIEWED_UNIT_KIND
     dtypes: [REVIEWED_DTYPE_FORMAT]
-    ops: [{family: REVIEWED_OPERATION_FAMILY}]
+    ops: [REVIEWED_OPERATION_NAME]
 capabilities: {}
 memory_model: {}
 legality: {}
