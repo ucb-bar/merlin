@@ -960,7 +960,11 @@ def build(
                 routed=_dev_side.get("routed") or (),
                 workdir=work / "device",
                 codegen_target="riscv",
-                cflags=[CLANG_TARGET, *clang_cflags],
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=_mlir_runtime_compiler(
+                    Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
+                )[1:],
             )
         else:
             from ...llvmlower.device_build import build_device_objects
@@ -980,7 +984,11 @@ def build(
                 # cannot make this whole-model image link or satisfy its selected route.
                 stop_on_first_failure=True,
                 # the SAME ISA the rest of the image is built for -- see device_build._flags
-                cflags=[CLANG_TARGET, *clang_cflags],
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=_mlir_runtime_compiler(
+                    Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
+                )[1:],
                 expected_interfaces=_dev_side.get("expected_interfaces") or None,
                 package_sha256=_dev_side.get("package_sha256"),
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
