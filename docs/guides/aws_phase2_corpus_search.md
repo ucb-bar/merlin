@@ -26,9 +26,14 @@ Protected validation programs and reference compiler answers are not author inpu
 Normal Phase 0 can retain complete existing public programs through
 `performance_source_programs`; the [selection example](../../examples/gemmini/phase0/recipe-public-programs.yaml)
 preserves their original loaders and profiles. Generation retains graph, host
-operations, references, source pins and member purposes. Boundary annotations
-come from public shapes and selected facts; unknown physical mappings remain
-unknown. Review purposes, semantic coverage and exclusion guards before sealing.
+operations, references, source pins and member purposes. An explicit
+`public_joint_boundaries` selection also constructs connected source cuts with
+joint dimensions derived from public typed shapes and selected resource facts.
+The supported source subset includes contractions, movement and reductions;
+only live outputs leave a cut. Fresh normal capture supplies its references.
+Logical tensor pressure does not prove simultaneous physical placement or
+lifetimes. Unsupported source semantics or unavailable boundaries remain
+UNKNOWN. Review purposes, semantic coverage and exclusion guards before sealing.
 A source packaging probe does not qualify a release, compilation or timing.
 
 Phase 1 owns functional completion. Phase 2 may include larger public members
@@ -142,10 +147,13 @@ targets and hardware lower bounds have distinct meanings; neither guarantees
 reachable improvement. Members without a bound remain visible with their
 complete measured cost. Evaluation costs and savings per evaluation second stay
 unknown until complete matched tool costs are observed.
-Qualified models screen only inside their measured domain. Unknown predictions
-and larger regimes require selected CPU RTL observations. Measure cold/warm costs
-and throughput in AWS with the [timing study](phase2_cpu_timing_study.md), including
-setup and final checks.
+Submit `corpus-compile-spike-feedback` for the cheaper original compile/Spike
+route; mandatory RTL tiers remain pending. Qualified models screen only inside
+their measured domain. Unknown predictions and larger regimes require selected
+CPU RTL observations. Use the normal command in the
+[timing study](phase2_cpu_timing_study.md) to measure complete route, setup and
+calibration costs on AWS. Its default is a nonexecuting plan; execution is
+explicit. Repeated processes alone leave cold/warm cache state UNKNOWN.
 
 The queue ranks complete correct comparable measured feedback with original
 certificate and repeat ranges. Predictions and partial rosters cannot select a
@@ -163,10 +171,18 @@ freeze and separate authorization.
 
 Queued contenders re-emit through the original build path and bypass the legacy
 LLVM memo. The observer compares fresh complete artifacts, inputs and known
-dependencies. Native simulation lacks a complete immutable loader/library
-identity: **execution reuse is not enabled**. Changed, unchanged and uncertain
-observations execute. No cache speedup is claimed, and this creates no extra
-Phase 1 or Phase 2 launch prerequisite.
+dependencies. Optional original native owners can freeze one bounded readonly
+runtime filesystem view, shared across jobs without per-job copies. The live
+parent publishes original observations only after actual guardian cleanup and
+durable release; failed cleaned jobs discard pending pins. Unresolved cleanup
+retains ownership. Saved cleanup reports cannot publish archive entries.
+
+The original engine selection still does not establish reset/seed and non-file
+input closure: **execution reuse is not enabled**. Changed, unchanged and
+uncertain observations execute. Filesystem closure supplies no timing or replay
+qualification. No cache speedup is claimed, and these optional owners create no
+extra Phase 1 or Phase 2 launch prerequisite. Calibration and final evaluation
+keep fresh observations.
 
 Repository acceptance covers ordinary-route integration, source gates and focused
 revision/context/resource/final-roster tests. AWS acceptance also requires actual
