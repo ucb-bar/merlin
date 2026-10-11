@@ -329,6 +329,12 @@ def test_partial_mismatch_and_multiout_never_pass(tmp_path, monkeypatch, outputs
         )
     receipt = json.loads((output / "qualification.json").read_text())
     assert receipt["status"] == "failed"
+    if reason == "exact golden mismatch":
+        comparison = receipt["numerical_comparison"]
+        assert comparison["mismatched_elements"] == 1
+        assert comparison["max_absolute_error"] == 1.0
+        assert comparison["comparison"] == "exact_output_bits"
+        assert comparison["console_sha256"]
 
 
 def test_unpinned_dts_refuses_before_build(tmp_path, monkeypatch):

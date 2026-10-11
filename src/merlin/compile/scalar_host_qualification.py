@@ -295,6 +295,15 @@ def qualify(
             if golden.dtype == np.int64
             else float(np.max(np.abs(observed.astype(np.float64) - golden.astype(np.float64)), initial=0))
         )
+        receipt["numerical_comparison"] = {
+            "comparison": "exact_output_bits",
+            "elements": int(golden.size),
+            "element_dtype": output_dtype,
+            "mismatched_elements": mismatch,
+            "max_absolute_error": max_abs,
+            "console": str(console_path),
+            "console_sha256": _file_sha256(console_path),
+        }
         if metrics.get("memref_rank_mismatch") != 0:
             raise ScalarHostQualificationError("missing or nonzero memref_rank_mismatch diagnostic")
         if mismatch:
