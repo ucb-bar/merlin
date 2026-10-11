@@ -38,3 +38,17 @@ def test_reference_selection_without_binding_still_requires_capture_receipt(tmp_
     binding(tmp_path)
     with pytest.raises(baremetal_model.BaremetalModelError, match="not byte-verified"):
         baremetal_model._saved_reference(tmp_path, None, execution=False)
+
+
+def test_symlink_ancestor_cannot_select_or_reopen_materialization(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    selected = binding(real)
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    with pytest.raises(ValueError, match="symbolic links"):
+        selected.verify(alias)
+    with pytest.raises(ValueError, match="symbolic links"):
+        MaterializedModelInputs.bind(alias, artifacts=selected.verify(real),
+                                    validator_identity={"worker_sha256": "a" * 64},
+                                    source_identity={"content_sha256": "b" * 64, "artifacts": selected.verify(real)})

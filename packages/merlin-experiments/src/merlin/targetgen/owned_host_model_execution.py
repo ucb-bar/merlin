@@ -78,7 +78,6 @@ def execute_owned_host_model(*, capsule, candidate_package, target, bundle,
 def _audit_owned_host_device_build(bundle, receipt, *, target):
     """Recompute original group identities and audit the actual linked objects."""
     from merlin.common import mlir_query as mq
-    from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.xdsl_dialects.lowering import compute_groups as groups_api
     from merlin_experiments.phase1.feedback.private_group_provenance import (
         eligible_source_identity, join_routed_source_groups, routed_kernel_symbols,
@@ -86,7 +85,8 @@ def _audit_owned_host_device_build(bundle, receipt, *, target):
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
     from merlin_experiments.phase1.feedback.private_full_models import _linked_symbols
 
-    text, _ = normalize_capture_mlir((Path(bundle) / "model.mlir").read_text())
+    # Match the exact source passed to OwnedHostModelCompiler.plan_before_build.
+    text = (Path(bundle) / "model.mlir").read_text()
     module = mq.parse(text)
     groups = groups_api.form_groups(module, target)
     groups_api.require_explained(groups_api.plan(module, target, groups=groups))

@@ -13,6 +13,13 @@ from pathlib import Path
 from merlin.compile.model_execution_inputs import file_sha256
 
 
+def _direct_root(root):
+    path = Path(root).absolute()
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ValueError("materialized model root must not use symbolic links")
+    return path.resolve(strict=True)
+
+
 @dataclass(frozen=True)
 class MaterializedModelInputs:
     root: Path
@@ -22,7 +29,7 @@ class MaterializedModelInputs:
 
     @classmethod
     def bind(cls, root, *, artifacts, validator_identity, source_identity):
-        root = Path(root).resolve(strict=True)
+        root = _direct_root(root)
         if not isinstance(validator_identity, dict) or not validator_identity.get("worker_sha256"):
             raise ValueError("trusted model materializer needs its selected validator identity")
         if not isinstance(source_identity, dict) or not source_identity.get("content_sha256") or not source_identity.get("artifacts"):
@@ -37,7 +44,7 @@ class MaterializedModelInputs:
         return bound
 
     def verify(self, root):
-        if type(self) is not MaterializedModelInputs or Path(root).resolve(strict=True) != self.root:
+        if type(self) is not MaterializedModelInputs or _direct_root(root) != self.root:
             raise ValueError("materialized model binding names another capture")
         artifacts = json.loads(self.identity_bytes)
         for name, record in artifacts.items():
