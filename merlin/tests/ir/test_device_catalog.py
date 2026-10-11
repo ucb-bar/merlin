@@ -13,6 +13,7 @@ from merlin.llvmlower.device_catalog import build_catalog_objects
 from merlin.llvmlower.device_shim import emit_dense_translation_unit
 
 _CC = shutil.which("cc") or shutil.which("clang")
+pytestmark = pytest.mark.target("gemmini")
 
 
 def test_catalog_selects_an_exact_source_region(monkeypatch):
@@ -47,6 +48,85 @@ module {
     assert result.routed[0].source_region == "matmul_0"
     assert result.routed[0].tensor_types == ("tensor<3x5xi8>", "tensor<5x7xi8>", "tensor<3x7xi32>")
     assert result.model_sha256 == "prepared-model-sha"
+
+
+def test_catalog_explicit_source_conversion_routes_f32_without_claiming_native_f32(monkeypatch):
+    from xdsl.dialects.builtin import StringAttr
+
+    from merlin.common import mlir_query as mq
+    from merlin.llvmlower.device_catalog import catalog_source_conversion
+    from merlin.llvmlower.device_offload import rewrite_contractions_to_device
+    from merlin.system import offload
+
+    monkeypatch.setattr(offload, "device_dtype_triples", lambda _device: (("i8", "i8", "i32"),))
+    source = """
+module {
+  func.func @forward(%a: tensor<3x5xf32>, %b: tensor<5x7xf32>) -> tensor<3x7xf32> {
+    %z = arith.constant 0.0 : f32
+    %e = tensor.empty() : tensor<3x7xf32>
+    %f = linalg.fill ins(%z : f32) outs(%e : tensor<3x7xf32>) -> tensor<3x7xf32>
+    %o = linalg.matmul ins(%a, %b : tensor<3x5xf32>, tensor<5x7xf32>)
+                       outs(%f : tensor<3x7xf32>) -> tensor<3x7xf32>
+    return %o : tensor<3x7xf32>
+  }
+}
+"""
+    types = ("tensor<3x5xf32>", "tensor<5x7xf32>", "tensor<3x7xf32>")
+    policy = {"format": "declared_by_test_provider", "rounding": "rne"}
+    digest = hashlib.sha256(json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    conversion = {
+        "schema": "target_owned_dtype_conversion_v1",
+        "source_dtypes": ["f32", "f32", "f32"],
+        "target_dtypes": [["i8", "i8", "i32"]],
+        "policy": policy,
+        "policy_sha256": digest,
+    }
+
+    def prepared():
+        module = mq.parse(source)
+        op = next(mq.walk(module, "linalg.matmul"))
+        op.attributes["prov.region_id"] = StringAttr("matmul_0")
+        ordinal = next(index for index, entry in enumerate(module.walk()) if entry is op)
+        row = {"region": "matmul_0", "symbol": "converted_kernel",
+               "source_operation_ordinal": ordinal, "tensor_types": list(types),
+               "target_dtypes": ["i8", "i8", "i32"]}
+        manifest = {"abi": {"dtypes": ["f32", "f32", "f32"]},
+                    "bindings": [row], "source_conversion": conversion}
+        return module, row, manifest
+
+    module, row, manifest = prepared()
+    assert not offload.offloadable_contractions(module, "gemmini")
+    assert catalog_source_conversion(manifest, "gemmini") == ("f32", "f32", "f32")
+    result = rewrite_contractions_to_device(
+        module, "gemmini", catalog_selection={"matmul_0": types},
+        catalog_bindings={"matmul_0": row}, catalog_manifest_data=manifest,
+    )
+    assert result.moved == 1
+    assert result.routed[0].dtypes == ("f32", "f32", "f32")
+
+    _, row, manifest = prepared()
+    manifest["source_conversion"] = {**conversion, "policy_sha256": "0" * 64}
+    with pytest.raises(ValueError, match="policy hash"):
+        catalog_source_conversion(manifest, "gemmini")
+    manifest["source_conversion"] = {**conversion, "target_dtypes": [["f32", "f32", "f32"]]}
+    with pytest.raises(ValueError, match="native target datapaths"):
+        catalog_source_conversion(manifest, "gemmini")
+
+    module, row, manifest = prepared()
+    row["target_dtypes"] = ["f32", "f32", "f32"]
+    with pytest.raises(ValueError, match="unbound target format"):
+        rewrite_contractions_to_device(module, "gemmini", catalog_selection={"matmul_0": types},
+                                       catalog_bindings={"matmul_0": row}, catalog_manifest_data=manifest)
+
+    nonzero = source.replace("constant 0.0", "constant 1.0")
+    module = mq.parse(nonzero)
+    op = next(mq.walk(module, "linalg.matmul"))
+    op.attributes["prov.region_id"] = StringAttr("matmul_0")
+    with pytest.raises(ValueError, match="absent or ambiguous"):
+        rewrite_contractions_to_device(module, "gemmini", catalog_selection={"matmul_0": types},
+                                       catalog_manifest_data={"abi": {"dtypes": ["f32", "f32", "f32"]},
+                                                              "bindings": [prepared()[1]],
+                                                              "source_conversion": conversion})
 
 
 @pytest.mark.skipif(_CC is None, reason="no C compiler")

@@ -82,6 +82,19 @@ have a separate instruction binary that its host driver loads and starts.
 Gemmini's bounded RoCC path uses the former shape; Atlas's selected diagnostic
 uses the latter. The shared build recipe accepts either target's support
 sources without pretending their launch and memory rules are identical.
+
+A source-bound device catalog may expose a dense source tensor ABI whose dtype
+differs from the accelerator's native operand format. Its manifest must then
+declare `source_conversion` with schema `target_owned_dtype_conversion_v1`,
+the same three source dtypes as `abi.dtypes`, one or more target-native dtype
+triples, a nonempty canonical JSON numeric policy and its SHA-256, and each
+binding's selected `target_dtypes`. Merlin checks source identity, zero
+initialization, operation shape, the declared native datapath, the policy
+digest, object symbols, and complete call coverage. The target package owns
+the actual quantization, packing, conversion accuracy and kernel implementation.
+Without this explicit declaration, a catalog can route only source dtypes
+that the device itself declares. The manifest is an auditable build contract,
+not a numerical certificate for the target conversion.
 A backend may also declare a whole-model driver
 ([`whole_model_driver`](../../src/merlin/runtime/backends/base.py)): the C program
 a whole model runs as on that target, with its fallback calls and timing output.
