@@ -1,6 +1,6 @@
 """Kernel IR ``mk``: loop nests over a target's schedule instructions (see ``kernel`` and ``expr``)."""
 
-from .expr import Const, Expr, ExprError, Scaled, Select, Sum, Var, add, as_expr, evaluate, mul, render, select
+from .expr import Const, Expr, ExprError, Mod, Scaled, Select, Sum, Var, add, as_expr, evaluate, mod, mul, render, select
 from .kernel import (
     NULL,
     Call,
@@ -23,6 +23,7 @@ __all__ = [
     "Const",
     "Expr",
     "ExprError",
+    "Mod",
     "Scaled",
     "Select",
     "Sum",
@@ -30,6 +31,7 @@ __all__ = [
     "add",
     "as_expr",
     "evaluate",
+    "mod",
     "mul",
     "render",
     "select",

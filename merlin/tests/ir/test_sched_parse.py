@@ -36,7 +36,7 @@ from merlin.sched.ir import (
     parse_expr,
     parse_kernel,
 )
-from merlin.sched.ir.expr import Const, Scaled, Select, Sum, Var, add, mul, render, select
+from merlin.sched.ir.expr import Const, Mod, Scaled, Select, Sum, Var, add, mul, render, select
 
 I, J = Var("i"), Var("j")
 
@@ -121,6 +121,7 @@ def test_a_kernel_using_every_construct_reads_back_identical():
         "((i * 32) + j)",
         "select(i == 3, (j + 1), (j * 4))",
         "select(i == 0, select(j == 1, 2, 3), 4)",
+        "mod(((i * 3) + j), 2)",
     ],
     ids=lambda v: v,
 )
@@ -145,11 +146,17 @@ def test_every_operand_form_survives_a_round_trip(value):
         Sum((Scaled(Var("i"), 32), Var("j"))),
         Scaled(Sum((Var("i"), Var("j"))), 3),
         Select("i", 3, Sum((Var("j"), Const(1))), Scaled(Var("j"), 4)),
+        Mod(Sum((Scaled(Var("i"), 3), Var("j"))), 2),
     ],
     ids=lambda e: render(e),
 )
 def test_every_expression_form_survives_a_round_trip(expr):
     assert parse_expr(render(expr)) == expr
+
+
+def test_modulo_parser_refuses_invalid_divisor():
+    with pytest.raises(ParseError, match="positive constant"):
+        parse_expr("mod(i, 0)")
 
 
 def test_a_kernel_with_no_body_and_no_arguments_is_still_a_kernel():

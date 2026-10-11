@@ -36,6 +36,9 @@ class Expr:
     def __rmul__(self, other):
         return mul(other, self)
 
+    def __mod__(self, other):
+        return mod(self, other)
+
 
 @dataclass(frozen=True)
 class Const(Expr):
@@ -56,6 +59,18 @@ class Sum(Expr):
 class Scaled(Expr):
     expr: Expr
     factor: int
+
+
+@dataclass(frozen=True)
+class Mod(Expr):
+    """Euclidean remainder by a positive constant, for rotating schedule slots."""
+
+    expr: Expr
+    divisor: int
+
+    def __post_init__(self):
+        if type(self.divisor) is not int or self.divisor <= 0:
+            raise ExprError("schedule modulo needs a positive constant divisor")
 
 
 @dataclass(frozen=True)
@@ -115,6 +130,19 @@ def mul(a, b) -> Expr:
     return Scaled(e, k)
 
 
+def mod(value, divisor: int) -> Expr:
+    if type(divisor) is not int or divisor <= 0:
+        raise ExprError("schedule modulo needs a positive constant divisor")
+    expr = as_expr(value)
+    if divisor == 1:
+        return Const(0)
+    if isinstance(expr, Const):
+        return Const(expr.value % divisor)
+    if isinstance(expr, Mod) and expr.divisor == divisor:
+        return expr
+    return Mod(expr, divisor)
+
+
 def select(var, equals: int, then, other) -> Expr:
     t, o = as_expr(then), as_expr(other)
     if t == o:
@@ -133,6 +161,8 @@ def evaluate(e: Expr, env: Mapping[str, int]) -> int:
         return sum(evaluate(t, env) for t in e.terms)
     if isinstance(e, Scaled):
         return evaluate(e.expr, env) * e.factor
+    if isinstance(e, Mod):
+        return evaluate(e.expr, env) % e.divisor
     if isinstance(e, Select):
         if e.var not in env:
             raise ExprError(f"unbound variable {e.var!r}")
@@ -146,6 +176,8 @@ def free_vars(e: Expr) -> frozenset[str]:
     if isinstance(e, Sum):
         return frozenset().union(*(free_vars(t) for t in e.terms))
     if isinstance(e, Scaled):
+        return free_vars(e.expr)
+    if isinstance(e, Mod):
         return free_vars(e.expr)
     if isinstance(e, Select):
         return frozenset((e.var,)) | free_vars(e.then) | free_vars(e.other)
@@ -162,6 +194,9 @@ def render(e: Expr, *, c: bool = False) -> str:
         return "(" + " + ".join(render(t, c=c) for t in e.terms) + ")"
     if isinstance(e, Scaled):
         return f"({render(e.expr, c=c)} * {e.factor})"
+    if isinstance(e, Mod):
+        value = render(e.expr, c=c)
+        return f"((({value} % {e.divisor}) + {e.divisor}) % {e.divisor})" if c else f"mod({value}, {e.divisor})"
     if isinstance(e, Select):
         a, b = render(e.then, c=c), render(e.other, c=c)
         return f"(({e.var} == {e.equals}) ? {a} : {b})" if c else f"select({e.var} == {e.equals}, {a}, {b})"

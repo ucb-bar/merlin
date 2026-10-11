@@ -213,7 +213,7 @@ def _affine_shift(expr: Expr, var: str) -> int | None:
 
 
 def _rewrite_expr(e: Expr, var: str, expr: Expr) -> Expr:
-    from merlin.sched.ir.expr import Const, Scaled, Select, Sum, select
+    from merlin.sched.ir.expr import Const, Mod, Scaled, Select, Sum, mod, select
 
     if isinstance(e, Const):
         return e
@@ -227,6 +227,8 @@ def _rewrite_expr(e: Expr, var: str, expr: Expr) -> Expr:
         return add(*(_rewrite_expr(t, var, expr) for t in e.terms))
     if isinstance(e, Scaled):
         return mul(_rewrite_expr(e.expr, var, expr), e.factor)
+    if isinstance(e, Mod):
+        return mod(_rewrite_expr(e.expr, var, expr), e.divisor)
     if isinstance(e, Select):
         then, other = _rewrite_expr(e.then, var, expr), _rewrite_expr(e.other, var, expr)
         if e.var != var:
@@ -771,7 +773,7 @@ def _prune_unreachable_selects(body: tuple, var: str, extent: int) -> tuple:
     which is its identity. A schedule and the same schedule written directly must digest the same, so
     this is not cosmetic.
     """
-    from merlin.sched.ir.expr import Select
+    from merlin.sched.ir.expr import Mod, Select, mod
 
     def prune(value):
         if isinstance(value, Ptr):
@@ -785,6 +787,8 @@ def _prune_unreachable_selects(body: tuple, var: str, extent: int) -> tuple:
             return add(*(prune(t) for t in value.terms))
         if isinstance(value, Scaled):
             return mul(prune(value.expr), value.factor)
+        if isinstance(value, Mod):
+            return mod(prune(value.expr), value.divisor)
         return value
 
     return _map_calls(

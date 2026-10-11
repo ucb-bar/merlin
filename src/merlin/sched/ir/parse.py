@@ -28,7 +28,7 @@ and silently dropping a statement is exactly the failure the self-check above is
 
 from __future__ import annotations
 
-from .expr import Const, Expr, Scaled, Select, Sum, Var
+from .expr import Const, Expr, Mod, Scaled, Select, Sum, Var
 from .kernel import NULL, Call, Kernel, KernelError, Loop, Ptr, Stage, TensorArg
 
 __all__ = ["ParseError", "parse_kernel", "parse_expr"]
@@ -129,6 +129,14 @@ def parse_expr(s: str) -> Expr:
         if len(cond) != 2:
             raise ParseError(f"select condition must be `<var> == <int>`: {parts[0]!r}")
         return Select(cond[0].strip(), _int(cond[1]), parse_expr(parts[1]), parse_expr(parts[2]))
+    if s.startswith("mod(") and _match(s, 3) == len(s) - 1:
+        parts = _split_top(s[4:-1], ", ")
+        if len(parts) != 2:
+            raise ParseError(f"mod takes an expression and a divisor: {s!r}")
+        try:
+            return Mod(parse_expr(parts[0]), _int(parts[1]))
+        except ValueError as exc:
+            raise ParseError(str(exc)) from exc
     if s.startswith("(") and _match(s, 0) == len(s) - 1:
         inner = s[1:-1]
         terms = _split_top(inner, " + ")

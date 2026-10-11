@@ -18,6 +18,7 @@ from merlin.sched.ir import (
     instances,
     loop,
     mul,
+    mod,
     render,
     select,
 )
@@ -37,6 +38,18 @@ def test_expressions_simplify_evaluate_and_render():
         mul(i, i)
     with pytest.raises(ExprError):
         evaluate(i, {})
+
+
+def test_modulo_rotates_slots_and_rejects_zero_divisor():
+    i, j = Var("i"), Var("j")
+    parity = (i * 3 + j) % 2
+    assert [evaluate(parity, {"i": 1, "j": jv}) for jv in range(4)] == [1, 0, 1, 0]
+    assert evaluate(mod(-3, 2), {}) == 1
+    assert render(parity) == "mod(((i * 3) + j), 2)"
+    assert "% 2" in render(parity, c=True)
+    assert mod(parity, 2) == parity
+    with pytest.raises(ExprError, match="positive constant"):
+        mod(i, 0)
 
 
 def _copy_def():

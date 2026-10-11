@@ -8,8 +8,9 @@ over loop variables, byte pointers into those tensors, `NULL`, or floats.
 
 ## Files
 
-- `expr.py` — index expressions: constants, loop variables, sums, products by a constant, and a
-  `select` on one loop variable (last-tile remainders). Evaluate, render to IR text or C.
+- `expr.py` — index expressions: constants, loop variables, sums, products by a constant, modulo
+  a positive constant (rotating buffer slots), and a `select` on one loop variable (last-tile
+  remainders). Evaluate, render to IR text or C.
 - `kernel.py` — `TensorArg`, `Ptr`, `NULL`, `Call`, `Loop`, `Kernel`; the canonical text form and its
   digest; target-free structural checks; enumeration of dynamic instances; per-instance concrete values.
 
@@ -19,5 +20,5 @@ over loop variables, byte pointers into those tensors, `NULL`, or floats.
   Two schedules are the same exactly when they print the same.
 - **Target-neutral.** Nothing here knows an instruction. Instruction names are resolved against a
   `merlin.sched.isa.InstructionSet` by the checker and the emitter.
-- **Operands stay small.** Anything a `select` on one variable cannot say is a loop transformation
-  (split, peel), not a richer operand form.
+- **Operands stay small.** Modulo has a positive constant divisor. Anything a `select` on one
+  variable or a constant-modulo index cannot say is a loop transformation (split, peel).

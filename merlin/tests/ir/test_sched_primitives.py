@@ -90,6 +90,19 @@ def test_divide_loop_preserves_every_instance_and_moves_the_digest():
     assert "for io in 0..2:" in after.text() and "for ii in 0..4:" in after.text()
 
 
+def test_loop_rewrites_preserve_rotating_buffer_slots():
+    before = Kernel(
+        "slots", ARG,
+        (loop("i", 8, call("use", slot=1 + (Var("i") % 2))),),
+    )
+    divided = divide_loop(before, Cursor(loops=("i",)), 4)
+    unrolled = unroll(before, Cursor(loops=("i",)))
+    assert _touched(divided) == _touched(before)
+    assert _touched(unrolled) == _touched(before)
+    assert "mod(" in divided.text()
+    assert "mod(" not in unrolled.text()
+
+
 @pytest.mark.parametrize(
     "factor,expect",
     [(3, "does not divide"), (1, "splits nothing"), (0, "splits nothing")],
