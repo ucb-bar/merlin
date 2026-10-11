@@ -3,7 +3,7 @@ title: Prepare Phase 0 and Phase 1 on an AWS worker
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-10
+last_verified: 2026-10-11
 related: [aws_gsim, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py]
 ---
@@ -52,7 +52,7 @@ harness_abi:
   tensor_alignment: 64
   byte_order: little
   main_convention: void
-  readback_transport: full_values_b64
+  readback_transport: out_b64_v1
 ```
 
 This fragment is a calling convention, not a complete execution declaration.
@@ -64,8 +64,9 @@ Review each of these required fields before preparing the contract:
 | Capabilities | A nonempty reviewed `compute_units` block, derived dtypes/operation declarations, and `endpoint_kind: inline_asm_insn`; see the [contract schema](../../merlin/schemas/target_contract.schema.yaml) |
 | Configuration | `runner.chipyard_rocc.config` matching the facts' source and consistency records |
 | Toolchain | `compiler` and `link_script` file pins; `runtime_units` and `headers` core IDs; `load_address`, `cflags`, `ldflags`, `kernel_stack_frame` |
-| Engine roster | Only the selected `spike` and/or `gsim` engines; each has `binary`, `argv`, `environment`, `cwd`, `max_timeout_s`, `max_console_bytes`, `failure_markers` |
+| Engine roster | Only the selected `spike`, `gsim` or `verilator` engines; each has `binary`, `argv`, `environment`, `cwd`, `max_timeout_s`, `max_console_bytes`, `failure_markers` |
 | gSIM | A `receipt` file pin binding that exact executable and FIRRTL through the existing strict-v3 receipt |
+| Verilator | A `receipt` file pin using `merlin.elaborated_rtl_build.v1`, joining actual observed FIRRTL, model, transport and final executable build stages |
 | Spike | `runner.spike_extension` with `extension_name`, `extlib` and its file hash; explicit `--isa=` in engine argv |
 | Operand interpretation | `rocc_operand_roles` v1: `word_bits`, and instruction rows containing `funct`, `class`, `operands` |
 | Instruction policy | The selected decoded instruction names and public endpoint role declarations must resolve the experiment's prohibited roles; missing role evidence is unmeasured, never an empty successful scan |
@@ -80,7 +81,9 @@ source consistency likewise remains unknown after pinning.
 
 Core runtime IDs are `startup`, `htif_console`, `printf`, `libc`; header IDs are
 `htif`, `out_b64`, `out_bin`, `out_bin_memory`. Choose the actual dependencies;
-B64 requires `startup`, `htif_console`, `htif`, `out_b64`. Core resources supply
+B64 requires `startup`, `htif_console`, `htif`, `out_b64`. Select `libc` for its
+scalar primitives; do not also select `printf`, which defines overlapping symbols.
+Core resources supply
 startup, console and scalar library primitives only. They supply no device
 implementation. Engine argv contains exactly one whole `{elf}` token. Select
 flags and budgets explicitly; the maximum engine deadline is 600 seconds.
@@ -119,8 +122,10 @@ the checked-in template inert. In the operator-owned reviewed copy, set
 `kind: experiment` after reviewing the actual closure; the runner refuses to
 execute a definition that still says `kind: template`.
 
-The descriptor's `hardware_spec.target_contract` must name the prepared contract
-before derivation. Add only reviewed public primitive ISA/facts data to its
+The descriptor's `hardware_spec.target_contract` must name the complete prepared
+deployment contract before derivation. The reviewed handoff preserves this exact
+selection; execution fields cannot be added after sealing. Add only reviewed
+public primitive ISA/facts data to its
 hardware grants; there is no vendor kernel-header requirement. Release preparation
 rewrites that declaration to the staged contract automatically.
 
@@ -203,7 +208,8 @@ serve as an author seed. Exercise the existing native grade and linked-ELF polic
 - An incorrect output fails that same comparison.
 - A forbidden hardware-loop instruction in the linked ELF is rejected.
 - A genuine cert-tier execution produces the target/config/engine/binary-bound
-  oracle timing record; gSIM also binds its receipt and FIRRTL.
+  oracle timing record; gSIM and Verilator also bind their selected receipt and
+  original FIRRTL through the explicit `MERLIN_RTL_FACTS` selection.
 
 Follow [native readiness and timing](aws_gsim.md#prepare-the-catalog-phase-0-and-phase-1-handoff).
 Spike observations are numerical evidence only. Source tests, successful linking,

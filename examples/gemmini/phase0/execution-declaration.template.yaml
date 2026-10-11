@@ -35,7 +35,7 @@ runner:
     toolchain:
       compiler: {path: /REVIEWED_TOOLCHAIN/riscv64-unknown-elf-gcc}
       link_script: {path: /REVIEWED_INPUTS/logical-layout.ld}
-      runtime_units: [{id: startup}, {id: htif_console}, {id: printf}, {id: libc}]
+      runtime_units: [{id: startup}, {id: htif_console}, {id: libc}]
       headers: [{id: htif}, {id: out_b64}]
       load_address: REVIEWED_LOAD_ADDRESS
       cflags: [REVIEWED_EXACT_COMPILER_FLAGS]
@@ -48,6 +48,16 @@ runner:
       gsim:
         binary: {path: /REVIEWED_ENGINE/model}
         receipt: {path: /REVIEWED_ENGINE/strict-build-receipt.json}
+        argv: [REVIEWED_EXACT_ENGINE_ARGUMENTS, '{elf}']
+        environment: {REVIEWED_EXPLICIT_ENV_KEY: REVIEWED_EXPLICIT_ENV_VALUE}
+        cwd: /REVIEWED_ENGINE
+        max_timeout_s: REVIEWED_DEADLINE_AT_MOST_600
+        max_console_bytes: REVIEWED_CONSOLE_BUDGET
+        failure_markers: [REVIEWED_FAILURE_MARKERS]
+      verilator:
+        binary: {path: /REVIEWED_ENGINE/model}
+        # merlin.elaborated_rtl_build.v1: actual observed build stage joins.
+        receipt: {path: /REVIEWED_ENGINE/observed-build-receipt.json}
         argv: [REVIEWED_EXACT_ENGINE_ARGUMENTS, '{elf}']
         environment: {REVIEWED_EXPLICIT_ENV_KEY: REVIEWED_EXPLICIT_ENV_VALUE}
         cwd: /REVIEWED_ENGINE
@@ -73,7 +83,7 @@ harness_abi:
   tensor_alignment: 64
   byte_order: little
   main_convention: void
-  readback_transport: full_values_b64
+  readback_transport: out_b64_v1
 rocc_operand_roles:
   version: 1
   word_bits: REVIEWED_REGISTER_WIDTH
