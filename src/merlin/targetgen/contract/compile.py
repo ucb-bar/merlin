@@ -28,6 +28,7 @@ from typing import Any
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
 
+from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
 from .harness_blobs import stage_harness_blobs
 from .memory_decode import observed_memory_decode as _observed_memory_decode
@@ -1190,6 +1191,11 @@ def run_on_oracle(
         memory_engine = deepcopy(oracle_revalidate())
         if type(memory_engine) is not dict or not memory_engine:
             raise ValueError("memory output requires a selected-engine citation")
+    artifact_selection = compare_selected_artifacts(
+        simulator=simulator, service=_execution_service,
+        elf=elf, cb=cb, inputs=inputs, lowered_mlir=lowered_mlir_text, build=readback_build,
+        backend=backend, provenance=simulator_provenance(backend, simulator),
+    ) if _execution_service is None and active_artifact_retests() is not None else None
     try:
         run_kwargs = {"capture_bytes": True} if binary else {}
         from merlin.common import invocation_record
@@ -1451,4 +1457,9 @@ def run_on_oracle(
         and _execution_service.consumption(elf=elf, console=console) != process_consumption
     ):
         raise ValueError("functional native consumption changed during output publication")
+    if artifact_selection is not None:
+        result["artifact_retesting"] = retain_selected_artifacts(
+            artifact_selection, invocation=observed.path, console=console
+        )
+        result["timing"]["artifact_retesting"] = result["artifact_retesting"]
     return result

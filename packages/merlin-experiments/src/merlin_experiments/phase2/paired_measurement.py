@@ -573,15 +573,23 @@ def _gsim_l3_adapter(
     *,
     reuse_scope: str,
     store: L3MeasurementStore | None = None,
+    reuse_measurement: bool = True,
 ) -> Callable[..., dict[str, Any]]:
     """The L3 oracle, with the measurements it has already paid for in front of it.
 
     ``reuse_scope`` names the independent observation this adapter is making, so that two passes
     over one program stay two measurements (see :func:`_l3_memo_key`). ``store`` is the cross-process
     half; the caller may pass one for a test, and otherwise it is the target's own cache.
+    Normal queued artifact observation and final execution bypass this legacy
+    LLVM-key store, rebuilding the complete harness before every execution.
     """
     engine = _engine_identity(certificate)
-    store = _l3_store(target) if store is None else store
+    from merlin.targetgen.contract.artifact_retesting import active_artifact_retests
+
+    if type(reuse_measurement) is not bool:
+        raise ValueError("measurement reuse requires an explicit boolean")
+    reuse_measurement = reuse_measurement and active_artifact_retests() is None
+    store = (_l3_store(target) if store is None else store) if reuse_measurement else None
 
     def run(cb: dict[str, Any], llvm_text: str, workdir: str | Path, timeout: int) -> dict[str, Any]:
         from merlin.runtime.backends import base as backends
@@ -598,8 +606,8 @@ def _gsim_l3_adapter(
         # ONE RUN PER KEY AT A TIME: a second request for the same observation (a replicate sharing a
         # single observation, run by another worker) waits for the first and is served from the memo.
         with _key_lock(key):
-            cached = _L3_MEMO.get(key)
-            if cached is None:
+            cached = _L3_MEMO.get(key) if reuse_measurement else None
+            if cached is None and reuse_measurement:
                 # NOT IN THIS PROCESS, so ask the one that outlives it. Promoted into the table on the
                 # way through, because the next lookup in this process should not go back to disk.
                 cached = store.get(key, engine)
@@ -674,9 +682,11 @@ def _gsim_l3_adapter(
                 # a defect, and :func:`reuse_report` refuses a campaign that produces one.
                 "reused_measurement": False,
                 "readback": copy.deepcopy(primary.get("readback")),
+                "artifact_retesting": copy.deepcopy(primary.get("artifact_retesting")),
             }
-            _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]), "result": copy.deepcopy(primary)}
-            store.put(key, engine, _L3_MEMO[key])
+            if reuse_measurement:
+                _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]), "result": copy.deepcopy(primary)}
+                store.put(key, engine, _L3_MEMO[key])
             return primary
 
     return run
@@ -698,6 +708,7 @@ def _run_el4_compiler_engines(
     certificate: GATE.CertificateRecord,
     reuse_scope: str,
     workers: int | None = None,
+    reuse_measurement: bool = True,
 ) -> dict[str, Any]:
     """Measure the EL4-produced compiler with GSIM as the RTL timing backend.
 
@@ -711,7 +722,8 @@ def _run_el4_compiler_engines(
     evidence: dict[str, Any] = {}
     adapters = {
         "L2": CR.simulator_adapter("spike", target),
-        "L3": _gsim_l3_adapter(target, evidence, certificate, reuse_scope=reuse_scope),
+        "L3": _gsim_l3_adapter(target, evidence, certificate, reuse_scope=reuse_scope,
+                              reuse_measurement=reuse_measurement),
     }
     try:
         grade = CR.run_capsule(
@@ -907,6 +919,7 @@ def run_execution(
                 certificate=spec.gsim_certificate,
                 reuse_scope=f"{spec.observation_scope or spec.replicate}/{name}",
                 workers=workers,
+                reuse_measurement=spec.phase == "tuning",
             )
 
     facts = rtl_identity.get("rtl_facts") if isinstance(rtl_identity, Mapping) else None

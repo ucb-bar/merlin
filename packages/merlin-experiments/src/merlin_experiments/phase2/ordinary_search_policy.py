@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 
 from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.targetgen.contract import artifact_retesting as AR
 from merlin.targetgen.target_experiment import TargetExperiment
 
 from . import campaign as PC
@@ -117,8 +118,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (DF, "development_executor", DF.development_executor),
             (DF.DevelopmentGsimFeedback, "evaluate", DF.DevelopmentGsimFeedback.evaluate),
             (PME, "run_execution", PME.run_execution),
+            (AR, "observe_public_artifact_retests", AR.observe_public_artifact_retests),
         )
-        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA)
+        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR)
         self._source_pins = tuple(
             (str(path), sha256_file(path))
             for path in (Path(__file__).resolve(), *(Path(owner.__file__).resolve() for owner in owners))
@@ -309,7 +311,13 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             _spend=None,
             _achievable_points=self._selected_feedback.seed_points,
         )
-        with executing_revisions(revision, baseline_revision):
+        work_root.mkdir(parents=True, mode=0o700)
+        with (
+            executing_revisions(revision, baseline_revision),
+            AR.observe_public_artifact_retests(
+                work_root, context={"normal_binding_sha256": self.search_closure_sha256}
+            ),
+        ):
             document = CF.validate_redacted_feedback(
                 feedback.evaluate(
                     revision.source,

@@ -22,6 +22,7 @@ from test_component_workflow import generated_corpus
 
 from merlin.benchharness import hash_tree
 from merlin.perf.phase2_edit_contract import seal
+from merlin.targetgen.contract.artifact_retesting import active_artifact_retests
 from merlin.targetgen.target_experiment import TargetExperiment
 
 
@@ -120,6 +121,7 @@ def ordinary_inputs(tmp_path, monkeypatch):
     executions = []
 
     def execute(spec, workspace, timeout, target, rtl_identity, **kwargs):
+        assert active_artifact_retests() is not None
         executions.append((spec, workspace, timeout, executing_revision(spec.package)))
         decision = spec.gsim_decision
         return {

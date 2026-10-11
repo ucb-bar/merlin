@@ -95,6 +95,25 @@ exists. Queued complete-roster ranking selects
 prefix cannot hide later savings. Ordinary feedback keeps its default prefix
 rejection. This option changes no workload/certificate/correctness admission.
 
+Queued normal corpus feedback rebuilds the complete kernel and readback harness
+before observing artifact equality. Its job-local observer binds the complete
+ELF, object, harness, numerical inputs, readback selection, known build tools,
+selected engine/process source and effective environment, then reopens the
+original successful Python dispatch. Changed or uncertain artifacts execute.
+The queued route bypasses the historical prebuild LLVM measurement cache;
+the original PME final phases also execute every roster member freshly.
+
+**Unchanged artifacts currently execute too.** The existing frozen package
+sandbox inventories selected tool trees, but records system mounts only as a
+description. Moreover, its boxed entrypoints govern compiler package execution;
+the normal native simulator launches outside those mounts. Sound execution
+reuse needs the original native owner to adopt verified frozen loader/library
+and system runtime trees. Adding a cache input cannot establish that adoption.
+The current observation reports this exact closure gap as UNKNOWN and creates
+no reused cycle count, numerical acceptance or extra independent replicate.
+There is no parent-owned cross-job/worker observation transport. Selective
+execution reuse remains incomplete until that runtime mechanism exists.
+
 ## Nonexecuting study command
 
 Run the installed command, or its fixed module equivalent:

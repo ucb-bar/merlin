@@ -96,6 +96,18 @@ descendant cleanup, runtime qualification, effects, hardware or timing. The
 native timeout bounds the selected subprocess; it is not an OS deadline or a
 process-tree cleanup guarantee, and captured output has no aggregate byte limit.
 
+`artifact_retesting` supplies a separate normal Phase 1 corpus observation hook.
+The admitted public queue observes fresh complete ELF, kernel object, harness,
+numeric inputs, readback recipe, known build tools, selected process source and
+engine plus effective environment. It reopens its actual prior Python dispatch
+before reporting an artifact comparison. It never imports saved cache records,
+skips execution, issues a physical witness or adds an independent replicate.
+The bounded observer belongs to one original job output and can be shared by
+copied member thread contexts; cross-job/worker archival is absent. The current
+normal native simulator does not adopt frozen system runtime mounts, so its
+transitive loader/library closure stays UNKNOWN even for unchanged artifacts.
+Final execution never selects this public job observer.
+
 An optional exact `PreparedProcessReadbackPlan` derives a values-free object
 roster and complete file budget from the original typed direct harness ABI and
 repeat/counter/phase plans. Only this explicit selection admits one whole-token
