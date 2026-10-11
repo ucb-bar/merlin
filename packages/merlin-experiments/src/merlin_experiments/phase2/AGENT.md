@@ -1,5 +1,18 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`ordinary_search_policy` adapts the normal Phase 1 functional fork and
+`CorpusFeedbackPolicy` to retained development revisions. Its factory uses the
+original functional admission, frozen performance corpus and fixed ordinary
+`prepare_development_feedback` executor. Reopen original corpus, descriptor,
+functional, certificate, RTL and source pins; bind both retained compilers to the
+same frozen edit authority. Jobs use private feedback state and the complete
+roster. They return the original redacted corpus document and keep its receipt
+and final functional guards. This scope is measured simulator cycles over the
+development corpus; structural counts and executed ISA traces cannot establish
+physical traffic or whole-model host cost. This route does not require or issue
+the separate strict component-runtime roles. Retained member fanout remains
+serial until the original execution context is safely propagated to workers.
+
 `search_configuration` pins explicit operator budgets and stopping settings to
 the actual live component policy, frozen corpus, fresh baseline and timing
 certificate. Selection data cannot issue runtime/model/timing roles. Native

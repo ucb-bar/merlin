@@ -10,6 +10,27 @@ code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/evaluation
 
 # Phase 2 CPU fidelity and timing study
 
+## Normal Phase 1 corpus feedback
+
+`prepare_ordinary_search_policy` selects the original normal functional run,
+frozen development corpus, target descriptor, RTL facts and gSIM certificate.
+The returned `OrdinarySearchPolicy` retains `CorpusFeedbackPolicy` actions and
+receipt verification. Its queue entry evaluates issued immutable candidate and
+baseline revisions through the existing ordinary package executor, with fresh
+job-local measurement state and the complete original member roster. Structural
+analysis and executed-command counts remain separate observations. Rank only a
+complete correct comparable measurement roster; partial or deferred cells
+cannot establish a winner. Fresh final functional and formal measurement gates
+still apply after selecting and freezing the compiler.
+
+This normal route uses Phase 1's selected runtime and does not require the
+separate strict component qualification ledger. Its ranking scope is simulator
+cycles for the frozen development corpus. It does not establish complete
+whole-model host cost, physical traffic, FPGA timing or a new engine
+qualification. Actual selected tools and certificate/build artifacts remain
+external run prerequisites. Retained member fanout is serial pending execution
+context propagation into the original member worker threads.
+
 Public program numerical execution is a separate route from the legacy reduced
 probe policy. `evaluate_public_program_cpu` requires a live
 `ComponentIndependentExecution`, an exact selected CPU engine, and an immutable
