@@ -128,4 +128,4 @@ def test_legacy_contraction_metadata_matches_an_explicit_contraction_selection()
 
 
 def test_empty_unselected_legacy_route_stays_inert():
-    assert DO.build_arguments({}) == {"signatures": {}, "dtypes": {}, "entries": None}
+    assert DO.build_arguments({}) == {"signatures": {}, "dtypes": {}, "entries": None, "call_buffers": None}

@@ -723,3 +723,54 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
     assert checks == ["original\n", "mutated\n"]
     assert result["status"] == "incomplete" and result["failure"]["type"] == "ValueError"
     assert result.get("tiers", {}).get("L3", {}).get("status") != "pass"
+
+
+def test_a_large_output_on_a_serial_console_engine_selects_the_fastest_exact_readback(monkeypatch):
+    """Text OUT lines cost simulated cycles per character on an RTL engine (175.9M instructions for a
+    3136x64 i32 output, against 26.3M binary and 1.1M with a memory dump). Outputs there use the
+    memory dump when the engine has one -- on the identical explicit whole-program boundary -- or the
+    binary frame; host-side consoles, capped consoles and outputs under a configured threshold keep
+    the text frame."""
+    from merlin.targetgen.contract import readback_policy as RB
+    from merlin.targetgen.contract.harness_render import logical_abi
+
+    def matmul(m):
+        return {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "W": {"shape": [64, 64], "dtype": "i8", "role": "weight"},
+                "A": {"shape": [m, 64], "dtype": "i8", "role": "input"},
+            },
+            "commands": [
+                {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "R"}},
+                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "R", "dst": "acc"}},
+                {
+                    "opcode": "COMMIT",
+                    "operands": {"src": "acc", "dst": "Y"},
+                    "attributes": {"epilogue": [], "output_dtype": "i32"},
+                },
+                {"opcode": "EVICT", "operands": {"handle": "R"}},
+            ],
+        }
+
+    abi = logical_abi()
+    monkeypatch.delenv(RB.LARGE_OUTPUT_ENV, raising=False)
+    big, small = matmul(3136), matmul(16)
+    cb, policy = RB.large_output_readback(big, "gsim", abi=abi, memory_transport=True)
+    assert policy.transport == RB.COHERENT_DUMP_V1 and cb["kernel_abi"]["outputs"] == ["Y"]
+    assert cb["tensors"]["Y"] == {"shape": [3136, 64], "dtype": "i32", "role": "output"} and "kernel_abi" not in big
+    cb, policy = RB.large_output_readback(big, "verilator", abi=abi, memory_transport=False)
+    assert policy.transport == RB.FULL_VALUES_BIN and cb is big
+    cb, policy = RB.large_output_readback(small, "gsim", abi=abi, memory_transport=True)
+    assert policy.transport == RB.COHERENT_DUMP_V1, "every console line is a TSI round trip on gSIM"
+    encoded = {**big, "params": {"storage_encodings": {}}}
+    assert RB.large_output_readback(encoded, "gsim", abi=abi, memory_transport=True)[1].transport == RB.FULL_VALUES_BIN
+    monkeypatch.setenv(RB.LARGE_OUTPUT_ENV, "4096")
+    assert RB.large_output_readback(small, "gsim", abi=abi, memory_transport=True) == (small, None)
+    monkeypatch.delenv(RB.LARGE_OUTPUT_ENV)
+    assert RB.large_output_readback(big, "spike", abi=abi, memory_transport=True) == (big, None)
+    capped = {**big, "params": {"console_value_cap": 4096}}
+    assert RB.large_output_readback(capped, "gsim", abi=abi, memory_transport=True)[1] is None
+    monkeypatch.setenv(RB.LARGE_OUTPUT_ENV, "0")
+    assert RB.large_output_readback(big, "gsim", abi=abi, memory_transport=True)[1] is None

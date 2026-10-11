@@ -11,20 +11,21 @@ Make **every** public/dev capsule under `merlin/contract/capsules/` pass. These 
 layer, and model-slice families:
 
 - **ISA (`isa/`):** config, mvin/mvout **movement**, single-tile **matmul**, **K-accumulation**,
-  **acc_scale → i8**, **relu** epilogue, **resident reuse**, **edge padding** (non-DIM-multiple tiles).
-- **Layers (`layers/`):** quantized linear (i8), linear+relu, linear+acc_scale+relu, **conv2d via
-  im2col** (i8), conv2d+relu.
+  **acc_scale → i8**, **relu** epilogue, **resident reuse**, **edge extents** (shapes the array size does not divide).
+- **Layers (`layers/`):** quantized linear (i8), linear+relu, linear+acc_scale+relu, **conv2d** (i8),
+  conv2d+relu.
 - **Model slices (`model_slices/`):** MLP linear1, MLP activation+linear2, attention **Q/K/V
   projections**, attention **QK^T** matmul, attention **PV** matmul.
 
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its exact op, shapes, dtypes, and
 epilogue; read `merlin/contract/command_buffer_abi.yaml` for precise epilogue/`acc_scale` semantics,
 `merlin/contract/interface_grammar.md` for the input grammar, and `schemas/command_buffer.schema.json`
-for the command-buffer schema. Derive everything (rounding rule, tiling, dtypes, im2col, padding) from
-the contract + the public Gemmini header — nothing is restated here. Each capsule dir gives you
-`capsule.yaml`, `capsule.interface.mlir`, and `expected_instruction_coverage.yaml`. The numeric
-`golden.yaml` is intentionally withheld — you do NOT get the answers; see the QA gate below. Build one
-**general** backend that handles every family — do not special-case individual capsules.
+for the command-buffer schema. Derive everything (rounding rules and dtypes included) from
+the granted facts and contracts (no Gemmini C ISA headers are provided) — nothing
+is restated here. Each capsule dir gives you `capsule.yaml`, `capsule.interface.mlir`, and
+`expected_instruction_coverage.yaml`. The numeric `golden.yaml` is intentionally withheld — you do NOT
+get the answers; see the QA gate below. Build one **general** backend that handles every family — do not
+special-case individual capsules.
 
 ## Deliverable (write into `submission/`)
 
@@ -77,7 +78,7 @@ each `capsule.interface.mlir`, and confirm the command_buffer validates against
 - `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.reference` /
   `merlin.runtime.simulator` / `reference_outputs` in your sources.
 - The device implementation must be **MLIR-lowered RoCC** — **no C compute kernels**, **no copying or
-  calling bareMetalC**, **no high-level Gemmini C library kernels** (e.g. `tiled_matmul_auto`) as the
+  calling bareMetalC**, **no high-level vendor C library kernels** as the
   answer. Integer math is **exact**.
 - **Never hardcode or embed outputs.** The grader runs hidden capsules (different deterministic data,
   same op families) after you freeze; a backend that memorizes public answers will fail them. Compute

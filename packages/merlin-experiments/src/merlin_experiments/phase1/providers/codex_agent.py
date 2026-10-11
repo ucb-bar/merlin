@@ -1103,15 +1103,18 @@ def run_round(
                     cmd = resume_argv
             with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
                 try:
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdin=in_f,
-                        stdout=subprocess.PIPE,
-                        stderr=err_f,
-                        cwd=str(ws),
-                        env=dict(os.environ),
-                        start_new_session=True,
-                    )
+                    from merlin.common.cpu_pool import parse_roster, selected_pool
+
+                    with selected_pool(parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))):
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdin=in_f,
+                            stdout=subprocess.PIPE,
+                            stderr=err_f,
+                            cwd=str(ws),
+                            env=dict(os.environ),
+                            start_new_session=True,
+                        )
                     active_proc, active_pgid = proc, proc.pid
                     # Resource telemetry is sampled OUTSIDE the graded sandbox and follows the complete
                     # bwrap/Codex/tool descendant tree. One file per continuation turn prevents ambiguous

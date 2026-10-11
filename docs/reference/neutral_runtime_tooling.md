@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [target_resolution, simulator_selection, aws_gsim]
-code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_inventory.py]
+code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_inventory.py]
 ---
 
 # Neutral contract-driven runtime tooling
@@ -48,6 +48,8 @@ Supported engines are explicit Spike and gSIM selections. gSIM uses the existing
 strict-v3 receipt checks against its actual binary and the selected FIRRTL.
 Spike uses an explicitly pinned extension and provides functional evidence.
 Metadata binding does not execute tools, build RTL or establish native readiness.
+Actual gSIM calls hold the same cross-process runtime reservation and optional
+operator-selected CPU slot as legacy calls, including release on failure.
 
 ## Prepare a worker selection
 

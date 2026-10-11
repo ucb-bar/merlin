@@ -397,6 +397,12 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
 
     from merlin.targetgen import isa_taxonomy as IT
 
+    from .corpus_instruction_roles import selected_classes
+
+    explicit_roles = selected_classes(contract)
+    if explicit_roles is not None:
+        return explicit_roles
+
     # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
     # matrix-unit reader (``matrix_units.yaml``). That surface ships no isa_definition.py and no RoCC
     # ``encoding`` map, so both regimes below saw nothing and the class list came out empty — the state in
@@ -714,13 +720,15 @@ def requant_shift_for(entry: dict, binding: CorpusBinding, epilogue: list[str], 
 
 def _readout_selectors(binding: CorpusBinding):
     """The target's declared readouts, or ``None`` when it describes none (UNKNOWN, never 'anything goes')."""
-    from merlin.targetgen.readout_facet import epilogue_readouts, validated_readouts
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, validated_readouts
 
     if binding.readout_inputs is not None:
         return validated_readouts(binding.readout_inputs.get("readouts")) or None
 
     try:
         return epilogue_readouts(binding.target) or None
+    except ReadoutSupportError:
+        raise  # selected support owes readout facts and cannot serve them: refuse, never "unknown"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
         return None
 
@@ -806,6 +814,17 @@ def _resolve_output_dtype(
     silently substituted default.
     """
     declared = (entry or {}).get("output_dtype")
+    if (entry or {}).get("outcome") == "refuse":
+        # A MUST-REFUSE capsule states, on purpose, a computation no readout performs: that is what it
+        # tests (merlin.targetgen.expected_refusal). The readout check below, which keeps every other
+        # capsule honest, is exactly the fact it relies on, so it is not applied; the committed width is
+        # the entry's own, else the requantized width the stages would narrow to.
+        if declared:
+            dtype_info(str(declared))
+            return str(declared)
+        if binding.requant_output_dtype and any(st in epilogue for st in REQUANTIZING_STAGES):
+            return binding.requant_output_dtype
+        return binding.accum_dtype
     if declared:
         dtype_info(str(declared))  # raises on an unknown token -- fail closed, never fall back
         # AN AUTHOR MAY CHOOSE THE WIDTH; NOBODY MAY CHOOSE ONE THE HARDWARE CANNOT HONOUR. The
@@ -1936,8 +1955,8 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 
 def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """An im2col conv2d capsule (op == conv2d): NHWC IFM + pre-im2col'd weight [KH*KW*Ci, Cout] -> a resident
-    matmul over conv windows, output [Ho*Wo, Cout]. Reuses the runtime's canonical conv geometry so the golden
+    """A conv2d capsule (op == conv2d): NHWC IFM and a weight laid out ``[tap_h, tap_w, channel] x Cout``
+    (``[KH*KW*Ci, Cout]``), output ``[Ho*Wo, Cout]``. Reuses the runtime's canonical conv geometry so the golden
     (capsule_golden conv2d branch) and the harness agree. Native operand dtype (e.g. int8)."""
     from merlin.runtime.commandbuffer import conv_out_dims
 
@@ -1975,7 +1994,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "layout": "nhwc",
         "epilogue": epilogue,
         "output_dtype": odt,
-        "semantic": "conv2d_im2col",
+        "semantic": "conv2d",
     }
     # A pooling epilogue is fused onto the conv's store path (the fused conv loop takes the window and
     # stores the pooled result), so it rides on this op's own attributes. ``pool_in_dims`` is DERIVED

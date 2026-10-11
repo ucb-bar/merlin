@@ -117,6 +117,10 @@ class DeviceRewrite:
     #: accesses are DERIVED per symbol and the printer repair has to be told them.
     arg_access: dict[str, tuple[str, ...]] = field(default_factory=dict)
     model_sha256: str | None = None
+    #: symbol -> the host call's operands under the logical kernel ABI, in call order: each
+    #: ``{"role", "shape", "dtype"}`` (activation, stored weight, folded bias, destinations). Empty
+    #: for a call that passes the fixed (lhs, rhs, out) triple.
+    call_buffers: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     @property
     def moved(self) -> int:
@@ -165,6 +169,7 @@ class DeviceRewrite:
             "entries": {s: dict(e) for s, e in self.entries.items()},
             "prepack": self.prepack,
             "arg_access": {s: list(a) for s, a in self.arg_access.items()},
+            "call_buffers": {s: [dict(b) for b in bs] for s, bs in self.call_buffers.items()},
             "skipped": [[s, why] for s, why in self.skipped],
         }
 
@@ -180,7 +185,7 @@ def load_sidecar(directory: str | Path) -> dict:
 
 
 def build_arguments(sidecar: dict, *, expected_granularity: str | None = None) -> dict[str, Any]:
-    """``{signatures, dtypes, entries}`` -- what a device build takes from one offload sidecar.
+    """``{signatures, dtypes, entries, call_buffers}`` -- what a device build takes from one offload sidecar.
 
     One reader, shared by every build that links a device side, because the interesting argument is
     the one that is easy to forget: ``entries``. A build that passed the signatures and dropped the
@@ -232,6 +237,7 @@ def build_arguments(sidecar: dict, *, expected_granularity: str | None = None) -
         "signatures": signatures,
         "dtypes": dtypes,
         "entries": entries,
+        "call_buffers": sidecar.get("call_buffers") or None,
     }
 
 
@@ -725,6 +731,39 @@ def rewrite_groups_to_device(
     capture: str | Path | None = None,
     sidecar_dir: str | Path | None = None,
 ) -> DeviceRewrite:
+    """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel (see
+    :func:`_rewrite_groups_to_device`). Under the logical kernel ABI a framework max-pool (a
+    NaN-propagating select-max window) is recognized as the readout's maxpool stage: the device's
+    pool takes integer readout values, which cannot be NaN, so it is the same maximum."""
+    from merlin.xdsl_dialects.lowering import contraction_coverage as CC
+
+    from .device_shim import kernel_abi_for
+
+    abi = kernel_abi_for(device)
+    with CC.select_max_is_max(abi is not None and getattr(abi, "version", 1) == 2):
+        return _rewrite_groups_to_device(
+            module,
+            device,
+            select=select,
+            weight_args=weight_args,
+            model=model,
+            oracle=oracle,
+            capture=capture,
+            sidecar_dir=sidecar_dir,
+        )
+
+
+def _rewrite_groups_to_device(
+    module,
+    device: str,
+    *,
+    select: Callable[[Any], bool] | None = None,
+    weight_args=None,
+    model: str = "",
+    oracle=None,
+    capture: str | Path | None = None,
+    sidecar_dir: str | Path | None = None,
+) -> DeviceRewrite:
     """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel. Mutates ``module``.
 
     The unit this moves is the layer, not the multiply-accumulate:
@@ -755,6 +794,18 @@ def rewrite_groups_to_device(
     from merlin.xdsl_dialects.lowering import compute_groups as CG
     from merlin.xdsl_dialects.lowering import group_command as GC
 
+    from .group_host_call import (
+        _device_result,
+        _erase_dead,
+        _host_window_gather,
+        _logical_group_call,
+        _nhwc,
+        _nhwc_matrix,
+        _owner,
+        _prepack_arrays,
+        _shape,
+        cancel_relayouts,
+    )
     from .group_offload import capsule_entry_for
 
     if select is None:
@@ -794,6 +845,21 @@ def rewrite_groups_to_device(
     shape_of = {id(op): shape for op, shape in observe_contractions(module)}
 
     stem = symbol_stem(device)
+    # UNDER THE LOGICAL KERNEL ABI THE CALL CARRIES EVERY POINTER OF THE GROUP'S INTERFACE: its
+    # constant values (a folded bias, a re-laid weight) are passed from the host like its activation.
+    from .device_shim import kernel_abi_for
+
+    selected_abi = kernel_abi_for(device)
+    logical = selected_abi is not None and getattr(selected_abi, "version", 1) == 2
+    prepack_rows: dict[int, dict[str, Any]] = {}
+    prepack_arrays: dict[str, Any] = {}
+    why_no_arrays = ""
+    if logical:
+        prepack_rows, prepack_arrays, why_no_arrays = _prepack_arrays(
+            [g for g in groups if g.placement != CG.HOST and g.root is not None], capture
+        )
+    call_buffers: dict[str, list[dict[str, Any]]] = {}
+    views: list = []  # the relayouts this route inserts, for cancel_relayouts below
     symbols: dict[str, str] = {}  # kernel identity -> symbol
     minted: dict[str, tuple[int, ...]] = {}
     declared: dict[str, tuple[Any, ...]] = {}  # symbol -> the operand types its declaration carries
@@ -893,7 +959,69 @@ def rewrite_groups_to_device(
             node_ids = ()
 
         entry = capsule_entry_for(stated.entry, index=group.index, name=name, device=device, model=model)
-        param_types = (pair[0].type, pair[1].type, result_type)
+        operands, constants, roles = [pair[0], pair[1]], [], ["input_0", "weight_0"]
+        gather, relayout, call_type = None, None, result_type
+        if logical:
+            # A CONVOLUTION THE CAPTURE GATHERED ON THE HOST IS ROUTED FROM ITS IMAGE. The patch matrix
+            # is the host's lowering of the convolution, not the layer's input: the device is handed the
+            # image before the gather, in the interface's declared layout, and forms its windows however
+            # it chooses. The gather left behind is removed below once nothing reads it.
+            restated = False
+            if entry.get("op") in ("matmul", "conv2d") and stated.stored_operand is not None and not stated.batch_shape:
+                # The statement names a host gather as a convolution (group_command.program, from the
+                # same recognition); the image is read back from the activation's own [positions,
+                # depth] -- not from the entry's output rows, which a fused pool shrinks.
+                activation_shape = _shape(pair[0])
+                try:
+                    gather = _host_window_gather(pair[0], *activation_shape) if len(activation_shape) == 2 else None
+                except ValueError as why:
+                    skipped.append((name, f"interface value input_0 has no host source: {why}"))
+                    continue
+            if gather is not None and entry.get("op") == "matmul":
+                entry = {key: value for key, value in entry.items() if key not in ("M", "K")}
+                entry.update({"op": "conv2d", **gather["window"]})
+                restated = True
+            operands, constants, roles, why = _logical_group_call(
+                group,
+                stated,
+                entry,
+                pair,
+                prepack_rows.get(int(group.index)),
+                prepack_arrays,
+                why_no_arrays,
+                weight_rows=gather["rows"] if restated else None,
+            )
+            if operands is None:
+                skipped.append((name, why))
+                continue
+            if gather is not None:
+                image_ops = _nhwc(gather["image"])
+                views += image_ops
+                constants = [*image_ops, *constants]
+                operands[0] = image_ops[-1].results[0]
+            elementwise = False
+            if entry.get("op") == "residual_add" and all(
+                len(_shape(v)) == 4
+                and _shape(v)[0] == 1
+                and _shape(v)[1] == int(entry.get("N", -1))
+                and _shape(v)[2] * _shape(v)[3] == int(entry.get("M", -1))
+                for v in operands
+            ):
+                # AN ELEMENTWISE SUM OF NCHW TENSORS against an interface stated over [positions,
+                # channels]: both inputs go over in that layout and the result comes back from it.
+                for index, value in enumerate(list(operands)):
+                    matrix = _nhwc_matrix(value)
+                    views += matrix
+                    constants = [*constants, *matrix]
+                    operands[index] = matrix[-1].results[0]
+                elementwise = True
+            relayout, call_type, why = _device_result(
+                group, members, entry, result_type, elementwise=elementwise, batch=tuple(stated.batch_shape)
+            )
+            if why:
+                skipped.append((name, f"interface value out_0 has no host destination: {why}"))
+                continue
+        param_types = (*(value.type for value in operands), call_type)
         identity = _kernel_identity(entry)
         if stated.batch_shape:
             # Different batch counts are different monomorphic host wrappers,
@@ -904,12 +1032,17 @@ def rewrite_groups_to_device(
             sym = f"{stem}_{len(symbols)}"
             symbols[identity] = sym
             declared[sym] = param_types
-            returns[sym] = result_type
+            returns[sym] = call_type
             minted[sym] = (*stated.batch_shape, *_entry_extents(entry))
             programs[sym] = stated.to_dict()
             entries[sym] = entry
-            access[sym] = CONTRACTION_ACCESS
-        elif (declared[sym], returns[sym]) != (param_types, result_type):
+            access[sym] = ("read",) * len(operands) + ("write",) if logical else CONTRACTION_ACCESS
+            if logical:
+                call_buffers[sym] = [
+                    {"role": role, "shape": [int(v) for v in t.get_shape()], "dtype": _element_token(t)}
+                    for role, t in zip((*roles, "out_0"), param_types, strict=True)
+                ]
+        elif (declared[sym], returns[sym]) != (param_types, call_type):
             # MLIR function types are monomorphic. Two groups that ask for the same PROGRAM but hand
             # it different operand types are two callees; sharing one symbol would emit a call whose
             # types disagree with its declaration, which fails in the parser far from here.
@@ -920,14 +1053,26 @@ def rewrite_groups_to_device(
         # result into the buffer it is handed and returns it. The destination is minted here rather
         # than reusing the contraction's zero fill, because the fill holds ACCUMULATOR elements and
         # what the group commits is what its readout narrows them to.
-        destination = tensor.EmptyOp((), result_type)
-        call = func.CallOp(sym, [pair[0], pair[1], destination.results[0]], [result_type])
+        destination = tensor.EmptyOp((), call_type)
+        call = func.CallOp(sym, [*operands, destination.results[0]], [call_type])
+        for constant in constants:
+            last.parent.insert_op_before(constant, last)
         last.parent.insert_op_before(destination, last)
         last.parent.insert_op_before(call, last)
-        last.results[0].replace_all_uses_with(call.results[0])
+        produced = call.results[0]
+        for op in relayout(produced) if relayout is not None else ():
+            last.parent.insert_op_before(op, last)
+            views.append(op)
+            produced = op.results[0]
+        last.results[0].replace_all_uses_with(produced)
+        feeding = [_owner(value) for member in members for value in member.operands]
         for member in reversed(members):
             member.detach()
             member.erase()
+        if logical:
+            # What fed only this group -- the weight's views, a host gather, the members' own inits --
+            # is now read by nothing, and is removed rather than left for the host to compute.
+            _erase_dead(feeding)
         # THE DATAPATH THE CALL ACTUALLY CARRIES, read off the three types the call was built with --
         # not off the capture's contraction shape, whose element types are the FLOAT ones the
         # dequantize produced. The shim sizes its staging buffers from this triple, so recording the
@@ -937,7 +1082,7 @@ def rewrite_groups_to_device(
                 symbol=sym,
                 parallel=tuple(int(v) for v in shape.parallel),
                 reduction=tuple(int(v) for v in shape.reduction),
-                dtypes=tuple(_element_token(t) for t in param_types),  # type: ignore[arg-type]
+                dtypes=tuple(_element_token(t) for t in (pair[0].type, pair[1].type, result_type)),  # type: ignore[arg-type]
                 fqn=str(entry.get("source_reference", "")),
                 group=int(group.index),
                 source_region_id=region_id,
@@ -946,6 +1091,10 @@ def rewrite_groups_to_device(
         )
         placed.append(group)
 
+    if logical:
+        # ONE RELAYOUT PER TRUE HOST BOUNDARY. Between device groups the device's own layout is carried:
+        # a result read back to NCHW and handed straight over in NHWC is the same tensor twice.
+        cancel_relayouts(views)
     body = module.body.block
     for sym in minted:
         # `bufferization.access` is load-bearing: without it one-shot-bufferize defensively copies the
@@ -976,6 +1125,7 @@ def rewrite_groups_to_device(
         entries=entries,
         prepack=prepack,
         arg_access=access,
+        call_buffers=call_buffers,
     )
     if sidecar_dir is not None:
         out.write_sidecar(sidecar_dir)

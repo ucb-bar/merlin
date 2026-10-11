@@ -17,7 +17,7 @@ import yaml
 
 from merlin.common.paths import artifacts_dir
 
-from . import chipyard_rocc as backend
+from . import chipyard_rocc_bound as backend
 
 
 def _pin(row):

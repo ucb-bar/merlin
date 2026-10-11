@@ -6,7 +6,8 @@ review:
   scope: the 150 host placements proposed by the RTL facts in W1_SEAL_REVIEW.md
   addendum: "operator approval 2026-10-03 in this session: exact rank-3/4 i8/f32/i64 dequantize_per_tensor host contract only; finite native checks do not prove device execution"
   primitive_addendum: "operator approval 2026-10-06 in this session: only the eight exact typed scalar-host primitive declarations below; finite saved probes do not certify all inputs, emitted compiler, accelerator, or RTL execution"
-  selected_source_addendum: "Selected-lowering build/link/host-placement review only: exact typed source bodies, selected index bounds and linked-image checks remain mandatory; all new numerical contracts are unreviewed. Source-call-to-symbol routing is not proved."
+  selected_source_addendum: "Selected-lowering build/link/host-placement review only: exact typed source bodies, selected index bounds and linked-image checks remain mandatory; the historical source-only review leaves numerical contracts unreviewed unless separately reviewed below. Source-call-to-symbol routing is not proved."
+  library_numerical_policy_addendum: "Codex authored-policy review 2026-10-11: only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
 compiler:
   package_sha256: 89e00e39c929ec0310b0a60d1860d2d8fa833b7ef1a57af5775092c24d5ebb9a
   dtype_strategy: int8_w8a8
@@ -35,6 +36,19 @@ operations:
       semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
                   transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded}
       evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+  - id: host_f32_exp_rank1
+    status: reviewed
+    ops: [aten.exp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1]}
+    numerical_contract:
+      status: reviewed
+      semantics: {arithmetic: ieee754_binary32, transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded, all_input_accuracy: unqualified, device_execution: unqualified}
+      evidence:
+        reviewed_by: "codex-operator for copparihollmann, 2026-10-10"
+        review_sha256: 8feeba17bc5692a634b7009b86f669b0223d508e904b7b8780e993fd197bb28d
+        basis: "Exact rank-1 f32 math.exp source without fast-math; stock libm lowering matched independently rounded math.exp on 1038 finite native probes (maximum 0 ulp). The same IR built an object with the selected scalar RV64 flags. RV64 execution, nonfinite behavior and all-input accuracy remain unqualified; candidate lowering and numerical execution are separate mandatory gates."
   - id: host_f32_reduction
     ops: [aten.native_layer_norm.default, aten._softmax.default, aten.mean.dim]
     families: [reduction, elementwise_map]
@@ -424,9 +438,33 @@ operations:
       archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
       symbols: [sinf]
     numerical_contract:
-      status: unreviewed
-      semantics: {scope: selected_isa_libm_build_link_host_placement_only, source_call_to_symbol_routing: not_proved, scalar_abi: sinf_f32_to_f32, selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, selected_symbol_origin: must_be_proved_after_link, pytorch_bit_exactness: not_claimed, global_ulp_or_absolute_bound: not_claimed, nonfinite_and_snan: unqualified, existing_numerical_tolerance: unchanged}
-      evidence: {source_schema: merlin.static_f32_math_source_body.v1, strict_neutral_probe: failed_2_of_16_at_plus_minus_one_by_one_ulp, selected_archive_and_symbol_join: pending}
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_f32_math_source_body.v1
+          operation: math.sin
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+        scalar_abi: sinf_f32_to_f32
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
   - id: host_review_selected_libm_cosf_f32
     status: reviewed
     ops: [aten.cos.default]
@@ -440,9 +478,33 @@ operations:
       archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
       symbols: [cosf]
     numerical_contract:
-      status: unreviewed
-      semantics: {scope: selected_isa_libm_build_link_host_placement_only, source_call_to_symbol_routing: not_proved, scalar_abi: cosf_f32_to_f32, selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, selected_symbol_origin: must_be_proved_after_link, pytorch_bit_exactness: not_claimed, global_ulp_or_absolute_bound: not_claimed, nonfinite_and_snan: unqualified, existing_numerical_tolerance: unchanged}
-      evidence: {source_schema: merlin.static_f32_math_source_body.v1, strict_neutral_probe: failed_2_of_16_at_plus_minus_one_by_one_ulp, selected_archive_and_symbol_join: pending}
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_f32_math_source_body.v1
+          operation: math.cos
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+        scalar_abi: cosf_f32_to_f32
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
   - id: host_review_prepared_ordered_f32_cumsum_f64
     status: reviewed
     ops: [aten.cumsum.default]
@@ -526,9 +588,32 @@ operations:
       archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
       symbols: [tanhf]
     numerical_contract:
-      status: unreviewed
-      semantics: {scope: selected_prepared_source_build_link_host_placement_only, literal_identity: exact_source_f32_bits, ordered_operations: exact_closed_source_body, pytorch_equivalence: not_proved, existing_numerical_tolerance: unchanged}
-      evidence: {source_schema: merlin.static_composite_math_source.v1, selected_index_and_elf_join: required, selected_archive_supplier_join: required, source_call_to_symbol_routing: not_proved}
+      status: reviewed
+      semantics:
+        scope: selected_source_arithmetic_and_selected_library_approximation
+        arithmetic: ieee754_binary32
+        source_body:
+          schema: merlin.static_composite_math_body.v1
+          operation: tanh_gelu_f32
+        transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+        all_input_accuracy: unqualified
+        pytorch_bit_exactness: not_claimed
+        global_ulp_or_absolute_bound: not_claimed
+        nonfinite_and_snan: unqualified
+        existing_numerical_tolerance: unchanged
+        source_call_to_symbol_routing: must_be_proved_after_compilation
+        selected_symbol_origin: must_be_proved_after_link
+        rounding: round_to_nearest_even
+        ordered_operations: exact_selected_parsed_source_body
+        selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+      evidence:
+        reviewed_by: Codex authored-policy review, 2026-10-11
+        review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
+        review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
+        basis: Selected immutable library approximation is the declared policy; strict
+          PyTorch finite controls remain failed and all source/link/model gates remain
+          mandatory.
+        all_input_accuracy: unqualified
   - id: host_review_i64_scalar_ge
     status: reviewed
     ops: [aten.ge.Scalar]

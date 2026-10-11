@@ -300,7 +300,13 @@ def stage(plan: dict) -> dict:
         m2m_receipt.chmod(0o444)
         if CONFIG_ENV in command["env"]:
             command["env"][CONFIG_ENV] = json.dumps(
-                m2m_runtime.sealed_capture_config(selected_m2m, artifact_root), sort_keys=True
+                m2m_runtime.sealed_capture_config(
+                    selected_m2m,
+                    artifact_root,
+                    execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
+                    bwrap=command.get("phase0_bwrap"),
+                ),
+                sort_keys=True,
             )
         frozen["phase0_m2m_runtime_receipt"] = str(m2m_receipt)
         frozen["input_paths"]["phase0:m2m_runtime_receipt"] = str(m2m_receipt)
@@ -409,7 +415,13 @@ def _verify_frozen_sources(plan: dict) -> dict:
             raise ValueError("frozen Phase 0 Model2MLIR runtime routing changed")
         if CONFIG_ENV in command["env"] or command["env"].get("MERLIN_PHASE0_EVIDENCE_MODE") == "verified":
             expected = json.dumps(
-                m2m_runtime.sealed_capture_config(selected_m2m, Path(plan["phase0_evidence_bundle"])), sort_keys=True
+                m2m_runtime.sealed_capture_config(
+                    selected_m2m,
+                    Path(plan["phase0_evidence_bundle"]),
+                    execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
+                    bwrap=command.get("phase0_bwrap"),
+                ),
+                sort_keys=True,
             )
             if command["env"].get(CONFIG_ENV) != expected:
                 raise ValueError("frozen Phase 0 sealed Model2MLIR source routing changed; freeze a new run")

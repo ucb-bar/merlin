@@ -4,13 +4,16 @@ import queue
 import threading
 from types import SimpleNamespace
 
+import selected_driver
+
 from merlin.runtime.backends import base
 from merlin.targetgen import rtl_engine_policy as policy
 
 
 def test_host_slot_and_backend_run_share_one_permit(monkeypatch, tmp_path):
-    # The test runner must explicitly select the reviewed OOT support package.
-    backend = base.get_backend("gemmini").gemmini
+    # The test runner must explicitly select the gemmini support provider.
+    selected_driver.require_support("gemmini")
+    backend = base.get_backend("gemmini")
     # This fixture tests reentrant reservation ownership, not unrelated live host processes.
     monkeypatch.setattr(policy, "_native_gsim_census", lambda **_kwargs: policy._NativeCensus(0, ()))
     root = tmp_path / "slots"

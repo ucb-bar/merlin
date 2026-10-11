@@ -22,6 +22,25 @@ boards:
       reserve is a build-layout request, not a measured hardware property. No ELF upload
       loader or baud is qualified, so upload estimates must refuse this entry.
 
+  gemmini_rocket_spike_functional:
+    target: gemmini
+    host_dts_sha256: a45460168248bd08e47a237f78eb1256d589b5410c046f0031e648207a83dfc3
+    dram_bytes: 4 GiB
+    dram_base: 0x80000000
+    harts: 1
+    vector_harts: 0
+    console: htif
+    flow: baremetal
+    code_reserve: 64 MiB
+    notes: >-
+      The functional instruction-set model of the same GemminiRocketConfig host (the CPU ISA roster
+      is read from the same DTS), run with the target's accelerator extension and a declared 4 GiB
+      memory span starting at 0x80000000. The span is this model's declared memory, not the RTL
+      board's 256 MiB: it exists so whole models whose weights exceed the RTL board (about 0.5 and
+      1.03 GB of int8 weights) execute for functional numerics. The image states the span in its
+      symbol table and the runner sizes the simulated memory from it. Not cycle-accurate and not
+      RTL-derived: results are a functional numerics check, never certification or timing.
+
   firesim_gemmini_rocket_u250_30mhz:
     target: gemmini
     bitstream: alveo_u250_firesim_gemmini_rocket_30mhz

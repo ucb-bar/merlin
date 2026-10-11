@@ -997,9 +997,14 @@ def run(
     prebuilt_receipts: Mapping[str, str | Path] | None = None,
     source_freeze: Mapping[str, Any] | None = None,
     source_freeze_root: str | Path | None = None,
+    build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
 ) -> dict[str, Any]:
-    """Build the frozen roster, or inspect one prebuilt model without producer attribution."""
+    """Build the frozen roster, or inspect one prebuilt model without producer attribution.
+
+    ``build_options`` is ``{model: {program: {readback, group_profile}}}`` from the numerical execution
+    declaration (:func:`.private_full_model_execution.build_options`): a program that will be executed
+    is linked to print every result in full and, when asked, to bracket its group calls."""
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.compile.route_before_build import plan_before_build
@@ -1247,6 +1252,7 @@ def run(
                             arena_mb=int(row["arena_mb"]),
                             device=device,
                             **({"math_archive_symbols": math_symbols} if math_symbols else {}),
+                            **dict(((build_options or {}).get(name) or {}).get(program) or {}),
                         )
                 linked_policy.require_route(device, instruction_selection)
                 compiled.append(

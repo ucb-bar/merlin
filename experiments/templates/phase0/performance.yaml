@@ -1170,8 +1170,7 @@ sweeps:
         on_violation: fail_member
         why: this member's verdict is the cycle count of the program the compiler emitted, so every
           operand that program contracts over must be produced by that program. The command-buffer
-          ABI also lets a buffer DECLARE an operand the harness derives (params.im2col_recipes
-          gathers the conv windows out of the NHWC activation), and a member that contracts over one
+          ABI also lets a buffer DECLARE an operand the harness derives (a derived-operand recipe that gathers the conv windows out of the NHWC activation), and a member that contracts over one
           of those is measuring a plain matmul over a matrix it never built -- the window gather this
           family's lever is named for is absent from the emitted code, which the task contract's own
           rule ("a lever that does not change the emitted code is inert by definition") makes
@@ -1467,7 +1466,7 @@ sweeps:
 # the declared iteration captures only; claim and evaluation-only models never reach it). At most one
 # extra member per class witnesses an observed group outside the primary member's joint M/K/N envelope.
 # A separate member covers an independently recovered source-convolution window when integerization erased that
-# window into im2col + matmul. It reuses Phase 0's derived functional window member, so the paired
+# window into a gathered contraction. It reuses Phase 0's derived functional window member, so the paired
 # measurement tests the window mechanism, not a held-out model's shape or model-scale cost.
 # The primary member sits at the extents of its class's costliest group. Each member is measured on
 # two arms: the CANDIDATE, held
@@ -1480,6 +1479,9 @@ sweeps:
     # A class holding at least one fiftieth of an iteration workload's predicted issue cycles must be
     # covered. Classes below it still get a member; the threshold is what the coverage report holds.
     min_predicted_cycle_share: 0.02
+    # One further observed member per GEMM geometry stratum (tall, wide, one-row, deep reduction, ...)
+    # of a class: one operation and readout can be priced by very different tiling and movement regimes.
+    stratify_geometry: true
   comparison_roles: [candidate, vendor_reference]
   base:
     cat: _perf

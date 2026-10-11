@@ -432,3 +432,39 @@ def test_the_synthesized_member_carries_the_solved_image():
     )
     assert ho > 0 and wo > 0, "a member writing no rows tests nothing while passing"
     assert (ho, wo) == (CS._CONV_WINDOW_OUT, CS._CONV_WINDOW_OUT)
+
+
+def test_a_bias_free_pointwise_convolution_with_two_arguments_is_read(tmp_path, monkeypatch):
+    """``aten.conv2d(input, weight)`` with no bias exports two positional arguments, and its window is
+    the defaults: unit stride, no padding. Refusing the short form emptied the whole axis."""
+    import json
+
+    from merlin.targetgen import application_inventory
+
+    monkeypatch.setattr(
+        application_inventory, "verify_capture_receipt", lambda path: {"status": "verified_materialized", "errors": []}
+    )
+    capture = tmp_path / "model.mlir"
+    capture.write_text("module {}")
+    (tmp_path / "capture_receipt.json").write_text(json.dumps({"artifacts": {"frontend-trace.json": {}}}))
+    nodes = [
+        {"target": "placeholder", "results": [{"id": "input", "shape": [1, 8, 6, 6]}]},
+        {"target": "placeholder", "results": [{"id": "weight", "shape": [12, 8, 1, 1]}]},
+        {
+            "target": "aten.conv2d.default",
+            "args": [{"value_id": "input"}, {"value_id": "weight"}],
+            "kwargs": {},
+            "results": [{"id": "result", "shape": [1, 12, 6, 6], "dtype": "float32"}],
+        },
+    ]
+    (tmp_path / "frontend-trace.json").write_text(
+        json.dumps(
+            {
+                "schema": "m2m.frontend_trace.v1",
+                "blockers": [],
+                "graphs": {"original": {"status": "complete", "nodes": nodes}},
+            }
+        )
+    )
+    observed = CG.geometry_classes({"independent_cnn": capture})
+    assert [row["signature"] for row in observed["required"]] == ["k1x1/s1x1/d1x1/pad0x0"]

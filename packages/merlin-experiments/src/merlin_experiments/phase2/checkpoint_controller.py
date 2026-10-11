@@ -5,6 +5,9 @@ The orchestrator owns ordering and admission; existing modules own every substan
 the hidden holdout before authoring, seals three identically configured agent trials, regrades each
 candidate on the complete public+hidden functional L3 suite, reveals the holdout, predeclares all
 paired measurements, and evaluates every GSIM cell without best-of selection or failed-cell dropping.
+When a form-scale holdout is configured it is committed beside the PK holdout before authoring,
+revealed beside it after every candidate seals, and qualified and measured through the same flow;
+any failure of either cohort refuses the run rather than reporting the other one alone.
 Paid agents and simulators are launched only through an injected command runner.
 
 The authoring trials and the paired measurement matrix are independent children, so a launch may
@@ -36,6 +39,7 @@ from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
 from merlin_experiments.phase2 import checkpoint_admission as AD
 from merlin_experiments.phase2 import chia_launch as CHIA
+from merlin_experiments.phase2 import form_holdout as FORM
 from merlin_experiments.phase2 import functional_cohort as FC
 from merlin_experiments.phase2 import functional_inputs as FI
 from merlin_experiments.phase2 import gsim_gate as GATE
@@ -451,6 +455,13 @@ class _MeasurementCell:
     stage: str
     run_id: str
     output: Path
+    # Which corpus the cell measures when one phase has several (the PK and form-scale held-out
+    # cohorts); empty means the phase name, so the PK-only matrix keeps its exact addresses.
+    label: str = ""
+
+    @property
+    def corpus_label(self) -> str:
+        return self.label or self.phase
 
 
 def _measurement_cells(
@@ -460,13 +471,19 @@ def _measurement_cells(
     *,
     tuning_certificate: GATE.CertificateRecord,
     heldout_certificate: GATE.CertificateRecord,
+    additional_heldout: Sequence[tuple[str, Mapping[str, Any], GATE.CertificateRecord]] = (),
 ) -> list[_MeasurementCell]:
-    """The complete paired matrix in fixed order: every trial x every phase, no cell dropped."""
+    """The complete paired matrix in fixed order: every trial x every corpus, no cell dropped.
+
+    ``additional_heldout`` names further revealed held-out corpora as (label, reveal, certificate);
+    each is measured in phase ``held_out`` under its own label, after the PK held-out cell.
+    """
     cells: list[_MeasurementCell] = []
     for trial in AD.TRIALS:
         handoff = handoffs[trial]
-        for phase, corpus_root, corpus_manifest, manifest_sha, capsules_sha, certificate in (
+        for label, phase, corpus_root, corpus_manifest, manifest_sha, capsules_sha, certificate in (
             (
+                "tuning",
                 "tuning",
                 handoff.corpus_root,
                 handoff.corpus_root / "performance_corpus_manifest.json",
@@ -476,14 +493,27 @@ def _measurement_cells(
             ),
             (
                 "held_out",
+                "held_out",
                 Path(revealed["root"]),
                 Path(revealed["manifest"]),
                 revealed["manifest_sha256"],
                 revealed["capsules_sha256"],
                 heldout_certificate,
             ),
+            *(
+                (
+                    extra_label,
+                    "held_out",
+                    Path(extra["root"]),
+                    Path(extra["manifest"]),
+                    extra["manifest_sha256"],
+                    extra["capsules_sha256"],
+                    extra_certificate,
+                )
+                for extra_label, extra, extra_certificate in additional_heldout
+            ),
         ):
-            run_id = f"{config.experiment_id}__{trial}__{phase}"
+            run_id = f"{config.experiment_id}__{trial}__{label}"
             cells.append(
                 _MeasurementCell(
                     trial=trial,
@@ -494,9 +524,10 @@ def _measurement_cells(
                     corpus_manifest_sha256=manifest_sha,
                     corpus_capsules_sha256=capsules_sha,
                     certificate=certificate,
-                    stage=f"measurement:{trial}:{phase}",
+                    stage=f"measurement:{trial}:{label}",
                     run_id=run_id,
                     output=config.context.measurement_root / run_id / "campaign_manifest.json",
+                    label="" if label == phase else label,
                 )
             )
     return cells
@@ -571,7 +602,7 @@ def _measure_cells(
         launch: Callable[[], None] | None = None
         if (
             _uncheckpointed_state(
-                cell.output.parent, cell.output, label=f"paired measurement {cell.trial}/{cell.phase}"
+                cell.output.parent, cell.output, label=f"paired measurement {cell.trial}/{cell.corpus_label}"
             )
             == "absent"
         ):
@@ -617,6 +648,7 @@ def _measure_cells(
                 str(config.measurement_timeout),
                 "--sim-workers",
                 str(config.sim_workers),
+                *_single_observation_args(config),
                 "--hardware-counters" if config.hardware_counters else "--no-hardware-counters",
             ]
             for predicate in config.waive_functional_gate or ():
@@ -635,7 +667,9 @@ def _measure_cells(
             return saved
 
         stages.append(ChildStage(cell.stage, launch, commit))
-        stage_phases.append(cell.phase)
+        # One leading cell per CORPUS: the PK and form-scale held-out cells share a phase name but
+        # not their baseline programs.
+        stage_phases.append(cell.corpus_label)
     lead = baseline_lead_prefix(stages, stage_phases) if workers > 1 else len(stages)
     if 0 < lead < len(stages):
         run_child_stages(stages[:lead], workers=workers)
@@ -654,6 +688,192 @@ def _measure_cells(
     return manifests
 
 
+def _reveal_record(manifest: Path) -> dict[str, Any]:
+    """The checkpoint evidence of one v2 reveal: its root, manifest bytes and committed tree."""
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    return {
+        "root": str(manifest.parent),
+        "manifest": str(manifest),
+        "manifest_sha256": AD._sha_file(manifest),
+        "capsules_sha256": document["corpus"]["sha256"],
+    }
+
+
+def _refuse_agent_reachable(config: AD.Config, *paths: Path, label: str) -> None:
+    """Private holdout inputs and outputs never sit where an authoring agent reads or writes."""
+    for path in paths:
+        for reachable in AD.agent_reachable_roots(config):
+            if HOLDOUT._inside(Path(path), reachable):
+                raise ExperimentError(f"{label} is inside an agent-reachable root: {reachable}")
+
+
+def _require_disjoint_reveals(first: Mapping[str, Any], second: Mapping[str, Any], *, target: str) -> None:
+    """Two held-out cohorts measured in one phase must not share a member name or a workload.
+
+    A shared name would merge two measurements into one predeclared statistics cell, and a shared
+    workload would count one held-out point twice.
+    """
+    members = []
+    for revealed in (first, second):
+        try:
+            members.append(
+                RC.load_revealed_members(
+                    Path(revealed["manifest"]),
+                    expected_manifest_sha256=revealed["manifest_sha256"],
+                    expected_corpus_sha256=revealed["capsules_sha256"],
+                    expected_target=target,
+                )
+            )
+        except RC.QualificationError as exc:
+            raise ExperimentError(f"held-out reveal cannot be read: {exc}") from exc
+    names = {member.name for member in members[0]} & {member.name for member in members[1]}
+    workloads = {member.workload_sha256 for member in members[0]} & {member.workload_sha256 for member in members[1]}
+    if names or workloads:
+        # Counts only: naming a member would put a held-out identity into a log.
+        raise ExperimentError(
+            f"held-out cohorts are not disjoint: {len(names)} shared name(s), {len(workloads)} shared workload(s)"
+        )
+
+
+def _single_observation_args(config: Any) -> tuple[str, ...]:
+    """The measurement child's declared single-observation threshold, when the campaign sets one."""
+    threshold = getattr(config, "single_observation_above_roofline_cycles", None)
+    return () if threshold is None else ("--single-observation-above-roofline-cycles", str(threshold))
+
+
+def _verify_engine_coverage(
+    qualification: GATE.CertificateRecord,
+    holdout_manifest: Path,
+    *,
+    manifest_sha256: str | None,
+    corpus_sha256: str | None,
+    target: str | None,
+) -> dict[str, Any]:
+    """ENGINE QUALIFIED: every revealed workload's stratum and form must be covered by the build."""
+    members = RC.load_revealed_members(
+        holdout_manifest,
+        expected_manifest_sha256=manifest_sha256,
+        expected_corpus_sha256=corpus_sha256,
+        expected_target=target,
+    )
+    uncovered = sorted(
+        f"{member.name}={member.workload_sha256}"
+        for member in members
+        if not GATE.admits(qualification, member.workload)
+    )
+    if uncovered:
+        raise ExperimentError(
+            "the gSIM engine qualification does not cover the stratum/form of: " + ", ".join(uncovered)
+        )
+    return {
+        "certification": GATE.certification_of(qualification),
+        "holdout_workload_sha256": sorted({member.workload_sha256 for member in members}),
+        "heldout_workloads_covered": len({member.workload_sha256 for member in members}),
+        "pins_unchanged": True,
+    }
+
+
+def _heldout_extension(
+    state: AD.Checkpoints,
+    *,
+    stage: str,
+    revealed: Mapping[str, Any],
+    qualification_root: Path,
+    tuning_certificate: GATE.CertificateRecord,
+    functional_base: Path,
+    functional_base_sha256: str,
+    config: AD.Config,
+    target: Any,
+    provider: Callable[[Path, Path, GATE.CertificateRecord], tuple[Path, str]] | None,
+) -> tuple[dict[str, Any], GATE.CertificateRecord]:
+    """Qualify one revealed held-out corpus as a same-build extension of the tuning envelope."""
+    if GATE.certification_of(tuning_certificate) != "per_workload":
+        # NO EXTENSION CAPTURE: the qualified build already covers the reveal, or the reveal is refused.
+        coverage = _verify_engine_coverage(
+            tuning_certificate,
+            Path(revealed["manifest"]),
+            manifest_sha256=revealed["manifest_sha256"],
+            corpus_sha256=revealed["capsules_sha256"],
+            target=target.target,
+        )
+        extension = state.evidence(stage)
+        if extension is None:
+            state.append(
+                stage,
+                {
+                    "path": str(tuning_certificate.path),
+                    "sha256": tuning_certificate.sha256,
+                    "certificate": tuning_certificate.to_dict(),
+                    "coverage": coverage,
+                    "produced_after_checkpoint": state.load()[-1]["sha256"],
+                },
+            )
+            extension = state.evidence(stage)
+        elif coverage != extension.get("coverage") or extension.get("sha256") != tuning_certificate.sha256:
+            raise ExperimentError("held-out engine coverage changed across resume")
+        return extension, tuning_certificate
+    extension = state.evidence(stage)
+    if extension is None:
+        if qualification_root.exists() or qualification_root.is_symlink():
+            extension_path, extension_sha = HQUAL.load_completed_qualification(
+                qualification_root,
+                tuning=tuning_certificate,
+                reveal_manifest_sha256=revealed["manifest_sha256"],
+                reveal_corpus_sha256=revealed["capsules_sha256"],
+                functional_base_sha256=functional_base_sha256,
+                gsim_max_cycles=config.gsim_max_cycles,
+            )
+        elif provider is not None:
+            extension_path, extension_sha = provider(Path(revealed["manifest"]), qualification_root, tuning_certificate)
+        else:
+            extension_path, extension_sha = _qualify_heldout_with_config(
+                Path(revealed["manifest"]),
+                qualification_root,
+                tuning_certificate,
+                functional_base=functional_base,
+                functional_base_sha256=functional_base_sha256,
+                reveal_manifest_sha256=revealed["manifest_sha256"],
+                reveal_corpus_sha256=revealed["capsules_sha256"],
+                config=config,
+                target=target,
+            )
+        try:
+            Path(extension_path).resolve(strict=True).relative_to(qualification_root.resolve())
+        except ValueError as exc:
+            raise ExperimentError("held-out certificate provider wrote outside its fresh host root") from exc
+        heldout_certificate = GATE.load_certificate(extension_path, expected_sha256=extension_sha)
+        if heldout_certificate.target != target.target:
+            raise ExperimentError("held-out GSIM extension certificate names a different target")
+        coverage = _verify_extension_certificate(
+            tuning_certificate,
+            heldout_certificate,
+            Path(revealed["manifest"]),
+            manifest_sha256=revealed["manifest_sha256"],
+            corpus_sha256=revealed["capsules_sha256"],
+            target=target.target,
+        )
+        extension = {
+            "path": str(Path(extension_path).resolve()),
+            "sha256": extension_sha,
+            "certificate": heldout_certificate.to_dict(),
+            "coverage": coverage,
+            "produced_after_checkpoint": state.load()[-1]["sha256"],
+        }
+        state.append(stage, extension)
+    heldout_certificate = GATE.load_certificate(extension["path"], expected_sha256=extension["sha256"])
+    coverage = _verify_extension_certificate(
+        tuning_certificate,
+        heldout_certificate,
+        Path(revealed["manifest"]),
+        manifest_sha256=revealed["manifest_sha256"],
+        corpus_sha256=revealed["capsules_sha256"],
+        target=target.target,
+    )
+    if coverage != extension.get("coverage"):
+        raise ExperimentError("held-out certificate coverage changed across resume")
+    return extension, heldout_certificate
+
+
 def run(
     config: AD.Config,
     *,
@@ -662,6 +882,8 @@ def run(
     commit_holdout: Callable[..., HOLDOUT.HoldoutPaths] = HOLDOUT.commit_holdout,
     reveal_holdout: Callable[..., Path] = HOLDOUT.reveal_and_materialize,
     heldout_certificate_provider: Callable[[Path, Path, GATE.CertificateRecord], tuple[Path, str]] | None = None,
+    commit_form_holdout: Callable[..., Mapping[str, Path]] = FORM.commit_form_holdout,
+    reveal_form_holdout: Callable[..., Path] = FORM.reveal_form_holdout,
 ) -> Path | dict[str, Any]:
     # Read the declared width before anything is launched, so an unreadable declaration fails now
     # rather than 20 hours in, at the phase that would have used it.
@@ -750,6 +972,19 @@ def run(
     expected_treatment = declaration.get("agent_treatment")
     if not isinstance(expected_treatment, Mapping):
         raise ExperimentError("predeclaration lacks an exact agent treatment identity")
+    form_configured = AD.form_holdout_configured(config)
+    form_private_dir = root / "host_private_form_holdout"
+    if form_configured:
+        # Both refusals precede the PK commit, so a misdeclared form cohort commits nothing at all.
+        if declaration.get("form_holdout") != AD.form_holdout_declaration(config):
+            raise ExperimentError("form-scale holdout differs from its predeclaration")
+        assert config.form_holdout_generated_root is not None
+        _refuse_agent_reachable(
+            config,
+            config.form_holdout_generated_root,
+            form_private_dir,
+            label="form-scale holdout private input",
+        )
     public_dir, private_dir = root / "agent_visible", root / "host_private"
     public_dir.mkdir(exist_ok=True)
     holdout = state.evidence("holdout_committed")
@@ -774,6 +1009,34 @@ def run(
         state.append("holdout_committed", holdout)
     elif AD._sha_file(Path(holdout["public"])) != holdout["public_sha256"]:
         raise ExperimentError("holdout commitment changed across resume")
+    form_holdout = None
+    if form_configured:
+        form_holdout = state.evidence("form_holdout_committed")
+        if form_holdout is None:
+            assert config.form_holdout_generated_root is not None
+            tuning_root = AD.form_holdout_tuning_root(target)
+            form_paths = commit_form_holdout(
+                config.form_holdout_generated_root,
+                public_dir / "form_holdout_commitment.json",
+                form_private_dir,
+                target=target.target,
+                applications=config.form_holdout_applications,
+                tuning_root=tuning_root,
+                candidate_ids=AD.TRIALS,
+                family=config.form_holdout_family,
+                agent_view_root=public_dir,
+                heldout_layers=config.form_holdout_heldout_layers,
+            )
+            form_public = Path(form_paths["public_commitment"])
+            form_holdout = {
+                "public": str(form_public),
+                "public_sha256": AD._sha_file(form_public),
+                "private": str(form_paths["host_private_dir"]),
+                "tuning_root": str(tuning_root),
+            }
+            state.append("form_holdout_committed", form_holdout)
+        elif AD._sha_file(Path(form_holdout["public"])) != form_holdout["public_sha256"]:
+            raise ExperimentError("form-scale holdout commitment changed across resume")
 
     handoffs, trial_evidence = _author_candidates(
         config,
@@ -801,7 +1064,15 @@ def run(
             expected_target=target.target,
         )
         identities = {GATE.workload_sha256(workload) for workload in workloads.values()}
-        if identities != set(tuning_certificate.members):
+        if GATE.certification_of(tuning_certificate) != "per_workload":
+            uncovered = sorted(
+                name for name, workload in workloads.items() if not GATE.admits(tuning_certificate, workload)
+            )
+            if uncovered:
+                raise ExperimentError(
+                    f"{trial} frozen tuning corpus has workloads the engine qualification does not cover: {uncovered}"
+                )
+        elif identities != set(tuning_certificate.members):
             raise ExperimentError(f"{trial} frozen tuning corpus differs from the exact tuning certificate envelope")
 
     # Passing target.graded_roots() directly would re-admit the policy-excluded descriptors. Build the
@@ -862,84 +1133,67 @@ def run(
             candidate_seals={trial: handoffs[trial].record_path for trial in AD.TRIALS},
             context=config.context.holdout_sources,
         )
-        document = json.loads(manifest.read_text(encoding="utf-8"))
-        revealed = {
-            "root": str(manifest.parent),
-            "manifest": str(manifest),
-            "manifest_sha256": AD._sha_file(manifest),
-            "capsules_sha256": document["corpus"]["sha256"],
-        }
+        revealed = _reveal_record(manifest)
         state.append("holdout_revealed", revealed)
     elif AD._sha_file(Path(revealed["manifest"])) != revealed["manifest_sha256"]:
         raise ExperimentError("held-out reveal changed across resume")
 
-    extension = state.evidence("heldout_gsim_certificate")
-    if extension is None:
-        qualification_root = root / "heldout_gsim_qualification"
-        if qualification_root.exists() or qualification_root.is_symlink():
-            extension_path, extension_sha = HQUAL.load_completed_qualification(
-                qualification_root,
-                tuning=tuning_certificate,
-                reveal_manifest_sha256=revealed["manifest_sha256"],
-                reveal_corpus_sha256=revealed["capsules_sha256"],
-                functional_base_sha256=functional.digest,
-                gsim_max_cycles=config.gsim_max_cycles,
+    form_revealed = None
+    if form_holdout is not None:
+        form_revealed = state.evidence("form_holdout_revealed")
+        if form_revealed is None:
+            form_output = root / "held_out_form_corpus"
+            _refuse_agent_reachable(config, form_output, label="form-scale holdout reveal")
+            manifest = reveal_form_holdout(
+                Path(form_holdout["public"]),
+                Path(form_holdout["private"]),
+                form_output,
+                candidate_seals={trial: handoffs[trial].record_path for trial in AD.TRIALS},
+                heldout_layers=config.form_holdout_heldout_layers,
             )
-        elif heldout_certificate_provider is not None:
-            extension_path, extension_sha = heldout_certificate_provider(
-                Path(revealed["manifest"]), qualification_root, tuning_certificate
-            )
+            form_revealed = _reveal_record(manifest)
+            _require_disjoint_reveals(revealed, form_revealed, target=target.target)
+            state.append("form_holdout_revealed", form_revealed)
+        elif AD._sha_file(Path(form_revealed["manifest"])) != form_revealed["manifest_sha256"]:
+            raise ExperimentError("form-scale held-out reveal changed across resume")
         else:
-            extension_path, extension_sha = _qualify_heldout_with_config(
-                Path(revealed["manifest"]),
-                qualification_root,
-                tuning_certificate,
-                functional_base=functional_base,
-                functional_base_sha256=functional.digest,
-                reveal_manifest_sha256=revealed["manifest_sha256"],
-                reveal_corpus_sha256=revealed["capsules_sha256"],
-                config=config,
-                target=target,
-            )
-        try:
-            Path(extension_path).resolve(strict=True).relative_to(qualification_root.resolve())
-        except ValueError as exc:
-            raise ExperimentError("held-out certificate provider wrote outside its fresh host root") from exc
-        heldout_certificate = GATE.load_certificate(extension_path, expected_sha256=extension_sha)
-        if heldout_certificate.target != target.target:
-            raise ExperimentError("held-out GSIM extension certificate names a different target")
-        coverage = _verify_extension_certificate(
-            tuning_certificate,
-            heldout_certificate,
-            Path(revealed["manifest"]),
-            manifest_sha256=revealed["manifest_sha256"],
-            corpus_sha256=revealed["capsules_sha256"],
-            target=target.target,
-        )
-        extension = {
-            "path": str(Path(extension_path).resolve()),
-            "sha256": extension_sha,
-            "certificate": heldout_certificate.to_dict(),
-            "coverage": coverage,
-            "produced_after_checkpoint": state.load()[-1]["sha256"],
-        }
-        state.append("heldout_gsim_certificate", extension)
-    heldout_certificate = GATE.load_certificate(extension["path"], expected_sha256=extension["sha256"])
-    coverage = _verify_extension_certificate(
-        tuning_certificate,
-        heldout_certificate,
-        Path(revealed["manifest"]),
-        manifest_sha256=revealed["manifest_sha256"],
-        corpus_sha256=revealed["capsules_sha256"],
-        target=target.target,
+            _require_disjoint_reveals(revealed, form_revealed, target=target.target)
+
+    extension, heldout_certificate = _heldout_extension(
+        state,
+        stage="heldout_gsim_certificate",
+        revealed=revealed,
+        qualification_root=root / "heldout_gsim_qualification",
+        tuning_certificate=tuning_certificate,
+        functional_base=functional_base,
+        functional_base_sha256=functional.digest,
+        config=config,
+        target=target,
+        provider=heldout_certificate_provider,
     )
-    if coverage != extension.get("coverage"):
-        raise ExperimentError("held-out certificate coverage changed across resume")
+    form_extension = None
+    additional_heldout: list[tuple[str, Mapping[str, Any], GATE.CertificateRecord]] = []
+    if form_revealed is not None:
+        form_extension, form_certificate = _heldout_extension(
+            state,
+            stage="form_heldout_gsim_certificate",
+            revealed=form_revealed,
+            qualification_root=root / "heldout_gsim_qualification_form",
+            tuning_certificate=tuning_certificate,
+            functional_base=functional_base,
+            functional_base_sha256=functional.digest,
+            config=config,
+            target=target,
+            provider=heldout_certificate_provider,
+        )
+        additional_heldout.append((AD.FORM_HOLDOUT_MEASUREMENT_LABEL, form_revealed, form_certificate))
 
     # Declare the statistics denominator before any performance subprocess is launched.
     stats_saved = state.evidence("statistics_predeclared")
     if stats_saved is None:
         capsules: set[tuple[str, str]] = set()
+        single_observation: set[tuple[str, str, int | None]] = set()
+        policy_record: dict[str, Any] | None = None
         for trial, handoff in handoffs.items():
             for phase, corpus_args, certificate in (
                 (
@@ -962,6 +1216,19 @@ def run(
                     ),
                     heldout_certificate,
                 ),
+                *(
+                    (
+                        "held_out",
+                        (
+                            Path(extra["root"]),
+                            extra["manifest_sha256"],
+                            extra["capsules_sha256"],
+                            Path(extra["manifest"]),
+                        ),
+                        extra_certificate,
+                    )
+                    for _label, extra, extra_certificate in additional_heldout
+                ),
             ):
                 inputs = PI.load_paired_inputs(
                     handoff.record_path,
@@ -978,13 +1245,38 @@ def run(
                     waive_functional_gate=tuple(config.waive_functional_gate or ()),
                     functional_runs_root=config.context.functional_runs_root,
                 )
-                plan = PME.build_measurement_plan(inputs)
+                policy = PME.replicate_policy(
+                    getattr(config, "single_observation_above_roofline_cycles", None),
+                    rtl_facts=config.rtl_facts,
+                    certificate=certificate,
+                    target=target.target,
+                )
+                plan = PME.build_measurement_plan(
+                    inputs, **({"replicate_policy": policy} if policy is not None else {})
+                )
                 capsules.update((f"{phase}:{spec.family}", spec.capsule) for spec in plan.schedule)
+                if policy is not None:
+                    policy_record = plan.declaration["replicate_policy"]
+                    single_observation.update(
+                        (f"{phase}:{row['family']}", row["capsule"], row["roofline_floor_cycles"])
+                        for row in policy_record["single_observation"]
+                    )
         declaration_stats = STATS.predeclare(
             trials=_statistics_trials(trial_evidence),
             capsules=[{"family": family, "capsule": capsule} for family, capsule in sorted(capsules)],
             replicates=AD.REPLICATES,
             primary_simulator="gsim",
+            replicate_policy=(
+                None
+                if policy_record is None
+                else {
+                    **{key: value for key, value in policy_record.items() if key != "single_observation"},
+                    "single_observation": [
+                        {"family": family, "capsule": capsule, "roofline_floor_cycles": floor}
+                        for family, capsule, floor in sorted(single_observation, key=lambda row: row[:2])
+                    ],
+                }
+            ),
         )
         stats_path = root / "statistics_predeclaration.json"
         stats_payload = AD._canonical(declaration_stats)
@@ -1002,7 +1294,12 @@ def run(
     declaration_stats = json.loads(stats_path.read_text(encoding="utf-8"))
 
     measurement_cells = _measurement_cells(
-        config, handoffs, revealed, tuning_certificate=tuning_certificate, heldout_certificate=heldout_certificate
+        config,
+        handoffs,
+        revealed,
+        tuning_certificate=tuning_certificate,
+        heldout_certificate=heldout_certificate,
+        additional_heldout=additional_heldout,
     )
     measurement_manifests = _measure_cells(
         measurement_cells,
@@ -1054,4 +1351,14 @@ def run(
         "statistics": result,
         "selection": "all_three_trials_all_predeclared_cells_no_best_of_no_drop",
     }
+    if form_holdout is not None:
+        # Present only when configured, so a PK-only manifest keeps its exact bytes. Reaching here
+        # means both cohorts were revealed, qualified and measured; nothing reports one alone.
+        final["form_holdout"] = {
+            "commitment": form_holdout,
+            "revealed": form_revealed,
+            "heldout_gsim_certificate": form_extension,
+            "measurement_label": AD.FORM_HOLDOUT_MEASUREMENT_LABEL,
+        }
+        final["holdout_verdict"] = "complete_pk_and_form_scale"
     return _seal_final(root, final)

@@ -6,6 +6,7 @@ owner: targetgen
 last_verified: 2026-10-10
 related: [generating_capsules, adding_a_target, integrations]
 code_refs:
+  - src/merlin/targetgen/corpus_instruction_roles.py
   - src/merlin/targetgen/software_spec.py
   - src/merlin/targetgen/instruction_semantics.py
   - src/merlin/targetgen/rtl/circt_introspect.py
@@ -252,6 +253,32 @@ Candidate compilation, source-to-ELF correspondence and physical ownership,
 synchronization and execution qualification belong to Phase 1. Measured costs and
 held performance calibration belong to Phase 2. Phase 0 must prepare their inputs
 without claiming those later verdicts or requiring a preexisting target backend.
+
+## Select corpus instruction roles for a neutral command runtime
+
+A command contract can explicitly select `corpus_instruction_roles` instead of
+the legacy `encoding.corpus_issue_order` baseline. Version 1 contains `version`,
+`instruction_roster_sha256` and `by_role`, with optional `epilogue_roles`.
+The digest binds the complete `rocc_operand_roles.instructions` list serialized
+with sorted keys, compact JSON separators and no nonfinite numbers. Every selected
+class must occur in that exact roster; aliases from a different decoder are refused.
+
+`by_role` maps the existing corpus role vocabulary (`memory`, `weight_load`,
+`matmul`, `acc_readout`, `acc_readout_scaled`, `tensor_compute_unary`,
+`tensor_compute_binary`) to nonempty, distinct class lists. The existing role-slot
+selector chooses the first class of the first available role for each slot.
+An operation with a missing slot or no resulting classes refuses. Review these
+as explicit corpus requirements: they do not establish hardware capabilities,
+operand meanings, a schedule, or numerical execution. Unselected legacy and
+taxonomy routes retain their existing meaning and failure behavior.
+
+For a fused contraction epilogue, `epilogue_roles` maps an explicitly named stage
+to its role/class selections. Those selections apply only when that stage occurs
+in the requested contraction epilogue. Conflicting role selections refuse. A
+fused readout or accumulator-seeding obligation therefore cannot supply a general
+unary/binary role for reductions or elementwise operations. Keep source, placement,
+complete numerical, linked-program policy and private full-model gates separate;
+a passing class selection closes none of them.
 
 ## Bind the selected configuration to its elaborated source
 

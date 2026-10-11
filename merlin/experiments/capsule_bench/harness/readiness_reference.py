@@ -34,6 +34,31 @@ def select_reference_backend(raw: str | None, *, target: str) -> tuple[Path, dic
     return path, manifest
 
 
+#: The campaign's elaborated-RTL engine pin (selfcheck refuses a --sim that contradicts it).
+REQUIRED_ENGINE_ENV = "MERLIN_REQUIRED_RTL_ENGINE"
+
+
+def reference_probe_path(python: str, chipyard_environment: str, inherited: str) -> str:
+    """Keep env-python reference tools on the interpreter selected by this probe."""
+    return f"{Path(python).parent}:{chipyard_environment}/bin:{chipyard_environment}/riscv-tools/bin:{inherited}"
+
+
+def timing_probe_environment(environment: dict, *, engine: str) -> tuple[dict, str | None]:
+    """The grade environment for the oracle-TIMING probe, which runs ``engine`` by design.
+
+    A campaign may pin a different engine for certification. That pin governs the run's grades, not
+    this calibration probe, so it is lifted for the probe only and returned: the caller must still
+    prove the pinned engine itself reaches a real verdict. Returns ``(env, pinned_other_engine)``;
+    the input mapping is never mutated.
+    """
+    probe = dict(environment)
+    pinned = (probe.get(REQUIRED_ENGINE_ENV) or "").strip() or None
+    if pinned is None or pinned == engine:
+        return probe, None
+    probe.pop(REQUIRED_ENGINE_ENV)
+    return probe, pinned
+
+
 def select_probe_inputs(
     *,
     target: str,
@@ -177,6 +202,12 @@ def probe_row(report: dict, *, capsule: str, sim: str, returncodes: tuple[int, .
 def rejected_probe(report: dict, *, capsule: str, sim: str, category: str) -> bool:
     row = probe_row(report, capsule=capsule, sim=sim, returncodes=(1,))
     failure = row.get("failure") or {}
+    categories = {category}
+    if category == "FUNCTIONAL_MISMATCH":
+        # Simulator failures serialize the enum value; model gates use its name.
+        from aet.core.failures import FailureCategory
+
+        categories.add(FailureCategory.FUNCTIONAL_MISMATCH.value)
     if (
         report.get("all_pass") is not False
         or type(report.get("n_passed")) is not int
@@ -184,7 +215,7 @@ def rejected_probe(report: dict, *, capsule: str, sim: str, category: str) -> bo
         or row["pass"] is not False
         or not isinstance(failure, dict)
         or not isinstance(failure.get("category"), str)
-        or failure["category"].upper() != category
+        or failure["category"].upper() not in {value.upper() for value in categories}
     ):
         return False
     if category == "PROHIBITED_INSTRUCTION":

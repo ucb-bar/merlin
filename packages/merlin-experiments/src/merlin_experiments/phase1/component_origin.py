@@ -418,7 +418,7 @@ def render_fresh_phase1_prompt() -> str:
         "and reviewed generic compiler APIs under /component-inputs. Implement operation semantics, shapes, "
         "layouts, tails, complete outputs, host/device ownership and synchronization. Derive target ISA facts "
         "from the admitted hardware evidence; refuse unknown facts. Obey the admitted instruction policy. "
-        "No handwritten compiler, reference implementation, validation graph, previous run, model-specific "
+        "No prior compiler, reference implementation, validation graph, previous run, model-specific "
         "schedule or answer is available or permitted. Optimize later in Phase 2 after required correctness."
     )
 

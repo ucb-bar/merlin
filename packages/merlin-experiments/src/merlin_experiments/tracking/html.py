@@ -33,6 +33,26 @@ _DARK = """color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--surface-2:#26262
 --band:rgba(57,135,229,.12);--t0:#184f95;--t1:#1c5cab;--t2:#256abf;--t3:#3987e5;--t4:#5598e7;--t5:#86b6ef;
 --t6:#b7d3f6;--fail:#8a3434"""
 
+#: Categorical slots --c1..--c8 (fixed order) and the richer views' feed, matrix and note styles.
+EXTRA_CSS = """
+:root{--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;--c7:#4a3aa7;--c8:#e34948}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--c1:#3987e5;--c2:#d95926;--c3:#199e70;
+--c4:#c98500;--c5:#d55181;--c6:#008300;--c7:#9085e9;--c8:#e66767}}
+:root[data-theme=dark]{--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
+--c7:#9085e9;--c8:#e66767}
+.mode{display:inline-block;padding:2px 10px;border-radius:6px;font-weight:600;font-size:12px;
+border:1px dashed var(--border);background:var(--surface-2)}
+.feed{list-style:none;margin:0;padding:0;font-size:12.5px}.feed li{padding:3px 0;border-bottom:1px solid var(--grid)}
+.feed .t{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;margin-right:8px}
+.feed .kind{display:inline-block;min-width:74px;color:var(--ink-2);font-weight:600}
+.feed .err{color:var(--critical)}
+.now{border-left:4px solid var(--s1);padding:6px 10px;background:var(--surface-2);border-radius:4px}
+.gap{background:color-mix(in srgb,var(--critical) 22%,transparent)}
+.hit{background:color-mix(in srgb,var(--good) 22%,transparent)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+pre.note{white-space:pre-wrap;margin:4px 0;font-size:12px}
+"""
+
 CSS = (
     """
 :root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--surface-2:#f0efec;--ink:#0b0b0b;--ink-2:#52514e;
@@ -83,13 +103,23 @@ svg{display:block;width:100%;height:auto}svg text{fill:var(--ink-2);font-size:11
 color:var(--surface);font-size:12px;white-space:pre-line;pointer-events:none}
 footer{color:var(--muted);font-size:12px;margin:20px 0}
 """
+    + EXTRA_CSS
 )
 
 JS = """(()=>{const t=document.getElementById('tip');document.addEventListener('mousemove',e=>{
 const g=e.target.closest&&e.target.closest('[data-tip]');if(!g){t.hidden=true;return}
 t.textContent=g.getAttribute('data-tip');t.hidden=false;
 t.style.left=Math.max(4,Math.min(e.clientX+14,innerWidth-t.offsetWidth-8))+'px';
-t.style.top=Math.min(e.clientY+16,innerHeight-t.offsetHeight-8)+'px'});})();"""
+t.style.top=Math.min(e.clientY+16,innerHeight-t.offsetHeight-8)+'px'});
+document.querySelectorAll('table.sortable th').forEach(h=>{h.style.cursor='pointer';h.title='sort';
+h.addEventListener('click',()=>{const tb=h.closest('table').tBodies[0],i=h.cellIndex,up=h.dataset.up!=='1';
+h.dataset.up=up?'1':'0';const k=r=>{const s=(r.cells[i]||{}).textContent||'',
+n=parseFloat(s.split(',').join(''));return isNaN(n)?s:n};
+[...tb.rows].sort((a,b)=>{const x=k(a),y=k(b);return(x>y?1:x<y?-1:0)*(up?1:-1)}).forEach(r=>tb.appendChild(r))})});
+document.querySelectorAll('input[data-filter]').forEach(f=>f.addEventListener('input',()=>{
+const q=f.value.toLowerCase();document.querySelectorAll('table.sortable tbody tr').forEach(r=>{
+r.hidden=!!q&&!r.textContent.toLowerCase().includes(q)})}));
+})();"""
 
 
 # --------------------------------------------------------------------------- formatting
@@ -789,16 +819,33 @@ def progression_chart(grades: Sequence[Mapping[str, Any]]) -> str:
             f"{'M' if i == 0 else 'L'}{x(g['at']):.1f} {y(g['n_capsules']):.1f}" for i, g in enumerate(totals)
         )
         parts.append(f'<path d="{path}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/>')
-    path = " ".join(f"{'M' if i == 0 else 'L'}{x(g['at']):.1f} {y(g['n_passed']):.1f}" for i, g in enumerate(points))
-    parts.append(f'<path d="{path}" fill="none" stroke="var(--s1)" stroke-width="2"/>')
-    for g in points:
-        tip = (
-            f"{g['name']}\n{R.stamp(g['at'])}\npassed {g['n_passed']} of {g.get('n_capsules')}\n"
-            f"highest tier {g.get('highest_tier')}"
-        )
-        parts.append(_mark(x(g["at"]), y(g["n_passed"]), tip, "measured"))
-    entries = [("var(--s1)", "capsules passed"), ("var(--muted)", "capsules graded")]
-    return legend(entries) + _svg(width, height, "".join(parts), "capsules passed per grade")
+    entries = [("var(--muted)", "capsules in grade")]
+    notes = []
+    tiers = sorted({t for g in points for c in g.get("capsules", ()) for t in c.get("tiers", {})}, key=R.tier_key)
+    for i, tier in enumerate(tiers):
+        colour = f"var(--t{i % 7})"
+        observed = []
+        unavailable = 0
+        for g in points:
+            statuses = [c.get("tiers", {}).get(tier) for c in g.get("capsules", ())]
+            measured = [s for s in statuses if s in ("pass", "fail")]
+            unavailable = sum(s == "unavailable" for s in statuses)
+            if measured:
+                observed.append((g, sum(s == "pass" for s in measured), len(measured)))
+        if not observed:
+            notes.append(f"{esc(tier)}: unavailable / not recorded ({unavailable} unavailable in latest grade)")
+            continue
+        path = " ".join(f"{'M' if j == 0 else 'L'}{x(g['at']):.1f} {y(n):.1f}" for j, (g, n, _) in enumerate(observed))
+        parts.append(f'<path d="{path}" fill="none" stroke="{colour}" stroke-width="2"/>')
+        for g, n, total in observed:
+            tip = f"{tier}: {n}/{total} recorded pass/fail results\n{g['name']}\n{R.stamp(g['at'])}"
+            parts.append(_mark(x(g["at"]), y(n), tip, "measured"))
+        entries.append((colour, f"{tier} capsules passed"))
+        if unavailable:
+            notes.append(f"{esc(tier)}: {unavailable} unavailable in latest grade")
+    return legend(entries) + _svg(width, height, "".join(parts), "capsules passed per tier per grade") + (
+        '<p class="sub">' + '; '.join(notes) + '</p>' if notes else ''
+    )
 
 
 def _heat_cell(name: str, index: int, grade: Mapping[str, Any], tiers: Sequence[str]) -> tuple[str, str]:

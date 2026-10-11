@@ -441,7 +441,7 @@ def main(
             "--capsules",
             str(r.get("capsules", "all")),
             "--workers",
-            str(r.get("workers", 8)),
+            str(r.get("workers", 0)),
             "--timeout",
             str(to),
             # The real self-check writes --out directly.  Point it at a private name and publish

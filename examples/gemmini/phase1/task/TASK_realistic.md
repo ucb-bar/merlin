@@ -6,15 +6,15 @@ capsule, the command buffer your backend emits, run on the **real Gemmini RTL th
 required elaborated-RTL engine**, produces
 outputs that match the expected result exactly.
 
-## What you are given (realistic HW bring-up — what ships with the RTL)
-- `gemmini/rtl/` — the **Gemmini Chisel RTL** (the hardware itself; the ground truth for how it behaves).
-- `gemmini/README.md` + `gemmini/README_HWBRINGUP.md` — the architecture/ISA overview that ships with it.
-- `gemmini/isa_include/` — the ISA C headers (`gemmini.h`, `gemmini_params.h`): opcodes, `DIM`, dtypes.
-- `gemmini/example_kernel/matmul_ws.c` — **ONE** worked example kernel (single-tile weight-stationary
-  matmul): the canonical "hello world" showing how to drive the ISA. This is the **only** example you
-  get — you must **generalize from it + the RTL + the ISA headers** to every benchmark op (matmul,
-  movement, conv, attention, …). This mirrors real bring-up: you have the hardware and one smoke test,
-  not a library of finished kernels.
+## What you are given (realistic HW bring-up — what this run's bundle grants)
+- **Hardware knowledge comes only from what your bundle grants.** The "Runtime scope" and "Selected
+  Phase 1 tool inventory" sections appended below are authoritative for this launch; anything they do
+  not grant is not available. A fresh release grants no target C headers, no copied RTL source tree, no vendor documentation and
+  no example kernels — do not look
+  for them. Where the bundle grants RTL-derived facts or a target contract, those are the hardware
+  ground truth (opcodes, mesh `DIM`, scratchpad/accumulator geometry, element widths); derive encodings
+  from them and from the RTL checks your granted tools expose. This mirrors real bring-up: you have the
+  hardware's observable facts, not a library of finished kernels.
 - The bench contract (`merlin/contract/`): the command-buffer ABI, schemas, grammar, integrity policy, and
   the **public capsule inputs** (the problems to solve).
 - The LLVM/MLIR-23 toolchain to build your package.
@@ -58,13 +58,13 @@ not count as certification evidence.
    pass on the experiment-required elaborated-RTL engine**.
 
 ## Integrity (DISQUALIFYING if violated)
-**Author the dialect yourself.** You may read the vanilla Gemmini repo, its docs, and its example
-*kernels* (C code showing ISA usage) — that is the point. You may NOT copy or adapt a pre-existing MLIR
+**Author the dialect yourself.** You may read everything your bundle grants — that is the point. You
+may NOT copy or adapt a pre-existing MLIR
 *backend/dialect/package* (e.g. anything under `artifacts/targets/`, prior `runs/*/submission`, or any
 other ready-made `gemmini-opt`/dialect you find on the filesystem), and you may NOT read capsule
 `golden.yaml` files or any reference-oracle to obtain expected outputs and hardcode them. Your package is
 graded only through its 4 entrypoints and is scanned for these violations; a submission that copies a
-prior backend or embeds golden outputs is **disqualified**. Build it from the spec + the example kernels.
+prior backend or embeds golden outputs is **disqualified**. Build it from the contract and the granted hardware facts.
 
 ## What we measure (be efficient)
 We record your **total cost, total tokens, and wall-clock development time** to reach a correct dialect, plus

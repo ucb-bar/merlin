@@ -10,6 +10,7 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -342,13 +343,19 @@ class EvidenceSelection:
             ),
         }
 
+    @cached_property
+    def _view_bytes(self) -> tuple[tuple[str, bytes], ...]:
+        # Decode the immutable selection once. Cache only immutable field bytes,
+        # so consumers still receive independently decoded mutable values.
+        return tuple((key, json.dumps(value).encode()) for key, value in json.loads(self.views_json).items())
+
     def __getattr__(self, name: str) -> Any:
         # Every consumer receives a fresh value. The authoritative views are
         # immutable serialized bytes, not mutable objects shared with callers.
-        views = json.loads(self.views_json)
-        if name not in views:
-            raise AttributeError(name)
-        return views[name]
+        for key, raw in self._view_bytes:
+            if key == name:
+                return json.loads(raw)
+        raise AttributeError(name)
 
 
 def _record_scaling_contradictions(
@@ -1217,6 +1224,11 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         application_graphs=getattr(selection, "application_graphs", None),
         host_capabilities=getattr(selection, "host_capabilities", None),
         capture_execution_attestations=getattr(selection, "capture_execution_attestations", None),
+        application_sources={
+            source.role.removeprefix("application-capture:"): source.content
+            for source in selection.source_snapshots
+            if source.role.startswith("application-capture:")
+        } or None,
     )
     accounting["selected_inventory"] = getattr(
         selection,

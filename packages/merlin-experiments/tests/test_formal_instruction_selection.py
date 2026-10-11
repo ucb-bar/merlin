@@ -312,7 +312,7 @@ def test_coordinator_readers_remain_in_registered_private_grader_identity():
         assert not any(module_matches(module.__name__, prefix) for prefix in declared_modules("agent"))
 
 
-def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
+def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_passes=False):
     calls, _hardware = _substitute_issuers(selected, monkeypatch)
     run = selected.output.with_name("formal-run")
     (run / "submission").mkdir(parents=True)
@@ -362,7 +362,7 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
         seen.append(kwargs)
         if fault == "callback":
             object.__setattr__(kwargs["linked_elf_admission"], "evaluator", _never_substituted_evaluator)
-        return {"passed": False, "models": [], "reason": "owned diagnostic: no actual build or qualification"}
+        return {"passed": build_passes, "models": [], "reason": "owned diagnostic: no actual build or qualification"}
 
     monkeypatch.setattr(formal.PFM, "run", build)
     arguments = [
@@ -382,7 +382,7 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None):
     assert formal.main(arguments, context=context) == 1
     manifest = yaml.safe_load((run / "run_manifest.yaml").read_text())
     assert manifest["completion"]["formal_grade_complete"] is False
-    assert manifest["private_full_models"]["passed"] is False
+    assert manifest["private_full_models"]["passed"] is build_passes
     return manifest, calls, seen, prepared
 
 
@@ -391,6 +391,26 @@ def test_actual_formal_caller_forwards_the_fresh_service_in_process(selected, mo
     assert len(calls) == 5 and len(seen) == len(prepared) == 1
     assert seen[0]["linked_elf_admission"] is prepared[0].service
     assert manifest["private_full_models"]["instruction_selection"]["schema"] == D.SCHEMA
+
+
+def test_instruction_selection_preserves_required_numerical_execution_gate(selected, monkeypatch):
+    gate = {"required": True}
+    options = {"first": {"model": {"readback": "full"}}}
+    executed = []
+    monkeypatch.setattr(formal.PFX, "gate_for", lambda *args, **kwargs: gate)
+    monkeypatch.setattr(formal.PFX, "build_options", lambda selected_gate: options)
+    monkeypatch.setattr(formal.PFX, "not_run", lambda *args: {"passed": False})
+
+    def execute(models, selected_gate, **kwargs):
+        executed.append((models, selected_gate))
+        return {"passed": False, "reason": "diagnostic numerical execution refusal"}
+
+    monkeypatch.setattr(formal.PFX, "run", execute)
+    manifest, _calls, seen, prepared = _formal_attempt(selected, monkeypatch, build_passes=True)
+    assert seen[0]["linked_elf_admission"] is prepared[0].service
+    assert seen[0]["build_options"] is options
+    assert len(executed) == 1 and executed[0][1] is gate
+    assert "private_full_model_execution:incomplete" in manifest["completion"]["failures"]
 
 
 @pytest.mark.parametrize("fault", ["facts", "callback"])
@@ -408,3 +428,29 @@ def test_absent_selection_keeps_legacy_formal_call_shape_unqualified(selected, m
     _manifest, calls, seen, prepared = _formal_attempt(selected, monkeypatch, choose=False)
     assert not calls and not prepared and len(seen) == 1
     assert "linked_elf_admission" not in seen[0]
+
+
+def test_run_freeze_keeps_instruction_selection_private_and_reopens_dependencies(selected, tmp_path):
+    run = tmp_path / "run"
+    frozen, record = D.freeze_for_run(selected.path, target=selected.target, run_dir=run)
+    assert frozen.read_bytes() == selected.path.read_bytes()
+    assert frozen.stat().st_mode & 0o077 == 0
+    assert record["sha256"] == file_digest(frozen)
+    assert D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True) == (
+        frozen,
+        record,
+    )
+    with pytest.raises(ValueError, match="removed"):
+        D.freeze_for_run("", target=selected.target, run_dir=run, prior=record, resuming=True)
+    Path(selected.document["policy"]["path"]).write_text("changed independently selected policy")
+    with pytest.raises(ValueError):
+        D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True)
+
+
+def test_run_freeze_refuses_changed_frozen_instruction_declaration(selected, tmp_path):
+    run = tmp_path / "run"
+    frozen, record = D.freeze_for_run(selected.path, target=selected.target, run_dir=run)
+    frozen.chmod(0o600)
+    frozen.write_text("changed frozen selection")
+    with pytest.raises(ValueError, match="changed"):
+        D.freeze_for_run(selected.path, target=selected.target, run_dir=run, prior=record, resuming=True)

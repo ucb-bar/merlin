@@ -53,6 +53,21 @@ ENGINE_PRIORITY: tuple[str, ...] = ("vcs", "gsim", "verilator")
 # both observe an idle host and otherwise each start a full-width pool. The
 # asynchronous broker and direct/scheduled graders must use the same caps.
 CAPSULE_WORKER_CAP: dict[str, int] = {"verilator": 4, "gsim": 5, "spike": 8}
+
+
+def _gsim_cap_override() -> int | None:
+    """Operator-declared GSim cap for a dedicated host (the same-user slot count and per-suite cap)."""
+    raw = os.environ.get("MERLIN_GSIM_MAX_SLOTS", "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if not 1 <= value <= (os.cpu_count() or 1):
+        raise ValueError(f"MERLIN_GSIM_MAX_SLOTS={raw} must be between 1 and the host CPU count")
+    return value
+
+
+if (_override := _gsim_cap_override()) is not None:
+    CAPSULE_WORKER_CAP["gsim"] = _override
 GSIM_RUNTIME_SLOT_PROTOCOL = "reentrant_per_thread_v1"
 
 # Host runners and selected backends may both guard the same synchronous native
@@ -388,8 +403,9 @@ def _verified_native_slot_overlap(
     owner, open FD inode, process UID/PPid/starttime and complete native argv
     must agree before *and* after the join. Unknown evidence means zero
     discount for that slot, including old holders with no independently proven
-    child. A same-PID multi-slot holder cannot pair children to particular
-    slots, so it receives no discount and may use fewer than five workers.
+    child. With an explicit distinct CPU roster, a stable singleton native
+    affinity independently associates a child with its reserved slot. Without
+    that evidence, a same-PID multi-slot holder receives no discount.
     """
     if not slots.held or not natives.matchable:
         return 0
@@ -398,10 +414,11 @@ def _verified_native_slot_overlap(
     except OSError:
         return 0
     uid = os.getuid()
-    proven: list[tuple[_HeldSlot, _ProcessIdentity, _ProcessIdentity]] = []
+    cpus = _gsim_cpu_roster()
+    proven: list[tuple[_HeldSlot, _ProcessIdentity, _ProcessIdentity, int | None]] = []
     for slot, owner_pid in first.items():
-        # A multi-slot owner has no unique slot-to-child association.
-        if list(first.values()).count(owner_pid) != 1:
+        # Shared process FDs alone do not associate a threaded native with a slot.
+        if list(first.values()).count(owner_pid) != 1 and cpus is None:
             continue
         owner_member = proc_root / str(owner_pid)
         owner = _fresh_identity(owner_member, uid=uid, native=False)
@@ -410,16 +427,19 @@ def _verified_native_slot_overlap(
         children = [
             child for child in natives.matchable if child.ppid == owner_pid and child.starttime > owner.starttime
         ]
+        cpu = cpus[slot.index] if cpus is not None else None
+        if cpu is not None:
+            children = [child for child in children if _native_cpu_matches(proc_root / str(child.pid), cpu)]
         if len(children) != 1:
             continue
-        proven.append((slot, owner, children[0]))
+        proven.append((slot, owner, children[0], cpu))
     try:
         last = _lock_owners(locks_path.read_bytes(), slots.held)
     except OSError:
         return 0
     matched_children: set[tuple[int, int]] = set()
     accepted: list[tuple[_HeldSlot, int]] = []
-    for slot, owner, child in proven:
+    for slot, owner, child, cpu in proven:
         if last.get(slot) != owner.pid or (child.pid, child.starttime) in matched_children:
             continue
         try:
@@ -434,6 +454,8 @@ def _verified_native_slot_overlap(
             continue
         if not _matching_owner_fd(owner_member, slot):
             continue
+        if cpu is not None and not _native_cpu_matches(child_member, cpu):
+            continue
         if _fresh_identity(child_member, uid=uid, native=True) != child:
             continue
         matched_children.add((child.pid, child.starttime))
@@ -443,6 +465,8 @@ def _verified_native_slot_overlap(
     try:
         final = _lock_owners(locks_path.read_bytes(), slots.held)
     except OSError:
+        return 0
+    if _gsim_cpu_roster() != cpus:
         return 0
     return sum(final.get(slot) == owner_pid for slot, owner_pid in accepted)
 
@@ -491,6 +515,48 @@ def capsule_worker_cap(engine: str) -> int:
     return CAPSULE_WORKER_CAP.get(engine, 8)
 
 
+def _gsim_cpu_roster() -> tuple[int, ...] | None:
+    raw = os.environ.get("MERLIN_GSIM_CPUS", "").strip()
+    if not raw:
+        return None
+    tokens = raw.split(",")
+    if any(not token.isdecimal() for token in tokens):
+        raise ValueError("MERLIN_GSIM_CPUS requires a comma-separated CPU roster")
+    cpus = tuple(int(token) for token in tokens)
+    if len(set(cpus)) != len(cpus) or len(cpus) < CAPSULE_WORKER_CAP["gsim"]:
+        raise ValueError("MERLIN_GSIM_CPUS requires a distinct CPU for every configured slot")
+    return cpus
+
+
+def _native_cpu_matches(member: Path, cpu: int) -> bool:
+    """Read the kernel's exact singleton affinity, without lock-file assertions."""
+    try:
+        status = _read_process_evidence(member / "status", member)
+    except (OSError, RuntimeError):
+        return False
+    if status is None:
+        return False
+    fields = [line.split() for line in status.splitlines() if line.startswith(b"Cpus_allowed_list:")]
+    return fields == [[b"Cpus_allowed_list:", str(cpu).encode("ascii")]]
+
+
+@contextmanager
+def _gsim_cpu_slot(index: int):
+    """Pin this native-launch thread and its children to one operator-selected CPU."""
+    cpus = _gsim_cpu_roster()
+    if cpus is None:
+        yield
+        return
+    original = os.sched_getaffinity(0)
+    try:
+        os.sched_setaffinity(0, {cpus[index]})
+        if os.sched_getaffinity(0) != {cpus[index]}:
+            raise RuntimeError("selected GSim CPU is unavailable in the process CPU partition")
+        yield
+    finally:
+        os.sched_setaffinity(0, original)
+
+
 @contextmanager
 def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
     """Hold one of five same-user GSim slots for the entire native simulation.
@@ -504,7 +570,8 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
     forked children acquire their own; do not launch concurrent children inside one slot.
     Ambiguous multi-slot ownership can conservatively reduce utilization below five.
     """
-    root = slot_root or Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}"
+    selected_root = os.environ.get("MERLIN_GSIM_SLOT_ROOT", "").strip()
+    root = slot_root or (Path(selected_root) if selected_root else Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}")
     root.mkdir(mode=0o700, parents=False, exist_ok=True)
     info = root.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -550,7 +617,8 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                     raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
                 time.sleep(0.1)
         held[key] = fd
-        yield
+        with _gsim_cpu_slot(index):
+            yield
     finally:
         if fd is not None and os.getpid() == owner_pid:
             held.pop(key, None)

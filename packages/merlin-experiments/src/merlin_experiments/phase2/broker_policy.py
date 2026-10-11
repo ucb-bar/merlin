@@ -84,6 +84,13 @@ E2E_ANALYSIS_ACTION = "analyze-whole-model"
 _HOST_E2E_ANALYSIS_SENTINEL = "__host_owned_whole_model_analysis__"
 OCCUPANCY_PROFILE_ACTION = "profile-reduced-global-witness"
 _HOST_OCCUPANCY_PROFILE_SENTINEL = "__host_owned_reduced_global_profile__"
+#: Per-group cycles, inter-group gaps and per-group rooflines of the operator's whole-model program.
+WHOLE_MODEL_PROFILE_ACTION = "profile-whole-model"
+_HOST_WHOLE_MODEL_PROFILE_SENTINEL = "__host_owned_whole_model_profile__"
+WHOLE_MODEL_PROFILE_UNAVAILABLE = "no whole-model deployment inputs were supplied to this stage"
+#: The same warm counter profile on a frozen tuning member the AGENT names (``family/capsule``).
+MEMBER_PROFILE_ACTION = "profile-tuning-member"
+_HOST_MEMBER_PROFILE_SENTINEL = "__host_owned_member_profile__"
 CHANGED_REGION_ACTION = "qualify-changed-region"
 _HOST_CHANGED_REGION_SENTINEL = "__host_owned_changed_region_qualification__"
 SOURCE_CONVOLUTION_PREPARATION_ACTION = "prepare-source-convolution"
@@ -103,6 +110,8 @@ _HOST_PAIRED_CONTEXT_SENTINEL = "__host_owned_paired_fixed_work_context__"
 EXPENSIVE_ACTION_LIMITS = {
     DEVELOPMENT_FEEDBACK_ACTION: 2,
     OCCUPANCY_PROFILE_ACTION: 1,
+    MEMBER_PROFILE_ACTION: 1,
+    WHOLE_MODEL_PROFILE_ACTION: 1,
     CONTROLLED_CONTEXT_ACTION: 1,
     PAIRED_CONTEXT_ACTION: 1,
 }
@@ -409,6 +418,7 @@ class WorkflowPolicy:
                 peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
                 achievable_macs_per_cycle=getattr(evaluator, "achievable_macs_per_cycle", None),
                 target=str(getattr(getattr(evaluator, "target_experiment", None), "target", "") or ""),
+                machine_bounds=getattr(evaluator, "machine_bounds", None),
             )
             result = {
                 "returncode": 0,
@@ -621,6 +631,30 @@ def _build_action_registry(
             False,
         )
     )
+    if not global_optimization:
+        actions.append(
+            BrokerAction(
+                MEMBER_PROFILE_ACTION,
+                (_HOST_MEMBER_PROFILE_SENTINEL, "{member}"),
+                ("member",),
+                "host-owned warm profile of one frozen tuning member you name as family/capsule; "
+                "baseline and candidate arms each return total cycles, per-engine busy cycles, "
+                "movement/compute overlap, physical movement bytes where the target's byte semantics "
+                "are proved, and the member's derived roofline. Anything not proved is UNKNOWN",
+                False,
+            )
+        )
+        actions.append(
+            BrokerAction(
+                WHOLE_MODEL_PROFILE_ACTION,
+                (_HOST_WHOLE_MODEL_PROFILE_SENTINEL,),
+                (),
+                "host-owned run of each declared whole-model program built with the frozen baseline and "
+                "with your candidate, on the timing engine: per device-group cycles, the cycles between "
+                "groups, each group's share of the window and its derived roofline. Measurement only",
+                False,
+            )
+        )
     if global_optimization:
         actions.append(
             BrokerAction(

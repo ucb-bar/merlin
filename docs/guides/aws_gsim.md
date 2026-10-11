@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py, packages/merlin-experiments/src/merlin_experiments/phase1/canary.py, packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_runtime.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py, packages/merlin-experiments/src/merlin_experiments/phase1/canary.py, packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_runtime.py]
 ---
 
 # Provisioning Gemmini gSIM on a Linux worker
@@ -20,7 +20,9 @@ experiments require verified hardware inputs, neutral execution tooling and the
 selected session's actual startup checks. These build commands alone do not admit
 an engine or its helpers. The additional component qualification route is described
 in [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
-support provider and copied kernel headers have been removed from Merlin.
+support provider and copied kernel headers have been removed from Merlin. The
+retained `examples/gemmini/support` provider is data only, served by the legacy generic
+`merlin.runtime.backends.chipyard_rocc` backend.
 
 ## Clone and install the source stack
 
@@ -42,7 +44,11 @@ checkpoints. Use the [LLVM toolchain guide](llvm_toolchain.md) and the selected 
 configuration. If regenerating frontend captures, also follow the [model2MLIR guide](model2mlir.md)
 and record its source and framework versions independently.
 
-Select an independently derived data contract for the
+For historical provider-bound execution, select support explicitly. A Merlin clone supplies shared orchestration and the
+generic chipyard RoCC runtime; `examples/gemmini/support` is the data-only provider that
+selects it (contract copy, plugin pointers, and an ISA-headers spec that references the
+pinned bare-metal runtime by digest).
+For fresh authoring, select an independently derived data contract for the
 [neutral runtime tooling](../reference/neutral_runtime_tooling.md). Declare
 `runner.backend: chipyard_rocc`, the explicit pinned engine/toolchain roster and
 logical harness ABI v2. Select that contract with `MERLIN_TARGET_CONTRACT` and
@@ -103,6 +109,10 @@ binary and requires its own receipt and qualification. The builder's `native/bui
 it does **not** prove which RTL revision originally elaborated the FIRRTL. Retain that source recipe,
 Chipyard/toolchain revisions and the generated ABI header separately.
 
+From the Merlin checkout, select the data-only support provider, exact model and facts explicitly:
+
+```sh
+export MERLIN_TARGET_PATH="$PWD/examples/gemmini/support"
 From the Merlin checkout, select the reviewed data contract and exact facts explicitly:
 
 ```sh
@@ -288,3 +298,17 @@ authentication and a successful Bubblewrap user/network-namespace isolation chec
 network isolation to bypass a failing check. Chia execution requires Merlin's managed-worker cleanup
 contract, not an arbitrary unmanaged host. Re-run these checks on the actual AWS worker before
 launching experiments; local relocation checks do not qualify a different operating system or host.
+
+For a dedicated CPU partition, set `MERLIN_GSIM_MAX_SLOTS` to the desired
+concurrency and `MERLIN_GSIM_CPUS` to a comma-separated roster containing one
+distinct CPU per slot. Each native-launch thread and its children use that
+slot's CPU; the caller's affinity is restored after execution or failure.
+The admission census pairs threaded native children with slots only when their
+kernel-reported singleton CPU affinity, direct parent, process identity and
+held lock inode agree across repeated observations. Missing or ambiguous joins
+remain conservatively counted.
+Reserve these CPUs separately from authoring/build CPUs through host CPU
+partitioning; affinity alone does not exclude unrelated workloads.
+`MERLIN_GSIM_SLOT_ROOT` can select an existing-parent, private task-local lock
+directory. Keep the same selection across all experiment workers. These controls
+allocate capacity; actual concurrency depends on ready grading work.

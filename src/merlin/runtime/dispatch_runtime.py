@@ -1467,7 +1467,8 @@ def run_model(
         names = ["Y0"] if golden_arrays else []
     if golden_arrays:
         checks = []
-        for name, out, gold in zip(names, widened, golden_arrays, strict=True):
+        # A capture with only golden.npy references result 0; the further results have no golden here.
+        for name, out, gold in zip(names, widened[: len(golden_arrays)], golden_arrays, strict=True):
             if len(out) != len(gold):
                 raise DispatchRuntimeError(f"model result {name!r} has {len(out)} values, golden has {len(gold)}")
             gmax = float(np.abs(gold).max())

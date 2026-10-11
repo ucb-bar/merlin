@@ -150,7 +150,10 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
         engine_path = Path(str(citation.get("path") or ""))
         selected_path = getattr(backend, "gsim_path", None)
         prepare = getattr(backend, "prepare_gsim_command", None)
-        if not callable(selected_path) or not callable(prepare) or not engine_path.is_file():
+        from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+        bound_execution = isinstance(backend, BoundRoCCBackend)
+        if not callable(selected_path) or (not callable(prepare) and not bound_execution) or not engine_path.is_file():
             raise ModelExecutionInputError("GSIM backend lacks a citable engine or command revalidator")
         if Path(selected_path()).resolve() != engine_path.resolve() or file_sha256(engine_path) != citation.get(
             "binary_sha256"
@@ -158,11 +161,17 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
             raise ModelExecutionInputError("GSIM backend would run different engine bytes than its citation")
 
         def revalidate() -> None:
+            if bound_execution:
+                backend.verify_execution_inputs()
             current = gsim_emulator.citation(target, env_var=env_var)
             if current != citation or file_sha256(engine_path) != citation["binary_sha256"]:
                 raise ModelExecutionInputError("GSIM engine citation or binary changed during qualification")
 
-        return backend, citation, revalidate, prepare
+        # The bound runner owns its exact argv/environment and checks the ELF
+        # and engine identities across execution. Legacy runners instead supply
+        # a separately prepared command for the same checks.
+        revalidate()
+        return backend, citation, revalidate, prepare if callable(prepare) else None
 
     if simulator == "verilator":
         from merlin.common import provenance

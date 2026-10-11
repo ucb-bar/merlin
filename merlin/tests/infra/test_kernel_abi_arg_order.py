@@ -1,4 +1,4 @@
-"""The kernel ABI's argument order has ONE definition, and every harness path agrees with it.
+"""The version-1 kernel ABI's argument order has ONE definition, and every harness path agrees with it.
 
 The contract used to carry a single prose ``arg_order`` string — weight-first — which was true of
 exactly one of the three command shapes a runner-owned harness renderer dispatches to. The whole-op
@@ -24,7 +24,7 @@ import yaml
 from merlin.common.paths import repo_root
 
 ROOT = repo_root()
-CONTRACT = ROOT / "merlin" / "contract" / "mlir_oot_backend_contract.yaml"
+CONTRACT = ROOT / "merlin" / "contract" / "legacy" / "kernel_abi_v1.yaml"
 
 
 def _gate():

@@ -36,6 +36,10 @@ SCHEMA = "group_program_v1"
 #: The capture's patch-column order when it gathers ``[channel, tap_h, tap_w]``; the command-buffer
 #: ABI's convolution packs ``[tap_h, tap_w, channel]``. A prepack step permutes the stored tensor.
 CAPTURE_COLUMN_ORDER = ("channel", "tap_h", "tap_w")
+#: The patch-column order of a convolution the capture gathers on the HOST (strided slices of the
+#: NCHW image, transposed to NHWC per tap, concatenated tap by tap): ``[tap_h, tap_w, channel]``,
+#: which is already the command-buffer ABI's packing.
+HOST_GATHER_COLUMN_ORDER = ("tap_h", "tap_w", "channel")
 
 
 @dataclass(frozen=True)
@@ -222,8 +226,7 @@ def _activation_contraction(group: CG.Group, base: dict[str, Any]) -> GroupProgr
             raise CG.NoCapsuleForm("a batched matrix command cannot drop a nonzero or unknown accumulator seed")
     if not _is_plain_contraction(group.root, rows, reduced, columns, batch):
         raise CG.NoCapsuleForm(
-            "the contraction's operand orientation or batch coordinates are not "
-            "lhs[..., M, K] @ rhs[..., K, N]"
+            "the contraction's operand orientation or batch coordinates are not lhs[..., M, K] @ rhs[..., K, N]"
         )
     if _window(group, 0, reduced) is not None or _window(group, 1, reduced) is not None:
         raise CG.NoCapsuleForm("a windowed contraction over two activations is not stated")
@@ -238,7 +241,12 @@ def _activation_contraction(group: CG.Group, base: dict[str, Any]) -> GroupProgr
         raise CG.NoCapsuleForm("a pooled contraction of two activations is not stated")
     entry.update({"op": "matmul", "M": rows, "K": reduced, "N": columns, STATIONARY_KEY: STATIONARY_ACTIVATION})
     if "acc_scale" in entry["epilogue"]:
-        numerics = GN.numerics_of(group)
+        try:
+            numerics = GN.numerics_of(group)
+        except GN.GroupNumericsError as error:
+            # Unreadable arithmetic is a group no capsule can state, said with its reason -- never an
+            # exception that takes the whole capture's census down with it.
+            raise CG.NoCapsuleForm(f"the group's numerics cannot be read: {error}") from error
         if numerics.multiplier is None:
             raise CG.NoCapsuleForm("the group's requantization multiplier is not a compile-time number")
         entry["acc_scale"] = float(numerics.multiplier)
@@ -271,6 +279,11 @@ def _bias_side(group: CG.Group) -> tuple[str | None, int | None]:
     if member is None:
         return None, None
     varies = CG.classify(member).varies_over
+    if varies is not None and len(varies) > 1 and member.results:
+        # A unit-extent dim (a batch of one, say) is indexed by the bias without being an axis it
+        # varies along; only the dims with more than one position say where the bias runs.
+        extents, _ = mq.type_shape_dtype(member.results[0].type)
+        varies = tuple(dim for dim in varies if dim < len(extents) and int(extents[dim]) != 1)
     if varies is None or len(varies) != 1:
         raise CG.NoCapsuleForm("the bias does not run along exactly one axis of the result")
     shape, _ = mq.type_shape_dtype(group.root.results[0].type)
@@ -386,6 +399,32 @@ def _window(group: CG.Group, activation_index: int, reduced: int) -> dict[str, A
         "padding": [before[0], before[1], after[0], after[1]],
         "positions": outs[0] * outs[1],
     }
+
+
+def _host_gather_window(group: CG.Group, activation_index: int, positions: int, reduced: int) -> dict[str, Any] | None:
+    """Convolution geometry when the activation is a patch matrix the capture gathered ON THE HOST.
+
+    The same recognition the whole-model route uses (:func:`merlin.llvmlower.group_host_call.
+    host_window_gather`), so the statement and the route name one convolution: the image before the
+    gather and its zero padding, the window and stride. ``None`` for an activation that is no host
+    gather; a gather whose image cannot be read back, or whose taps are not laid out tap by tap in
+    row-major order, is refused by name rather than stated as a contraction over the host's patches."""
+    import numpy as np
+
+    from merlin.llvmlower.group_host_call import host_window_gather
+
+    operand = list(group.root.operands)[activation_index]
+    _adapters, dequantize, _dtype = CG._input_chain(operand)
+    value = dequantize.operands[0] if dequantize is not None else operand
+    try:
+        gather = host_window_gather(value, positions, reduced)
+    except ValueError as why:
+        raise CG.NoCapsuleForm(f"a host gather feeds the contraction and its image cannot be read back: {why}") from why
+    if gather is None:
+        return None
+    if not np.array_equal(gather["rows"], np.arange(gather["rows"].size)):
+        raise CG.NoCapsuleForm("the host gather's taps are not concatenated in row-major window order")
+    return dict(gather["window"])
 
 
 def _pool(group: CG.Group) -> dict[str, Any]:
@@ -514,7 +553,14 @@ def program(
     notes: list[str] = []
     window = _window(group, 1 - stored, reduced)
     column_order = None
-    if window is not None and (window["kh"], window["kw"], window["stride"], window["padding"]) != (
+    gathered = None if window is not None else _host_gather_window(group, 1 - stored, positions, reduced)
+    if gathered is not None:
+        # A CONVOLUTION THE CAPTURE LOWERED ON THE HOST is stated as that convolution, from the image
+        # before the gather: the patch matrix is the host's lowering strategy, not the layer.
+        entry.update({"op": "conv2d", "N": features, **gathered})
+        column_order = HOST_GATHER_COLUMN_ORDER
+        notes.append("the capture gathers the patches on the host; the unit's convolution reads the image")
+    elif window is not None and (window["kh"], window["kw"], window["stride"], window["padding"]) != (
         1,
         1,
         [1, 1],
@@ -537,7 +583,12 @@ def program(
             spatial, _ = mq.type_shape_dtype(member.results[0].type)
             raise CG.NoCapsuleForm(f"a pooled contraction over {list(spatial)} needs its input plane stated")
     if "acc_scale" in entry["epilogue"]:
-        numerics = GN.numerics_of(group)
+        try:
+            numerics = GN.numerics_of(group)
+        except GN.GroupNumericsError as error:
+            # Unreadable arithmetic is a group no capsule can state, said with its reason -- never an
+            # exception that takes the whole capture's census down with it.
+            raise CG.NoCapsuleForm(f"the group's numerics cannot be read: {error}") from error
         if numerics.multiplier is None:
             raise CG.NoCapsuleForm("the group's requantization multiplier is not a compile-time number")
         entry["acc_scale"] = float(numerics.multiplier)

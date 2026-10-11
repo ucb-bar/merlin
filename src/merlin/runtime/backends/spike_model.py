@@ -493,6 +493,8 @@ def build(
     code_reserve: int | None = None,
     output_dump_cap: int = 4096,
     output_sha256: bool = False,
+    full_readback: bool = False,
+    group_profile: bool = False,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -861,6 +863,12 @@ def build(
             "entry_projection_source": entry_projection_source,
         }
     info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
+    if full_readback:
+        from ..whole_model_readback import render_outputs_header
+
+        (cgen / "model_outputs.h").write_text(
+            render_outputs_header(c_runtime._out_specs(model_dir / "model.mlir")), encoding="utf-8"
+        )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
@@ -974,6 +982,7 @@ def build(
                 cflags=[CLANG_TARGET, *clang_cflags],
                 expected_interfaces=_dev_side.get("expected_interfaces") or None,
                 package_sha256=_dev_side.get("package_sha256"),
+                call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
             )
         if exact is not None:
             exact.check_package(device.package_dir)
@@ -1122,6 +1131,11 @@ def build(
     _hh.update(profile_flags.encode())
     if output_sha256:
         _hh.update(b"output_sha256=True")
+    # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
+    if full_readback:
+        _hh.update(b"full_readback=True")
+    if group_profile:
+        _hh.update(b"group_profile=True")
     build_hash = _hh.hexdigest()[:12]
     # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
     # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
@@ -1165,7 +1179,9 @@ def build(
             + console_defs
             + prof_defs
             + [f'-DMERLIN_BUILD_HASH="{build_hash}"', f"-DMERLIN_DUMP_CAP={output_dump_cap}"]
-            + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else []),
+            + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
+            + (["-DMERLIN_FULL_READBACK"] if full_readback else [])
+            + (["-DMERLIN_GROUP_PROFILE"] if group_profile else []),
         ),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
@@ -1175,6 +1191,23 @@ def build(
     }
     if op_profile:
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
+    profile_link_flags: list[str] = []
+    if group_profile:
+        from ..whole_model_readback import callees as _group_callees
+        from ..whole_model_readback import group_names as _group_names
+        from ..whole_model_readback import render_group_profile, wrap_flags
+
+        # The model object's undefined symbols are what a wrapper can intercept: a routed group is
+        # bracketed under the name the model actually calls it by, or the build refuses.
+        listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
+        undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
+        routed_rows = list(_dev_side.get("routed") or [])
+        group_callees = _group_callees(routed_rows, _dev_args.get("signatures") or {}, undefined)
+        (cgen / "merlin_group_profile.c").write_text(
+            render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
+        )
+        units["group_profile.o"] = (cgen / "merlin_group_profile.c", [])
+        profile_link_flags = wrap_flags(group_callees)
     objs = []
     for obj, (src, extra) in units.items():
         if work / obj != runtime_object:
@@ -1197,6 +1230,17 @@ def build(
             "-nostartfiles",
             f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
             f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
+            # A packed map states its DRAM span, so a runner sizes the simulated memory from the image
+            # (declared_memory) rather than from a default that may be smaller than the model.
+            *(
+                [
+                    f"-Wl,--defsym,{DRAM_BASE_SYMBOL}={hex(int(dram_base))}",
+                    f"-Wl,--defsym,{DRAM_SPAN_SYMBOL}={hex(int(lay['mem_bytes']))}",
+                ]
+                if dram_bytes is not None
+                else []
+            ),
+            *profile_link_flags,
             "-T",
             h / "model_link.ld",
             *objs,
@@ -1318,6 +1362,34 @@ def run(
             f"spike exited {proc.returncode} even though it may have printed OUT/DONE:\n{console[-2000:]}"
         )
     return parse_console(console)
+
+
+def run_raw(
+    elf: str | Path,
+    *,
+    harts: int = 1,
+    mem_bytes: int = 1 << 30,
+    isa: str = "rv64gcv_zfh_zvfh",
+    timeout: int = 3600,
+    vlen: int | None = None,
+) -> bytes:
+    """Run the ELF on the plain functional simulator and return its stdout BYTES, unparsed.
+
+    The full-readback console (:mod:`merlin.runtime.whole_model_readback`) carries raw payload bytes,
+    which a text decode would replace; this is :func:`run` without the decode. A state the image
+    declares (its DRAM span) wins over ``mem_bytes``."""
+    if vlen is not None:
+        want = f"zvl{int(vlen)}b"
+        if want not in isa:
+            isa = f"{isa}_{want}"
+    span = declared_memory(elf)
+    memory = f"-m{hex(span[0])}:{hex(span[1])}" if span else f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}"
+    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", memory, str(elf)]
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    if proc.returncode != 0:
+        tail = (proc.stdout or b"")[-2000:].decode("utf-8", errors="replace")
+        raise SpikeModelError(f"spike exited {proc.returncode}:\n{tail}")
+    return proc.stdout or b""
 
 
 def parse_console(console: str) -> dict[str, Any]:

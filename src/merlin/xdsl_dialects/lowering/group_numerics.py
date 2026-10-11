@@ -121,6 +121,26 @@ def _arg_index(value) -> int | None:
     return int(value.index) if isinstance(value, BlockArgument) else None
 
 
+def _bias_argument(value) -> int | None:
+    """The model argument behind a bias operand, looking back through views and movement only.
+
+    A captured bias is commonly reshaped to broadcast against the result (``[C] -> [1, C, 1, 1]``);
+    the reshape does not change which stored tensor the offline fold reads.
+    """
+    for _ in range(12):
+        index = _arg_index(value)
+        if index is not None:
+            return index
+        owner = getattr(value, "owner", None)
+        if owner is None or not getattr(owner, "operands", None):
+            return None
+        stage = CG.classify(owner)
+        if stage is None or stage.kind not in (CG.VIEW, CG.MOVEMENT):
+            return None
+        value = owner.operands[0]
+    return None
+
+
 def _scale_source(op) -> ScaleSource:
     """Scale and zero point of one quantize or dequantize operation."""
     operands = list(op.operands)
@@ -171,6 +191,8 @@ def numerics_of(group: CG.Group) -> GroupNumerics:
             "the accumulator and there is no requantization to state"
         )
     dequantizes = by_kind.get(CG.DEQUANTIZE) or []
+    if not dequantizes and CG.CAST in by_kind and CG.SCALE in by_kind:
+        return _converted_store_numerics(group, kinds, by_kind)
     if len(dequantizes) != 2:
         raise GroupNumericsError(
             f"expected the two dequantizes behind the contraction's operands, found {len(dequantizes)}"
@@ -204,7 +226,7 @@ def numerics_of(group: CG.Group) -> GroupNumerics:
             multiplier = divisor / float(source_out.value)
     bias_index = None
     for member in by_kind.get(CG.BIAS_ADD) or ():
-        indices = [_arg_index(operand) for operand in member.operands]
+        indices = [_bias_argument(operand) for operand in member.operands]
         bias_index = next((i for i in indices if i is not None), None)
         if bias_index is None:
             raise GroupNumericsError(
@@ -221,6 +243,77 @@ def numerics_of(group: CG.Group) -> GroupNumerics:
         activation="relu" if CG.RELU in by_kind else "none",
         clamp=(int(low), int(high)),
         granularity=group.scale_granularity or ("tensor" if None not in numbers else "unknown"),
+    )
+
+
+def _scale_constant(op) -> float | None:
+    """The one compile-time multiplier of a scale stage: a body constant or a splatted scalar operand."""
+    data = op.results[0] if op.results else None
+    found = [
+        value
+        for operand in op.operands
+        if operand is not data
+        for value in [_constant_of(operand)]
+        if value is not None
+    ]
+    body = CG._body_constants(op)
+    numbers = [*found, *body]
+    return float(numbers[0]) if len(numbers) == 1 else None
+
+
+def _converted_store_numerics(group: CG.Group, kinds, by_kind) -> GroupNumerics:
+    """An integer-operand contraction whose store the capture writes as ``float(acc) * s_1 * ... * s_n``.
+
+    A static integerization emits exactly this: the contraction already runs on integers, and its
+    accumulator is converted and multiplied by the per-tensor scales it is in units of. The scales
+    before the bias are the accumulator's unit (the bias divisor); all of them over the output scale
+    are the readout multiplier, so ``(acc * s_1 + b) * s_2 = (acc + b / s_1) * s_1 * s_2`` folds a bias
+    placed anywhere in the chain into the accumulator domain. The operand scales are not separate
+    numbers in this form; the product is reported as the input scale and the weight scale as one.
+    """
+    quantize = by_kind[CG.QUANTIZE][0]
+    source_out = _scale_source(quantize)
+    if source_out.zero_point not in (0, None):
+        raise GroupNumericsError(
+            f"the output zero point is {source_out.zero_point}; an accumulator-domain bias and a single "
+            "multiplier assume 0"
+        )
+    low, high = _int_attr(quantize, "quant_min"), _int_attr(quantize, "quant_max")
+    if low is None or high is None:
+        raise GroupNumericsError("the closing quantize declares no quant_min / quant_max")
+    unit = total = 1.0
+    bias_index, bias_seen = None, False
+    for member, stage in zip(group.members, kinds):
+        kind = stage.kind if stage else ""
+        if kind == CG.SCALE:
+            factor = _scale_constant(member)
+            if factor is None or stage.varies_over not in ((), None):
+                raise GroupNumericsError("a store scale of this group is not one compile-time per-tensor number")
+            total *= factor
+            if not bias_seen:
+                unit *= factor
+        elif kind == CG.BIAS_ADD:
+            if bias_seen:
+                raise GroupNumericsError("the group carries two biases")
+            bias_seen = True
+            indices = [_bias_argument(operand) for operand in member.operands]
+            bias_index = next((i for i in indices if i is not None), None)
+            if bias_index is None:
+                raise GroupNumericsError(
+                    "the bias is not a model argument, so an offline step cannot "
+                    "be told what to fold into the accumulator's domain"
+                )
+    multiplier = total / float(source_out.value) if source_out.value is not None else None
+    return GroupNumerics(
+        input=ScaleSource(value=unit, zero_point=0),
+        weight=ScaleSource(value=1.0, zero_point=0),
+        output=source_out,
+        multiplier=multiplier,
+        bias_arg_index=bias_index,
+        bias_divisor=unit if bias_index is not None else None,
+        activation="relu" if CG.RELU in by_kind else "none",
+        clamp=(int(low), int(high)),
+        granularity=group.scale_granularity or "tensor",
     )
 
 

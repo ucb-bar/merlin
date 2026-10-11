@@ -2,7 +2,7 @@
 title: "Design: wiring phase 2 — what the performance search can measure, ask, and refuse"
 kind: design
 status: current
-last_verified: 2026-09-08
+last_verified: 2026-10-09
 owner: gemmini-perf-bench
 related: [compiler_plane, expert_gap_attribution, command_stream_reorder_emitter]
 code_refs:
@@ -32,6 +32,9 @@ code_refs:
   - src/merlin/runtime/program.py
   - src/merlin/perf/roofline.py
   - packages/merlin-experiments/src/merlin/targetgen/coverage_report.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/engine_qualification.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/gsim_digest_readback.py
+  - packages/merlin-experiments/src/merlin/targetgen/oracle_readback.py
 ---
 
 # Wiring phase 2
@@ -224,6 +227,41 @@ both reject missing strata, changed selection, and certificate extras.
 
 This sampling policy does not widen timing authority. The tuning and held-out performance paths
 still execute through the certificate-bound GSIM engine on the exact campaign cohort.
+
+## gSIM admission, readback and replicates at performance scale
+
+These policies are recorded in the admission declaration, every measurement plan and the
+statistics predeclaration.
+
+**Certification mode** (`--certification`). Two modes:
+
+- `per_workload` (default): every measured workload is captured on Verilator and gSIM.
+- `engine_qualified` (`phase2/engine_qualification.py`): one gSIM build, bound by its pins and
+  build receipt, is qualified on a host-chosen suite. For each coverage key the cohorts need, the
+  suite takes the largest member within a kernel-cycle budget (2M by default).
+
+A coverage key is the operation, the shape's geometry stratum, the form (epilogue, output dtype,
+convolution structure) and the operand dtypes. Each suite member runs as one ELF on both engines
+and must show identical kernel cycles and identical output digests. Gate, admission and controller
+then admit a workload only when its key is covered. Uncovered workloads are refused, and a held-out
+reveal needs no extension captures.
+
+**Readback.**
+
+- Certificate captures, measurement cells and the functional regrade's gSIM L3 read outputs back as
+  XXH64 digests. The digest is tied to full values read on Spike from the same program, and any
+  disagreement falls back to the full readback (`MERLIN_PHASE2_GSIM_READBACK`,
+  `MERLIN_GSIM_L3_READBACK`).
+- Both RTL engines load programs by `+loadmem`. Loaded over the serial link, Verilator started
+  kernels from different cache state, and the load took most of a small run.
+
+**Replicates** (`--single-observation-above-roofline-cycles`). A member whose predeclared roofline
+floor exceeds the threshold gets one gSIM observation, cited by both replicate identities and
+stamped as carried; gSIM is deterministic. Smaller members keep one observation per replicate.
+
+**Authoring** (`--authoring-gsim-floor-budget`, default 50000). Tuning members above the budget
+are not swept on gSIM during authoring. Their feedback cell says they are measured only in the
+final cells, which submit executions longest-first.
 
 ## One claim per sealed campaign
 

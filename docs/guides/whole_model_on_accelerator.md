@@ -3,9 +3,9 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 related: [compilation_strategies, targetgen, adding_a_target, gemmini_experiment, reproducing_whole_model_on_rtl, firesim]
-code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py]
+code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_full_model_execution.py]
 ---
 
 # Compiling a whole model onto an accelerator
@@ -50,6 +50,20 @@ captured with synthetic entry inputs can supply structural build evidence, but
 must retain its synthetic-input and paper-readiness declarations. The gate does
 not turn that capture into attributed-data validation, a paper-accuracy result,
 or whole-model numerical equivalence. Those require separate executed evidence.
+
+That executed evidence is a second, separately declared gate,
+`phase1_gates.whole_model.private_full_models`
+(`merlin_experiments.phase1.feedback.private_full_model_execution`). After the freeze the
+formal grade runs the same linked ELFs the build-only gate verified, each on the engine the
+descriptor names for its program, and holds the printed output to the capture's own
+references: bit-exact against an integer reference the capture binds (where it binds one) and
+within a declared `atol`/`rtol` of the declared end-to-end reference. Every program of the
+roster is declared either with an engine, timeout and optional hang bound, or `deferred` with a
+reason (an output the one-output console protocol cannot carry, weights larger than the
+simulated board's memory, or a run measured in days). A deferral is recorded as a deferral and
+never counts as numerical evidence; a declared, required gate that does not pass keeps the formal
+grade incomplete. The linked program prints one complete output and no per-group check, so this
+gate does not establish per-group exactness.
 
 ## Select and reuse the inputs
 

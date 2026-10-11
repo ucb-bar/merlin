@@ -21,7 +21,10 @@ from .broker_policy import (
     DEVELOPMENT_FEEDBACK_ACTION,
     E2E_ANALYSIS_ACTION,
     INVENTORY_ACTION,
+    MEMBER_PROFILE_ACTION,
     OCCUPANCY_PROFILE_ACTION,
+    WHOLE_MODEL_PROFILE_ACTION,
+    WHOLE_MODEL_PROFILE_UNAVAILABLE,
     WorkflowPolicy,
     _build_action_registry,
     _record_host_refusal,
@@ -30,6 +33,79 @@ from .broker_policy import (
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
 from .contracts import sha256_file as _sha256_file
+
+_ROOFLINE_STATUSES = ("derived", "unknown", "refuted")
+_ROOFLINE_LIMITERS = (None, "compute", "movement")
+
+
+def _validate_roofline_cell(block: Any, *, index: int, measured: bool) -> None:
+    """A cell's roofline block: exactly the declared fields, a bound that is a bound, and positions
+    that are only ever stated against a derived, unrefuted bound."""
+    from .feedback_metrics import ROOFLINE_CELL_FIELDS  # noqa: PLC0415
+
+    if not isinstance(block, Mapping) or set(block) != set(ROOFLINE_CELL_FIELDS):
+        raise StageGateError(f"development feedback cell {index} roofline violates its schema")
+    status = block.get("status")
+    if status not in _ROOFLINE_STATUSES or block.get("limiter") not in _ROOFLINE_LIMITERS:
+        raise StageGateError(f"development feedback cell {index} roofline has an invalid status")
+    for field in ("roofline_cycles", "compute_floor_cycles", "compulsory_read_bytes", "compulsory_write_bytes"):
+        value = block.get(field)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            raise StageGateError(f"development feedback cell {index} roofline has an invalid {field}")
+    movement = block.get("movement_floor_cycles")
+    if movement is not None and (isinstance(movement, bool) or not isinstance(movement, (int, float)) or movement < 0):
+        raise StageGateError(f"development feedback cell {index} roofline has an invalid movement floor")
+    if (status == "unknown") != (block.get("roofline_cycles") is None):
+        raise StageGateError(f"development feedback cell {index} roofline status disagrees with its bound")
+    for field in ("baseline_over_roofline", "candidate_over_roofline"):
+        value = block.get(field)
+        if value is None:
+            continue
+        # A position below one would be a program faster than its own bound: that refutes the bound
+        # and is reported as `refuted` with no positions, never as a ratio under one.
+        if (
+            not measured
+            or status != "derived"
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or value < 1
+        ):
+            raise StageGateError(f"development feedback cell {index} roofline states an invalid {field}")
+    if not isinstance(block.get("basis"), str) or not isinstance(block.get("unresolved"), list):
+        raise StageGateError(f"development feedback cell {index} roofline omits its basis")
+
+
+_EXECUTED_VALUE_FIELDS = ("accelerator_commands", "retired_instructions", "by_class", "local_memory")
+
+
+def _validate_executed(block: Any, *, index: int, measured: bool) -> None:
+    from .feedback_metrics import _LOCAL_MEMORY_FIELDS, EXECUTED_ARM_FIELDS  # noqa: PLC0415
+
+    if not isinstance(block, Mapping) or set(block) != {"baseline", "candidate"}:
+        raise StageGateError(f"development feedback cell {index} executed_commands violates its schema")
+    for arm, row in block.items():
+        if not isinstance(row, Mapping) or set(row) != set(EXECUTED_ARM_FIELDS):
+            raise StageGateError(f"development feedback cell {index} executed {arm} violates its schema")
+        if row.get("status") == "measured":
+            counts = [row.get("accelerator_commands"), row.get("retired_instructions")]
+            by_class = row.get("by_class")
+            local = row.get("local_memory")
+            if (
+                not measured
+                or any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in counts)
+                or not isinstance(by_class, Mapping)
+                or any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in by_class.values())
+                or sum(by_class.values()) != row["accelerator_commands"]
+                or (local is not None and (not isinstance(local, Mapping) or set(local) != set(_LOCAL_MEMORY_FIELDS)))
+            ):
+                raise StageGateError(f"development feedback cell {index} executed {arm} is inconsistent")
+        elif (
+            row.get("status") != "unknown"
+            or not isinstance(row.get("why"), str)
+            or any(row.get(key) is not None for key in _EXECUTED_VALUE_FIELDS)
+        ):
+            raise StageGateError(f"development feedback cell {index} executed {arm} is invalid")
 
 
 def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
@@ -102,6 +178,13 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
         "gap_closed",
         # A cell the sweep did not pay for says so, rather than being omitted. Omitting
         # it would let a short sweep read as a complete one.
+        # WHERE EACH ARM SITS AGAINST THE MACHINE'S DERIVED BOUND for this member's declared work.
+        # A closed block (see `_validate_roofline_cell`), present on measured and unmeasured cells
+        # alike because the bound is a property of the workload, not of a measurement.
+        "roofline",
+        # WHAT EACH ARM EXECUTED (functional replay of the measured image): accelerator commands by
+        # class, retired instructions, local-memory rows addressed. Closed; see _validate_executed.
+        "executed_commands",
         "measured",
         "skip_reason",
     }
@@ -128,6 +211,8 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
         # read as absent. What is still demanded is that the cell say so: `measured` False with a
         # reason, `comparable` False, and no derived delta -- so a short sweep can never be read as
         # a complete one, which is the failure this null was introduced to prevent.
+        _validate_roofline_cell(row.get("roofline"), index=index, measured=row.get("measured") is True)
+        _validate_executed(row.get("executed_commands"), index=index, measured=row.get("measured") is True)
         if not isinstance(row.get("measured"), bool):
             raise StageGateError(f"development feedback cell {index} does not say whether it ran")
         measured = bool(row["measured"])
@@ -236,6 +321,9 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
             # of its cycles sat in members the agent never aimed at. Required, so
             # a future summary cannot quietly stop saying it.
             "recoverable",
+            # Which machine every cell's roofline describes: derived geometry and memory-path
+            # widths, each with its basis, or UNKNOWN with the reason.
+            "roofline_machine",
         }
         or summary.get("members") != len(cells)
         or summary.get("comparable") != sum(bool(row["comparable"]) for row in cells)
@@ -358,10 +446,12 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
 
     @property
     def unavailable(self):
+        if getattr(self.feedback_evaluator, "whole_model_inputs", None) is None:
+            return {WHOLE_MODEL_PROFILE_ACTION: WHOLE_MODEL_PROFILE_UNAVAILABLE}
         return {}
 
     def build_registry(self):
-        return _build_action_registry(self.candidate, self.target_experiment)
+        return _build_action_registry(self.candidate, self.target_experiment, unavailable=self.unavailable)
 
     verify_receipts = staticmethod(verify_broker_receipts)
 
@@ -370,6 +460,8 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
             E2E_ANALYSIS_ACTION: self._analyze,
             INVENTORY_ACTION: self._inventory,
             OCCUPANCY_PROFILE_ACTION: self._profile,
+            MEMBER_PROFILE_ACTION: self._profile,
+            WHOLE_MODEL_PROFILE_ACTION: self._whole_model_profile,
             ANALYSIS_ACTION: self._command_buffers,
             DEVELOPMENT_FEEDBACK_ACTION: self._feedback,
         }
@@ -400,10 +492,38 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
         if self.feedback_evaluator is None or self.feedback_round is None:
             raise StageGateError("reduced global profile evaluator is unavailable")
         else:
+            member = rendered.get("member") if isinstance(rendered, Mapping) else None
             document = self.feedback_evaluator.profile(
-                self.candidate, round_index=self.feedback_round, call_index=call_index, timeout_s=timeout_s
+                self.candidate,
+                round_index=self.feedback_round,
+                call_index=call_index,
+                timeout_s=timeout_s,
+                **({"member": str(member)} if member is not None else {}),
             )
         return document
+
+    def _whole_model_profile(self, request, action_name, rendered, call_index, timeout_s, started):
+        try:
+            if self.feedback_evaluator is None or self.feedback_round is None:
+                raise StageGateError(WHOLE_MODEL_PROFILE_UNAVAILABLE)
+            document = self.feedback_evaluator.whole_model_profile(
+                self.candidate, round_index=self.feedback_round, call_index=call_index, timeout_s=timeout_s
+            )
+            result = {
+                "returncode": 0,
+                "stdout": _canonical_json(document).decode("utf-8"),
+                "stderr": "",
+                "elapsed_s": round(time.monotonic() - started, 3),
+            }
+        except Exception as exc:  # noqa: BLE001 - a failed profile is a refusal, never a measurement
+            _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+            result = {
+                "returncode": 125,
+                "stdout": "",
+                "stderr": agent_visible_refusal("whole-model boundary profile refused by the host", exc),
+                "elapsed_s": round(time.monotonic() - started, 3),
+            }
+        return result, None
 
     def _inventory_document(self, request, rendered, call_index, timeout_s):
         return inspect_compiler_package(self.candidate).to_dict()

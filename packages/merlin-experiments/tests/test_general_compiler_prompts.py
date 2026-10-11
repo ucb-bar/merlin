@@ -68,5 +68,5 @@ def test_actual_fresh_author_prompt_retains_shared_requirements_and_private_excl
     assert prompt.count(GENERAL_COMPILER_CONTRACT_V1) == 1
     assert "initial driver has no lowering" in prompt
     assert "Obey the admitted instruction policy" in prompt
-    assert "No handwritten compiler" in prompt
+    assert "No prior compiler" in prompt
     assert "under /component-inputs" in prompt

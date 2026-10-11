@@ -546,9 +546,9 @@ def get_model_and_inputs():
     "permute": """
 class Model(nn.Module):
     def forward(self, x):
-        return x.permute(1, 0)
+        return x.permute({perm_args})
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}),)
+    return Model(), (_r({shape_args}),)
 """,
     "dtype_cast": """
 class Model(nn.Module):
@@ -719,8 +719,11 @@ def build_loader_src(spec: dict) -> str:
     from .capsule_builtin_source import render_builtin_source
 
     return render_builtin_source(
-        spec, preamble=_PREAMBLE, integer_matmul=_INT_MATMUL,
-        parametric_linear=_PARAMETRIC_LINEAR, bodies=_OP_BODIES,
+        spec,
+        preamble=_PREAMBLE,
+        integer_matmul=_INT_MATMUL,
+        parametric_linear=_PARAMETRIC_LINEAR,
+        bodies=_OP_BODIES,
         input_names=_OP_INPUT_NAMES | _FUSED_OP_INPUT_NAMES,
     )
 

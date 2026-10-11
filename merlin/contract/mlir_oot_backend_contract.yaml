@@ -50,106 +50,66 @@ entrypoints:
     output: "writes the command buffer to {output_json} and the target artifact to stdout"
     fallback: "when absent, the runner invokes emit_command_buffer and lower_target_to_llvm separately"
 
-kernel_abi:
-  # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness
-  # embeds the deterministic leaf tensors (by name) and the output buffers, then prints
-  # OUT/METRIC/DONE. The package only emits the kernel; the harness + link are the runner's.
+# ---------------------------------------------------------------------------------------------------
+# THE KERNEL ABI (logical, version 2): the runner-owned harness calls the package's kernel with this ABI.
+# The runner hands the kernel the LOGICAL tensors exactly as the capsule states them; tiling, padding,
+# packing and layout transforms are the compiler's job.
+logical_kernel_abi:
+  version: 2
   symbol: "{target}_kernel"
-  # THE POINTER LIST DEPENDS ON THE COMMAND SHAPE. There is not one argument order; there are three,
-  # and `arg_order_by_command_shape` below is the single source of truth for all of them. It used to
-  # say only the resident-matmul one, and the whole-op harness had quietly grown a different rule: a
-  # native CONV2D is called in the interface's DECLARATION order, so the four shipped conv capsules
-  # that declare the activation before the weight (`IFM, W, Y0`) were compiled weight-first against a
-  # harness that passed activation-first. The kernel then gathered activations out of the weight
-  # buffer and MVIN'd the weight with the activation's pitch. Four functional failures, one
-  # undocumented rule. Read the row whose `when` matches your buffer and no other.
-  # The resident_matmul shape's signature, kept concrete and first because single-shape readers
-  # consume this key. The other two shapes have a DIFFERENT arity and order.
-  signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}) - the resident_matmul command shape ONLY; other shapes: arg_order_by_command_shape[].signature"
-  # Kept as a flat string because readers that implement only the resident-matmul shape consume this
-  # key (merlin.llvmlower.device_shim.kernel_abi_for renders it into the emitted shim). It is the
-  # resident_matmul row restated and MUST NOT be read as the rule for any other shape.
-  arg_order: "resident_matmul shape ONLY: [each group's resident weight, in resident-pack order] ++ [every group's matmul lhs, group-major] ++ [every group's commit output, group-major] ++ [the bias of every commit declaring a fused bias stage, group-major -- empty when none does]. Other command shapes have a DIFFERENT order: see arg_order_by_command_shape."
-  # Rows are tried TOP-DOWN and the FIRST matching `when` decides the ABI; this mirrors the dispatch a
-  # runner-owned harness renderer performs, so a buffer that could match two rows is answered by the
-  # earlier one. `order` is the machine-checkable form: a list of tokens from `arg_order_tokens`, each
-  # expanding to zero or more pointer arguments, concatenated left to right. The prose and the token
-  # list say the same thing; `build_tools/scripts/check_kernel_abi_arg_order.py` renders each target's
-  # real harness for a probe buffer of every shape and fails if the emitted call disagrees with the
-  # tokens, so this document cannot drift from the code again.
-  arg_order_by_command_shape:
-    - shape: whole_program
-      when: "the buffer explicitly declares kernel_abi.kind = whole_program; this row is first, so an
-             explicit whole-program pointer boundary takes precedence over inference from its accelerator
-             command subset"
-      kernel_abi_kind: whole_program
-      signature: "void {target}_kernel(ptr arg_0 .. ptr arg_{N-1})"
-      order: [declared_whole_program_args]
-      prose: "kernel_abi.args[].tensor in declaration order. Every declared tensor buffer appears exactly
-              once; access declares allocation/materialization only, and outputs must exactly equal the
-              tensors whose role is output. The runner performs no model operation."
-    - shape: movement
-      when: "the buffer has NO RES_PACK command and at least one MOVEMENT (or an identity-combine VECTOR_MAP)"
-      signature: "void {target}_kernel(ptr src, ptr dst)"
-      order: [movement_src, movement_dst]
-      prose: "[the movement source] ++ [the movement destination]"
-    - shape: native_whole_op
-      when: "the buffer contains EXACTLY ONE whole-op command, whose opcode is one of `opcodes` below"
-      opcodes: [ATTENTION_QK, ATTENTION_PV, BATCHED_MATMUL, CONV2D]
-      signature: "void {target}_kernel(ptr t_0 .. ptr t_{N-1})"
-      order: [interface_external_tensors_in_declaration_order]
-      prose: "the interface's OWN external tensors (role input | weight | bias | output) in DECLARATION
-              order - NOT weight-first, and NOT operand-role order. A conv declaring `IFM, W, Y0` is
-              called `(IFM, W, Y0)`; the same conv declaring `W, IFM, Y0` is called `(W, IFM, Y0)`.
-              Batched matmul likewise preserves its interface declaration order and logical result rank.
-              A whole-op artifact receives neither a reordered weight nor a codegen-only derived buffer,
-              so an im2col matrix is an internal lowering detail and never a pointer argument."
-    - shape: resident_matmul
-      when: "otherwise - the RES_PACK / MATMUL(_RESIDENT) / COMMIT form, including a CONV2D the package
-             itself lowers to that form (its derived im2col lhs then IS a pointer argument)"
-      signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}, ptr bias_0 .. ptr bias_{B-1})"
-      order: [resident_weights_in_resident_pack_order, matmul_lhs_group_major, commit_outputs_group_major,
-              commit_biases_group_major]
-      prose: "up to four contiguous blocks: [each resident weight, in resident-pack (first-use) order] ++
-              [every matmul lhs] ++ [every commit output] ++ [the bias operand of every commit that
-              declares a fused bias epilogue stage]. Within the per-matmul blocks the order is
-              GROUP-MAJOR: all of the first weight's matmuls in command order, then the second weight's.
-              With one resident weight - the common case - this is weight, lhs..., out.... The bias block
-              is LAST and is EMPTY unless a commit declares a bias stage, so a buffer without one has
-              exactly the three-block signature it always had."
-  # The token vocabulary the `order` lists are written in. One token, one resolution rule, resolved
-  # against the command buffer; a token nobody can resolve is a REFUSAL, never a guessed position.
-  arg_order_tokens:
-    declared_whole_program_args: "kernel_abi.args[].tensor in array order, only when kernel_abi.kind is
-      whole_program; each arg also declares read|write|readwrite access, every tensors entry appears
-      exactly once, and kernel_abi.outputs equals exactly the role=output tensors"
-    movement_src: "the MOVEMENT/identity-VECTOR_MAP command's `src` (or `lhs`) operand"
-    movement_dst: "that command's `dst` operand"
-    interface_external_tensors_in_declaration_order: "every tensor in `tensors` whose role is input,
-      weight, bias or output, in the order the interface declared it (the command buffer preserves
-      declaration order as `tensors` insertion order). Resident handles are NOT external tensors."
-    resident_weights_in_resident_pack_order: "for each RES_PACK, its `src`, de-duplicated, in command order"
-    matmul_lhs_group_major: "each matmul's `lhs`, grouped by the resident weight its `rhs` resolves to,
-      groups in resident-pack order, commands in buffer order within a group"
-    commit_outputs_group_major: "the `dst` of the COMMIT that consumes each matmul's accumulator, in the
-      same group-major order as matmul_lhs_group_major"
-    commit_biases_group_major: "the bias tensor named by each COMMIT that declares a bias epilogue
-      stage (`bias_add`/`bias`), in the same group-major order as matmul_lhs_group_major. A commit
-      with no bias stage contributes NOTHING, so this token expands to the empty list for every
-      buffer that declares no fused bias. The name is read from the commit's `attributes.bias` or
-      its `operands.bias` (both are legitimate; a stage that names neither is a REFUSAL, never a
-      skipped argument). The pointee is in the ACCUMULATOR's dtype, not the operand dtype."
-  pointee_layout: >-
-    Use the declared tensor ABI and selected target's derived geometry, padding and
-    readout format. Logical whole-program buffers and device-packed tile buffers
-    are distinct layouts; never assume a fixed tile edge or element precision.
+  signature: "void {target}_kernel(void *arg_0, ..., void *arg_{N-1})  -- every argument a data pointer"
+  argument_order:
+    # An explicit whole-program boundary is the candidate's own declaration and is honoured as declared.
+    whole_program: [declared_whole_program_args]
+    # Every other buffer: ONE rule, independent of the command shape and of any compiler's emitter.
+    default: [logical_inputs_in_declaration_order, logical_outputs_in_result_order]
+  tokens:
+    declared_whole_program_args: "kernel_abi.args[].tensor in array order (kind = whole_program); access
+      read = initialized input, write = output or scratch, readwrite = scratch restored to its initial
+      value before every invocation. Outputs (kernel_abi.outputs) must be write-only."
+    logical_inputs_in_declaration_order: "every declared tensor that no command produces, that no
+      params derivation recipe derives, and whose role is not output/intermediate (input, weight, bias,
+      scale), in `tensors` declaration order. A resident handle, an accumulator and any matrix a
+      params recipe derives are compiler artifacts and never pointers."
+    logical_outputs_in_result_order: "every destination Merlin's reference publishes as a result (the
+      `dst` of a `published_by` command, in program order), then every declared role=output tensor not
+      yet listed (in declaration order; a host-lane program's results have no producing command),
+      restricted to the buffer's declared `outputs` when it declares them."
+  # The opcodes whose destination merlin.runtime.reference.reference_outputs reports as a result.
+  published_by: [COMMIT, BIAS_ADD, RESIDUAL_ADD, ATTENTION_QK, ATTENTION_PV, CONV2D, BATCHED_MATMUL, MOVEMENT]
+  pointee:
+    layout: "dense row-major in the tensor's LOGICAL shape: element (i0, ..., ik) at the C-order linear
+      index, no padding, no stride, no packing. An output's logical shape is its declared tensor, else
+      Merlin's own derivation for the command producing it (COMMIT: [rows after pooling, n])."
+    element: "the declared dtype's storage width: int8_t / int16_t / int32_t / int64_t for signed
+      integers, uint<bits>_t for unsigned ones, and floats as their stored bit pattern in uint<bits>_t."
+    # The only placement guarantee: the base of every buffer is aligned to this many bytes.
+    alignment_bytes: 64
+    explicit_storage: "a whole-program buffer may declare params.storage_encodings (its OWN physical
+      layout); the harness then allocates and packs exactly that encoding (merlin.runtime.storage_binding)."
+  outputs:
+    # Every output buffer is filled with this byte before EVERY invocation, outside the cycle window, so
+    # an output the kernel does not write (or wrote only during warm-up) cannot match by accident.
+    poison_byte: 165
+    access: write_only
+  completion: "the kernel returns when its results are visible in memory; the harness then executes the
+    target's declared host completion instruction (target contract logical_harness.completion_asm)
+    before the closing cycle read and before any readback."
+  readout: "OUT <name> <rows> <cols> v...: rows = product of all but the last logical extent (1 below
+    rank 2), cols = the last extent (1 for a scalar); values in C order; floats as bit patterns."
+  # A constant input of at least this many elements is linked as a binary blob when the caller can link
+  # one: a C initializer list of millions of elements does not build.
+  blob_min_elements: 1024
+  includes: "only <stdint.h> and <stdio.h> (plus Merlin's own output codec headers for an explicitly
+    selected full-value readback). No target header, so no target library routine is visible to, or
+    callable by, the candidate's code."
   selected_host_toolchain: >-
     For a whole-program kernel with a host lane, read the selected read-only host package's
     knobs.yaml cflags. Its -march and -mabi are the host object ISA and calling convention;
     the emitted LLVM module, runner-owned harness, selected board/DTS and linker must agree.
     Do not infer these flags from the accelerator name, substitute the build machine's ISA,
     or implement a second host runtime. The runner owns the harness, link and execution;
-    a package's emitted code must obey the declared pointer ABI above.
+    a package's emitted code must obey this pointer ABI.
 
 whole_program_attribution:
   public_plan_schema: "merlin/contract/schemas/mixed_program_plan.schema.json"
@@ -329,8 +289,7 @@ whole_model_optional:
       member's) under the capsule's own output name for it; an internal member's output is the
       kernel's own business -- bound to that member's program buffer when the reply declares it under
       its capsule name, never required. Its kernel arguments resolve like any reply's
-      (arg_order_by_command_shape; a multi-command region states them as kernel_abi.kind
-      whole_program)."
+      (logical_kernel_abi; a multi-command region states them as kernel_abi.kind whole_program)."
     graded: "at the region's BOUNDARY, against the independent oracle: every internal member is
       recomputed from the inputs the device held and the boundary is checked from them. Every member
       counts as package-answered while the region's kernel is linked; a region whose kernel is not

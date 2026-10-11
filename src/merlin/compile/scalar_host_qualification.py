@@ -218,6 +218,8 @@ def qualify(
         receipt["engine"] = {"simulator": simulator, "fidelity": "elaborated_rtl", "citation": native[1]}
     output_path.mkdir(parents=True)
     try:
+        from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
+
         built = spike_model.build(
             capture_path,
             output_path / "build",
@@ -225,6 +227,7 @@ def qualify(
             dram_base=selected.dram_base,
             dram_bytes=selected.dram_bytes,
             int8_compute=True,
+            features=frozenset({captured_quantization_scope}),
             backend="scalar",
             rvv_schedule=None,
             cflags_override=loaded.cflags,
@@ -254,7 +257,9 @@ def qualify(
             if prepare is not None:
                 prepared = prepare(elf, expected_elf_sha256=elf_sha256, expected_engine_provenance=citation)
                 prepared.revalidate()
-            if simulator == "gsim":
+            from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+            if simulator == "gsim" and not isinstance(backend, BoundRoCCBackend):
                 from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
                 slot = gsim_runtime_slot(wait_timeout_s=timeout_s)
@@ -293,6 +298,15 @@ def qualify(
             if golden.dtype == np.int64
             else float(np.max(np.abs(observed.astype(np.float64) - golden.astype(np.float64)), initial=0))
         )
+        receipt["numerical_comparison"] = {
+            "comparison": "exact_output_bits",
+            "elements": int(golden.size),
+            "element_dtype": output_dtype,
+            "mismatched_elements": mismatch,
+            "max_absolute_error": max_abs,
+            "console": str(console_path),
+            "console_sha256": _file_sha256(console_path),
+        }
         if metrics.get("memref_rank_mismatch") != 0:
             raise ScalarHostQualificationError("missing or nonzero memref_rank_mismatch diagnostic")
         if mismatch:

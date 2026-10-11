@@ -86,4 +86,4 @@ known_derivation_gaps:
       deepjscc_int8_consistent's 178 convolution regions, with the window geometry recovered from the
       affine maps and insert_slice offsets rather than from absent op attributes
     derived_from: [deepjscc_int8_consistent]
-    stood_in_by: [layers/B3_conv2d_im2col_i8, layers/B4_conv2d_relu_i8]
+    stood_in_by: [layers/B3_conv2d_i8, layers/B4_conv2d_relu_i8]

@@ -100,6 +100,14 @@ error; it never guesses tiers or substitutes ARC for a missing declared plugin.
 An existing plugin can add metadata or the corpus author can declare explicit
 required tiers. Metadata callbacks are trusted support code, not candidate grants.
 
+Formal private-model runs may explicitly select `--instruction-selection FILE`
+beside `--private-full-model-spec FILE`. The ordinary sandboxed launcher privately
+freezes the source-bound declaration, reopens its selected dependency pins, rejects
+changed or removed selections on resume, and passes the frozen path to formal
+grading. Catalog definitions accept the corresponding `instruction_selection` and
+`private_full_model_spec` input fields. No selection is discovered from candidate
+metadata, and the declaration alone establishes no instruction or runtime authority.
+
 ### Sealed fresh Codex client check (AWS execution)
 
 The installed Phase 1 command accepts an explicit client runtime for both the
@@ -140,3 +148,11 @@ canary result grants compiler correctness, target runtime or phase qualification
 The outer catalog's legacy default client is not covered by these explicit commands.
 Select `LEVEL` from the reviewed experiment definition and retain the same optional
 tool, accuracy and budget selections through startup, canary and authoring.
+
+The explicit runtime binds the pinned Codex executable at its
+`codex-linux-sandbox` helper alias and grants that exact path read access.
+The selected helper search path is recorded and rechecked. Session startup uses
+a read-only empty `tmp/arg0` directory to select the pinned executable fallback;
+its nested Bubblewrap must support `--argv0`. The selected Bubblewrap executable
+and installed sibling code-mode host are pinned and mounted explicitly. Client
+credentials and other client-home state retain their candidate-tool denials.

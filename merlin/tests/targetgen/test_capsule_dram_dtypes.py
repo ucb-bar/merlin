@@ -41,3 +41,56 @@ def test_tensor_nbytes_uses_folded_width():
 def test_genuinely_unknown_dtype_still_fails_closed():
     with pytest.raises(KeyError):
         CD.dtype_bytes("float8_e3m4_weird")
+
+
+def _pointer_contract():
+    return {
+        "harness_abi": {
+            "version": 2,
+            "kind": "logical_pointer",
+            "entry_symbol": "kernel_entry",
+            "fence_symbol": "kernel_complete",
+            "tensor_alignment": 64,
+            "byte_order": "little",
+            "main_convention": "void",
+            "readback_transport": "out_b64_v1",
+        }
+    }
+
+
+def test_selected_pointer_harness_receives_original_storage_without_fixed_bases():
+    from merlin.runtime.harness_render import logical_output_names
+
+    cb = {
+        "tensors": {
+            "X": {"shape": [2, 3], "dtype": "i8", "role": "input"},
+            "Y": {"shape": [2, 3], "dtype": "i8", "role": "output"},
+        }
+    }
+    # Capsule-address derivation must not run for a pointer ABI, even when the
+    # scalar output shape cannot be inferred by the fixed-address mechanism.
+    assert CD.inject_bases(cb, {}, contract=_pointer_contract()) is cb
+    assert all("base" not in spec for spec in cb["tensors"].values())
+    assert logical_output_names(cb) == ("Y",)
+    cb["tensors"]["X"]["base"] = 4096
+    CD.inject_bases(cb, {}, contract=_pointer_contract())
+    with pytest.raises(ValueError, match="ambiguous tensor storage"):
+        logical_output_names(cb)
+
+
+def test_incomplete_selected_pointer_abi_cannot_bypass_address_validation():
+    contract = _pointer_contract()
+    del contract["harness_abi"]["version"]
+    with pytest.raises(ValueError, match="complete logical-pointer"):
+        CD.inject_bases({"tensors": {}}, {}, contract=contract)
+
+
+@pytest.mark.parametrize("contract", [None, {}, {"harness_abi": {"entry_symbol": "legacy_entry"}}])
+def test_fixed_address_storage_still_uses_capsule_layout(contract):
+    capsule = {
+        "inputs": [{"name": "X", "shape": [2, 3], "dtype": "i8", "role": "input"}],
+        "numeric_policy": {"dtype": "i8"},
+    }
+    cb = {"tensors": {"X": {"shape": [2, 3], "dtype": "i8", "role": "input"}}}
+    CD.inject_bases(cb, capsule, base=8192, contract=contract)
+    assert cb["tensors"]["X"]["base"] == 8192

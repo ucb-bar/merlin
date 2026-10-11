@@ -22,8 +22,17 @@ def test_selected_board_facts_and_unknown_upload_fail_closed(monkeypatch):
     entries = boards.load_boards(repo_root() / CATALOG)
     experiment = load_target_experiment(repo_root() / "examples/gemmini/target/descriptor.yaml")
     assert experiment.host_board == "gemmini_rocket_verilator"
-    assert set(entries) == {"gemmini_rocket_verilator", "firesim_gemmini_rocket_u250_30mhz"}
-    assert [entries[name].dram_bytes for name in sorted(entries)] == [16 << 30, 256 << 20]
+    assert set(entries) == {
+        "gemmini_rocket_verilator",
+        "firesim_gemmini_rocket_u250_30mhz",
+        "gemmini_rocket_spike_functional",
+    }
+    assert [entries[name].dram_bytes for name in sorted(entries)] == [16 << 30, 4 << 30, 256 << 20]
+    # The functional model's declared span shares the RTL board's host CPU roster (same DTS).
+    assert (
+        entries["gemmini_rocket_spike_functional"].host_dts_sha256
+        == entries["gemmini_rocket_verilator"].host_dts_sha256
+    )
     for selected in entries.values():
         assert selected.target == "gemmini"
         assert selected.harts == 1

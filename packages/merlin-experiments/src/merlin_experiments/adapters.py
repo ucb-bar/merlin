@@ -455,6 +455,8 @@ ADAPTERS = {
             "bundle": _TEXT,
             "bundle_manifest": _INPUT,
             "oracle_timing": _INPUT,
+            "private_full_model_spec": _INPUT,
+            "instruction_selection": _INPUT,
             "experiment": Option(choices=("full", "realistic")),
             "with_tool": Option("strings"),
             "without_tool": Option("strings"),

@@ -17,6 +17,27 @@ from merlin.targetgen import readout_facet, target_registry
 from merlin.targetgen.rtl import facts, source_selection
 
 
+def test_selected_views_decode_once_without_sharing_mutable_values(monkeypatch):
+    raw = json.dumps({"software_spec": {"nested": [1]}, "contract": {"dtype": "f32"}}).encode()
+    selected = evidence.EvidenceSelection("test-target", (), raw, None)
+    original = json.loads
+    decoded_selection = []
+
+    def counted(value, *args, **kwargs):
+        if value is raw:
+            decoded_selection.append(value)
+        return original(value, *args, **kwargs)
+
+    monkeypatch.setattr(evidence.json, "loads", counted)
+    selected.software_spec["nested"].append(2)
+    assert selected.software_spec == {"nested": [1]}
+    assert selected.contract == {"dtype": "f32"}
+    with pytest.raises(AttributeError):
+        selected.absent_view
+    assert len(decoded_selection) == 1
+    assert selected.views_json is raw
+
+
 def test_specir_source_inventory_excludes_unrelated_generated_project_files(tmp_path):
     package = tmp_path / "specir"
     package.mkdir()
@@ -475,7 +496,7 @@ def test_neutral_evidence_never_reads_provider_hooks_headers_or_lowering(monkeyp
 
 
 def _neutral_readout_selection(monkeypatch, tmp_path, readout, *, project=True):
-    from merlin.runtime.backends import chipyard_rocc
+    from merlin.runtime.backends import chipyard_rocc, chipyard_rocc_bound
     from merlin.targetgen import capability_derive, isa_taxonomy
     from merlin.targetgen.rtl import mlc_bridge
 
@@ -488,9 +509,9 @@ def _neutral_readout_selection(monkeypatch, tmp_path, readout, *, project=True):
     monkeypatch.setattr(readout_facet, "_backend_hook", forbidden)
     monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", forbidden)
     monkeypatch.setattr(capability_derive, "_from_lowering", forbidden)
-    monkeypatch.setattr(chipyard_rocc, "_check_pin", forbidden)
-    monkeypatch.setattr(chipyard_rocc, "_validate_toolchain", forbidden)
-    monkeypatch.setattr(chipyard_rocc, "_validate_engine", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_check_pin", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_validate_toolchain", forbidden)
+    monkeypatch.setattr(chipyard_rocc_bound, "_validate_engine", forbidden)
     monkeypatch.setattr(mlc_bridge, "toolchain_identity", lambda: {})
     # Unrelated execution metadata has no selected execution contract in this fixture.
     monkeypatch.setattr(base, "execution_capability_facts", lambda *args, **kwargs: {})

@@ -1,281 +1,211 @@
-"""Contract-selected execution of prebuilt RoCC simulators and logical LLVM kernels.
+"""Generic runtime backend for a RoCC accelerator built and simulated with chipyard, served from DATA.
 
-This module contains no target compiler or compute implementation. Runtime units
-are a closed set of core console/startup primitives; simulator and software ABI
-choices come from the selected contract. File/transcript checks establish local
-identity, not emitter correspondence, hardware timing or runtime qualification.
+A support provider selects this module by reference (``plugin.backend:
+merlin.runtime.backends.chipyard_rocc``) instead of shipping its own backend. Discovery
+(:mod:`merlin.runtime.backends.base`) then loads THIS FILE as a fresh per-target instance named
+``merlin._oot_backends.<target>``, so the instance learns which target it serves from its own
+``__name__`` and reads everything else from that target's data:
+
+* the selected capability contract (``runner.toolchain``, ``runner.sim_via``, ``runtime.rtl_sim_config``,
+  ``harness_abi``, ``execution_capabilities``, ``readout_semantics``, ``counter_semantics``);
+* the provider's ISA-headers spec (``plugin.isa_headers``, :mod:`merlin.targetgen.isa_headers_spec`):
+  the upstream header checkout by pin and per-file digest, its include roots, CRT and flags;
+* the shared engine resolvers: :mod:`merlin.targetgen.gsim_emulator` (emulator + build receipt),
+  :mod:`merlin.targetgen.spike_extension` (functional model), :mod:`merlin.targetgen.runtime_build`
+  (memory map, sim config) and :mod:`merlin.targetgen.rtl_engine_policy` (GSIM runtime slots).
+
+Plumbing only. It runs an ELF someone else built (spike = functional bootstrap, verilator/gsim = the
+elaborated design), parses the shared ``OUT``/``OUT_ND``/``METRIC``/``DONE`` console, and describes
+how a runner-owned harness is compiled and linked. It contains no compiler: the harness renderer is
+the generic :func:`merlin.targetgen.contract.harness_render.render_harness`, and RoCC semantics / RTL
+checks are whatever generic modules the provider's ``plugin.rocc_semantics`` / ``plugin.rtl_checks``
+name. Imported under its own name (in-tree discovery does this) it registers nothing: it is a
+template until a provider selects it.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
-import selectors
-import signal
-import stat
+import resource
 import subprocess
-import time
-from dataclasses import dataclass
+import sys
+import threading
+from collections.abc import Mapping
+from contextlib import contextmanager, nullcontext
+from math import prod
 from pathlib import Path
+from typing import Any
 
-from merlin.common import invocation_record as I
-from merlin.common.paths import checkout_root, python_source_dir
-from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
-from merlin.targetgen.contract.readback_policy import FULL_VALUES_B64
-
-_RUNTIME = {
-    "startup": "spike/crt.S",
-    "htif_console": "spike/htif.c",
-    "printf": "spike/printf_min.c",
-    "libc": "spike/libc_min.c",
-}
-_HEADERS = {
-    "htif": "spike/htif.h",
-    "out_b64": "out_b64.h",
-    "out_bin": "out_bin.h",
-    "out_bin_memory": "out_bin_memory.h",
-}
-_CFLAGS = frozenset(
-    {
-        "-O0",
-        "-O1",
-        "-O2",
-        "-O3",
-        "-Os",
-        "-Og",
-        "-g",
-        "-ffreestanding",
-        "-nostdlib",
-        "-nostartfiles",
-        "-fno-builtin",
-        "-fno-tree-vectorize",
-        "-fno-vectorize",
-        "-fno-slp-vectorize",
-        "-fno-tree-loop-distribute-patterns",
-        "-ffunction-sections",
-        "-fdata-sections",
-        "-fno-pie",
-        "-fno-pic",
-        "-fno-stack-protector",
-        "-mno-relax",
-        "-std=c11",
-        "-std=gnu11",
-    }
+from merlin.runtime.backends._chipyard_memory_readback import (  # noqa: F401 -- the backend's transport API
+    memory_readback_transport,
+    prepare_memory_readback,
 )
-_LDFLAGS = frozenset({"-Wl,--gc-sections", "-Wl,--no-relax", "-Wl,--build-id=none", "-no-pie"})
-_READOUT = {"scalar_abi", "epilogue_capability", "operand_sum", "stage_routes"}
-_SCOPE = "selected process and complete console only; hardware, timing and runtime qualification unestablished"
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register, target_class_for
+from merlin.runtime.backends.chipyard_rocc_bound import (  # noqa: F401 -- explicit bound-contract API
+    _HEADERS,
+    _RUNTIME,
+    BoundRoCCBackend,
+    RoCCExecutionError,
+    _check_pin,
+    _resource,
+    _require,
+    _validate_readout,
+    bind,
+)
+
+_OOT_PREFIX = "merlin._oot_backends."
+
+#: The simulator engines this generic backend knows how to drive. A property of THIS implementation
+#: (spike with an extension, chipyard's Verilator harness, Merlin's GSIM harness), not of a target.
+ENGINES = ("spike", "verilator", "gsim")
+
+#: Merlin's GSIM harness exit status when ``+max-cycles`` elapses before the design's stop condition
+#: (chipyard_harness/main.cpp: "GSIM timeout: no RTL/TSI completion after N cycles").
+_GSIM_CYCLE_CAP_EXIT = 124
+
+#: What an elaborated-RTL model prints when the DESIGN's own ``assert`` fails. Both RTL engines print
+#: it and only one of them stops, so it is matched on the design's text, never on an exit convention.
+_RTL_ASSERTION_MARKER = "Assertion failed"
 
 
-class RoCCExecutionError(ValueError):
-    """A selected execution input is missing, unsupported or changed."""
+class ChipyardRoccError(RuntimeError):
+    """A run or a declaration this backend cannot honor, with the reason.
+
+    A failed simulator run carries its (possibly partial) ``stdout``/``stderr`` so callers can keep the
+    transcript and the ``METRIC`` lines printed before the failure."""
+
+    def __init__(self, message: str, *, stdout=None, stderr=None):
+        super().__init__(message)
+        self.stdout, self.stderr = stdout, stderr
 
 
-def _require(condition, message):
-    if not condition:
-        raise RoCCExecutionError(message)
+class SimulatorTimeout(ChipyardRoccError):
+    """The engine stopped the run at its own hang bound (e.g. GSIM ``+max-cycles``): a budget limit,
+    not a verdict on the program."""
 
 
-def _fields(value, required, optional=()):
-    _require(
-        type(value) is dict and set(required) <= set(value) <= set(required) | set(optional),
-        "execution selection has unsupported or missing fields",
-    )
+def _served_target() -> str | None:
+    return __name__[len(_OOT_PREFIX) :] if __name__.startswith(_OOT_PREFIX) else None
 
 
-def _positive(value):
-    _require(type(value) is int and 0 < value < 2**63, "execution budget requires a positive bounded integer")
+#: The target this instance serves (None for the unselected template import).
+TARGET_NAME: str | None = _served_target()
 
 
-def _path(value):
-    _require(
-        type(value) is str and "\0" not in value and Path(value).is_absolute() and ".." not in Path(value).parts,
-        "execution selection requires an explicit absolute path",
-    )
-    return Path(value)
+def _target() -> str:
+    if TARGET_NAME is None:
+        raise ChipyardRoccError(
+            f"{__name__} is the generic chipyard RoCC template; it serves a target only when a selected "
+            "support provider names it as plugin.backend (MERLIN_TARGET_PATH)"
+        )
+    return TARGET_NAME
 
 
-def _sha(value):
-    _require(
-        type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value),
-        "execution selection requires an exact SHA256 digest",
-    )
+def _env_name(what: str) -> str | None:
+    if TARGET_NAME is None:
+        return None
+    from merlin.common.paths import target_env_name
+
+    return target_env_name(TARGET_NAME, what)
 
 
-def _pin_shape(value):
-    _fields(value, {"path", "sha256"})
-    _path(value["path"])
-    _sha(value["sha256"])
+#: Per-target overrides, derived from the target name (``MERLIN_<TARGET>_<WHAT>``), never listed.
+GSIM_EMU_ENV = _env_name("GSIM_EMU")
+VERILATOR_ENV = _env_name("VERILATOR")
+GSIM_MAXCYCLES_ENV = _env_name("GSIM_MAXCYCLES")
+SPIKE_ENV = _env_name("SPIKE")
+VERILATOR_CONFIG_ENV = _env_name("VERILATOR_CONFIG")
+HARNESS_DIR_ENV = _env_name("HARNESS_DIR")
 
 
-def _regular(path):
+# --- data ---------------------------------------------------------------------------------------------
+def _contract() -> dict[str, Any]:
+    """The selected capability contract (honoring an experiment's observed/selected view)."""
+    from merlin.targetgen import target_registry
+
+    contract = target_registry.resolve(_target()).load_contract()
+    if not isinstance(contract, dict):
+        raise ChipyardRoccError(f"{_target()}: the selected contract is not a mapping")
+    return contract
+
+
+def _block(name: str, *, within: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    source = _contract() if within is None else within
+    block = source.get(name)
+    if not isinstance(block, dict):
+        where = "contract" if within is None else "block"
+        raise ChipyardRoccError(f"{_target()}: the selected {where} declares no {name!r} mapping")
+    return block
+
+
+def _toolchain() -> dict[str, Any]:
+    return _block("toolchain", within=_block("runner"))
+
+
+def _plugin() -> dict[str, Any]:
+    from merlin.targetgen.plugins import resolve_support
+
+    return resolve_support(_target()).plugin()
+
+
+def _provider_root() -> Path:
+    from merlin.targetgen.plugins import provider_root, resolve_support
+
+    selected = resolve_support(_target())
+    return provider_root(selected.base, selected.plugin().get("path"))
+
+
+def _isa_headers_spec() -> Path:
+    from merlin.targetgen.providers import contained_resource
+
+    reference = _plugin().get("isa_headers")
+    if not isinstance(reference, str) or not reference:
+        raise ChipyardRoccError(f"{_target()}: the selected support declares no plugin.isa_headers spec")
+    return contained_resource(_provider_root(), reference)
+
+
+def isa_headers(*, verify: bool = True):
+    """The provider's content-pinned ISA-header environment (raises when it cannot be produced)."""
+    from merlin.targetgen import isa_headers_spec
+
     try:
-        okay = (
-            not any(p.is_symlink() for p in (path, *path.parents))
-            and path.resolve() == path
-            and stat.S_ISREG(path.stat().st_mode)
-        )
-    except OSError:
-        okay = False
-    _require(okay, "selected execution member is not a canonical regular file")
+        return isa_headers_spec.load(_target(), _isa_headers_spec(), override_env=HARNESS_DIR_ENV, verify=verify)
+    except isa_headers_spec.IsaHeadersError as exc:
+        raise ChipyardRoccError(str(exc)) from exc
 
 
-def _digest(path):
-    _regular(path)
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+def __getattr__(name: str):
+    """Data-derived constants and plugin-selected capabilities, resolved when first asked for."""
+    if name == "SPIKE_EXTENSION_NAME":
+        value = _toolchain().get("spike_extension_name")
+        if not isinstance(value, str) or not value:
+            raise ChipyardRoccError(f"{_target()}: runner.toolchain declares no spike_extension_name")
+        return value
+    if name == "GSIM_MAX_CYCLES":
+        value = _toolchain().get("gsim_max_cycles")
+        if type(value) is not int or value <= 0:
+            raise ChipyardRoccError(f"{_target()}: runner.toolchain declares no positive gsim_max_cycles")
+        return value
+    if name == "ORACLE":
+        return _oracle()
+    if name == "EXECUTION_CAPABILITIES":
+        return _execution_capabilities()
+    if name == "rocc_semantics":
+        return _rocc_semantics()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def _check_pin(pin, *, executable=False):
-    path = _path(pin["path"])
-    _require(_digest(path) == pin["sha256"], "selected execution member changed")
-    _require(not executable or os.access(path, os.X_OK), "selected execution tool is not executable")
-    return path
-
-
-def _resource(identifier, roster):
-    # Do not honor runtime/repo overrides that could turn an ID into vendor code.
-    owner = checkout_root()
-    root = owner / "merlin/runtime" if owner is not None else python_source_dir() / "merlin/_data/runtime"
-    return root / "baremetal" / roster[identifier]
-
-
-def _units(rows, roster):
-    _require(type(rows) is list and rows, "execution recipe requires explicit core runtime selections")
-    names = []
-    for row in rows:
-        _fields(row, {"id", "sha256"})
-        _require(
-            type(row["id"]) is str and row["id"] in roster, "execution recipe includes an unsupported runtime unit"
-        )
-        _sha(row["sha256"])
-        names.append(row["id"])
-    _require(len(set(names)) == len(names), "execution recipe repeats a runtime unit")
-
-
-def _strings(value):
-    _require(
-        type(value) is list and all(type(x) is str and x and "\0" not in x for x in value),
-        "execution selection requires exact string arguments",
-    )
-
-
-def _validate_toolchain(block, abi):
-    _fields(
-        block,
-        {
-            "compiler",
-            "runtime_units",
-            "headers",
-            "link_script",
-            "load_address",
-            "cflags",
-            "ldflags",
-            "kernel_stack_frame",
-        },
-    )
-    _pin_shape(block["compiler"])
-    _pin_shape(block["link_script"])
-    _positive(block["load_address"])
-    _units(block["runtime_units"], _RUNTIME)
-    _units(block["headers"], _HEADERS)
-    _require(
-        {"startup", "htif_console"} <= {r["id"] for r in block["runtime_units"]}
-        and "htif" in {r["id"] for r in block["headers"]},
-        "execution recipe omits the selected startup or console ABI",
-    )
-    required_headers = (
-        {"htif", "out_b64"}
-        if abi.readback_policy.transport == FULL_VALUES_B64
-        else {"htif", "out_bin", "out_bin_memory"}
-    )
-    _require(
-        required_headers <= {row["id"] for row in block["headers"]},
-        "execution recipe omits its complete selected readback header roster",
-    )
-    _strings(block["cflags"])
-    _strings(block["ldflags"])
-    flags = block["cflags"]
-    for prefix in ("-march=", "-mabi="):
-        _require(
-            sum(flag.startswith(prefix) and len(flag) > len(prefix) for flag in flags) == 1,
-            "execution recipe requires one explicit ISA and ABI selection",
-        )
-    for prefix in ("--target=", "-fuse-ld="):
-        _require(
-            sum(flag.startswith(prefix) for flag in flags) <= 1,
-            "execution recipe contains ambiguous compiler selectors",
-        )
-    for flag in flags:
-        _require(
-            flag in _CFLAGS
-            or any(
-                flag.startswith(prefix)
-                and flag[len(prefix) :].isascii()
-                and all(c.isalnum() or c in "_-." for c in flag[len(prefix) :])
-                and flag[len(prefix) :]
-                for prefix in ("-march=", "-mabi=", "-mcmodel=", "--target=", "-fuse-ld=")
-            ),
-            "execution recipe contains an unsupported compiler option",
-        )
-    _require(
-        all(flag in _LDFLAGS for flag in block["ldflags"]), "execution recipe contains an unsupported linker option"
-    )
-    stack = block["kernel_stack_frame"]
-    _fields(stack, {"entry_symbol", "max_static_bytes"})
-    _require(stack["entry_symbol"] == abi.pointer_abi.entry_symbol, "execution recipe and harness entry differ")
-    _positive(stack["max_static_bytes"])
-
-
-def _validate_engine(engine, block):
-    required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
-    _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()))
-    _pin_shape(block["binary"])
-    if engine in {"gsim", "verilator"}:
-        _pin_shape(block["receipt"])
-    _path(block["cwd"])
-    _strings(block["argv"])
-    _require(
-        block["argv"].count("{elf}") == 1
-        and all(token == "{elf}" or "{" not in token and "}" not in token for token in block["argv"]),
-        "execution command requires exactly one ELF operand",
-    )
-    _require(
-        type(block["environment"]) is dict
-        and all(
-            type(k) is str and k and "=" not in k and "\0" not in k and type(v) is str and "\0" not in v
-            for k, v in block["environment"].items()
-        ),
-        "execution requires an explicit process environment",
-    )
-    _positive(block["max_timeout_s"])
-    _require(block["max_timeout_s"] <= 600, "execution deadline exceeds the bounded process limit")
-    _positive(block["max_console_bytes"])
-    _strings(block["failure_markers"])
-    if engine == "spike":
-        _require(
-            any(token.startswith("--isa=") and len(token) > 6 for token in block["argv"])
-            and not any(token.startswith(("--extension", "--extlib")) for token in block["argv"]),
-            "functional execution requires an explicit ISA and a single selected extension",
-        )
-
-
-def _validate_readout(block):
-    _fields(block, (), _READOUT)
-    for key in ("scalar_abi", "operand_sum"):
-        if key in block:
-            _require(block[key] is None or type(block[key]) is dict, "readout observation is not a data mapping")
-    for key in ("epilogue_capability", "stage_routes"):
-        if key in block:
-            _require(
-                block[key] is None or type(block[key]) is list and all(type(r) is dict for r in block[key]),
-                "readout observation is not a complete data roster",
-            )
+def _oracle() -> dict[str, dict[str, Any]]:
+    """Per-engine oracle records. ``derived_from_rtl`` is the claim a grade cites; GSIM and Verilator
+    both run the elaborated design, the extension-loaded spike does not."""
+    extension = __getattr__("SPIKE_EXTENSION_NAME")
+    return {
+        "spike": {"kind": f"spike_{extension}_functional", "derived_from_rtl": False},
+        "verilator": {"kind": "rtl_verilator", "derived_from_rtl": True},
+        "gsim": {"kind": "rtl_gsim", "derived_from_rtl": True},
+    }
 
 
 def readout_metadata(contract):
@@ -305,451 +235,664 @@ def readout_metadata(contract):
     return result
 
 
-@dataclass(frozen=True)
-class BoundRoCCBackend:
-    target: str
-    _selection_json: str
-    rocc_semantics: object
-    __name__ = __name__
-    __file__ = __file__
-    EXECUTION_CAPABILITIES = {
-        "whole_program_kernel_abi": "core logical pointer harness with original full input/output membership"
-    }
+def _execution_capabilities() -> dict[str, str]:
+    """Software capabilities the contract declares this runtime's harness path implements."""
+    raw = _contract().get("execution_capabilities")
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in raw.items()):
+        raise ChipyardRoccError(f"{_target()}: execution_capabilities must map a capability to evidence text")
+    return dict(raw)
 
-    def _data(self):
-        return json.loads(self._selection_json)
 
-    def _block(self):
-        return self._data()["contract"]["runner"]["chipyard_rocc"]
+def _rocc_semantics():
+    """The MODULE ``plugin.rocc_semantics`` names (absent key: no attribute).
 
-    @property
-    def ORACLE(self):
-        return {
-            engine: {
-                "engine": engine,
-                "kind": "functional" if engine == "spike" else "rtl",
-                "fidelity": "functional_model" if engine == "spike" else "elaborated_rtl",
-                "derived_from_rtl": engine in {"gsim", "verilator"},
-                "scope": _SCOPE,
-            }
-            for engine in self._block()["engines"]
-        }
+    Served as the module itself: ``rocc.decode`` calls its functions and ``rtl_checks.selected_checks``
+    reads ``rocc_semantics.rtl_checks`` from it. A provider that also declares ``plugin.rtl_checks``
+    must name the same module the semantics module serves, so the two declarations cannot diverge.
+    """
+    from merlin.targetgen.plugins import load_declared
 
-    def _readout(self, key):
-        return self._block().get("readout", {}).get(key)
-
-    def readback_policy(self):
-        from merlin.runtime.harness_render import validate_contract
-
-        return validate_contract(self._data()["contract"]).readback_policy
-
-    def readout_scalar_abi(self):
-        return self._readout("scalar_abi")
-
-    def readout_epilogue_capability(self):
-        return self._readout("epilogue_capability")
-
-    def readout_operand_sum(self):
-        return self._readout("operand_sum")
-
-    def epilogue_stage_routes(self):
-        return self._readout("stage_routes") or []
-
-    def harness_build_recipe(self):
-        block = self._block()["toolchain"]
-        compiler = _check_pin(block["compiler"], executable=True)
-        script = _check_pin(block["link_script"])
-        _require(script.stat().st_size <= 1024 * 1024, "selected linker layout exceeds the bounded input limit")
-        with script.open("rb") as stream:
-            text = stream.read(1024 * 1024 + 1)
-        _require(len(text) <= 1024 * 1024, "selected linker layout exceeds the bounded input limit")
-        words = "".join(c if c.isalnum() or c == "_" else " " for c in text.decode("utf-8")).split()
-        _require(
-            not {"INPUT", "GROUP", "SEARCH_DIR", "INCLUDE", "STARTUP"}.intersection(words),
-            "selected linker layout includes external compilation inputs",
-        )
-        units, headers = [], []
-        for rows, roster, dest in ((block["runtime_units"], _RUNTIME, units), (block["headers"], _HEADERS, headers)):
-            for row in rows:
-                path = _resource(row["id"], roster)
-                _check_pin({"path": str(path), "sha256": row["sha256"]})
-                dest.append(path)
-        return HarnessBuildRecipe(
-            compiler=compiler,
-            include_roots=tuple(dict.fromkeys(p.parent for p in headers)),
-            support_sources=tuple(units),
-            header_dependencies=tuple(headers),
-            link_script=script,
-            load_address=block["load_address"],
-            cflags=tuple(block["cflags"]),
-            ldflags=tuple(block["ldflags"]),
-            error_cls=RoCCExecutionError,
-            kernel_stack_frame=KernelStackFramePolicy(**block["kernel_stack_frame"]),
-        )
-
-    def gcc_path(self):
-        return _check_pin(self._block()["toolchain"]["compiler"], executable=True)
-
-    def verify_execution_inputs(self):
-        """Reopen every selected build/engine input without executing any tool.
-
-        This checks local byte identity and existing receipt lineage only. It
-        does not qualify the worker, source consistency, numerics or timing.
-        """
-        self.harness_build_recipe()
-        return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
-
-    def render_harness(self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None):
-        _require(target == self.target, "logical harness target differs from the selected backend")
-        if warm_profile is not None:
-            raise NotImplementedError("selected logical harness has no qualified warm profile transport")
-        from merlin.runtime.harness_render import render_harness
-
-        return render_harness(
-            cb, target=target, inputs=inputs, contract=self._data()["contract"], readback_policy=readback_policy
-        )
-
-    def _engine(self, engine):
-        block = self._block()["engines"].get(engine)
-        _require(block is not None, "requested execution engine is not selected")
-        return block
-
-    def _engine_identity(self, engine):
-        block = self._engine(engine)
-        binary = _check_pin(block["binary"], executable=True)
-        identity = {
-            "engine": engine,
-            "binary": block["binary"],
-            "selection_sha256": hashlib.sha256(self._selection_json.encode()).hexdigest(),
-        }
-        if engine == "gsim":
-            from merlin.targetgen import gsim_emulator as GE
-
-            receipt = _check_pin(block["receipt"])
-            status, _, lineage = GE._validate_receipt(self.target, binary, block["binary"]["sha256"], receipt)
-            _require(
-                status == "bound"
-                and lineage["schema_version"] == GE.STRICT_RECEIPT_SCHEMA
-                and lineage["firrtl_sha256"] == self._data()["facts"]["inputs"]["fir_sha256"],
-                "selected engine has no strict receipt for the original FIRRTL",
+    plugin = _plugin()
+    if not plugin.get("rocc_semantics"):
+        raise AttributeError(f"{_target()}: the selected support declares no plugin.rocc_semantics")
+    semantics = load_declared(_target(), "rocc_semantics")
+    if plugin.get("rtl_checks"):
+        declared = load_declared(_target(), "rtl_checks")
+        if getattr(semantics, "rtl_checks", None) is not declared:
+            raise ChipyardRoccError(
+                f"{_target()}: plugin.rtl_checks names {declared.__name__}, but {semantics.__name__}.rtl_checks "
+                "serves a different module; one target cannot have two RTL-check providers"
             )
-            # The existing strict checker checks pin bytes, but the actual binary operand
-            # must also equal the receipt's artifact path, not an equal-byte sibling.
-            doc = json.loads(receipt.read_text(encoding="utf-8"))
-            _require(
-                doc["artifacts"]["binary"]["path"] == str(binary),
-                "selected engine receipt identifies another executable",
-            )
-            identity["receipt"] = lineage
-        elif engine == "verilator":
-            from merlin.runtime.backends.rtl_build_receipt import validate
-
-            receipt = _check_pin(block["receipt"])
-            try:
-                identity["receipt"] = validate(
-                    target=self.target,
-                    config=self._block()["config"],
-                    original_fir_sha256=self._data()["facts"]["inputs"]["fir_sha256"],
-                    binary=binary,
-                    receipt=receipt,
-                    checked_pin=_check_pin,
-                )
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                raise RoCCExecutionError("selected elaborated RTL build identity is unavailable or changed") from exc
-        else:
-            from merlin.targetgen import spike_extension, target_registry
-
-            contract = self._data()["contract"]
-            selected = contract["runner"]["spike_extension"]
-            library = _check_pin({"path": selected["extlib"], "sha256": selected["sha256"]})
-            with target_registry.observed_contract(self.target, contract):
-                extension = spike_extension.resolve(
-                    self.target, default_library_dir=library.parent, default_extension_name=selected["extension_name"]
-                )
-            _require(
-                extension.declared and extension.extlib == library, "functional extension selection is unavailable"
-            )
-            identity["extension"] = {
-                "path": str(library),
-                "sha256": selected["sha256"],
-                "flags": list(extension.spike_flags()),
-            }
-        return identity
-
-    def execution_engine_identity(self, engine):
-        """Reopen the selected engine's build identity; execution gates remain separate."""
-        return self._engine_identity(engine)
-
-    def _status(self, engine):
-        try:
-            self._engine_identity(engine)
-            return True, "selected prebuilt execution inputs are byte-bound; runtime and timing unqualified"
-        except (OSError, ValueError, KeyError, TypeError):
-            return False, "selected prebuilt execution inputs are unavailable or changed"
-
-    def available(self, simulator=None):
-        if simulator is not None:
-            return self._status(simulator)[0]
-        return any(self._status(engine)[0] for engine in self._block()["engines"])
-
-    def gsim_status(self):
-        return self._status("gsim")
-
-    def spike_status(self):
-        return self._status("spike")
-
-    def verilator_status(self):
-        return self._status("verilator")
-
-    def gsim_selected_firrtl_status(self):
-        return self.gsim_status()
-
-    def gsim_resolution(self):
-        from merlin.targetgen.gsim_emulator import Resolution
-
-        identity = self._engine_identity("gsim")
-        return Resolution(
-            target=self.target,
-            path=_path(identity["binary"]["path"]),
-            source="contract",
-            ok=True,
-            reason="selected prebuilt engine has strict file and transcript identity; runtime and timing unqualified",
-            receipt=identity["receipt"],
-            receipt_status="bound",
-            digest=identity["binary"]["sha256"],
-            flavour="binary",
-        )
-
-    def gsim_path(self):
-        self._engine_identity("gsim")
-        return _path(self._engine("gsim")["binary"]["path"])
-
-    def spike_path(self):
-        self._engine_identity("spike")
-        return _path(self._engine("spike")["binary"]["path"])
-
-    def verilator_path(self):
-        self._engine_identity("verilator")
-        return _path(self._engine("verilator")["binary"]["path"])
-
-    _gsim_binary = gsim_path
-    _spike_binary = spike_path
-    _verilator_binary = verilator_path
-
-    def parse_output(self, console):
-        from merlin.runtime.backends.base import parse_console
-
-        limit = max(row["max_console_bytes"] for row in self._block()["engines"].values())
-        data = console.encode("utf-8") if type(console) is str else console
-        _require(type(data) is bytes and len(data) <= limit, "execution console exceeds its selected byte budget")
-        text = data.decode("utf-8")
-        # Validate uniqueness/completion around the existing value codec; do not
-        # replace it with a target parser or accept overwritten output/metric rows.
-        names, metrics, done = set(), set(), False
-        for line in text.splitlines():
-            parts = line.split()
-            if not parts:
-                continue
-            marker = parts[0]
-            _require(marker != "OUTSUM", "selected execution requires complete output values")
-            if marker in {"OUT", "OUT_B64_BEGIN", "METRIC", "DONE"} or marker.startswith("OUT_B64_"):
-                _require(not done, "selected output frame continues after completion")
-            if marker in {"OUT", "OUT_B64_BEGIN"}:
-                index = 1 if marker == "OUT" else 2
-                _require(
-                    len(parts) > index and parts[index] not in names, "selected output frame repeats or omits a name"
-                )
-                names.add(parts[index])
-            elif marker == "METRIC":
-                _require(len(parts) == 3 and parts[1] not in metrics, "selected output frame repeats or omits a metric")
-                metrics.add(parts[1])
-            elif marker == "DONE":
-                _require(len(parts) == 1, "selected output completion is malformed")
-                done = True
-        outputs, raw = parse_console(text, error_cls=RoCCExecutionError)
-        if self._data()["contract"]["harness_abi"]["readback_transport"] == FULL_VALUES_B64:
-            _require(bool(outputs), "selected execution omitted complete output values")
-        return outputs, raw
-
-    def run_elf(self, elf, *, simulator, timeout, capture_bytes=False, **kwargs):
-        _require(not kwargs and type(capture_bytes) is bool, "selected execution received unsupported options")
-        block = self._engine(simulator)
-        _require(
-            type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= block["max_timeout_s"],
-            "selected execution requires a bounded deadline",
-        )
-        before = self._engine_identity(simulator)
-        path = Path(elf)
-        elf_sha = _digest(path)
-        cwd = _path(block["cwd"])
-        _require(
-            cwd.resolve() == cwd and not any(p.is_symlink() for p in (cwd, *cwd.parents)) and cwd.is_dir(),
-            "selected execution working directory is unavailable",
-        )
-        flags = before.get("extension", {}).get("flags", [])
-        argv = [block["binary"]["path"], *flags, *(str(path) if arg == "{elf}" else arg for arg in block["argv"])]
-        dependencies = [Path(__file__).resolve(), _path(block["binary"]["path"])]
-        if simulator in {"gsim", "verilator"}:
-            dependencies.append(_path(block["receipt"]["path"]))
-        else:
-            dependencies.append(Path(before["extension"]["path"]))
-        # Records accompany this caller's original ELF, never a discovered runtime.
-        with I.observe(
-            path.parent,
-            stage="selected_rocc_process",
-            argv=argv,
-            cwd=cwd,
-            env=block["environment"],
-            inputs=(path,),
-            dependencies=dependencies,
-        ) as observed:
-            result = _bounded_process(
-                argv,
-                cwd=cwd,
-                env=block["environment"],
-                timeout=timeout,
-                max_bytes=block["max_console_bytes"],
-                observed=observed,
-            )
-            result.check_returncode()
-            _require(
-                self._engine_identity(simulator) == before and _digest(path) == elf_sha,
-                "selected engine or ELF changed during execution",
-            )
-            I.verify(observed.path)
-            I.require_environment(observed.path, environment=block["environment"])
-        data = result.stdout
-        _require(
-            not any(marker.encode() in data + result.stderr for marker in block["failure_markers"]),
-            "selected execution reported a declared failure",
-        )
-        return data if capture_bytes else data.decode("utf-8")
+    return semantics
 
 
-def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
-    """Keep complete stdout frames separate from bounded process diagnostics."""
-    process = subprocess.Popen(
-        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
-    )
-    data = {"stdout": bytearray(), "stderr": bytearray()}
-    deadline = time.monotonic() + timeout
-    try:
-        with selectors.DefaultSelector() as poll:
-            poll.register(process.stdout, selectors.EVENT_READ, "stdout")
-            poll.register(process.stderr, selectors.EVENT_READ, "stderr")
-            while poll.get_map():
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    raise subprocess.TimeoutExpired(
-                        argv, timeout, output=bytes(data["stdout"]), stderr=bytes(data["stderr"])
-                    )
-                for key, _ in poll.select(min(left, 0.1)):
-                    total = len(data["stdout"]) + len(data["stderr"])
-                    chunk = os.read(key.fileobj.fileno(), min(65536, max_bytes + 1 - total))
-                    if not chunk:
-                        poll.unregister(key.fileobj)
-                    else:
-                        data[key.data].extend(chunk)
-                        _require(
-                            len(data["stdout"]) + len(data["stderr"]) <= max_bytes,
-                            "execution console exceeds its selected byte budget",
-                        )
-            process.wait(timeout=max(0.001, deadline - time.monotonic()))
-    except BaseException:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait()
-        observed.complete(
-            subprocess.CompletedProcess(
-                argv, process.returncode, stdout=bytes(data["stdout"]), stderr=bytes(data["stderr"])
-            )
-        )
+# --- the harness renderer (generic, owned by contract/harness_render) ---------------------------------
+try:
+    from merlin.targetgen.contract.harness_render import render_harness  # noqa: F401 -- re-exported
+except ModuleNotFoundError as _missing:
+    if _missing.name != "merlin.targetgen.contract.harness_render":
         raise
-    finally:
-        process.stdout.close()
-        process.stderr.close()
-    result = subprocess.CompletedProcess(
-        argv, process.returncode, stdout=bytes(data["stdout"]), stderr=bytes(data["stderr"])
+    _RENDER_MISSING = str(_missing)
+
+    def render_harness(cb, *, target, **kwargs):  # type: ignore[no-redef]
+        """Placeholder until the generic renderer lands; refuses with the reason rather than guessing."""
+        raise NotImplementedError(
+            "the generic chipyard RoCC backend renders harnesses with "
+            "merlin.targetgen.contract.harness_render.render_harness, which is not installed in this "
+            f"checkout ({_RENDER_MISSING}); no target-specific renderer is substituted"
+        )
+
+
+# --- toolchain + engines ------------------------------------------------------------------------------
+def chipyard_root() -> Path:
+    """The toolchain container checkout, located by the contract's declared variable (or ext key)."""
+    from merlin.common.paths import ExternalPathUnset, env, ext_path
+
+    block = _toolchain()
+    variable = block.get("root_env")
+    if isinstance(variable, str) and variable and env(variable):
+        return Path(str(env(variable)))
+    key = block.get("root_ext")
+    if isinstance(key, str) and key:
+        try:
+            return ext_path(key)
+        except ExternalPathUnset as exc:
+            raise ChipyardRoccError(f"{_target()}: neither {variable} nor MERLIN_EXT_{key.upper()} is set") from exc
+    raise ChipyardRoccError(f"{_target()}: runner.toolchain.root_env {variable!r} is unset")
+
+
+def _tool(name: str, *, env_name: str | None) -> Path:
+    from merlin.common.paths import env
+
+    entry = _toolchain().get(name)
+    if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not entry["path"]:
+        raise ChipyardRoccError(f"{_target()}: runner.toolchain declares no {name}.path")
+    override = entry.get("env") if isinstance(entry.get("env"), str) else env_name
+    if override and env(override):
+        return Path(str(env(override)))
+    relative = entry["path"]
+    if "{rtl_sim_config}" in relative:
+        relative = relative.replace("{rtl_sim_config}", _rtl_sim_config())
+    if Path(relative).is_absolute() or ".." in Path(relative).parts:
+        raise ChipyardRoccError(f"{_target()}: runner.toolchain.{name}.path must be root-relative")
+    return chipyard_root() / relative
+
+
+def gcc_path() -> Path:
+    return _tool("compiler", env_name=None)
+
+
+def spike_path() -> Path:
+    return _tool("spike", env_name=SPIKE_ENV)
+
+
+def spike_library_dir() -> Path:
+    """Where the toolchain's spike extension libraries live (put on ``LD_LIBRARY_PATH``)."""
+    relative = _toolchain().get("spike_library_dir")
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ChipyardRoccError(f"{_target()}: runner.toolchain declares no root-relative spike_library_dir")
+    return chipyard_root() / relative
+
+
+def spike_extension() -> tuple[tuple[str, ...], Path]:
+    """``(spike flags, LD_LIBRARY_PATH dir)`` for this target's functional model.
+
+    A contract ``runner.spike_extension`` (digest-pinned) wins; otherwise the toolchain's library
+    directory and the declared extension name, exactly as :mod:`merlin.targetgen.spike_extension`
+    defines the additive default.
+    """
+    from merlin.targetgen.spike_extension import spike_invocation
+
+    return spike_invocation(
+        _target(), default_library_dir=spike_library_dir(), default_extension_name=__getattr__("SPIKE_EXTENSION_NAME")
     )
-    observed.complete(result)
+
+
+def simulator_identity(simulator: str) -> dict | None:
+    """Which build of ``simulator`` runs a program, by content; None for engines it states none for."""
+
+    def digest(path: Path) -> str | None:
+        return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+    if simulator != "spike":
+        return None
+    flags, libdir = spike_extension()
+    libraries = {}
+    for flag in flags:
+        if flag.startswith("--extlib="):
+            so = Path(flag.partition("=")[2])
+            libraries[so.name] = digest(so)
+    if not libraries:
+        names = [flag.partition("=")[2] for flag in flags if flag.startswith("--extension=")]
+        libraries = {name: digest(Path(libdir) / f"lib{name}.so") for name in names}
+    parts = {"binary": digest(spike_path()), "flags": list(flags), "extensions": libraries}
+    if parts["binary"] is None or not libraries or None in libraries.values():
+        return {**parts, "digest": None}
+    return {**parts, "digest": hashlib.sha256(repr(sorted(parts.items())).encode()).hexdigest()}
+
+
+def platform_dram_base() -> int:
+    """The bare-metal load address, derived from the RTL build's memory map for the declared sim."""
+    from merlin.targetgen import runtime_build
+
+    return runtime_build.platform_dram_base(_target(), _block("runner").get("sim_via"))
+
+
+def _rtl_sim_config() -> str:
+    from merlin.common.paths import env
+    from merlin.targetgen import runtime_build
+
+    if VERILATOR_CONFIG_ENV and env(VERILATOR_CONFIG_ENV):
+        return str(env(VERILATOR_CONFIG_ENV))
+    config = runtime_build.rtl_sim_config(_target())
+    if not config:
+        raise ChipyardRoccError(f"{_target()}: the contract declares no runtime.rtl_sim_config")
+    return str(config)
+
+
+def verilator_path() -> Path:
+    return _tool("verilator", env_name=VERILATOR_ENV)
+
+
+def gsim_path() -> Path:
+    """The GSIM emulator (env override, else the derived engine home). Existence is not checked."""
+    from merlin.targetgen import gsim_emulator
+
+    return gsim_emulator.emulator_path(_target(), env_var=GSIM_EMU_ENV)
+
+
+def gsim_status() -> tuple[bool, str]:
+    """``(available, reason)`` for GSIM, including a refused build receipt's reason."""
+    from merlin.targetgen import gsim_emulator
+
+    return gsim_emulator.probe(_target(), env_var=GSIM_EMU_ENV)
+
+
+def gsim_max_cycles() -> str:
+    """The GSIM hang bound as its plusarg value. The per-target variable overrides the contract."""
+    from merlin.common.paths import env
+
+    override = (env(GSIM_MAXCYCLES_ENV) or "").strip() if GSIM_MAXCYCLES_ENV else ""
+    return override or str(__getattr__("GSIM_MAX_CYCLES"))
+
+
+def _test_ld() -> Path:
+    return isa_headers(verify=False).link_script
+
+
+def _common_dir() -> Path:
+    return _test_ld().parent
+
+
+def available(simulator: str = "verilator") -> bool:
+    """True when the compiler, the declared bare-metal runtime and the engine are present.
+
+    An engine this backend knows but cannot find answers False; an engine it does not know RAISES,
+    so an engine-priority probe can tell "absent binary" from "no such engine for this target".
+    """
+    if simulator not in ENGINES:
+        raise ChipyardRoccError(f"unknown simulator {simulator!r} (this backend drives {list(ENGINES)})")
+    try:
+        base = gcc_path().is_file() and _test_ld().is_file() and _common_dir().is_dir()
+        if simulator == "spike":
+            return base and spike_path().is_file()
+        if simulator == "verilator":
+            return base and verilator_path().is_file()
+        emu = gsim_path()
+        # Executability too: the env override can name a copied-without-mode artifact or the .cpp.
+        return base and emu.is_file() and os.access(emu, os.X_OK)
+    except ChipyardRoccError:
+        return False
+
+
+# --- pinned runtime selection -------------------------------------------------------------------------
+_PINNED_RUNTIME_LOCK = threading.RLock()
+
+
+def runtime_environment(
+    *, binaries: Mapping[str, Path], gsim_max_cycles: int | None, environment: Mapping[str, str]
+) -> dict[str, str]:
+    """Copy ``environment`` with explicit engine choices; never mutate process state."""
+    if not isinstance(environment, Mapping) or any(
+        not isinstance(key, str) or not isinstance(value, str) for key, value in environment.items()
+    ):
+        raise ValueError("runtime environment must map strings to strings")
+    if not isinstance(binaries, Mapping) or set(binaries) != {"gsim", "verilator"}:
+        raise ValueError("pinned runtime requires exactly GSIM and Verilator binaries")
+    if gsim_max_cycles is not None and (type(gsim_max_cycles) is not int or gsim_max_cycles <= 0):
+        raise ValueError("GSIM max cycles must be a positive integer or null")
+    _target()
+    paths = {engine: Path(path).resolve(strict=True) for engine, path in binaries.items()}
+    if any(not path.is_file() for path in paths.values()):
+        raise ValueError("pinned runtime binaries must be ordinary files")
+    result = dict(environment)
+    result[GSIM_EMU_ENV] = str(paths["gsim"])
+    result[VERILATOR_ENV] = str(paths["verilator"])
+    if gsim_max_cycles is None:
+        result.pop(GSIM_MAXCYCLES_ENV, None)
+    else:
+        result[GSIM_MAXCYCLES_ENV] = str(gsim_max_cycles)
     return result
 
 
-def bind(*, target, contract, facts):
-    """Bind already selected data once; no plugin, discovery, binary check or build."""
-    _require(
-        type(target) is str and target and type(contract) is dict and type(facts) is dict and facts,
-        "RoCC execution requires an explicit contract and original facts",
-    )
-    try:
-        snapshot = json.dumps(
-            {"contract": contract, "facts": facts}, sort_keys=True, separators=(",", ":"), allow_nan=False
-        )
-    except (TypeError, ValueError) as exc:
-        raise RoCCExecutionError("execution selection is not finite serializable data") from exc
-    selected = json.loads(snapshot)
-    contract, facts = selected["contract"], selected["facts"]
-    runner = contract.get("runner")
-    _require(type(runner) is dict and runner.get("backend") == "chipyard_rocc", "RoCC execution family is not selected")
-    _require(not contract.get("plugin"), "data-bound runtime selection cannot grant executable provider hooks")
-    block = runner.get("chipyard_rocc")
-    _fields(block, {"version", "config", "toolchain", "engines"}, {"readout"})
-    _require(
-        type(block["version"]) is int and block["version"] == 1 and type(block["config"]) is str and block["config"],
-        "RoCC execution requires a supported version and explicit configuration",
-    )
-    runtime = contract.get("runtime")
-    if runtime is not None:
-        _require(type(runtime) is dict, "selected runtime declarations must be a mapping")
-        if "rtl_sim_config" in runtime:
-            _require(
-                runtime["rtl_sim_config"] == block["config"],
-                "selected runtime and execution configurations differ",
-            )
-    inputs = facts.get("inputs")
-    body = facts.get("facts")
-    consistency = facts.get("source_consistency")
-    _require(
-        type(inputs) is dict and type(body) is dict and type(body.get("source")) is dict and type(consistency) is dict,
-        "selected original facts omit their source configuration binding",
-    )
-    configs = [body["source"].get("config"), consistency.get("config")]
-    if "source" in facts:
-        _require(type(facts["source"]) is dict, "selected original facts have an ambiguous source configuration")
-        configs.append(facts["source"].get("config"))
-    _require(
-        contract.get("name") == target
-        and inputs.get("target") == target
-        and all(type(config) is str and config == block["config"] for config in configs),
-        "selected contract or original facts identify another target or configuration",
-    )
-    _sha(inputs.get("fir_sha256"))
-    from merlin.runtime.harness_render import validate_contract
-    from merlin.targetgen.rocc.semantics import bind as bind_semantics
+@contextmanager
+def pinned_runtime(*, binaries: Mapping[str, Path], gsim_max_cycles: int | None):
+    """Apply :func:`runtime_environment` to this process under a lock, restoring only owned keys."""
+    keys = (GSIM_EMU_ENV, VERILATOR_ENV, GSIM_MAXCYCLES_ENV)
+    with _PINNED_RUNTIME_LOCK:
+        configured = runtime_environment(binaries=binaries, gsim_max_cycles=gsim_max_cycles, environment=os.environ)
+        previous = {key: os.environ.get(key) for key in keys}
+        try:
+            for key in keys:
+                value = configured.get(key)
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            yield sys.modules[__name__]
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
-    abi = validate_contract(contract)
-    _require(abi.readback_policy.transport == FULL_VALUES_B64, "selected execution has no coherent readback transport")
-    _validate_toolchain(block["toolchain"], abi)
-    _require(
-        type(block["engines"]) is dict and block["engines"] and set(block["engines"]) <= {"spike", "gsim", "verilator"},
-        "RoCC execution requires explicitly supported engines",
-    )
-    for engine, engine_block in block["engines"].items():
-        _validate_engine(engine, engine_block)
-    if "spike" in block["engines"]:
-        extension = runner.get("spike_extension")
-        _fields(extension, {"extension_name", "extlib", "sha256"})
-        _require(
-            type(extension["extension_name"]) is str
-            and extension["extension_name"]
-            and all(c.isalnum() or c == "_" for c in extension["extension_name"]),
-            "functional execution requires a plain selected extension name",
+
+# --- execution ----------------------------------------------------------------------------------------
+def _unlimited_stack() -> None:  # pragma: no cover - runs in the child process
+    """Lift RLIMIT_STACK for an RTL simulator child (a small stack makes the model warn onto the
+    console, corrupting capture)."""
+    try:
+        resource.setrlimit(resource.RLIMIT_STACK, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+    except (ValueError, OSError):
+        pass
+
+
+def _gsim_argv(elf: str | Path, *, max_cycles: int | None = None) -> list[str]:
+    """The Merlin GSIM harness vector: the ELF positionally (symbols) and as ``+loadmem`` (image)."""
+    cycles = gsim_max_cycles() if max_cycles is None else str(max_cycles)
+    return [str(gsim_path()), str(elf), f"+max-cycles={cycles}", f"+loadmem={elf}"]
+
+
+def prepare_gsim_command(elf, **kwargs):
+    """Describe a pinned GSIM invocation; the caller owns deadline, sandbox and execution."""
+    from merlin.runtime.backends._chipyard_gsim_command import prepare_gsim_command as prepare
+
+    return prepare(sys.modules[__name__], elf, **kwargs)
+
+
+def _spike_argv(elf: str | Path, *extra: str) -> tuple[list[str], dict[str, str]]:
+    """The functional-model command for ``elf``: the target's extension, the DRAM span / harts / ISA
+    the image states it was laid out for (none stated, none passed), then ``extra`` and the ELF."""
+    from merlin.runtime.backends.spike_model import declared_harts, declared_isa, declared_memory
+
+    env = dict(os.environ)
+    flags, libdir = spike_extension()
+    env["LD_LIBRARY_PATH"] = str(libdir) + ":" + env.get("LD_LIBRARY_PATH", "")
+    span = declared_memory(elf)
+    memory = [f"-m{hex(span[0])}:{hex(span[1])}"] if span else []
+    harts, isa = declared_harts(elf), declared_isa(elf)
+    machine = [*([f"-p{harts}"] if harts else []), *([f"--isa={isa}"] if isa else [])]
+    return [str(spike_path()), *flags, *machine, *memory, *extra, str(elf)], env
+
+
+def functional_trace_invocation(elf: str | Path) -> tuple[list[str], dict[str, str]]:
+    """``(argv, env)`` running ``elf`` on the functional model with every retired instruction and its
+    register writes logged to stderr (``-l --log-commits``) -- the executed-command profile's input."""
+    return _spike_argv(elf, "-l", "--log-commits")
+
+
+def run_elf(
+    elf: str | Path,
+    simulator: str = "verilator",
+    timeout: int = 600,
+    *,
+    capture_bytes: bool = False,
+    memory_readback: Mapping[str, object] | None = None,
+) -> str | bytes:
+    """Run ``elf`` on ``simulator``; an explicit memory export never changes the default command."""
+    preexec = None
+    slot = nullcontext()
+    export = prepare_memory_readback(elf, simulator, memory_readback) if memory_readback is not None else None
+    if simulator == "spike":
+        cmd, env = _spike_argv(elf, *(export.argv_suffix if export else ()))
+    elif simulator == "verilator":
+        env = dict(os.environ)
+        # LOADED LIKE GSIM, through the memory backdoor. Loaded over the simulated serial link instead,
+        # the same ELF started its kernel window from different cache state (1096 vs gSIM's 1112 cycles on
+        # one 16x16 program -- identical once both load by +loadmem) and spent 95% of a small run (103 s
+        # against 7.75 s) moving the program in.
+        cmd = [str(verilator_path()), str(elf), f"+loadmem={elf}"]
+        preexec = _unlimited_stack
+    elif simulator == "gsim":
+        from merlin.targetgen import rtl_engine_policy
+
+        if getattr(rtl_engine_policy, "GSIM_RUNTIME_SLOT_PROTOCOL", None) != "reentrant_per_thread_v1":
+            raise ChipyardRoccError("GSim requires Merlin runtime slot protocol reentrant_per_thread_v1")
+        slot = rtl_engine_policy.gsim_runtime_slot(wait_timeout_s=timeout)
+        env = dict(os.environ)
+        cmd = [*_gsim_argv(elf), *(export.argv_suffix if export else ())]
+        preexec = _unlimited_stack
+    else:
+        raise ChipyardRoccError(f"unknown simulator {simulator!r} (this backend drives {list(ENGINES)})")
+    with slot:
+        if export is not None:
+            export.revalidate()
+        proc = subprocess.run(
+            cmd, capture_output=True, text=not capture_bytes, timeout=timeout, env=env, preexec_fn=preexec
         )
-        _path(extension["extlib"])
-        _sha(extension["sha256"])
-    if "readout" in block:
-        _validate_readout(block["readout"])
-    semantics = bind_semantics(target=target, contract=contract, facts=facts)
-    return BoundRoCCBackend(target, snapshot, semantics)
+    # Verilator exits 0 on $finish, spike on htif_exit(0), GSIM when the design's stop condition fires.
+    if proc.returncode != 0:
+        tail = f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
+        if simulator == "gsim" and proc.returncode == _GSIM_CYCLE_CAP_EXIT:
+            raise SimulatorTimeout(
+                f"gsim timed out after its +max-cycles hang bound ({gsim_max_cycles()} cycles; exit "
+                f"{proc.returncode}) before the program finished:\n{tail}",
+                stdout=proc.stdout,
+                stderr=proc.stderr,
+            )
+        raise ChipyardRoccError(
+            f"{simulator} exited {proc.returncode}:\n{tail}", stdout=proc.stdout, stderr=proc.stderr
+        )
+    _refuse_on_rtl_assertion(simulator, proc.stdout, proc.stderr, binary_output=capture_bytes)
+    if export is not None:
+        export.revalidate(completed=True)
+    return proc.stdout
+
+
+def _refuse_on_rtl_assertion(
+    simulator: str, stdout: str | bytes, stderr: str | bytes, *, binary_output: bool = False
+) -> None:
+    """Fail a run whose DESIGN asserted, whatever the engine did afterwards.
+
+    Verilator turns a failed assertion into ``$stop`` (non-zero exit); the GSIM model prints it and
+    keeps going to a clean exit with a complete console. An assertion is the design refusing the
+    program, so the numbers would describe a machine that would not have run it.
+    """
+    if binary_output:
+        from merlin.runtime.out_bin import binary_console_diagnostics
+
+        if type(stdout) is not bytes:
+            raise ChipyardRoccError("binary readback requires raw stdout bytes")
+        stdout = binary_console_diagnostics(stdout)
+    for stream in (stdout, stderr):
+        if isinstance(stream, bytes):
+            stream = stream.decode("utf-8", errors="replace")
+        if not stream or _RTL_ASSERTION_MARKER not in stream:
+            continue
+        rows = [line.rstrip() for line in stream.splitlines()]
+        quoted: list[str] = []
+        for index, line in enumerate(rows):
+            if _RTL_ASSERTION_MARKER not in line:
+                continue
+            quoted.append(line.strip())
+            following = rows[index + 1].strip() if index + 1 < len(rows) else ""
+            if following.startswith("at "):
+                quoted.append(following)
+        raise ChipyardRoccError(
+            f"{simulator}: the DESIGN asserted, so this run certifies nothing — the program did "
+            "something the hardware does not support:\n  " + "\n  ".join(quoted[:8])
+        )
+
+
+def parse_output(text: str | bytes) -> tuple[dict[str, list], dict[str, int]]:
+    """Parse the shared console into ``(outputs, raw metrics)``.
+
+    Bytes are the binary readback frame. Text is ``OUT``/``METRIC``/``DONE`` (Verilator warning
+    fragments stripped, malformed METRIC lines tolerated) plus ``OUT_ND <name> <rank> <dims...>
+    <values...>`` for a rank-N output whose batch rank a matrix would discard.
+    """
+    if type(text) is bytes:
+        from merlin.runtime.out_bin import parse_binary_console
+
+        return parse_binary_console(text)
+    from merlin.runtime.backends.base import _strip_warning_fragments, parse_console
+
+    cleaned = _strip_warning_fragments(text)
+    outputs, raw = parse_console(cleaned, error_cls=ChipyardRoccError, tolerant_metric=True)
+
+    def reshape(values: list[int], dimensions: tuple[int, ...]):
+        if len(dimensions) == 1:
+            return values
+        stride = 1
+        for extent in dimensions[1:]:
+            stride *= extent
+        return [reshape(values[index : index + stride], dimensions[1:]) for index in range(0, len(values), stride)]
+
+    for line in cleaned.splitlines():
+        parts = line.split()
+        if not parts or parts[0] != "OUT_ND":
+            continue
+        try:
+            name = parts[1]
+            rank = int(parts[2])
+            if rank <= 0:
+                raise ValueError("rank must be positive")
+            if len(parts) < 3 + rank:
+                raise ValueError("dimension list is truncated")
+            dimensions = tuple(int(value) for value in parts[3 : 3 + rank])
+            if any(extent <= 0 for extent in dimensions):
+                raise ValueError("dimensions must be positive")
+            values = [int(value) for value in parts[3 + rank :]]
+        except (IndexError, ValueError) as exc:
+            raise ChipyardRoccError(f"malformed OUT_ND line: {line!r}: {exc}") from exc
+        expected = 1
+        for extent in dimensions:
+            expected *= extent
+        if len(values) != expected:
+            raise ChipyardRoccError(f"OUT_ND {name}: expected {expected} values, got {len(values)}")
+        if name in outputs:
+            raise ChipyardRoccError(f"output {name!r} was printed more than once")
+        outputs[name] = reshape(values, dimensions)
+    return outputs, raw
+
+
+# --- the runner-owned harness build -------------------------------------------------------------------
+def describe_caller_layout(cb: dict, *, target: str, facts: dict) -> dict:
+    """The logical harness's physical pointer layout for ``cb``, in argument order; never tensor values.
+
+    The generic harness passes every logical buffer DENSE and row-major (``harness_render``), so the
+    projection is the legacy row-major policy with a row alignment of one element. A buffer declaring
+    its own ``storage_encodings`` is refused rather than described approximately.
+    """
+    from merlin.targetgen.contract.harness_render import logical_interface, resolve
+
+    if (
+        not isinstance(cb, dict)
+        or cb.get("target") != target
+        or not isinstance(facts, dict)
+        or (facts.get("inputs") or {}).get("target") != target
+    ):
+        raise ChipyardRoccError("caller layout needs a command buffer and RTL facts for the served target")
+    if "storage_encodings" in (cb.get("params") or {}):
+        raise ChipyardRoccError("the generic harness describes only dense row-major caller storage")
+    rows = []
+    for buf in logical_interface(cb, resolve(target)[0]):
+        matrix_rows, cols = buf.matrix
+        strides = [prod(buf.shape[axis + 1 : -1]) * cols for axis in range(len(buf.shape) - 1)] + [1]
+        rows.append(
+            {
+                "tensor": buf.name,
+                "dtype": buf.dtype,
+                "logical_shape": list(buf.shape),
+                "physical_extents": [matrix_rows, cols],
+                "logical_strides_elements": strides if buf.shape else [],
+                "storage_elements": buf.elements,
+                "offset_elements": 0,
+            }
+        )
+    return {
+        "schema": "caller_storage_layout_v1",
+        "policy": {"mode": "legacy_aligned_row_major_v1", "row_alignment_elements": 1},
+        "tensors": rows,
+    }
+
+
+def caller_layout_source_paths() -> tuple[Path, ...]:
+    """The installed core sources whose bytes define :func:`describe_caller_layout`."""
+    from merlin.targetgen.contract import harness_render
+
+    return (Path(__file__).resolve(), Path(harness_render.__file__).resolve())
+
+
+def generated_isa_header() -> Path | None:
+    """The minimal hardware-facts ISA header (RTL facts + contract encodings), written once per
+    content under ``out/build/isa_headers``; None when the spec declares no generated header."""
+    from merlin.targetgen import isa_header_gen
+
+    name = isa_headers(verify=False).generated_header
+    if name is None:
+        return None
+    try:
+        return isa_header_gen.materialize(_target(), name)
+    except isa_header_gen.IsaHeaderError as exc:
+        raise ChipyardRoccError(str(exc)) from exc
+
+
+def harness_build_recipe():
+    """How a runner-owned harness compiles and links against the declared bare-metal environment.
+
+    Every value is data: the compiler from ``runner.toolchain``; include roots, CRT, link script,
+    flags and kernel stack budget from the content-verified ISA-headers spec; the entry symbol from
+    ``harness_abi``; the load address from the RTL build's memory map. The include path holds the
+    bare-metal runtime and the GENERATED facts header only, and the build is refused if any header
+    the spec excludes (an upstream kernel library) is reachable from it.
+    """
+    from merlin.runtime.backends import base as backend_base
+    from merlin.targetgen.contract.build_recipe import KernelStackFramePolicy
+    from merlin.targetgen.contract.harness_abi import for_target
+    from merlin.targetgen.isa_headers_spec import IsaHeadersError
+
+    headers = isa_headers(verify=True)
+    generated = generated_isa_header()
+    include_roots = headers.include_roots + ((generated.parent,) if generated is not None else ())
+    try:
+        headers.verify_exclusions(include_roots)
+    except IsaHeadersError as exc:
+        raise ChipyardRoccError(str(exc)) from exc
+    support_sources = headers.crt_sources
+    if headers.console_write is not None:
+        from merlin.runtime.backends import _chipyard_console
+
+        support_sources += (_chipyard_console.materialize(_target(), headers.console_write),)
+    return backend_base.HarnessBuildRecipe(
+        compiler=gcc_path(),
+        include_roots=include_roots,
+        support_sources=support_sources,
+        link_script=headers.link_script,
+        load_address=platform_dram_base(),
+        cflags=headers.cflags,
+        ldflags=headers.ldflags,
+        error_cls=ChipyardRoccError,
+        kernel_stack_frame=KernelStackFramePolicy(
+            entry_symbol=for_target(_target()).entry_symbol, max_static_bytes=headers.kernel_max_static_bytes
+        ),
+        header_dependencies=headers.header_dependencies + ((generated,) if generated is not None else ()),
+        link_first=headers.link_first,
+    )
+
+
+# --- readout + counter facts (contract DATA, cross-checked against the header spec) -------------------
+def _readout(field: str):
+    block = _block("readout_semantics")
+    if field not in block:
+        raise ChipyardRoccError(f"{_target()}: readout_semantics declares no {field!r}")
+    return block[field]
+
+
+def _readout_provenance() -> dict[str, Any]:
+    """The header the readout facts were reviewed against, which must be the spec's pinned bytes."""
+    evidence = _readout("evidence_header")
+    if not isinstance(evidence, dict) or not evidence.get("file") or not evidence.get("sha256"):
+        raise ChipyardRoccError(f"{_target()}: readout_semantics.evidence_header needs file and sha256")
+    from merlin.targetgen import isa_headers_spec
+
+    try:
+        declared = isa_headers_spec.declared_files(_target(), _isa_headers_spec()).get(str(evidence["file"]))
+    except isa_headers_spec.IsaHeadersError as exc:
+        raise ChipyardRoccError(str(exc)) from exc
+    if declared != evidence["sha256"]:
+        raise ChipyardRoccError(
+            f"{_target()}: readout facts were reviewed against {evidence['file']} sha256 {evidence['sha256']}, "
+            f"but the selected ISA-headers spec pins {declared}; the declared readout no longer describes "
+            "the header a harness is built with"
+        )
+    return {"scope": "contract_declared", "params_header_sha256": evidence["sha256"], "header": evidence["file"]}
+
+
+def _rows(field: str) -> list[dict[str, Any]]:
+    value = _readout(field)
+    if not isinstance(value, list) or not all(isinstance(row, dict) for row in value):
+        raise ChipyardRoccError(f"{_target()}: readout_semantics.{field} must be a list of mappings")
+    return [dict(row) for row in value]
+
+
+def readout_epilogue_capability() -> list[dict[str, Any]]:
+    """Which epilogue stages each readout selector applies, as the contract declares it."""
+    _readout_provenance()
+    return _rows("epilogue_capability")
+
+
+def epilogue_stage_routes() -> list[dict[str, Any]]:
+    """Non-readout stage routes (e.g. a bias seeded into the accumulator), as declared."""
+    _readout_provenance()
+    return _rows("stage_routes")
+
+
+def _contract_record(field: str) -> dict[str, Any] | None:
+    value = _readout(field)
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not value.get("schema"):
+        raise ChipyardRoccError(f"{_target()}: readout_semantics.{field} must be a schema-bearing mapping or null")
+    return {**value, "provenance": {**dict(value.get("provenance") or {}), **_readout_provenance()}}
+
+
+def readout_scalar_abi() -> dict[str, Any] | None:
+    """The scalar narrowing-readout contract (dtypes, clamp) the declared header commits to."""
+    return _contract_record("scalar_abi")
+
+
+def readout_operand_sum() -> dict[str, Any] | None:
+    """What a scaled load does to an operand on its way into the accumulator, or None."""
+    return _contract_record("operand_sum")
+
+
+def counter_engine_kinds() -> dict[str, Any]:
+    """Resource kind of each counted engine, as declared (never inferred from a counter's name)."""
+    kinds = _block("counter_semantics").get("engine_kinds")
+    if not isinstance(kinds, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in kinds.items()):
+        raise ChipyardRoccError(f"{_target()}: counter_semantics.engine_kinds must map engine -> kind")
+    return dict(kinds)
+
+
+def counter_partition_inputs() -> dict[str, Any]:
+    """The elaborated-artifact boundary for the generic counter occupancy-partition verifier."""
+    from merlin.targetgen.rtl import mlc_bridge
+
+    partition = _block("counter_semantics").get("partition")
+    if not isinstance(partition, dict) or not partition.get("module") or not partition.get("counter_module"):
+        return {"status": "unknown", "why": "counter_semantics.partition declares no module/counter_module"}
+    path = mlc_bridge.core_hw_mlir(_target())
+    if path is None or not Path(path).is_file():
+        return {"status": "unknown", "why": "elaborated CIRCT core HW is unavailable"}
+    return {
+        "status": "available",
+        "hw_text": Path(path).read_text(encoding="utf-8", errors="replace"),
+        "module": str(partition["module"]),
+        "counter_module": str(partition["counter_module"]),
+        "source": str(path),
+    }
+
+
+# --- registration -------------------------------------------------------------------------------------
+if TARGET_NAME is not None:
+    _CLASS = target_class_for(TARGET_NAME)
+    if _CLASS is None:
+        raise ChipyardRoccError(
+            f"{TARGET_NAME}: its contract declares no compute engine, so its target class is unknown; "
+            "refusing to register it under a guessed class"
+        )
+    register(BackendInfo(TARGET_NAME, TargetClass(_CLASS), BackendKind.KERNEL, __name__))

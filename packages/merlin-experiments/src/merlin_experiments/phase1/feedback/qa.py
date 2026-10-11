@@ -900,6 +900,9 @@ def run(
                     "floor_basis",
                     "ceiling_cycles",
                     "array_efficiency",
+                    "movement_floor_cycles",
+                    "movement_basis",
+                    "limiter",
                     "blocking",
                 )
             }
