@@ -14,6 +14,29 @@ the separate strict component-runtime roles. Retained member fanout must match
 the explicit queue grant and propagate the original execution contexts into
 every member worker.
 
+`external_resources` and `_kernel_resources` verify externally provisioned Linux
+cgroup v2 ceilings and one whole capped backing filesystem without creating or
+changing controls. The enclosing stage namespace must already have a readonly
+root and every writable backing mount on that capped filesystem; only genuine
+procfs and devpts kernel interfaces are exempt. Device metadata is readonly and
+shm/temporary mounts are capped or readonly. Pin actual namespace identity and
+complete kernel mount inventory; a declared bind plan cannot supply this proof.
+Inherited writable regular-file descriptors must use the same capped backing;
+readonly mounts do not revoke those handles. Writable raw block descriptors refuse.
+The exact live-issued owner is a separate trusted launch
+argument, never serialized assigned capacity or scientific authority. Require
+unprivileged no-new-privileges membership, nonwritable migration/limit controls,
+finite local CPU/RAM ceilings, swap disabled and the selected effective cpuset.
+Reopen controls, membership and all original writable roots before admission
+and result use. Linked roots, descendant mounts, large filesystems with quota
+metadata, delegated native services and containers remain refused in hard mode.
+The storage guarantee is allocated backing capacity, not sparse logical bytes.
+`bounded_tool_scratch` preserves original grants and replaces fresh temporary
+backing only; its directories remain owned until the original command closes.
+Default calls preserve their exact argv. Pool storage-finalization failure must
+retain a nonterminal UNKNOWN state and grants despite actual child reaping;
+missing durable evidence cannot publish a completed result.
+
 `search_configuration` pins explicit operator budgets and stopping settings to
 the actual live component policy, frozen corpus, fresh baseline and timing
 certificate. Selection data cannot issue runtime/model/timing roles. Native
@@ -43,22 +66,6 @@ source, and rechecks the pin before sealing. The selection, its file path and
 excluded hashes remain outside the snapshot and manifest. Operators must pass
 their same private selection explicitly; no protected source discovery or new
 qualification follows from a successful publication check.
-`external_resources` and `_kernel_resources` verify externally provisioned Linux
-cgroup v2 ceilings and one whole capped backing filesystem without creating or
-changing controls. The exact live-issued owner is a separate trusted launch
-argument, never serialized assigned capacity or scientific authority. Require
-unprivileged no-new-privileges membership, nonwritable migration/limit controls,
-finite local CPU/RAM ceilings, swap disabled and the selected effective cpuset.
-Reopen controls, membership and all original writable roots before admission
-and result use. Linked roots, descendant mounts, large filesystems with quota
-metadata, delegated native services and containers remain refused in hard mode.
-The storage guarantee is allocated backing capacity, not sparse logical bytes.
-`bounded_tool_scratch` preserves original grants and replaces fresh temporary
-backing only; its directories remain owned until the original command closes.
-Default calls preserve their exact argv. Pool storage-finalization failure must
-retain a nonterminal UNKNOWN state and grants despite actual child reaping;
-missing durable evidence cannot publish a completed result.
-
 `supervised_feedback` runs the callback worker and retains private
 transport/exit/refusal evidence. `feedback_protocol` accepts only bounded plain
 values and the selected existing interval/analytical value types, never pickle,

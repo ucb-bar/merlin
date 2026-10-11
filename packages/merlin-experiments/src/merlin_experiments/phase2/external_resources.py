@@ -61,14 +61,18 @@ class ExternalResourceBoundary:
             "boundary_sha256": self.verify(),
             "cpu": "shared kernel cgroup v2 cpu.max and effective cpuset",
             "ram": "shared kernel cgroup v2 memory.max; swap disabled; normal kernel OOM semantics",
-            "disk": "whole backing filesystem allocated-data capacity; sparse logical byte quota UNKNOWN",
+            "disk": "readonly enclosing namespace and capped writable backing; sparse logical byte quota UNKNOWN",
             "hard_aggregate_limits": "VERIFIED_KERNEL_BOUNDARY",
             "external_executors": "unbound native supervisors and container services unsupported",
         }
 
 
 def prepare_external_resource_boundary(*, cpu_ids, ram_bytes, disk_bytes, writable_roots):
-    """Bind externally provisioned controls; never accept serialized observations."""
+    """Bind actual externally provisioned cgroup/readonly namespace/capped backing.
+
+    The whole stage and ordinary native executors must already run inside that
+    namespace. Never accept a planned mount list or serialized observations.
+    """
     if (
         type(cpu_ids) is not tuple
         or not cpu_ids

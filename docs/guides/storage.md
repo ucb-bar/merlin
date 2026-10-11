@@ -39,6 +39,22 @@ All author, evaluator, cache, journal, output and temporary roots must be includ
 in the same explicit original-owner inventory. Runtime/scientific qualification
 does not issue resource authority.
 
+The whole stage must also already run in an enclosing filesystem namespace with
+a readonly root. Every writable backing mount must use that same capped
+filesystem, including `/tmp` and `/dev/shm`; device-directory metadata is readonly.
+Only the genuine kernel procfs and devpts interfaces are exempt. The verifier
+reopens the actual complete mount inventory and namespace identity, so a mount
+plan or container inspection record cannot supply this proof. The ordinary local
+Phase1 simulator/backend inherits this enclosing namespace and the same cgroup;
+changing its implementation or selecting a separate simulator is unnecessary.
+Inherited writable regular-file handles must also use capped backing; readonly
+mounts cannot revoke a previously opened host log or output file. Writable raw
+block-device handles refuse. Unbound external supervisors and container services
+remain refused.
+The visible device namespace must also contain only ordinary minimal kernel
+devices and standard proc/terminal links, with no raw storage or FUSE device grant.
+Their numbers follow the [Linux device ABI](https://docs.kernel.org/admin-guide/devices.html).
+
 Supported backing is a whole writable ext4, XFS or tmpfs filesystem whose actual
 `statvfs` data capacity does not exceed the selected disk budget. Bind subtrees,
 linked roots, nested mounts, large volumes with project-quota metadata and

@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import os
+import stat
 from fractions import Fraction
 from pathlib import Path
 
 from .contracts import StageGateError
+
+# Linux device ABI: https://docs.kernel.org/admin-guide/devices.html
+_DEVICES = {
+    "null": (1, 3),
+    "zero": (1, 5),
+    "full": (1, 7),
+    "random": (1, 8),
+    "urandom": (1, 9),
+    "tty": (5, 0),
+    "ptmx": (5, 2),
+}
 
 
 def cpu_set(value):
@@ -70,7 +82,7 @@ def _process(pid):
         or set(map(int, status["Uid"].split())) != {os.getuid()}
     ):
         raise StageGateError("resource owner is dead, privileged or has foreign credentials")
-    return stat[19], _membership(pid)
+    return stat[19], _membership(pid), (root / "ns" / "mnt").stat().st_ino
 
 
 def _ceiling(value):
@@ -162,6 +174,109 @@ def _filesystem(inventory, writable_roots, disk_bytes):
     return selected, root.stat().st_dev, total, capacity.f_frsize
 
 
+def _readonly_namespace(inventory, filesystem):
+    """An enclosing stage namespace must contain every writable backing mount.
+
+    Native same-Phase1 executors inherit this namespace. Metadata or an intended
+    bind plan cannot substitute for the actual mounted readonly root and backing.
+    Only procfs and the kernel's terminal interface have no filesystem data store.
+    Device-directory metadata must be readonly; /dev/shm needs capped backing.
+    """
+    _selected, device, total, fragment = filesystem
+    root_seen = False
+    for row in inventory:
+        path = canonical(row[2])
+        readonly = "ro" in row[4].split(",") or "ro" in row[5].split(",")
+        if path == Path("/"):
+            root_seen = True
+            if not readonly:
+                raise StageGateError("hard resource launch requires an enclosing readonly filesystem root")
+        if readonly or (row[3], str(path)) in {("proc", "/proc"), ("devpts", "/dev/pts")}:
+            continue
+        if path == Path("/dev") or row[3] not in {"ext4", "xfs", "tmpfs"}:
+            raise StageGateError("hard resource namespace contains an unsupported writable mount")
+        capacity = os.statvfs(path)
+        if (
+            path.stat().st_dev != device
+            or capacity.f_blocks * capacity.f_frsize != total
+            or capacity.f_frsize != fragment
+        ):
+            raise StageGateError("hard resource namespace contains writable backing outside its capped filesystem")
+    if not root_seen:
+        raise StageGateError("hard resource namespace has no visible readonly filesystem root")
+    return inventory
+
+
+def _device_namespace(directory=Path("/dev")):
+    """Require the usual minimal device namespace, without raw/FUSE device access."""
+    links = {
+        "fd": "/proc/self/fd",
+        "stdin": "/proc/self/fd/0",
+        "stdout": "/proc/self/fd/1",
+        "stderr": "/proc/self/fd/2",
+        "core": "/proc/kcore",
+        "ptmx": "pts/ptmx",
+    }
+    rows = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if len(rows) >= 32:
+                raise StageGateError("resource device namespace exceeds its minimal inventory")
+            value = entry.stat(follow_symlinks=False)
+            if entry.is_symlink():
+                target = os.readlink(entry.path)
+                if links.get(entry.name) != target:
+                    raise StageGateError("resource device namespace contains an unsupported link")
+            elif entry.name in {"pts", "shm"} and stat.S_ISDIR(value.st_mode):
+                target = "directory"
+            elif stat.S_ISCHR(value.st_mode) and _DEVICES.get(entry.name) == (
+                os.major(value.st_rdev),
+                os.minor(value.st_rdev),
+            ):
+                target = "kernel device"
+            else:
+                raise StageGateError("resource device namespace exposes a nonminimal device or file")
+            rows.append((entry.name, target, value.st_ino, value.st_rdev))
+    return tuple(sorted(rows))
+
+
+def _writable_descriptors(pid, filesystem):
+    """Readonly mounts cannot revoke inherited writable regular-file handles."""
+    process = Path("/proc") / str(pid)
+    for path in (process / "fd").iterdir():
+        try:
+            _descriptor(path, process / "fdinfo" / path.name, filesystem)
+        except FileNotFoundError:
+            continue  # A closed descriptor has no remaining write authority.
+
+
+def _descriptor(path, information_path, filesystem):
+    _selected, device, total, fragment = filesystem
+    information = information_path.read_text().splitlines()
+    flags = [line.partition(":")[2].strip() for line in information if line.startswith("flags:")]
+    if len(flags) != 1:
+        raise StageGateError("resource descriptor has no exact kernel access mode")
+    before = path.stat()
+    if stat.S_ISBLK(before.st_mode):
+        raise StageGateError("resource process has a raw block-device descriptor")
+    if stat.S_ISCHR(before.st_mode):
+        numbers = os.major(before.st_rdev), os.minor(before.st_rdev)
+        if numbers not in _DEVICES.values() and not 128 <= numbers[0] <= 143:
+            raise StageGateError("resource process inherited a nonminimal character-device descriptor")
+    if int(flags[0], 8) & os.O_ACCMODE != os.O_RDONLY:
+        if stat.S_ISREG(before.st_mode):
+            capacity = os.statvfs(path)
+            if (
+                before.st_dev != device
+                or capacity.f_blocks * capacity.f_frsize != total
+                or capacity.f_frsize != fragment
+            ):
+                raise StageGateError("inherited writable file descriptor escapes the capped backing filesystem")
+    after = path.stat()
+    if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+        raise StageGateError("resource descriptor changed identity during verification")
+
+
 def observe(*, cpu_ids, ram_bytes, disk_bytes, writable_roots, owner_pids=()):
     """Reopen actual membership, immutable ceilings and whole-filesystem capacity.
 
@@ -171,13 +286,22 @@ def observe(*, cpu_ids, ram_bytes, disk_bytes, writable_roots, owner_pids=()):
     try:
         inventory = mounts(Path("/proc/self/mountinfo").read_text())
         membership, cgroup = _cgroup(inventory, cpu_ids, ram_bytes)
+        namespace_id = Path("/proc/self/ns/mnt").stat().st_ino
+        filesystem = _filesystem(inventory, writable_roots, disk_bytes)
+        namespace = _readonly_namespace(inventory, filesystem)
+        devices = _device_namespace()
         for pid in (os.getpid(), *owner_pids):
             if type(pid) is not int or pid <= 0:
                 raise StageGateError("resource process owner requires an actual positive PID")
             before = _process(pid)
-            if not before[1].is_relative_to(membership) or _process(pid) != before:
+            _writable_descriptors(pid, filesystem)
+            if not before[1].is_relative_to(membership) or before[2] != namespace_id or _process(pid) != before:
                 raise StageGateError("resource process is outside the experiment cgroup or changed identity")
-        filesystem = _filesystem(inventory, writable_roots, disk_bytes)
-        return Path("/proc/sys/kernel/random/boot_id").read_text().strip(), cgroup, filesystem
+        return (
+            Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+            cgroup,
+            filesystem,
+            (namespace_id, namespace, devices),
+        )
     except (OSError, ValueError, IndexError, KeyError) as failure:
         raise StageGateError("live external resource boundary unavailable: " + type(failure).__name__) from failure

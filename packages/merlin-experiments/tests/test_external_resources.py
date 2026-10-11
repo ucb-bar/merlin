@@ -50,6 +50,41 @@ def test_linked_or_reconstructed_resource_owners_refuse(tmp_path):
             pytest.fail("serialized resource data became an execution owner")
 
 
+@pytest.mark.parametrize(
+    "mount",
+    [
+        (1, "/", "/", "ext4", "rw", "rw"),
+        (2, "/", "/dev", "tmpfs", "rw", "rw"),
+        (3, "/", "/dev/shm", "tmpfs", "rw", "rw"),
+    ],
+)
+def test_namespace_plan_cannot_replace_actual_readonly_or_capped_backing(tmp_path, mount):
+    # Pure negative mount parser controls, never a positive kernel-owner issue.
+    capacity = os.statvfs(tmp_path)
+    state = ((), tmp_path.stat().st_dev, capacity.f_blocks * capacity.f_frsize, capacity.f_frsize)
+    inventory = (mount,) if mount[2] == "/" else ((1, "/", "/", "ext4", "ro", "rw"), mount)
+    with pytest.raises(StageGateError):
+        kernel._readonly_namespace(inventory, state)
+
+
+def test_inherited_writable_regular_fd_cannot_escape_selected_backing(tmp_path):
+    path = tmp_path / "inherited-output"
+    capacity = os.statvfs(tmp_path)
+    # A deliberately mismatched selection exercises actual /proc/fd inspection;
+    # it cannot issue an enforcing boundary or establish a successful quota.
+    state = ((), tmp_path.stat().st_dev + 1, capacity.f_blocks * capacity.f_frsize, capacity.f_frsize)
+    with path.open("wb") as stream:
+        process = Path("/proc") / str(os.getpid())
+        with pytest.raises(StageGateError, match="inherited writable"):
+            kernel._descriptor(process / "fd" / str(stream.fileno()), process / "fdinfo" / str(stream.fileno()), state)
+
+
+def test_nonminimal_device_namespace_refuses_without_opening_devices(tmp_path):
+    (tmp_path / "unselected-device").write_bytes(b"not a kernel device")
+    with pytest.raises(StageGateError, match="nonminimal"):
+        kernel._device_namespace(tmp_path)
+
+
 def test_assigned_resource_json_has_no_live_authority():
     assigned = AssignedResources(tuple(sorted(os.sched_getaffinity(0)))[:1], 4096, 4096, 1, author_cores=0)
     assigned.verify()
