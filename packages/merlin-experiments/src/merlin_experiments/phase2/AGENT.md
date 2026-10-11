@@ -1,5 +1,19 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`search_configuration` pins explicit operator budgets and stopping settings to
+the actual live component policy, frozen corpus, fresh baseline and timing
+certificate. Selection data cannot issue runtime/model/timing roles. Native
+author concurrency must match the launch canary. `search_coordinator` ranks the
+complete correct measured simulator roster, retains all repeat ranges, and
+excludes analytical and partial reports. Join authors, finalize and prove queue
+cleanup, then restore the measured selection during observed authoring; no
+post-lineage restoration or later edits. The selection broker receipt joins the
+exact selected source to original complete feedback; final compile/static and
+numerical qualification remain fresh. Pool admission and per-process limits do
+not prove aggregate OS limits or 20–25-core member fanout. Preserve explicit
+UNKNOWN/refusal until actual enforcing and execution owners exist. See the
+operator guide `docs/guides/phase2_component_search.md`.
+
 `test_justification` v2 accepts the explicit prepared host source basis from
 source-preparation v2, reopens the complete typed component program and emitted
 bytes, and binds its full numerical-reference tree. It supplies source rationale
