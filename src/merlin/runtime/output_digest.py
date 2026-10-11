@@ -3,8 +3,73 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 
 import numpy as np
+
+
+_OUTPUT_STORAGE_BYTES = {
+    "f64": 8, "f32": 4, "f16": 2, "bf16": 2,
+    "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1,
+}
+
+
+def observe_output_digests(
+    text: str, outputs: Sequence[tuple[Sequence[int], str]], *,
+    require_first_typed: bool = False,
+) -> dict:
+    """Bind indexed target digests to a captured output ABI, without a golden.
+
+    Counts, order, storage extents and digest syntax must match. A typed first
+    digest, when requested, must describe and equal the raw first result on the
+    selected little-endian runtime. This observation says nothing about the
+    numerical values; ``verify_all_output_sha256`` needs independent arrays.
+    """
+    if not outputs:
+        raise ValueError("output digest observation needs a nonempty output ABI")
+    records = [line.split() for line in text.splitlines()
+               if line.startswith("OUT_SHA256_INDEX ")]
+    if len(records) != len(outputs):
+        raise ValueError("indexed output digest count does not match the captured ABI")
+    indexed = []
+    for index, (record, (shape, dtype)) in enumerate(zip(records, outputs, strict=True)):
+        width = _OUTPUT_STORAGE_BYTES.get(dtype)
+        if (width is None or not isinstance(shape, (list, tuple))
+                or any(type(dim) is not int or dim < 0 for dim in shape)):
+            raise ValueError(f"unsupported output ABI at index {index}")
+        elements = 1
+        for dim in shape:
+            elements *= dim
+        if (
+            len(record) != 6
+            or record[:3] != ["OUT_SHA256_INDEX", str(index), "rawbytes"]
+            or record[3:5] != [str(elements), str(elements * width)]
+            or len(record[5]) != 64
+            or any(char not in "0123456789abcdef" for char in record[5])
+        ):
+            raise ValueError(f"indexed output digest disagrees with output ABI at {index}")
+        indexed.append({"index": index, "shape": list(shape), "dtype": dtype,
+                        "elements": elements, "bytes": elements * width,
+                        "sha256": record[5]})
+    typed_records = [line.split() for line in text.splitlines()
+                     if line.startswith("OUT_SHA256 ")]
+    if require_first_typed and len(typed_records) != 1:
+        raise ValueError("expected one typed first-output digest")
+    if len(typed_records) > 1:
+        raise ValueError("duplicate typed first-output digest")
+    typed = None
+    if typed_records:
+        first = indexed[0]
+        encoding = {"f32": "f32le", "i64": "i64le", "i1": "i1byte"}.get(first["dtype"])
+        record = typed_records[0]
+        if (encoding is None or len(record) != 5
+                or record != ["OUT_SHA256", encoding, str(first["elements"]),
+                              str(first["bytes"]), first["sha256"]]):
+            raise ValueError("typed first-output digest disagrees with indexed raw digest")
+        typed = {"encoding": encoding, "elements": first["elements"],
+                 "bytes": first["bytes"], "sha256": first["sha256"]}
+    return {"indexed": indexed, "first_typed": typed,
+            "numerical_qualification": "not_established"}
 
 
 def verify_output_sha256(text: str, reference: np.ndarray) -> dict:

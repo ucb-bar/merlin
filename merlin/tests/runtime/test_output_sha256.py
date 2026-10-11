@@ -212,3 +212,29 @@ def test_indexed_output_digests_cover_boolean_and_state_storage():
         verify_all_output_sha256(console, [outputs[0], np.zeros_like(outputs[1])])
     with pytest.raises(ValueError, match="count"):
         verify_all_output_sha256(console, outputs[:1])
+
+
+def test_observed_digests_bind_every_result_to_the_capture_abi():
+    from merlin.runtime.output_digest import observe_output_digests
+
+    first = hashlib.sha256(b"\x00\x00\x80?").hexdigest()
+    state = hashlib.sha256(b"\x00\x00\x00\x00").hexdigest()
+    console = (f"OUT_SHA256 f32le 1 4 {first}\n"
+               f"OUT_SHA256_INDEX 0 rawbytes 1 4 {first}\n"
+               f"OUT_SHA256_INDEX 1 rawbytes 2 4 {state}\n")
+    abi = [([1], "f32"), ([2], "bf16")]
+    report = observe_output_digests(console, abi, require_first_typed=True)
+    assert report["indexed"][1]["dtype"] == "bf16"
+    assert report["first_typed"]["sha256"] == first
+    assert report["numerical_qualification"] == "not_established"
+    with pytest.raises(ValueError, match="count"):
+        observe_output_digests(console, abi[:1], require_first_typed=True)
+    with pytest.raises(ValueError, match="disagrees"):
+        observe_output_digests(console.replace("2 4", "2 8"), abi, require_first_typed=True)
+    with pytest.raises(ValueError, match="typed first-output"):
+        observe_output_digests(console.replace(f"OUT_SHA256 f32le 1 4 {first}\n", ""),
+                               abi, require_first_typed=True)
+    with pytest.raises(ValueError, match="typed first-output"):
+        observe_output_digests(console.replace(f"OUT_SHA256 f32le 1 4 {first}",
+                                               f"OUT_SHA256 f32le 1 4 {state}"),
+                               abi, require_first_typed=True)
