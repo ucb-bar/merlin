@@ -18,6 +18,58 @@ from .device_shim import emit_dense_translation_unit
 from .toolchain import clang
 
 
+def catalog_source_conversion(data: Mapping[str, object], device: str) -> tuple[str, str, str] | None:
+    """Validate an explicit source-to-native dtype contract; return its source ABI.
+
+    The target supplies the implementation and numerical proof. Core checks
+    that the declaration is complete, content-bound, and points to one of the
+    selected device's actual native datapaths. No target format is inferred
+    from a source tensor type or from a kernel symbol.
+    """
+    conversion = data.get("source_conversion")
+    if conversion is None:
+        return None
+    from merlin.system.offload import device_dtype_triples
+
+    abi = data.get("abi") or {}
+    if not isinstance(abi, Mapping):
+        raise ValueError("catalog source conversion needs a dense source ABI")
+    declared_source = abi.get("dtypes")
+    if (not isinstance(conversion, Mapping)
+            or conversion.get("schema") != "target_owned_dtype_conversion_v1"
+            or not isinstance(declared_source, list)
+            or len(declared_source) != 3
+            or not all(isinstance(dtype, str) and dtype for dtype in declared_source)
+            or conversion.get("source_dtypes") != declared_source):
+        raise ValueError("catalog source conversion disagrees with its dense ABI")
+    source = tuple(declared_source)
+    native = set(device_dtype_triples(device))
+    allowed = conversion.get("target_dtypes")
+    if (not native or not isinstance(allowed, list) or not allowed
+            or any(not isinstance(triple, list) or len(triple) != 3
+                   or not all(isinstance(dtype, str) and dtype for dtype in triple)
+                   or tuple(triple) not in native for triple in allowed)
+            or len({tuple(triple) for triple in allowed}) != len(allowed)):
+        raise ValueError("catalog source conversion names no distinct native target datapaths")
+    policy = conversion.get("policy")
+    if not isinstance(policy, Mapping) or not policy:
+        raise ValueError("catalog source conversion has no explicit numeric policy")
+    try:
+        digest = hashlib.sha256(json.dumps(policy, sort_keys=True, separators=(",", ":"),
+                                           allow_nan=False).encode()).hexdigest()
+    except (TypeError, ValueError) as error:
+        raise ValueError("catalog source conversion policy is not canonical JSON") from error
+    if conversion.get("policy_sha256") != digest:
+        raise ValueError("catalog source conversion policy hash differs from its declaration")
+    bindings = data.get("bindings") or ()
+    if not bindings or any(
+        not isinstance(row, Mapping) or list(row.get("target_dtypes") or ()) not in allowed
+        for row in bindings
+    ):
+        raise ValueError("catalog source conversion has an unbound target format")
+    return source  # type: ignore[return-value]
+
+
 def build_catalog_objects(
     device: str,
     signatures: Mapping[str, Sequence[int]],
@@ -39,6 +91,7 @@ def build_catalog_objects(
     if not object_path.is_file() or object_path.is_symlink():
         raise ValueError("external catalog object must be a regular file")
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    conversion_source = catalog_source_conversion(data, device)
     abi = data.get("abi") or {}
     if (
         abi.get("argument_order") != ["lhs", "rhs", "out"]
@@ -198,6 +251,8 @@ def build_catalog_objects(
         "routed_operations": len(routed),
         "entry_to_kernel": dict(sorted(kernels.items())),
         "compiler_flags": _flags(codegen_target, cflags),
+        **({"source_conversion_policy_sha256": data["source_conversion"]["policy_sha256"],
+            "source_conversion_dtypes": list(conversion_source)} if conversion_source else {}),
     }
     (work / "catalog_binding.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     return DeviceBuild(device=device, objects=(object_path, shim), shim_object=shim, kernels=kernels)

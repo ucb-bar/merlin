@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["device_contraction_ranks", "device_dtype_triples", "offloadable_contractions", "why_not"]
+__all__ = ["catalog_source_contractions", "device_contraction_ranks", "device_dtype_triples", "offloadable_contractions", "why_not"]
 
 
 def _mlir(token: str) -> str | None:
@@ -138,12 +138,35 @@ def offloadable_contractions(module, device_name: str, *, require_zero_init: boo
     those agree only when ``C_init`` is zero. A contraction accumulating onto a live init is declined
     rather than silently losing the addend.
     """
-    from merlin.kernels.shapes import observe_contractions
-
     triples = device_dtype_triples(device_name)
-    ranks = device_contraction_ranks(device_name)
     if not triples:
         return []  # fail closed: an underivable datapath offloads nothing
+
+    return _contractions_for_dtypes(module, device_name, triples, require_zero_init=require_zero_init)
+
+
+def catalog_source_contractions(
+    module, device_name: str, source_dtypes: tuple[str, str, str], *, require_zero_init: bool = True
+) -> list[tuple[Any, Any]]:
+    """Structural candidates for an explicit source-bound conversion catalog.
+
+    The catalog's source ABI is checked separately from the device's native
+    datapaths. A target-owned conversion contract names one or more native
+    target triples; this query must not pretend its f32 (or other source)
+    tensors are natively consumed by the device. Without native device facts,
+    even an explicit catalog has no grounded target to route to.
+    """
+    if len(source_dtypes) != 3 or not all(isinstance(value, str) and value for value in source_dtypes):
+        raise ValueError("catalog source dtypes must be an explicit triple")
+    if not device_dtype_triples(device_name):
+        return []
+    return _contractions_for_dtypes(module, device_name, (source_dtypes,), require_zero_init=require_zero_init)
+
+
+def _contractions_for_dtypes(module, device_name, triples, *, require_zero_init: bool):
+    from merlin.kernels.shapes import observe_contractions
+
+    ranks = device_contraction_ranks(device_name)
 
     picked: list[tuple[Any, Any]] = []
     for op, shape in observe_contractions(module):

@@ -295,7 +295,7 @@ def _signature_key(shape) -> tuple[int, ...]:
     return (*(int(d) for d in shape.parallel), int(shape.reduction[0]))
 
 
-def emit_device_program(module, device: str, *, select=None, selected_ops=None) -> list:
+def emit_device_program(module, device: str, *, select=None, selected_ops=None, candidates=None) -> list:
     """Record the offload as ``runtime`` dialect ops and return the contractions it claimed.
 
     Merlin owns a ``runtime`` dialect that says exactly this -- ``device.get``, a command buffer, an
@@ -317,7 +317,7 @@ def emit_device_program(module, device: str, *, select=None, selected_ops=None) 
 
     chosen = [
         (op, sh)
-        for op, sh in offloadable_contractions(module, device)
+        for op, sh in (candidates if candidates is not None else offloadable_contractions(module, device))
         if (op in selected_ops if selected_ops is not None else select is None or select(sh))
     ]
     if not chosen or not HAS_XDSL:
@@ -396,6 +396,7 @@ def rewrite_contractions_to_device(
     model_sha256: str | None = None,
     catalog_selection: Mapping[str, Sequence[str]] | None = None,
     catalog_bindings: Mapping[str, Mapping[str, object]] | None = None,
+    catalog_manifest_data: Mapping[str, object] | None = None,
 ) -> DeviceRewrite:
     """Replace each SELECTED contraction with a call to ``device``'s kernel. Mutates ``module``.
 
@@ -407,12 +408,14 @@ def rewrite_contractions_to_device(
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
     from xdsl.ir import Block, Region
 
-    from merlin.system.offload import device_dtype_triples, offloadable_contractions
+    from merlin.system.offload import catalog_source_contractions, device_dtype_triples, offloadable_contractions
 
     if exact_selection is not None and select is not None:
         raise ValueError("exact operation selection and a shape selector cannot both decide placement")
     if catalog_selection is not None and (select is not None or exact_selection is not None):
         raise ValueError("catalog source selection cannot be combined with another placement selector")
+    if catalog_manifest_data is not None and catalog_selection is None:
+        raise ValueError("catalog dtype conversion requires exact source selection")
     if catalog_bindings is not None:
         if catalog_selection is None or set(catalog_bindings) != set(catalog_selection):
             raise ValueError("catalog bindings must cover exactly the selected source regions")
@@ -471,7 +474,15 @@ def rewrite_contractions_to_device(
         _endpoint = None
     _transport = link_for(device, _endpoint).command_transport
 
-    candidates = offloadable_contractions(module, device)
+    conversion_source = None
+    if catalog_manifest_data is not None:
+        from .device_catalog import catalog_source_conversion
+
+        conversion_source = catalog_source_conversion(catalog_manifest_data, device)
+    candidates = (
+        catalog_source_contractions(module, device, conversion_source)
+        if conversion_source is not None else offloadable_contractions(module, device)
+    )
     if selected_ops is not None and not selected_ops.issubset({op for op, _shape in candidates}):
         raise ValueError("selected operation is not eligible on this device; host fallback must be explicit")
     if catalog_selection is not None:
@@ -492,7 +503,7 @@ def rewrite_contractions_to_device(
         ):
             raise ValueError("catalog source operation ordinal differs from the current source")
         selected_ops = {ops[0] for ops in matched.values()}
-    chosen = emit_device_program(module, device, select=select, selected_ops=selected_ops)
+    chosen = emit_device_program(module, device, select=select, selected_ops=selected_ops, candidates=candidates)
     lower_device_submits(module, device, transport=_transport)
     skipped: list[tuple[str, str]] = []
     if not chosen:
@@ -1209,6 +1220,7 @@ def rewrite_prepared_file(
         raise ValueError("prepared model bytes changed after exact operation selection")
     catalog_selection = None
     catalog_bindings = None
+    catalog_manifest_data = None
     if (catalog_manifest is None) != (catalog_object is None):
         raise ValueError("catalog rewrite needs both manifest and object")
     if catalog_manifest is not None:
@@ -1220,6 +1232,7 @@ def rewrite_prepared_file(
         rows = data.get("bindings") or ()
         catalog_selection = {row["region"]: tuple(row["tensor_types"]) for row in rows}
         catalog_bindings = {row["region"]: row for row in rows}
+        catalog_manifest_data = data
         if (
             len(catalog_selection) != len(rows)
             or not catalog_selection
@@ -1240,6 +1253,7 @@ def rewrite_prepared_file(
             model_sha256=model_sha256,
             catalog_selection=catalog_selection,
             catalog_bindings=catalog_bindings,
+            catalog_manifest_data=catalog_manifest_data,
         )
         if granularity == BY_CONTRACTION
         else rewrite_groups_to_device(
