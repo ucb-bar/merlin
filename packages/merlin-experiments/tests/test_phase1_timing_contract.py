@@ -14,13 +14,30 @@ from merlin_experiments.phase1.feedback import certification
 from merlin.common.digest import sha256_file
 
 
+@pytest.mark.parametrize("engine", ["verilator", "gsim"])
+def test_neutral_oracle_identity_survives_tier_telemetry(engine, tmp_path):
+    from merlin.runtime.backends.chipyard_rocc import BoundRoCCBackend
+    from merlin.targetgen.capsule_runner import _sim_telemetry
+
+    selection = {"contract": {"runner": {"chipyard_rocc": {"engines": {engine: {}}}}}}
+    backend = BoundRoCCBackend("synthetic_device", json.dumps(selection), None)
+    oracle = {
+        **backend.ORACLE[engine],
+        "provenance": {"engine": engine, "binary": str(tmp_path / "selected-driver"), "sha256": "a" * 64},
+    }
+    tier = {"status": "pass", **_sim_telemetry(oracle, "rtl")}
+    identity = timing.barrier_timing_identity(tier)
+    assert identity is not None and identity["engine"] == engine
+    del oracle["engine"]
+    assert timing.barrier_timing_identity({"status": "pass", **_sim_telemetry(oracle, "rtl")}) is None
+
+
 def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path, monkeypatch):
     target = "synthetic_device"
     config = "SyntheticConfig"
     descriptor = tmp_path / "descriptor.yaml"
     descriptor.write_text("target: synthetic_device\n")
-    simulator = tmp_path / "chipyard/sims/verilator" / f"simulator-chipyard.harness-{config}"
-    simulator.parent.mkdir(parents=True)
+    simulator = tmp_path / "selected-native-driver"
     simulator.write_bytes(b"observed simulator bytes")
     selected = timing.timing_path(tmp_path, target)
     selected.write_text(
@@ -34,11 +51,39 @@ def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path,
             }
         )
     )
-    import merlin.common.paths as paths
     import merlin.targetgen.oracle_policy as engines
     import merlin.targetgen.target_experiment as experiments
+    from merlin.runtime.backends import base as backends
 
-    monkeypatch.setattr(paths, "ext_path", lambda name: tmp_path / "chipyard")
+    firrtl = tmp_path / "selected.fir"
+    firrtl.write_text("source identity fixture, never executed\n")
+    facts = tmp_path / "facts.json"
+    facts.write_text(
+        json.dumps(
+            {
+                "inputs": {
+                    "target": target,
+                    "fir_sha256": sha256_file(firrtl),
+                    "firrtl_inputs": [{"path": str(firrtl), "sha256": sha256_file(firrtl)}],
+                },
+                "facts": {"source": {"config": config}},
+            }
+        )
+    )
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(facts))
+    identity = {
+        "engine": "verilator",
+        "binary": {"path": str(simulator), "sha256": sha256_file(simulator)},
+        "receipt": {
+            "engine": "verilator",
+            "target": target,
+            "config": config,
+            "firrtl": {"sha256": sha256_file(firrtl)},
+            "binary": {"path": str(simulator), "sha256": sha256_file(simulator)},
+        },
+    }
+    backend = SimpleNamespace(verilator_path=lambda: simulator, execution_engine_identity=lambda engine: identity)
+    monkeypatch.setattr(backends, "get_backend", lambda target: backend)
     monkeypatch.setattr(engines, "select_chipyard_engine", lambda name: {"engine": "verilator"})
     monkeypatch.setattr(
         experiments, "load_target_experiment", lambda path: SimpleNamespace(target=target, sim_via="chipyard")
@@ -51,6 +96,16 @@ def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path,
         "load_capability_manifest",
         lambda name, **kw: SimpleNamespace(contract={"runtime": {"rtl_sim_config": config}}),
     )
+    # Timing requires the explicitly selected FIRRTL and observed native build,
+    # even when an unrelated conventional executable could be discovered.
+    monkeypatch.delenv("MERLIN_RTL_FACTS")
+    with pytest.raises(ValueError, match="selected RTL facts"):
+        timing.selected_engine_binding(descriptor=descriptor, target=target)
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(facts))
+    identity["receipt"]["firrtl"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="observed RTL build"):
+        timing.selected_engine_binding(descriptor=descriptor, target=target)
+    identity["receipt"]["firrtl"]["sha256"] = sha256_file(firrtl)
     context = SimpleNamespace(target=target, descriptor=descriptor, experiment=tmp_path)
     record = timing.read_verified_timing(selected, descriptor=descriptor, target=target)
     assert record["verilator_per_capsule_s"] == 1500
@@ -70,7 +125,7 @@ def test_selected_timing_is_bound_to_target_config_and_simulator_bytes(tmp_path,
     with pytest.raises(ValueError, match="symlink"):
         timing.read_verified_timing(alias, descriptor=descriptor, target=target)
     simulator.write_bytes(b"different simulator bytes")
-    with pytest.raises(ValueError, match="simulator bytes changed"):
+    with pytest.raises(ValueError, match="observed RTL build"):
         timing.read_verified_timing(selected, descriptor=descriptor, target=target)
     assert certification._verilator_per_capsule_timeout(context, timing_file=selected) == 2400
     assert simjob._per_capsule_timeout(0, context=context, timing_file=selected)[0] == simjob._CERT_TIMEOUT_FALLBACK_S
@@ -256,15 +311,26 @@ def test_gsim_observation_uses_strict_selected_engine_and_both_timeout_readers(s
 
 
 def test_new_verilator_observation_preserves_the_same_timeout_consumers(selected_engine, monkeypatch):
-    from merlin.common import paths
+    from merlin.runtime.backends import base as backends
 
     fixture = selected_engine
     fixture.state["engine"] = "verilator"
-    chipyard = fixture.root / "chipyard"
-    simulator = chipyard / "sims/verilator" / f"simulator-chipyard.harness-{fixture.config}"
-    simulator.parent.mkdir(parents=True)
+    simulator = fixture.root / "selected-native-driver"
     simulator.write_bytes(b"unexecuted fixture Verilator")
-    monkeypatch.setattr(paths, "ext_path", lambda name: chipyard)
+    binary = {"path": str(simulator), "sha256": sha256_file(simulator)}
+    identity = {
+        "engine": "verilator",
+        "binary": binary,
+        "receipt": {
+            "engine": "verilator",
+            "target": fixture.target,
+            "config": fixture.config,
+            "firrtl": {"sha256": fixture.pins["firrtl"]["sha256"]},
+            "binary": binary,
+        },
+    }
+    backend = SimpleNamespace(verilator_path=lambda: simulator, execution_engine_identity=lambda engine: identity)
+    monkeypatch.setattr(backends, "get_backend", lambda target: backend)
     path = _write_observation(fixture)
     record = timing.read_verified_timing(path, descriptor=fixture.descriptor, target=fixture.target)
     assert record["engine"] == "verilator" and timing.observed_seconds(record) == 1500

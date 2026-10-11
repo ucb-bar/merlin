@@ -157,7 +157,6 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
     emitter-build, clock, counter, runtime or physical correspondence.
     """
     from merlin.common.digest import sha256_file
-    from merlin.common.paths import ext_path
     from merlin.targetgen.target_experiment import (
         declared_vs_resolved_contract,
         load_capability_manifest,
@@ -184,8 +183,35 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
             raise ValueError("oracle timing engine differs from the required engine")
         binding = {"target": target, "config": config, "engine": engine}
         if engine == "verilator":
-            simulator = _ordinary_file(
-                ext_path("chipyard") / "sims" / "verilator" / f"simulator-chipyard.harness-{config}"
+            from merlin.compile.model_execution_inputs import selected_firrtl
+            from merlin.runtime.backends import base as backends
+
+            facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
+            if not facts_path:
+                raise ValueError("oracle timing has no explicitly selected RTL facts")
+            facts = selected_firrtl(_ordinary_file(Path(facts_path)), target=target, config=config)
+            backend = backends.get_backend(target)
+            getter = getattr(backend, "verilator_path", None)
+            identify = getattr(backend, "execution_engine_identity", None)
+            if not callable(getter) or not callable(identify):
+                raise ValueError("oracle timing has no explicit elaborated RTL engine selection")
+            identity = identify(engine)
+            simulator = _ordinary_file(Path(getter()))
+            receipt = identity.get("receipt") or {}
+            if (
+                identity.get("engine") != engine
+                or identity.get("binary", {}).get("path") != str(simulator)
+                or identity.get("binary", {}).get("sha256") != sha256_file(simulator)
+                or receipt.get("engine") != engine
+                or receipt.get("target") != target
+                or receipt.get("config") != config
+                or receipt.get("firrtl", {}).get("sha256") != facts["firrtl_sha256"]
+                or receipt.get("binary") != identity.get("binary")
+            ):
+                raise ValueError("oracle timing has no observed RTL build for the selected FIRRTL and executable")
+            binding.update(
+                rtl_facts={key: facts[key] for key in ("sha256", "firrtl_sha256", "target", "config")},
+                receipt=receipt,
             )
         elif engine == "gsim":
             from merlin.compile.model_execution_inputs import selected_firrtl
