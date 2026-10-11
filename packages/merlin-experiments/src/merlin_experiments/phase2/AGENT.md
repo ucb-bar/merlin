@@ -14,6 +14,14 @@ the separate strict component-runtime roles. Retained member fanout must match
 the explicit queue grant and propagate the original execution contexts into
 every member worker.
 
+`normal_resource_launch` adapts the original normal author/probe/broker bwrap
+prefix under an exact live external resource owner. Every empty tmpfs mask and
+shm directory uses private capped backing; keep scratch through the original
+process lifetime. The actual namespace disables nested user namespaces and
+remounts root/device metadata readonly. Preserve the sealed policy and default
+argv. Bind the exact owner explicitly in broker HTTP threads and reopen it before
+publishing feedback. Parser/routing spies issue no kernel enforcement authority.
+
 `external_resources` and `_kernel_resources` verify externally provisioned Linux
 cgroup v2 ceilings and one whole capped backing filesystem without creating or
 changing controls. The enclosing stage namespace must already have a readonly

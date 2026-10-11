@@ -23,6 +23,8 @@ import os
 import tempfile
 import time
 from collections.abc import Sequence
+from contextlib import ExitStack
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,7 @@ from merlin_experiments.phase2 import development_feedback as DF
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import emission_diagnostics as ED
 from merlin_experiments.phase2 import functional_inputs as FI
+from merlin_experiments.phase2 import normal_resource_launch as NR
 from merlin_experiments.phase2 import stage_inputs as INPUTS
 from merlin_experiments.phase2 import stage_prompt as SP
 from merlin_experiments.phase2 import telemetry as TEL
@@ -91,12 +94,17 @@ def _tree_files(root: Path) -> dict[str, str]:
     return rows
 
 
-def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment):
+def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):
     """Refuse a launch before output creation unless both containment claims hold."""
     try:
-        sandbox_probe = SANDBOX_PREFLIGHT.require_working_sandbox(
-            bwrap_binary, context="performance authoring bwrap operability preflight"
-        )
+        if external_boundary is None:
+            sandbox_probe = SANDBOX_PREFLIGHT.require_working_sandbox(
+                bwrap_binary, context="performance authoring bwrap operability preflight"
+            )
+        else:
+            sandbox_probe = NR.require_bounded_sandbox(
+                bwrap_binary, owner=Path(os.environ["TMPDIR"]), boundary=external_boundary
+            )
     except SANDBOX_PREFLIGHT.SandboxUnavailable as exc:
         raise StageGateError(
             "the isolation sandbox cannot be built on this host, so no authoring round can run: " + exc.probe.describe()
@@ -429,6 +437,7 @@ def _codex_round(
     timeout_s: int,
     codex_binary: Path,
     max_concurrent_subagents: int | None = None,
+    external_boundary=None,
 ) -> tuple[int, Path, AW.AgentSandboxPolicy]:
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
@@ -448,26 +457,30 @@ def _codex_round(
             inputs=sandbox_inputs,
         )
         captured["policy"] = policy
+        actual = scratch.enter_context(
+            NR.bounded_normal_scratch(policy.argv, owner=stage_root / "author_scratch", boundary=external_boundary)
+        )
         # ``inner`` is already shell-quoted by codex_agent.  Quote only the outer payload boundary.
-        return BW.compose_command(list(policy.argv), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
+        return BW.compose_command(list(actual), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
 
-    rc, transcript = CA.run_round(
-        workspace,
-        stage_root,
-        model,
-        {},
-        target_experiment,
-        "bwrap",
-        round_index,
-        timeout_s,
-        effort=effort,
-        prompt=prompt.text,
-        effective_model=resolved_model,
-        sandbox_command=exact_bwrap,
-        codex_binary=codex_binary,
-        **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
-        codex_home_root=stage_root / "codex_homes",
-    )
+    with NR.selected_boundary(external_boundary, writable_roots=(stage_root, workspace)), ExitStack() as scratch:
+        rc, transcript = CA.run_round(
+            workspace,
+            stage_root,
+            model,
+            {},
+            target_experiment,
+            "bwrap",
+            round_index,
+            timeout_s,
+            effort=effort,
+            prompt=prompt.text,
+            effective_model=resolved_model,
+            sandbox_command=exact_bwrap,
+            codex_binary=codex_binary,
+            **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
+            codex_home_root=stage_root / "codex_homes",
+        )
     policy = captured.get("policy")
     if policy is None:
         raise StageGateError("Codex driver did not construct the required outer bwrap policy")
@@ -534,6 +547,18 @@ def run_stage(
     ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
     (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
     unavailable."""
+    if external_resource_boundary is not None:
+        from merlin.common.paths import out_dir
+
+        temporary = os.environ.get("TMPDIR")
+        if not temporary:
+            raise StageGateError("hard normal authoring requires an explicit bounded TMPDIR")
+        with NR.selected_boundary(
+            external_resource_boundary, writable_roots=(Path(stage_root), out_dir(), Path(temporary))
+        ):
+            pass
+        if workflow_id != BP.CORPUS_FEEDBACK_V1:
+            raise StageGateError("normal resource authoring does not admit another launch workflow")
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
@@ -585,7 +610,11 @@ def run_stage(
     if not model.strip():
         raise StageGateError("an explicit Codex model is required")
     bwrap_binary = _require_executable("bwrap", label="bwrap")
-    sandbox_probe, declaration_drops = _require_stage_containment(bwrap_binary, target_experiment)
+    sandbox_probe, declaration_drops = _require_stage_containment(
+        bwrap_binary,
+        target_experiment,
+        **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+    )
     codex_path = _require_executable(codex_binary, label="Codex")
     descriptor_path = Path(target_experiment.path).resolve()
     bwrap_sha256 = _sha256_file(bwrap_binary)
@@ -688,6 +717,8 @@ def run_stage(
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
     )
+    if search is not None:
+        prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
@@ -832,7 +863,12 @@ def run_stage(
             inputs=sandbox_inputs,
         )
         if probe_results is None:
-            probe_results = AW.run_required_tool_probes(inner, target_experiment, candidate)
+            probe_results = AW.run_required_tool_probes(
+                inner,
+                target_experiment,
+                candidate,
+                **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+            )
         control_dir = stage_root / "control" / f"round_{round_index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
         workflow = BP.select_workflow(
@@ -886,6 +922,7 @@ def run_stage(
             max_calls=max_tool_calls - total_calls,
             max_tool_seconds=tool_timeout_seconds,
             workflow=workflow,
+            **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
@@ -915,6 +952,11 @@ def run_stage(
                     round_index=round_index,
                     timeout_s=round_timeout,
                     codex_binary=codex_path,
+                    **(
+                        {"external_boundary": external_resource_boundary}
+                        if external_resource_boundary is not None
+                        else {}
+                    ),
                     **({"max_concurrent_subagents": search.author_agents} if search is not None else {}),
                 )
         finally:
@@ -1028,7 +1070,12 @@ def run_stage(
         raise StageGateError(refusal or "performance stage completed no auditable Codex round")
     probe_recheck_results: list[dict[str, Any]] = []
     try:
-        probe_recheck_results = AW.run_required_tool_probes(last_inner, target_experiment, previous_submission)
+        probe_recheck_results = AW.run_required_tool_probes(
+            last_inner,
+            target_experiment,
+            previous_submission,
+            **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+        )
         if probe_recheck_results != probe_results:
             refusal = "inner sandbox tool probe evidence changed during performance authoring"
     except StageGateError as exc:
@@ -1099,13 +1146,14 @@ def run_stage(
     # Complete unchanged execution dependencies permit reuse; changed dependencies
     # or emission require the ordinary full-output numerical certification.
     try:
-        functional_guard = functional_emission_guard(
-            base,
-            previous_submission,
-            target_experiment,
-            frozen_functional=frozen_functional,
-            grade_root=stage_root / "functional_guard_grade",
-        )
+        with NR.selected_boundary(external_resource_boundary, writable_roots=(stage_root,)):
+            functional_guard = functional_emission_guard(
+                base,
+                previous_submission,
+                target_experiment,
+                frozen_functional=frozen_functional,
+                grade_root=stage_root / "functional_guard_grade",
+            )
     except Exception as exc:  # noqa: BLE001 - an unrunnable guard is absence of proof, not a pass
         functional_guard = {
             "status": "unavailable",

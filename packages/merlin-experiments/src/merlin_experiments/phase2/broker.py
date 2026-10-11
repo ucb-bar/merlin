@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.targetgen.target_experiment import TargetExperiment
 
+from . import normal_resource_launch as NR
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
 from .contracts import write_json as _write_json
@@ -186,6 +187,7 @@ class Broker:
         max_tool_seconds: int,
         mandatory_analysis_reserve_seconds: float = 0.0,
         public_control_dir: Path | None = None,
+        external_boundary=None,
     ):
         self.workflow = workflow
         if (
@@ -194,6 +196,8 @@ class Broker:
             or workflow.target_experiment != target_experiment
         ):
             raise StageGateError("broker workflow is bound to another invocation")
+        with NR.selected_boundary(external_boundary, writable_roots=(candidate, receipt_path.parent)):
+            self._external_boundary = external_boundary
         self.policy = policy
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
@@ -367,7 +371,10 @@ class Broker:
             raise budget_error
         started = time.monotonic()
         try:
-            return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
+            with NR.selected_boundary(
+                self._external_boundary, writable_roots=(self.candidate, self.receipt_path.parent)
+            ):
+                return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
         except StageGateError:
             # EVERY ALLOCATED INDEX GETS A RECEIPT. The index is taken before the inner command is
             # built, and building it can refuse (clear-environment policy, malformed argv, a
@@ -415,10 +422,20 @@ class Broker:
             result, feedback_document = outcome
         else:
             command = inner_command(self.policy, self.target_experiment, self.candidate, raw_argv, timeout_s)
+            original_prefix = self.policy.argv
+            if command[: len(original_prefix)] != list(original_prefix):
+                raise StageGateError("broker command lost its original verified namespace prefix")
             try:
-                proc = subprocess.run(
-                    command, cwd=str(self.policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
-                )
+                with NR.bounded_normal_scratch(
+                    original_prefix, owner=self.receipt_path.parent / "tool_scratch", boundary=self._external_boundary
+                ) as prefix:
+                    proc = subprocess.run(
+                        [*prefix, *command[len(original_prefix) :]],
+                        cwd=str(self.policy.process_cwd),
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_s,
+                    )
                 result = {
                     "returncode": proc.returncode,
                     "stdout": (proc.stdout or "")[-1_000_000:],
@@ -433,6 +450,8 @@ class Broker:
                     "timed_out": True,
                     "elapsed_s": round(time.monotonic() - started, 3),
                 }
+        if self._external_boundary is not None:
+            self._external_boundary.verify(writable_roots=(self.candidate, self.receipt_path.parent))
         with self._lock:
             self.calls[call_index].update(
                 {key: value for key, value in result.items() if key not in ("stdout", "stderr")}
