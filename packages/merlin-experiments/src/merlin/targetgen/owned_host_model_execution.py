@@ -412,6 +412,7 @@ def _host_call_proof(host_ir, *, assigned, output):
 def _dispatch_proof(record, *, target, facts):
     """Original-source calls -> actual candidate kernel -> object -> same ELF."""
     import yaml
+    from xdsl.dialects.builtin import UnitAttr
     from xdsl.parser import Parser
 
     from merlin.common.facts_view import interface as facts_interface
@@ -493,7 +494,7 @@ def _dispatch_proof(record, *, target, facts):
             for family, functs in work.items():
                 if funct not in functs:
                     continue
-                if getattr(op, "has_side_effects", None) is None or "~{memory}" not in getattr(
+                if not isinstance(getattr(op, "has_side_effects", None), UnitAttr) or "~{memory}" not in getattr(
                     getattr(op, "constraints", None), "data", ""
                 ).split(","):
                     raise ValueError("actual device work lacks side effect or memory clobber")
@@ -623,6 +624,7 @@ def _numeric_full_output(capsule, record, console):
 def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     """Original-source closure and whole-ELF ISA; neither grants numerics."""
     from merlin.common.facts_view import interface as facts_interface
+    from merlin.llvmlower import toolchain
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.perf.isa_prohibition import scan_elf
     from merlin.runtime.boards import load_boards
@@ -645,6 +647,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     if (
         len(model_commands) != 1
         or "-c" not in model_commands[0]["argv"]
+        or Path(model_commands[0]["executable"]["path"]) != toolchain.clang().resolve()
         or not any(
             row["path"] == str(model_ir) and row["sha256"] == file_sha256(model_ir)
             for row in model_commands[0]["inputs"]
@@ -652,6 +655,10 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     ):
         raise ValueError("owned host CFG is not the actual model object compiler input")
     linked_inputs = {(row["path"], row["sha256"]) for row in compilation["commands"][-1]["inputs"]}
+    if (str(model_obj), file_sha256(model_obj)) not in linked_inputs:
+        raise ValueError("owned host object was not an actual final link input")
+    if Path(compilation["commands"][-1]["executable"]["path"]) != toolchain.clang().resolve():
+        raise ValueError("owned model final link did not use the selected compiler")
     for entry in output["device_artifacts"]["kernels"].values():
         obj = _pinned(entry["artifacts"], "object")
         if (str(obj), file_sha256(obj)) not in linked_inputs:
