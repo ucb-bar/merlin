@@ -35,11 +35,15 @@ def selected_classes(contract: dict):
         not in (
             {"version", "instruction_roster_sha256", "by_role"},
             {"version", "instruction_roster_sha256", "by_role", "epilogue_roles"},
+            {"version", "instruction_roster_sha256", "by_role", "operation_roles"},
+            {"version", "instruction_roster_sha256", "by_role", "epilogue_roles", "operation_roles"},
         )
         or type(selection["version"]) is not int
-        or selection["version"] != 1
+        or selection["version"] not in (1, 2)
     ):
         raise ValueError("invalid corpus_instruction_roles selection")
+    if "operation_roles" in selection and selection["version"] != 2:
+        raise ValueError("operation roles require corpus selection version 2")
     roster = (contract.get("rocc_operand_roles") or {}).get("instructions")
     if not isinstance(roster, list) or not roster:
         raise ValueError("corpus instruction roles require an explicit command roster")
@@ -64,7 +68,16 @@ def selected_classes(contract: dict):
         for stage, mapping in epilogues.items()
     ):
         raise ValueError("invalid corpus epilogue role selection")
-    for classes in [*roles.values(), *(classes for mapping in epilogues.values() for classes in mapping.values())]:
+    operations = selection.get("operation_roles", {})
+    from .semantic_families import from_op
+
+    if not isinstance(operations, dict) or any(
+        not isinstance(op, str) or not from_op(op) or not isinstance(mapping, dict)
+        or not mapping or set(mapping) - _ROLES
+        for op, mapping in operations.items()
+    ):
+        raise ValueError("invalid corpus operation role selection")
+    for classes in [*(classes for mapping in operations.values() for classes in mapping.values()), *roles.values(), *(classes for mapping in epilogues.values() for classes in mapping.values())]:
         if (
             not isinstance(classes, list)
             or not classes
@@ -78,10 +91,18 @@ def selected_classes(contract: dict):
         stage: {role: list(classes) for role, classes in mapping.items()} for stage, mapping in epilogues.items()
     }
 
+    selected_operations = {
+        op: {role: list(classes) for role, classes in mapping.items()} for op, mapping in operations.items()
+    }
+
     def classes_for(**kwargs):
         from .semantic_families import from_op, primitives_of
 
         bound = {role: list(classes) for role, classes in selected.items()}
+        for role, classes in selected_operations.get(kwargs.get("op", "matmul"), {}).items():
+            if role in bound and bound[role] != classes:
+                raise ValueError("conflicting corpus operation role selection")
+            bound[role] = list(classes)
         # Fused stage requirements do not declare a general unary/binary unit.
         if "contraction" in primitives_of(from_op(kwargs.get("op", "matmul")) or ""):
             for stage in kwargs.get("epilogue", ()):
@@ -93,6 +114,12 @@ def selected_classes(contract: dict):
             if not any(role in bound for role in slot):
                 raise ValueError(f"selected corpus roles lack required role slot {slot}")
         classes = required_classes_from_roles(bound, **kwargs)
+        # Every explicitly selected operation class remains an obligation; the
+        # generic role resolver chooses only the first class for each slot.
+        for names in selected_operations.get(kwargs.get("op", "matmul"), {}).values():
+            for name in names:
+                if name not in classes:
+                    classes.append(name)
         if not classes:
             raise ValueError("selected corpus roles yield no required instruction classes")
         return classes
