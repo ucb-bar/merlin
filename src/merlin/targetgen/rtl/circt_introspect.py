@@ -136,7 +136,12 @@ def extract_funct_table(isa_src: str, *, start_comment: str, stop_declaration: s
             continue
         if after.strip() and not after.strip().startswith("//"):
             continue  # e.g. ``.U(3.W)`` -> not a funct code
-        table.setdefault(int(num), name)
+        selector = int(num)
+        if selector in table and table[selector] != name:
+            raise ValueError("Scala funct block has conflicting selector/name bindings")
+        if any(bound == name and code != selector for code, bound in table.items()):
+            raise ValueError("Scala funct block assigns one name to different selectors")
+        table[selector] = name
     if not stopped:
         raise ValueError(f"Scala funct block stop declaration {stop_declaration!r} is absent")
     legal = sorted(table)
@@ -146,6 +151,14 @@ def extract_funct_table(isa_src: str, *, start_comment: str, stop_declaration: s
         "name": "funct_decode_table",
         "legal_funct": legal,
         "names": {str(k): table[k] for k in legal},
+        "source_declared_names": {str(k): table[k] for k in legal},
+        "source_declared_names_provenance": {
+            "kind": "scala_funct_block",
+            "scope": "selected_source_declaration",
+            "source_sha256": hashlib.sha256(isa_src.encode("utf-8")).hexdigest(),
+            "start_comment": start_comment,
+            "stop_declaration": stop_declaration,
+        },
         # Bindings OUTSIDE the funct block, for naming codes the SILICON decodes that the block never
         # mentions. Kept separate because they are not authoritative: see :func:`outside_block_names`.
         "outside_block_names": outside_block_names(isa_src, start_at=start),
@@ -475,6 +488,13 @@ def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | No
     if header is not None:
         hs, ds = set(header.get("legal_funct", [])), set(decoder["legal_funct"])
         hnames = header.get("names", {})
+        for selector, observed_name in (decoder.get("names") or {}).items():
+            declared_name = hnames.get(str(selector))
+            if declared_name is not None and observed_name != declared_name:
+                raise ValueError("decoder and source have conflicting selector/name bindings")
+        if "source_declared_names" in header:
+            decoder["source_declared_names"] = dict(header["source_declared_names"])
+            decoder["source_declared_names_provenance"] = dict(header["source_declared_names_provenance"])
         decoder["names"] = {str(k): hnames.get(str(k), "?") for k in decoder["legal_funct"]}
         # A code the SILICON decodes that the funct block never named reads as "?" -- and an unnamed
         # instruction cannot be given a role, so it lands in `claimed_no_role` forever. Measured on
@@ -639,11 +659,13 @@ def _funct_name_table(target: str, isa_path: Path | None) -> dict[str, Any] | No
     if isa_path is not None and Path(isa_path).is_file():
         block = _scala_funct_block(target)
         if block is not None:
-            return extract_funct_table(
-                Path(isa_path).read_text(errors="replace"),
+            table = extract_funct_table(
+                Path(isa_path).read_bytes().decode("utf-8"),
                 start_comment=block[0],
                 stop_declaration=block[1],
             )
+            table["source_declared_names_provenance"]["source_path"] = str(Path(isa_path).absolute())
+            return table
     headers = _declared_isa_headers(target)
     code_name = _functs_from_headers(headers)
     if not code_name:
