@@ -34,6 +34,7 @@ from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
 
 from . import corpus as C
 from .component_baseline import verify_baseline_admission
+from .component_compiled_arms import CompiledStaticArmFeatures
 from .component_feature_arms import IndependentArmFeatures
 from .component_runtime import require_independent_runtime
 from .component_workflow import ComponentAnalyticalProvider, _callable_code, _callable_source, _corpus, _pin
@@ -138,6 +139,7 @@ class ComponentAnalyticalBinding:
     baseline_admission: object
     independent_runtime: object
     independent_arms: IndependentArmFeatures | None = None
+    compiled_arms: CompiledStaticArmFeatures | None = None
 
     @property
     def sha256(self):
@@ -162,6 +164,7 @@ class ComponentAnalyticalBinding:
                     if self.independent_arms is not None
                     else {}
                 ),
+                **({"compiled_arms_sha256": self.compiled_arms.verify()} if self.compiled_arms is not None else {}),
             }
         )
 
@@ -181,6 +184,10 @@ class ComponentAnalyticalBinding:
             if type(self.independent_arms) is not IndependentArmFeatures:
                 raise StageGateError("per-arm feature selection requires its fixed input/process/cache owner")
             self.independent_arms.require_feedback_owner(runtime, self.feature_provider)
+        if self.compiled_arms is not None:
+            if self.independent_arms is not None or type(self.compiled_arms) is not CompiledStaticArmFeatures:
+                raise StageGateError("compiled feature selection needs one fixed ordinary arm owner")
+            self.compiled_arms.require_feedback_owner(runtime, self.feature_provider)
         verify_binding = getattr(runtime.qualification, "verify_feedback_binding", None)
         if not callable(verify_binding):
             raise StageGateError("component features lack independent complete scope/held measurement qualification")
@@ -474,6 +481,7 @@ def build_component_analytical_provider(
     baseline_admission=None,
     independent_runtime=None,
     independent_arms: IndependentArmFeatures | None = None,
+    compiled_arms: CompiledStaticArmFeatures | None = None,
 ) -> ComponentAnalyticalProvider:
     """Bind an exact independent corpus to calibrated, complete, bounded feedback.
 
@@ -533,6 +541,7 @@ def build_component_analytical_provider(
         baseline_admission,
         independent_runtime,
         independent_arms,
+        compiled_arms,
     )
     binding.validate(calibration)
     return ComponentAnalyticalProvider(

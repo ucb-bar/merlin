@@ -641,3 +641,22 @@ The ordinary measurement launcher freezes its explicit observation plan and
 readback policy before work and refuses drift before accounting or raw-product
 publication. Direct collection also retains the original plan through replay.
 These identity checks supply no new measurement or runtime qualification.
+
+`evaluation_fidelity` binds explicit public/protected program scope and selected
+ordinary CPU engine provenance. Public numerical execution delegates only to
+the issued original evaluator; legacy model probe exclusion and protected final
+gates remain unchanged. Component authority never transfers to a whole program.
+Source/output agreement and matched memory/cache/clock hashes issue no timing.
+`component_compiled_arms` optionally uses the original scoped compile-only and
+consumed-static observer without per-member RTL; numerical/physical features
+remain UNKNOWN and analytical use keeps the original live measurement/held gates.
+`timing_study` owns the nonexecuting AWS CPU plan command and a private fixed
+ordinary profiler under the existing supervised worker. Require actual allocated
+AWS identity and explicit CPU/RAM/disk/environment selections before profiling.
+Keep every cold/warm/setup/calibration/held/complete-cost denominator and original
+screening minima; process cost observations cannot issue scientific authority.
+`component_providers.build_independent_component_rtl_provider` binds the existing
+certified development evaluator to the actual qualified runtime executor and
+fresh baseline/cohort/descriptor. Certificate, facts, derived CIRCT and engine
+artifact pins must remain in original runtime source membership. Preserve the
+original exact workload envelope and refused timing scopes.
