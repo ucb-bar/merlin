@@ -22,6 +22,7 @@ chia = ["chialoops @ https://github.com/ucb-bar/chia/archive/dd976318012f1a9807a
 merlin-experiment = "merlin_experiments.cli:main"
 merlin-evaluation-cohort = "merlin.targetgen.evaluation_cohort:main"
 merlin-phase2-timing-study = "merlin_experiments.phase2.timing_study:main"
+merlin-phase2-normal-timing-study = "merlin_experiments.phase2.ordinary_timing_study:main"
 
 [project.entry-points."merlin.exact_offload_release"]
 reviewed_phase0 = "merlin_experiments.corpus.release:verify_exact_offload_binding"

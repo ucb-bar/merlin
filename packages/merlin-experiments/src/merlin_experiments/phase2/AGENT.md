@@ -32,6 +32,16 @@ and default calls stay fresh. Publish artifact archives only from the parent
 completion hook after actual cleanup and durable resource release; publication
 failure leaves future cache misses and never changes the completed verdict.
 
+`ordinary_timing_study` exports closed normal-policy requests and owns the fixed
+AWS-only command. Planning never loads a runtime or queries AWS. Explicit
+execution reopens original Phase 1 admission, freezes bounded public compiler
+alternatives and profiles only the original cheap/certified routes. Keep actual
+setup, complete route and calibration/held wall/CPU/RSS/disk denominators and
+source/domain/partition identities. Supervise each reduced route with its
+original deadline/descendant cleanup. Repeated processes do not establish cache
+state; external engine build and unsupported total costs remain UNKNOWN. Public
+definitions cannot select commands, callbacks or reconstructed qualification.
+
 `normal_resource_launch` adapts the original normal author/probe/broker bwrap
 prefix under an exact live external resource owner. Every empty tmpfs mask and
 shm directory uses private capped backing; keep scratch through the original

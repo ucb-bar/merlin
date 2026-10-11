@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-11
 related: [component_phase2_workflow, phase2_test_justification]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_fidelity.py, packages/merlin-experiments/src/merlin_experiments/phase2/component_compiled_arms.py, packages/merlin-experiments/src/merlin_experiments/phase2/timing_study.py]
+code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_fidelity.py, packages/merlin-experiments/src/merlin_experiments/phase2/component_compiled_arms.py, packages/merlin-experiments/src/merlin_experiments/phase2/timing_study.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_timing_study.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py]
 ---
 
 # Phase 2 CPU fidelity and timing study
@@ -30,6 +30,78 @@ whole-model host cost, physical traffic, FPGA timing or a new engine
 qualification. Actual selected tools and certificate/build artifacts remain
 external run prerequisites. Retained member fanout must match the queue grant
 and carry the original execution contexts into each member worker thread.
+
+### Cheap queued observations
+
+Submit `kind=corpus-compile-spike-feedback` for retained revisions to run the
+original boxed compiler and Spike ladder through L2. Original required RTL tiers
+remain pending. Both arms cover the exact frozen public roster. Fresh LLVM,
+linked ELF and link-invocation products feed the existing static-site observer;
+unsupported bodies remain UNKNOWN. Static features never establish physical
+traffic or timing. Submit `kind=corpus-rtl-feedback` for the original complete
+certified timing roster. Only measured timing can select the source.
+
+The live `produce_calibration` producer executes both routes for multiple
+immutable public compiler alternatives on allocated AWS CPU. Its explicit
+`merlin.ordinary_public_screen_partition.v1` partition contains `calibration`
+and `held_validation` lists of `[family, capsule]`, disjoint and covering the
+original public roster. These held members are public screening-validation
+inputs, separate from the protected final cohort. The fit reads calibration
+labels only. Ranking pairs compare alternatives for the same member and
+configuration; different shapes cannot supply that denominator. Original gates
+require 95% ranking agreement, at most 10% error, 95% interval coverage, 100
+decided pairs, 20 per qualifying slice, three slices and 20 held predictions.
+Intervals are empirical screening evidence, not physical confidence claims.
+
+### Run the normal AWS CPU cost study
+
+Use the completed Phase 1 run, its admitted readonly baseline, existing target
+descriptor/toolchain/ISA/runtime, frozen development corpus, compiler edit
+contract, RTL facts and selected gSIM certificate/build. The selected runtime
+must already be available through the normal Phase 1 readiness/preflight path.
+Allocate explicit CPU IDs, RAM and disk on an AWS instance; the command verifies
+the instance through IMDSv2 and checks available resources. It provisions nothing.
+Keep `MERLIN_PERF_SWEEP_WORKERS` equal to the number of assigned CPU IDs before
+creating the request, and preserve the same effective environment for execution.
+
+`ordinary_timing_study.request_from_policy` exports a closed JSON request from
+the actual live normal policy. Supply `resources` with `provider="aws"`,
+`instance_id`, `cpu_ids`, `memory_bytes`, `disk_bytes` and a fresh private
+`work_root`; supply at least two public compiler `alternatives`, the exact
+`public_partition`, and the original `edit_contract_path`. The request retains
+all original source identities and an environment digest. It accepts no command,
+callback, import string or saved qualification.
+
+```bash
+merlin-phase2-normal-timing-study --request normal-study.json --output plan.json
+merlin-phase2-normal-timing-study --request normal-study.json --output measured.json --execute
+```
+
+The first command performs no execution or AWS request. Explicit execution
+reopens original admission and freezes the selected public compiler revisions.
+It records repeated complete compile/Spike/feature and certified RTL costs,
+admission/source-freeze costs, and actual calibration/held-validation costs.
+Each reduced evaluation retains its 600-second ceiling and owned descendant
+cleanup. Wall/CPU time, process-tree RSS and allocated output disk are retained
+with exact request, source-revision, partition and domain identities. Repeated
+fresh processes do not establish cold/warm cache state; that stays UNKNOWN.
+Prior external engine-build costs and whole-model host costs also stay UNKNOWN.
+
+Costs support the existing arithmetic `N*((1-q)*S-E)>M`: `S` is complete ordinary
+RTL cost, `E` complete cheap cost, `q` the retained RTL fraction, and `M` setup,
+calibration and held validation. Missing denominators keep break-even UNKNOWN.
+The study returns the original held validation verdict; it creates no final
+acceptance. An original selected-engine/process or compiled-artifact join that
+cannot be reopened refuses calibration. Keep the retained profiles and resolve
+that source prerequisite before exposing a fit. No live costs or screening
+qualification have been established by the synthetic routing tests.
+
+Trusted in-process orchestration can install the live returned calibration
+through `policy.install_screen(owner)` before creating its queue. Saved reports
+cannot reconstruct that owner. Optional original native runtime/index owners
+may be installed separately before queued work; absent or unsupported owners
+keep fresh execution. Calibration and final/protected evaluation require fresh
+observations and do not use historical timing as independent replicates.
 
 Public program numerical execution is a separate route from the legacy reduced
 probe policy. `evaluate_public_program_cpu` requires a live
