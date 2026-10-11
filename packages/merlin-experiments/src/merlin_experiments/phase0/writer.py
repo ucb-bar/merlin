@@ -417,7 +417,18 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     dirty = False
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
-    if regime == "int" and _is_source_backed(entry):
+    from merlin.targetgen.native_storage_source import native_storage_source_spec
+
+    # An integer storage type does not make a cast or permutation a mesh MAC.
+    # This exception is limited to the validated nonaccelerating native source
+    # declaration. Its complete captured ABI and values are checked by the
+    # source writer; ordinary written-program placement checks still apply.
+    native_storage = (
+        native_storage_source_spec(entry)
+        if entry.get("source") == "pytorch" or entry.get("pytorch_ref")
+        else None
+    )
+    if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
