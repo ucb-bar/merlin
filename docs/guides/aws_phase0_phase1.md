@@ -286,6 +286,56 @@ requires fixing the relevant input or tool and re-running its check, not editing
 a verdict. This permits a compiler author experiment; it does not guarantee its
 functional success or final performance.
 
+## Functional compiler completion contract
+
+The Phase 1 objective is a reusable compiler for an explicitly declared support
+domain, including correct mixed host/accelerator execution of the selected
+end-to-end models. Starting the author experiment, generating a corpus, admitting
+capsules, or passing selected native controls does not satisfy this objective.
+
+Before launch, freeze the accelerator, host CPU, ISA/ABI, compiler and model2MLIR
+sources, toolchain and libraries, model/checkpoint selections, shapes, layouts,
+dtypes, numerical policies, and required execution engines. The support domain
+must distinguish supported, unsupported, and unqualified signatures. Unknown
+support is not a supported signature; a standard CPU ISA does not qualify every
+host operation. Numerical correctness means the selected policy (including
+rounding, accumulation, overflow, approximation and nonfinite behavior), not an
+unstated bit-exactness or global error guarantee.
+
+| Owner and obligation | Required completion evidence |
+| --- | --- |
+| Merlin host implementation | Every required host signature has selected Merlin-owned lowering/runtime code, exact toolchain/library and ISA/ABI bindings, and applicable numerical/execution qualification. Candidate OOT code must use this implementation rather than supply replacement host tensor arithmetic. |
+| Accelerator compiler | Every declared supported signature and required composition has executable lowering, legal resource/layout handling, numerical comparison, and accelerator execution evidence on the selected engine. Eligible accelerator work must execute there; silently using the host does not pass. |
+| Unsupported accelerator signatures | Routing witnesses show legal Merlin-host execution when qualified fallback is declared, or explicit refusal otherwise. A negative routing test does not qualify the host implementation. |
+| Host/accelerator integration | Whole-program gates cover partitioning, transfers, packing, synchronization, layouts, output reconstruction, linking and source ownership. Operation-level passes cannot replace these gates. |
+| Selected end-to-end models | All required programs for each frozen model/checkpoint/shape/dtype compile and link, run on their declared engines, and pass complete numerical output checks. A partial model, different checkpoint, or easier execution engine cannot substitute for a required program. |
+| Reusable delivery | Deliver the compiler source and reproducible build/runtime invocation. Lowering choices derive from input semantics and target capabilities; benchmark identities, golden outputs and model names must not select production behavior. |
+
+Maintain an obligation ledger mapping each required signature, boundary,
+composition and model program to its capsule or whole-program gate, exact input
+identity, result and unresolved prerequisites. Completion requires no unresolved
+mandatory obligations, no omitted required model programs, and no failed required
+gates. Coverage measures obligations; capsule count is not the completion metric.
+Phase 2 performance members are separate from the functional completion ledger.
+Deferring their preparation requires an explicit selector that preserves their
+deferred requirements; the existing generator has no blanket skip-performance
+switch.
+
+Supported shape domains include their declared tails, capacity boundaries,
+broadcasting, aliasing and state behavior. Representative tests qualify the tested
+cases only. A claim covering every program in an infinite domain additionally
+needs sound correctness proofs or independently validated translation; exhaustive
+testing can establish a claim only for an explicitly finite domain. State the
+actual evidence scope in the final compiler qualification report.
+
+This is the required completion contract, not a claim that all gates are already
+implemented or satisfied. In particular, the public whole-model host audit currently
+forbids tensor arithmetic in accelerator-assigned tasks but permits it in
+host-assigned tasks; it does not yet establish that all host tensor code is
+Merlin-owned. Track that enforcement gap as an unresolved obligation. Private
+full-model source/linkage and numerical gates remain mandatory, and their passes
+must be recorded separately from public capsule scores and launch preflight.
+
 ## Reserve CPU pools before the fresh launch
 
 On a 32-CPU worker, an operator may reserve CPUs 8–30 for the experiment and
