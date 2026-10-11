@@ -22,6 +22,7 @@ from merlin.common import storage_lifecycle as storage
 from merlin_experiments.execution import _protocol as protocol
 
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file, write_json
+from .external_resources import ExternalResourceBoundary, executing_resource_boundary
 from .feedback_guardian import run_feedback_guardian
 from .feedback_protocol import FeedbackValueLimits, receive_feedback_value
 from .portfolio_launch import acquire_host_resource_lease
@@ -43,7 +44,7 @@ class AssignedResources:
     reserve_fraction: float = 0.2
     require_hard_limits: bool = False
 
-    def verify(self):
+    def verify(self, *, external_boundary=None):
         if (
             type(self.cpu_ids) is not tuple
             or not self.cpu_ids
@@ -60,7 +61,13 @@ class AssignedResources:
             or not 0 <= self.reserve_fraction < 1
         ):
             raise StageGateError("evaluation pool requires explicit usable assigned CPU/RAM/disk/engine capacity")
-        if type(self.require_hard_limits) is not bool or self.require_hard_limits:
+        if type(self.require_hard_limits) is not bool:
+            raise StageGateError("hard resource selection must be an explicit bool")
+        if external_boundary is not None:
+            if type(external_boundary) is not ExternalResourceBoundary:
+                raise StageGateError("resource enforcement requires the exact live-issued external boundary")
+            external_boundary.verify(cpu_ids=self.cpu_ids, ram_bytes=self.ram_bytes, disk_bytes=self.disk_bytes)
+        elif self.require_hard_limits:
             raise StageGateError(
                 "aggregate hard limits require a separately selected enforcing envelope; unavailable here"
             )
@@ -109,8 +116,25 @@ def _environment():
     return document_sha256(dict(os.environ))
 
 
-def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index):
+def _fixed_evaluator(
+    *, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index, resource_boundary=None
+):
     """Fixed private worker entry; no callback, command or import selection in requests."""
+    with executing_resource_boundary(resource_boundary):
+        return _evaluate_fixed_routes(
+            policy=policy,
+            revision=revision,
+            baseline_revision=baseline_revision,
+            kind=kind,
+            timeout_s=timeout_s,
+            root=root,
+            grant=grant,
+            cpus=cpus,
+            index=index,
+        )
+
+
+def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index):
     from . import corpus_feedback as CF
     from .component_screening import project_screening
     from .component_workflow import SCHEMA, _interval, validate_component_feedback
@@ -230,7 +254,19 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
 
 
 class ComponentEvaluationPool:
-    def __init__(self, *, policy, revisions, resources, job_resources, root, beam=3, max_pending=6, max_jobs=256):
+    def __init__(
+        self,
+        *,
+        policy,
+        revisions,
+        resources,
+        job_resources,
+        root,
+        beam=3,
+        max_pending=6,
+        max_jobs=256,
+        external_boundary=None,
+    ):
         from .component_analytical import ComponentAnalyticalBinding
 
         self.inputs = SearchInputs(policy)
@@ -247,7 +283,7 @@ class ComponentEvaluationPool:
             or not max_pending <= max_jobs <= 1024
         ):
             raise StageGateError("evaluation pool requires its fixed component policy and bounded host grants")
-        resources.verify()
+        resources.verify(external_boundary=external_boundary)
         job_resources.verify()
         self.inputs.validate()
         if (
@@ -256,6 +292,7 @@ class ComponentEvaluationPool:
         ):
             raise StageGateError("queued analytical route requires its issued independent execution binding")
         self.policy, self.revisions = policy, revisions
+        self._external_boundary = self._selected_boundary = external_boundary
         self.resources, self.grant, self.beam, self.max_pending = resources, job_resources, beam, max_pending
         self.max_jobs = max_jobs
         self._feedback_bytes = 0
@@ -291,11 +328,16 @@ class ComponentEvaluationPool:
             for field in ("cores", "ram_bytes", "disk_bytes", "engine_slots")
         ):
             raise StageGateError("one evaluation exceeds its assigned capacity after author and source reserves")
-        self.root.mkdir(parents=True, mode=0o700)
         provider = self.inputs.analytical
         lease_path = (
             provider.binding.lease_path if provider is not None else self.root.parent / "component-engine.lease"
         )
+        self._lease_path = lease_path
+        self._writable_roots = self._resource_writable_roots(lease_path)
+        self._verify_resource_boundary()
+        if external_boundary is not None:
+            self.enforcement.update(external_boundary.receipt())
+        self.root.mkdir(parents=True, mode=0o700)
         self._engine_lease = acquire_host_resource_lease(self.root, lease_path=lease_path)
         if self._engine_lease is None:
             raise StageGateError("evaluation outer coordinator engine lease is busy")
@@ -303,10 +345,12 @@ class ComponentEvaluationPool:
         from merlin_experiments.execution import owned_children
 
         from . import (
+            _kernel_resources,
             component_analytical,
             component_execution,
             component_workflow,
             development_feedback,
+            external_resources,
             feedback_guardian,
             feedback_protocol,
             retained_revisions,
@@ -324,6 +368,8 @@ class ComponentEvaluationPool:
             feedback_protocol,
             retained_revisions,
             search_inputs,
+            external_resources,
+            _kernel_resources,
             supervised_feedback,
             owned_children,
             protocol,
@@ -355,7 +401,49 @@ class ComponentEvaluationPool:
         self._thread = threading.Thread(target=self._serve, name="component-evaluation-pool", daemon=True)
         self._thread.start()
 
+    def _resource_writable_roots(self, lease_path):
+        from merlin.common.paths import out_dir
+
+        roots = [
+            self.root,
+            self.revisions.root,
+            self.policy.candidate,
+            self.policy.receipt_path.parent,
+            Path(lease_path).parent,
+            out_dir(),
+        ]
+        provider = self.inputs.analytical
+        if provider is not None:
+            roots.append(provider.binding.output)
+            if provider.binding.independent_arms is not None:
+                roots.append(provider.binding.independent_arms.cache_root)
+            compiled = getattr(provider.binding, "compiled_arms", None)
+            if compiled is not None:
+                roots.append(compiled.execution.output)
+        if self.inputs.rtl is not None:
+            roots.append(self.inputs.rtl.work_root)
+        if self._external_boundary is not None:
+            temporary = os.environ.get("TMPDIR")
+            if not temporary:
+                raise StageGateError("hard resource launch needs explicit TMPDIR on capped backing storage")
+            roots.append(Path(temporary))
+        return tuple(sorted(set(map(Path, roots))))
+
+    def _verify_resource_boundary(self):
+        if self._external_boundary is not self._selected_boundary:
+            raise StageGateError("evaluation external resource owner changed")
+        if self._external_boundary is None:
+            return
+        if self._resource_writable_roots(self._lease_path) != self._writable_roots:
+            raise StageGateError("evaluation writable resource owners changed")
+        context = getattr(getattr(getattr(self.policy, "independent_runtime", None), "qualification", None), "context", None)
+        if getattr(context, "container_transport", None) is not None:
+            raise StageGateError("hard resource boundary cannot admit an unbound external container executor")
+        self._external_boundary.verify(writable_roots=self._writable_roots)
+
     def _closure(self):
+        self.resources.verify(external_boundary=self._external_boundary)
+        self._verify_resource_boundary()
         if (
             self.resources,
             self.grant,
@@ -398,6 +486,7 @@ class ComponentEvaluationPool:
                 "baseline": self.policy.baseline_admission.sha256,
                 "implementation": [(str(path), digest) for path, digest in self._implementation_pins],
                 "resources": asdict(self.resources),
+                "external_boundary": None if self._external_boundary is None else self._external_boundary.verify(),
                 "grant": asdict(self.grant),
             }
         )
@@ -498,6 +587,12 @@ class ComponentEvaluationPool:
         return total
 
     def _status(self, job):
+        enforcement = dict(self.enforcement)
+        if self._external_boundary is not None:
+            try:
+                self._verify_resource_boundary()
+            except StageGateError:
+                enforcement["hard_aggregate_limits"] = "UNKNOWN"
         return {
             "job_id": job.job_id,
             **job.revision.public_record(),
@@ -508,7 +603,7 @@ class ComponentEvaluationPool:
             "refusal": job.refusal,
             "promotion": "NO_FINAL_ACCEPTANCE",
             "grant": asdict(self.grant),
-            "resource_enforcement": dict(self.enforcement),
+            "resource_enforcement": enforcement,
         }
 
     def status(self, job_id):
@@ -551,11 +646,11 @@ class ComponentEvaluationPool:
     def _save(self, job):
         write_json(self.root / (job.job_id + ".json"), self._status(job))
 
-    def _release(self, job):
+    def _release(self, job, *, state=None):
         for path, token in job.pins:
             storage.unpin(path, token)
         job.pins.clear()
-        job.lease.close("completed" if job.state == "completed" else "failed")
+        job.lease.close("completed" if (state or job.state) == "completed" else "failed")
 
     def _start(self, job, cpus):
         self._verify(job)
@@ -601,6 +696,7 @@ class ComponentEvaluationPool:
                             grant=self.grant,
                             cpus=cpus,
                             index=list(self._jobs).index(job.job_id),
+                            resource_boundary=self._external_boundary,
                         ),
                         destination,
                         FeedbackValueLimits(),
@@ -652,7 +748,10 @@ class ComponentEvaluationPool:
             receipt, reaped, exitcode = None, False, None
         if not reaped or not _complete_cleanup(receipt, job.guardian_pid, job.root):
             job.state, job.refusal = "cleanup_unknown", "evaluation descendant cleanup UNKNOWN; grants retained"
-            self._save(job)
+            try:
+                self._save(job)
+            except OSError:
+                pass
             return
         os.close(job.guardian_fd)
         job.guardian_fd = None
@@ -668,18 +767,36 @@ class ComponentEvaluationPool:
                     raise StageGateError("completed evaluation exceeded its retained feedback byte grant")
             except Exception as failure:
                 error = failure
-        job.state = "cancelled" if job.cancel_requested else "refused" if error else "completed"
+        state = "cancelled" if job.cancel_requested else "refused" if error else "completed"
+        job.state = "finalizing"
         job.refusal = None if error is None else f"evaluation refused ({type(error).__name__})"
-        job.result = result if job.state == "completed" else None
-        if error is not None:
-            write_json(job.root / "refusal.json", {"type": type(error).__name__, "detail": str(error)[:512]})
+        job.result = result if state == "completed" else None
+        try:
+            if error is not None:
+                write_json(job.root / "refusal.json", {"type": type(error).__name__, "detail": str(error)[:512]})
+            if job.result is not None:
+                write_json(job.root / "feedback.json", job.result)
+                (job.root / "feedback.json").chmod(0o400)
+            write_json(job.root / "cleanup.json", receipt)
+            self._save(job)
+            self._release(job, state=state)
+        except OSError:
+            job.state, job.result = "cleanup_unknown", None
+            job.refusal = "evaluation storage finalization UNKNOWN; grants retained"
+            try:
+                self._save(job)
+            except OSError:
+                pass
+            return
         if job.result is not None:
             self._feedback_bytes += len(canonical_json(job.result))
-            write_json(job.root / "feedback.json", job.result)
-            (job.root / "feedback.json").chmod(0o400)
-        write_json(job.root / "cleanup.json", receipt)
-        self._release(job)
-        self._save(job)
+        job.state = state
+        # Exact feedback/cleanup and closed ownership are already durable. This
+        # control index cannot undo them if the capped filesystem becomes full.
+        try:
+            self._save(job)
+        except OSError:
+            pass
 
     def _tick(self):
         active = [job for job in self._jobs.values() if job.state not in TERMINAL and job.state != "queued"]
@@ -687,6 +804,7 @@ class ComponentEvaluationPool:
             if job.state == "cleanup_unknown":
                 continue
             try:
+                self._verify_resource_boundary()
                 total = self._disk_bytes(job.root)
                 error = None
                 if total > self.grant.disk_bytes:

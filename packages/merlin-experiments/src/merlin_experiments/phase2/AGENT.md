@@ -43,6 +43,21 @@ source, and rechecks the pin before sealing. The selection, its file path and
 excluded hashes remain outside the snapshot and manifest. Operators must pass
 their same private selection explicitly; no protected source discovery or new
 qualification follows from a successful publication check.
+`external_resources` and `_kernel_resources` verify externally provisioned Linux
+cgroup v2 ceilings and one whole capped backing filesystem without creating or
+changing controls. The exact live-issued owner is a separate trusted launch
+argument, never serialized assigned capacity or scientific authority. Require
+unprivileged no-new-privileges membership, nonwritable migration/limit controls,
+finite local CPU/RAM ceilings, swap disabled and the selected effective cpuset.
+Reopen controls, membership and all original writable roots before admission
+and result use. Linked roots, descendant mounts, large filesystems with quota
+metadata, delegated native services and containers remain refused in hard mode.
+The storage guarantee is allocated backing capacity, not sparse logical bytes.
+`bounded_tool_scratch` preserves original grants and replaces fresh temporary
+backing only; its directories remain owned until the original command closes.
+Default calls preserve their exact argv. Pool storage-finalization failure must
+retain a nonterminal UNKNOWN state and grants despite actual child reaping;
+missing durable evidence cannot publish a completed result.
 
 `supervised_feedback` runs the callback worker and retains private
 transport/exit/refusal evidence. `feedback_protocol` accepts only bounded plain

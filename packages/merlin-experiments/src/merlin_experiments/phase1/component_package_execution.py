@@ -20,6 +20,7 @@ from merlin.targetgen import package_runtime as P
 from merlin_experiments.execution.container_transport import PreparedContainerTransport, mounts_from_strict_policy
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import ComponentView, RuntimeGrant, strict_tool_policy
+from merlin_experiments.phase2.external_resources import active_resource_boundary, bounded_tool_scratch
 
 
 def selected_compiler_transport(runtime_authority, *, view, runtime):
@@ -137,6 +138,8 @@ class ComponentPackageExecutor:
                 Path(__file__),
             )
             if self.container_transport is not None:
+                if active_resource_boundary() is not None:
+                    raise C.StageGateError("hard resource budget cannot admit an unbound external container executor")
                 if type(self.container_transport) is not PreparedContainerTransport:
                     raise C.StageGateError(
                         "component package requires an explicitly prepared original container transport"
@@ -176,15 +179,18 @@ class ComponentPackageExecutor:
                         shutil.copyfile(host_output, output_json)
                     record.returned(stdout=result.stdout, stderr=result.stderr)
                     return result
-            with invocation_record.observe(
-                invocation_directory,
-                stage=name,
-                argv=[*policy, "--", *argv],
-                inputs=(input_mlir,),
-                outputs=(output_json,) if output_json is not None else (),
-                dependencies=dependencies,
-            ) as record:
-                result = subprocess.run([*policy, "--", *argv], capture_output=True, text=True, timeout=timeout)
+            with (
+                bounded_tool_scratch([*policy, "--", *argv], owner=Path(invocation_directory)) as command,
+                invocation_record.observe(
+                    invocation_directory,
+                    stage=name,
+                    argv=command,
+                    inputs=(input_mlir,),
+                    outputs=(output_json,) if output_json is not None else (),
+                    dependencies=dependencies,
+                ) as record,
+            ):
+                result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
                 if host_output.is_symlink():
                     raise C.StageGateError("component compiler output staging contains a linked product")
                 if output_json is not None and host_output.is_file():

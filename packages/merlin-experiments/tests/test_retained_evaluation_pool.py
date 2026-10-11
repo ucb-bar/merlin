@@ -1,6 +1,7 @@
 """Harmless fork workers check retained revisions and actual cleanup ownership."""
 
 import ast
+import errno
 import json
 import os
 import threading
@@ -276,6 +277,43 @@ def test_drift_refuses_queued_and_previously_completed_results(selected_pool):
     (root / "continue").touch()
     finished = wait_for(lambda: pool.status(job["job_id"]) if pool.status(job["job_id"])["terminal"] else None)
     assert finished["state"] == "refused" and finished["result"] is None
+
+
+@pytest.mark.parametrize("selected_pool", [completing_feedback], indirect=True)
+def test_full_evidence_storage_keeps_reaped_job_unknown_and_lease_held(selected_pool, monkeypatch):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    write, captured = EP.write_json, {}
+
+    def full_cleanup_storage(path, value):
+        if path.name == "cleanup.json":
+            captured["receipt"] = value
+            raise OSError(errno.ENOSPC, "injected full evidence storage")
+        return write(path, value)
+
+    monkeypatch.setattr(EP, "write_json", full_cleanup_storage)
+    row = pool.submit(revision.revision_id)
+    job = pool._jobs[row["job_id"]]
+    try:
+        final = wait_for(
+            lambda: pool.status(job.job_id) if pool.status(job.job_id)["state"] == "cleanup_unknown" else None
+        )
+        assert not final["terminal"] and final["result"] is None
+        assert job.guardian_fd is None and captured["receipt"]["cleanup"]["complete"]
+        assert job.pins and storage.blockers(job.root)
+        lifecycle = next(item for item in storage.inventory()["paths"] if item["path"] == str(job.root))
+        assert lifecycle["leases"] == 1
+        with pytest.raises(StageGateError, match="outer engine lease retained"):
+            pool.close()
+    finally:
+        # Test-only teardown uses the actual already-reaped guardian receipt.
+        # It is not a production recovery or fabricated cleanup mechanism.
+        monkeypatch.setattr(EP, "write_json", write)
+        if job.guardian_fd is None and "receipt" in captured:
+            with pool._lock:
+                write(job.root / "cleanup.json", captured["receipt"])
+                pool._release(job, state="refused")
+                job.state, job.result = "refused", None
 
 
 @pytest.mark.parametrize("selected_pool", [descendants], indirect=True)

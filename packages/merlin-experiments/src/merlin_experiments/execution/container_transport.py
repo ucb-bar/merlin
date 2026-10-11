@@ -130,6 +130,10 @@ class PreparedContainerTransport:
         is a refusal even when the delegated service reports a stopped container.
         No candidate rollback, native-service lease release or OS hard deadline.
         """
+        from merlin_experiments.phase2.external_resources import active_resource_boundary
+
+        if active_resource_boundary() is not None:
+            raise StageGateError("hard resource boundary cannot admit an unbound external container executor")
         closure = self.verify()
         masks = image_root_masks(self.image_archive)
         if (
