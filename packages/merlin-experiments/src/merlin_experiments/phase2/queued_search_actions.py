@@ -5,7 +5,7 @@ import time
 from . import component_workflow as controls
 from .broker import BrokerAction
 from .contracts import StageGateError, canonical_json
-from .search_inputs import ORDINARY_KIND
+from .search_inputs import ORDINARY_FAST_KIND, ORDINARY_KIND
 
 
 def actions():
@@ -15,7 +15,8 @@ def actions():
             ("__host_corpus_search_pool__", action.name),
             action.placeholders,
             (
-                f"Queue original corpus feedback for a retained revision; kind={ORDINARY_KIND}"
+                f"Queue retained revision: kind={ORDINARY_FAST_KIND} observes compilation and Spike; "
+                f"kind={ORDINARY_KIND} measures certified RTL. Cheap screening cannot select the final source."
                 if action.name == controls.EVALUATION_SUBMIT_ACTION
                 else action.purpose
             ),

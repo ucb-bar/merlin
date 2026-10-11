@@ -14,6 +14,24 @@ the separate strict component-runtime roles. Retained member fanout must match
 the explicit queue grant and propagate the original execution contexts into
 every member worker.
 
+`ordinary_fast_feedback` runs the same boxed compiler/capsule ladder through an
+explicit L2 execution ceiling. Preserve original mandatory tiers as pending;
+compile/Spike observations cannot become full grades or measured timing.
+Join fresh emitted LLVM and actual linked ELF/invocation products before using
+the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
+nor linked bytes are physical work. `ordinary_calibration` executes this fixed
+route and complete original RTL feedback on allocated AWS CPU for explicit
+disjoint public training/held member groups and immutable compiler alternatives.
+Reopen the actual same-source/full-numeric/selected-engine products. Collapse
+identical executable replicates; ranking pairs compare alternatives on the same
+member/configuration. Keep original ranking, error, coverage and sample-count
+gates. Only a live issued owner can install screening before queue admission.
+Calibration forces fresh execution; absent qualification keeps measured fallback.
+Optional native runtime/index selections remain original live process owners,
+and default calls stay fresh. Publish artifact archives only from the parent
+completion hook after actual cleanup and durable resource release; publication
+failure leaves future cache misses and never changes the completed verdict.
+
 `normal_resource_launch` adapts the original normal author/probe/broker bwrap
 prefix under an exact live external resource owner. Every empty tmpfs mask and
 shm directory uses private capped backing; keep scratch through the original

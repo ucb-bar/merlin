@@ -7,6 +7,7 @@ The two routes keep their own scientific admission and feedback schemas.
 from .contracts import StageGateError
 
 ORDINARY_KIND = "corpus-rtl-feedback"
+ORDINARY_FAST_KIND = "corpus-compile-spike-feedback"
 
 
 class SearchInputs:
@@ -44,7 +45,11 @@ class SearchInputs:
 
     @property
     def kinds(self):
-        return (ORDINARY_KIND,) if self.ordinary else ("component-analytical-feedback", self.timing_kind)
+        return (
+            (ORDINARY_FAST_KIND, ORDINARY_KIND)
+            if self.ordinary
+            else ("component-analytical-feedback", self.timing_kind)
+        )
 
     def identities(self):
         self.validate()
@@ -62,6 +67,10 @@ class SearchInputs:
 
         roster = self.validate()
         if self.ordinary:
+            if kind == ORDINARY_FAST_KIND:
+                from .ordinary_fast_feedback import validate_feedback
+
+                return validate_feedback(raw, policy=self.policy, revision=revision)
             if kind != ORDINARY_KIND:
                 raise StageGateError("normal corpus search selected another evaluator")
             result = validate_redacted_feedback(raw)

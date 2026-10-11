@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import nullcontext
 from dataclasses import asdict, is_dataclass, replace
 from functools import partial
 from pathlib import Path
@@ -25,6 +26,8 @@ from . import development_feedback as DF
 from . import functional_inputs as FI
 from . import gsim_gate as GATE
 from . import measurement_support as MS
+from . import ordinary_calibration as CAL
+from . import ordinary_fast_feedback as FAST
 from . import paired_measurement as PME
 from . import queued_search_actions as QSA
 from .broker_policy import BrokerServices
@@ -114,13 +117,19 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
         self.evaluation_pool, self.search_coordinator = None, None
+        self._ordinary_screen = None
+        self.native_runtime_view, self.artifact_retest_index = None, None
         self._functions = (
             (DF, "development_executor", DF.development_executor),
             (DF.DevelopmentGsimFeedback, "evaluate", DF.DevelopmentGsimFeedback.evaluate),
             (PME, "run_execution", PME.run_execution),
             (AR, "observe_public_artifact_retests", AR.observe_public_artifact_retests),
+            (FAST, "evaluate_retained", FAST.evaluate_retained),
+            (FAST, "compiled_observation", FAST.compiled_observation),
+            (FAST.CR, "run_capsule", FAST.CR.run_capsule),
+            (FAST.CR, "simulator_adapter", FAST.CR.simulator_adapter),
         )
-        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR)
+        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR, FAST, CAL, FAST.S, FAST.CR)
         self._source_pins = tuple(
             (str(path), sha256_file(path))
             for path in (Path(__file__).resolve(), *(Path(owner.__file__).resolve() for owner in owners))
@@ -163,7 +172,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             return QSA.execute(self, action_name, rendered, timeout_s, started)
         return super().execute(request, action_name, rendered, call_index, timeout_s, started)
 
-    def _binding(self):
+    def _binding(self, *, include_native=True):
         feedback, functional = self._selected_feedback, self._functional
         executor = feedback.executor
         if (
@@ -210,7 +219,63 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                 "tuning_call_budget": feedback.tuning_call_budget,
             },
             "runtime_source_pins": [{"path": path, "sha256": digest} for path, digest in self._source_pins],
+            "ordinary_screen_sha256": None if self._ordinary_screen is None else self._ordinary_screen.sha256,
+            "native_runtime_view": (
+                self.native_runtime_view.verify() if include_native and self.native_runtime_view is not None else None
+            ),
+            "artifact_retest_index": (
+                self.artifact_retest_index.verify(
+                    runtime_owner=self.native_runtime_view, context=self.artifact_retest_context
+                )
+                if include_native and self.artifact_retest_index is not None
+                else None
+            ),
         }
+
+    @property
+    def artifact_retest_context(self):
+        binding = self._binding(include_native=False)
+        for key in ("native_runtime_view", "artifact_retest_index", "ordinary_screen_sha256"):
+            binding.pop(key)
+        return {"normal_binding_sha256": document_sha256(binding)}
+
+    def install_native_runtime(self, view, index=None):
+        """Bind optional live original process owners before queued work exists."""
+        from merlin.runtime.native_runtime import NativeRuntimeView
+
+        if (
+            type(view) is not NativeRuntimeView
+            or self.native_runtime_view is not None
+            or self.evaluation_pool is not None
+        ):
+            raise StageGateError("normal runtime requires its original live owner before queue admission")
+        identity = view.verify(backend=FAST.get_backend(self.target_experiment.target))
+        if identity["engine"]["sha256"] != self.feedback_evaluator.certificate.pins["gsim_binary"]["sha256"]:
+            raise StageGateError("normal runtime view differs from the original selected certificate engine")
+        if index is not None:
+            if type(index) is not AR.ArtifactRetestIndex:
+                raise StageGateError("normal runtime index must be issued by its original artifact owner")
+            index.verify(runtime_owner=view, context=self.artifact_retest_context)
+        self.native_runtime_view, self.artifact_retest_index = view, index
+        self._selection = canonical_json(self._binding())
+        self.validate_search_inputs()
+
+    def _native_context(self):
+        if self.native_runtime_view is None:
+            return nullcontext()
+        from merlin.runtime.native_runtime import executing_native_runtime
+
+        return executing_native_runtime(self.native_runtime_view)
+
+    def publish_completed_artifacts(self, job_root):
+        """Parent completion hook; an unavailable cache keeps future execution fresh."""
+        if self.artifact_retest_index is None:
+            return {"status": "UNAVAILABLE", "published": 0}
+        try:
+            count = self.artifact_retest_index.publish_completed_job(Path(job_root))
+            return {"status": "published", "published": count}
+        except Exception as error:  # noqa: BLE001 - cache publication cannot change an already completed verdict
+            return {"status": "UNKNOWN", "published": 0, "reason": type(error).__name__}
 
     def validate_search_inputs(self):
         """Reopen original admission pins without reading the author's mutable bytes."""
@@ -261,6 +326,21 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             raise StageGateError("ordinary search original functional/corpus/target/executor binding changed")
         return roster
 
+    def install_screen(self, screen):
+        """Select a live normal calibration before any queued job is admitted."""
+        from .ordinary_calibration import OrdinaryCalibration
+
+        if (
+            type(screen) is not OrdinaryCalibration
+            or self._ordinary_screen is not None
+            or self.evaluation_pool is not None
+        ):
+            raise StageGateError("ordinary screen needs a live fixed calibration before queue admission")
+        screen.verify(self)
+        self._ordinary_screen = screen
+        self._selection = canonical_json(self._binding())
+        self.validate_search_inputs()
+
     def binding(self):
         """Private closed selection data; no new semantic or physical authority."""
         self.validate_search_inputs()
@@ -270,7 +350,18 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     def search_closure_sha256(self):
         return document_sha256(self.binding())
 
-    def evaluate_retained(self, revision, baseline_revision, *, work_root, call_index, timeout_s, workers=1):
+    def evaluate_retained(
+        self,
+        revision,
+        baseline_revision,
+        *,
+        work_root,
+        call_index,
+        timeout_s,
+        workers=1,
+        kind="corpus-rtl-feedback",
+        reuse_artifacts=True,
+    ):
         """Run the original complete tuning roster from issued immutable sources."""
         if (
             type(revision) is not RetainedRevision
@@ -281,6 +372,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             or not 1 <= timeout_s <= ITERATION_MAX_SECONDS
             or type(workers) is not int
             or workers < 1
+            or type(reuse_artifacts) is not bool
         ):
             raise StageGateError("ordinary queued feedback needs issued revisions and a reduced-witness deadline")
         work_root = Path(work_root)
@@ -298,6 +390,18 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             raise StageGateError("ordinary queued feedback baseline differs from its Phase 1 functional fork")
         if DF.sweep_workers() != workers:
             raise StageGateError("ordinary retained feedback differs from its explicit member worker grant")
+        if kind == FAST.KIND:
+            return FAST.evaluate_retained(
+                self,
+                revision,
+                baseline_revision,
+                work_root=work_root,
+                call_index=call_index,
+                timeout_s=timeout_s,
+                workers=workers,
+            )
+        if kind != "corpus-rtl-feedback":
+            raise StageGateError("ordinary queued feedback selected an unsupported fixed evaluator")
         deadline = time.monotonic() + timeout_s
         feedback = replace(
             self._selected_feedback,
@@ -314,8 +418,15 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         work_root.mkdir(parents=True, mode=0o700)
         with (
             executing_revisions(revision, baseline_revision),
+            self._native_context(),
             AR.observe_public_artifact_retests(
-                work_root, context={"normal_binding_sha256": self.search_closure_sha256}
+                work_root,
+                context=self.artifact_retest_context,
+                **(
+                    {"index": self.artifact_retest_index}
+                    if reuse_artifacts and self.artifact_retest_index is not None
+                    else {}
+                ),
             ),
         ):
             document = CF.validate_redacted_feedback(
@@ -365,6 +476,8 @@ def prepare_ordinary_search_policy(
     services=BrokerServices(),
     e2e_sentinel=None,
     whole_model_inputs=None,
+    native_runtime_view=None,
+    artifact_retest_index=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -414,7 +527,7 @@ def prepare_ordinary_search_policy(
         functional_run_dir=functional.run_dir,
         whole_model_inputs=whole_model_inputs,
     )
-    return OrdinarySearchPolicy(
+    policy = OrdinarySearchPolicy(
         functional=functional,
         corpus=corpus,
         feedback=feedback,
@@ -427,3 +540,8 @@ def prepare_ordinary_search_policy(
         e2e_sentinel=e2e_sentinel,
         _issuer=_ISSUER,
     )
+    if native_runtime_view is not None:
+        policy.install_native_runtime(native_runtime_view, artifact_retest_index)
+    elif artifact_retest_index is not None:
+        raise StageGateError("normal artifact index requires its exact live native runtime owner")
+    return policy
