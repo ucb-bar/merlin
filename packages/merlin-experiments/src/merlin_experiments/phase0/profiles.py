@@ -25,6 +25,32 @@ from .provenance import _document_digest
 _SYNTHESIS_INPUT_KEYS = frozenset({"conformance_spec_sha256", "recipe_sha256", "workload_spec_sha256"})
 
 
+def _render_variant(variant: dict, combo: dict) -> dict:
+    """A variant override with its string fields resolved against the shape point it is paired with.
+
+    Only ``{extent}`` substitution, one level into a nested mapping -- enough for a comparison group to
+    name the shape its members share (``fmb_{M}x{K}x{N}``) without any entry writing that shape down.
+    A field with no placeholder is copied through untouched.
+    """
+    out: dict = {}
+    for key, value in variant.items():
+        if isinstance(value, str):
+            out[key] = value.format(**combo)
+        elif isinstance(value, dict):
+            out[key] = {k: (v.format(**combo) if isinstance(v, str) else v) for k, v in value.items()}
+        else:
+            out[key] = value
+    return out
+
+
+def _cross_product(axes: dict) -> list[dict]:
+    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
+    combos: list[dict] = [{}]
+    for axis, values in axes.items():
+        combos = [{**combo, axis: value} for combo in combos for value in values]
+    return combos
+
+
 def application_inventory_path(conformance_spec: str | Path, *, document: dict | None = None) -> Path | None:
     """Resolve only the requirement's adjacent generated sidecar, never an arbitrary path."""
     spec = Path(conformance_spec)

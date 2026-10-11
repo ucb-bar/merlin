@@ -11,7 +11,14 @@ from merlin.runtime.backends.base import EXECUTION_CAPABILITIES, execution_capab
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 
 from .capture_residency import _bound_capture_inventory, _capture_residency_sweep
-from .profiles import _DERIVED_AXES, _comparison_roles, _validate_performance_block, pending_host_source_basis
+from .profiles import (
+    _DERIVED_AXES,
+    _comparison_roles,
+    _cross_product,
+    _render_variant,
+    _validate_performance_block,
+    pending_host_source_basis,
+)
 from .provenance import _document_digest
 
 #: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
@@ -1482,29 +1489,3 @@ def expand_sweeps(
             generated = kept
 
     return entries + generated
-
-
-def _render_variant(variant: dict, combo: dict) -> dict:
-    """A variant override with its string fields resolved against the shape point it is paired with.
-
-    Only ``{extent}`` substitution, one level into a nested mapping -- enough for a comparison group to
-    name the shape its members share (``fmb_{M}x{K}x{N}``) without any entry writing that shape down.
-    A field with no placeholder is copied through untouched.
-    """
-    out: dict = {}
-    for key, value in variant.items():
-        if isinstance(value, str):
-            out[key] = value.format(**combo)
-        elif isinstance(value, dict):
-            out[key] = {k: (v.format(**combo) if isinstance(v, str) else v) for k, v in value.items()}
-        else:
-            out[key] = value
-    return out
-
-
-def _cross_product(axes: dict) -> list[dict]:
-    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
-    combos: list[dict] = [{}]
-    for axis, values in axes.items():
-        combos = [{**combo, axis: value} for combo in combos for value in values]
-    return combos

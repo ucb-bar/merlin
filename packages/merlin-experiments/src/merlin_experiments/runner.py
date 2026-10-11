@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import fcntl
-import hashlib
 import json
 import os
 import signal
@@ -11,44 +10,19 @@ import subprocess
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 from yaml import YAMLError
+
+from merlin.common.digest import sha256_file as _sha
 
 from .adapters import ADAPTERS, PHASE0_MODULE, PHASE1_MODULE, phase0_sources, phase0_startup_inputs, phase1_entrypoint
 from .phase1.source_inputs import fingerprint
 from .spec import ExperimentSpec, SpecError, read_yaml
+from .spec import default_run_dir as default_run_dir
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def default_run_dir(spec: ExperimentSpec, phase: str = "all") -> Path:
-    """Where a new orchestration lives when the operator names no ``--run-dir``.
-
-    A single-phase run is a phase run: ``out/runs/<target>/phase<N>/<TS>_<experiment>_<sha7>/``, so
-    a Phase 0 run owns its evidence, capsules and coverage at the phase address every later phase
-    and the target index cite. A multi-phase orchestration keeps
-    ``out/runs/<target>/<experiment>/<TS>_<uuid8>/``.
-    """
-    from merlin.common.artifacts import phase_run_id
-    from merlin.common.paths import phase_runs_root, runs_dir
-
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    if phase in ("0", "1", "2"):
-        base = phase_runs_root(spec.target, phase)
-        candidate = base / phase_run_id(spec.id, timestamp=stamp)
-        return candidate if not candidate.exists() else base / f"{candidate.name}_{uuid4().hex[:6]}"
-    return runs_dir() / spec.target / spec.id / f"{stamp}_{uuid4().hex[:8]}"
 
 
 def _corpus_closure(command: dict) -> dict:
@@ -859,7 +833,8 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
                 declared = sorted(key for key in ("rocc_semantics", "rtl_checks") if plugin.get(key))
                 problems.append(
                     f"{target} plugin: the generic backend {plugin['backend']!r} serves RTL checks only from "
-                    f"plugin.rocc_semantics and plugin.rtl_checks; the selected provider declares {declared or 'neither'}"
+                    f"plugin.rocc_semantics and plugin.rtl_checks; "
+                    f"the selected provider declares {declared or 'neither'}"
                 )
             return [f"phase 1 EL4 support: {problem}" for problem in problems]
         except (OSError, ValueError) as exc:
@@ -916,9 +891,13 @@ def preflight(plan: dict) -> dict:
             ):
                 try:
                     check_performance_oracles(
-                        command, target=plan["target"], profile_target=_command_value(command, "--target"),
-                        diagnostic=("--evidence-mode" in command["argv"]
-                                    and _command_value(command, "--evidence-mode") == "diagnostic"),
+                        command,
+                        target=plan["target"],
+                        profile_target=_command_value(command, "--target"),
+                        diagnostic=(
+                            "--evidence-mode" in command["argv"]
+                            and _command_value(command, "--evidence-mode") == "diagnostic"
+                        ),
                     )
                 except (OSError, ValueError, YAMLError) as exc:
                     raise SpecError(f"invalid Phase 0 performance selection: {exc}") from exc

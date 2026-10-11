@@ -26,6 +26,8 @@ recreate live source authority or upgrade prior observations.
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
+Profiles also own declaration-order Cartesian products and one-level variant
+formatting; sweeps retain their existing import names and expansion semantics.
 
 `operator_exclusion.select(path, sha256)` is a fixed operator-only selection of
 an ordinary private content-pinned JSON hash list. Never discover protected
