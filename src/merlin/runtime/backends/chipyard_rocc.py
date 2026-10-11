@@ -206,6 +206,11 @@ def _validate_toolchain(block, abi):
             sum(flag.startswith(prefix) and len(flag) > len(prefix) for flag in flags) == 1,
             "execution recipe requires one explicit ISA and ABI selection",
         )
+    for prefix in ("--target=", "-fuse-ld="):
+        _require(
+            sum(flag.startswith(prefix) for flag in flags) <= 1,
+            "execution recipe contains ambiguous compiler selectors",
+        )
     for flag in flags:
         _require(
             flag in _CFLAGS
@@ -214,7 +219,7 @@ def _validate_toolchain(block, abi):
                 and flag[len(prefix) :].isascii()
                 and all(c.isalnum() or c in "_-." for c in flag[len(prefix) :])
                 and flag[len(prefix) :]
-                for prefix in ("-march=", "-mabi=", "-mcmodel=")
+                for prefix in ("-march=", "-mabi=", "-mcmodel=", "--target=", "-fuse-ld=")
             ),
             "execution recipe contains an unsupported compiler option",
         )
@@ -229,9 +234,9 @@ def _validate_toolchain(block, abi):
 
 def _validate_engine(engine, block):
     required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
-    _fields(block, required | ({"receipt"} if engine == "gsim" else set()))
+    _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()))
     _pin_shape(block["binary"])
-    if engine == "gsim":
+    if engine in {"gsim", "verilator"}:
         _pin_shape(block["receipt"])
     _path(block["cwd"])
     _strings(block["argv"])
@@ -321,9 +326,10 @@ class BoundRoCCBackend:
     def ORACLE(self):
         return {
             engine: {
+                "engine": engine,
                 "kind": "functional" if engine == "spike" else "rtl",
                 "fidelity": "functional_model" if engine == "spike" else "elaborated_rtl",
-                "derived_from_rtl": engine == "gsim",
+                "derived_from_rtl": engine in {"gsim", "verilator"},
                 "scope": _SCOPE,
             }
             for engine in self._block()["engines"]
@@ -435,6 +441,21 @@ class BoundRoCCBackend:
                 "selected engine receipt identifies another executable",
             )
             identity["receipt"] = lineage
+        elif engine == "verilator":
+            from merlin.runtime.backends.rtl_build_receipt import validate
+
+            receipt = _check_pin(block["receipt"])
+            try:
+                identity["receipt"] = validate(
+                    target=self.target,
+                    config=self._block()["config"],
+                    original_fir_sha256=self._data()["facts"]["inputs"]["fir_sha256"],
+                    binary=binary,
+                    receipt=receipt,
+                    checked_pin=_check_pin,
+                )
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise RoCCExecutionError("selected elaborated RTL build identity is unavailable or changed") from exc
         else:
             from merlin.targetgen import spike_extension, target_registry
 
@@ -454,6 +475,10 @@ class BoundRoCCBackend:
                 "flags": list(extension.spike_flags()),
             }
         return identity
+
+    def execution_engine_identity(self, engine):
+        """Reopen the selected engine's build identity; execution gates remain separate."""
+        return self._engine_identity(engine)
 
     def _status(self, engine):
         try:
@@ -504,7 +529,8 @@ class BoundRoCCBackend:
         return _path(self._engine("spike")["binary"]["path"])
 
     def verilator_path(self):
-        self._engine("verilator")
+        self._engine_identity("verilator")
+        return _path(self._engine("verilator")["binary"]["path"])
 
     _gsim_binary = gsim_path
     _spike_binary = spike_path
@@ -563,7 +589,7 @@ class BoundRoCCBackend:
         flags = before.get("extension", {}).get("flags", [])
         argv = [block["binary"]["path"], *flags, *(str(path) if arg == "{elf}" else arg for arg in block["argv"])]
         dependencies = [Path(__file__).resolve(), _path(block["binary"]["path"])]
-        if simulator == "gsim":
+        if simulator in {"gsim", "verilator"}:
             dependencies.append(_path(block["receipt"]["path"]))
         else:
             dependencies.append(Path(before["extension"]["path"]))
@@ -594,33 +620,40 @@ class BoundRoCCBackend:
             I.require_environment(observed.path, environment=block["environment"])
         data = result.stdout
         _require(
-            not any(marker.encode() in data for marker in block["failure_markers"]),
+            not any(marker.encode() in data + result.stderr for marker in block["failure_markers"]),
             "selected execution reported a declared failure",
         )
         return data if capture_bytes else data.decode("utf-8")
 
 
 def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
-    """Capture one selected process group, retaining finite partial output on refusal."""
+    """Keep complete stdout frames separate from bounded process diagnostics."""
     process = subprocess.Popen(
-        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True
+        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
     )
-    data = bytearray()
+    data = {"stdout": bytearray(), "stderr": bytearray()}
     deadline = time.monotonic() + timeout
     try:
         with selectors.DefaultSelector() as poll:
-            poll.register(process.stdout, selectors.EVENT_READ)
+            poll.register(process.stdout, selectors.EVENT_READ, "stdout")
+            poll.register(process.stderr, selectors.EVENT_READ, "stderr")
             while poll.get_map():
                 left = deadline - time.monotonic()
                 if left <= 0:
-                    raise subprocess.TimeoutExpired(argv, timeout, output=bytes(data))
+                    raise subprocess.TimeoutExpired(
+                        argv, timeout, output=bytes(data["stdout"]), stderr=bytes(data["stderr"])
+                    )
                 for key, _ in poll.select(min(left, 0.1)):
-                    chunk = os.read(key.fileobj.fileno(), min(65536, max_bytes + 1 - len(data)))
+                    total = len(data["stdout"]) + len(data["stderr"])
+                    chunk = os.read(key.fileobj.fileno(), min(65536, max_bytes + 1 - total))
                     if not chunk:
                         poll.unregister(key.fileobj)
                     else:
-                        data.extend(chunk)
-                        _require(len(data) <= max_bytes, "execution console exceeds its selected byte budget")
+                        data[key.data].extend(chunk)
+                        _require(
+                            len(data["stdout"]) + len(data["stderr"]) <= max_bytes,
+                            "execution console exceeds its selected byte budget",
+                        )
             process.wait(timeout=max(0.001, deadline - time.monotonic()))
     except BaseException:
         try:
@@ -628,11 +661,18 @@ def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
         except ProcessLookupError:
             pass
         process.wait()
-        observed.complete(subprocess.CompletedProcess(argv, process.returncode, stdout=bytes(data), stderr=b""))
+        observed.complete(
+            subprocess.CompletedProcess(
+                argv, process.returncode, stdout=bytes(data["stdout"]), stderr=bytes(data["stderr"])
+            )
+        )
         raise
     finally:
         process.stdout.close()
-    result = subprocess.CompletedProcess(argv, process.returncode, stdout=bytes(data), stderr=b"")
+        process.stderr.close()
+    result = subprocess.CompletedProcess(
+        argv, process.returncode, stdout=bytes(data["stdout"]), stderr=bytes(data["stderr"])
+    )
     observed.complete(result)
     return result
 
@@ -693,7 +733,7 @@ def bind(*, target, contract, facts):
     _require(abi.readback_policy.transport == FULL_VALUES_B64, "selected execution has no coherent readback transport")
     _validate_toolchain(block["toolchain"], abi)
     _require(
-        type(block["engines"]) is dict and block["engines"] and set(block["engines"]) <= {"spike", "gsim"},
+        type(block["engines"]) is dict and block["engines"] and set(block["engines"]) <= {"spike", "gsim", "verilator"},
         "RoCC execution requires explicitly supported engines",
     )
     for engine, engine_block in block["engines"].items():

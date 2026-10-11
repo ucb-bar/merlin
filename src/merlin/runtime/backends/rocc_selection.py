@@ -68,13 +68,13 @@ def prepare_contract(*, target, contract, facts):
     _resources(toolchain.get("headers"), backend._HEADERS)
     engines = block.get("engines")
     backend._require(
-        type(engines) is dict and engines and set(engines) <= {"spike", "gsim"},
+        type(engines) is dict and engines and set(engines) <= {"spike", "gsim", "verilator"},
         "deployment requires a supported explicit engine roster",
     )
     for engine, declaration in engines.items():
         backend._require(type(declaration) is dict, "deployment engine must be a mapping")
         _pin(declaration.get("binary"))
-        if engine == "gsim":
+        if engine in {"gsim", "verilator"}:
             _pin(declaration.get("receipt"))
     if "spike" in engines:
         extension = runner.get("spike_extension")

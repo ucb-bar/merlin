@@ -10,10 +10,13 @@ from pathlib import Path
 import pytest
 
 from merlin.common import invocation_record as I
+from merlin.runtime import harness_render as H
 from merlin.runtime.backends import chipyard_rocc as B
 from merlin.runtime.backends import rocc_selection as S
 from merlin.targetgen import gsim_emulator as GE
 from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
+
+pytest_plugins = ("test_rtl_build_receipt",)
 
 
 def _pin(path):
@@ -656,3 +659,110 @@ def test_gsim_refuses_weak_foreign_or_changed_lineage(selection, tmp_path, chang
     elif change == "missing_receipt":
         receipt.unlink()
     assert bound.available("gsim") is False
+
+
+def test_interleaved_stderr_does_not_interrupt_complete_stdout_frames(selection, tmp_path):
+    engine = _engine(selection)
+    binary = Path(engine["binary"]["path"])
+    lines = _console().splitlines()
+    binary.write_text(
+        "#!/bin/sh\n"
+        + "".join("printf '%s\\n' '" + line + "'\nprintf '%s\\n' 'RTL diagnostic' >&2\n" for line in lines)
+    )
+    engine["binary"] = _pin(binary)
+    elf = tmp_path / "input.elf"
+    elf.write_bytes(b"owned input")
+    bound = _bound(selection)
+    text = bound.run_elf(elf, simulator="spike", timeout=2)
+    assert text == _console()
+    assert bound.parse_output(text)[0] == {"Y": [[127, -128]]}
+    record = next(tmp_path.glob("invocations/*/invocation.json"))
+    assert record.with_name("stderr.bin").read_text() == "RTL diagnostic\n" * len(lines)
+
+
+def test_declared_failure_on_stderr_still_refuses(selection, tmp_path):
+    engine = _engine(selection)
+    binary = Path(engine["binary"]["path"])
+    binary.write_text("#!/bin/sh\nprintf '%s\\n' '" + _console().rstrip() + "'\nprintf '%s\\n' DECLARED_FAILURE >&2\n")
+    engine["binary"] = _pin(binary)
+    elf = tmp_path / "input.elf"
+    elf.write_bytes(b"owned input")
+    with pytest.raises(ValueError, match="declared failure"):
+        _bound(selection).run_elf(elf, simulator="spike", timeout=2)
+
+
+def test_stderr_flood_obeys_combined_console_budget(selection, tmp_path):
+    engine = _engine(selection)
+    binary = Path(engine["binary"]["path"])
+    binary.write_text("#!/bin/sh\nwhile :; do printf 012345678901234567890123456789 >&2; done\n")
+    engine["binary"] = _pin(binary)
+    engine["max_console_bytes"] = 256
+    elf = tmp_path / "input.elf"
+    elf.write_bytes(b"owned input")
+    with pytest.raises(ValueError, match="byte budget"):
+        _bound(selection).run_elf(elf, simulator="spike", timeout=2)
+    record = next(tmp_path.glob("invocations/*/invocation.json"))
+    assert record.with_name("stdout.bin").stat().st_size + record.with_name("stderr.bin").stat().st_size <= 257
+    assert json.loads(record.read_bytes())["status"] == "failed"
+
+
+def test_selected_clang_flags_are_explicit_and_unambiguous(selection):
+    flags = selection[0]["runner"]["chipyard_rocc"]["toolchain"]["cflags"]
+    flags += ["--target=riscv64-unknown-elf", "-fuse-ld=lld"]
+    assert _bound(selection).harness_build_recipe().cflags == tuple(flags)
+    for bad in ("--target=other", "-fuse-ld=other", "--target=", "-fuse-ld=/unselected/linker"):
+        test = copy.deepcopy(selection)
+        test[0]["runner"]["chipyard_rocc"]["toolchain"]["cflags"].append(bad)
+        with pytest.raises(ValueError):
+            _bound(test)
+
+
+def test_dram_placement_annotation_preserves_exact_logical_storage():
+    spec = {"shape": [2, 3], "dtype": "i32", "role": "input"}
+    expected = H._tensor(spec)
+    assert H._tensor({**spec, "base": 0x81000000}) == expected
+    for base in (True, -1, 2**64, "0x81000000", None):
+        with pytest.raises(ValueError, match="annotation"):
+            H._tensor({**spec, "base": base})
+    for field, value in (("storage_shape", [2, 16]), ("layout", "packed"), ("strides", [1, 2])):
+        with pytest.raises(ValueError):
+            H._tensor({**spec, "base": 0x81000000, field: value})
+
+
+def _native(selection, chain):
+    doc, validate, _, tmp = chain
+    validate()
+    binary = Path(doc["binary"]["path"])
+    binary.chmod(0o700)
+    contract, facts = copy.deepcopy(selection)
+    block = contract["runner"]["chipyard_rocc"]
+    block["config"] = "SyntheticConfig"
+    facts["facts"]["source"]["config"] = "SyntheticConfig"
+    facts["source_consistency"]["config"] = "SyntheticConfig"
+    facts["inputs"]["fir_sha256"] = doc["firrtl"]["sha256"]
+    engine = block["engines"].pop("spike")
+    engine["binary"] = doc["binary"]
+    engine["argv"] = ["{elf}"]
+    engine["receipt"] = _pin(tmp / "receipt.json")
+    block["engines"]["verilator"] = engine
+    contract["runner"].pop("spike_extension")
+    return contract, facts, binary
+
+
+def test_native_deployment_joins_actual_observations_without_spike_extension(selection, chain):
+    contract, facts, binary = _native(selection, chain)
+    bound = B.bind(target="synthetic", contract=contract, facts=facts)
+    assert bound.verilator_path() == binary
+    identity = bound.execution_engine_identity("verilator")
+    assert identity["receipt"]["firrtl"]["sha256"] == facts["inputs"]["fir_sha256"]
+    assert "extension" not in identity and bound.ORACLE["verilator"]["derived_from_rtl"] is True
+    assert S.prepare_contract(target="synthetic", contract=_deployment((contract, facts)), facts=facts) == contract
+
+
+def test_native_receipt_cannot_be_reused_for_another_firrtl(selection, chain):
+    contract, facts, _ = _native(selection, chain)
+    facts["inputs"]["fir_sha256"] = "a" * 64
+    bound = B.bind(target="synthetic", contract=contract, facts=facts)
+    assert bound.available("verilator") is False
+    with pytest.raises(ValueError, match="build identity"):
+        bound.verilator_path()

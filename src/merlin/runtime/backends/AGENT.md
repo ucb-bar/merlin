@@ -28,6 +28,11 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   the selected contract and existing RTL facts before executable discovery. It
   imports no target provider. Missing or malformed selected data refuses; native
   binaries and receipt identities are checked when requested, without RTL builds.
+  Native elaborated-RTL selection requires an observed build receipt joining the
+  original FIRRTL, emitted model, transport library and final executable. This is
+  build identity, not runtime correctness, timing fidelity or RTL equivalence.
+  Keep stdout readback frames separate from stderr diagnostics; both count toward
+  the selected byte limit and are retained in actual process observations.
 - Target plugin execution requires a selected support provider on `MERLIN_TARGET_PATH`
   (unset, the checkout's vendored `examples/*/support` providers; see
   `target_registry.in_repo_support`). Reference metadata and generated-package discovery alone

@@ -67,9 +67,14 @@ def validate_contract(contract) -> LogicalHarnessAbi:
 
 
 def _tensor(spec):
-    allowed = {"shape", "dtype", "role", "layout", "strides", "offset", "storage_shape", "data", "preload_b64"}
+    allowed = {"shape", "dtype", "role", "layout", "strides", "offset", "storage_shape", "data", "preload_b64", "base"}
     if type(spec) is not dict or set(spec) - allowed:
         raise ValueError("neutral harness does not accept transformed or ambiguous tensor storage")
+    # The ordinary runner records canonical DRAM placement separately from the
+    # logical pointer ABI. This annotation never selects an address or transforms
+    # harness storage; only the declared logical extent and values are transported.
+    if "base" in spec and (type(spec["base"]) is not int or not 0 <= spec["base"] < 2**64):
+        raise ValueError("neutral harness has an invalid DRAM placement annotation")
     shape = spec.get("shape")
     if type(shape) is not list or not shape or len(shape) > 32 or any(type(d) is not int or d <= 0 for d in shape):
         raise ValueError("neutral harness requires positive static logical tensor dimensions")
