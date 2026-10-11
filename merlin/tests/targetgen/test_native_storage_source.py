@@ -121,3 +121,33 @@ def test_cast_requires_destination_even_in_the_float_regime():
     with pytest.raises(ValueError, match="explicit native source/result declaration"):
         source.build_loader_src(spec)
     assert corpus_synth._writer_for({"op": "mul", "operand_dtype": "i32"}) is None
+
+
+def test_parameter_free_capture_accepts_empty_archive_and_refuses_hidden_weights(tmp_path):
+    spec = _spec("dtype_cast", "i32", "f32")
+    archive = tmp_path / "weights.safetensors"
+    header = b"{}      "
+    archive.write_bytes(len(header).to_bytes(8, "little") + header)
+    art = SimpleNamespace(op="dtype_cast", dtype="fp32", weights_path=str(archive),
+        inputs=[[[1, -2, 3], [-4, 5, -6]]], golden=[[1., -2., 3.], [-4., 5., -6.]],
+        meta={"input_abi": [{"shape": [2, 3], "dtype": "i32"}],
+              "output_abi": [{"shape": [2, 3], "dtype": "f32"}]},
+        linalg_mlir="module { func.func @forward(%x: tensor<2x3xi32>) -> tensor<2x3xf32> {\n"
+                    "%y = tensor.empty() : tensor<2x3xf32>\nreturn %y : tensor<2x3xf32>\n} }")
+    cap = {"inputs": [{"name": "X"}], "pytorch_ref": {}}
+    golden = {"outputs": [{}], "oracle_provenance": {"inputs": {"X": {}}}}
+    binding = corpus_spec.CorpusBinding("fixture", 4, "i32", "i32", True, ["L0"], "exact_int")
+    publish_native_storage(spec, art, cap, golden, binding)
+    assert cap["inputs"][0]["dtype"] == "i32"
+    assert cap["numeric_policy"]["dtype"] == "f32"
+    changed = copy.deepcopy(art)
+    changed.linalg_mlir = changed.linalg_mlir.replace(
+        "(%x:", "(%weight: tensor<2x3xi32>, %x:",
+    )
+    with pytest.raises(ValueError, match="complete typed source ABI"):
+        publish_native_storage(spec, changed, cap, golden, binding)
+    for payload in (b"broken", (2).to_bytes(8, "little") + b"{}" + b"unclaimed",
+                    (8).to_bytes(8, "little") + b'{"w":{}}'):
+        archive.write_bytes(payload)
+        with pytest.raises(ValueError, match="empty weight archive"):
+            publish_native_storage(spec, art, cap, golden, binding)

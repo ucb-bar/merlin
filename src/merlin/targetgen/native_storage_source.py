@@ -122,6 +122,7 @@ def publish_native_storage(spec, art, cap, golden, binding):
     selected = native_storage_source_spec(spec)
     if selected is None:
         return
+    _require_empty_weights(art.weights_path)
     from merlin.common.mlir_query import forward_signature
 
     from .capsule_results import _shape as value_shape
@@ -132,7 +133,7 @@ def publish_native_storage(spec, art, cap, golden, binding):
     input_abi = [{"shape": shape, "dtype": selected["input_dtype"]}]
     output_abi = [{"shape": output_shape, "dtype": selected["output_dtype"]}]
     actual_inputs, actual_outputs = forward_signature(art.linalg_mlir)
-    if (art.op != spec["op"] or art.dtype != "fp32" or art.weights_path
+    if (art.op != spec["op"] or art.dtype != "fp32"
             or not isinstance(art.inputs, list) or len(art.inputs) != 1
             or (art.meta or {}).get("input_abi") != input_abi
             or (art.meta or {}).get("output_abi") != output_abi
@@ -155,3 +156,31 @@ def publish_native_storage(spec, art, cap, golden, binding):
         key: spec["native_source_abi"][key]
         for key in ("full_inventory_sha256", "capture_sha256", "signature_sha256")
     }
+
+
+def _require_empty_weights(path):
+    """A parameter-free capture may export an empty safetensors container."""
+    if path is None:
+        return
+    from pathlib import Path
+
+    try:
+        archive = Path(path)
+        if archive.is_symlink() or not archive.is_file():
+            raise ValueError("weight archive is not an ordinary file")
+        with archive.open("rb") as stream:
+            prefix = stream.read(8)
+            length = int.from_bytes(prefix, "little")
+            # Bound metadata allocation before reading; no tensor payload is allowed.
+            if len(prefix) != 8 or not 2 <= length <= 65536 or archive.stat().st_size != 8 + length:
+                raise ValueError("weight archive is not metadata only")
+            header = json.loads(stream.read(length))
+        if not isinstance(header, dict) or set(header) - {"__metadata__"}:
+            raise ValueError("weight archive contains tensors")
+        metadata = header.get("__metadata__", {})
+        if not isinstance(metadata, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str) for key, value in metadata.items()
+        ):
+            raise ValueError("weight metadata is malformed")
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError("native-storage capture requires an empty weight archive") from exc
