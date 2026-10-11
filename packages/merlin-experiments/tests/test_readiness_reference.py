@@ -506,3 +506,17 @@ def test_full_readiness_default_keeps_every_existing_section(oracle_driver, caps
     assert len(names) == 16
     assert next(kw for name, _, kw in seen if name == "test_oracles_endtoend") == {"probes": None}
     assert "all tooling verified" in capsys.readouterr().out
+
+
+def test_numerical_negative_accepts_actual_simulator_category_and_requires_full_comparison():
+    from aet.core.failures import FailureCategory
+
+    report = _report("timing", "selected_rtl", negative="numeric")
+    report["_readiness_returncode"] = 1
+    report["per_capsule"][0]["failure"]["category"] = FailureCategory.FUNCTIONAL_MISMATCH.value
+    assert reference.rejected_probe(report, capsule="timing", sim="selected_rtl", category="FUNCTIONAL_MISMATCH")
+    report["per_capsule"][0]["numeric"]["missing_outputs"] = ["result"]
+    assert not reference.rejected_probe(report, capsule="timing", sim="selected_rtl", category="FUNCTIONAL_MISMATCH")
+    report["per_capsule"][0]["numeric"]["missing_outputs"] = []
+    report["per_capsule"][0]["failure"]["category"] = FailureCategory.RUNNER_CRASH.value
+    assert not reference.rejected_probe(report, capsule="timing", sim="selected_rtl", category="FUNCTIONAL_MISMATCH")

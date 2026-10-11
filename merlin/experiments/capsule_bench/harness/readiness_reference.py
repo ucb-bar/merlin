@@ -202,13 +202,19 @@ def probe_row(report: dict, *, capsule: str, sim: str, returncodes: tuple[int, .
 def rejected_probe(report: dict, *, capsule: str, sim: str, category: str) -> bool:
     row = probe_row(report, capsule=capsule, sim=sim, returncodes=(1,))
     failure = row.get("failure") or {}
+    categories = {category}
+    if category == "FUNCTIONAL_MISMATCH":
+        # Simulator failures serialize the enum value; model gates use its name.
+        from aet.core.failures import FailureCategory
+
+        categories.add(FailureCategory.FUNCTIONAL_MISMATCH.value)
     if (
         report.get("all_pass") is not False
         or type(report.get("n_passed")) is not int
         or report["n_passed"] != 0
         or row["pass"] is not False
         or not isinstance(failure, dict)
-        or failure.get("category") != category
+        or failure.get("category") not in categories
     ):
         return False
     if category == "PROHIBITED_INSTRUCTION":
