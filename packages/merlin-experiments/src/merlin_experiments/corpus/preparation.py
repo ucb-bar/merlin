@@ -17,6 +17,45 @@ from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
 
 
+def retain_deferred_performance(generated: Path, destination: Path, provenance: dict, *, target: str) -> None:
+    """Keep the byte-bound deferred Phase 2 roster with the prepared functional release."""
+    preparation = ((provenance.get("performance_generation") or {}).get(target) or {}).get("preparation")
+    if preparation is None:
+        return
+    digest = preparation.get("sha256")
+    if (
+        preparation.get("scope") != "phase1-functional"
+        or preparation.get("status") != "deferred_not_prepared"
+        or preparation.get("ledger") != "phase2-deferred.json"
+        or type(preparation.get("deferred_members")) is not int
+        or preparation["deferred_members"] < 0
+        or not isinstance(digest, str) or len(digest) != 64
+        or any(char not in "0123456789abcdef" for char in digest)
+    ):
+        raise SpecError("invalid deferred Phase 2 preparation record")
+    source = generated / "phase2-deferred.json"
+    ordinary_tree(source)
+    raw = source.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise SpecError("deferred Phase 2 roster changed")
+    try:
+        ledger = json.loads(raw)
+    except ValueError as exc:
+        raise SpecError("invalid deferred Phase 2 roster") from exc
+    entries = ledger.get("entries")
+    if (
+        ledger.get("generation_scope") != "phase1-functional"
+        or ledger.get("status") != "deferred_not_prepared"
+        or ledger.get("phase") != "phase2"
+        or not isinstance(entries, list)
+        or len(entries) != preparation["deferred_members"]
+        or any(not isinstance(entry, dict) or entry.get("cat") != "_perf"
+               or not isinstance(entry.get("performance"), dict) or not entry["performance"] for entry in entries)
+    ):
+        raise SpecError("deferred Phase 2 roster does not retain its complete declared claims")
+    copy_input(source, destination / "phase2-deferred.json", expected_sha256=digest)
+
+
 def private_json(path: Path, document: dict) -> None:
     """Publish a host-only record without an intermediate world-readable file."""
     temporary = path.with_name(path.name + ".pending")
@@ -640,6 +679,7 @@ def assemble(
 
     if read_inputs(generated, provenance) is not None:
         copy_input(generated / INPUT_PATH, destination / INPUT_PATH, private=True)
+    retain_deferred_performance(generated, destination, provenance, target=te.target)
     # The promoted descriptor points at this release, so Phase 2 must see the
     # same generated provenance as Phase 0, not a live checkout's MANIFEST.
     # Functional grading still discovers only non-underscore categories.

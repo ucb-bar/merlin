@@ -262,3 +262,17 @@ For definition-based cross-target comparison, use
 Legacy corpus trees remain migration inputs where explicitly selected. They are not the
 entry point for a new experiment, and stale files there cannot substitute for the newly
 generated, reviewed and sealed population.
+
+For a functional Phase 1 launch, select `--phase0-generation-scope phase1-functional`
+on `merlin experiment run`, or `generation_scope: phase1-functional` in the
+capsule-derivation adapter configuration. The direct Phase 0 CLI uses
+`--generation-scope phase1-functional`. Omission retains full generation.
+
+This selection expands the complete authored roster, then defers only `_perf`
+members before writing capsules and goldens. Public functional members, hidden
+members, model slices, negative probes, and application coverage retain their
+ordinary admission checks. The output's `phase2-deferred.json` retains every
+resolved performance entry, claim, template, facts and selected requirement
+identity; the manifest binds its bytes, and release preparation copies it.
+The ledger is pending work: it issues no performance capsule, measurement, or
+Phase 2 readiness. Phase 2 needs a separately completed full preparation run.
