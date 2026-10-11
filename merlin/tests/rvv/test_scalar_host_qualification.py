@@ -385,6 +385,39 @@ def test_native_gsim_uses_shared_model_parser_and_records_exact_engine(tmp_path,
     assert seen["revalidated"] == 2
 
 
+def test_bound_native_engine_revalidates_execution_inputs_without_legacy_command(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from merlin.compile.model_execution_inputs import native_engine
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    _, citation, seen = _stub_native_gsim(tmp_path, monkeypatch, console="")
+
+    class BoundBackend(BoundRoCCBackend):
+        def available(self, simulator):
+            return simulator == "gsim"
+
+        def gsim_path(self):
+            return Path(citation["path"])
+
+        def verify_execution_inputs(self):
+            if seen.get("drift"):
+                raise ValueError("selected bound execution inputs changed")
+            seen["bound_checks"] = seen.get("bound_checks", 0) + 1
+
+    backend = BoundBackend("example", "{}", None)
+    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
+    selected, identity, revalidate, prepare = native_engine(
+        "example", "gsim", {"firrtl_sha256": citation["receipt"]["firrtl_sha256"]}
+    )
+    assert selected is backend and identity == citation and prepare is None
+    revalidate()
+    assert seen["bound_checks"] == 2
+    seen["drift"] = True
+    with pytest.raises(ValueError, match="bound execution inputs changed"):
+        revalidate()
+
+
 @pytest.mark.parametrize(
     "console,reason",
     [
