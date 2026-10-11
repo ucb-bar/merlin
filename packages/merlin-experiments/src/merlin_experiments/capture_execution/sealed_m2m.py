@@ -59,6 +59,10 @@ _PRE_CACHE_NORMALIZATION_V3_ISSUER_SHA256 = "03e1d28ebd4cc356928355490a13e329e5b
 # Exact predecessor before checkpoint inventory reuse. Replay still verifies
 # its selected policy and bytes, with a fresh inventory after execution.
 _PRE_INVENTORY_REUSE_ISSUER_SHA256 = "b78a8d7f13785c9d0263e4149e38a4de0d9bfd43052e552213003d143fac7ba3"
+# Exact selected v2 issuer archived at a8eb1da93, before inventory reuse.
+# Replay retains its fixed command/policy and every selected snapshot check;
+# this does not authorize new issuance with historical producer bytes.
+_ARCHIVED_SELECTED_V2_ISSUER_SHA256 = "83af01552173c2ddd24d78996838bfb9d72b79abecc61b9a0e79690bf12ef4d5"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -1567,6 +1571,8 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
     )
     if schema in {SCHEMA, SCHEMA_V3} and doc.get("capture_selection_sha256") is not None:
         supported_issuer.add(_STRICT_JSON_SELECTED_ISSUER_SHA256)
+    if schema == SCHEMA and doc.get("capture_selection_sha256") is not None:
+        supported_issuer.add(_ARCHIVED_SELECTED_V2_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3}:
         supported_issuer.add(_PRE_INVENTORY_REUSE_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:

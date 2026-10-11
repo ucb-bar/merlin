@@ -706,6 +706,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
         pending = run / "sealed_m2m_pending.json"
         pending.write_text(json.dumps(receipt))
         assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = sealed_m2m._ARCHIVED_SELECTED_V2_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
         for field, changed in (
             ("issuer_sha256", "f" * 64),
             ("policy_sha256", "f" * 64),
