@@ -437,7 +437,9 @@ class ComponentEvaluationPool:
             return
         if self._resource_writable_roots(self._lease_path) != self._writable_roots:
             raise StageGateError("evaluation writable resource owners changed")
-        context = getattr(getattr(getattr(self.policy, "independent_runtime", None), "qualification", None), "context", None)
+        context = getattr(
+            getattr(getattr(self.policy, "independent_runtime", None), "qualification", None), "context", None
+        )
         if getattr(context, "container_transport", None) is not None:
             raise StageGateError("hard resource boundary cannot admit an unbound external container executor")
         self._external_boundary.verify(writable_roots=self._writable_roots)
@@ -466,6 +468,7 @@ class ComponentEvaluationPool:
                     "normal_policy": self.policy.search_closure_sha256,
                     "implementation": [(str(path), digest) for path, digest in self._implementation_pins],
                     "resources": asdict(self.resources),
+                    "external_boundary": None if self._external_boundary is None else self._external_boundary.verify(),
                     "grant": asdict(self.grant),
                 }
             )

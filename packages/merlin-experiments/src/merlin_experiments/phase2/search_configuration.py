@@ -40,6 +40,7 @@ def prepare_search_configuration(
     max_pending,
     max_jobs,
     author_agents,
+    external_boundary=None,
 ):
     """Pin an operator's explicit budgets to its live admitted development owners.
 
@@ -57,7 +58,7 @@ def prepare_search_configuration(
     ):
         raise StageGateError("search preparation requires explicit typed resources and stopping settings")
     inputs.validate()
-    resources.verify()
+    resources.verify(external_boundary=external_boundary)
     job_resources.verify()
     settings.verify()
     path = Path(path)
@@ -114,7 +115,7 @@ class SearchConfiguration:
         resources = dict(self.document["resources"])
         resources["cpu_ids"] = tuple(resources["cpu_ids"])
         resources, grant = AssignedResources(**resources), JobResources(**self.document["job_resources"])
-        resources.verify()
+        resources.verify(external_boundary=external_boundary)
         grant.verify()
         revisions = RetainedRevisionStore(
             root / "revisions",

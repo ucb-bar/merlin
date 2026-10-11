@@ -93,6 +93,7 @@ def main(
     source_root: Path | None = None,
     phase1_origin=None,
     measurement_support=None,
+    external_resource_boundary=None,
 ) -> int:
     # An unqualified component request refuses before any legacy model selection.
     # The explicit declaration goes through actual independent prerequisites.
@@ -203,6 +204,13 @@ def main(
         }
     )
     try:
+        if args.search_configuration is not None:
+            from .search_configuration import read_search_configuration
+            from .search_resource_launch import prepare_launch_boundary
+
+            external_resource_boundary = prepare_launch_boundary(
+                read_search_configuration(args.search_configuration), external_boundary=external_resource_boundary
+            )
         record = authoring.run_stage(
             **layout,
             suite=suite if suite is not None else args.suite,
@@ -234,6 +242,7 @@ def main(
                 {
                     "search_configuration": args.search_configuration,
                     "compiler_edit_contract": args.compiler_edit_contract,
+                    "external_resource_boundary": external_resource_boundary,
                 }
                 if args.search_configuration is not None
                 else {}

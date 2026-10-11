@@ -98,6 +98,7 @@ class StagePromptInputs:
     execution_broker_path: str
     execution_broker_command: str
     broker_receipt_path: str
+    author_agents: int | None = None
 
 
 @dataclass(frozen=True)
@@ -271,6 +272,28 @@ def load_prompt(path: Path) -> PromptArtifact:
     return PromptArtifact(path, text, _sha256(payload), len(payload))
 
 
+def bounded_search_text(author_agents: int | None) -> str:
+    """Explain the existing queue lifecycle without prescribing compiler choices."""
+    if author_agents is None:
+        return ""
+    if type(author_agents) is not int or not 1 <= author_agents <= 3:
+        raise StageGateError("normal search requires one to three explicitly selected authors")
+    return (
+        "\n\n## Bounded parallel search\n\n"
+        f"Coordinate up to {author_agents} native authors on separate compiler symbols or files. "
+        "Only the coordinator invokes the broker and merges their edits into this candidate. "
+        "Authors return a hypothesis and scope for reusable compiler changes. Serialize shared edits. "
+        "Freeze each integrated contender with revision-freeze, declaring hypothesis and edit_family. "
+        "Queued evaluations read that retained revision while authors may continue editing. "
+        "Use available analytical observations for screening; complete measured simulator results "
+        "govern selection. Measure the unchanged starting compiler for the baseline fallback. "
+        "Use search-status and respect its stopping reason. Before returning, join every author, "
+        "stop edits, invoke search-finalize, then search-select. Make no further edits. Run the "
+        "original required feedback and analysis actions on those selected bytes. The host then "
+        "runs the complete final correctness roster independently.\n\n"
+    )
+
+
 def render_stage_prompt(inputs: StagePromptInputs) -> str:
     """Render through the current shared prompt, then bind richer stage facts."""
     for name, value in (
@@ -377,6 +400,7 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
     }
     return (
         rendered
+        + bounded_search_text(inputs.author_agents)
         + "\n\n## Whole-model optimization loop (primary objective)\n\n"
         + (
             "Optimize the complete E2E sentinel and its global dataflow first. Capsules are reduced "

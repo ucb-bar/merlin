@@ -34,6 +34,9 @@ def ordinary_inputs(tmp_path, monkeypatch):
     candidate = tmp_path / "candidate"
     candidate.mkdir()
     (candidate / "compiler.py").write_text("def schedule():\n    return 1\n")
+    (candidate / "manifest.yaml").write_text(
+        json.dumps({"entrypoints": {"tool": "compiler.py"}, "commands": {"compile": {"argv": ["python", "{tool}"]}}})
+    )
     baseline = tmp_path / "baseline"
     digest = PC.materialize_readonly_tree(candidate, baseline)
     authority_root = tmp_path / "authority"

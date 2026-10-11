@@ -170,6 +170,17 @@ def bounded_tool_scratch(argv, *, owner):
         boundary.verify(writable_roots=(root,))
         adjusted[index : index + 2] = ["--bind", str(root / "tmp"), "/tmp"]
         end = adjusted.index("--")
-        adjusted[end:end] = ["--bind", str(root / "shm"), "/dev/shm", "--remount-ro", "/dev", "--remount-ro", "/"]
+        adjusted[end:end] = [
+            "--bind",
+            str(root / "shm"),
+            "/dev/shm",
+            "--remount-ro",
+            "/dev",
+            "--remount-ro",
+            "/",
+            "--unshare-user",
+            "--disable-userns",
+            "--assert-userns-disabled",
+        ]
         yield adjusted
         boundary.verify(writable_roots=(root,))
