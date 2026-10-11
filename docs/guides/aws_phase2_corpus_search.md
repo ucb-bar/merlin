@@ -95,6 +95,32 @@ binary/configuration and original sandbox canary qualified on that worker. The
 configured author count does not replace this check. Preparation allocates no
 machine, cgroup, quota, agent or simulator.
 
+For object reuse, add optional `build_runtime` when preparing the same search
+configuration. Select the original Phase 1 compiler executables, bootstrap and
+complete library/sysroot lookup roots. These operator inputs remain outside
+author grants; exclude reference compilers, protected programs and grader trees.
+
+```python
+build_runtime = {
+    "tools": original_compiler_paths,
+    "readonly_roots": original_lookup_roots,
+    "bwrap": original_bwrap_path,
+    "snapshot_files": 100_000, "snapshot_bytes": 8 << 30,
+    "cache_entries": 512, "cache_bytes": 16 << 30,
+}
+# Pass build_runtime=build_runtime to prepare_search_configuration above.
+```
+
+Paths are absolute strings. A lookup root is a string or a
+`{"source": absolute_source, "guest": absolute_lookup_path}` mapping.
+The toolchain is copied once, without mutable hard links or per-job copies.
+Snapshot, cache and retained source ceilings fit the original reserved disk
+fraction; output ceilings come from the job grant. The normal round constructs
+live owners before queue admission. Declarations cannot authenticate a compiler
+process. Unsupported commands stay fresh; missing libraries report the original
+build failure. Final verification precedes owner release; unknown job cleanup
+retains ownership.
+
 For the example eight-hour hard budget above, launch the normal module on the
 allocated AWS worker:
 
@@ -171,16 +197,24 @@ freeze and separate authorization.
 
 Queued contenders re-emit through the original build path and bypass the legacy
 LLVM memo. The observer compares fresh complete artifacts, inputs and known
-dependencies. Optional original native owners can freeze one bounded readonly
+dependencies. A selected immutable build view can reuse verified LLVM object
+and stack-sidecar bytes after comparing fresh LLVM, executed flags, ABI,
+environment, tools and lookup identities. Publication follows parent cleanup.
+Reuse has a distinct receipt and claims no new compiler invocation or timing
+replicate. Unknown inputs, native CPU discovery, plugins, profiles and response
+files stay fresh. Harness/link and simulator/numerical gates remain fresh;
+calibration and final evaluation omit the product index.
+
+Optional original native owners can freeze one bounded readonly
 runtime filesystem view, shared across jobs without per-job copies. The live
 parent publishes original observations only after actual guardian cleanup and
 durable release; failed cleaned jobs discard pending pins. Unresolved cleanup
 retains ownership. Saved cleanup reports cannot publish archive entries.
 
 The original engine selection still does not establish reset/seed and non-file
-input closure: **execution reuse is not enabled**. Changed, unchanged and
+input closure: **simulator execution reuse is not enabled**. Changed, unchanged and
 uncertain observations execute. Filesystem closure supplies no timing or replay
-qualification. No cache speedup is claimed, and these optional owners create no
+qualification. No measured speedup is claimed, and these optional owners create no
 extra Phase 1 or Phase 2 launch prerequisite. Calibration and final evaluation
 keep fresh observations.
 

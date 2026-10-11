@@ -26,6 +26,7 @@ from . import development_feedback as DF
 from . import functional_inputs as FI
 from . import gsim_gate as GATE
 from . import measurement_support as MS
+from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
 from . import ordinary_fast_feedback as FAST
 from . import paired_measurement as PME
@@ -119,6 +120,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self.evaluation_pool, self.search_coordinator = None, None
         self._ordinary_screen = None
         self.native_runtime_view, self.artifact_retest_index = None, None
+        self.build_runtime_view, self.build_product_index = None, None
         self._functions = (
             (DF, "development_executor", DF.development_executor),
             (DF.DevelopmentGsimFeedback, "evaluate", DF.DevelopmentGsimFeedback.evaluate),
@@ -128,8 +130,10 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (FAST, "compiled_observation", FAST.compiled_observation),
             (FAST.CR, "run_capsule", FAST.CR.run_capsule),
             (FAST.CR, "simulator_adapter", FAST.CR.simulator_adapter),
+            (BUILD, "executing", BUILD.executing),
+            (BUILD, "binding", BUILD.binding),
         )
-        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR, FAST, CAL, FAST.S, FAST.CR)
+        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR, FAST, CAL, BUILD, FAST.S, FAST.CR)
         self._source_pins = tuple(
             (str(path), sha256_file(path))
             for path in (Path(__file__).resolve(), *(Path(owner.__file__).resolve() for owner in owners))
@@ -223,6 +227,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             "native_runtime_view": (
                 self.native_runtime_view.verify() if include_native and self.native_runtime_view is not None else None
             ),
+            **BUILD.binding(self, include=include_native),
             "artifact_retest_index": (
                 self.artifact_retest_index.verify(
                     runtime_owner=self.native_runtime_view, context=self.artifact_retest_context
@@ -235,7 +240,13 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     @property
     def artifact_retest_context(self):
         binding = self._binding(include_native=False)
-        for key in ("native_runtime_view", "artifact_retest_index", "ordinary_screen_sha256"):
+        for key in (
+            "native_runtime_view",
+            "artifact_retest_index",
+            "ordinary_screen_sha256",
+            "build_runtime_view",
+            "build_product_index",
+        ):
             binding.pop(key)
         return {"normal_binding_sha256": document_sha256(binding)}
 
@@ -269,23 +280,15 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
 
     def publish_completed_artifacts(self, job_root):
         """Parent completion hook; an unavailable cache keeps future execution fresh."""
-        if self.artifact_retest_index is None:
-            return {"status": "UNAVAILABLE", "published": 0}
-        try:
-            count = self.artifact_retest_index.publish_completed_job(Path(job_root))
-            return {"status": "published", "published": count}
-        except Exception as error:  # noqa: BLE001 - cache publication cannot change an already completed verdict
-            return {"status": "UNKNOWN", "published": 0, "reason": type(error).__name__}
+        return BUILD.finish(self, job_root, completed=True)
 
     def discard_cleaned_artifacts(self, job_root):
         """Parent cleanup hook for failed jobs; unresolved cleanup retains pins."""
-        if self.artifact_retest_index is None:
-            return {"status": "UNAVAILABLE", "discarded": 0}
-        try:
-            count = self.artifact_retest_index.discard_cleaned_job(Path(job_root))
-            return {"status": "discarded", "discarded": count}
-        except Exception as error:  # noqa: BLE001 - preserve ownership when archive cleanup is unresolved
-            return {"status": "UNKNOWN", "discarded": 0, "reason": type(error).__name__}
+        return BUILD.finish(self, job_root, completed=False)
+
+    def install_build_runtime(self, view, index=None):
+        """Bind the original immutable toolchain view before queued work exists."""
+        BUILD.install(self, view, index)
 
     def validate_search_inputs(self):
         """Reopen original admission pins without reading the author's mutable bytes."""
@@ -401,15 +404,16 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         if DF.sweep_workers() != workers:
             raise StageGateError("ordinary retained feedback differs from its explicit member worker grant")
         if kind == FAST.KIND:
-            return FAST.evaluate_retained(
-                self,
-                revision,
-                baseline_revision,
-                work_root=work_root,
-                call_index=call_index,
-                timeout_s=timeout_s,
-                workers=workers,
-            )
+            with BUILD.executing(self, work_root, reuse_products=reuse_artifacts):
+                return FAST.evaluate_retained(
+                    self,
+                    revision,
+                    baseline_revision,
+                    work_root=work_root,
+                    call_index=call_index,
+                    timeout_s=timeout_s,
+                    workers=workers,
+                )
         if kind != "corpus-rtl-feedback":
             raise StageGateError("ordinary queued feedback selected an unsupported fixed evaluator")
         deadline = time.monotonic() + timeout_s
@@ -429,6 +433,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         with (
             executing_revisions(revision, baseline_revision),
             self._native_context(),
+            BUILD.executing(self, work_root, reuse_products=reuse_artifacts),
             AR.observe_public_artifact_retests(
                 work_root,
                 context=self.artifact_retest_context,
@@ -488,6 +493,8 @@ def prepare_ordinary_search_policy(
     whole_model_inputs=None,
     native_runtime_view=None,
     artifact_retest_index=None,
+    build_runtime_view=None,
+    build_product_index=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -554,4 +561,8 @@ def prepare_ordinary_search_policy(
         policy.install_native_runtime(native_runtime_view, artifact_retest_index)
     elif artifact_retest_index is not None:
         raise StageGateError("normal artifact index requires its exact live native runtime owner")
+    if build_runtime_view is not None:
+        policy.install_build_runtime(build_runtime_view, build_product_index)
+    elif build_product_index is not None:
+        raise StageGateError("normal build products require their exact live original toolchain view")
     return policy

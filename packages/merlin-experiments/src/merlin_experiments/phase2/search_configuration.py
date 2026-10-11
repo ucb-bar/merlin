@@ -41,6 +41,7 @@ def prepare_search_configuration(
     max_jobs,
     author_agents,
     external_boundary=None,
+    build_runtime=None,
 ):
     """Pin an operator's explicit budgets to its live admitted development owners.
 
@@ -76,6 +77,7 @@ def prepare_search_configuration(
         "max_pending": max_pending,
         "max_jobs": max_jobs,
         "author_agents": author_agents,
+        **({"build_runtime": build_runtime} if build_runtime is not None else {}),
     }
     write_json(path, document)
     selection = read_search_configuration(path)
@@ -93,6 +95,9 @@ class SearchConfiguration:
     author_agents: int
 
     def verify(self):
+        from .build_view_configuration import validate
+
+        validate(self)
         if (
             self.path.is_symlink()
             or sha256_file(self.path) != self.sha256
@@ -151,7 +156,10 @@ def read_search_configuration(path):
     path = Path(path)
     digest = sha256_file(path)
     document = mapping_file(path)
-    if set(document) != _FIELDS or document["schema"] != "merlin.component_search_configuration.v1":
+    if (
+        set(document) not in (_FIELDS, _FIELDS | {"build_runtime"})
+        or document["schema"] != "merlin.component_search_configuration.v1"
+    ):
         raise StageGateError("search configuration requires its complete closed v1 declaration")
     for field in ("manifest_sha256", "corpus_sha256", "baseline_sha256", "certificate_sha256"):
         from merlin.common.digest import is_sha256

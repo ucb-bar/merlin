@@ -38,6 +38,7 @@ def domain(policy):
             "certificate": binding["certificate"],
             "rtl": binding["rtl_identity"],
             "native_runtime_view": binding.get("native_runtime_view"),
+            "build_runtime_view": binding.get("build_runtime_view"),
             "contract": binding["contract"],
             "sources": binding["runtime_source_pins"],
             # Temporary output placement is private per job. Every other effective

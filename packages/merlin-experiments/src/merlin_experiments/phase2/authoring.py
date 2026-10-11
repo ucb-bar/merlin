@@ -1429,4 +1429,8 @@ def run_stage(
     RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
         VERIFY.verify_candidate_record(record_path, verify_authoring_tools=True, target_experiment=target_experiment)
+    if search is not None:
+        from .ordinary_build_runtime import close_stage
+
+        close_stage(workflow)
     return record_path

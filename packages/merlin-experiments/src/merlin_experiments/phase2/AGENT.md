@@ -1,5 +1,15 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`ordinary_build_runtime` binds optional original live immutable toolchain and
+LLVM-product owners before queue admission. Contexts reach both normal
+compile/Spike and RTL member workers; calibration/final omit product reuse.
+`build_view_configuration` admits bounded original paths and storage budgets,
+never commands, factories, compiler strategies or saved qualification. Shared
+snapshot/cache/source ceilings fit the original disk reserve. Parent publication
+and discard follow real cleanup and durable release; post-verification close
+retains owners when cleanup remains unknown. Object reuse is distinct from a
+new compiler invocation and simulator replay.
+
 `ordinary_search_policy` adapts the normal Phase 1 functional fork and
 `CorpusFeedbackPolicy` to retained development revisions. Its factory uses the
 original functional admission, frozen performance corpus and fixed ordinary
