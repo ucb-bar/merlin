@@ -139,7 +139,10 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
                 retained_revision=revision,
                 retained_baseline=baseline_revision,
             )
-        if set(raw) != policy._validate():
+        with executing_revisions(revision, baseline_revision):
+            roster = policy._validate()
+            configuration_sha = provider.configuration_sha256
+        if set(raw) != roster:
             raise StageGateError("queued analytical result omitted the exact generated member roster")
         evidence = [
             {
@@ -155,7 +158,7 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
         tier, provider_sha, config_sha = (
             "calibrated_component_analytical",
             provider.implementation_sha256,
-            provider.configuration_sha256,
+            configuration_sha,
         )
     elif kind == KINDS[1]:
         rtl = replace(
@@ -178,19 +181,20 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
                     complete_roster=True,
                 )
             )
-        if (
-            {(row["family"], row["capsule"]) for row in evidence["cells"]} != policy._validate()
-            or evidence["candidate_sha256"] != revision.source_sha256
-            or evidence["tuning_corpus_sha256"] != policy.component_corpus.capsules_sha256
-            or evidence["certificate_sha256"] != rtl.certificate.sha256
-        ):
-            raise StageGateError("queued RTL result differs from its exact certified roster or identity")
-        tier, provider_sha, config_sha, extra = (
-            "certified_component_rtl",
-            policy._rtl_configuration[0][1],
-            rtl.certificate.sha256,
-            {},
-        )
+        with executing_revisions(revision, baseline_revision):
+            if (
+                {(row["family"], row["capsule"]) for row in evidence["cells"]} != policy._validate()
+                or evidence["candidate_sha256"] != revision.source_sha256
+                or evidence["tuning_corpus_sha256"] != policy.component_corpus.capsules_sha256
+                or evidence["certificate_sha256"] != rtl.certificate.sha256
+            ):
+                raise StageGateError("queued RTL result differs from its exact certified roster or identity")
+            tier, provider_sha, config_sha, extra = (
+                "certified_component_rtl",
+                policy._rtl_configuration[0][1],
+                rtl.certificate.sha256,
+                {},
+            )
     else:
         raise StageGateError("evaluation kind is outside the fixed component routes")
     revision.verify()
@@ -613,18 +617,23 @@ class ComponentEvaluationPool:
 
                 result = validate_component_feedback(frame["result"])
                 rows = result["evidence"] if job.kind == KINDS[0] else result["evidence"]["cells"]
-                if {(row["family"], row["capsule"]) for row in rows} != self.policy._validate():
-                    raise StageGateError("completed evaluation omitted its exact admitted member roster")
-                provider = self.policy.component_analytical
-                expected = (
-                    ("calibrated_component_analytical", provider.implementation_sha256, provider.configuration_sha256)
-                    if job.kind == KINDS[0]
-                    else (
-                        "certified_component_rtl",
-                        self.policy._rtl_configuration[0][1],
-                        self.policy.component_rtl.certificate.sha256,
+                with executing_revisions(job.revision, self.baseline_revision):
+                    if {(row["family"], row["capsule"]) for row in rows} != self.policy._validate():
+                        raise StageGateError("completed evaluation omitted its exact admitted member roster")
+                    provider = self.policy.component_analytical
+                    expected = (
+                        (
+                            "calibrated_component_analytical",
+                            provider.implementation_sha256,
+                            provider.configuration_sha256,
+                        )
+                        if job.kind == KINDS[0]
+                        else (
+                            "certified_component_rtl",
+                            self.policy._rtl_configuration[0][1],
+                            self.policy.component_rtl.certificate.sha256,
+                        )
                     )
-                )
                 if (
                     (result["tier"], result["provider_sha256"], result["configuration_sha256"]) != expected
                     or result["candidate_sha256"] != job.revision.source_sha256

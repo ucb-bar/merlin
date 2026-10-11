@@ -1,7 +1,9 @@
 """Harmless fork workers check retained revisions and actual cleanup ownership."""
 
+import ast
 import json
 import os
+import threading
 import time
 from dataclasses import replace
 
@@ -9,6 +11,7 @@ import pytest
 from component_baseline_fixture import synthetic_component_controller as synthetic_component_controller
 from component_baseline_fixture import unissued_baseline
 from merlin_experiments.phase2 import broker
+from merlin_experiments.phase2 import component_analytical as CA
 from merlin_experiments.phase2 import component_workflow as CW
 from merlin_experiments.phase2 import evaluation_pool as EP
 from merlin_experiments.phase2 import retained_revisions as RR
@@ -104,6 +107,11 @@ def completing_feedback(**kwargs):
     return synthetic_feedback(**kwargs)
 
 
+def contextual_feedback(**kwargs):
+    with executing_revisions(kwargs["revision"], kwargs["baseline_revision"]):
+        return synthetic_feedback(**kwargs)
+
+
 def wait_for(predicate, timeout=6):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -181,6 +189,81 @@ def test_verification_context_never_aliases_the_mutable_execution_path(selected_
         assert executing_revision(revision.source) is revision
         with pytest.raises(StageGateError, match="authority"):
             executing_candidate_revision(object())
+
+
+@pytest.mark.parametrize("selected_pool", [None, contextual_feedback], indirect=True)
+def test_live_syntax_edit_during_evaluation_keeps_every_result_check_in_issued_context(selected_pool, monkeypatch):
+    policy, pool, _selected, authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    validate = CW.ComponentOnlyPolicy._validate
+    configuration = CW.ComponentAnalyticalProvider.configuration_sha256.fget
+    evaluate = CA._evaluate
+
+    def validate_in_context(self):
+        if self is policy and executing_candidate_revision(authority) is None:
+            ast.parse((policy.candidate / "compiler.py").read_text())
+        return validate(self)
+
+    def configuration_in_context(self):
+        if self is policy.component_analytical and executing_candidate_revision(authority) is None:
+            ast.parse((policy.candidate / "compiler.py").read_text())
+        return configuration(self)
+
+    def gated_evaluate(binding, *args, **kwargs):
+        root = binding.output.parent
+        (root / "entered").touch()
+        while not (root / "continue").exists():
+            time.sleep(0.01)
+        return evaluate(binding, *args, **kwargs)
+
+    monkeypatch.setattr(CW.ComponentOnlyPolicy, "_validate", validate_in_context)
+    monkeypatch.setattr(CW.ComponentAnalyticalProvider, "configuration_sha256", property(configuration_in_context))
+    monkeypatch.setattr(CA, "_evaluate", gated_evaluate)
+    job = pool.submit(revision.revision_id)
+    root = pool.root / job["job_id"]
+    wait_for(lambda: (root / "entered").exists())
+    (policy.candidate / "compiler.py").write_text("def schedule(\n")
+    (root / "continue").touch()
+    final = wait_for(lambda: pool.status(job["job_id"]) if pool.status(job["job_id"])["terminal"] else None)
+    assert final["state"] == "completed", final["refusal"]
+    assert final["result"]["candidate_sha256"] == revision.source_sha256
+
+
+@pytest.mark.parametrize("selected_pool", [completing_feedback], indirect=True)
+def test_bounded_storage_delay_keeps_cleanup_ownership_until_release(selected_pool, monkeypatch):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    unpin, entered = storage.unpin, threading.Event()
+    observed, done = {}, threading.Event()
+
+    def delayed_unpin(path, token):
+        if not entered.is_set():
+            entered.set()
+            time.sleep(0.5)
+        return unpin(path, token)
+
+    monkeypatch.setattr(storage, "unpin", delayed_unpin)
+    job = pool.submit(revision.revision_id)
+    assert entered.wait(timeout=10)
+    lifecycle = next(row for row in storage.inventory()["paths"] if row["path"] == str(pool.root / job["job_id"]))
+    assert lifecycle["leases"] == 1
+
+    def observe_status():
+        started = time.monotonic()
+        observed["row"] = pool.status(job["job_id"])
+        observed["seconds"] = time.monotonic() - started
+        done.set()
+
+    observer = threading.Thread(target=observe_status, daemon=True)
+    observer.start()
+    status_waited = not done.wait(timeout=0.05)
+    assert done.wait(timeout=60)
+    observer.join()
+    print(f"[queue-storage-delay] status_waited={status_waited} response_seconds={observed['seconds']:.3f}")
+    assert observed["row"]["state"] == "completed" and observed["row"]["result"]
+    lifecycle = next(row for row in storage.inventory()["paths"] if row["path"] == str(pool.root / job["job_id"]))
+    assert lifecycle["leases"] == 0
+    assert json.loads((pool.root / job["job_id"] / "cleanup.json").read_text())["cleanup"]["complete"]
 
 
 def test_drift_refuses_queued_and_previously_completed_results(selected_pool):
