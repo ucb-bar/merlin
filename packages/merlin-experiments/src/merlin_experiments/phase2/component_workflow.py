@@ -48,15 +48,20 @@ EVALUATION_SUBMIT_ACTION = "evaluation-submit"
 EVALUATION_STATUS_ACTION = "evaluation-status"
 EVALUATION_CANCEL_ACTION = "evaluation-cancel"
 POOL_ACTIONS = (REVISION_FREEZE_ACTION, EVALUATION_SUBMIT_ACTION, EVALUATION_STATUS_ACTION, EVALUATION_CANCEL_ACTION)
+SEARCH_STATUS_ACTION = "search-status"
+SEARCH_FINALIZE_ACTION = "search-finalize"
+SEARCH_SELECT_ACTION = "search-select"
+SEARCH_ACTIONS = (SEARCH_STATUS_ACTION, SEARCH_FINALIZE_ACTION, SEARCH_SELECT_ACTION)
 
 
-def evaluation_pool_actions():
+def evaluation_pool_actions(*, search=False):
+    annotations = ("hypothesis", "edit_family") if search else ()
     return tuple(
         BrokerAction(name, ("__host_component_pool__", name), bindings, purpose, False)
         for name, bindings, purpose in (
             (
                 REVISION_FREEZE_ACTION,
-                ("parent_revision",),
+                ("parent_revision", *annotations),
                 "Freeze authorized source; parent_revision=none starts a branch",
             ),
             (
@@ -70,6 +75,17 @@ def evaluation_pool_actions():
                 "Read queue state and verified completed feedback; no final acceptance",
             ),
             (EVALUATION_CANCEL_ACTION, ("job_id",), "Cancel queued work or terminate and reap an active evaluation"),
+        )
+    )
+
+
+def search_actions():
+    return tuple(
+        BrokerAction(name, ("__host_component_search__", name), (), purpose, False)
+        for name, purpose in (
+            (SEARCH_STATUS_ACTION, "Read conservative measured ranking and bounded search stopping status"),
+            (SEARCH_FINALIZE_ACTION, "Stop submissions and finish or reap queued work within the tool budget"),
+            (SEARCH_SELECT_ACTION, "Restore the current measured incumbent after finalization; join all authors first"),
         )
     )
 
@@ -378,6 +394,7 @@ class ComponentOnlyPolicy(WorkflowPolicy):
         self.baseline_admission = baseline_admission
         self.independent_runtime = independent_runtime
         self.evaluation_pool = None
+        self.search_coordinator = None
         if component_analytical is not None and type(component_analytical) is not ComponentAnalyticalProvider:
             raise StageGateError("explicit typed component analytical provider required")
         self._component_bindings = (component_corpus.manifest_sha256, component_corpus.capsules_sha256)
@@ -531,9 +548,11 @@ class ComponentOnlyPolicy(WorkflowPolicy):
         actions = _build_action_registry(
             self.candidate, self.target_experiment, component_only=True, unavailable=self.unavailable
         )
-        return (*actions, *evaluation_pool_actions()) if self.evaluation_pool is not None else actions
+        if self.evaluation_pool is not None:
+            actions = (*actions, *evaluation_pool_actions(search=self.search_coordinator is not None))
+        return (*actions, *search_actions()) if self.search_coordinator is not None else actions
 
-    def enable_evaluation_pool(self, *, revisions, resources, job_resources, root, beam=3, max_pending=6):
+    def enable_evaluation_pool(self, *, revisions, resources, job_resources, root, beam=3, max_pending=6, max_jobs=256):
         """Explicit host opt-in, before constructing the broker's sealed action registry."""
         from .evaluation_pool import ComponentEvaluationPool
 
@@ -547,6 +566,7 @@ class ComponentOnlyPolicy(WorkflowPolicy):
             root=root,
             beam=beam,
             max_pending=max_pending,
+            max_jobs=max_jobs,
         )
         return self.evaluation_pool
 
@@ -565,15 +585,42 @@ class ComponentOnlyPolicy(WorkflowPolicy):
         )
 
     def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        if self.search_coordinator is not None and action_name in SEARCH_ACTIONS:
+            coordinator = self.search_coordinator
+            self._validate()
+            if action_name == SEARCH_STATUS_ACTION:
+                answer = coordinator.status()
+            elif action_name == SEARCH_FINALIZE_ACTION:
+                answer = coordinator.finalize(timeout_s=timeout_s)
+            else:
+                answer = coordinator.select()
+            if time.monotonic() - started > timeout_s:
+                raise StageGateError("search action exceeded its original tool budget")
+            return (
+                {
+                    "returncode": 0,
+                    "stdout": canonical_json(answer).decode(),
+                    "stderr": "",
+                    "elapsed_s": round(time.monotonic() - started, 3),
+                },
+                answer if action_name == SEARCH_SELECT_ACTION else None,
+            )
         if self.evaluation_pool is not None and action_name in POOL_ACTIONS:
             pool = self.evaluation_pool
             if action_name == REVISION_FREEZE_ACTION:
                 self._validate()
                 parent = rendered["parent_revision"]
+                options = (
+                    {key: rendered[key] for key in ("hypothesis", "edit_family")}
+                    if self.search_coordinator is not None
+                    else {}
+                )
                 answer = pool.revisions.freeze(
-                    self.candidate, parent_revision=None if parent == "none" else parent
+                    self.candidate, parent_revision=None if parent == "none" else parent, options=options
                 ).public_record()
             elif action_name == EVALUATION_SUBMIT_ACTION:
+                if self.search_coordinator is not None:
+                    self.search_coordinator.admit_submission(timeout_s=timeout_s)
                 answer = pool.submit(rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s)
             elif action_name == EVALUATION_STATUS_ACTION:
                 answer = pool.status(rendered["job_id"])
@@ -809,19 +856,37 @@ class ComponentOnlyPolicy(WorkflowPolicy):
             ):
                 raise StageGateError("component broker receipt identity is invalid")
             observed.append({"action": row["action"], "bindings_sha256": row["bindings_command_sha256"]})
-            if row["action"] in (ANALYTICAL_ACTION, RTL_ACTION, CCA_ACTION) and row.get("returncode") == 0:
+            if (
+                row["action"] in (ANALYTICAL_ACTION, RTL_ACTION, CCA_ACTION, SEARCH_SELECT_ACTION)
+                and row.get("returncode") == 0
+            ):
                 evidence = _pin(row.get("feedback_receipt_path", ""), row.get("feedback_receipt_sha256"))
                 if not evidence.is_relative_to(Path(path).resolve().parent):
                     raise StageGateError("component feedback receipt escaped its private owner")
-                document = validate_component_feedback(json.loads(evidence.read_bytes()))
-                if hashlib.sha256(canonical_json(document)).hexdigest() != row["feedback_receipt_sha256"]:
+                envelope = json.loads(evidence.read_bytes())
+                if hashlib.sha256(canonical_json(envelope)).hexdigest() != row["feedback_receipt_sha256"]:
                     raise StageGateError("component feedback receipt is not canonical")
+                if row["action"] == SEARCH_SELECT_ACTION:
+                    if (
+                        not isinstance(envelope, Mapping)
+                        or set(envelope) != {"schema", "selected", "feedback", "promotion"}
+                        or envelope["schema"] != "merlin.component_search_selection.v1"
+                        or envelope["promotion"] != "NO_FINAL_ACCEPTANCE"
+                        or not isinstance(envelope["selected"], Mapping)
+                    ):
+                        raise StageGateError("component search selection receipt is invalid")
+                    document = validate_component_feedback(envelope["feedback"])
+                    if envelope["selected"].get("source_sha256") != document["candidate_sha256"]:
+                        raise StageGateError("component search selected another measured source")
+                else:
+                    document = validate_component_feedback(envelope)
                 if row["stdout_sha256"] != row["feedback_receipt_sha256"]:
                     raise StageGateError("component feedback differs from the observed stdout")
                 tier = {
                     ANALYTICAL_ACTION: "calibrated_component_analytical",
                     RTL_ACTION: "certified_component_rtl",
                     CCA_ACTION: CC.TIER,
+                    SEARCH_SELECT_ACTION: "certified_component_rtl",
                 }[row["action"]]
                 if document["tier"] != tier:
                     raise StageGateError("component feedback tier differs from its action")

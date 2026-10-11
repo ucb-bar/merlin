@@ -1,0 +1,281 @@
+"""Bounded development search over the actual host-issued evaluation queue.
+
+Ranking consumes complete paired RTL observations, including non-contraction
+members. Prediction order remains screening only. This owner never materializes
+a compiler or grants lineage, numerical qualification or final acceptance.
+"""
+
+from __future__ import annotations
+
+import math
+import time
+from collections import Counter
+from dataclasses import asdict, dataclass
+
+from .contracts import StageGateError, document_sha256
+
+
+@dataclass(frozen=True)
+class SearchSettings:
+    beam_width: int = 3
+    soft_seconds: int = 14_400
+    hard_seconds: int = 28_800
+    final_reserve_seconds: int = 2_700
+    minimum_improvement: float = 0.01
+    plateau_batches: int = 3
+
+    def verify(self):
+        if (
+            any(
+                type(value) is not int or value < 1
+                for value in (
+                    self.beam_width,
+                    self.soft_seconds,
+                    self.hard_seconds,
+                    self.final_reserve_seconds,
+                    self.plateau_batches,
+                )
+            )
+            or self.beam_width > 3
+            or not self.final_reserve_seconds < self.soft_seconds <= self.hard_seconds <= 28_800
+            or type(self.minimum_improvement) not in (int, float)
+            or not math.isfinite(self.minimum_improvement)
+            or not 0 < self.minimum_improvement < 1
+        ):
+            raise StageGateError("search requires a bounded beam, time reserve and positive improvement threshold")
+
+
+def rank_measured_contenders(observations, *, roster, corpus_sha256, configuration_sha256):
+    """Replay complete development observations; repeated timings retain their range.
+
+    This pure projection is diagnostic. Only the coordinator can obtain input
+    observations from its live issued pool. Bounds are observed ranges, not
+    statistical confidence intervals or claims about complete held-out programs.
+    """
+    from .component_workflow import validate_component_feedback
+
+    roster = tuple(sorted(roster))
+    if not roster or len(set(roster)) != len(roster):
+        raise StageGateError("search objective requires the exact nonempty generated roster")
+    counts = Counter(family for family, _ in roster)
+    weights = {identity: 1 / len(counts) / counts[identity[0]] for identity in roster}
+    groups, excluded = {}, []
+    for observation in observations:
+        if observation["state"] != "completed" or observation["kind"] != "component-rtl-feedback":
+            continue
+        feedback = validate_component_feedback(observation["result"])
+        if (
+            feedback["tier"] != "certified_component_rtl"
+            or feedback["candidate_sha256"] != observation["source_sha256"]
+            or feedback["corpus_sha256"] != corpus_sha256
+            or feedback["configuration_sha256"] != configuration_sha256
+        ):
+            raise StageGateError("search timing observation differs from its issued source/corpus/engine")
+        cells = feedback["evidence"]["cells"]
+        identities = [(row["family"], row["capsule"]) for row in cells]
+        if sorted(identities) != list(roster):
+            raise StageGateError("search observation changes the complete objective roster")
+        if not all(row["measured"] and row["comparable"] for row in cells):
+            excluded.append({"job_id": observation["job_id"], "reason": "incomplete or incorrect RTL roster"})
+            continue
+        source = observation["source_sha256"]
+        group = groups.setdefault(source, {"observations": [], "members": {identity: [] for identity in roster}})
+        group["observations"].append(observation)
+        for identity, row in zip(identities, cells, strict=True):
+            group["members"][identity].append((row["baseline_gsim_cycles"], row["candidate_gsim_cycles"]))
+    ranked = []
+    for source, group in groups.items():
+        baseline_lo = sum(weights[key] * min(pair[0] for pair in values) for key, values in group["members"].items())
+        baseline_hi = sum(weights[key] * max(pair[0] for pair in values) for key, values in group["members"].items())
+        candidate_lo = sum(weights[key] * min(pair[1] for pair in values) for key, values in group["members"].items())
+        candidate_hi = sum(weights[key] * max(pair[1] for pair in values) for key, values in group["members"].items())
+        first = group["observations"][0]
+        ranked.append(
+            {
+                "source_sha256": source,
+                "revision_id": first["revision_id"],
+                "edit_family": first["options"].get("edit_family"),
+                "jobs": [row["job_id"] for row in group["observations"]],
+                "ratio_lo": candidate_lo / baseline_hi,
+                "ratio_hi": candidate_hi / baseline_lo,
+                "baseline_weighted_cycles": {"lo": baseline_lo, "hi": baseline_hi},
+                "candidate_weighted_cycles": {"lo": candidate_lo, "hi": candidate_hi},
+            }
+        )
+    return {
+        "ranked": sorted(ranked, key=lambda row: (row["ratio_hi"], row["source_sha256"])),
+        "excluded": excluded,
+        "weights_sha256": document_sha256([[*key, weights[key]] for key in roster]),
+        "weight_basis": "equal generated families and equal members within family",
+        "uncertainty_basis": "range of every observed repeat; no confidence or unseen-program claim",
+    }
+
+
+class ComponentSearchCoordinator:
+    """Single promotion owner for a live pool; decisions remain development only."""
+
+    def __init__(self, pool, *, settings=SearchSettings()):
+        from .evaluation_pool import ComponentEvaluationPool
+
+        if type(pool) is not ComponentEvaluationPool or type(settings) is not SearchSettings:
+            raise StageGateError("search must bind the actual fixed evaluation pool")
+        settings.verify()
+        if pool.policy.component_rtl is None:
+            raise StageGateError("search requires an explicitly selected certified timing evaluator")
+        self.pool, self.settings = pool, settings
+        self.roster = tuple(sorted(pool.policy._validate()))
+        self.corpus_sha256 = pool.policy.component_corpus.capsules_sha256
+        self.configuration_sha256 = pool.policy.component_rtl.certificate.sha256
+        self.started = time.monotonic()
+        self._incumbent = pool.baseline_revision.public_record()
+        self._plateau = 0
+        self._finalized = False
+        self.selected = None
+
+    def admit_submission(self, *, timeout_s):
+        elapsed = time.monotonic() - self.started
+        if (
+            self._finalized
+            or type(timeout_s) not in (int, float)
+            or not math.isfinite(timeout_s)
+            or timeout_s <= 0
+            or elapsed + timeout_s > self.settings.soft_seconds - self.settings.final_reserve_seconds
+        ):
+            raise StageGateError("search reserves the remaining time for draining and final checks")
+        if self.status()["stop_reason"] is not None:
+            raise StageGateError("search has stopped new exploration")
+
+    def status(self):
+        observations = self.pool.observations()
+        projection = rank_measured_contenders(
+            observations,
+            roster=self.roster,
+            corpus_sha256=self.corpus_sha256,
+            configuration_sha256=self.configuration_sha256,
+        )
+        ranked = projection["ranked"]
+        eligible = {row["source_sha256"]: row for row in ranked}
+        baseline = self.pool.baseline_revision.public_record()
+        incumbent = next((row for row in ranked if row["source_sha256"] == self._incumbent["source_sha256"]), None)
+        if incumbent is None or incumbent["ratio_hi"] >= 1 - self.settings.minimum_improvement:
+            # Every repeat is reopened. A previously winning source can lose
+            # its conservative superiority without becoming incorrect.
+            self._incumbent = baseline
+            incumbent = None
+        incumbent_lo = incumbent["ratio_lo"] if incumbent else 1.0
+        if ranked and ranked[0]["ratio_hi"] < incumbent_lo * (1 - self.settings.minimum_improvement):
+            selected = self.pool.revisions.get(ranked[0]["revision_id"])
+            self._incumbent = selected.public_record()
+            self._plateau = 0
+        # Recompute from current bounds rather than remembering old wins or
+        # plateaus after later repeats have widened their measured ranges.
+        processed, pending, plateau, batch_best = set(), [], 0, 1.0
+        for observation in observations:
+            source = observation["source_sha256"]
+            if source != baseline["source_sha256"] and source not in processed and source in eligible:
+                processed.add(source)
+                pending.append(source)
+        while len(pending) >= self.settings.beam_width:
+            batch = pending[: self.settings.beam_width]
+            del pending[: self.settings.beam_width]
+            rows = [eligible[source] for source in batch if source in eligible]
+            labels = {row["edit_family"] for row in rows if row["edit_family"]}
+            best = min((row["ratio_hi"] for row in rows), default=math.inf)
+            improved = best < batch_best * (1 - self.settings.minimum_improvement)
+            batch_best = min(batch_best, best)
+            # Labels demonstrate declared diversity only. Missing/incomplete
+            # batches cannot count towards even this scoped plateau heuristic.
+            plateau = 0 if improved or len(labels) < 2 else plateau + 1
+        self._plateau = plateau
+        elapsed = time.monotonic() - self.started
+        stop = None
+        if self._finalized:
+            stop = "exploration finalized"
+        elif elapsed >= self.settings.hard_seconds:
+            stop = "hard wall budget exhausted"
+        elif elapsed >= self.settings.soft_seconds - self.settings.final_reserve_seconds:
+            stop = "final drain and verification reserve reached"
+        elif len(observations) >= self.pool.max_jobs:
+            stop = "retained evaluation job budget exhausted"
+        elif self._plateau >= self.settings.plateau_batches:
+            stop = "scoped plateau across completed batches with declared edit diversity"
+        beam, seen, labels = [self._incumbent], {self._incumbent["source_sha256"]}, set()
+        choices = [row for row in ranked if row["source_sha256"] not in seen]
+        for row in choices:
+            label = row["edit_family"]
+            if label and label not in labels and len(beam) < self.settings.beam_width:
+                beam.append(self.pool.revisions.get(row["revision_id"]).public_record())
+                seen.add(row["source_sha256"])
+                labels.add(label)
+        for row in choices:
+            if row["source_sha256"] not in seen and len(beam) < self.settings.beam_width:
+                beam.append(self.pool.revisions.get(row["revision_id"]).public_record())
+                seen.add(row["source_sha256"])
+        screening = [
+            {"revision_id": row["revision_id"], "screening": row["result"]["screening"]}
+            for row in observations
+            if row["state"] == "completed"
+            and row["kind"] == "component-analytical-feedback"
+            and "screening" in row["result"]
+        ]
+        return {
+            "schema": "merlin.component_search_status.v1",
+            "corpus_sha256": self.corpus_sha256,
+            "settings": asdict(self.settings),
+            "elapsed_seconds": elapsed,
+            "incumbent": self._incumbent,
+            "baseline_fallback": baseline,
+            "beam": beam,
+            **projection,
+            "screening": screening,
+            "plateau_batches": self._plateau,
+            "stop_reason": stop,
+            "promotion": "NO_FINAL_ACCEPTANCE",
+            "objective_scope": (
+                "complete generated roster of measured simulator cycles; complete host and model costs UNKNOWN"
+            ),
+            "finalized": self._finalized,
+            "selected": self.selected,
+            "final_requirements": "observed author lineage plus fresh complete compile/static/numerical checks",
+        }
+
+    def finalize(self, *, timeout_s):
+        """Stop exploration and finish or reap queued work before source selection."""
+        remaining = self.settings.hard_seconds - self.settings.final_reserve_seconds - (time.monotonic() - self.started)
+        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s <= 0 or remaining <= 0:
+            raise StageGateError("search finalization cannot consume its final verification reserve")
+        self.pool.drain(timeout_s=min(timeout_s, remaining))
+        self._finalized = True
+        return self.status()
+
+    def select(self):
+        """Restore only the measured incumbent during the observed author session."""
+        if not self._finalized:
+            raise StageGateError("search source selection requires completed evaluation cleanup")
+        status = self.status()
+        source = status["incumbent"]["source_sha256"]
+        ranked = next((row for row in status["ranked"] if row["source_sha256"] == source), None)
+        if ranked is None:
+            raise StageGateError("search selection feedback is outside its complete current objective")
+        observed = next(
+            (
+                row
+                for row in self.pool.observations()
+                if row["state"] == "completed"
+                and row["kind"] == "component-rtl-feedback"
+                and row["source_sha256"] == source
+                and row["job_id"] in ranked["jobs"]
+            ),
+            None,
+        )
+        if observed is None:
+            raise StageGateError(
+                "search selection requires complete measured feedback, including its baseline fallback"
+            )
+        self.selected = self.pool.revisions.restore(status["incumbent"]["revision_id"], self.pool.policy.candidate)
+        return {
+            "schema": "merlin.component_search_selection.v1",
+            "selected": self.selected,
+            "feedback": observed["result"],
+            "promotion": "NO_FINAL_ACCEPTANCE",
+        }

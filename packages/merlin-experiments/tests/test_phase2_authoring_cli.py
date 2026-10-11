@@ -122,3 +122,43 @@ def test_trusted_source_root_default_is_forwarded_without_installed_discovery(tm
     assert CLI.main(args, source_root=tmp_path) == 0
     assert observed["source_root"] == tmp_path
     assert observed["target_experiment"].source_root == tmp_path
+
+
+def test_component_cli_accepts_only_explicit_live_owner_handoff(tmp_path, monkeypatch):
+    """Argument routing only; these objects cannot issue runtime qualification."""
+    from merlin_experiments.phase2 import component_launch as CL
+    from merlin_experiments.phase2 import component_launch_inputs as INPUTS
+
+    origin, runtime, inputs = object(), object(), object()
+    declaration = tmp_path / "launch.json"
+    calls = []
+
+    def load(path, *, phase1_origin, measurement_support):
+        assert path == declaration and phase1_origin is origin and measurement_support is runtime
+        calls.append("live-inputs")
+        return inputs
+
+    def qualify(actual, **kwargs):
+        assert actual is inputs and kwargs == {"model": "fixture", "effort": "high"}
+        calls.append("qualify")
+        return SimpleNamespace(qualification_path=tmp_path / "unissued-diagnostic.json")
+
+    monkeypatch.setattr(INPUTS, "load_component_launch_inputs", load)
+    monkeypatch.setattr(CL, "qualify_component_launch", qualify)
+    assert (
+        CLI.main(
+            [
+                "--workflow",
+                "component-only-v1",
+                "--component-launch-inputs",
+                str(declaration),
+                "--qualification-only",
+                "--model",
+                "fixture",
+            ],
+            phase1_origin=origin,
+            measurement_support=runtime,
+        )
+        == 0
+    )
+    assert calls == ["live-inputs", "qualify"]

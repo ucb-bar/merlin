@@ -122,6 +122,7 @@ class ComponentPromptInputs:
     broker_path: str
     broker_receipt_path: str
     public_manifest_sha256: str | None = None
+    author_agents: int | None = None
 
 
 def render_component_prompt(inputs: ComponentPromptInputs) -> str:
@@ -146,9 +147,16 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
     if inputs.tool_timeout_seconds > ITERATION_MAX_SECONDS:
         raise StageGateError("component prompt tool timeout exceeds the reduced-component iteration limit")
     names = {action.name for action in inputs.actions}
-    from .component_workflow import component_actions
+    from .component_workflow import component_actions, evaluation_pool_actions, search_actions
 
     permitted = {action.name for action in component_actions()}
+    if inputs.author_agents is not None:
+        if type(inputs.author_agents) is not int or not 1 <= inputs.author_agents <= 3:
+            raise StageGateError("component search prompt requires bounded native author concurrency")
+        selected = (*evaluation_pool_actions(search=True), *search_actions())
+        permitted.update(action.name for action in selected)
+        if not {action.name for action in selected}.issubset(names):
+            raise StageGateError("search prompt lacks its fixed queue and source-selection controls")
     if len(names) != len(inputs.actions) or any(
         name not in permitted and not name.startswith("candidate-") for name in names
     ):
@@ -168,8 +176,11 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         "corpus": {
             "manifest": inputs.corpus_manifest_path,
             "manifest_sha256": inputs.corpus_manifest_sha256,
-            **({"public_manifest_sha256": inputs.public_manifest_sha256}
-               if inputs.public_manifest_sha256 is not None else {}),
+            **(
+                {"public_manifest_sha256": inputs.public_manifest_sha256}
+                if inputs.public_manifest_sha256 is not None
+                else {}
+            ),
             "sha256": inputs.corpus_sha256,
             "members": [{"family": family, "capsule": capsule} for family, capsule in inputs.members],
         },
@@ -184,12 +195,31 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         },
         "launch_admission": "REQUIRED_SEPARATELY",
         "final_acceptance": "NOT_ESTABLISHED",
+        **({"author_agents": inputs.author_agents} if inputs.author_agents is not None else {}),
     }
     action_inventory = "\n".join(
         f"- `{action.name}`: {action.purpose} "
         + ("AVAILABLE" if action.available else f"UNAVAILABLE: {action.unavailable_reason}")
         + ("; invocation required by this launch." if action.required else "; optional.")
         for action in inputs.actions
+    )
+    search_plan = (
+        "## Bounded parallel search\n\n"
+        f"Coordinate up to {inputs.author_agents} native authors on separate compiler symbols or files. "
+        "Only the coordinator invokes the broker and merges their edits into this candidate. "
+        "Authors propose reusable changes and return their hypothesis and scope; do not launch private "
+        "simulators or write outside the candidate. Serialize edits to shared symbols. Freeze each "
+        "integrated contender with revision-freeze, declaring hypothesis and edit_family; evaluations "
+        "read that retained revision while authors may continue editing. Use analytical feedback for "
+        "screening and measure the unchanged starting compiler once for the baseline fallback. Use predictions for "
+        "screening only. Complete measured simulator cycles govern the conservative development "
+        "ranking; complete host and whole-model costs remain unavailable when unmeasured. "
+        "Use search-status to prioritize decisions and respect its stopping reason. Before returning, "
+        "join every author and stop editing, invoke search-finalize to finish or reap queued work, "
+        "then search-select to restore the selected incumbent. Make no further edits after selection. "
+        "The host checks observed final source and the original full correctness roster independently.\n\n"
+        if inputs.author_agents is not None
+        else ""
     )
     return (
         "# Generated component compiler optimization\n\n"
@@ -203,14 +233,17 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         "Spike establishes functional evidence and cannot supply hardware timing. Neither tier "
         "grants final acceptance. Whole-model graphs, measurements, holdout answers and FireSim "
         "services are absent from this training profile. Preserve the fixed grader and accuracy gates.\n\n"
-        "This prompt grants no launch authority. The host must independently admit the approved "
+        + search_plan
+        + "This prompt grants no launch authority. The host must independently admit the approved "
         "minimal view, isolated runtime and zero-history session before any authoring starts.\n\n"
         + "## Phase 2 broker actions for this launch\n\n"
         + action_inventory
         + "\n\nUse the exact broker and argv bindings in the JSON below; an unavailable action "
         "cannot supply evidence. This inventory changes no execution authority.\n\n"
         + GENERAL_COMPILER_CONTRACT_V1
-        + "\n```json\n" + json.dumps(document, sort_keys=True, indent=2) + "\n```\n"
+        + "\n```json\n"
+        + json.dumps(document, sort_keys=True, indent=2)
+        + "\n```\n"
     )
 
 
