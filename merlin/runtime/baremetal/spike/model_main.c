@@ -72,9 +72,12 @@ int main(int hart) {
   __asm__ volatile("csrr %0, mcycle" : "=r"(c1));
 
   /* Output protocol:
-   *   OUT <k> <bits...>     : the first k = min(N, 4096) raw values (exact prefix).
+   *   OUT <k> <bits...>     : the first k raw values (exact prefix).
    *   OUT_I64 <k> <lo hi...>: i64 values as unsigned 32-bit halves, low first.
    *   OUT_I1 <k> <bytes...>: actual one-byte Boolean storage; host requires 0/1.
+   *   OUT_BEGIN <dtype> <k>, OUT_CHUNK <dtype> <offset> <count> <bits...>
+   *     : complete or bounded-prefix output above 4096 values, in 1024-value
+   *       records so a full LM logit tensor needs no giant console line.
    * For large outputs (e.g. LM logits) additionally a digest the host can gate on:
    *   ARGMAX <rows> <idx...>: argmax over the last dim per row (token predictions).
    *   SUM <bits>            : f32 sum of all outputs (loose-tol checksum). */
@@ -82,33 +85,52 @@ int main(int hart) {
 #define MERLIN_DUMP_CAP 4096
 #endif
   int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
+  const int chunked = k > 4096;
+  const int chunk_size = 1024;
 #if MERLIN_OUT_IS_I64
-  htif_puts("OUT_I64 ");
+  const char *dtype = "i64";
+  const char *legacy = "OUT_I64 ";
 #elif MERLIN_OUT_IS_I1
-  htif_puts("OUT_I1 ");
+  const char *dtype = "i1";
+  const char *legacy = "OUT_I1 ";
 #else
-  htif_puts("OUT ");
+  const char *dtype = "f32";
+  const char *legacy = "OUT ";
 #endif
-  htif_putd((long)k);
-  for (int i = 0; i < k; i++) {
-#if MERLIN_OUT_IS_I64
-    uint64_t bits;
-    memcpy(&bits, (const unsigned char *)MERLIN_OUTPUT_PTR[0] + (long)i * 8, 8);
-    htif_putc(' ');
-    htif_putd((long)(bits & UINT32_MAX));
-    htif_putc(' ');
-    htif_putd((long)(bits >> 32));
-#elif MERLIN_OUT_IS_I1
-    htif_putc(' ');
-    htif_putd((long)((const uint8_t *)MERLIN_OUTPUT_PTR[0])[i]);
-#else
-    uint32_t bits;
-    memcpy(&bits, &OUT[i], 4);
-    htif_putc(' ');
-    htif_putd((long)(uint64_t)bits);
-#endif
+  if (chunked) {
+    htif_puts("OUT_BEGIN "); htif_puts(dtype); htif_putc(' ');
+    htif_putd((long)k); htif_putc('\n');
+  } else if (k == 0) {
+    htif_puts(legacy); htif_puts("0\n");
   }
-  htif_putc('\n');
+  for (int base = 0; base < k; base += (chunked ? chunk_size : k)) {
+    int count = chunked && k - base > chunk_size ? chunk_size : k - base;
+    if (chunked) {
+      htif_puts("OUT_CHUNK "); htif_puts(dtype); htif_putc(' ');
+      htif_putd((long)base); htif_putc(' '); htif_putd((long)count);
+    } else {
+      htif_puts(legacy); htif_putd((long)count);
+    }
+    for (int i = base; i < base + count; i++) {
+#if MERLIN_OUT_IS_I64
+      uint64_t bits;
+      memcpy(&bits, (const unsigned char *)MERLIN_OUTPUT_PTR[0] + (long)i * 8, 8);
+      htif_putc(' ');
+      htif_putd((long)(bits & UINT32_MAX));
+      htif_putc(' ');
+      htif_putd((long)(bits >> 32));
+#elif MERLIN_OUT_IS_I1
+      htif_putc(' ');
+      htif_putd((long)((const uint8_t *)MERLIN_OUTPUT_PTR[0])[i]);
+#else
+      uint32_t bits;
+      memcpy(&bits, &OUT[i], 4);
+      htif_putc(' ');
+      htif_putd((long)(uint64_t)bits);
+#endif
+    }
+    htif_putc('\n');
+  }
 
 #if MERLIN_OUT_IS_F32
   if (MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {

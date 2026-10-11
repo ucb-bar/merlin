@@ -97,7 +97,7 @@ merlin-compile --target "$TARGET" --model-build \
 
 `--run none` produces `baremetal_model.json` with status `compiled` and an ELF. It claims neither
 execution nor numerical agreement. It can build a model whose output exceeds the execution gate's
-current 4096-element limit.
+current bounded-prefix 4096-element limit unless the selected build emits chunked output.
 
 To run a **separate fresh build** on the selected native engine:
 
@@ -113,8 +113,10 @@ merlin-compile --target "$TARGET" --model-build \
 Here `RTL_ENGINE` is the selected `gsim` or `verilator`; `spike` is also supported without
 `--rtl-facts`, but is not RTL evidence. Native availability and completion depend on the exact
 provider/engine, ELF and cycle/time budget; the presence of this API is not a claim that a particular
-whole model has passed. Execution currently requires one finite float32 output of at most 4096
-elements and checks the **entire** `OUT` against the explicit reference, plus completion and build
+whole model has passed. Execution currently requires one finite float32 output. The shared
+bare-metal harness can emit and check a complete output of at most 1,048,576 elements using
+ordered 1024-element chunks; native simulator throughput at that size remains to be measured.
+The gate checks the **entire** `OUT` against the explicit reference, plus completion and build
 identity. Status `verified_complete_output` means exactly that for this ELF/reference/engine.
 Partial or timed-out simulator output is retained as diagnostic bytes in a failed receipt and never
 counts as a numerical pass. `--no-verify` is not an execution escape hatch.

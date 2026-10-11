@@ -1303,34 +1303,74 @@ def run(
 def parse_console(console: str) -> dict[str, Any]:
     """Parse the shared bare-metal model protocol, independent of its simulator.
 
-    OUT/OUT_I64/OUT_I1 is a bounded prefix (at most 4096 values), not evidence of a complete
-    larger tensor. Process success and hardware provenance belong to the caller.
+    OUT/OUT_I64/OUT_I1 is a bounded prefix (at most 4096 values). Large
+    outputs use an OUT_BEGIN declaration and contiguous OUT_CHUNK records.
+    A prefix is never evidence of a complete larger tensor; the caller must
+    compare the observed count with its independently captured output shape.
+    Process success and hardware provenance belong to the caller.
     Duplicate, truncated, or malformed output must never qualify a run.
     """
     lines = console.splitlines()
-    out_lines = [line for line in lines if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
-    done_lines = [line for line in lines if line.strip() == "DONE"]
-    if len(out_lines) != 1 or len(done_lines) != 1:
-        raise SpikeModelError(f"run requires exactly one OUT and DONE:\n{console[-2000:]}")
-    if lines.index(out_lines[0]) >= lines.index(done_lines[0]):
-        raise SpikeModelError("DONE preceded model output")
-    parts = out_lines[0].split()
-    integer = parts[0] == "OUT_I64"
-    boolean = parts[0] == "OUT_I1"
-    try:
-        n = int(parts[1])
-        bits = [int(x) for x in parts[2:]]
-    except (IndexError, ValueError) as exc:
-        raise SpikeModelError("malformed OUT count or raw output words") from exc
+    out_lines = [(i, line) for i, line in enumerate(lines)
+                 if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
+    begin_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_BEGIN ")]
+    chunk_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_CHUNK ")]
+    done_lines = [i for i, line in enumerate(lines) if line.strip() == "DONE"]
+    if len(done_lines) != 1 or bool(out_lines) == bool(begin_lines):
+        raise SpikeModelError(f"run requires one output stream and DONE:\n{console[-2000:]}")
+    if begin_lines:
+        if len(begin_lines) != 1 or not chunk_lines or begin_lines[0][0] >= done_lines[0]:
+            raise SpikeModelError("malformed or incomplete chunked model output")
+        head = begin_lines[0][1].split()
+        try:
+            dtype, n = head[1], int(head[2])
+        except (IndexError, ValueError) as exc:
+            raise SpikeModelError("malformed OUT_BEGIN") from exc
+        if len(head) != 3 or dtype not in {"f32", "i64", "i1"} or not 4096 < n <= 1_048_576:
+            raise SpikeModelError("invalid chunked model output type or count")
+        integer, boolean = dtype == "i64", dtype == "i1"
+        bits = []
+        offset = 0
+        for line_index, line in chunk_lines:
+            parts = line.split()
+            try:
+                start, count = int(parts[2]), int(parts[3])
+                words = [int(word) for word in parts[4:]]
+            except (IndexError, ValueError) as exc:
+                raise SpikeModelError("malformed OUT_CHUNK") from exc
+            if (len(parts) < 5 or parts[1] != dtype or start != offset or
+                    not 1 <= count <= 1024 or count > n - offset or
+                    len(words) != count * (2 if integer else 1) or
+                    not begin_lines[0][0] < line_index < done_lines[0]):
+                raise SpikeModelError("missing, repeated, or out-of-order OUT_CHUNK")
+            bits.extend(words)
+            offset += count
+        if offset != n:
+            raise SpikeModelError("chunked model output is incomplete")
+    else:
+        if chunk_lines:
+            raise SpikeModelError("OUT_CHUNK has no OUT_BEGIN")
+        if len(out_lines) != 1 or out_lines[0][0] >= done_lines[0]:
+            raise SpikeModelError("DONE preceded model output")
+        parts = out_lines[0][1].split()
+        integer = parts[0] == "OUT_I64"
+        boolean = parts[0] == "OUT_I1"
+        try:
+            n = int(parts[1])
+            bits = [int(x) for x in parts[2:]]
+        except (IndexError, ValueError) as exc:
+            raise SpikeModelError("malformed OUT count or raw output words") from exc
+        if not 0 <= n <= 4096:
+            raise SpikeModelError("legacy OUT count exceeds its bounded prefix")
     maximum_word = 1 if boolean else 0xFFFFFFFF
-    if not 0 <= n <= 4096 or len(bits) != n * (2 if integer else 1) or any(not 0 <= b <= maximum_word for b in bits):
+    if len(bits) != n * (2 if integer else 1) or any(not 0 <= b <= maximum_word for b in bits):
         raise SpikeModelError("OUT count or raw output words do not match the bare-metal protocol")
     raw = (
         np.asarray([lo | (hi << 32) for lo, hi in zip(bits[::2], bits[1::2], strict=True)], dtype=np.uint64)
         if integer
         else np.asarray(bits, dtype=np.uint8 if boolean else np.uint32)
     )
-    flat = raw.view(np.int64 if integer else np.bool_ if boolean else np.float32)  # exact prefix (≤4096)
+    flat = raw.view(np.int64 if integer else np.bool_ if boolean else np.float32)
     metrics = {}
     argmax = None
     sumval = None

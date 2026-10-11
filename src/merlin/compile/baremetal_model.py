@@ -88,8 +88,8 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.
     golden = np.load(reference, allow_pickle=False)
     if golden.dtype != np.float32 or golden.size < 1 or not np.isfinite(golden).all():
         raise BaremetalModelError("execution reference must be a nonempty finite float32 array")
-    if golden.size > 4096:
-        raise BaremetalModelError("complete OUT observability is limited to 4096 elements; use run='none'")
+    if golden.size > 1_048_576:
+        raise BaremetalModelError("complete chunked OUT observability is limited to 1048576 elements")
     return golden.reshape(-1)
 
 
@@ -126,7 +126,8 @@ def compile_saved_model(
 
     ``reference_file`` is required for execution because a weight-only capture's
     ``golden.npy`` is not necessarily the reference for a W8A8 execution.  This
-    initial executor supports one complete float32 OUT (at most 4096 values).
+    executor supports one complete float32 OUT, using chunked Spike console
+    records above 4096 values (at most 1048576 values).
     """
     if run not in {"none", "spike", "gsim", "verilator"}:
         raise BaremetalModelError(f"unsupported bare-metal run {run!r}")
@@ -234,6 +235,8 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if golden is not None and golden.size > 4096:
+            build_options["output_dump_cap"] = int(golden.size)
         built = spike_model.build(
             capture_path,
             output_path / "build",
