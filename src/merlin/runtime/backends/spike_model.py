@@ -1340,6 +1340,9 @@ def parse_console(console: str) -> dict[str, Any]:
     Duplicate, truncated, or malformed output must never qualify a run.
     """
     lines = console.splitlines()
+    if any(line.startswith(("FATAL:", "FATAL ", "FAIL ")) or "*** FAILED" in line
+           for line in lines):
+        raise SpikeModelError("guest reported failure in model console")
     out_lines = [(i, line) for i, line in enumerate(lines)
                  if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
     begin_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_BEGIN ")]

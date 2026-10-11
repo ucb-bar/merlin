@@ -43,6 +43,15 @@ def test_shared_model_console_preserves_bits_and_metrics():
             spike_model.parse_console(console)
 
 
+@pytest.mark.parametrize("marker", (
+    "FATAL: model arena -- exhausted", "FATAL model arena exhausted",
+    "FAIL session state", "*** FAILED *** (tohost = 2304)",
+))
+def test_shared_model_console_rejects_guest_failure_even_with_done(marker):
+    with pytest.raises(spike_model.SpikeModelError, match="guest reported failure"):
+        spike_model.parse_console(f"OUT 1 1065353216\nDONE\n{marker}\n")
+
+
 def test_shared_model_console_keeps_all_integer_bits():
     values = np.array([2**53 + 1, -(2**63), 2**63 - 1], dtype=np.int64)
     words = [word for value in values.view(np.uint64) for word in (int(value) & 0xFFFFFFFF, int(value) >> 32)]
