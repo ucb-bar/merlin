@@ -656,6 +656,11 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     elf = Path(output["elf"])
     recipe = output["compilation_recipe"]
     compilation = verify_completed_recipe(Path(recipe["path"]), executable=elf, expected_recipe_sha256=recipe["sha256"])
+    quantization = (compilation.get("preparation") or {}).get("quantization_policy")
+    if quantization is not None:
+        document = json.loads(Path(quantization["path"]).read_text())
+        if document.get("selection") != "captured_scope" or document.get("passes") != ["contraction_int8"]:
+            raise ValueError("owned host lowering did not preserve captured quantization scope")
     host = output["host_artifacts"]
     model_ir, model_obj = _pinned(host, "llvm_ir"), _pinned(host, "object")
     model_commands = [row for row in compilation["commands"] if row["output"]["path"] == str(model_obj)]
@@ -935,6 +940,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             or inputs.get("arena_mb") != selection["arena_mb"]
             or inputs.get("run") != "none"
             or inputs.get("readback") != "full"
+            or inputs.get("respect_captured_quantization_scope") is not True
             or inputs.get("board_catalog_sha256") != file_sha256(paths["board_catalog"])
             or inputs.get("dts_sha256") != file_sha256(paths["dts"])
         ):

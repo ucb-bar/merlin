@@ -42,6 +42,7 @@ def test_original_source_and_fixed_host_reach_ordinary_build(tmp_path, monkeypat
         assert kwargs["capture"] == capture
         assert kwargs["device"] is route
         assert kwargs["readback"] == "full"
+        assert kwargs["respect_captured_quantization_scope"] is True
         return {"status": "compiled"}
     monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
     assert service.compile(capture=capture, candidate_package=candidate, datapath="int8",

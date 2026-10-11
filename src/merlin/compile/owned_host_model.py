@@ -108,6 +108,7 @@ class OwnedHostModelCompiler:
             math_archive_symbols=math_archive_symbols,
             readback=readback,
             materialized_inputs=materialized_inputs,
+            respect_captured_quantization_scope=True,
             group_profile=group_profile,
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
