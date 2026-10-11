@@ -218,6 +218,8 @@ def qualify(
         receipt["engine"] = {"simulator": simulator, "fidelity": "elaborated_rtl", "citation": native[1]}
     output_path.mkdir(parents=True)
     try:
+        from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
+
         built = spike_model.build(
             capture_path,
             output_path / "build",
@@ -225,6 +227,7 @@ def qualify(
             dram_base=selected.dram_base,
             dram_bytes=selected.dram_bytes,
             int8_compute=True,
+            features=frozenset({captured_quantization_scope}),
             backend="scalar",
             rvv_schedule=None,
             cflags_override=loaded.cflags,

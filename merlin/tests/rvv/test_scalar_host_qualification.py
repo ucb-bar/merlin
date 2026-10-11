@@ -305,6 +305,7 @@ def test_exact_single_output_receipt_binds_every_input(tmp_path, monkeypatch):
     assert receipt["output"]["mismatched_elements"] == 0
     assert seen["run"]["isa"] == receipt["inputs"]["simulator_isa"]
     assert seen["build"]["backend"] == "scalar"
+    assert seen["build"]["features"] == frozenset({"respect_captured_quantization_scope"})
     assert json.loads((output / "qualification.json").read_text())["status"] == receipt["status"]
 
 
