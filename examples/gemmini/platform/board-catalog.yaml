@@ -1,5 +1,5 @@
 # Target-owned host facts for the preferred full Gemmini/Rocket elaborations.
-# Select explicitly: MERLIN_BOARD_CATALOG=examples/gemmini/target/board-catalog.yaml.
+# Select explicitly: MERLIN_BOARD_CATALOG=examples/gemmini/platform/board-catalog.yaml.
 # These are placement/build inputs, not evidence that a Merlin host image ran.
 schema_version: 1
 boards:

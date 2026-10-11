@@ -1,10 +1,10 @@
-# Authored software semantics. RTL geometry/protocol and qualification are generated evidence.
+# User-authored accelerator software semantics; see README.md for the input boundary.
+# Host support is selected separately through the descriptor's platform manifest.
+# Hardware-form requests are resolved from selected evidence, never assumed supported.
+# Internal arithmetic, accumulator storage and readout retain distinct numeric policies.
 schema: merlin.software_spec.v1
 target: gemmini
 status: reviewed
-# Scope: accelerator contraction and exact-op host declarations below. The
-# dequantization declaration is limited to its stated operand/result types and
-# ranks; it does not declare device execution or arbitrary shapes.
 numerical_semantics:
   model:
     engine: integer_reference
@@ -21,324 +21,90 @@ numerical_semantics:
   readout:
     acc_scale_rounding: half_even
     narrowing: saturate_to_declared_dtype
-    # Portable host-side integer shift; not a Gemmini fused readout stage.
     requant_rounding: half_up
     hardware_integer_shift_rounding: rne
     shift: operation_parameter
 operations:
   contraction:
-    # Authored, not derived: the exact-offload outline admits contractions against these authored
-    # bytes and has no fact view to resolve them with. The spec-vs-facts drift check guards every
-    # field here against the selected facts.
-    # window_mean: the derived recipe quantizes an average pool as this unit's own contraction
-    # against a constant one, with the reciprocal of the count folded into the readout scale.
-    families: [contraction, window_mean]
+    families:
+    - contraction
+    - window_mean
     placement: accelerator
-    operand_dtypes: [int8]
+    operand_dtypes:
+    - int8
     accumulator_dtype: i32
-    ranks: [2, 3, 4]
-    layouts: [row_major_contiguous]
-    tails: [zero_pad_valid_window]
-    broadcasting: [none, independent_batches]
-    aliasing: [disjoint_inputs_outputs]
-  # The declarations below state only WHICH established hardware form they admit. Placement,
-  # composition, dtypes, epilogues and scale granularity are filled at Phase 0 selection from the
-  # selected facts (merlin.targetgen.spec_fact_drift.resolve_spec), under the experiment's
-  # prohibited instruction roles. Narrow a derived value with a reasoned `restrictions` entry.
+    ranks:
+    - 2
+    - 3
+    - 4
+    layouts:
+    - row_major_contiguous
+    tails:
+    - zero_pad_valid_window
+    broadcasting:
+    - none
+    - independent_batches
+    aliasing:
+    - disjoint_inputs_outputs
   elementwise_map:
-    # Stages fused with a contraction: readout-applied scale/activation and pre-accumulator bias.
-    # Kept beside the standalone form because admission compares placement exactly.
     hardware: fused
   elementwise_map_standalone:
-    # The operand sum on the load path (accumulate_on_load). operand_sum is the recipe family it
-    # quantizes.
-    families: [elementwise_map, operand_sum]
+    families:
+    - elementwise_map
+    - operand_sum
     hardware: standalone
   elementwise_map_after_operand_sum:
-    # Only stages the SAME fact-derived operand-sum/readout path carries. This is not the
-    # contraction readout declaration, and does not hand-author an epilogue capability.
-    # Contraction bias seeds the accumulator before mesh compute; the readout does not add bias.
-    # The hardware form is reviewed, but every concrete scale pair must pass the
-    # fact-derived exhaustive i8 numerical screen before this composition is admitted.
-    # This never licenses arbitrary scales or replaces target-oracle execution.
     status: reviewed
     numerical_contract: operand_sum_exhaustive_i8_v1
-    families: [elementwise_map]
+    families:
+    - elementwise_map
     hardware: fused_operand_sum
   pooling_on_readout:
-    # Max pooling fused on the store path (readout stage 'maxpool').
-    families: [reduction]
+    families:
+    - reduction
     hardware: fused
   movement:
     hardware: standalone
-    layouts: [row_major_contiguous]
-    aliasing: [disjoint_inputs_outputs]
-  host_only:
-    families: [reduction, normalization, attention, softmax]
-    placement: host
-    dtypes: [f32]
-  # Exact-op host declarations for the operations the RTL facts place on the host.
-  host_f32_elementwise:
-    ops: [aten.mul.Tensor, aten.add.Tensor, aten.add.Scalar, aten.div.Tensor, aten.relu.default,
-          aten.rsqrt.default, aten.pow.Tensor_Scalar, aten.sigmoid.default]
-    placement: host
-    dtypes: [f32]
-  host_f32_reduction_ops:
-    ops: [aten.native_layer_norm.default, aten._softmax.default, aten.mean.dim]
-    placement: host
-    dtypes: [f32]
-  host_review_prepared_f32_maximum:
-    status: reviewed
-    ops: [aten.amax.default]
-    families: [reduction]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_cast:
-    ops: [aten._to_copy.default]
-    placement: host
-    ordered_operand_dtypes: [i32, f32]
-    ordered_result_dtypes: [f32]
-  host_quantize:
-    ops: [quantized_decomposed.quantize_per_tensor.default]
-    placement: host
-    ordered_operand_dtypes: [f32, f32, i64]
-    ordered_result_dtypes: [i8]
-    quantization_parameters: {zero_point: 0, quant_min: -128, quant_max: 127}
-  # Reviewed only for the exact typed rank-3/4 host operation. Phase 1 still owns
-  # lowering, execution and numerical qualification of the emitted compiler.
-  host_dequantize_per_tensor:
-    status: reviewed
-    ops: [quantized_decomposed.dequantize_per_tensor.default]
-    placement: host
-    ordered_operand_dtypes: [i8, f32, i64]
-    ordered_result_dtypes: [f32]
-    ranks: [3, 4]
-    quantization_parameters: {zero_point: 0}
-  host_embedding:
-    ops: [aten.embedding.default]
-    placement: host
-    ordered_operand_dtypes: [i64, f32]
-    ordered_result_dtypes: [f32]
-  host_f32_bmm:
-    ops: [aten.bmm.default]
-    placement: host
-    ordered_operand_dtypes: [f32, f32, f32]
-    ordered_result_dtypes: [f32]
-    accumulator_dtype: f32
-  # Operator-reviewed 2026-10-06: exact scalar-host primitive screens, not
-  # emitted-code, numerical, accelerator, or RTL certification. The ordered
-  # lists include the lowering's output/init operand.
-  host_f32_neg_rank4:
-    status: reviewed
-    ops: [aten.neg.default]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [4]}
-  host_f32_ge_scalar_rank4:
-    status: reviewed
-    ops: [aten.ge.Scalar]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [4]}
-  host_review_f32_oeq_scalar_rank4:
-    status: reviewed
-    ops: [aten.eq.Scalar]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [4]}
-  host_f32_where_rank4:
-    status: reviewed
-    ops: [aten.where.self]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32, f32, f32], ordered_result_dtypes: [f32], ranks: [4]}
-  host_i64_scalar_eq_le_rank1:
-    status: reviewed
-    ops: [aten.eq.Scalar, aten.le.Scalar, aten.eq.Tensor]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [1]}
-  host_i64_tensor_le_rank1_rank4:
-    status: reviewed
-    ops: [aten.le.Tensor]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [1, 4]}
-  host_i64_add_rank1:
-    status: reviewed
-    ops: [aten.add.Tensor]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1]}
-  host_i1_to_f32_rank1_rank4:
-    status: reviewed
-    ops: [aten._to_copy.default]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32], ordered_result_dtypes: [f32], ranks: [1, 4]}
-  host_i64_to_f32_rank1_rank3:
-    status: reviewed
-    ops: [aten._to_copy.default]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32], ranks: [1, 3]}
-  # Selected-source build/link placement only. Numerical equivalence remains
-  # an independent obligation; these are not accelerator capability declarations.
-  host_review_f32_add_r1: {status: reviewed, ops: [aten.add.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1]}}
-  host_review_f32_mul_r1: {status: reviewed, ops: [aten.mul.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1]}}
-  host_review_f32_sub_r1_4: {status: reviewed, ops: [aten.sub.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}}
-  host_review_f32_neg_r1_3: {status: reviewed, ops: [aten.neg.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3]}}
-  host_review_f32_le_r1_4: {status: reviewed, ops: [aten.le.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  host_review_f32_select_r1_3: {status: reviewed, ops: [aten.where.self], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3]}}
-  host_review_f32_nonzero_r1_4: {status: reviewed, ops: [aten._to_copy.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [f32, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  host_review_i64_add_r2_4: {status: reviewed, ops: [aten.add.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [2, 3, 4]}}
-  host_review_i64_sub_r1_4: {status: reviewed, ops: [aten.sub.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}}
-  host_review_i64_mul_r1_4: {status: reviewed, ops: [aten.mul.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}}
-  host_review_i64_le_r2_3: {status: reviewed, ops: [aten.le.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1], ranks: [2, 3]}}
-  host_review_i64_to_f32_r2_4: {status: reviewed, ops: [aten._to_copy.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32], ranks: [2, 4]}}
-  host_review_i1_to_f32_r2_3: {status: reviewed, ops: [aten._to_copy.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32], ordered_result_dtypes: [f32], ranks: [2, 3]}}
-  host_review_i1_to_i64_r1_4: {status: reviewed, ops: [aten._to_copy.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64], ranks: [1, 2, 3, 4]}}
-  host_review_i1_and_r1_4: {status: reviewed, ops: [aten.bitwise_and.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  host_review_i1_xor_r1_4: {status: reviewed, ops: [aten.bitwise_xor.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  host_review_i1_not_r1_4: {status: reviewed, ops: [aten.bitwise_not.default], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  host_review_i1_mul_projected_r1_4: {status: reviewed, ops: [aten.mul.Tensor], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i1, i1], ordered_result_dtypes: [i1], ranks: [1, 2, 3, 4]}}
-  # Separate prepared literal constructor, not one pointwise scalar body.
-  host_review_literal_i64_arange_start_step_r1: {status: reviewed, ops: [aten.arange.start_step], families: [elementwise_map], placement: host, signature: {family: elementwise_map, ordered_operand_dtypes: [i64], ordered_result_dtypes: [i64], ranks: [1]}}
-  host_review_selected_libm_sinf_f32:
-    status: reviewed
-    ops: [aten.sin.default]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_review_selected_libm_cosf_f32:
-    status: reviewed
-    ops: [aten.cos.default]
-    families: [elementwise_map]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_review_prepared_ordered_f32_cumsum_f64:
-    status: reviewed
-    ops: [aten.cumsum.default]
-    families: [reduction]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [f32], ordered_result_dtypes: [f32], compute_dtypes: [f64]}
-  # Closed prepared math forms: build/link/host placement only, not numerical equivalence.
-  host_review_literal_clamp_f32:
-    status: reviewed
-    ops: [aten.clamp.default]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_review_reciprocal_f32:
-    status: reviewed
-    ops: [aten.reciprocal.default]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_review_reciprocal_i64_to_f32:
-    status: reviewed
-    ops: [aten.reciprocal.default]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, f32], ordered_result_dtypes: [f32]}
-  host_review_literal_base_pow_f32:
-    status: reviewed
-    ops: [aten.pow.Scalar]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  host_review_tanh_gelu_f32:
-    status: reviewed
-    ops: [aten.gelu.default]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32]}
-  # These sum/compare declarations cover only their pointwise prepared bodies.
-  # A sum reduction root requires a separate closed reduction admission.
-  host_review_i64_scalar_ge:
-    status: reviewed
-    ops: [aten.ge.Scalar]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
-  host_review_i64_scalar_lt:
-    status: reviewed
-    ops: [aten.lt.Scalar]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
-  host_review_boolean_sum_extension:
-    status: reviewed
-    ops: [aten.sum.dim_IntList]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
-  # Static integer roots are admitted only with their closed source proof and
-  # selected compiler index observation; the Boolean precursor above is separate.
-  host_review_static_i64_sum:
-    status: reviewed
-    ops: [aten.sum.dim_IntList]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
-  host_review_static_boolean_cumsum:
-    status: reviewed
-    ops: [aten.cumsum.default]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
-  host_review_static_i64_cumsum:
-    status: reviewed
-    ops: [aten.cumsum.default]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
-  host_review_static_i64_min_first_index:
-    status: reviewed
-    ops: [aten.min.dim]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [i64, i64, i64], ordered_result_dtypes: [i64, i64]}
-  # Independent prepared index roles; this does not associate their source nodes
-  # or admit arbitrary data-dependent indexing. The host profile requires the
-  # selected capture/trace/literal-bound proof for every matching source root.
-  host_review_prepared_index_boolean_extension:
-    status: reviewed
-    ops: [aten.index.Tensor]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i1, i64], ordered_result_dtypes: [i64]}
-  host_review_prepared_index_mask_sum:
-    status: reviewed
-    ops: [aten.index.Tensor]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [i64, i64], ordered_result_dtypes: [i64]}
-  host_review_prepared_literal_boolean_index:
-    status: reviewed
-    ops: [aten.index.Tensor]
-    placement: host
-    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, i64, i1], ordered_result_dtypes: [i1]}
-  host_review_literal_bucketize_count:
-    status: reviewed
-    ops: [aten.bucketize.Tensor]
-    placement: host
-    signature: {family: reduction, ordered_operand_dtypes: [f32, f32, i64], ordered_result_dtypes: [i64]}
+    layouts:
+    - row_major_contiguous
+    aliasing:
+    - disjoint_inputs_outputs
 restrictions:
-  # Keep this guard if a later readout declaration claims bias: a two-load operand sum has no
-  # reviewed bias seed, and this restriction prevents that claim from entering its derived form.
-  - declaration: elementwise_map_after_operand_sum
-    family: elementwise_map
-    field: epilogues
-    values: [bias_add]
-    reason: "The direct operand-sum witness covers readout scaling and ReLU, not a bias epilogue after the sum."
+- declaration: elementwise_map_after_operand_sum
+  family: elementwise_map
+  field: epilogues
+  values:
+  - bias_add
+  reason: The direct operand-sum witness covers readout scaling and ReLU, not a bias
+    epilogue after the sum.
 quantization:
   formats:
-    - operand_dtype: int8
-      accumulator_dtype: i32
-      # CIRCT extracts a 32-bit command carrier, not its software-visible encoding.
-      scale_encoding: fp32
-      # Every accelerator declaration covering a family the derived hardware recipes quantize.
-      eligible_operations: from_facts
+  - operand_dtype: int8
+    accumulator_dtype: i32
+    scale_encoding: fp32
+    eligible_operations: from_facts
 transfer_contracts:
   status: reviewed
   operand_load:
     from: host
     to: accelerator
-    copy: {dtype: int8, layout: row_major_contiguous}
+    copy:
+      dtype: int8
+      layout: row_major_contiguous
     evidence:
       status: reviewed
-      basis: "RTL facts: storage_datapaths input i8 (scratchpad smem UInt<8>) and compute input elem_bits 8 (SInt<8> in_a); every observed host->accelerator crossing is an i8 row_major_contiguous SSA value"
+      basis: 'RTL facts: storage_datapaths input i8 (scratchpad smem UInt<8>) and
+        compute input elem_bits 8 (SInt<8> in_a); every observed host->accelerator
+        crossing is an i8 row_major_contiguous SSA value'
   accumulator_readout:
     from: accelerator
     to: host
-    copy: {dtype: i32, layout: row_major_contiguous}
+    copy:
+      dtype: i32
+      layout: row_major_contiguous
     valid_window: required
     evidence:
       status: reviewed
-      basis: "RTL facts: storage_datapaths accumulator i32 (AccumulatorMem SInt<32>); every observed accelerator->host crossing is an i32 row_major_contiguous SSA value"
+      basis: 'RTL facts: storage_datapaths accumulator i32 (AccumulatorMem SInt<32>);
+        every observed accelerator->host crossing is an i32 row_major_contiguous SSA
+        value'

@@ -17,7 +17,7 @@ phases:
       recipe: phase0/recipe.yaml
       software_spec: target/software-spec.yaml
       capability_contract: target/contracts/target_contract.yaml
-      hardware_spec: target/hardware.yaml
+      hardware_spec: platform/hardware.yaml
       # Diagnostic only: review and production-source consistency are not established.
       evidence_mode: diagnostic
       # Select freshly derived conformance/synthesis artifacts with CLI overrides.

@@ -797,14 +797,15 @@ shape/layout restrictions. Unknown host precision must not select a different de
 profile. Host capability declarations belong beside the selected external compiler;
 accelerator RTL does not establish host compiler support.
 
-The examples provide `target/host-capabilities.yaml`, selected by the descriptor's
-`host_lane.capability_spec`. It binds the observed example compiler package digest
-and precision strategy without changing the payload. Its operation list is deliberately
-unreviewed: the examples list only typed matmul/batch-matmul candidates observed in
-their exact schedule files. This is not execution qualification and does not establish
-normalization, activation or general reduction support. Never populate it from a package
-name or blanket dtype claim. When selecting another host package, update this separate
-input with that package's exact identity and independently reviewed operation constraints.
+Each descriptor selects a host manifest through `host_lane.capability_spec`.
+Gemmini keeps it in [`platform/`](../../examples/gemmini/platform/README.md);
+other examples may select a manifest beside their descriptor. It binds the selected
+compiler package digest and precision strategy without changing its payload.
+Declarations carry their own review status and exact typed constraints. Neither
+review nor an observed schedule establishes emitted compiler execution or support
+for an entire operation family. Never populate support from a package name or a
+blanket dtype claim. When selecting another host package, update this separate
+input with its exact identity and independently reviewed operation constraints.
 
 Typed producer–consumer edges identify casts, quantization conversions and possible
 host/accelerator transfers. Their semantics and capsule witnesses must be explicit;

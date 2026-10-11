@@ -34,9 +34,10 @@ tested workloads, not every model or all RTL configurations. At most four
 qualification jobs run together; experiment gSIM concurrency remains capped
 at five.
 
-`software-spec.yaml` is authored software-visible semantics, not generated tests.
-`hardware.yaml` selects the deterministic production policy and direct audit
-questions. `host-capabilities.yaml` is a separate declaration bound to immutable
+The [software spec](../target/README.md) is authored software-visible semantics.
+[hardware.yaml](../platform/hardware.yaml) selects the deterministic production
+policy and direct audit questions. [host-capabilities.yaml](../platform/host-capabilities.yaml)
+is a separate declaration bound to immutable
 host compiler bytes; its precision strategy is not an operation support claim.
 
 The software spec is a small authored input: selected arithmetic/overflow and
@@ -101,7 +102,7 @@ python -m merlin.targetgen.rtl.circt_introspect --target gemmini \
 merlin-target-tools rtl-source-audit \
   --source-bundle /generated/gemmini/source-1/source-selection.json \
   --facts /generated/gemmini/source-1/facts.json \
-  --hardware-spec examples/gemmini/target/hardware.yaml \
+  --hardware-spec examples/gemmini/platform/hardware.yaml \
   --output /generated/gemmini/source-1/validation.json
 ```
 
