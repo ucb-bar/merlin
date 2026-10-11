@@ -623,7 +623,22 @@ def get_backend(name: str):
     return importlib.import_module(_REGISTRY[name].module)
 
 
-def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
+def independent_execution_capability_facts() -> dict[str, dict[str, Any]]:
+    """RTL source observations alone establish no executable support capability."""
+    return {
+        name: {
+            "satisfied": None,
+            "tier": "not_established",
+            "evidence": "independent RTL observations do not qualify an executable support implementation",
+            "missing": ["independently issued live runtime qualification"],
+        }
+        for name in EXECUTION_CAPABILITIES
+    }
+
+
+def execution_capability_facts(
+    target: str, *, contract: dict | None = None, facts: dict | None = None
+) -> dict[str, dict[str, Any]]:
     """Tri-state, evidence-bearing software capabilities for ``target``'s registered backend.
 
     A loaded backend settles every name in :data:`EXECUTION_CAPABILITIES`: a declared name is true and
@@ -631,9 +646,17 @@ def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
     false because no implementation was available to inspect.  Nothing is inferred from a target name,
     target class, opcode, or hardware trait; adding a new target means declaring capabilities in that
     target's own backend module.
+
+    An explicit contract/facts pair binds the shared data-only backend directly,
+    without provider discovery. Incomplete selections remain unknown.
     """
     try:
-        backend = get_backend(target)
+        if contract is None and facts is None:
+            backend = get_backend(target)
+        else:
+            from merlin.runtime.backends.chipyard_rocc import bind
+
+            backend = bind(target=target, contract=contract, facts=facts)
     except Exception as exc:  # noqa: BLE001 -- an unavailable plugin is UNKNOWN and carries why
         why = f"{type(exc).__name__}: {exc}"
         return {

@@ -634,6 +634,22 @@ def test_float_movement_host_lane_has_a_pytorch_representative():
     assert result["provenance"]["host_only_unsynthesizable"] == []
 
 
+def test_host_only_dedup_preserves_other_dtypes_of_the_same_family():
+    spec = {
+        **_HOST_SPEC,
+        "host_only": {"families": ["movement"], "dtypes": {"movement": "bf16"}},
+        "host_lane": {"required": [
+            {"family": "movement", "dtype": dtype, "n_regions": 1}
+            for dtype in ("bf16", "f32")
+        ]},
+    }
+    result = CS.synthesize(spec, capability_contract={"name": "t", "compute_units": []})
+    members = {entry["name"]: entry for entry in result["capsules"]}
+    assert members["SY_host_only_movement"]["operand_dtype"] == "bf16"
+    assert members["SY_host_lane_movement_f32"]["operand_dtype"] == "f32"
+    assert "SY_host_lane_movement_bf16" not in members
+
+
 def test_op_choice_prefers_an_op_that_can_actually_be_written_at_the_dtype():
     """Ranking by cost alone picked the cheapest op in the ABSTRACT and then discovered no writer could
     express it: an elementwise cell chose `gelu` -- one operand, no direct-MLIR builder -- over

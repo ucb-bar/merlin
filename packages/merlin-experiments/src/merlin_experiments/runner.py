@@ -904,6 +904,23 @@ def preflight(plan: dict) -> dict:
 
         verify_portfolio_plan(plan)
         synthesis = _phase0_synthesis_status(plan)
+        from .phase0.performance_readiness import check_performance_oracles
+
+        for command in plan["phases"].values():
+            if (
+                command["adapter"] == "capsule_derivation"
+                and command.get("phase0_evidence")
+                and command["inputs"].get("recipe")
+                and command["inputs"].get("capability_contract")
+            ):
+                try:
+                    check_performance_oracles(
+                        command, target=plan["target"], profile_target=_command_value(command, "--target"),
+                        diagnostic=("--evidence-mode" in command["argv"]
+                                    and _command_value(command, "--evidence-mode") == "diagnostic"),
+                    )
+                except (OSError, ValueError, YAMLError) as exc:
+                    raise SpecError(f"invalid Phase 0 performance selection: {exc}") from exc
         for command in plan["phases"].values():
             if command.get("phase0_evidence") and command["phase0_evidence"]["status"] != "verified":
                 diagnostic = (

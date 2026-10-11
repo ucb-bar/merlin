@@ -14,7 +14,7 @@ from merlin.runtime import boards
 from merlin.runtime.elf_audit import ElfAuditError, upload_bytes
 from merlin.targetgen.target_experiment import load_target_experiment
 
-CATALOG = "examples/gemmini/target/board-catalog.yaml"
+CATALOG = "examples/gemmini/platform/board-catalog.yaml"
 ROCKET_ISA = "rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket"
 
 

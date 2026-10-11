@@ -794,9 +794,6 @@ def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
 
 
 #: Dtype regimes the PyTorch writer can express. It grades a host-eager float reference with tolerance,
-#: so an int or block-scaled datapath needs the direct-MLIR engine instead -- which is exactly why an op
-#: with no builder cannot be written at those dtypes by anyone.
-_PYTORCH_REGIMES = ("simt",)
 
 
 #: A permutation probe's layout when the captures state none: rank four, swapping the two middle axes
@@ -815,7 +812,8 @@ def permute_probe_layout(observed: dict | None) -> dict:
     return dict(DEFAULT_PERMUTE_LAYOUT)
 
 
-def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[str]) -> tuple[str | None, dict | None]:
+def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[str], *,
+                   native_inventory=None, native_inventory_sha256=None) -> tuple[str | None, dict | None]:
     """``(op, observed row)`` for a host probe: an observed host operation a PyTorch writer can express.
 
     A requirement that carries ``observed_ops`` is answered ONLY from them, so the probe reproduces
@@ -826,51 +824,31 @@ def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[
     rows = requirement.get("observed_ops")
     if rows is None:
         return op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch"), None
-    from merlin.targetgen import host_lane_ops
+    from .native_storage_probe import host_source_declaration
 
-    writable = {
-        op
-        for op in pool
-        if _op_family_map().get(op) == family and _writer_for({"op": op, "operand_dtype": dtype}) == "pytorch"
-    }
-    chosen = host_lane_ops.choose(rows, writable)
-    return (chosen["op"], chosen) if chosen else (None, None)
+    for observed in rows:
+        op = observed.get("op")
+        if op not in pool or _op_family_map().get(op) != family:
+            continue
+        candidate = {"op": op, "operand_dtype": dtype, "frontend_op": observed.get("frontend_op"),
+                     "generalization": {"must_accelerate": False, "eligible": False}}
+        if _writer_for(candidate) == "pytorch":
+            return op, observed
+        native = host_source_declaration(observed, family, dtype, native_inventory, native_inventory_sha256)
+        if native is not None and _writer_for({**candidate, **native}) == "pytorch":
+            return op, {**observed, **native}
+    return None, None
 
 
 def _writer_for(entry: dict) -> str | None:
-    """Which writer can materialize this entry -- ``builder`` / ``pytorch`` / ``None`` for neither.
+    from .capsule_writer_selection import select_writer
 
-    ``available_ops`` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
-    "materializable" in the abstract and still have no writer AT THIS DTYPE: the PyTorch path is float
-    only. A cell in that corner is a real capability gap and must be reported as an uncovered cell to
-    argue about, never emitted as an entry nothing can write.
-    """
-    from merlin.targetgen.corpus_spec import BUILDERS, regime_for_dtype
-
-    op = entry.get("op")
-    if op in BUILDERS:
-        return "builder"
-    try:
-        regime = regime_for_dtype(str(entry.get("operand_dtype") or ""))
-    except Exception:  # noqa: BLE001 -- an unknown regime is not a float one
-        regime = None
-    return "pytorch" if regime in _PYTORCH_REGIMES else None
-
+    return select_writer(entry, source_for_op=source_for_op)
 
 def _mark_source(entry: dict) -> None:
-    """Say which writer can materialize this entry's op, when it is not the direct-MLIR one.
+    from .capsule_writer_selection import mark_source
 
-    `available_ops` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
-    materializable and still have no builder -- and an entry that does not say so goes down the
-    direct-MLIR path and dies with "no corpus builder for op". Measured: four synthesized capsules
-    failed exactly that way on the first target whose elementwise family resolved to `gelu`.
-    """
-    from merlin.targetgen.corpus_spec import BUILDERS
-
-    op = entry.get("op")
-    if op and op not in BUILDERS:
-        entry["source"] = "pytorch"
-
+    mark_source(entry)
 
 def _exact_int_mm_group_candidates(
     group: dict, entries: list[dict], inventory_digest: str | None, application_order: tuple[str, ...]
@@ -1664,14 +1642,22 @@ def synthesize(
     # rule tried here first and was wrong in both directions: it blocked `normalization` on gemmini,
     # where a layernorm capsule proves the lane, and passed it on a target whose rmsnorm program
     # contains an eligible region anyway.
+    represented_host_pairs = {
+        (str(family), str(host_dtypes[family]))
+        for family in host_block.get("families") or ()
+        if host_dtypes.get(family)
+    }
     for _pair in (spec_doc.get("host_lane") or {}).get("required") or ():
         family, dtype = str(_pair.get("family") or ""), str(_pair.get("dtype") or "")
-        if not family or not dtype or family in {str(f) for f in (host_block.get("families") or ())}:
-            continue  # the narrow axis below already carries this family
+        if not family or not dtype or (family, dtype) in represented_host_pairs:
+            continue  # the narrow axis below already carries this exact typed pair
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`. When the requirement
         # names the operations this pair's host work consists of, the probe is one of THOSE, never a
         # stock op of the same family that no captured model contains.
-        op, observed = _host_probe_op(_pair, family, dtype, pool)
+        op, observed = _host_probe_op(
+            _pair, family, dtype, pool, native_inventory=application_inventory,
+            native_inventory_sha256=(spec_doc.get("application_demands") or {}).get("full_inventory_sha256"),
+        )
         if op is None:
             unsized_host.append(
                 f"{family}/{dtype} ("
@@ -1717,6 +1703,9 @@ def synthesize(
             entry.update(permute_probe_layout(observed))
         if observed is not None:
             entry["frontend_op"] = observed.get("frontend_op")
+            from .native_storage_probe import apply_probe_declaration
+
+            apply_probe_declaration(entry, observed)
             entry["source_reference"] += (
                 f". The probe is the observed host operation {op!r} ({observed.get('frontend_op')}, "
                 f"{observed.get('n_regions')} captured region(s))"
@@ -1749,7 +1738,10 @@ def synthesize(
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`. Observed operations
         # first, exactly as for the host-lane pairs above.
         _observed_rows = (host_block.get("observed_ops") or {}).get(family) if "observed_ops" in host_block else None
-        op, observed = _host_probe_op({"observed_ops": _observed_rows}, family, dtype, pool) if dtype else (None, None)
+        op, observed = _host_probe_op(
+            {"observed_ops": _observed_rows}, family, dtype, pool, native_inventory=application_inventory,
+            native_inventory_sha256=(spec_doc.get("application_demands") or {}).get("full_inventory_sha256"),
+        ) if dtype else (None, None)
         if op is None or not dtype:
             _why = (
                 "no dtype for it is observed in any capture"
@@ -1792,6 +1784,9 @@ def synthesize(
         }
         if observed is not None:
             entry["frontend_op"] = observed.get("frontend_op")
+            from .native_storage_probe import apply_probe_declaration
+
+            apply_probe_declaration(entry, observed)
             entry["source_reference"] += (
                 f". The probe is the observed host operation {op!r} ({observed.get('frontend_op')}, "
                 f"{observed.get('n_regions')} captured region(s))"

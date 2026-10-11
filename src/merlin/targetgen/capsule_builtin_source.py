@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from . import component_sources
+from .native_storage_source import native_storage_loader, native_storage_source_spec
 
 
 def _permutation(spec: dict, rank: int) -> list[int]:
@@ -35,6 +36,9 @@ def render_builtin_source(
     needs (M/K/N/Dv) + optional ``eps``/``causal``/``bias`` + ``seed``/``dtype``. Fail closed on an
     unknown op (never silently emit a wrong program)."""
     op = spec["op"]
+    native = native_storage_source_spec(spec)
+    if op == "dtype_cast" and native is None:
+        raise ValueError("dtype_cast requires an explicit native source/result declaration")
     if spec.get("input_palette") is not None and (op == "int_matmul" or spec.get("quant_scheme")):
         raise ValueError("selected input palettes require the normal typed float builtin source path")
     if op != "int_matmul" and op not in bodies:
@@ -83,6 +87,8 @@ def render_builtin_source(
             raise ValueError(f"builtin source field {name} must be an explicit Boolean")
     fields["Ho"] = fields["Himg"] - fields["P"] + 1
     fields["Wo"] = fields["Wimg"] - fields["P"] + 1
+    if native is not None:
+        fields["native_output_torch_dtype"] = "float32"
     if op == "producer_quantizer_observer":
         fields.update(component_sources.parameters(spec))
     if op == "conv_residual_pool" and (
@@ -111,6 +117,8 @@ def render_builtin_source(
             )
         return preamble.format(**fields) + parametric_linear.format(**fields)
     source = preamble.format(**fields) + bodies[op].format(**fields)
+    if native is not None:
+        source += native_storage_loader(spec)
     if spec.get("input_palette") is not None:
         from .input_palette import render_source_inputs
 

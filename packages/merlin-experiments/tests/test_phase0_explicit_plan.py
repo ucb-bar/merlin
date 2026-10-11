@@ -81,6 +81,81 @@ def freeze(plan):
     return {**plan, "inputs": report["inputs"]}
 
 
+@pytest.mark.parametrize("has_l3", [False, True])
+def test_catalog_preflight_resolves_performance_route_without_execution(authored, monkeypatch, has_l3):
+    from test_phase2_scope_bridge import _facts, _selected_scope, _sweep
+    from merlin.targetgen import oracle_policy, target_registry
+    from merlin_experiments.phase0 import performance_readiness as readiness
+    from merlin_experiments.phase0.evidence import EvidenceSelection, EvidenceSource
+
+    make, root, config = authored
+    exclusion = root.parent / "merlin" / "contract" / "claim_models.yaml"
+    exclusion.parent.mkdir(parents=True)
+    exclusion.write_text("claim_models: [private_fixture]\n")
+    contract = {
+        "name": "fixture", "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"]}],
+        "capabilities": {"mesh": {"rows": 4, "cols": 4}},
+        "encoding": {"corpus_required_classes": ["CONTRACTION"], "class_family": {"CONTRACTION": "contraction"},
+                     "semantic_class": {"1": "CONTRACTION"}},
+    }
+    contract_path = root / "capability.yaml"
+    contract_path.write_text(yaml.safe_dump(contract))
+    oracles = {"L2": "spike", **({"L3": "gsim"} if has_l3 else {})}
+    (root / "recipe.yaml").write_text(yaml.safe_dump({
+        "capsules": [], "performance_oracles": oracles,
+        "datapath": {"operand_dtype": "int8", "accum_dtype": "i32",
+                     "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+    }))
+    # Load the public template from its owning checkout, then restore the fixture's
+    # independent input root before exercising the real catalog preflight.
+    with monkeypatch.context() as public_inputs:
+        public_inputs.delenv("MERLIN_REPO_ROOT", raising=False)
+        sweep = _sweep()
+        from merlin.common.paths import schemas_dir
+        public_schemas = schemas_dir()
+    monkeypatch.setenv("MERLIN_SCHEMAS_DIR", str(public_schemas))
+    (root / "performance.yaml").write_text(yaml.safe_dump({"sweeps": [sweep]}))
+    (root / "conformance.yaml").write_text(yaml.safe_dump({
+        "application_demands": {"status": "not_declared", "coverage_status": "not_applicable"},
+        "scope": _selected_scope([{
+            "signature": "movement -> contraction -> elementwise_map -> elementwise_map -> elementwise_map",
+            "length": 5, "occurrences": 1,
+        }]),
+    }))
+    (root / "synth.yaml").write_text(yaml.safe_dump({"provenance": {
+        "selected_inputs": synthesis_input_identity(conformance_spec=root / "conformance.yaml",
+                                                     recipe=root / "recipe.yaml", descriptor=root / "target.yaml"),
+    }, "capsules": []}))
+    views = json.dumps({"contract": contract, "loaded_facts": {}, "refreshed_facts": {},
+                        "isa_taxonomy": {}, "performance_facts": _facts()}, sort_keys=True).encode()
+    selected = EvidenceSelection("fixture", (EvidenceSource(contract_path, "target-contract", contract_path.read_bytes()),),
+                                 views, None, archived_artifacts=(("evidence-manifest.json", b"{}\n"),))
+    observations = []
+    def observe(command, target):
+        assert target == "fixture"
+        assert command["inputs"]["capability_contract"] == str(contract_path)
+        observations.append(target)
+        return selected
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("selection preflight attempted provider/engine discovery")
+    monkeypatch.setattr(readiness, "selection", observe)
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    monkeypatch.setattr(oracle_policy, "selected_l3_engine_report", forbidden)
+    plan = make({**config, "capability_contract": "capability.yaml", "evidence_mode": "diagnostic"})
+    plan["phases"]["0"]["phase0_evidence"] = {
+        "status": "diagnostic", "views_sha256": hashlib.sha256(views).hexdigest(), "diagnostics": [],
+    }
+    report = runner.preflight(plan)
+    assert observations == ["fixture"]
+    assert report["engine_readiness"] == "not_executed"
+    if has_l3:
+        assert report["configuration_ready"], report["errors"]
+    else:
+        assert not report["configuration_ready"]
+        assert any("explicit Phase 0 inputs have no concrete L3 oracle" in error for error in report["errors"])
+    assert not (root.parent / "run").exists()
+
+
 @pytest.mark.parametrize("explicit", [True, False])
 def test_verified_capture_plan_preserves_selected_runtime_store(authored, monkeypatch, tmp_path, explicit):
     """Reach the actual plan assembly without importing the model frameworks."""

@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [target_resolution, simulator_selection, aws_gsim]
-code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py]
+code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_inventory.py]
 ---
 
 # Neutral contract-driven runtime tooling
@@ -15,6 +15,17 @@ not depend on the compiler implementation being evaluated. Merlin's shared
 Chipyard RoCC tooling binds explicit target data without loading a target support
 module. Candidate lowering, tensor packing, tiling, scheduling, device kernels
 and completion implementations remain candidate work.
+
+## Capture inventory cost
+
+Sealed capture and replay inventory selected bytes independently at each
+execution boundary. Within one checkpoint, overlapping subtree identities are
+projected from the same freshly observed complete inventory. Their directory
+membership, file modes, sizes and content digests retain the existing format.
+No cached verification result survives to a later boundary, and replay frequency
+is unchanged. This reduces duplicate hashing without supplying compiler code or
+weakening numerical checks. A synthetic overlapping-tree measurement reduced
+hashed bytes from 6,291,473 to 3,145,745; it is not an end-to-end speedup estimate.
 
 ## Selection
 

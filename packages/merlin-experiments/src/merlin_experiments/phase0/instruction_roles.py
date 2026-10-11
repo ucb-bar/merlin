@@ -43,7 +43,7 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     Call inside the frozen contract/facts scope (``observed_contract`` / ``observed_facts``) so the
     derivation reads the selected evidence rather than an ambient cache.
     """
-    from merlin.kernels.decode.rocc import funct_table_for
+    from merlin.kernels.decode.rocc import funct_table_for, policy_instruction_declarations
     from merlin.kernels.endpoints import endpoints_for
     from merlin.kernels.roles import ROLES
     from merlin.perf.task_instruction_evidence import declared_instruction_set
@@ -52,7 +52,7 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     # backend: the taxonomy needs only the RTL-derived name table and the declared endpoint roles. The
     # ISA constants (the custom opcode) are the scanner's business and are recorded when available.
     try:
-        names = funct_table_for(target).get("names") or {}
+        names, provenance = policy_instruction_declarations(funct_table_for(target))
         endpoints = endpoints_for(target)
         if not endpoints:
             # No endpoint binds a role to any of this target's instructions, so every instruction would
@@ -64,6 +64,7 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
         facts: dict[str, Any] = {
             "target": target,
             "instruction_names": names,
+            "instruction_provenance": provenance,
             "roles_by_selector": {
                 str(selector): sorted({role for endpoint in endpoints for role in endpoint.roles_of(name)})
                 for selector, name in names.items()
@@ -80,10 +81,12 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
         }
     if declared.get("status") != "derived":
         return {"schema": TAXONOMY_SCHEMA, "target": target, "status": UNKNOWN, "reason": declared.get("reason")}
-    by_role: dict[str, list[dict[str, str]]] = {role: [] for role in sorted(ROLES)}
-    unroled: list[dict[str, str]] = []
+    by_role: dict[str, list[dict[str, Any]]] = {role: [] for role in sorted(ROLES)}
+    unroled: list[dict[str, Any]] = []
     for row in declared.get("instructions") or ():
         instruction = {"selector": str(row["funct"]), "name": str(row["name"])}
+        if "provenance" in row:
+            instruction["provenance"] = copy.deepcopy(row["provenance"])
         roles = row.get("roles")
         if not roles:
             unroled.append(instruction)
