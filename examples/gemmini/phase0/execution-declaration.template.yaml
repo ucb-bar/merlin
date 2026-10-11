@@ -35,7 +35,7 @@ runner:
     toolchain:
       compiler: {path: /REVIEWED_TOOLCHAIN/riscv64-unknown-elf-gcc}
       link_script: {path: /REVIEWED_INPUTS/logical-layout.ld}
-      runtime_units: [{id: startup}, {id: htif_console}, {id: printf}, {id: libc}]
+      runtime_units: [{id: startup}, {id: htif_console}, {id: libc}]
       headers: [{id: htif}, {id: out_b64}]
       load_address: REVIEWED_LOAD_ADDRESS
       cflags: [REVIEWED_EXACT_COMPILER_FLAGS]

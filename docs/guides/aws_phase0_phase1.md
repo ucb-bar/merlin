@@ -80,6 +80,8 @@ source consistency likewise remains unknown after pinning.
 
 Core runtime IDs are `startup`, `htif_console`, `printf`, `libc`; header IDs are
 `htif`, `out_b64`, `out_bin`, `out_bin_memory`. Choose the actual dependencies;
+`printf` and `libc` both define `puts` and `abort`, so select one rather than
+linking both. The template selects `libc` for memory and assertion primitives.
 B64 requires `startup`, `htif_console`, `htif`, `out_b64`. Core resources supply
 startup, console and scalar library primitives only. They supply no device
 implementation. Engine argv contains exactly one whole `{elf}` token. Select
