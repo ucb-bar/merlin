@@ -42,7 +42,7 @@ def _scratch_plan(argv):
         raise StageGateError("normal resource launch has malformed original argv")
     argv, positions, writable = list(argv), [], []
     index, device, proc = 1, 0, 0
-    switches = {"--die-with-parent", "--unshare-pid", "--clearenv", "--new-session"}
+    switches = {"--die-with-parent", "--unshare-pid", "--unshare-net", "--clearenv", "--new-session"}
     while index < len(argv):
         flag = argv[index]
         if flag in switches:

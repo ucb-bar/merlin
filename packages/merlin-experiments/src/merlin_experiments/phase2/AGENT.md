@@ -22,6 +22,16 @@ remounts root/device metadata readonly. Preserve the sealed policy and default
 argv. Bind the exact owner explicitly in broker HTTP threads and reopen it before
 publishing feedback. Parser/routing spies issue no kernel enforcement authority.
 
+`functional_guard_execution` applies the original package sandbox and scoped
+executor to baseline/candidate emission and the complete original final grade.
+Each actual compiler gets one streamed interface, a shared readonly package and
+private outputs retained until grade workers join. Copy only the declared output
+back; linked outputs and foreign package/workspace paths refuse. The numerical
+and certification gates remain original. A selected exec-based whole-model
+budget child cannot inherit these live owners and refuses in hard mode; the
+default inline route requires `MERLIN_MODEL_BUDGET_S` unset. No new source,
+model, timing or physical authority follows from the resource scope.
+
 `external_resources` and `_kernel_resources` verify externally provisioned Linux
 cgroup v2 ceilings and one whole capped backing filesystem without creating or
 changing controls. The enclosing stage namespace must already have a readonly

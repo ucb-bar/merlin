@@ -35,6 +35,11 @@ complete declared value roster before ordinary numerical comparison. A result
 record, console filename or apparent byte format cannot select the transport.
 Decoding full values grants no build, source, dispatch or hardware authority.
 
+`capsule_scheduling.run_pipelined` copies the selected caller context into each
+original calibration and grade worker. Keep original dependency order, full
+roster and worker joins; copied contexts carry existing package/resource owners,
+never new numerical or timing authority.
+
 The selected native component route spends one explicit wall deadline across
 package build, all ordinary lowering commands, source checks, object/link,
 execution, original output comparison and result publication. Failed attempt

@@ -71,6 +71,9 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   invocation without the scoped owner during a guarded run refuses, including
   threads that did not inherit the execution context. Normal unguarded calls
   retain their existing package contract and runtime behavior.
+- `capsule_common.lower_interface` copies the caller's context into its original
+  overlapping buffer worker and joins that worker before returning or raising;
+  caller-owned package/resource scopes and scratch must outlive actual calls.
 
 - `cli.py` / `pipeline.py` — the deterministic, LLM-free entry points.
 - `ingest/` — record inputs as a SourceManifest (no crawling, no vendoring).

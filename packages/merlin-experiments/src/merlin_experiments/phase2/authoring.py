@@ -153,6 +153,7 @@ def functional_emission_guard(
     frozen_functional: FI.FrozenFunctionalInputs,
     timeout_s: int = 120,
     grade_root: Path | None = None,
+    sandbox_inputs: PC.PackageSandboxInputs | PC.FrozenPackageSandboxInputs | None = None,
 ) -> dict[str, Any]:
     """Reuse complete unchanged execution dependencies or regrade full outputs.
 
@@ -171,6 +172,8 @@ def functional_emission_guard(
     from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
     from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
     from merlin_experiments.phase1 import corpus_inputs
+
+    from . import functional_guard_execution as guard_execution
 
     if frozen_functional.host_provenance is None:
         raise StageGateError("functional emission guard requires admitted V4 host provenance")
@@ -233,8 +236,12 @@ def functional_emission_guard(
             continue
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
             scratch = Path(raw)
-            base_rc, base_llvm, base_buffer = EA.emit_pair(base_pkg, interface, scratch, "baseline", timeout_s)
-            cand_rc, cand_llvm, cand_buffer = EA.emit_pair(cand_pkg, interface, scratch, "candidate", timeout_s)
+            base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
+                base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
+            )
+            cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
+                cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
+            )
         if base_rc != 0:
             offenders.append(
                 {"capsule": name, "kind": "baseline_emission_failed", "baseline_rc": base_rc, "candidate_rc": cand_rc}
@@ -310,17 +317,21 @@ def functional_emission_guard(
 
                 grading_candidate = output / "compiler"
                 shutil.copytree(candidate, grading_candidate)
-                score = CG.grade(
-                    grading_candidate,
-                    capsules_root=view.public,
-                    runs_root=output,
-                    model_snapshot_root=output / ".private_model_sources",
-                    labels={"public", "dev"},
-                    contract=view.contract,
-                    oracle_adapters=adapters,
-                    timeout=timeout_s,
-                    target=target_experiment.target,
-                )
+                guard_execution.require_inline_models(capsules)
+                with guard_execution.boxed_guard_package(
+                    target_experiment, output, grading_candidate, inputs=sandbox_inputs
+                ):
+                    score = CG.grade(
+                        grading_candidate,
+                        capsules_root=view.public,
+                        runs_root=output,
+                        model_snapshot_root=output / ".private_model_sources",
+                        labels={"public", "dev"},
+                        contract=view.contract,
+                        oracle_adapters=adapters,
+                        timeout=timeout_s,
+                        target=target_experiment.target,
+                    )
                 scored = score.get("per_capsule") or []
                 expected_names = {
                     CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
@@ -1153,6 +1164,7 @@ def run_stage(
                 target_experiment,
                 frozen_functional=frozen_functional,
                 grade_root=stage_root / "functional_guard_grade",
+                sandbox_inputs=sandbox_inputs,
             )
     except Exception as exc:  # noqa: BLE001 - an unrunnable guard is absence of proof, not a pass
         functional_guard = {
