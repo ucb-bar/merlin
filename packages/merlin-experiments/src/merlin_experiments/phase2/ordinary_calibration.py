@@ -114,6 +114,19 @@ def _join(timing_root, cell, arm, compiled, package_sha256):
     return matches[0]
 
 
+def _cheap_observation(cheap_root, cell, arm, member_index):
+    """Reopen deterministic host products; never follow a feedback-supplied path."""
+    path = cheap_root / f"m{member_index:03d}_{arm}" / "ordinary_observation.json"
+    if path.is_symlink() or path.resolve() != path or sha256_file(path) != cell[arm]["evidence_sha256"]:
+        raise StageGateError("ordinary private cheap evidence changed or escaped its original owner")
+    private = mapping_file(path)
+    original = {key: value for key, value in private.items() if key != "original_grade"}
+    visible = {key: value for key, value in cell[arm].items() if key != "evidence_sha256"}
+    if canonical_json(original) != canonical_json(visible):
+        raise StageGateError("ordinary cheap feedback differs from the actual retained host observation")
+    return original, (str(path), sha256_file(path))
+
+
 @dataclass(frozen=True, eq=False)
 class OrdinaryCalibration:
     domain_sha256: str
@@ -140,7 +153,11 @@ class OrdinaryCalibration:
             raise StageGateError("ordinary calibration is not live or changed original runtime configuration")
         public_partition(policy, json.loads(self.partition_json))
         for path, digest in self.artifacts:
-            if Path(path).is_symlink() or sha256_file(Path(path)) != digest:
+            try:
+                changed = Path(path).is_symlink() or sha256_file(Path(path)) != digest
+            except OSError:
+                changed = True
+            if changed:
                 raise StageGateError("ordinary calibration original compiled/measured evidence changed")
 
     def screen(self, policy, document):
@@ -289,18 +306,24 @@ def produce_calibration(policy, revisions, baseline_revision, *, partition, work
             (str(p), sha256_file(p))
             for p in (cheap_root / "ordinary_fast_feedback.json", root / f"r{index:03d}_timing.json")
         )
+        member_indices = {
+            (member.family, member.capsule): index
+            for index, member in enumerate(
+                sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule))
+            )
+        }
         for cell in cheap["cells"]:
             identity = cell["family"], cell["capsule"]
             measured = labels[identity]
             if not measured["measured"] or not measured["comparable"]:
                 raise StageGateError("ordinary calibration requires complete correct measured RTL roster")
             for arm, source in (("baseline", baseline_revision), ("candidate", revision)):
-                value, compiled = cell[arm], cell[arm]["compiled"]
+                value, cheap_pin = _cheap_observation(cheap_root, cell, arm, member_indices[identity])
+                compiled = value["compiled"]
                 if value["functional_status"] != "PASS" or compiled["status"] != "observed":
                     raise StageGateError("ordinary calibration lacks original functional/compiled observation")
                 program, attempt_pin, process_pins = _join(timing_root, cell, arm, compiled, source.source_sha256)
-                evidence = value["evidence"]
-                pins = ((evidence["path"], evidence["sha256"]), attempt_pin, *process_pins)
+                pins = (cheap_pin, attempt_pin, *process_pins)
                 artifacts.extend(pins)
                 workload = cell["source_sha256"]
                 group = "calibration" if groups[identity] == "calibration" else document_sha256(identity)

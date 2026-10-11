@@ -15,6 +15,7 @@ from pathlib import Path
 
 from merlin.benchharness import hash_tree
 from merlin.common import invocation_record as I
+from merlin.common.digest import is_sha256
 from merlin.perf import compiled_static_features as S
 from merlin.runtime.backends.base import get_backend
 from merlin.targetgen import capsule_runner as CR
@@ -75,7 +76,14 @@ def compiled_observation(root, *, target):
             },
         }
     except (OSError, ValueError, RuntimeError, KeyError, AttributeError) as error:
-        return {"status": "UNKNOWN", "reason": str(error)[:500], "features": dict.fromkeys(FEATURES)}
+        write_json(
+            root / "compiled_failure_private.json", {"category": type(error).__name__, "detail": str(error)[:500]}
+        )
+        return {
+            "status": "UNKNOWN",
+            "reason": "ordinary compiled observation unavailable: " + type(error).__name__,
+            "features": dict.fromkeys(FEATURES),
+        }
 
 
 def _member_arm(*, policy, revision, member, workspace, deadline, workers):
@@ -120,7 +128,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "timing_cycles": None,
     }
     write_json(evidence, {**result, "original_grade": grade})
-    return {**result, "evidence": {"path": str(evidence), "sha256": sha256_file(evidence)}}
+    return {**result, "evidence_sha256": sha256_file(evidence)}
 
 
 def evaluate_retained(policy, revision, baseline_revision, *, work_root, call_index, timeout_s, workers):
@@ -235,6 +243,22 @@ def validate_feedback(document, *, policy, revision):
         seen.add(identity)
         for arm in ("baseline", "candidate"):
             value = row[arm]
+            if (
+                type(value) is not dict
+                or set(value)
+                != {
+                    "functional_status",
+                    "required_tiers",
+                    "pending_tiers",
+                    "compiled",
+                    "elapsed_seconds",
+                    "physical_memory_traffic",
+                    "timing_cycles",
+                    "evidence_sha256",
+                }
+                or not is_sha256(value["evidence_sha256"])
+            ):
+                raise StageGateError("ordinary cheap observation must expose only its private evidence digest")
             if value["physical_memory_traffic"] is not None or value["timing_cycles"] is not None:
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:

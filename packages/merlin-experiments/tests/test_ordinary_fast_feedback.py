@@ -80,6 +80,7 @@ def test_retained_cheap_route_executes_only_original_spike_and_keeps_rtl_pending
     assert not inputs.executions  # The original synthetic RTL spy never ran.
     assert result["screening"]["status"] == "UNKNOWN"
     assert result["promotion"] == "SCREENING_ONLY"
+    assert str(tmp_path) not in json.dumps(result)
     for cell in result["cells"]:
         for arm in ("baseline", "candidate"):
             assert cell[arm]["functional_status"] == "PASS"
@@ -133,6 +134,38 @@ def test_saved_calibration_and_incomplete_native_join_cannot_qualify(ordinary_in
     with pytest.raises(StageGateError, match="fresh joined"):
         CAL._join(tmp_path, {"family": "public", "capsule": "member"}, "candidate", {}, "a" * 64)
     assert policy.publish_completed_artifacts(tmp_path)["status"] == "UNAVAILABLE"
+
+
+def test_compiled_error_paths_stay_in_private_record(tmp_path, monkeypatch):
+    secret = str(tmp_path / "private-compiler-product")
+
+    def unavailable(*args):
+        raise ValueError("missing " + secret)
+
+    monkeypatch.setattr(FAST, "_unique", unavailable)
+    result = FAST.compiled_observation(tmp_path, target="synthetic")
+    assert secret not in json.dumps(result)
+    assert secret in (tmp_path / "compiled_failure_private.json").read_text()
+
+
+def test_calibration_reopens_deterministic_private_evidence_and_rejects_returned_path(tmp_path):
+    from merlin_experiments.phase2.contracts import sha256_file
+
+    root = tmp_path / "cheap"
+    evidence = root / "m000_candidate/ordinary_observation.json"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text(json.dumps({"compiled": {"status": "UNKNOWN"}, "original_grade": {"private": "details"}}))
+    cell = {"candidate": {"compiled": {"status": "UNKNOWN"}, "evidence_sha256": sha256_file(evidence)}}
+    private, pin = CAL._cheap_observation(root, cell, "candidate", 0)
+    assert private == {"compiled": {"status": "UNKNOWN"}}
+    assert pin[0] == str(evidence)
+    cell["candidate"]["evidence"] = {"path": str(tmp_path / "caller-file")}
+    with pytest.raises(StageGateError, match="actual retained"):
+        CAL._cheap_observation(root, cell, "candidate", 0)
+    cell["candidate"].pop("evidence")
+    evidence.write_text('{"changed":true}')
+    with pytest.raises(StageGateError, match="changed"):
+        CAL._cheap_observation(root, cell, "candidate", 0)
 
 
 def test_different_shapes_cannot_supply_same_member_ranking_denominator():
