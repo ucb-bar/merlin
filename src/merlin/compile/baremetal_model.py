@@ -285,6 +285,7 @@ def compile_saved_model(
     group_profile: bool = False,
     tolerance: dict[str, float] | None = None,
     materialized_inputs=None,
+    respect_captured_quantization_scope: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -310,6 +311,8 @@ def compile_saved_model(
     ):
         raise BaremetalModelError("tolerance declares exactly non-negative atol and rtol")
     full = readback == "full"
+    if type(respect_captured_quantization_scope) is not bool:
+        raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
         raise BaremetalModelError("arena_mb and timeout_s must be positive integers")
     paths = [Path(capture), Path(package), Path(board_catalog), Path(dts)]
@@ -426,6 +429,12 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if respect_captured_quantization_scope:
+            receipt["inputs"]["respect_captured_quantization_scope"] = True
+        if respect_captured_quantization_scope:
+            from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
+
+            build_options["features"] = frozenset({captured_quantization_scope})
         built = spike_model.build(
             capture_path,
             output_path / "build",

@@ -288,3 +288,24 @@ def test_native_failure_keeps_partial_stream_bytes_without_numerical_claim(
     assert "console" not in receipt["output"]
     assert "elements" not in receipt["output"]
     assert "metrics" not in receipt["output"]
+
+
+def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        calls.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default-scope", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "captured-scope", run="none", respect_captured_quantization_scope=True
+    )
+    assert "features" not in calls[0]
+    assert calls[1]["features"] == frozenset({FEATURE})
+    assert "respect_captured_quantization_scope" not in default["inputs"]
+    assert selected["inputs"]["respect_captured_quantization_scope"] is True

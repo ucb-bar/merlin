@@ -665,7 +665,11 @@ def test_gsim_refuses_weak_foreign_or_changed_lineage(selection, tmp_path, chang
 @pytest.mark.parametrize("simulator", ("spike", "gsim"))
 @pytest.mark.parametrize("failure", (False, True))
 def test_selected_execution_guards_only_gsim_and_releases_after_failure(
-    selection, tmp_path, monkeypatch, simulator, failure,
+    selection,
+    tmp_path,
+    monkeypatch,
+    simulator,
+    failure,
 ):
     from merlin.runtime.backends import chipyard_rocc_bound as owner
     from merlin.targetgen import rtl_engine_policy
@@ -833,3 +837,23 @@ def test_native_receipt_cannot_be_reused_for_another_firrtl(selection, chain):
     assert bound.available("verilator") is False
     with pytest.raises(ValueError, match="build identity"):
         bound.verilator_path()
+
+
+def test_declared_model_spike_machine_is_explicit_and_recorded(selection, tmp_path, monkeypatch):
+    from merlin.runtime.backends import spike_model
+
+    bound = _bound(selection)
+    elf = _file(tmp_path, "saved-model.elf", "owned model bytes\n")
+    monkeypatch.setattr(spike_model, "declared_memory", lambda path: (0x80000000, 256 << 20))
+    monkeypatch.setattr(spike_model, "declared_isa", lambda path: "rv64gc_zba_zbb_zfh")
+    monkeypatch.setattr(spike_model, "declared_harts", lambda path: 1)
+    flags, library = bound.spike_extension()
+    assert flags and library == Path(selection[0]["runner"]["spike_extension"]["extlib"]).parent
+    bound.run_declared_model_elf(elf, timeout=2)
+    record = I.verify(next(tmp_path.glob("invocations/*/invocation.json")))
+    assert "--isa=rv64gc_zba_zbb_zfh" in record["argv"]
+    assert "--isa=rv64gc" not in record["argv"]
+    assert "-m0x80000000:0x10000000" in record["argv"]
+    assert "-p1" in record["argv"]
+    assert record["inputs"] == [_pin(elf)]
+    assert _engine(selection)["argv"] == ["--isa=rv64gc", "{elf}"]
