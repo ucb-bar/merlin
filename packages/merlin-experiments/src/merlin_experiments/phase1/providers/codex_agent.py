@@ -376,6 +376,7 @@ def prepare_codex_home(
     workspace: Path,
     candidate_read_paths: tuple[str, ...] | None = None,
     auth_source: Path | None = None,
+    max_concurrent_subagents: int | None = None,
 ) -> dict:
     """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
 
@@ -396,6 +397,10 @@ def prepare_codex_home(
     build its home the same way, or the cache-hit rate varies between arms for a
     reason that has nothing to do with the treatment.
     """
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1
+    ):
+        raise ValueError("Codex subagent concurrency must be an explicit positive integer")
     if not workspace.is_absolute() or not workspace.is_dir() or workspace.resolve(strict=True) != workspace:
         raise ValueError("Codex workspace must be an existing canonical absolute directory")
     if auth_source is not None:
@@ -417,6 +422,13 @@ def prepare_codex_home(
         provider=provider,
         trust=f'[projects.{json.dumps(str(workspace))}]\ntrust_level = "trusted"\n',
     )
+    if max_concurrent_subagents is not None:
+        # These are root-level dotted keys, preceding permission/provider tables.
+        # The selected CLI's existing strict-config preflight must accept them.
+        config = (
+            "features.multi_agent = true\nagents.enabled = true\n"
+            f"agents.max_concurrent_threads_per_session = {max_concurrent_subagents}\n" + config
+        )
     config_path = dest / "config.toml"
     config_path.write_text(config)
     auth = real_codex_home() / "auth.json" if auth_source is None else auth_source
@@ -871,6 +883,7 @@ def run_round(
     require_fresh_home: bool = False,
     auth_source: Path | None = None,
     continuation_prompt: str | None = None,
+    max_concurrent_subagents: int | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -890,13 +903,17 @@ def run_round(
     still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
     round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
 
-    Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
-    equivalent — ``codex exec`` exposes no subagent mechanism — so a request for
-    one is recorded in the init record and otherwise ignored. Silently accepting
-    it would make an arm look tiered when it was not.
+    Legacy model-tier selections are recorded without changing spawned models.
+    Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
+    in the frozen home; the same strict-config preflight applies on AWS. It does
+    not prove that an agent delegated or change its sandbox and runtime grants.
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1 or sandbox != "bwrap"
+    ):
+        raise ValueError("explicit Codex subagent concurrency requires a positive isolated selection")
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
     if auth_source is not None:
@@ -1013,6 +1030,8 @@ def run_round(
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
         if auth_source is not None:
             home_options["auth_source"] = auth_source
+        if max_concurrent_subagents is not None:
+            home_options["max_concurrent_subagents"] = max_concurrent_subagents
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _verify_frozen_config(codex_home, home_info["config_sha256"])
