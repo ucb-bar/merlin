@@ -615,6 +615,47 @@ def test_generated_only_assembly_needs_no_legacy_corpus(release_fixture, tmp_pat
     assert promoted["held_out"] == {"n_generated": 0, "n_hand_authored": 1}
 
 
+def test_generated_only_release_accepts_no_historical_corpus_selection(release_fixture, capsys):
+    descriptor = release_fixture["root"] / "source-experiment/target_experiment.yaml"
+    authored = yaml.safe_load(descriptor.read_text())
+    authored.pop("capsule_corpus")
+    authored["grading"]["expected_cohort"] = {"source_capsules": 1, "admitted_capsules": 1}
+    descriptor.write_text(yaml.safe_dump(authored))
+    assert main(["run", str(release_fixture["definition"]), "--phase", "0", "--run-dir", str(release_fixture["run"])]) == 0
+    capsys.readouterr()
+    report = corpus_release.prepare(
+        release_fixture["run"], release_fixture["release"], generated_only=True,
+        private_baseline=release_fixture["baseline"] / "hidden",
+    )
+    assert report["counts"]["public_source"] == report["counts"]["public_admitted"] == 1
+    assert report["counts"]["hidden_source"] == report["counts"]["hidden_admitted"] == 1
+    promoted = yaml.safe_load(Path(report["descriptor"]).read_text())
+    assert Path(promoted["capsule_corpus"]) == release_fixture["release"] / "payload/corpus/isa"
+    assert "capsule_corpus" not in yaml.safe_load(descriptor.read_text())
+
+
+def test_generated_corpus_anchor_preserves_all_public_categories_and_private_boundary(tmp_path):
+    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin_experiments.corpus.generated_source import bind_generated_corpus
+
+    descriptor = tmp_path / "target_experiment.yaml"
+    descriptor.write_text("target: fixture-device\n")
+    te = load_target_experiment(descriptor)
+    generated = tmp_path / "generated"
+    for category, label in (("z_public", "public"), ("a_public", "public"), ("hidden", "hidden"), ("_feedback", "dev")):
+        _member(generated, category, category + "_member", label)
+    bound = bind_generated_corpus(te, generated, generated_only=True)
+    assert {path.name for path in bound.graded_roots()} == {"a_public", "z_public"}
+    assert bound.hidden_roots() == [generated / "hidden"]
+    assert te.capsule_corpus is None
+    with pytest.raises(SpecError, match="requires generated-only"):
+        bind_generated_corpus(te, generated, generated_only=False)
+    private_only = tmp_path / "private-only"
+    _member(private_only, "hidden", "secret", "hidden")
+    with pytest.raises(SpecError, match="no public capsule category"):
+        bind_generated_corpus(te, private_only, generated_only=True)
+
+
 def test_generated_only_release_cli_ignores_removed_legacy_public_corpus(release_fixture, capsys, monkeypatch):
     import shutil
 

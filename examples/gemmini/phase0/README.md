@@ -13,11 +13,15 @@ handwritten support package.
 
 ## 1. Select the inputs
 
+The accelerator user supplies the [software spec](../target/README.md).
+Platform integrators select the [hardware and host environment](../platform/README.md).
+The remaining corpus products are generated; no authored capsule roster is needed.
+
 | Input | Responsibility |
 | --- | --- |
 | [Software spec](../target/software-spec.yaml) | Operation signatures, numerical semantics, placement/transfers and quantization eligibility |
-| [Hardware selection](../target/hardware.yaml) | Source-production requirements and direct RTL audit questions |
-| [Host capabilities](../target/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
+| [Hardware selection](../platform/hardware.yaml) | Source-production requirements and direct RTL audit questions |
+| [Host capabilities](../platform/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
 | [Recipe](recipe.yaml) | Derived-only policy, comparison tolerances and oracle tiers; no authored capsule list |
 | [Descriptor](../target/descriptor.yaml) | Independent iteration roster, held-out validation roster and experiment resources |
 | [Selected capability contract](../target/contracts/target_contract.yaml) | Prototype command order and runner intent, explicitly frozen by the experiment; not an OOT support certificate |
@@ -50,7 +54,7 @@ for what belongs in a SW spec versus extracted evidence.
 ## 2. Produce and audit one coherent RTL source selection
 
 Follow the exact source production and audit commands in
-[the target input guide](../target/README.md). The source bundle binds selected
+[the verification walkthrough](../verification/README.md). The source bundle binds selected
 FIRRTL, prepared generation inputs, the selected `firtool`, generated HW-MLIR and
 module hierarchy. Extraction consumes that bundle explicitly; it must not silently
 combine unrelated cached elaborations. Save `source-selection.json`, `facts.json`
@@ -121,7 +125,7 @@ to the capsule-local sidecar; do not edit the captured MLIR by hand.
 FP32 captures inventory frontend demand; they do not imply FP32 device support.
 For an int8 capture, the reviewed rank-3/4 dequantization signature is only a
 semantic screen. Mint the selected scalar package from
-[its recipe](../target/scalar-host-recipe.yaml) before deriving; the old RVV
+[its recipe](../platform/scalar-host-recipe.yaml) before deriving; the old RVV
 package requires a V extension absent from Rocket. The scalar package's ISA
 fits the selected DTS, and one saved rank-4 capture passed Spike, but this does
 not qualify Rocket RTL/FireSim execution or every declared host operation.

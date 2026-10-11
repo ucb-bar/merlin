@@ -22,6 +22,7 @@ in the source: the same C call lowers to either, with the library doing the expa
 
 from __future__ import annotations
 
+import copy
 import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -65,6 +66,63 @@ def funct_table_for(target: str) -> dict[str, Any]:
 
     body = _F.body_if_present(target)
     return _facts_interface(body, "funct_decode_table") or {}
+
+
+def policy_instruction_declarations(table: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, dict]]:
+    """Join observed and separately sourced declarations for prohibition, never decode legality.
+
+    A field-local decoder may omit a source-declared instruction. A prohibition
+    must still forbid it, while execution decoding keeps the original observed
+    names and legal set. Conflicting selectors or names refuse the policy view.
+    """
+    names: dict[str, str] = {}
+    owners: dict[str, str] = {}
+
+    def add(raw):
+        if not isinstance(raw, Mapping):
+            raise ValueError("instruction names must be a selector/name mapping")
+        for selector, name in raw.items():
+            if isinstance(selector, bool) or not isinstance(selector, (str, int)):
+                raise ValueError("instruction selector must be an integer")
+            try:
+                code = int(selector, 0) if isinstance(selector, str) else selector
+            except ValueError as exc:
+                raise ValueError("instruction selector must be an integer") from exc
+            if code < 0 or code > _FUNCT7_MASK or not isinstance(name, str) or not name:
+                raise ValueError("instruction selector/name binding is malformed")
+            key = str(code)
+            if key in names and names[key] != name:
+                raise ValueError("conflicting instruction selector/name bindings")
+            if name != "?" and name in owners and owners[name] != key:
+                raise ValueError("one instruction name has conflicting selectors")
+            names[key] = name
+            owners[name] = key
+
+    add(table.get("names") or {})
+    observed = set(names)
+    raw_declared = table.get("source_declared_names")
+    if raw_declared is None:
+        return names, {}
+    source = table.get("source_declared_names_provenance")
+    if (
+        not isinstance(source, Mapping)
+        or source.get("kind") != "scala_funct_block"
+        or source.get("scope") != "selected_source_declaration"
+        or not isinstance(source.get("source_sha256"), str)
+        or len(source["source_sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in source["source_sha256"])
+        or any(
+            not isinstance(source.get(field), str) or not source[field]
+            for field in ("start_comment", "stop_declaration")
+        )
+    ):
+        raise ValueError("source-declared instruction names require explicit source provenance")
+    add(raw_declared)
+    provenance = {
+        selector: {"status": "source_declared_only", "source": copy.deepcopy(dict(source))}
+        for selector in sorted(names.keys() - observed, key=int)
+    }
+    return names, provenance
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,9 @@
 
 import threading
 import time
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -13,6 +16,33 @@ def _cap(name, extends=None, shape=(16, 16)):
     if extends:
         cap["extends"] = extends
     return cap
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_selected_grade_pool_is_inherited_by_children_and_restores_manager(monkeypatch, workers):
+    if not hasattr(os, "sched_getaffinity"):
+        pytest.skip("Linux affinity required")
+    original = os.sched_getaffinity(0)
+    selected = min(original)
+    monkeypatch.setenv("MERLIN_GRADE_CPUS", str(selected))
+
+    def run(cap, parallel):
+        assert os.sched_getaffinity(0) == {selected}
+        child = subprocess.check_output(
+            [sys.executable, "-c", "import os; print(sorted(os.sched_getaffinity(0)))"], text=True
+        )
+        assert child.strip() == str([selected])
+        return {"capsule": cap["name"], "status": "pass"}
+
+    assert len(run_pipelined([_cap("a"), _cap("b")], run, max_workers=workers)) == 2
+    assert os.sched_getaffinity(0) == original
+
+    def fail(cap, parallel):
+        raise RuntimeError("grade failed")
+
+    with pytest.raises(RuntimeError, match="grade failed"):
+        run_pipelined([_cap("a")], fail, max_workers=workers)
+    assert os.sched_getaffinity(0) == original
 
 
 def test_a_slow_member_does_not_hold_independent_ones_and_dependents_wait_for_their_sibling():

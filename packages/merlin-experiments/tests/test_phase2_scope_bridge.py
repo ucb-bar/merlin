@@ -74,6 +74,62 @@ def _selected_scope(rows: list[dict], *, eligible: bool = True) -> dict:
     }
 
 
+@pytest.mark.parametrize("declared,selected", [
+    ({}, {"L2": "cpu-sim"}),
+    ({}, {"L2": "cpu-sim", "L3": "elaborated_rtl"}),
+    ({"L3": "other-sim"}, {"L2": "cpu-sim", "L3": "rtl-sim"}),
+])
+def test_missing_performance_route_is_fatal_even_with_member_error_collection(monkeypatch, declared, selected):
+    from merlin.targetgen import target_experiment
+
+    monkeypatch.setattr(SW, "target_encodings", lambda *args, **kwargs: [])
+    monkeypatch.setattr(target_experiment, "load_capability_manifest",
+                        lambda _target: SimpleNamespace(contract={"runner": {"tier_sim": declared}}))
+    row = {"signature": "movement -> contraction -> elementwise_map -> elementwise_map -> elementwise_map",
+           "length": 5, "occurrences": 1}
+    profile = {"capsules": [], "sweeps": [_sweep()], "_performance_oracles": selected}
+    original = copy.deepcopy(profile)
+    errors = []
+    with pytest.raises(SW.OracleSelectionError):
+        SW.expand_sweeps(profile, _binding(), trait_facts=_facts(), errors=errors,
+                         selected_requirement={"scope": _selected_scope([row])},
+                         requirement_sha256="a" * 64)
+    assert not errors
+    assert profile == original
+
+
+def test_explicit_performance_route_preserves_members_without_native_discovery(monkeypatch):
+    from merlin.targetgen import oracle_policy, target_experiment
+
+    monkeypatch.setattr(SW, "target_encodings", lambda *args, **kwargs: [])
+    monkeypatch.setattr(target_experiment, "load_capability_manifest",
+                        lambda _target: SimpleNamespace(contract={"runner": {"tier_sim": {}}}))
+    def unexpected_discovery(*_args, **_kwargs):
+        raise AssertionError("explicit route selection must not probe installation")
+    monkeypatch.setattr(oracle_policy, "selected_l3_engine_report", unexpected_discovery)
+    row = {"signature": "movement -> contraction -> elementwise_map -> elementwise_map -> elementwise_map",
+           "length": 5, "occurrences": 1}
+    profile = {"capsules": [], "sweeps": [_sweep()],
+               "_performance_oracles": {"L2": "cpu-sim", "L3": "rtl-sim"}}
+    binding = _binding()
+    entries = SW.expand_sweeps(profile, binding, trait_facts=_facts(), errors=[],
+                               selected_requirement={"scope": _selected_scope([row])},
+                               requirement_sha256="a" * 64)
+    assert len(entries) == 4
+    assert binding.tiers == ["L0", "L1", "L2", "L3"]
+    for entry in entries:
+        acceptance = entry["performance"]["acceptance"]
+        assert acceptance["evidence"]["timing_simulator"] == "rtl-sim"
+        assert acceptance["evidence"]["timing_tier"] == "L3"
+        assert acceptance["evidence"]["correctness_cycles_citable"] is False
+        assert acceptance["fit"]["dependent_metric"] == "rtl-sim_L3_cycles"
+    # A scope family with no selected members imposes no route prerequisite.
+    profile["_performance_oracles"] = {}
+    assert SW.expand_sweeps(profile, binding, trait_facts=_facts(), errors=[],
+                            selected_requirement={"scope": _selected_scope([])},
+                            requirement_sha256="a" * 64) == []
+
+
 def test_scope_sw_screen_checks_emitted_regions_without_inventing_device_maps() -> None:
     entry = {
         "name": "scope", "kind": "model_slice", "source_role": "derived_sweep",

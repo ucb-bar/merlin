@@ -819,16 +819,33 @@ def progression_chart(grades: Sequence[Mapping[str, Any]]) -> str:
             f"{'M' if i == 0 else 'L'}{x(g['at']):.1f} {y(g['n_capsules']):.1f}" for i, g in enumerate(totals)
         )
         parts.append(f'<path d="{path}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/>')
-    path = " ".join(f"{'M' if i == 0 else 'L'}{x(g['at']):.1f} {y(g['n_passed']):.1f}" for i, g in enumerate(points))
-    parts.append(f'<path d="{path}" fill="none" stroke="var(--s1)" stroke-width="2"/>')
-    for g in points:
-        tip = (
-            f"{g['name']}\n{R.stamp(g['at'])}\npassed {g['n_passed']} of {g.get('n_capsules')}\n"
-            f"highest tier {g.get('highest_tier')}"
-        )
-        parts.append(_mark(x(g["at"]), y(g["n_passed"]), tip, "measured"))
-    entries = [("var(--s1)", "capsules passed"), ("var(--muted)", "capsules graded")]
-    return legend(entries) + _svg(width, height, "".join(parts), "capsules passed per grade")
+    entries = [("var(--muted)", "capsules in grade")]
+    notes = []
+    tiers = sorted({t for g in points for c in g.get("capsules", ()) for t in c.get("tiers", {})}, key=R.tier_key)
+    for i, tier in enumerate(tiers):
+        colour = f"var(--t{i % 7})"
+        observed = []
+        unavailable = 0
+        for g in points:
+            statuses = [c.get("tiers", {}).get(tier) for c in g.get("capsules", ())]
+            measured = [s for s in statuses if s in ("pass", "fail")]
+            unavailable = sum(s == "unavailable" for s in statuses)
+            if measured:
+                observed.append((g, sum(s == "pass" for s in measured), len(measured)))
+        if not observed:
+            notes.append(f"{esc(tier)}: unavailable / not recorded ({unavailable} unavailable in latest grade)")
+            continue
+        path = " ".join(f"{'M' if j == 0 else 'L'}{x(g['at']):.1f} {y(n):.1f}" for j, (g, n, _) in enumerate(observed))
+        parts.append(f'<path d="{path}" fill="none" stroke="{colour}" stroke-width="2"/>')
+        for g, n, total in observed:
+            tip = f"{tier}: {n}/{total} recorded pass/fail results\n{g['name']}\n{R.stamp(g['at'])}"
+            parts.append(_mark(x(g["at"]), y(n), tip, "measured"))
+        entries.append((colour, f"{tier} capsules passed"))
+        if unavailable:
+            notes.append(f"{esc(tier)}: {unavailable} unavailable in latest grade")
+    return legend(entries) + _svg(width, height, "".join(parts), "capsules passed per tier per grade") + (
+        '<p class="sub">' + '; '.join(notes) + '</p>' if notes else ''
+    )
 
 
 def _heat_cell(name: str, index: int, grade: Mapping[str, Any], tiers: Sequence[str]) -> tuple[str, str]:

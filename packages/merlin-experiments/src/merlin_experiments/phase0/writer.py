@@ -417,7 +417,18 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     dirty = False
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
-    if regime == "int" and _is_source_backed(entry):
+    from merlin.targetgen.native_storage_source import native_storage_source_spec
+
+    # An integer storage type does not make a cast or permutation a mesh MAC.
+    # This exception is limited to the validated nonaccelerating native source
+    # declaration. Its complete captured ABI and values are checked by the
+    # source writer; ordinary written-program placement checks still apply.
+    native_storage = (
+        native_storage_source_spec(entry)
+        if entry.get("source") == "pytorch" or entry.get("pytorch_ref")
+        else None
+    )
+    if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
@@ -862,6 +873,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
         from merlin.targetgen.application_inventory import int_mm_source_is_qualified
+        from merlin.targetgen.capsule_builtin_source import native_storage_source_spec
 
         # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
         # so the float-regime restriction below does not apply to it. The restriction exists because a
@@ -871,7 +883,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         # eager then computes the same quantized math, so the golden is right by construction.
         # For operation-derived slices, the source's exact digest-bound integer arithmetic is checked
         # independently. Static and dynamic whole-model quantization remain distinct source schemes.
-        if entry.get("quant_scheme") or (
+        if native_storage_source_spec(entry) is not None or entry.get("quant_scheme") or (
             entry.get("capture_op") == "int_matmul"
             and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
         ):

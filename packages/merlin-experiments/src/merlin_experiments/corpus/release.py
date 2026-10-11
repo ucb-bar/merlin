@@ -422,6 +422,9 @@ def prepare(
     plan, attempt, generated = source_run(source)
     lineage = generation_lineage(plan, generated)
     te = load_target_experiment(plan["phases"]["0"]["inputs"]["descriptor"])
+    from .generated_source import bind_generated_corpus
+
+    te = bind_generated_corpus(te, generated, generated_only=generated_only)
     from merlin.common.artifacts import declared_home
 
     try:

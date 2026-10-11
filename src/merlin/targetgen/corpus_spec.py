@@ -112,6 +112,9 @@ class CorpusBinding:
     scale_block: int | None = None
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
+    # Explicit data-only readout selection. None preserves legacy backend discovery;
+    # an empty mapping is an explicit absence and must not discover another provider.
+    readout_inputs: dict | None = None
 
     def cap_dtype(self, token: str) -> str:
         return dtype_info(token)[0]
@@ -389,6 +392,13 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     """The instruction-class deriver for a matmul-family op. Two regimes, chosen by what the target ships:
     a self-hosted-ISA target (an ``isa_definition.py`` is present) derives its classes from the taxonomy;
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
+    # Explicit effect declarations avoid provider discovery and legacy issue schedules.
+    enc = contract.get("encoding") or {}
+    if "corpus_required_classes" in enc or "class_family" in enc:
+        from merlin.targetgen.corpus_effect_classes import source
+
+        return source(enc)
+
     from merlin.targetgen import isa_taxonomy as IT
 
     from .corpus_instruction_roles import selected_classes
@@ -506,7 +516,8 @@ def profile_datapath(profile: dict, *, numeric_only: bool = False) -> dict:
 
 
 def derive_binding(
-    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None
+    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None,
+    defer_classes: bool = False,
 ) -> CorpusBinding:
     """Derive the per-target binding from the descriptor + the profile's ``datapath`` block (compare +
     tolerances + optional requant-output dtype — the numeric contract the manifest does not yet carry)."""
@@ -532,6 +543,11 @@ def derive_binding(
     integer = dtype_info(accum)[3]
     scaling = datapath.get("scaling") or cu.get("scaling")
     tiers = datapath.get("required_oracle_tiers") or sorted(inferred_oracle_tiers(te.target, te.sim_via))
+    readout_inputs = None
+    if (c.get("runner") or {}).get("backend") == "chipyard_rocc":
+        from merlin.runtime.backends.chipyard_rocc import readout_metadata
+
+        readout_inputs = readout_metadata(c)
     return CorpusBinding(
         target=te.target,
         tile_dim=_tile_dim(te.target, c, operand=operand, facts=facts),
@@ -549,7 +565,9 @@ def derive_binding(
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
-        classes_for=_classes_source(te, c, taxonomy=taxonomy),
+        classes_for=(lambda **kw: _classes_source(te, c, taxonomy=taxonomy)(**kw))
+        if defer_classes else _classes_source(te, c, taxonomy=taxonomy),
+        readout_inputs=readout_inputs,
     )
 
 
@@ -706,7 +724,10 @@ def requant_shift_for(entry: dict, binding: CorpusBinding, epilogue: list[str], 
 
 def _readout_selectors(binding: CorpusBinding):
     """The target's declared readouts, or ``None`` when it describes none (UNKNOWN, never 'anything goes')."""
-    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, validated_readouts
+
+    if binding.readout_inputs is not None:
+        return validated_readouts(binding.readout_inputs.get("readouts")) or None
 
     try:
         return epilogue_readouts(binding.target) or None
@@ -714,6 +735,14 @@ def _readout_selectors(binding: CorpusBinding):
         raise  # selected support owes readout facts and cannot serve them: refuse, never "unknown"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
         return None
+
+
+def _readout_routes(binding: CorpusBinding):
+    from merlin.targetgen.readout_facet import epilogue_stage_routes, validated_stage_routes
+
+    if binding.readout_inputs is not None:
+        return validated_stage_routes(binding.readout_inputs.get("stage_routes"))
+    return epilogue_stage_routes(binding.target)
 
 
 def _readout_selector_for(
@@ -731,14 +760,13 @@ def _readout_selector_for(
     by a check that had the declaration available the whole time. Generation is where this is cheap to
     find out.
     """
-    from merlin.targetgen.readout_facet import epilogue_readouts, epilogue_stage_routes
     from merlin.verify.epilogue_applicability import selectors_applying
 
-    readouts = epilogue_readouts(binding.target)
+    readouts = _readout_selectors(binding)
     if not readouts:
         return None
     routes = tuple(
-        route for route in epilogue_stage_routes(binding.target) if route.operand_role in available_operand_roles
+        route for route in _readout_routes(binding) if route.operand_role in available_operand_roles
     )
     applying = selectors_applying(readouts, epilogue, routes=routes, composition="contraction")
     if applying:
@@ -812,12 +840,11 @@ def _resolve_output_dtype(
         if epilogue:
             _selectors = _readout_selectors(binding)
             if _selectors is not None:
-                from merlin.targetgen.readout_facet import epilogue_stage_routes
                 from merlin.verify.epilogue_applicability import selectors_applying
 
                 routes = tuple(
                     route
-                    for route in epilogue_stage_routes(binding.target)
+                    for route in _readout_routes(binding)
                     if route.operand_role in available_operand_roles
                 )
                 _ok = selectors_applying(

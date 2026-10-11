@@ -1,0 +1,7 @@
+# Input to the generic scalar host-package minter. This is an ISA/codegen request,
+# not a reviewed operation-support declaration or an execution qualification.
+schema: merlin.scalar_host_recipe.v1
+run_id: gemmini_rocket_scalar_int8_v0
+dtype_strategy: int8_w8a8
+march: rv64gc_zba_zbb_zbs_zfh
+host_isa: rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket

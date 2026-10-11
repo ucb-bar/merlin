@@ -20,7 +20,7 @@ def test_scalar_host_package_mint_is_idempotent_and_unverified(tmp_path):
     command = [
         sys.executable,
         str(root / "build_tools/scripts/mint_scalar_host_package.py"),
-        str(root / "examples/gemmini/target/scalar-host-recipe.yaml"),
+        str(root / "examples/gemmini/platform/scalar-host-recipe.yaml"),
     ]
     environment = {**os.environ, "MERLIN_OUT_ROOT": str(tmp_path / "out")}
     first = subprocess.run(command, env=environment, text=True, capture_output=True, check=True)
@@ -67,7 +67,7 @@ def test_scalar_package_loader_refuses_vector_march(tmp_path):
         [
             sys.executable,
             str(root / "build_tools/scripts/mint_scalar_host_package.py"),
-            str(root / "examples/gemmini/target/scalar-host-recipe.yaml"),
+            str(root / "examples/gemmini/platform/scalar-host-recipe.yaml"),
         ],
         env=environment,
         check=True,

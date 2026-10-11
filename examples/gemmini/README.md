@@ -4,13 +4,14 @@ Start here for the public inputs and phase handoffs. The single functional
 definition is [`experiment.yaml`](experiment.yaml), registered as
 `gemmini-functional` in the [experiment catalog](../../experiments/catalog.yaml).
 This example is not a prequalified compiler or a self-contained hardware setup.
-The authored [software spec](target/software-spec.yaml) and
-[hardware selection](target/hardware.yaml) are separate inputs. Phase 0 explicitly
+Start with the user-authored [software spec](target/README.md). Hardware, board and
+host selections have their own [platform folder](platform/README.md). Phase 0 explicitly
 uses diagnostic mode until evidence, semantics and coverage are qualified.
 
 | Step | Authored inputs and instructions | Generated result |
 | --- | --- | --- |
-| Target setup | [`target/`](target/README.md): authored descriptor and reference contracts; fresh experiments require independently derived runtime support | Extracted facts and tool qualification, kept outside examples |
+| Accelerator semantics | [`target/`](target/README.md): the user supplies `software-spec.yaml`; the descriptor selects integration inputs | Resolved declarations and explicit unknowns |
+| Platform setup | [`platform/`](platform/README.md): RTL/board selections and package-bound host declarations | Extracted facts and tool qualification, kept outside examples |
 | Phase 0: hardware-guided test generation | [`phase0/`](phase0/README.md): public coverage recipe | Run-owned capsules, then an explicitly reviewed corpus release |
 | Phase 1: functional compiler generation | [`phase1/`](phase1/README.md): prompts and public runtime harness | Frozen compiler submission and separately attributed certification |
 | Phase 2: performance optimization | [`phase2/`](phase2/README.md): selecting frozen inputs and the shared templates | Optimization runs and evidence tied to the exact functional compiler |

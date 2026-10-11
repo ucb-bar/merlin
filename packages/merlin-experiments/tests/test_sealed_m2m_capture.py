@@ -647,6 +647,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
             else output_identity
         ),
     )
+    # Receipt-policy fixture only; real inventory identities are tested separately.
+    monkeypatch.setattr(sealed_m2m, "_tree", lambda path: {"owner": Path(path)})
+    monkeypatch.setattr(sealed_m2m, "_snapshot_rows", lambda rows, relative=".": input_identity)
     monkeypatch.setattr(sealed_m2m, "_materialized", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v2", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v3", lambda *_: materialized)
@@ -686,6 +689,13 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
             sealed_m2m.replay_verify(run)
         receipt["plan"]["execution_timeout_seconds"] = timeout
         pending.write_text(json.dumps(receipt))
+    if not old:
+        pending = run / "sealed_m2m_pending.json"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_INVENTORY_REUSE_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = "current-issuer"
+        pending.write_text(json.dumps(receipt))
     if version == "v2":
         # These exact historical issuers differ only in strict JSON reads and
         # historical replay admission. Selected v2 still rechecks every byte.
@@ -694,6 +704,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
         receipt["policy_sha256"] = _policy(command, output, replayable_logs=True)
         receipt["issuer_sha256"] = "73f2463303b3a7274c666e44c99845dbe44953663aff3bfd346633fc7d391fea"
         pending = run / "sealed_m2m_pending.json"
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = sealed_m2m._ARCHIVED_SELECTED_V2_ISSUER_SHA256
         pending.write_text(json.dumps(receipt))
         assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
         for field, changed in (

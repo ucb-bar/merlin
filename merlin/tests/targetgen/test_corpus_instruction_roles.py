@@ -84,3 +84,25 @@ def test_fused_epilogue_is_not_a_general_compute_role():
     for op in ("softmax", "residual_add"):
         with pytest.raises(ValueError, match="lack required role slot"):
             select(op=op, epilogue=("relu", "bias"))
+
+
+def test_operation_roles_are_explicit_and_scoped():
+    c = contract()
+    c["corpus_instruction_roles"].update(version=2, operation_roles={
+        "residual_add": {"tensor_compute_binary": ["DATA_IN", "DATA_OUT"]},
+    })
+    select = _classes_source(SimpleNamespace(target="synthetic"), c)
+    assert select(op="residual_add") == ["DATA_IN", "DATA_OUT"]
+    with pytest.raises(ValueError, match="lack required role slot"):
+        select(op="softmax")
+    c["corpus_instruction_roles"]["operation_roles"]["residual_add"]["tensor_compute_binary"][0] = "CHANGED"
+    assert select(op="residual_add") == ["DATA_IN", "DATA_OUT"]
+
+
+def test_operation_roles_cannot_change_legacy_selection():
+    c = contract()
+    c["corpus_instruction_roles"]["operation_roles"] = {
+        "residual_add": {"tensor_compute_binary": ["DATA_IN"]},
+    }
+    with pytest.raises(ValueError, match="require.*version 2"):
+        _classes_source(SimpleNamespace(target="synthetic"), c)

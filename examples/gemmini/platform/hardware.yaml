@@ -1,0 +1,36 @@
+schema: merlin.hardware_selection.v1
+target: gemmini
+required_fields:
+  - facts.arrays
+  - facts.memories
+  - facts.timing
+  - source_consistency
+source_production:
+  method: firrtl_to_hw_then_exact_module_closure
+  core_root: Gemmini
+  hierarchy: derive_exact_instance_graph_from_selected_firrtl
+  drop_annotation_classes:
+    - chisel3.experimental.EnumAnnotations$EnumComponentAnnotation
+    - chisel3.experimental.EnumAnnotations$EnumDefAnnotation
+    - chisel3.experimental.EnumAnnotations$EnumVecAnnotation
+audit_checks:
+  - id: signed_input_storage_width
+    kind: hw_port_type
+    module: MacUnit
+    port: io_in_a
+    expected_type: i8
+    extraction: {collection: compute_datapaths, name: input, field: elem_bits}
+    qualification: HW ports are signless; signed arithmetic comes from the corresponding FIRRTL SInt declaration.
+  - id: accumulator_storage_input
+    kind: hw_port_type
+    module: MacUnit
+    port: io_in_c
+    expected_type: i32
+    extraction: {collection: storage_datapaths, name: accumulator, field: elem_bits}
+  - id: internal_partial_sum_not_storage
+    kind: hw_port_type
+    module: MacUnit
+    port: io_out_d
+    expected_type: i20
+    extraction: {collection: compute_datapaths, name: accumulator, field: elem_bits}
+    qualification: Twenty-bit compute partial sums must remain separate from the accumulator SRAM's thirty-two-bit storage.

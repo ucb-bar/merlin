@@ -48,6 +48,7 @@ NAMES = {
 def timeline_section(activity: Mapping[str, Any] | None, detail: Mapping[str, Any], now: float) -> str:
     lanes = A.lanes(activity) + list(detail.get("lanes") or ())
     out = '<section id="timeline"><h2>Timeline: agent, grades, simulator jobs, freeze</h2>'
+    out += "<p class='sub'>Capsule L2/L3 points are grade milestones; unavailable means no oracle result. Simulator bars show recorded job spans, not individual capsule durations. Private capsules are omitted from named lanes.</p>"
     out += C.gantt_legend(COLOURS, NAMES)
     out += "<h3>Whole run</h3>" + C.gantt(lanes, now=now, colours=COLOURS, label="run timeline")
     starts = [s["start"] for lane in lanes for s in lane.get("spans") or () if s.get("start") is not None]
