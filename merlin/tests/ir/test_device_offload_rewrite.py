@@ -204,6 +204,18 @@ def test_the_written_module_keeps_its_access_attributes(tmp_path):
     assert text.count("bufferization.access") == 3 * len(r.signatures)
 
 
+def test_rewrite_refuses_receipt_bound_capture_source(tmp_path):
+    from merlin.llvmlower.device_offload import rewrite_prepared_file
+
+    source = tmp_path / "model.mlir"
+    source.write_text(_TWO_SHAPES)
+    (tmp_path / "capture_receipt.json").write_text('{"schema":"m2m.capture-receipt.v1"}')
+    with pytest.raises(ValueError, match="prepared copy"):
+        rewrite_prepared_file(source, tmp_path / "work", "mx_gemmini")
+    assert source.read_text() == _TWO_SHAPES
+    assert not (tmp_path / "work").exists()
+
+
 def test_generic_file_rewrite_does_not_import_legacy_matrix_pass(tmp_path, monkeypatch):
     import builtins
     import subprocess

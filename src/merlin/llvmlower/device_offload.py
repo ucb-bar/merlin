@@ -1028,6 +1028,8 @@ def rewrite_prepared_file(
     if granularity not in (BY_CONTRACTION, BY_GROUP):
         raise ValueError(f"{granularity!r} is neither {BY_CONTRACTION!r} nor {BY_GROUP!r}")
     prepared, work = Path(prepared), Path(work)
+    if prepared.name == "model.mlir" and (prepared.parent / "capture_receipt.json").is_file():
+        raise ValueError("device rewrite requires a prepared copy, not a receipt-bound capture model.mlir")
     model_sha256 = hashlib.sha256(prepared.read_bytes()).hexdigest()
     if exact_selection is not None and exact_selection.model_sha256 != model_sha256:
         raise ValueError("prepared model bytes changed after exact operation selection")
