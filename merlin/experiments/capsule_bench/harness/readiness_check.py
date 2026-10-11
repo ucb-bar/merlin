@@ -1279,6 +1279,10 @@ def test_oracles_endtoend(reference_backend: str | None = None, *, probes: dict 
             verify_probe_inputs(probes)
             to = probes["timeout_s"]
         cap = probe_names[0] if cap is None else cap
+        # Grading writes caller artifacts. A released experiment is read-only;
+        # each child owns a fresh operator directory outside that payload.
+        work_root = probes["timing_output"].parent if probes is not None else cache_dir("readiness_native")
+        grade_root = Path(_tf.mkdtemp(prefix="oracle_grade_", dir=work_root))
         r = subprocess.run(
             inherited_python_command(
                 [
@@ -1301,14 +1305,18 @@ def test_oracles_endtoend(reference_backend: str | None = None, *, probes: dict 
                     "1",
                     "--timeout",
                     str(to),
+                    "--out",
+                    str(grade_root / "report.json"),
                 ]
             ),
-            cwd=str(SCRIPTS),
+            cwd=str(grade_root),
             env=env,
             capture_output=True,
             text=True,
             timeout=to + 120,
         )
+        (grade_root / "stdout.log").write_text(r.stdout, encoding="utf-8")
+        (grade_root / "stderr.log").write_text(r.stderr, encoding="utf-8")
         if probes is not None:
             verify_probe_inputs(probes)
         # The grader prints human diagnostics ("tier plan: ...", "model gate: ...") on the same stdout
