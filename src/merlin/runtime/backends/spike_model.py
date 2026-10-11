@@ -460,6 +460,7 @@ def build(
     inputs_npz: str | Path | None = None,
     arena_mb: int = 256,
     *,
+    auto_arena: bool = False,
     dram_base: int = DRAM_BASE,
     dram_bytes: int | None = None,
     int8_compute: bool = False,
@@ -500,6 +501,10 @@ def build(
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
+
+    ``auto_arena`` raises the Spike allocator size to a conservative estimate
+    from the final LLVM IR's malloc sites. The estimate is not a proof of peak
+    live allocation; execution must still check for a guest allocator failure.
 
     ``host_math_policy`` defaults to emission-neutral ``native``. Explicit
     ``expf_via_double`` changes libm returned-value precision; callers must
@@ -617,6 +622,8 @@ def build(
         execution_memory_map.validate()
         if type(stack_bytes) is not int or stack_bytes <= 0 or type(arena_mb) is not int or arena_mb < 0:
             raise ExecutionMemoryError("unknown or invalid runtime stack/allocator sizing")
+    if type(auto_arena) is not bool:
+        raise TypeError("auto_arena must be a bool")
     if not isinstance(execution_memory_reservations, tuple) or any(
         not isinstance(use, MemoryReservation) for use in execution_memory_reservations
     ):
@@ -863,6 +870,12 @@ def build(
     info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
     if output_sha256 and info.get("out_dt") not in {"f32", "i64", "i1"}:
         raise SpikeModelError("full-output SHA256 evidence requires f32, i64 or i1 output")
+    arena_estimate = None
+    if auto_arena:
+        from .spike_arena import estimate_llvm_malloc, recommended_arena_bytes
+
+        arena_estimate = estimate_llvm_malloc(model_ir)
+        arena_bytes = max(arena_bytes, recommended_arena_bytes(arena_estimate))
     # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
     # storage -- and that last term is a property of the model, not a constant: `static float
     # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
@@ -1239,6 +1252,12 @@ def build(
         "build_hash": build_hash,
         "quantization_policy": quantization_policy,
         "arena_base": lay["arena_base"],
+        "arena_bytes": arena_bytes,
+        "arena_estimate": (
+            {"callsites": arena_estimate.callsites,
+             "literal_bytes": arena_estimate.literal_bytes,
+             "dynamic_sites": arena_estimate.dynamic_sites}
+            if arena_estimate is not None else None),
         "weights_base": lay["weights_base"],
         # Reported so `run` can be given it. A run at a different vector length than the build
         # mis-places every scalable-vector spill slot; see run()'s docstring.
