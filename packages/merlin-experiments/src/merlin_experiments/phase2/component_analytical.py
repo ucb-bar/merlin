@@ -262,7 +262,7 @@ def _available_workers(binding):
     return workers
 
 
-def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
+def _evaluate(binding, adapter, *, candidate, corpus, timeout_s, retained_revision=None, retained_baseline=None):
     started = time.monotonic()
     # Forward the remaining development budget and reject late completion.
     # The thread coordinator cannot preempt a callback that ignores its timeout;
@@ -282,10 +282,17 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
         raise StageGateError("component analytical compiler arms overlap")
     binding.output.mkdir(parents=True, exist_ok=True)
     call_root = Path(tempfile.mkdtemp(prefix="component_cost_", dir=binding.output))
-    measured = call_root / "candidate"
-    shutil.copytree(candidate, measured, symlinks=True)
+    if retained_revision is None:
+        measured = call_root / "candidate"
+        shutil.copytree(candidate, measured, symlinks=True)
+    else:
+        retained_revision.verify()
+        retained_baseline.verify()
+        if candidate != retained_revision.source or binding.max_workers != 1:
+            raise StageGateError("retained analytical execution requires its fixed outer resource grant")
+        measured = retained_revision.source
     candidate_sha = str(hash_tree(measured)["sha256"])
-    workers = _available_workers(binding)
+    workers = _available_workers(binding) if retained_revision is None else 1
     from .feedback_guardian import has_parent_feedback_lease
 
     delegated_lease = has_parent_feedback_lease(binding.lease_path)
@@ -327,7 +334,7 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                         "qualified_domains": list(domains),
                     }
                 pair = binding.feature_provider(
-                    baseline=binding.baseline,
+                    baseline=binding.baseline if retained_baseline is None else retained_baseline.source,
                     candidate=measured,
                     member=member,
                     corpus=corpus,
@@ -400,11 +407,17 @@ def _evaluate(binding, adapter, *, candidate, corpus, timeout_s):
                 pair,
             )
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for identity, pair, detail, opportunity, observed in pool.map(one, corpus.capsules):
-                intervals[identity], reports[identity] = pair, detail
-                opportunities.append(opportunity)
-                observations[identity] = observed
+        if retained_revision is None:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                evaluated = list(pool.map(one, corpus.capsules))
+        else:
+            # Keep the issued execution context and resource coordinator in one
+            # worker; the outer pool owns concurrent evaluations.
+            evaluated = map(one, corpus.capsules)
+        for identity, pair, detail, opportunity, observed in evaluated:
+            intervals[identity], reports[identity] = pair, detail
+            opportunities.append(opportunity)
+            observations[identity] = observed
         if time.monotonic() > deadline or str(hash_tree(measured)["sha256"]) != candidate_sha:
             raise StageGateError("component analytical evaluation timed out or changed frozen compiler bytes")
         binding.validate(calibration)

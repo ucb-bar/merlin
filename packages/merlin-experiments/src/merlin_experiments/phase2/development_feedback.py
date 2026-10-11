@@ -891,7 +891,14 @@ class DevelopmentGsimFeedback:
         )
 
     def evaluate(
-        self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int, measurement_plan=None
+        self,
+        candidate: Path,
+        *,
+        round_index: int,
+        call_index: int,
+        timeout_s: int,
+        measurement_plan=None,
+        retained_revision=None,
     ) -> dict[str, Any]:
         candidate = Path(candidate).resolve(strict=True)
         if measurement_plan is not None:
@@ -912,8 +919,16 @@ class DevelopmentGsimFeedback:
         # bytes that produced them, and a snapshot gives that property outright instead of turning a
         # note into a voided campaign. Every run below reads the copy, so a concurrent edit cannot
         # change what was measured, and `candidate_sha256` names the bytes actually executed.
-        measured_candidate = call_root / "_measured_candidate"
-        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        if retained_revision is None:
+            measured_candidate = call_root / "_measured_candidate"
+            shutil.copytree(candidate, measured_candidate, symlinks=True)
+        else:
+            from .retained_revisions import executing_revision
+
+            if executing_revision(candidate) is not retained_revision:
+                raise StageGateError("retained RTL execution requires the issued fixed evaluator context")
+            retained_revision.verify()
+            measured_candidate = retained_revision.source
         candidate_before = str(hash_tree(measured_candidate)["sha256"])
         candidate = measured_candidate
         original_members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
@@ -1160,6 +1175,8 @@ class DevelopmentGsimFeedback:
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
             raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
+        if retained_revision is not None:
+            retained_revision.verify()
         comparable = [row for row in cells if row["comparable"]]
         return CF.validate_redacted_feedback(
             {
