@@ -250,6 +250,27 @@ overwriting an old observation. The command uses the existing timing writer only
 after the correct cert grade, screen and both negative controls succeed. Its
 `ORACLE PROBES PASS` verdict covers this finite gate only, not full launch readiness.
 
+When the grading cohort contains model capsules, select an absolute executable
+host Python with Torch, NumPy and safetensors compatible with the capture runtime:
+
+```sh
+export MERLIN_M2M_PYTHON="$MODEL_PYTHON"
+```
+
+Set `MODEL_PYTHON` to the reviewed model runtime on this worker. Phase 1 probes
+and records that interpreter before authoring. `MERLIN_COMPILER_PYTHON` separately
+selects the candidate compiler interpreter; both selections must be explicit when
+the deployment uses both roles.
+
+The RTL authoring tools also require an executable named `FileCheck` on the host
+and sandbox PATH. Some LLVM distributions omit it or install only a versioned
+launcher. Select `FILECHECK_BIN` as the directory containing the actual unversioned
+binary, then keep it on PATH for preflight and authoring:
+
+```sh
+export PATH="$FILECHECK_BIN:$PATH"
+```
+
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox
 with the same provider/model/tool selections and a separate fresh run ID. See
