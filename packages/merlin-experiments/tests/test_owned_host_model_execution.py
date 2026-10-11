@@ -80,3 +80,155 @@ def test_claimed_numeric_result_without_actual_owned_build_never_promotes():
     checked = enforce_model_execution_check(result, capsule, target="synthetic")
     assert checked["status"] == "incomplete"
     assert checked["model_execution_check"]["status"] == "incomplete"
+
+
+def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(tmp_path):
+    from merlin.llvmlower import device_build, toolchain
+    from merlin.targetgen.owned_host_model_execution import _verify_device_custody
+
+    objcopy = device_build._objcopy()
+    if not objcopy or not toolchain.mlir_translate().is_file() or not toolchain.clang().is_file():
+        pytest.skip("requires selected compiler tools; no accelerator or simulation")
+    artifact, translated, raw, obj = [tmp_path / name for name in ("kernel.mlir", "kernel.ll", "raw.o", "kernel.o")]
+    artifact.write_text("module { llvm.func @kernel() { llvm.return } }\n")
+    custody = {}
+    commands = [
+        (
+            "translation",
+            "device_llvm_translation",
+            [toolchain.mlir_translate(), "--mlir-to-llvmir", str(artifact), "-o", str(translated)],
+            artifact,
+            translated,
+        ),
+        (
+            "compilation",
+            "device_object_compilation",
+            [toolchain.clang(), "--target=riscv64-unknown-elf", "-c", str(translated), "-o", str(raw)],
+            translated,
+            raw,
+        ),
+        (
+            "rename",
+            "device_object_symbol_rename",
+            [objcopy, "--redefine-sym=kernel=kernel_0", str(raw), str(obj)],
+            raw,
+            obj,
+        ),
+    ]
+    for role, stage, command, source, output in commands:
+        run, custody[role] = device_build._observed_build_tool(
+            command, timeout=30, directory=tmp_path, stage=stage, inputs=(source,), output=output
+        )
+        assert run.returncode == 0, run.stderr
+    _verify_device_custody(
+        {"custody": custody},
+        artifact=artifact,
+        llvm_ir=translated,
+        obj=obj,
+        original_symbol="kernel",
+        kernel_symbol="kernel_0",
+    )
+    with pytest.raises(ValueError, match="rename transform"):
+        _verify_device_custody(
+            {"custody": custody},
+            artifact=artifact,
+            llvm_ir=translated,
+            obj=obj,
+            original_symbol="kernel",
+            kernel_symbol="wrong_symbol",
+        )
+    obj.write_bytes(obj.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match="product changed"):
+        _verify_device_custody(
+            {"custody": custody},
+            artifact=artifact,
+            llvm_ir=translated,
+            obj=obj,
+            original_symbol="kernel",
+            kernel_symbol="kernel_0",
+        )
+
+
+def test_empty_global_class_roster_is_explicit_only_for_source_bound_models(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.targetgen import target_experiment
+    from merlin.targetgen.native_model_execution import NativeModelExecutionError, _frozen_model_policy
+
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: synthetic\n")
+    corpus = tmp_path / "corpus"
+    (corpus / "isa").mkdir(parents=True)
+    (corpus / "MANIFEST.yaml").write_text(
+        "instruction_policy:\n  status: resolved\n  prohibited_instruction_roles: []\n"
+    )
+    capsule = tmp_path / "capsule"
+    capsule.mkdir()
+    declaration = capsule / "capsule.yaml"
+    declaration.write_text(
+        "kind: model\nexpected:\n  instruction_classes: []\nrequired_oracle_tiers: [L0, L1, L2, L3]\n"
+    )
+    (capsule / "expected_instruction_coverage.yaml").write_text("instruction_classes: []\n")
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+    monkeypatch.setattr(
+        target_experiment,
+        "load_target_experiment",
+        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa"),
+    )
+    with pytest.raises(NativeModelExecutionError, match="coverage"):
+        _frozen_model_policy(capsule, target="synthetic")
+    policy = _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
+    assert policy["expected_instruction_classes"] == []
+    assert policy["required_tiers"] == ["L0", "L1", "L2", "L3"]
+    declaration.write_text(declaration.read_text().replace("kind: model", "kind: layer"))
+    with pytest.raises(NativeModelExecutionError, match="original model"):
+        _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
+
+
+def test_owned_score_withholds_legacy_numeric_tiers_and_cost_when_proof_missing():
+    from merlin.targetgen.capsule_grade import _candidate_score_view, _score_numeric_status
+
+    row = {
+        "kind": "model",
+        "numeric": {"status": "pass"},
+        "metrics": {"cycles": 10},
+        "tiers": {"L3": {"status": "pass", "derived_from_rtl": True}},
+        "model_execution_check": {
+            "kind": "owned_host_model_execution",
+            "status": "incomplete",
+            "violations": ["candidate_completed_dispatch_unverified"],
+        },
+    }
+    assert _score_numeric_status(row) is None
+    view = _candidate_score_view(row)
+    assert view["tiers"] == {} and view["numeric"] == {} and "metrics" not in view
+
+
+def test_protected_engine_selection_uses_scoped_facts_without_changing_ambient(tmp_path, monkeypatch):
+    import json
+    import os
+
+    from merlin.compile import model_execution_inputs as inputs
+    from merlin.targetgen.owned_host_model_execution import _native_engine_for_facts
+    from merlin.targetgen.rtl import facts as facts_api
+
+    path = tmp_path / "selected-facts.json"
+    document = {"scope": "synthetic selected input; no hardware qualification"}
+    path.write_text(json.dumps(document))
+    identity = {"path": str(path), "config": "SelectedConfig", "sha256": "synthetic_test_only"}
+    monkeypatch.setenv("MERLIN_RTL_FACTS", "different-ambient-selection")
+    monkeypatch.setattr(inputs, "selected_firrtl", lambda *a, **k: identity)
+
+    def bind(target, engine, selected):
+        assert facts_api.load_facts(target, regenerate=False) == document
+        assert selected == identity
+        assert os.environ["MERLIN_RTL_FACTS"] == "different-ambient-selection"
+        return "synthetic boundary test; no execution"
+
+    monkeypatch.setattr(inputs, "native_engine", bind)
+    assert _native_engine_for_facts("synthetic", "gsim", identity) == "synthetic boundary test; no execution"
+    assert "synthetic" not in facts_api._OBSERVED.get()
+    assert os.environ["MERLIN_RTL_FACTS"] == "different-ambient-selection"
+    monkeypatch.setattr(inputs, "selected_firrtl", lambda *a, **k: {**identity, "sha256": "changed"})
+    with pytest.raises(ValueError, match="facts changed"):
+        _native_engine_for_facts("synthetic", "gsim", identity)

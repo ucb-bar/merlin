@@ -625,12 +625,17 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     from merlin.common.facts_view import interface as facts_interface
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.perf.isa_prohibition import scan_elf
+    from merlin.runtime.boards import load_boards
     from merlin.targetgen import elf_lanes
     from merlin.targetgen.rtl.facts import observed_facts
 
     from .native_model_execution import _digest
 
     output = record["build"]["output"]
+    inputs = record["build"]["inputs"]
+    board = load_boards(Path(inputs["board_catalog"])).get(inputs["board"])
+    if board is None or board.target != target or board.rtl_sim_config != facts["config"]:
+        raise ValueError("owned model selected board and RTL facts identify different configurations")
     elf = Path(output["elf"])
     recipe = output["compilation_recipe"]
     compilation = verify_completed_recipe(Path(recipe["path"]), executable=elf, expected_recipe_sha256=recipe["sha256"])
@@ -714,20 +719,67 @@ def _selected_facts(path, *, target):
     return selected_firrtl(path, target=target, config=config)
 
 
+def _native_engine_for_facts(target, engine, facts):
+    from merlin.compile.model_execution_inputs import native_engine, selected_firrtl
+    from merlin.targetgen.rtl.facts import observed_facts
+
+    if selected_firrtl(facts["path"], target=target, config=facts["config"]) != facts:
+        raise ValueError("protected owned-model RTL facts changed")
+    with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
+        return native_engine(target, engine, facts)
+
+
+def _functional_engine_for_facts(target, facts):
+    from merlin.targetgen.rtl.facts import observed_facts
+
+    from .native_model_execution import _functional_engine
+
+    with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
+        return _functional_engine(target)
+
+
+def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
+    """Execute under explicitly protected facts without changing global env.
+
+    Ambient release facts can have another materialization identity. The
+    backend instead binds the actual selected file; exact byte, FIRRTL and
+    engine checks remain intact rather than equating different receipts.
+    """
+    import time
+    from contextlib import nullcontext
+
+    from merlin.compile.model_execution_inputs import selected_firrtl
+    from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+
+    backend, citation, revalidate, prepare = _native_engine_for_facts(target, engine, facts)
+    command = (
+        prepare(elf, expected_elf_sha256=elf_sha256, expected_engine_provenance=citation) if callable(prepare) else None
+    )
+    evidence = {"engine": engine, "engine_citation": citation, "rtl_facts_identity": facts}
+    if command is not None:
+        evidence["native_command_sha256"] = command.revalidate()["command_sha256"]
+        evidence["max_cycles"] = command.to_evidence().get("max_cycles")
+    revalidate()
+    started = time.monotonic()
+    with gsim_runtime_slot(wait_timeout_s=timeout) if engine == "gsim" else nullcontext():
+        console = backend.run_elf(elf, simulator=engine, timeout=timeout, capture_bytes=True)
+    if command is not None:
+        command.revalidate()
+    revalidate()
+    if selected_firrtl(facts["path"], target=target, config=facts["config"]) != facts:
+        raise ValueError("protected owned-model RTL facts changed during execution")
+    return {**evidence, "console": console, "wall_s": round(time.monotonic() - started, 1)}
+
+
 def _execute_required_tiers(capsule, record, *, target, facts, timeout):
     """Build once, execute the exact same ELF on every frozen required engine."""
     import os
-    from contextlib import nullcontext
 
-    from merlin_experiments.phase1.feedback.private_full_model_execution import run_engine
-
-    from merlin.compile.model_execution_inputs import native_engine
     from merlin.targetgen.oracle_policy import selected_l3_engine_report
-    from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
-    from .native_model_execution import _digest, _frozen_model_policy, _functional_engine
+    from .native_model_execution import _digest, _frozen_model_policy
 
-    policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target)
+    policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target, source_bound_groups=True)
     selected_facts = _selected_facts(facts, target=target)
     dispatch = _dispatch_proof(record, target=target, facts=selected_facts)
     tiers = _static_tiers(capsule, record, target=target, facts=selected_facts, dispatch=dispatch, policy=policy)
@@ -741,7 +793,7 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout):
         directory.mkdir()
         try:
             if tier == "L2":
-                backend, citation, revalidate = _functional_engine(target)
+                backend, citation, revalidate = _functional_engine_for_facts(target, selected_facts)
                 revalidate()
                 console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
                 revalidate()
@@ -758,22 +810,25 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout):
                     raise ValueError(
                         "owned model selected mandatory RTL engine is unavailable or differs from invocation"
                     )
-                with gsim_runtime_slot(wait_timeout_s=timeout) if engine == "gsim" else nullcontext():
-                    run = run_engine(
-                        elf,
-                        engine=engine,
-                        target=target,
-                        timeout_s=timeout,
-                        max_cycles=None,
-                        elf_sha256=identity["sha256"],
-                        rtl_config=selected_facts["config"],
-                        rtl_facts_sha256=selected_facts["sha256"],
-                        capture_bytes=True,
-                    )
+                run = _run_selected_rtl(
+                    elf,
+                    engine=engine,
+                    target=target,
+                    timeout=timeout,
+                    facts=selected_facts,
+                    elf_sha256=identity["sha256"],
+                )
                 console = run.pop("console")
                 engine_evidence = {**run, "selection": selection}
+                fidelity = selection.get("fidelity")
+                if isinstance(fidelity, str) and fidelity:
+                    from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL
+
+                    engine_evidence.update(
+                        fidelity=fidelity, derived_from_rtl=fidelity == ELABORATED_RTL, cycle_accurate=False
+                    )
                 # Reopen exactly the selected backend, not just an L3 label.
-                _, citation, revalidate, _ = native_engine(target, engine, selected_facts)
+                _, citation, revalidate, _ = _native_engine_for_facts(target, engine, selected_facts)
                 revalidate()
                 if engine_evidence.get("engine_citation") != citation:
                     raise ValueError("owned model RTL run cited another engine")
@@ -818,12 +873,12 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
 
     import yaml
 
-    from merlin.compile.model_execution_inputs import native_engine, strict_tree_sha256
+    from merlin.compile.model_execution_inputs import strict_tree_sha256
     from merlin.targetgen.contract.readback_policy import selected
     from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
     from .capsule_runner import _model_runtime_bundle, _resolve_model_host_lane
-    from .native_model_execution import _frozen_model_policy, _functional_engine
+    from .native_model_execution import _frozen_model_policy
 
     try:
         record = result.get("owned_host_native_execution")
@@ -858,7 +913,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             or inputs.get("dts_sha256") != file_sha256(paths["dts"])
         ):
             raise ValueError("owned model build used different selected host/board inputs")
-        frozen_policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target)
+        frozen_policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target, source_bound_groups=True)
         if (
             frozen_policy != record.get("frozen_policy")
             or record.get("required_tiers") != frozen_policy["required_tiers"]
@@ -905,7 +960,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 raise ValueError(f"owned model {tier} has no completed exact-ELF run")
             console = _pinned(evidence, "console")
             if tier == "L2":
-                _, citation, revalidate = _functional_engine(target)
+                _, citation, revalidate = _functional_engine_for_facts(target, facts)
                 if evidence.get("engine") != "spike" or evidence.get("engine_citation") != citation:
                     raise ValueError("owned model L2 engine/extension bytes changed")
                 revalidate()
@@ -920,7 +975,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                     or (required_engine and required_engine != engine)
                 ):
                     raise ValueError("owned model L3 used another selected RTL engine")
-                _, citation, revalidate, _ = native_engine(target, engine, facts)
+                _, citation, revalidate, _ = _native_engine_for_facts(target, engine, facts)
                 if evidence.get("engine_citation") != citation or evidence.get("rtl_facts_identity") != facts:
                     raise ValueError("owned model L3 engine/FIRRTL lineage changed")
                 revalidate()
@@ -932,6 +987,14 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             ):
                 raise ValueError(f"owned model {tier} receipt differs from parsed full values")
             tiers[tier] = {**evidence, "numeric": numeric, "dispatch": dispatch}
+            if tier == "L3":
+                fidelity = selected_engine.get("fidelity")
+                if isinstance(fidelity, str) and fidelity:
+                    from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL
+
+                    tiers[tier].update(
+                        fidelity=fidelity, derived_from_rtl=fidelity == ELABORATED_RTL, cycle_accurate=False
+                    )
         required = frozen_policy["required_tiers"]
         failed = [tier for tier in required if tiers[tier]["status"] == "fail"]
         numeric = (tiers.get("L3") or tiers.get("L2") or {}).get("numeric")
