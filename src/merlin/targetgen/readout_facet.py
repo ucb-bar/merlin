@@ -714,6 +714,11 @@ def epilogue_stage_routes(target: str):
         raw = hook()
     except Exception:  # noqa: BLE001 -- a failed declaration grants nothing
         return ()
+    return validated_stage_routes(raw)
+
+
+def validated_stage_routes(raw):
+    """Parse supplied route data with the same rules as the grade-time accessor."""
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return ()
     from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET

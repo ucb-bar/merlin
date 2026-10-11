@@ -474,6 +474,86 @@ def test_neutral_evidence_never_reads_provider_hooks_headers_or_lowering(monkeyp
         )
 
 
+def _neutral_readout_selection(monkeypatch, tmp_path, readout, *, project=True):
+    from merlin.runtime.backends import chipyard_rocc
+    from merlin.targetgen import capability_derive, isa_taxonomy
+    from merlin.targetgen.rtl import mlc_bridge
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("selected readout metadata discovered executable support")
+
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    monkeypatch.setattr(base, "get_backend", forbidden)
+    monkeypatch.setattr(readout_facet, "capture_inputs", forbidden)
+    monkeypatch.setattr(readout_facet, "_backend_hook", forbidden)
+    monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", forbidden)
+    monkeypatch.setattr(capability_derive, "_from_lowering", forbidden)
+    monkeypatch.setattr(chipyard_rocc, "_check_pin", forbidden)
+    monkeypatch.setattr(chipyard_rocc, "_validate_toolchain", forbidden)
+    monkeypatch.setattr(chipyard_rocc, "_validate_engine", forbidden)
+    monkeypatch.setattr(mlc_bridge, "toolchain_identity", lambda: {})
+    # Unrelated execution metadata has no selected execution contract in this fixture.
+    monkeypatch.setattr(base, "execution_capability_facts", lambda *args, **kwargs: {})
+    selected = {
+        "name": "fixture",
+        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": readout}},
+        "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"]}],
+    }
+    raw = tmp_path / "selected-facts.json"
+    raw.write_text(json.dumps({"facts": {"arrays": [{"rows": 4, "cols": 4}]}}))
+    projected = None
+    if project:
+        with monkeypatch.context() as direct:
+            direct.setattr(chipyard_rocc, "bind", forbidden)
+            projected = chipyard_rocc.readout_metadata(selected)
+    observed = evidence.select_evidence("fixture", capability_contract_path=selected, facts_path=raw)
+    return selected, projected, observed
+
+
+def test_neutral_selected_readout_metadata_reaches_all_facet_inputs(monkeypatch, tmp_path):
+    declaration = {
+        "scalar_abi": {"schema": readout_facet.SCALAR_ABI_SCHEMA},
+        "epilogue_capability": [{"selector": "selected", "applies": ["bias"], "evidence": "owned data"}],
+        "operand_sum": {"schema": readout_facet.OPERAND_SUM_SCHEMA},
+        "stage_routes": [
+            {
+                "stages": ["bias"],
+                "site": "accumulator_seed",
+                "composed_with": "selected_composition",
+                "readouts": ["selected"],
+                "producer_opcodes": ["selected_producer"],
+                "consumer_opcodes": ["selected_consumer"],
+                "operand_attribute": "selected_attribute",
+                "operand_role": "selected_operand",
+                "evidence": "owned data",
+            }
+        ],
+    }
+    selected, projected, observed = _neutral_readout_selection(monkeypatch, tmp_path, declaration)
+    expected = {
+        "scalar_abi": declaration["scalar_abi"],
+        "readouts": declaration["epilogue_capability"],
+        "operand_sum": declaration["operand_sum"],
+        "stage_routes": declaration["stage_routes"],
+    }
+    assert projected == expected
+    assert observed.readout_inputs == {**expected, "taxonomy": {}}
+    assert observed.readout_facets[0]["readouts"] == expected["readouts"]
+    assert observed.readout_facets[0]["stage_routes"] == expected["stage_routes"]
+    projected["scalar_abi"]["schema"] = "changed"
+    assert selected["runner"]["chipyard_rocc"]["readout"] == declaration
+    assert observed.readout_inputs["scalar_abi"]["schema"] == readout_facet.SCALAR_ABI_SCHEMA
+    assert observed.readout_numerics[0]["readout_facts"] == declaration["scalar_abi"]
+
+
+@pytest.mark.parametrize("malformed", [{"scalar_abi": []}, {"epilogue_capability": [None]}, {"stage_routes": {}}])
+def test_neutral_selected_readout_metadata_refuses_malformed_data(monkeypatch, tmp_path, malformed):
+    from merlin.runtime.backends.chipyard_rocc import RoCCExecutionError
+
+    with pytest.raises(RoCCExecutionError, match="readout observation"):
+        _neutral_readout_selection(monkeypatch, tmp_path, malformed, project=False)
+
+
 def test_selected_readout_scale_conflict_is_a_bound_diagnostic(monkeypatch, tmp_path):
     body = {
         "arrays": [{"rows": 4, "cols": 4}],

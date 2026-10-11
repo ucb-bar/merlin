@@ -419,7 +419,7 @@ def select_evidence(
     selected documents fail rather than selecting another source implicitly.
     """
     from merlin.perf.profile import derive_profile
-    from merlin.runtime.backends.base import execution_capability_facts, independent_execution_capability_facts
+    from merlin.runtime.backends import base, chipyard_rocc
     from merlin.targetgen import readout_facet, target_registry
     from merlin.targetgen.rtl import facts as rtl_facts
 
@@ -883,7 +883,7 @@ def select_evidence(
                 )
     snapshot_bytes = {str(path): source.content for path, source in sources.items()}
     refreshed_facts = dict(readout_facet.with_current_register_layouts(loaded_facts, source_bytes=snapshot_bytes))
-    readout_inputs = {}
+    readout_inputs = chipyard_rocc.readout_metadata(contract) if data_only else {}
     if hardware_intake is None and not data_only:
         with rtl_facts.observed_facts(target, refreshed_facts, selected_path):
             readout_inputs = readout_facet.capture_inputs(target, facts=refreshed_facts, include_taxonomy=False)
@@ -948,11 +948,11 @@ def select_evidence(
     target_profile = derive_profile(target, facts=refreshed_facts, residual=residual, contract=contract).to_dict()
     if hardware_intake is None:
         with rtl_facts.observed_facts(target, refreshed_facts, selected_path):
-            execution = execution_capability_facts(
+            execution = base.execution_capability_facts(
                 target, **({"contract": contract, "facts": refreshed_facts} if data_only else {})
             )
     else:
-        execution = independent_execution_capability_facts()
+        execution = base.independent_execution_capability_facts()
     performance_doc = {"target_profile": target_profile, "execution_capabilities": execution}
     performance_facts = {
         "target": target,

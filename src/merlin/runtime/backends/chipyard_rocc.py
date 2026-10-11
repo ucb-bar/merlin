@@ -273,6 +273,33 @@ def _validate_readout(block):
             )
 
 
+def readout_metadata(contract):
+    """Read only explicitly selected readout data; no execution binding or discovery."""
+    from merlin.targetgen.readout_facet import validated_stage_routes
+
+    _require(type(contract) is dict, "selected readout contract is not a data mapping")
+    runner = contract.get("runner")
+    _require(
+        type(runner) is dict and runner.get("backend") == "chipyard_rocc",
+        "readout metadata requires the explicitly selected shared backend",
+    )
+    block = runner.get("chipyard_rocc", {})
+    _require(type(block) is dict, "selected readout block is not a data mapping")
+    if "readout" not in block:
+        return {}
+    raw = block["readout"]
+    _validate_readout(raw)
+    try:
+        selected = json.loads(json.dumps(raw, allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise RoCCExecutionError("selected readout is not finite JSON data") from exc
+    names = {"scalar_abi": "scalar_abi", "epilogue_capability": "readouts", "operand_sum": "operand_sum"}
+    result = {names[key]: value for key, value in selected.items() if key in names}
+    if "stage_routes" in selected:
+        result["stage_routes"] = [route.to_dict() for route in validated_stage_routes(selected["stage_routes"])]
+    return result
+
+
 @dataclass(frozen=True)
 class BoundRoCCBackend:
     target: str
