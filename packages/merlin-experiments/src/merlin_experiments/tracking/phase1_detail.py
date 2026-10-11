@@ -359,6 +359,24 @@ def lanes(
             ],
         }
     )
+    capsule_lanes = {}
+    for grade in grades:
+        if grade.get("at") is None:
+            continue
+        for capsule in grade.get("capsules") or ():
+            if capsule.get("label") != "public":
+                continue
+            for tier in ("L2", "L3"):
+                status = capsule.get("tiers", {}).get(tier)
+                if status is None:
+                    continue
+                name = f"{capsule['capsule']} · {tier}"
+                capsule_lanes.setdefault(name, []).append({
+                    "at": grade["at"],
+                    "kind": "pass" if status == "pass" else "fail" if status == "fail" else "grade",
+                    "tip": f"{name}\n{status}\n{grade['name']}\nGrade milestone; execution duration not recorded",
+                })
+    out += [{"lane": name, "points": points} for name, points in sorted(capsule_lanes.items())]
     if checks:
         out.append(
             {
