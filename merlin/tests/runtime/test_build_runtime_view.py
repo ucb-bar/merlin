@@ -6,6 +6,7 @@ owners. They deliberately issue no positive namespace or process observation.
 
 import copy
 import os
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -162,6 +163,8 @@ def test_products_collect_complete_object_and_stack_report_only(frozen):
         frozen.owner.collect_products(selected, scratch)
     assert not Path(request["outputs"][0]).exists()
     (scratch / "kernel.su").write_bytes(b"stack report")
+    (scratch / "kernel.o").chmod(0o2640)
+    (scratch / "kernel.su").chmod(0o600)
     (scratch / "extra").write_bytes(b"undeclared")
     with pytest.raises(ValueError, match="undeclared"):
         frozen.owner.collect_products(selected, scratch)
@@ -169,10 +172,42 @@ def test_products_collect_complete_object_and_stack_report_only(frozen):
     (scratch / "extra").unlink()
     frozen.owner.collect_products(selected, scratch)
     assert [Path(p).read_bytes() for p in request["outputs"]] == [b"object", b"stack report"]
+    assert [stat.S_IMODE(Path(p).stat().st_mode) for p in request["outputs"]] == [0o640, 0o600]
+    parent_identity = Path(request["directory"]).stat()
+    replaced_inode = Path(request["outputs"][0]).stat().st_ino
+    (scratch / "kernel.o").write_bytes(b"repaired object")
+    (scratch / "kernel.o").chmod(0o644)
+    frozen.owner.collect_products(selected, scratch)
+    product = Path(request["outputs"][0])
+    assert product.read_bytes() == b"repaired object" and stat.S_IMODE(product.stat().st_mode) == 0o644
+    assert product.stat().st_ino != replaced_inode
+    assert Path(request["directory"]).stat().st_ino == parent_identity.st_ino
     # Cache staging reopens selection after products exist; their bytes remain
     # independently authenticated by the actual process observation.
     assert frozen.owner.reopen_selection(selected) == selected
     assert frozen.owner.selection(**request) is None
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "directory", "fifo"])
+def test_product_replacement_refuses_linked_or_special_destinations(frozen, kind):
+    selected = selection(frozen, "unsafe-product", storage=True)
+    product = Path(selected["request"]["outputs"][0])
+    scratch = frozen.output / "scratch"
+    scratch.mkdir()
+    (scratch / "kernel.o").write_bytes(b"new object")
+    original = frozen.output / "original"
+    original.write_bytes(b"preserved original")
+    if kind == "symlink":
+        product.symlink_to(original)
+    elif kind == "hardlink":
+        os.link(original, product)
+    elif kind == "directory":
+        product.mkdir()
+    else:
+        os.mkfifo(product)
+    with pytest.raises(ValueError, match="unlinked regular|canonical and unlinked"):
+        frozen.owner.collect_products(selected, scratch)
+    assert original.read_bytes() == b"preserved original"
 
 
 def test_budget_drift_saved_owner_and_forged_observation_refuse(frozen):

@@ -394,8 +394,66 @@ class BuildRuntimeView:
         if {p.name for p in work.iterdir()} != expected or actual["files"] != len(expected) + 1:
             raise ValueError("closed build produced an undeclared or missing product")
         budget = [self.max_output_files, self.max_output_bytes]
+        products = []
         for row, path in zip(selection["identity"]["outputs"], selection["request"]["outputs"], strict=True):
-            F.copy_member(work / row["name"], Path(path), budget=budget)
+            source, target = work / row["name"], F.canonical(Path(path), exists=False)
+            if not target.parent.is_relative_to(self.output_root):
+                raise ValueError("build product escaped its private output owner")
+            produced = source.lstat()
+            if not stat.S_ISREG(produced.st_mode) or produced.st_nlink != 1:
+                raise ValueError("build product must be an unlinked regular file")
+            previous = target.lstat() if target.exists() else None
+            if previous is not None and (not stat.S_ISREG(previous.st_mode) or previous.st_nlink != 1):
+                raise ValueError("build destination must be an unlinked regular file")
+            products.append((source, target, produced, previous))
+        for source, target, produced, previous in products:
+            self._promote_product(source, target, produced, previous, budget)
+
+    @staticmethod
+    def _promote_product(source, target, produced, previous, budget):
+        """Copy first, then replace only the original private regular destination."""
+        directory = target.parent
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        staged_root = None
+        try:
+            parent = os.fstat(descriptor)
+            staged_root = Path(tempfile.mkdtemp(prefix="build-product-", dir=directory))
+            staged = staged_root / "product"
+            F.copy_member(source, staged, budget=budget)
+            staged.chmod(stat.S_IMODE(produced.st_mode) & 0o777)
+            if F.identity(source.lstat()) != F.identity(produced) or F.digest(staged) != F.digest(source):
+                raise ValueError("build product bytes or mode changed during collection")
+            staged_identity = F.identity(staged.lstat())
+            source_digest = F.digest(staged)
+            current_parent = directory.stat()
+            if (parent.st_dev, parent.st_ino) != (current_parent.st_dev, current_parent.st_ino):
+                raise ValueError("build product output directory changed")
+            try:
+                current = os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                current = None
+            if (previous is None) != (current is None) or (
+                current is not None
+                and (
+                    not stat.S_ISREG(current.st_mode)
+                    or current.st_nlink != 1
+                    or F.identity(current) != F.identity(previous)
+                )
+            ):
+                raise ValueError("build product destination changed during collection")
+            os.replace(staged, target.name, dst_dir_fd=descriptor)
+            completed = os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                (completed.st_dev, completed.st_ino) != staged_identity[:2]
+                or completed.st_nlink != 1
+                or stat.S_IMODE(completed.st_mode) != stat.S_IMODE(produced.st_mode) & 0o777
+                or F.digest(target) != source_digest
+            ):
+                raise ValueError("promoted build product differs from its original bytes or permissions")
+        finally:
+            os.close(descriptor)
+            if staged_root is not None:
+                shutil.rmtree(staged_root)
 
     def run(self, selection, *, timeout):
         self.reopen_selection(selection)
