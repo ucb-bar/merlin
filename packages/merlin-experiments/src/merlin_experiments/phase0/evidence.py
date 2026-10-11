@@ -1217,6 +1217,11 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         application_graphs=getattr(selection, "application_graphs", None),
         host_capabilities=getattr(selection, "host_capabilities", None),
         capture_execution_attestations=getattr(selection, "capture_execution_attestations", None),
+        application_sources={
+            source.role.removeprefix("application-capture:"): source.content
+            for source in selection.source_snapshots
+            if source.role.startswith("application-capture:")
+        } or None,
     )
     accounting["selected_inventory"] = getattr(
         selection,
