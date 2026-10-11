@@ -18,6 +18,7 @@ import heapq
 import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextvars import copy_context
 from math import prod
 from typing import Any
 
@@ -126,7 +127,7 @@ def run_pipelined(
                 item = min(ready, key=lambda entry: (-entry[0], entry[1]))  # the cheapest ready member
                 ready.remove(item)
                 heapq.heapify(ready)
-                future = pool.submit(run_one, capsules[item[1]], 1)
+                future = pool.submit(copy_context().run, run_one, capsules[item[1]], 1)
                 done, _ = wait([future], timeout=calibration_budget_s)
                 if not done:
                     # A slow head teaches its tier order too late to be worth the idle workers: keep it
@@ -142,7 +143,7 @@ def run_pipelined(
         while ready or running:
             while ready and len(running) < max_workers:
                 *_, name = heapq.heappop(ready)
-                running[pool.submit(run_one, capsules[index[name]], max_workers)] = name
+                running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
             done, _ = wait(running, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())

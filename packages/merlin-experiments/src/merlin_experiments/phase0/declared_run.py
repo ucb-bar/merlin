@@ -181,19 +181,26 @@ def validate(request):
         REDUCTION_SCHEMA,
     }:
         from .component_source_performance import SCHEMA as source_schema
+        from .component_source_performance import SCHEMA_V2 as curriculum_schema
 
         selection = request["source_performance"]
+        source_keys = (
+            {"policy"}
+            if isinstance(selection, dict) and selection.get("schema") == curriculum_schema
+            else {"objectives", "sweeps"}
+        )
         if (
             request["release_purpose"] != "performance_campaign"
             or not isinstance(selection, dict)
-            or set(selection) != {"schema", "objectives", "sweeps"}
-            or selection["schema"] != source_schema
+            or set(selection) != {"schema", *source_keys}
+            or selection["schema"] not in {source_schema, curriculum_schema}
             or any(
-                not isinstance(selection[key], dict) or set(selection[key]) != {"path", "sha256"}
-                for key in ("objectives", "sweeps")
+                not isinstance(selection[key], dict) or set(selection[key]) != {"path", "sha256"} for key in source_keys
             )
         ):
-            raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
+            raise ValueError(
+                "source performance requires explicit versioned source pins and performance campaign purpose"
+            )
     if _has_original_references(request):
         selection = request["original_references"]
         if (
@@ -315,9 +322,12 @@ def _source_performance_inputs(selection, *, forbidden):
 
     from merlin.targetgen.phase_policy import PerformanceObjective
 
-    from .component_source_performance import sweep_refusal
+    from .component_source_performance import SCHEMA_V2, sweep_refusal, validate_curriculum_policy
     from .sweeps import _validate_performance_block
 
+    if selection["schema"] == SCHEMA_V2:
+        path = _pin(selection["policy"], forbidden=forbidden)
+        return {"policy": path}, None, validate_curriculum_policy(yaml.safe_load(path.read_bytes()))
     paths = {key: _pin(selection[key], forbidden=forbidden) for key in ("objectives", "sweeps")}
     objectives, template = (yaml.safe_load(paths[key].read_bytes()) for key in ("objectives", "sweeps"))
     if (
@@ -523,8 +533,11 @@ def _issue_scalar_conversion(selected, *, schemas, basis, coverage, numerical_se
     return owner, F.summary(owner)
 
 
-def run(request_path, *, output):
+def run(request_path, *, output, operator_exclusion=None):
     """Issue selected public inputs and execute the ordinary complete diagnostic."""
+    from .operator_exclusion import require_selection
+
+    require_selection(operator_exclusion, output)
     request_path = _plain(request_path)
     request_bytes = request_path.read_bytes()
     request = validate(json.loads(request_bytes))
@@ -704,6 +717,14 @@ def run(request_path, *, output):
             source_components=True,
         )
         identity = {key: evidence.derivation_identity[key] for key in ("contract_sha256", "raw_facts_sha256")}
+        if "policy" in performance_paths:
+            from .component_source_performance import derive_curriculum
+
+            sweep_template = step(
+                "derive_ordinary_source_curriculum",
+                lambda: derive_curriculum(software=software, hardware=hardware, policy=sweep_template),
+            )
+            objectives = sweep_template["curriculum_derivation"]["objectives"]
         policy = copy.deepcopy(request["automatic"])
         policy.update(
             hardware=identity,
@@ -751,6 +772,7 @@ def run(request_path, *, output):
                     arithmetic_intake=arithmetic,
                     packing_intake=packing,
                     output_root=generated,
+                    operator_exclusion=operator_exclusion,
                     **({"source_preparation": request["source_performance"]["schema"]} if performance_paths else {}),
                 ),
                 generated,

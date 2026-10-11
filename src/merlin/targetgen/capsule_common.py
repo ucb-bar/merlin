@@ -422,6 +422,7 @@ def lower_interface(
     """
     import contextlib
     from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
     from functools import partial
 
     from .package_runtime import (
@@ -460,17 +461,12 @@ def lower_interface(
     _buffer_cmd = "emit_analysis_bundle" if _bundled else "emit_command_buffer"
     cb_path = generated / "command_buffer.json"
     early = None
-    if overlap:
-        pool = ThreadPoolExecutor(max_workers=1)
-        early = pool.submit(invoke, pkg, _buffer_cmd, inp, cb_path, timeout=timeout)
-        pool.shutdown(wait=False)
-    try:
+    # Retain the original overlap, but join its worker on every exit before the
+    # caller's package/resource scopes can release the invocation workspace.
+    with ThreadPoolExecutor(max_workers=1) if overlap else contextlib.nullcontext() as pool:
+        if overlap:
+            early = pool.submit(copy_context().run, invoke, pkg, _buffer_cmd, inp, cb_path, timeout=timeout)
         p = invoke(pkg, "lower_interface_to_target", inp, timeout=timeout)
-    except BaseException:
-        if early is not None:  # never leave the buffer command running behind a raised target plane
-            with contextlib.suppress(Exception):
-                early.result()
-        raise
     if p.returncode != 0 or not p.stdout.strip():
         if early is not None:
             with contextlib.suppress(Exception):

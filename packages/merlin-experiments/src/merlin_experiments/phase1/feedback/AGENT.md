@@ -6,6 +6,9 @@ Keep actual adapter construction, observation order, missing-oracle behavior and
 enqueue-time certificate attribution unchanged. Public clients remain separate.
 Dispatch owns only the closed async simulator policy shared by broker and promotion.
 Source moves invalidate new implementation identities, never rewrite old evidence.
+`private_device_audit.require_linked_symbols` retains the ordinary native symbol
+check for the completed ELF. `private_full_models` preserves its helper import
+API and invokes that same check; this extraction changes no admission meaning.
 
 `private_facts.py` selects the private roster's exact pinned RTL extraction for
 its model builds, after checking that the public effective view names the same

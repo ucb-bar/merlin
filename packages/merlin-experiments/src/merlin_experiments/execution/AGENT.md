@@ -18,6 +18,12 @@ session capabilities to candidates or receipts. Do not launch a background daemo
 import or automatically change an existing cluster. Service/host failure is not
 qualified by worker-loss tests. Historical task receipts retain their old meaning.
 
+An active `phase2.external_resources` boundary refuses new native service and
+container invocations: these external executors do not inherit the local cgroup
+or prove bounded writable backing. Keep existing cleanup operations available.
+Default launches retain their original behavior; service inspection is never
+aggregate CPU/RAM/disk enforcement evidence.
+
 The optional `container_transport` prepares an actual immutable static PID-1
 command owner from packaged `container_guardian.c`. It uses only an explicitly
 selected existing service and independently supplied image config/export byte

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from hashlib import sha256
@@ -42,6 +41,7 @@ from merlin_experiments.phase1.feedback.private_capture_roster import captured_p
 from merlin_experiments.phase1.feedback.private_device_audit import (
     audit_built_device_host_compute as _audit_built_device_host_compute,
 )
+from merlin_experiments.phase1.feedback.private_device_audit import require_linked_symbols as _linked_symbols
 from merlin_experiments.phase1.feedback.private_device_audit import (
     require_static_build_inputs as _require_static_build_inputs,
 )
@@ -867,17 +867,6 @@ def _source_obligations(
     if direct_return_support is not None:
         result["direct_return_support"] = direct_return_support
     return result
-
-
-def _linked_symbols(elf: Path, symbols: set[str]) -> None:
-    from merlin.llvmlower import toolchain
-
-    command = [str(toolchain.nm()), "--defined-only", "--extern-only", str(elf)]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=True)
-    defined = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
-    missing = sorted(symbols - defined)
-    if missing:
-        raise ValueError(f"linked ELF omits {len(missing)} routed device symbol(s): {missing[:8]}")
 
 
 def _verify_compiled_program(

@@ -96,6 +96,42 @@ descendant cleanup, runtime qualification, effects, hardware or timing. The
 native timeout bounds the selected subprocess; it is not an OS deadline or a
 process-tree cleanup guarantee, and captured output has no aggregate byte limit.
 
+`artifact_retesting` supplies a separate normal Phase 1 corpus observation hook.
+The admitted public queue observes fresh complete ELF, kernel object, harness,
+numeric inputs, readback recipe, known build tools, selected process source and
+engine plus effective environment. It reopens its actual prior Python dispatch
+before reporting an artifact comparison. It never imports saved cache records,
+skips execution, issues a physical witness or adds an independent replicate.
+The bounded observer belongs to one original job output and can be shared by
+copied member thread contexts. Optional `_artifact_index.py` retains complete
+artifact/input/runtime digest observations across revisions under one live
+parent-issued `NativeRuntimeView`. Workers stage signed actual process evidence;
+only the creating parent publishes after original guardian cleanup and durable
+release. Pending and published refs share file/byte budgets and storage pins.
+The parent discards failed/cancelled pending refs only after actual cleanup;
+unknown cleanup or damaged evidence retains pins. No cleanup JSON is authority.
+The optional native view closes filesystem lookup, but unspecified native
+reset/seed and non-file inputs remain UNKNOWN, so identical artifacts still
+execute. Calibration omits the index and final execution never selects this
+public observer; original fresh timing and full numerical gates remain in place.
+
+`build_products.py` optionally reuses only original LLVM object compilation
+products after fresh emission, under the exact live shared `BuildRuntimeView`.
+Explicit target/architecture/ABI and closed flags are data; target or model names
+never supply eligibility. Unknown CPU discovery, plugins/profile/response files,
+C sources and links execute freshly. Whole selected input/view/source/argv/env
+identity plus complete object/stack-sidecar bytes precede reuse. Workers stage
+only authenticated actual closed process observations; creating-parent publication
+follows original guardian cleanup and durable release. Entry/file/reference-byte
+budgets bound retention; metadata has a separate per-record byte bound. Active
+readers pin original jobs until parent cleanup; unknown cleanup or damaged
+pin metadata preserves pins. Proven cleanup permits discarding authenticated
+stale products (including original stack repair) without publishing them.
+A distinct `artifact_reuse` receipt cites the original
+process and restored bytes without a new compiler invocation/timing/replicate.
+No-index calibration/final paths, harness/link work and all simulations/numerical
+gates remain fresh. JSON cannot reconstruct either live owner.
+
 An optional exact `PreparedProcessReadbackPlan` derives a values-free object
 roster and complete file budget from the original typed direct harness ABI and
 repeat/counter/phase plans. Only this explicit selection admits one whole-token

@@ -38,8 +38,10 @@ normal build:
 * the build recipe as it would run TODAY: its march, the exact compile and link argument vectors, the
   load address, and the BYTES of the link script and of every support source. A recipe that changes a
   flag or a support source is a different build;
-* the toolchain that would answer, by resolved path and reported version. The driver is outside the
-  repo and outside every git pin, so nothing else in this repo would notice it moving;
+* the compile and link drivers that would answer, including the independently selected kernel Clang,
+  by resolved path, bytes and reported version. They are outside the repo and outside every git pin,
+  so nothing else in this repo would notice them moving. These driver identities do not close
+  transitive toolchain, loader, header or sysroot dependencies;
 * the bytes of the code that performs the build (:func:`build_path`) -- the lowering pipeline, the
   contract compile path, the command-buffer module, the backend registry, and the target's own backend
   package, derived from the registry rather than named here.
@@ -73,8 +75,9 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 __all__ = [
     "BUILD_IDENTITY_VERSION",
@@ -97,7 +100,7 @@ __all__ = [
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
-BUILD_IDENTITY_VERSION = 1
+BUILD_IDENTITY_VERSION = 3
 
 #: Version of the on-disk record shape. A record written by another version is not read.
 RECORD_VERSION = 1
@@ -142,7 +145,7 @@ def disabled() -> bool:
     return (os.environ.get(_CACHE_ENV, "") or "").strip().lower() in _OFF
 
 
-def cache_root() -> "Path | None":
+def cache_root() -> Path | None:
     """The store directory, or ``None`` when the cache is off or its root cannot be created."""
     if disabled():
         return None
@@ -169,7 +172,7 @@ def _digest_of(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _file_sha(path: Path) -> "str | None":
+def _file_sha(path: Path) -> str | None:
     try:
         h = hashlib.sha256()
         with open(path, "rb") as fh:
@@ -185,7 +188,7 @@ def _file_sha(path: Path) -> "str | None":
 # ---------------------------------------------------------------------------------------------
 
 
-def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
+def build_path(target: str | None = None) -> tuple[Path, ...] | None:
     """Every file whose bytes decide what the build EMITS, or ``None`` if one cannot be located.
 
     ``None`` is not "nothing built it" -- it is "the builder cannot be established", and the caller must
@@ -262,36 +265,49 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
 _TOOLCHAIN_MEMO: dict = {}
 
 
-def toolchain_token(compiler: "str | Path") -> "str | None":
+def toolchain_token(compiler: str | Path) -> str | None:
     """Identity of the compiler driver that would build today, or ``None``.
 
     The toolchain lives outside the repo and outside every declared hardware pin, so no other identity
     in this system would notice it being upgraded underneath a stored build. Resolved path plus the
-    driver's own reported version and target triple; a driver that cannot be run has no identity and
-    the build is not cached.
+    driver's bytes, reported version and target triple. Memoization checks file identity as well as
+    timestamps: replacing a driver with the same version string must invalidate its old builds.
+    This identifies the driver, not its transitive libraries or execution environment.
     """
-    key = str(compiler)
-    if key in _TOOLCHAIN_MEMO:
-        return _TOOLCHAIN_MEMO[key]
     value = None
     try:
         import subprocess
 
-        exe = shutil.which(key) or key
-        parts = [str(Path(exe).resolve())]
+        selection = str(compiler)
+        exe = Path(shutil.which(selection) or selection).resolve(strict=True)
+        before = exe.stat()
+        key = (str(exe), before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+        if key in _TOOLCHAIN_MEMO and max(before.st_mtime_ns, before.st_ctime_ns) + _QUIESCENT_NS <= time.time_ns():
+            return _TOOLCHAIN_MEMO[key]
+        digest = _file_sha(exe)
+        if digest is None:
+            return None
+        parts = [str(exe), digest]
         for flag in ("--version", "-dumpmachine"):
-            proc = subprocess.run([exe, flag], capture_output=True, text=True, timeout=60)
+            proc = subprocess.run([str(exe), flag], capture_output=True, text=True, timeout=60)
             if proc.returncode != 0:
                 raise OSError(f"{exe} {flag} returned {proc.returncode}")
             parts.append(proc.stdout.strip())
+        after = exe.stat()
+        if key != (str(exe), after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            return None
         value = _digest_of(parts)
+        # Keep only the current identity of this selected path, not every historical replacement.
+        for old in tuple(_TOOLCHAIN_MEMO):
+            if old[0] == str(exe):
+                del _TOOLCHAIN_MEMO[old]
+        _TOOLCHAIN_MEMO[key] = value
     except Exception:  # noqa: BLE001 -- unestablished toolchain: fail closed, no key
         value = None
-    _TOOLCHAIN_MEMO[key] = value
     return value
 
 
-def recipe_token(recipe: Any) -> "dict | None":
+def recipe_token(recipe: Any) -> dict | None:
     """The build recipe as it would run today, as a hashable record, or ``None``.
 
     Argument vectors are rendered against placeholder file names so the token describes the FLAGS and
@@ -380,8 +396,8 @@ def _build_path_digest(files) -> str:
     for p in files:
         try:
             st = p.stat()
-            signature.append((str(p), st.st_size, st.st_mtime_ns))
-            newest = max(newest, st.st_mtime_ns)
+            signature.append((str(p), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+            newest = max(newest, st.st_mtime_ns, st.st_ctime_ns)
         except OSError:
             signature.append((str(p), -1, -1))
     memo_key = _digest_of(signature)
@@ -395,9 +411,7 @@ def _build_path_digest(files) -> str:
     return digest
 
 
-def artifact_identity(
-    *, kind: str, target: str, inputs: "Mapping", source_files, toolchain: "str | None"
-) -> "str | None":
+def artifact_identity(*, kind: str, target: str, inputs: Mapping, source_files, toolchain: str | None) -> str | None:
     """Content identity for a build that does NOT go through a declared harness recipe.
 
     :func:`build_identity` covers the shared operator build path, whose inputs are a recipe and a
@@ -431,8 +445,8 @@ def artifact_identity(
 
 
 def build_identity(
-    *, target: str, lowered_mlir_text: str, cb: Mapping, inputs: "Mapping | None", recipe: Any
-) -> "str | None":
+    *, target: str, lowered_mlir_text: str, cb: Mapping, inputs: Mapping | None, recipe: Any
+) -> str | None:
     """Content identity for exactly what one compile would produce, or ``None`` to build normally.
 
     Every component must resolve. See the module docstring for what is in the key and what is
@@ -443,9 +457,24 @@ def build_identity(
     recipe_rec = recipe_token(recipe)
     if recipe_rec is None:
         return None
-    compiler = recipe_rec["compile"][0] if recipe_rec["compile"] else ""
-    tool = toolchain_token(compiler) if compiler else None
-    if tool is None:
+    if not recipe_rec["compile"] or not recipe_rec["link"]:
+        return None
+    drivers = {recipe_rec["compile"][0], recipe_rec["link"][0]}
+    tools = {driver: toolchain_token(driver) for driver in sorted(drivers)}
+    if any(token is None for token in tools.values()):
+        return None
+    try:
+        # The kernel object uses codegen's imported selector, independently of
+        # the harness recipe driver. Hash exactly the tool that path consumes.
+        from merlin.llvmlower import codegen
+
+        kernel_driver = codegen.clang()
+        if not isinstance(kernel_driver, (str, Path)) or not str(kernel_driver).strip():
+            return None
+        kernel_tool = toolchain_token(kernel_driver)
+    except Exception:  # noqa: BLE001 -- an unavailable original compiler means rebuild
+        return None
+    if kernel_tool is None:
         return None
     files = build_path(target)
     if not files:
@@ -458,7 +487,8 @@ def build_identity(
             "command_buffer": _digest_of(cb),
             "inputs": _digest_of(inputs) if inputs is not None else "",
             "recipe": recipe_rec,
-            "toolchain": tool,
+            "toolchain": tools,
+            "kernel_codegen_toolchain": kernel_tool,
             "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
@@ -471,7 +501,7 @@ def build_identity(
 # ---------------------------------------------------------------------------------------------
 
 
-def contents(workdir: "str | Path") -> list:
+def contents(workdir: str | Path) -> list:
     """Every file in the build directory, as relative paths, excluding the key marker.
 
     WHAT IS STORED IS THE WHOLE DIRECTORY, not a diff against its state before the build. An earlier
@@ -516,7 +546,7 @@ def _already_there(dst: Path, meta: Mapping) -> bool:
     return _file_sha(dst) == meta.get("sha256")
 
 
-def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = None) -> "Path | None":
+def reuse(workdir: str | Path, key: str | None, elf_name: str | None = None) -> Path | None:
     """The executable for ``key`` already present or restorable into ``workdir``, or ``None``.
 
     Two hits, narrowest first. The MARKER path costs nothing and covers the second tier of one ladder,
@@ -583,7 +613,7 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = Non
     return work / record["elf"]
 
 
-def store(key: "str | None", workdir: "str | Path", elf_name: str, metadata: "Mapping | None" = None) -> None:
+def store(key: str | None, workdir: str | Path, elf_name: str, metadata: Mapping | None = None) -> None:
     """Keep every file this build created or changed, under ``key``. Never raises.
 
     The entry is assembled in a temporary directory and moved into place, so a concurrent worker
@@ -658,7 +688,7 @@ def store(key: "str | None", workdir: "str | Path", elf_name: str, metadata: "Ma
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def metadata_for(key: "str | None") -> "dict | None":
+def metadata_for(key: str | None) -> dict | None:
     """The metadata stored beside a build, or ``None``.
 
     Read separately from :func:`reuse` so a caller that needs no metadata pays nothing, and so a
@@ -680,7 +710,7 @@ def metadata_for(key: "str | None") -> "dict | None":
     return dict(meta) if isinstance(meta, dict) else {}
 
 
-def forget(workdir: "str | Path") -> None:
+def forget(workdir: str | Path) -> None:
     """Drop the key marker from a build directory, so its contents can never speak for a later grade.
 
     Called beside the removal of a stale executable: the marker asserts "this directory holds the build

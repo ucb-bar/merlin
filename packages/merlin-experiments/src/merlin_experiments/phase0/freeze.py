@@ -70,7 +70,7 @@ def selected_inputs(command: dict, target: str) -> tuple[dict[str, str], dict]:
 
 
 def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
-    """Own only receipt-bound iteration payloads selected by the synthesis profile."""
+    """Own receipt-bound public payloads selected by the ordinary synthesis profile."""
     from merlin.targetgen.capsule_source import materialized_model_artifacts
 
     value = command.get("inputs", {}).get("synth_profile")
@@ -80,6 +80,13 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     document = yaml.safe_load(profile.read_bytes())
     result = {}
     for entry in (document or {}).get("capsules", []):
+        if entry.get("public_boundary"):
+            from .public_boundaries import selected_loader
+
+            loader = selected_loader(entry, profile.parent)
+            result[loader] = (profile.parent, loader.relative_to(profile.parent).as_posix())
+            context = profile.parent / entry["public_boundary"]["source_context"]["path"]
+            result[context] = (profile.parent, context.relative_to(profile.parent).as_posix())
         binding = entry.get("materialized_capture")
         if not binding:
             continue
@@ -88,6 +95,13 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
             raise ValueError("frozen materialized capture must be contained beside its synthesis profile")
         source = profile.parent / relative
         resolved = {**binding, "path": str(source)}
+        selected_profile = None
+        if binding.get("profile_path"):
+            relative_profile = Path(binding["profile_path"])
+            if relative_profile.is_absolute() or ".." in relative_profile.parts:
+                raise ValueError("frozen materialized profile must be contained beside its synthesis profile")
+            selected_profile = profile.parent / relative_profile
+            resolved["profile_path"] = str(selected_profile)
         loader = None
         if binding.get("loader_path"):
             relative_loader = Path(binding["loader_path"])
@@ -114,6 +128,14 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
             if hashlib.sha256(loader.read_bytes()).hexdigest() != binding.get("loader_sha256"):
                 raise ValueError("selected materialized loader changed before freezing")
             result[loader] = (profile.parent, loader.relative_to(profile.parent).as_posix())
+        if selected_profile is not None:
+            if (
+                selected_profile.is_symlink()
+                or not selected_profile.is_file()
+                or hashlib.sha256(selected_profile.read_bytes()).hexdigest() != binding.get("profile_sha256")
+            ):
+                raise ValueError("selected materialized profile changed before freezing")
+            result[selected_profile] = (profile.parent, selected_profile.relative_to(profile.parent).as_posix())
     return result
 
 

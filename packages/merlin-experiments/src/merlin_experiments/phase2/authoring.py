@@ -23,6 +23,8 @@ import os
 import tempfile
 import time
 from collections.abc import Sequence
+from contextlib import ExitStack
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,7 @@ from merlin_experiments.phase2 import development_feedback as DF
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import emission_diagnostics as ED
 from merlin_experiments.phase2 import functional_inputs as FI
+from merlin_experiments.phase2 import normal_resource_launch as NR
 from merlin_experiments.phase2 import stage_inputs as INPUTS
 from merlin_experiments.phase2 import stage_prompt as SP
 from merlin_experiments.phase2 import telemetry as TEL
@@ -91,12 +94,17 @@ def _tree_files(root: Path) -> dict[str, str]:
     return rows
 
 
-def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment):
+def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):
     """Refuse a launch before output creation unless both containment claims hold."""
     try:
-        sandbox_probe = SANDBOX_PREFLIGHT.require_working_sandbox(
-            bwrap_binary, context="performance authoring bwrap operability preflight"
-        )
+        if external_boundary is None:
+            sandbox_probe = SANDBOX_PREFLIGHT.require_working_sandbox(
+                bwrap_binary, context="performance authoring bwrap operability preflight"
+            )
+        else:
+            sandbox_probe = NR.require_bounded_sandbox(
+                bwrap_binary, owner=Path(os.environ["TMPDIR"]), boundary=external_boundary
+            )
     except SANDBOX_PREFLIGHT.SandboxUnavailable as exc:
         raise StageGateError(
             "the isolation sandbox cannot be built on this host, so no authoring round can run: " + exc.probe.describe()
@@ -145,6 +153,7 @@ def functional_emission_guard(
     frozen_functional: FI.FrozenFunctionalInputs,
     timeout_s: int = 120,
     grade_root: Path | None = None,
+    sandbox_inputs: PC.PackageSandboxInputs | PC.FrozenPackageSandboxInputs | None = None,
 ) -> dict[str, Any]:
     """Reuse complete unchanged execution dependencies or regrade full outputs.
 
@@ -163,6 +172,8 @@ def functional_emission_guard(
     from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
     from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
     from merlin_experiments.phase1 import corpus_inputs
+
+    from . import functional_guard_execution as guard_execution
 
     if frozen_functional.host_provenance is None:
         raise StageGateError("functional emission guard requires admitted V4 host provenance")
@@ -225,8 +236,12 @@ def functional_emission_guard(
             continue
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
             scratch = Path(raw)
-            base_rc, base_llvm, base_buffer = EA.emit_pair(base_pkg, interface, scratch, "baseline", timeout_s)
-            cand_rc, cand_llvm, cand_buffer = EA.emit_pair(cand_pkg, interface, scratch, "candidate", timeout_s)
+            base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
+                base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
+            )
+            cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
+                cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
+            )
         if base_rc != 0:
             offenders.append(
                 {"capsule": name, "kind": "baseline_emission_failed", "baseline_rc": base_rc, "candidate_rc": cand_rc}
@@ -302,24 +317,40 @@ def functional_emission_guard(
 
                 grading_candidate = output / "compiler"
                 shutil.copytree(candidate, grading_candidate)
-                score = CG.grade(
-                    grading_candidate, capsules_root=view.public, runs_root=output,
-                    model_snapshot_root=output / ".private_model_sources",
-                    labels={"public", "dev"}, contract=view.contract,
-                    oracle_adapters=adapters, timeout=timeout_s, target=target_experiment.target,
-                )
+                guard_execution.require_inline_models(capsules)
+                with guard_execution.boxed_guard_package(
+                    target_experiment, output, grading_candidate, inputs=sandbox_inputs
+                ):
+                    score = CG.grade(
+                        grading_candidate,
+                        capsules_root=view.public,
+                        runs_root=output,
+                        model_snapshot_root=output / ".private_model_sources",
+                        labels={"public", "dev"},
+                        contract=view.contract,
+                        oracle_adapters=adapters,
+                        timeout=timeout_s,
+                        target=target_experiment.target,
+                    )
                 scored = score.get("per_capsule") or []
-                expected_names = {CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
-                                  for path in capsules}
+                expected_names = {
+                    CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
+                    for path in capsules
+                }
                 complete = (
                     len(scored) == len(expected_names)
                     and {row.get("capsule") for row in scored} == expected_names
-                    and all(row.get("status") == "pass" and row.get("numeric") == "pass"
-                            and not row.get("cert_verdict") for row in scored)
+                    and all(
+                        row.get("status") == "pass" and row.get("numeric") == "pass" and not row.get("cert_verdict")
+                        for row in scored
+                    )
                     and score.get("integrity_status") == "clean"
                 )
-                regrade = {"status": "pass" if complete else "fail", "score": score,
-                           "evidence_root": str(output) if grade_root is not None else None}
+                regrade = {
+                    "status": "pass" if complete else "fail",
+                    "score": score,
+                    "evidence_root": str(output) if grade_root is not None else None,
+                }
                 if not complete:
                     offenders.append({"kind": "complete_functional_regrade_failed"})
             except Exception as exc:  # noqa: BLE001 - missing execution remains a refusal
@@ -416,6 +447,8 @@ def _codex_round(
     round_index: int,
     timeout_s: int,
     codex_binary: Path,
+    max_concurrent_subagents: int | None = None,
+    external_boundary=None,
 ) -> tuple[int, Path, AW.AgentSandboxPolicy]:
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
@@ -435,25 +468,30 @@ def _codex_round(
             inputs=sandbox_inputs,
         )
         captured["policy"] = policy
+        actual = scratch.enter_context(
+            NR.bounded_normal_scratch(policy.argv, owner=stage_root / "author_scratch", boundary=external_boundary)
+        )
         # ``inner`` is already shell-quoted by codex_agent.  Quote only the outer payload boundary.
-        return BW.compose_command(list(policy.argv), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
+        return BW.compose_command(list(actual), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
 
-    rc, transcript = CA.run_round(
-        workspace,
-        stage_root,
-        model,
-        {},
-        target_experiment,
-        "bwrap",
-        round_index,
-        timeout_s,
-        effort=effort,
-        prompt=prompt.text,
-        effective_model=resolved_model,
-        sandbox_command=exact_bwrap,
-        codex_binary=codex_binary,
-        codex_home_root=stage_root / "codex_homes",
-    )
+    with NR.selected_boundary(external_boundary, writable_roots=(stage_root, workspace)), ExitStack() as scratch:
+        rc, transcript = CA.run_round(
+            workspace,
+            stage_root,
+            model,
+            {},
+            target_experiment,
+            "bwrap",
+            round_index,
+            timeout_s,
+            effort=effort,
+            prompt=prompt.text,
+            effective_model=resolved_model,
+            sandbox_command=exact_bwrap,
+            codex_binary=codex_binary,
+            **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
+            codex_home_root=stage_root / "codex_homes",
+        )
     policy = captured.get("policy")
     if policy is None:
         raise StageGateError("Codex driver did not construct the required outer bwrap policy")
@@ -511,12 +549,27 @@ def run_stage(
     workflow_id: str = BP.CORPUS_FEEDBACK_V1,
     component_launch=None,
     whole_model_profile_inputs: Path | None = None,
+    search_configuration: Path | None = None,
+    compiler_edit_contract: Path | None = None,
+    external_resource_boundary=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
     ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
     (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
     unavailable."""
+    if external_resource_boundary is not None:
+        from merlin.common.paths import out_dir
+
+        temporary = os.environ.get("TMPDIR")
+        if not temporary:
+            raise StageGateError("hard normal authoring requires an explicit bounded TMPDIR")
+        with NR.selected_boundary(
+            external_resource_boundary, writable_roots=(Path(stage_root), out_dir(), Path(temporary))
+        ):
+            pass
+        if workflow_id != BP.CORPUS_FEEDBACK_V1:
+            raise StageGateError("normal resource authoring does not admit another launch workflow")
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
@@ -525,12 +578,27 @@ def run_stage(
             raise StageGateError(
                 "component authoring uses one fresh continuous session within the explicit wall budget"
             )
-        return run_component_stage(component_launch, suite=suite, model=model, effort=effort,
-                                   wall_budget_seconds=wall_budget_seconds, max_tool_calls=max_tool_calls,
-                                   tool_timeout_seconds=tool_timeout_seconds)
+        return run_component_stage(
+            component_launch,
+            suite=suite,
+            model=model,
+            effort=effort,
+            wall_budget_seconds=wall_budget_seconds,
+            max_tool_calls=max_tool_calls,
+            tool_timeout_seconds=tool_timeout_seconds,
+        )
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("performance authoring requires an explicit sandbox input selection")
     sandbox_inputs = copy.deepcopy(sandbox_inputs)
+    search = None
+    if search_configuration is not None:
+        from .search_configuration import read_search_configuration
+
+        search = read_search_configuration(search_configuration)
+        if rounds != 1 or compiler_edit_contract is None:
+            raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
+        if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
+            raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
     if any(
@@ -553,7 +621,11 @@ def run_stage(
     if not model.strip():
         raise StageGateError("an explicit Codex model is required")
     bwrap_binary = _require_executable("bwrap", label="bwrap")
-    sandbox_probe, declaration_drops = _require_stage_containment(bwrap_binary, target_experiment)
+    sandbox_probe, declaration_drops = _require_stage_containment(
+        bwrap_binary,
+        target_experiment,
+        **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+    )
     codex_path = _require_executable(codex_binary, label="Codex")
     descriptor_path = Path(target_experiment.path).resolve()
     bwrap_sha256 = _sha256_file(bwrap_binary)
@@ -612,6 +684,10 @@ def run_stage(
             else None
         ),
     )
+    if search is not None:
+        from .queued_search_actions import actions as search_actions
+
+        prepared_actions = (*prepared_actions, *search_actions())
     prepared_action_contract = action_registry_contract(prepared_actions, base)
     minimum_calls = rounds * sum(action.required for action in prepared_actions)
     if max_tool_calls < minimum_calls:
@@ -652,6 +728,8 @@ def run_stage(
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
     )
+    if search is not None:
+        prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
@@ -781,6 +859,8 @@ def run_stage(
             },
         )
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
+        if search is not None:
+            actions = (*actions, *search_actions())
         if action_registry_contract(actions, candidate) != prepared_action_contract:
             refusal = f"candidate manifest action contract drifted before round {round_index}"
             break
@@ -794,9 +874,55 @@ def run_stage(
             inputs=sandbox_inputs,
         )
         if probe_results is None:
-            probe_results = AW.run_required_tool_probes(inner, target_experiment, candidate)
+            probe_results = AW.run_required_tool_probes(
+                inner,
+                target_experiment,
+                candidate,
+                **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+            )
         control_dir = stage_root / "control" / f"round_{round_index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
+        workflow = BP.select_workflow(
+            BP.CORPUS_FEEDBACK_V1,
+            candidate=candidate,
+            target_experiment=target_experiment,
+            receipt_path=receipt_path,
+            services=BP.BrokerServices(
+                whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
+                command_buffer_analysis=ED.analyze_command_buffers,
+            ),
+            feedback_evaluator=feedback,
+            feedback_round=round_index,
+            functional_base=base,
+            e2e_sentinel=prompt_inputs.e2e_sentinel,
+        )
+        search_pool = None
+        if search is not None:
+            from .ordinary_search_stage import prepare_round
+
+            workflow, search_pool = prepare_round(
+                search,
+                stage_root=stage_root,
+                candidate=candidate,
+                baseline=base,
+                corpus=frozen_corpus,
+                edit_contract=compiler_edit_contract,
+                functional_runs_root=functional_runs_root,
+                functional_run_id=functional_run_id,
+                functional_submission_sha256=functional_submission_sha256,
+                target_experiment=target_experiment,
+                receipt_path=receipt_path,
+                contract_root=contract_root,
+                certificate_path=gsim_certificate,
+                certificate_sha256=gsim_certificate_sha256,
+                rtl_facts_path=rtl_facts,
+                services=workflow.services,
+                e2e_sentinel=prompt_inputs.e2e_sentinel,
+                tuning_call_budget=max_tool_calls,
+                waive_functional_gate=waive_functional_gate,
+                whole_model_inputs=whole_model_profile_inputs,
+                external_boundary=external_resource_boundary,
+            )
         broker = PB.Broker(
             inner,
             target_experiment,
@@ -806,20 +932,8 @@ def run_stage(
             deadline=deadline,
             max_calls=max_tool_calls - total_calls,
             max_tool_seconds=tool_timeout_seconds,
-            workflow=BP.select_workflow(
-                BP.CORPUS_FEEDBACK_V1,
-                candidate=candidate,
-                target_experiment=target_experiment,
-                receipt_path=receipt_path,
-                services=BP.BrokerServices(
-                    whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
-                    command_buffer_analysis=ED.analyze_command_buffers,
-                ),
-                feedback_evaluator=feedback,
-                feedback_round=round_index,
-                functional_base=base,
-                e2e_sentinel=prompt_inputs.e2e_sentinel,
-            ),
+            workflow=workflow,
+            **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
@@ -849,8 +963,16 @@ def run_stage(
                     round_index=round_index,
                     timeout_s=round_timeout,
                     codex_binary=codex_path,
+                    **(
+                        {"external_boundary": external_resource_boundary}
+                        if external_resource_boundary is not None
+                        else {}
+                    ),
+                    **({"max_concurrent_subagents": search.author_agents} if search is not None else {}),
                 )
         finally:
+            if search_pool is not None:
+                search_pool.close()
             broker_config = control_dir / ".perf_broker.json"
             if broker_config.is_file() and not broker_config.is_symlink():
                 broker_config.chmod(0o600)
@@ -959,7 +1081,12 @@ def run_stage(
         raise StageGateError(refusal or "performance stage completed no auditable Codex round")
     probe_recheck_results: list[dict[str, Any]] = []
     try:
-        probe_recheck_results = AW.run_required_tool_probes(last_inner, target_experiment, previous_submission)
+        probe_recheck_results = AW.run_required_tool_probes(
+            last_inner,
+            target_experiment,
+            previous_submission,
+            **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
+        )
         if probe_recheck_results != probe_results:
             refusal = "inner sandbox tool probe evidence changed during performance authoring"
     except StageGateError as exc:
@@ -1030,10 +1157,15 @@ def run_stage(
     # Complete unchanged execution dependencies permit reuse; changed dependencies
     # or emission require the ordinary full-output numerical certification.
     try:
-        functional_guard = functional_emission_guard(
-            base, previous_submission, target_experiment, frozen_functional=frozen_functional,
-            grade_root=stage_root / "functional_guard_grade",
-        )
+        with NR.selected_boundary(external_resource_boundary, writable_roots=(stage_root,)):
+            functional_guard = functional_emission_guard(
+                base,
+                previous_submission,
+                target_experiment,
+                frozen_functional=frozen_functional,
+                grade_root=stage_root / "functional_guard_grade",
+                sandbox_inputs=sandbox_inputs,
+            )
     except Exception as exc:  # noqa: BLE001 - an unrunnable guard is absence of proof, not a pass
         functional_guard = {
             "status": "unavailable",
@@ -1297,4 +1429,8 @@ def run_stage(
     RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
         VERIFY.verify_candidate_record(record_path, verify_authoring_tools=True, target_experiment=target_experiment)
+    if search is not None:
+        from .ordinary_build_runtime import close_stage
+
+        close_stage(workflow)
     return record_path

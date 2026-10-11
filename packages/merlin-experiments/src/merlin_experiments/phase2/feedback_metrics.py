@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -118,28 +119,49 @@ def recoverable_cycles(
     hand back a number that does not exist. A member already at or past the achievable rate recovers
     nothing rather than a negative amount.
     """
+    measured = [
+        row
+        for row in cells
+        if row.get("measured") is True
+        and type(row.get("baseline_gsim_cycles")) is int
+        and row["baseline_gsim_cycles"] > 0
+    ]
+    total = float(sum(row["baseline_gsim_cycles"] for row in measured))
+    complete = len(measured) == len(cells) and bool(cells)
+    totals = {
+        "corpus_total_cycles": total if complete else None,
+        "measured_total_cycles": total,
+        "measured_members": len(measured),
+        "unmeasured_members": len(cells) - len(measured),
+        "headroom_scope": "priced members only; unpriced headroom UNKNOWN",
+    }
     rates = [row.get("achievable_macs_per_cycle", achievable_macs_per_cycle) for row in cells]
-    if not any(isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0 for rate in rates):
+    if not any(
+        isinstance(rate, (int, float)) and not isinstance(rate, bool) and math.isfinite(rate) and rate > 0
+        for rate in rates
+    ):
         return {
             "status": "unavailable",
             "reason": ("no member-matched achievable rate was derived, so headroom cannot be priced in cycles"),
             "ranked": [],
-            "corpus_total_cycles": None,
+            **totals,
         }
-    priced, total = [], 0.0
+    priced = []
     for row in cells:
         macs, cycles = row.get("declared_macs"), row.get("baseline_gsim_cycles")
         rate = row.get("achievable_macs_per_cycle", achievable_macs_per_cycle)
         if (
             not row.get("measured")
-            or not isinstance(macs, int)
-            or not isinstance(cycles, int)
+            or type(macs) is not int
+            or macs <= 0
+            or type(cycles) is not int
+            or cycles <= 0
             or not isinstance(rate, (int, float))
             or isinstance(rate, bool)
+            or not math.isfinite(rate)
             or rate <= 0
         ):
             continue
-        total += float(cycles)
         ideal = float(macs) / float(rate)
         priced.append(
             {
@@ -154,18 +176,18 @@ def recoverable_cycles(
             "status": "unavailable",
             "reason": "no measured member declares the work its headroom would be priced from",
             "ranked": [],
-            "corpus_total_cycles": None,
+            **totals,
         }
     for row in priced:
-        row["share_of_corpus_cycles"] = row["baseline_cycles"] / total
-        row["recoverable_share_of_corpus"] = row["recoverable_cycles"] / total
+        row["share_of_corpus_cycles"] = row["baseline_cycles"] / total if complete else None
+        row["recoverable_share_of_corpus"] = row["recoverable_cycles"] / total if complete else None
     ranked = sorted(priced, key=lambda row: -row["recoverable_cycles"])[:RECOVERABLE_RANK_LIMIT]
     recoverable_total = sum(row["recoverable_cycles"] for row in priced)
     return {
         "status": "derived",
-        "corpus_total_cycles": total,
+        **totals,
         "total_recoverable_cycles": recoverable_total,
-        "total_recoverable_share": recoverable_total / total,
+        "total_recoverable_share": recoverable_total / total if complete else None,
         "ranked": ranked,
         "ranked_members": len(ranked),
         "priced_members": len(priced),

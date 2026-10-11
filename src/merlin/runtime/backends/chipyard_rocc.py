@@ -49,8 +49,8 @@ from merlin.runtime.backends.chipyard_rocc_bound import (  # noqa: F401 -- expli
     BoundRoCCBackend,
     RoCCExecutionError,
     _check_pin,
-    _resource,
     _require,
+    _resource,
     _validate_readout,
     bind,
 )
@@ -580,9 +580,27 @@ def run_elf(
     with slot:
         if export is not None:
             export.revalidate()
-        proc = subprocess.run(
-            cmd, capture_output=True, text=not capture_bytes, timeout=timeout, env=env, preexec_fn=preexec
+        from merlin.runtime.native_runtime import forget_native_observation, run_in_native_view
+
+        forget_native_observation()
+        proc = (
+            run_in_native_view(
+                sys.modules[__name__],
+                Path(elf),
+                argv=cmd,
+                environment=env,
+                cwd=Path.cwd(),
+                timeout=timeout,
+                capture_bytes=capture_bytes,
+                unlimited_stack=True,
+            )
+            if simulator == "gsim" and export is None
+            else None
         )
+        if proc is None:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=not capture_bytes, timeout=timeout, env=env, preexec_fn=preexec
+            )
     # Verilator exits 0 on $finish, spike on htif_exit(0), GSIM when the design's stop condition fires.
     if proc.returncode != 0:
         tail = f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"

@@ -28,6 +28,7 @@ from typing import Any
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
 
+from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
 from .harness_blobs import stage_harness_blobs
 from .memory_decode import observed_memory_decode as _observed_memory_decode
@@ -37,6 +38,7 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
     from merlin.common import cpu_pool as cpu_owner
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import parse_roster, selected_pool
+    from merlin.runtime.build_runtime import run_in_build_view
 
     cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
     slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
@@ -48,6 +50,16 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
         with selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout):
             if timeout is not None:
                 kwargs["timeout"] = max(0, timeout - (time.monotonic() - started))
+            selected = run_in_build_view(
+                argv,
+                directory=Path(workdir).resolve(),
+                stage=stage,
+                inputs=inputs,
+                outputs=outputs,
+                **kwargs,
+            )
+            if selected is not None:
+                return selected
             return invocation_record.run(
                 argv,
                 directory=workdir,
@@ -607,10 +619,12 @@ def link_elf(
             kwargs["warm_profile"] = warm_profile
         harness = _render(cb, **kwargs, **blob_kwargs, **policy_kwargs)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
+    codec_inputs = ()
     if readback_policy is not None:
-        from .readback_policy import stage_codec_header
+        from .readback_policy import _codec_names, stage_codec_header
 
         stage_codec_header(workdir, policy=readback_policy)
+        codec_inputs = tuple(workdir / name for name in _codec_names(readback_policy))
     blob_sources = stage_harness_blobs(workdir, blob_payloads)
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
@@ -652,11 +666,16 @@ def link_elf(
         else:
             command = recipe.compile_command(source=source, output=unit)
             compile_cwd = None
+        fresh_inputs = (source,)
+        if source in blob_sources:
+            fresh_inputs = (source, source.with_suffix(".bin"))
+        elif source == workdir / "harness.c":
+            fresh_inputs = (source, *codec_inputs)
         step = _observed_run(
             command,
             workdir=workdir,
             stage="harness_object",
-            inputs=(source,),
+            inputs=fresh_inputs,
             outputs=(unit,),
             cwd=compile_cwd,
             capture_output=True,
@@ -1190,6 +1209,23 @@ def run_on_oracle(
         memory_engine = deepcopy(oracle_revalidate())
         if type(memory_engine) is not dict or not memory_engine:
             raise ValueError("memory output requires a selected-engine citation")
+    artifact_selection = (
+        compare_selected_artifacts(
+            simulator=simulator,
+            service=_execution_service,
+            elf=elf,
+            cb=cb,
+            inputs=inputs,
+            lowered_mlir=lowered_mlir_text,
+            build=readback_build,
+            backend=backend,
+            provenance=simulator_provenance(backend, simulator),
+            capture_bytes=binary,
+            memory_transport=memory,
+        )
+        if _execution_service is None and active_artifact_retests() is not None
+        else None
+    )
     try:
         run_kwargs = {"capture_bytes": True} if binary else {}
         from merlin.common import invocation_record
@@ -1451,4 +1487,9 @@ def run_on_oracle(
         and _execution_service.consumption(elf=elf, console=console) != process_consumption
     ):
         raise ValueError("functional native consumption changed during output publication")
+    if artifact_selection is not None:
+        result["artifact_retesting"] = retain_selected_artifacts(
+            artifact_selection, invocation=observed.path, console=console
+        )
+        result["timing"]["artifact_retesting"] = result["artifact_retesting"]
     return result

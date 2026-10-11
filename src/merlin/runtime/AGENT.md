@@ -21,6 +21,22 @@ the per-backend adapters under `backends/`.
   `cumsum` accumulator-init `i64`) are passed by value via `abi.ScalarArg`, NOT as a memref
   descriptor — `emit_c_interface` only wraps memrefs.
 - `backends/` — host / spike adapters.
+- `native_runtime.py`, `_native_files.py` and `_native_launch.py` optionally
+  freeze one bounded shared filesystem view for the original normal Chipyard
+  backend. Selected native calls adopt that readonly view, one requested ELF
+  and fresh closed writable scratch. Real kernel process/mount observations
+  precede exec, and actual process records retain raw streams. Saved JSON cannot
+  issue this live owner. Host release follows the original guardian's cleanup;
+  unknown cleanup retains ownership. Filesystem closure does not establish the
+  engine's unspecified reset/seed: current selections always execute freshly.
+- `build_runtime.py` optionally adopts that same launcher for the original
+  translation, object, harness and link subprocesses. Explicit tools, immutable
+  lookup roots, fresh input/product rosters and file/byte budgets precede any
+  selection. Per-job storage relocation changes the actual private child paths;
+  the executed mapping owns its command key. Unsupported choices remain fresh.
+  Signed completed observations require real kernel adoption and preserved
+  original process/product files. Artifact reuse is a separate receipt and
+  establishes no numerical, simulator or timing authority.
 - `dispatch_placement.py` joins the original ordered outline table to actual
   typed functions/calls and placement attributes/properties before dispatch.
   Explicit nonhost intent refuses native/XNNPACK substitution and a declined
