@@ -3513,7 +3513,9 @@ def test_unmeasured_and_unpriced_members_are_skipped_rather_than_counted_as_zero
     ]
     out = FM.recoverable_cycles(cells, 100.0)
     assert out["priced_members"] == 1
-    assert out["corpus_total_cycles"] == 10_000.0, "the unpriced member's cycles are not in the total"
+    assert out["corpus_total_cycles"] is None, "an unmeasured member prevents a complete-corpus total"
+    assert out["measured_total_cycles"] == 10_500.0, "measured host work remains in the cost denominator"
+    assert out["total_recoverable_share"] is None
 
 
 def test_no_achievable_rate_refuses_rather_than_pricing_against_the_peak():
