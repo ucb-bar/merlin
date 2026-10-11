@@ -3,7 +3,7 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-09
+last_verified: 2026-10-10
 related: [generating_capsules, adding_a_target, integrations]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -44,6 +44,37 @@ Phase 0 combines selected hardware evidence, a software specification, and workl
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
 to `merlin-experiments`; target-specific inputs belong to examples or selected OOT support.
+
+## Keep declarations small; derive the rest
+
+Keep accelerator semantics, ISA effects, and deployment selections separate:
+
+| Authored input | What it must establish |
+|---|---|
+| Accelerator software contract | Mathematical operations, ordered types, numeric behavior, and logical transfer requirements. |
+| Public ISA declarations | Instruction effects and encoding fields, with their source identities. |
+| Deployment and test policy | Hardware/frontend selections, host capability manifest, execution routes, and grading requirements. |
+
+Record an input once. Host operation support belongs in the selected host capability
+manifest; accelerator declarations need not repeat that roster. Before removing an
+existing duplicate, compare complete operation admissions and coverage requirements
+under the selected inputs. A missing declaration must retain its ordinary UNKNOWN
+or refusal behavior.
+
+Use the existing fact-resolution machinery for supported `hardware` declarations
+and `eligible_operations: from_facts`. Derive typed operation inventories, tensor
+geometry, graph interactions, coverage requirements and capsule membership through
+the normal capture and requirements tools. Retain unsupported cases in the denominator.
+
+Numeric semantics remain explicit: operand width, internal arithmetic width and
+stored accumulator width can differ. Width extraction alone does not establish
+overflow, rounding, narrowing, or complete instruction meaning. Keep provenance and
+qualification records as separate machine-readable evidence. A selected execution
+route does not establish that its deployment can run a program.
+
+These inputs contain no kernels, instruction sequences, schedules or model-specific
+mapping rules. Compiler authors receive only the inputs admitted at their selected
+evidence level; this organization does not broaden their grants.
 
 ## Run a complete independent diagnostic before authoring
 
