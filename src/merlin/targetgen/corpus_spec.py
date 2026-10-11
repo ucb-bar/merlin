@@ -391,6 +391,12 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
     from merlin.targetgen import isa_taxonomy as IT
 
+    from .corpus_instruction_roles import selected_classes
+
+    explicit_roles = selected_classes(contract)
+    if explicit_roles is not None:
+        return explicit_roles
+
     # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
     # matrix-unit reader (``matrix_units.yaml``). That surface ships no isa_definition.py and no RoCC
     # ``encoding`` map, so both regimes below saw nothing and the class list came out empty — the state in

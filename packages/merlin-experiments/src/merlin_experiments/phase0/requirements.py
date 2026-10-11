@@ -524,7 +524,7 @@ def derive(
     from .program_admission import SCHEMA as WHOLE_PROGRAM_SCHEMA
     from .program_admission import derive_inventory
 
-    whole_program = derive_inventory(full, target=te.target, evidence=selected)
+    whole_program = derive_inventory(full, target=te.target, evidence=selected, captures=captures)
     requirement["whole_program_admission"] = {
         "schema": WHOLE_PROGRAM_SCHEMA,
         "sidecar": "whole-program-admission.json",

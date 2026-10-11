@@ -141,7 +141,37 @@ def account_program(program: Path, *, name: str, target: str, evidence) -> list[
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
+    _join_source_admissions(accounting, {name: program}, evidence=evidence)
     return accounting["applications"][name]["signatures"]
+
+
+def _join_source_admissions(accounting: dict, captures: dict[str, Path], *, evidence) -> None:
+    """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.targetgen.operation_accounting import admit_operation_row
+
+    if set(captures) != set(accounting["applications"]):
+        raise ValueError("source admission captures must cover the exact application roster")
+    for name, application in accounting["applications"].items():
+        raw = Path(captures[name]).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
+            raise ValueError("source admission capture differs from inventoried bytes")
+        normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
+        operations = tuple(mq.walk(mq.parse(normalized)))
+        for entry in application["signatures"]:
+            if entry["host_admission"]["status"] != "unknown":
+                continue
+            row = entry["observed_signature"]
+            entry.update(
+                admit_operation_row(
+                    row,
+                    software_spec=evidence.software_spec or None,
+                    capability_contract=evidence.contract,
+                    host_capabilities=getattr(evidence, "host_capabilities", None),
+                    source_operations=tuple(operations[ordinal] for ordinal in row["ordinals"]),
+                )
+            )
 
 
 def account_interface(program: Path, *, target: str, evidence, numeric_screens: list[dict] | None = None) -> list[dict]:
@@ -324,11 +354,12 @@ def _check_saved_inventory(screen: dict, materialized: dict, evidence) -> dict:
     return {**screen, "saved_inventory": {"capture_sha256": expected["capture_sha256"], "status": "matched"}}
 
 
-def derive_inventory(inventory: dict, *, target: str, evidence) -> dict:
+def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[str, Path] | None = None) -> dict:
     """The per-operation admission inventory of each declared capture, written at derivation.
 
     ``inventory`` is the derivation's own detailed application inventory of the declared captures,
-    judged once more with the selected declarations, so no capture is re-read here.
+    judged once more with the selected declarations. Selected captures additionally
+    establish parsed source-body requirements against the exact inventoried bytes.
     """
     from merlin.targetgen.operation_accounting import build_operation_accounting
 
@@ -338,6 +369,13 @@ def derive_inventory(inventory: dict, *, target: str, evidence) -> dict:
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
+    if captures is None and inventory.get("applications") and all(
+        isinstance(row.get("capture_source_path"), str) and row["capture_source_path"]
+        for row in inventory["applications"].values()
+    ):
+        captures = {name: Path(row["capture_source_path"]) for name, row in inventory["applications"].items()}
+    if captures is not None:
+        _join_source_admissions(accounting, captures, evidence=evidence)
     applications = {}
     for label, application in sorted(accounting["applications"].items()):
         screen = summarize(application["signatures"], scope="declared iteration capture at derivation")

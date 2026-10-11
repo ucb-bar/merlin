@@ -396,10 +396,19 @@ def test_the_derivation_inventory_records_each_capture_placements(tmp_path):
     inventory = application_demand_inventory(
         {"app": capture}, "fixture", detailed=True, capability_contract=_CONTRACT, include_graph=True
     )
-    document = program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence())
+    document = program_admission.derive_inventory(
+        inventory, target="fixture", evidence=_evidence(), captures={"app": capture}
+    )
     row = document["applications"]["app"]
     assert row["status"] == "admitted" and row["placements"] == {"accelerator": 1}
     assert document["sha256"] == program_admission.operations_digest(document)
+    with pytest.raises(ValueError, match="exact application roster"):
+        program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={})
+    capture.write_text(_INT_MATMUL + "\n")
+    with pytest.raises(ValueError, match="inventoried bytes"):
+        program_admission.derive_inventory(
+            inventory, target="fixture", evidence=_evidence(), captures={"app": capture}
+        )
 
 
 def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():

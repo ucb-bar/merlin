@@ -5225,20 +5225,24 @@ def run_capsule(
             except ValueError as exc:
                 raise CertFailure("canonical_input_binding", _cat("PROTOCOL_VIOLATION"), str(exc)) from exc
 
-        # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
-        # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,
-        # kernel, and readback all agree on one address map — the harness never trusts the agent to have
-        # invented a base (the command_buffer schema forbids declaring one), and the output tensor now
-        # always has a base to read back from. Target-agnostic: pure shape x dtype (see capsule_dram).
+        # Fixed-address oracles need a shared canonical layout. A selected
+        # logical-pointer harness instead allocates the original tensors and
+        # passes their actual addresses, without competing fixed-base metadata.
         from . import capsule_dram as _dram
         from .dram_facts import dram_base_for
+        from .target_experiment import load_capability_manifest
 
         # Place any harness-assigned canonical base INSIDE the target's DRAM region [dram_base, +size):
         # a self-hosted-ISA target maps DRAM at a nonzero region base (derived from its facts; 0 for a
         # 0-based target, keeping the base at DEFAULT_BASE unchanged), and the L2 oracle
         # relocates by that same base — so a submission that omits a base still grades against a layout
         # the model can index. Bases the agent DECLARED are left untouched (inject_bases only fills gaps).
-        _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
+        _dram.inject_bases(
+            cb,
+            capsule,
+            base=dram_base_for(eff_target) + _dram.DEFAULT_BASE,
+            contract=load_capability_manifest(eff_target).contract,
+        )
 
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the

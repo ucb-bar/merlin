@@ -231,7 +231,7 @@ def main(argv=None):
     # simulator, which only some targets let you select) was unreachable from inside the box.
     ap.add_argument("--tiers", default="")
     ap.add_argument("--capsules", default="all")
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="")
     # Forwarded like every other flag. Without this the sandboxed agent -- which is EVERY real run --
