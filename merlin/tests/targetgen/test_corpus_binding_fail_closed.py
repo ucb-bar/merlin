@@ -115,3 +115,34 @@ def test_diagnostic_binding_defers_but_does_not_admit_missing_instruction_classe
     assert binding.operand_dtype == "int8" and binding.accum_dtype == "i32" and binding.tile_dim == 8
     with pytest.raises(ValueError, match="corpus_issue_order"):
         binding.classes_for(op="matmul")
+
+
+def test_explicit_effect_classes_accept_equivalent_selectors_without_discovery(monkeypatch):
+    from merlin.targetgen import isa_taxonomy
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("explicit effect declarations must not discover an ISA provider")
+
+    monkeypatch.setattr(isa_taxonomy, "derive_isa_taxonomy", forbidden)
+    contract = {"encoding": {"semantic_class": {"17": "Execute", "29": "Execute"},
+                             "corpus_required_classes": ["Execute"],
+                             "class_family": {"Execute": "contraction"}}}
+    classes = CS._classes_source(SimpleNamespace(target="synthetic"), contract)
+    assert classes(op="matmul") == ["Execute"]
+    assert classes(op="conv2d") == ["Execute"]
+    with pytest.raises(ValueError, match="no required effect class"):
+        classes(op="movement", movement=True)
+
+
+@pytest.mark.parametrize("change", [
+    {"corpus_required_classes": []},
+    {"corpus_required_classes": ["Execute", "Execute"]},
+    {"class_family": {"Execute": "undeclared"}},
+    {"semantic_class": {"17": "Different"}},
+])
+def test_malformed_effect_declaration_cannot_fall_back_to_issue_order(change):
+    encoding = {"semantic_class": {"17": "Execute"}, "corpus_required_classes": ["Execute"],
+                "class_family": {"Execute": "contraction"}, "corpus_issue_order": ["Execute"]}
+    encoding.update(change)
+    with pytest.raises(ValueError):
+        CS._classes_source(SimpleNamespace(target="synthetic"), {"encoding": encoding})

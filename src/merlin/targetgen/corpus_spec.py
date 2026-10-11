@@ -389,6 +389,13 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     """The instruction-class deriver for a matmul-family op. Two regimes, chosen by what the target ships:
     a self-hosted-ISA target (an ``isa_definition.py`` is present) derives its classes from the taxonomy;
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
+    # Explicit effect declarations avoid provider discovery and legacy issue schedules.
+    enc = contract.get("encoding") or {}
+    if "corpus_required_classes" in enc or "class_family" in enc:
+        from merlin.targetgen.corpus_effect_classes import source
+
+        return source(enc)
+
     from merlin.targetgen import isa_taxonomy as IT
 
     # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
