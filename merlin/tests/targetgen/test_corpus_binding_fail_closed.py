@@ -134,6 +134,43 @@ def test_explicit_effect_classes_accept_equivalent_selectors_without_discovery(m
         classes(op="movement", movement=True)
 
 
+def test_selected_readout_data_drives_commits_without_backend_discovery(monkeypatch):
+    from merlin.targetgen import readout_facet
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("selected readout data must not discover an execution backend")
+
+    monkeypatch.setattr(readout_facet, "_backend_hook", forbidden)
+    contract = {
+        "compute_units": [{"kind": "systolic", "dtypes": ["int8"],
+                           "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}]}],
+        "encoding": {"semantic_class": {"17": "Execute"}, "corpus_required_classes": ["Execute"],
+                     "class_family": {"Execute": "contraction"}},
+        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": {
+            "epilogue_capability": [{"selector": "i8", "applies": ["relu", "acc_scale"]},
+                                   {"selector": "i32", "applies": []}],
+            "stage_routes": [],
+        }}},
+    }
+    binding = CS.derive_binding(
+        SimpleNamespace(target="synthetic", sim_via="sim"), {"required_oracle_tiers": ["L0"]},
+        contract=contract, facts={"facts": {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}]}}, taxonomy={},
+    )
+    assert CS._resolve_output_dtype(binding, ["relu"]) == "i8"
+    assert CS._resolve_output_dtype(binding, []) == "i32"
+    with pytest.raises(ValueError, match="no readout applies"):
+        CS._resolve_output_dtype(binding, ["relu"], {"output_dtype": "i32"})
+    with pytest.raises(ValueError, match="no readout or contraction route"):
+        CS._resolve_output_dtype(binding, ["bias_add"])
+    entry = {"name": "reuse", "kind": "layer", "source_role": "synthesized",
+             "source_reference": "independent readout declaration", "K": 8, "N": 8,
+             "matmuls": [{"lhs": "A0", "out": "Y0", "M": 8, "epilogue": ["relu"]},
+                         {"lhs": "A1", "out": "Y1", "M": 8, "epilogue": []}]}
+    cap, mlir = CS.build_resident_reuse(entry, binding)
+    assert [row["output_dtype"] for row in cap["operation"]["attributes"]["matmuls"]] == ["i8", "i32"]
+    assert 'tensor<8x8xi8>' in mlir and 'tensor<8x8xi32>' in mlir
+
+
 @pytest.mark.parametrize("change", [
     {"corpus_required_classes": []},
     {"corpus_required_classes": ["Execute", "Execute"]},

@@ -752,6 +752,13 @@ def epilogue_readouts(target: str):
         return None
     if not raw:
         return None
+    return validated_readouts(raw)
+
+
+def validated_readouts(raw):
+    """Parse supplied readout data without discovering an execution backend."""
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
     from merlin.verify.epilogue_applicability import ReadoutCapability
 
     return [
