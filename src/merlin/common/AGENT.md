@@ -76,6 +76,12 @@ complete process-byte mapping by digest and key roster without recording values.
 receipts cannot supply that identity. A matching environment is not a runtime,
 dependency-closure, secret-management or sandbox qualification. Python call
 observations do not claim a child process environment.
+`record_artifact_reuse` writes a distinct `artifact_reuse.json` byte receipt,
+joined to the actual original completed process and exact restored products.
+It has no new process argv, return code, invocation timing or repeat; ordinary
+`verify` refuses it. `verify_artifact_reuse` reopens byte provenance only and
+does not issue a live cache or closed runtime owner. The original build owner
+must authenticate actual namespace adoption before selecting reuse.
 
 `selected_pin_replay` issues an explicit bounded same-thread/same-process call
 owner for selected canonical file content. It binds the actual Thread identity

@@ -115,6 +115,23 @@ reset/seed and non-file inputs remain UNKNOWN, so identical artifacts still
 execute. Calibration omits the index and final execution never selects this
 public observer; original fresh timing and full numerical gates remain in place.
 
+`build_products.py` optionally reuses only original LLVM object compilation
+products after fresh emission, under the exact live shared `BuildRuntimeView`.
+Explicit target/architecture/ABI and closed flags are data; target or model names
+never supply eligibility. Unknown CPU discovery, plugins/profile/response files,
+C sources and links execute freshly. Whole selected input/view/source/argv/env
+identity plus complete object/stack-sidecar bytes precede reuse. Workers stage
+only authenticated actual closed process observations; creating-parent publication
+follows original guardian cleanup and durable release. Entry/file/reference-byte
+budgets bound retention; metadata has a separate per-record byte bound. Active
+readers pin original jobs until parent cleanup; unknown cleanup or damaged
+pin metadata preserves pins. Proven cleanup permits discarding authenticated
+stale products (including original stack repair) without publishing them.
+A distinct `artifact_reuse` receipt cites the original
+process and restored bytes without a new compiler invocation/timing/replicate.
+No-index calibration/final paths, harness/link work and all simulations/numerical
+gates remain fresh. JSON cannot reconstruct either live owner.
+
 An optional exact `PreparedProcessReadbackPlan` derives a values-free object
 roster and complete file budget from the original typed direct harness ABI and
 repeat/counter/phase plans. Only this explicit selection admits one whole-token
