@@ -817,8 +817,11 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout):
             if tier == "L2":
                 backend, citation, revalidate = _functional_engine_for_facts(target, selected_facts)
                 revalidate()
-                runner = getattr(backend, "run_declared_model_elf", backend.run_elf)
-                console = runner(elf, simulator="spike", timeout=timeout, capture_bytes=True)
+                declared_runner = getattr(backend, "run_declared_model_elf", None)
+                if declared_runner is not None:
+                    console = declared_runner(elf, timeout=timeout, capture_bytes=True)
+                else:
+                    console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
                 revalidate()
                 engine_evidence = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":
