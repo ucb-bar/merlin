@@ -90,6 +90,37 @@ binary/configuration and original sandbox canary qualified on that worker. The
 configured author count does not replace this check. Preparation allocates no
 machine, cgroup, quota, agent or simulator.
 
+For the example eight-hour hard budget above, launch the normal module on the
+allocated AWS worker:
+
+```sh
+python -m merlin_experiments.phase2.authoring_cli \
+  --functional-runs-root "$P1_RUNS" \
+  --functional-run-id "$P1_RUN_ID" \
+  --functional-submission-sha256 "$P1_COMPILER_SHA256" \
+  --source-root "$MERLIN_SOURCE_ROOT" --stage-root "$P2_STAGE" \
+  --contract-root "$P2_CONTRACT_ROOT" --descriptor "$P1_DESCRIPTOR" \
+  --gsim-certificate "$TIMING_CERTIFICATE" \
+  --gsim-certificate-sha256 "$TIMING_CERTIFICATE_SHA256" \
+  --rtl-facts "$P1_RTL_FACTS" \
+  --telemetry-price-table "$TELEMETRY_PRICE_TABLE" \
+  --search-configuration "$SEARCH_CONFIGURATION" \
+  --compiler-edit-contract "$COMPILER_EDIT_CONTRACT" \
+  --suite "$SUITE" --model "$CODEX_MODEL" --effort "$CODEX_EFFORT" \
+  --codex-binary "$CODEX_BINARY" \
+  --rounds 1 --wall-budget-seconds 28800 \
+  --round-timeout-seconds 28800 --tool-timeout-seconds 600 \
+  --max-tool-calls 192 --families all --capsules all
+```
+
+`P2_STAGE` is a fresh output directory under the configured `out` root.
+`P2_CONTRACT_ROOT` selects the reviewed performance guidance contract and frozen
+public development corpus; it is not the target capability contract. Every
+Phase 1 identity and selected file comes from that original admitted run.
+Keep its staged target contract and facts environment selections consistent
+with `P1_DESCRIPTOR`. The CLI rechecks configuration identities when installing
+the queue, before compiler authoring.
+
 ## Iteration and final selection
 
 One coordinator integrates up to three authors' disjoint compiler changes.
