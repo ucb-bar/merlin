@@ -801,6 +801,8 @@ class ComponentEvaluationPool:
             # result and durably released the original ownership. Saved cleanup
             # reports and still-running workers cannot publish reusable entries.
             self.policy.publish_completed_artifacts(job.root)
+        elif self.inputs.ordinary:
+            self.policy.discard_cleaned_artifacts(job.root)
         # Exact feedback/cleanup and closed ownership are already durable. This
         # control index cannot undo them if the capped filesystem becomes full.
         try:

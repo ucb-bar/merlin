@@ -277,6 +277,16 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         except Exception as error:  # noqa: BLE001 - cache publication cannot change an already completed verdict
             return {"status": "UNKNOWN", "published": 0, "reason": type(error).__name__}
 
+    def discard_cleaned_artifacts(self, job_root):
+        """Parent cleanup hook for failed jobs; unresolved cleanup retains pins."""
+        if self.artifact_retest_index is None:
+            return {"status": "UNAVAILABLE", "discarded": 0}
+        try:
+            count = self.artifact_retest_index.discard_cleaned_job(Path(job_root))
+            return {"status": "discarded", "discarded": count}
+        except Exception as error:  # noqa: BLE001 - preserve ownership when archive cleanup is unresolved
+            return {"status": "UNKNOWN", "discarded": 0, "reason": type(error).__name__}
+
     def validate_search_inputs(self):
         """Reopen original admission pins without reading the author's mutable bytes."""
         if (

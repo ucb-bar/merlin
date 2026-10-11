@@ -91,10 +91,12 @@ def test_unsuccessful_finish_cannot_publish_artifact_archive(disposition, tmp_pa
     # Isolate the original parent branch; synthetic cleanup packets issue no
     # process, kernel or cache authority. The positive route above reaps a real
     # harmless child through the original guardian.
-    published = []
+    published, discarded = [], []
     pool = EP.ComponentEvaluationPool.__new__(EP.ComponentEvaluationPool)
     pool.inputs = SimpleNamespace(ordinary=True)
-    pool.policy = SimpleNamespace(publish_completed_artifacts=published.append)
+    pool.policy = SimpleNamespace(
+        publish_completed_artifacts=published.append, discard_cleaned_artifacts=discarded.append
+    )
     pool._save = lambda job: None
 
     def release(job, **kwargs):
@@ -118,6 +120,7 @@ def test_unsuccessful_finish_cannot_publish_artifact_archive(disposition, tmp_pa
     try:
         pool._finish(job, error=RuntimeError("injected incomplete evaluation"))
         assert published == []
+        assert discarded == ([tmp_path] if disposition in {"refused", "cancelled"} else [])
         assert job.state == (
             "cleanup_unknown" if disposition in {"cleanup_unknown", "storage_failure"} else disposition
         )
