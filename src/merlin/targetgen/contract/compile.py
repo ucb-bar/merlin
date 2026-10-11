@@ -1191,11 +1191,23 @@ def run_on_oracle(
         memory_engine = deepcopy(oracle_revalidate())
         if type(memory_engine) is not dict or not memory_engine:
             raise ValueError("memory output requires a selected-engine citation")
-    artifact_selection = compare_selected_artifacts(
-        simulator=simulator, service=_execution_service,
-        elf=elf, cb=cb, inputs=inputs, lowered_mlir=lowered_mlir_text, build=readback_build,
-        backend=backend, provenance=simulator_provenance(backend, simulator),
-    ) if _execution_service is None and active_artifact_retests() is not None else None
+    artifact_selection = (
+        compare_selected_artifacts(
+            simulator=simulator,
+            service=_execution_service,
+            elf=elf,
+            cb=cb,
+            inputs=inputs,
+            lowered_mlir=lowered_mlir_text,
+            build=readback_build,
+            backend=backend,
+            provenance=simulator_provenance(backend, simulator),
+            capture_bytes=binary,
+            memory_transport=memory,
+        )
+        if _execution_service is None and active_artifact_retests() is not None
+        else None
+    )
     try:
         run_kwargs = {"capture_bytes": True} if binary else {}
         from merlin.common import invocation_record

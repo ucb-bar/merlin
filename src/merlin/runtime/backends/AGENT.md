@@ -24,6 +24,12 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 ## Invariants
 
+- Both normal `chipyard_rocc` and the selected `BoundRoCCBackend` preserve their
+  original engine, certificate, argv, environment, counters and runtime slot.
+  An optional live `NativeRuntimeView` selects their original gSIM process seam;
+  unsupported lookup/cwd/readback selections keep the original fresh route.
+  Actual selected launch failures propagate. No owner leaves default launch
+  unchanged, and no frozen filesystem view qualifies reset/seed or replay.
 - A selected `runner.backend: chipyard_rocc` binds generic tooling directly from
   the selected contract and existing RTL facts before executable discovery. It
   imports no target provider. Missing or malformed selected data refuses; native

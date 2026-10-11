@@ -103,10 +103,17 @@ engine plus effective environment. It reopens its actual prior Python dispatch
 before reporting an artifact comparison. It never imports saved cache records,
 skips execution, issues a physical witness or adds an independent replicate.
 The bounded observer belongs to one original job output and can be shared by
-copied member thread contexts; cross-job/worker archival is absent. The current
-normal native simulator does not adopt frozen system runtime mounts, so its
-transitive loader/library closure stays UNKNOWN even for unchanged artifacts.
-Final execution never selects this public job observer.
+copied member thread contexts. Optional `_artifact_index.py` retains complete
+artifact/input/runtime digest observations across revisions under one live
+parent-issued `NativeRuntimeView`. Workers stage signed actual process evidence;
+only the creating parent publishes after original guardian cleanup and durable
+release. Pending and published refs share file/byte budgets and storage pins.
+The parent discards failed/cancelled pending refs only after actual cleanup;
+unknown cleanup or damaged evidence retains pins. No cleanup JSON is authority.
+The optional native view closes filesystem lookup, but unspecified native
+reset/seed and non-file inputs remain UNKNOWN, so identical artifacts still
+execute. Calibration omits the index and final execution never selects this
+public observer; original fresh timing and full numerical gates remain in place.
 
 An optional exact `PreparedProcessReadbackPlan` derives a values-free object
 roster and complete file budget from the original typed direct harness ABI and

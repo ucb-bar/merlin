@@ -563,6 +563,38 @@ class BoundRoCCBackend:
             dependencies.append(_path(block["receipt"]["path"]))
         else:
             dependencies.append(Path(before["extension"]["path"]))
+        from merlin.runtime.native_runtime import active_native_runtime, forget_native_observation, run_in_native_view
+
+        forget_native_observation()
+        if simulator == "gsim" and active_native_runtime() is not None:
+            from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+
+            with gsim_runtime_slot(wait_timeout_s=timeout):
+                selected_result = run_in_native_view(
+                    self,
+                    path,
+                    argv=argv,
+                    environment=block["environment"],
+                    cwd=cwd,
+                    timeout=timeout,
+                    capture_bytes=capture_bytes,
+                    unlimited_stack=False,
+                    raw_result=True,
+                )
+            if selected_result is not None:
+                selected_result.check_returncode()
+                _require(
+                    self._engine_identity(simulator) == before and _digest(path) == elf_sha,
+                    "selected engine or ELF changed during execution",
+                )
+                _require(
+                    not any(
+                        marker.encode() in selected_result.stdout + selected_result.stderr
+                        for marker in block["failure_markers"]
+                    ),
+                    "selected execution reported a declared failure",
+                )
+                return selected_result.stdout if capture_bytes else selected_result.stdout.decode("utf-8")
         # Records accompany this caller's original ELF, never a discovered runtime.
         with I.observe(
             path.parent,
