@@ -5004,6 +5004,14 @@ def run_capsule(
             (paths.generated / "placement_census.json").write_text(json.dumps(census, indent=2), encoding="utf-8")
         return result
 
+    from .owned_host_leaf_execution import grade_owned_host_leaf, selected_host_leaf
+
+    if selected_host_leaf(capsule):
+        return grade_owned_host_leaf(
+            capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
+            timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
+        )
+
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
     # THE PROGRAM WHOSE CYCLES ARE BEING REPORTED, kept out here so the result can carry it even when

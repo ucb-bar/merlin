@@ -228,6 +228,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.capsule_grade", "grader"),
     _module("merlin.targetgen.native_model_execution", "grader"),
     _module("merlin.targetgen.owned_host_model_execution", "grader"),
+    _module("merlin.targetgen.owned_host_leaf_execution", "grader"),
     _module(
         "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
     ),
