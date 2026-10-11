@@ -91,6 +91,10 @@ requires existing strict-v3 receipt and byte-verified selected FIRRTL facts;
 these file/transcript checks grant no emitter-build, counter, runtime or physical
 authority. Selfcheck exposes only actual barrier engine/digests, never raw paths.
 Legacy Verilator observations apply only to Verilator selection.
+Verilator timing uses the explicitly selected backend executable and observed
+build receipt bound to selected original FIRRTL facts; no conventional build
+path substitutes for that identity. The ordinary passed tier must carry its
+actual engine and simulator digest before wall-time publication.
 
 `audit.py` owns `AnswerAudit`: immutable descriptor-derived tokens plus an explicit absolute
 bundle directory. Grant files are reread at their historical observation points. Importing

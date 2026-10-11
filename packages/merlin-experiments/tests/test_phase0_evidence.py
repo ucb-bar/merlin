@@ -17,6 +17,27 @@ from merlin.targetgen import readout_facet, target_registry
 from merlin.targetgen.rtl import facts, source_selection
 
 
+def test_selected_views_decode_once_without_sharing_mutable_values(monkeypatch):
+    raw = json.dumps({"software_spec": {"nested": [1]}, "contract": {"dtype": "f32"}}).encode()
+    selected = evidence.EvidenceSelection("test-target", (), raw, None)
+    original = json.loads
+    decoded_selection = []
+
+    def counted(value, *args, **kwargs):
+        if value is raw:
+            decoded_selection.append(value)
+        return original(value, *args, **kwargs)
+
+    monkeypatch.setattr(evidence.json, "loads", counted)
+    selected.software_spec["nested"].append(2)
+    assert selected.software_spec == {"nested": [1]}
+    assert selected.contract == {"dtype": "f32"}
+    with pytest.raises(AttributeError):
+        selected.absent_view
+    assert len(decoded_selection) == 1
+    assert selected.views_json is raw
+
+
 def test_specir_source_inventory_excludes_unrelated_generated_project_files(tmp_path):
     package = tmp_path / "specir"
     package.mkdir()
