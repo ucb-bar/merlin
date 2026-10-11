@@ -156,14 +156,26 @@ int main(int hart) {
     htif_putd((long)(uint64_t)sb);
     htif_putc('\n');
   }
+#endif
 #ifdef MERLIN_OUTPUT_SHA256
   /* Exact full first-output evidence; excluded from c1-c0 above. */
   uint8_t digest[32];
+#if MERLIN_OUT_IS_F32
   merlin_output_sha256(OUT, (size_t)MERLIN_OUT_ELEMS, digest);
   htif_puts("OUT_SHA256 f32le ");
+  const int digest_element_bytes = 4;
+#elif MERLIN_OUT_IS_I64
+  merlin_output_sha256_i64(MERLIN_OUTPUT_PTR[0], (size_t)MERLIN_OUT_ELEMS, digest);
+  htif_puts("OUT_SHA256 i64le ");
+  const int digest_element_bytes = 8;
+#else
+  merlin_output_sha256_i1(MERLIN_OUTPUT_PTR[0], (size_t)MERLIN_OUT_ELEMS, digest);
+  htif_puts("OUT_SHA256 i1byte ");
+  const int digest_element_bytes = 1;
+#endif
   htif_putd((long)MERLIN_OUT_ELEMS);
   htif_putc(' ');
-  htif_putd((long)((uint64_t)MERLIN_OUT_ELEMS * 4));
+  htif_putd((long)((uint64_t)MERLIN_OUT_ELEMS * digest_element_bytes));
   htif_putc(' ');
   for (unsigned i = 0; i < 32; i++) {
     static const char hex[] = "0123456789abcdef";
@@ -171,7 +183,6 @@ int main(int hart) {
     htif_putc(hex[digest[i] & 15]);
   }
   htif_putc('\n');
-#endif
 #endif
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));

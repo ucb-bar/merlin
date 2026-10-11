@@ -17,7 +17,7 @@ def test_installed_resource_inventory_includes_the_digest_header():
     assert "merlin/runtime/baremetal/spike/output_sha256.h" in files
 
 
-def test_build_refuses_a_floating_digest_for_integer_output(tmp_path, monkeypatch):
+def test_build_refuses_a_digest_for_unsupported_output(tmp_path, monkeypatch):
     from merlin.common.digest import sha256_file
     from merlin.llvmlower import compilation_recipe, qinner, weight_prepack
     from merlin.runtime.backends import spike_model
@@ -56,9 +56,9 @@ def test_build_refuses_a_floating_digest_for_integer_output(tmp_path, monkeypatc
         ),
     )
     monkeypatch.setattr(compilation_recipe.CompilationRecipe, "run", lambda *_a, **_k: None)
-    monkeypatch.setattr(spike_model.c_runtime, "generate", lambda *_a, **_k: {"out_dt": "i64"})
+    monkeypatch.setattr(spike_model.c_runtime, "generate", lambda *_a, **_k: {"out_dt": "bf16"})
 
-    with pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32"):
+    with pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32, i64 or i1"):
         spike_model.build(tmp_path / "capture", tmp_path / "build", backend="scalar", output_sha256=True)
     assert not (tmp_path / "build/model.elf").exists()
 
@@ -80,6 +80,12 @@ void hash_bytes(const unsigned char *p, size_t n, unsigned char *out) {
 void hash_floats(const float *p,size_t n,unsigned char *out) {
  merlin_output_sha256(p,n,out);
 }
+void hash_i64(const void *p,size_t n,unsigned char *out) {
+ merlin_output_sha256_i64(p,n,out);
+}
+void hash_i1(const void *p,size_t n,unsigned char *out) {
+ merlin_output_sha256_i1(p,n,out);
+}
 """)
     lib = work / "probe.so"
     subprocess.run(
@@ -100,7 +106,7 @@ void hash_floats(const float *p,size_t n,unsigned char *out) {
         check=True,
     )
     dll = ctypes.CDLL(str(lib))
-    for name in ("hash_bytes", "hash_floats"):
+    for name in ("hash_bytes", "hash_floats", "hash_i64", "hash_i1"):
         getattr(dll, name).argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
     return dll
 
@@ -127,6 +133,19 @@ def test_f32_encoding_preserves_every_bit(hasher):
     assert output.raw.hex() == hashlib.sha256(canonical).hexdigest()
 
 
+def test_integer_and_boolean_output_encoding(hasher):
+    words = [0, 1, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF]
+    integers = (ctypes.c_uint64 * len(words))(*words)
+    output = ctypes.create_string_buffer(32)
+    hasher.hash_i64(integers, len(words), output)
+    assert output.raw.hex() == hashlib.sha256(
+        b"".join(word.to_bytes(8, "little") for word in words)).hexdigest()
+
+    booleans = bytes([0, 1, 1, 0, 1])
+    hasher.hash_i1(booleans, len(booleans), output)
+    assert output.raw.hex() == hashlib.sha256(booleans).hexdigest()
+
+
 def test_record_validation():
     import numpy as np
 
@@ -148,3 +167,23 @@ def test_record_validation():
             verify_output_sha256(bad, reference)
     with pytest.raises(ValueError):
         verify_output_sha256(record, reference.astype("float64"))
+
+
+@pytest.mark.parametrize("reference,encoding", [
+    ("i64", "i64le"), ("bool", "i1byte"),
+])
+def test_typed_record_validation(reference, encoding):
+    import numpy as np
+
+    from merlin.runtime.output_digest import verify_output_sha256
+
+    array = (np.array([0, -1, 2**62], dtype=np.int64) if reference == "i64"
+             else np.array([False, True, False, True], dtype=np.bool_))
+    raw = array.astype("<i8", copy=False).tobytes() if reference == "i64" else array.tobytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    record = f"OUT_SHA256 {encoding} {array.size} {len(raw)} {digest}\n"
+    assert verify_output_sha256(record, array)["encoding"] == encoding
+    with pytest.raises(ValueError):
+        verify_output_sha256(record, np.zeros(array.shape, dtype=np.float32))
+    with pytest.raises(ValueError):
+        verify_output_sha256(record.replace(digest, "0" * 64), array)

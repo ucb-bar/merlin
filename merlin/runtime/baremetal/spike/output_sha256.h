@@ -1,5 +1,5 @@
-/* SHA-256 output evidence. Canonical f32 encoding is little-endian IEEE bits;
- * hashing is diagnostic work and must occur after the forward timer stops. */
+/* SHA-256 output evidence. Canonical f32/i64 encoding is little-endian bits;
+ * i1 hashes actual one-byte storage. Hash after the forward timer stops. */
 #ifndef MERLIN_OUTPUT_SHA256_H
 #define MERLIN_OUTPUT_SHA256_H
 #include <stdint.h>
@@ -59,6 +59,20 @@ static void merlin_output_sha256(const float *p,size_t count,uint8_t digest[32])
     for(unsigned j=0;j<4;j++)le[j]=(uint8_t)(bits>>(8*j));
     merlin_sha256_update(&s,le,4);
   }
+  merlin_sha256_final(&s,digest);
+}
+static void merlin_output_sha256_i64(const void *p,size_t count,uint8_t digest[32]) {
+  merlin_sha256 s;merlin_sha256_init(&s);
+  for(size_t i=0;i<count;i++) {
+    uint64_t bits;uint8_t le[8];memcpy(&bits,(const uint8_t *)p+i*8,8);
+    for(unsigned j=0;j<8;j++)le[j]=(uint8_t)(bits>>(8*j));
+    merlin_sha256_update(&s,le,8);
+  }
+  merlin_sha256_final(&s,digest);
+}
+static void merlin_output_sha256_i1(const void *p,size_t count,uint8_t digest[32]) {
+  merlin_sha256 s;merlin_sha256_init(&s);
+  merlin_sha256_update(&s,(const uint8_t *)p,count);
   merlin_sha256_final(&s,digest);
 }
 #endif

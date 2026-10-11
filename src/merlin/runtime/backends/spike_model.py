@@ -512,8 +512,9 @@ def build(
 
     ``output_dump_cap`` limits raw output values printed after model timing. Set
     it to the full output size for whole-output target correctness validation.
-    ``output_sha256`` additionally hashes every first-output f32 value, encoded
-    little-endian, after timing. Pair with ``output_dump_cap=1`` for compact logs.
+    ``output_sha256`` additionally hashes every first-output f32, i64 or i1
+    value in its canonical byte encoding, after timing. Pair with
+    ``output_dump_cap=1`` for compact logs.
 
     The lowering arguments mirror ``zephyr_model.build_app`` and retain their historical defaults;
     the selected compiler's index width is now explicitly bound for every build. ``int8_compute``
@@ -855,8 +856,8 @@ def build(
             "entry_projection_source": entry_projection_source,
         }
     info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
-    if output_sha256 and info.get("out_dt") != "f32":
-        raise SpikeModelError("full-output SHA256 evidence requires f32 output")
+    if output_sha256 and info.get("out_dt") not in {"f32", "i64", "i1"}:
+        raise SpikeModelError("full-output SHA256 evidence requires f32, i64 or i1 output")
     # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
     # storage -- and that last term is a property of the model, not a constant: `static float
     # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
