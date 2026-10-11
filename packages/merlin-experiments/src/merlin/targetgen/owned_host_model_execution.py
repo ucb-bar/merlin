@@ -445,7 +445,7 @@ def _dispatch_proof(record, *, target, facts):
         for row in (endpoint_spec.get("endpoints") or {}).values()
         if isinstance(row, dict) and row.get("target") == target and row.get("exposure") == "rocc"
     ]
-    work = _verified_work_functs_by_family(endpoints, table)
+    work = _verified_work_functs_by_family(endpoints, table, work_roles_only=True)
     names = {int(key) for key in (table.get("names") or {})}
     abi = kernel_abi_for(target)
     if abi is None:

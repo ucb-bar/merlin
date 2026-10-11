@@ -726,6 +726,12 @@ def test_only_family_matched_roles_count_as_device_work():
     assert work["contraction"] == {3}
     assert work["elementwise_map"] == set()
     assert work["movement"] == set()
+    partial_table = {"names": {3: "MAC"}}
+    assert _verified_work_functs_by_family([endpoint], partial_table, work_roles_only=True)["contraction"] == {3}
+    with pytest.raises(NativeModelExecutionError, match="endpoint roles"):
+        _verified_work_functs_by_family([endpoint], partial_table)
+    with pytest.raises(NativeModelExecutionError, match="endpoint roles"):
+        _verified_work_functs_by_family([endpoint], {"names": {2: "LOOP_CONFIG"}}, work_roles_only=True)
     with pytest.raises(NativeModelExecutionError, match="verified spatial"):
         _verified_work_functs_by_family([{"engine": "host", "exposure": "rocc"}], table)
 
