@@ -51,6 +51,7 @@ class OwnedHostModelCompiler:
         math_archive_symbols=None,
         readback="full",
         materialized_inputs=None,
+        group_profile=False,
     ):
         """Build original source; the candidate supplies closed device groups only.
 
@@ -68,7 +69,11 @@ class OwnedHostModelCompiler:
         if candidate.is_symlink():
             raise ValueError("candidate device package must not be a symlink")
         candidate = candidate.resolve(strict=True)
-        if candidate == self.host_package or candidate.is_relative_to(self.host_package) or self.host_package.is_relative_to(candidate):
+        if (
+            candidate == self.host_package
+            or candidate.is_relative_to(self.host_package)
+            or self.host_package.is_relative_to(candidate)
+        ):
             raise ValueError("candidate device package must be separate from the owned host provider")
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed")
@@ -103,6 +108,7 @@ class OwnedHostModelCompiler:
             math_archive_symbols=math_archive_symbols,
             readback=readback,
             materialized_inputs=materialized_inputs,
+            group_profile=group_profile,
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed during compilation")

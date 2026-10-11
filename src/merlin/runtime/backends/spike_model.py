@@ -916,6 +916,7 @@ def build(
         _dev_side, expected_granularity=device.granularity if device is not None else None
     )
     _dev_sigs = _dev_args["signatures"]
+    device_artifacts = None
     _catalog_requested = device is not None and (
         getattr(device, "catalog_manifest", None) is not None or getattr(device, "catalog_builder", None) is not None
     )
@@ -992,6 +993,30 @@ def build(
                 f"device offload did not build every routed kernel for {device.device!r}: {_dev_build.skipped}"
             )
         supplemental_objects.extend(_dev_build.objects)
+        if _dev_side.get("catalog_manifest") is None:
+            # Producer-owned symbol mapping, never reconstructed from signature order.
+            device_artifacts = {
+                "target": device.device,
+                "kernels": {
+                    symbol: {
+                        "kernel_symbol": kernel,
+                        "custody": _dev_build.custody[symbol],
+                        "artifacts": {
+                            role: {
+                                "path": str(path.absolute()),
+                                "sha256": sha256_file(path),
+                                "size_bytes": path.stat().st_size,
+                            }
+                            for role, path in (
+                                ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
+                                ("llvm_ir", work / "device" / f"{symbol}.ll"),
+                                ("object", work / "device" / f"{symbol}.o"),
+                            )
+                        },
+                    }
+                    for symbol, kernel in _dev_build.kernels.items()
+                },
+            }
         print(
             f"[device] linked {len(_dev_build.kernels)} kernel(s) + shim for {device.device}"
             f" ({_dev_side.get('granularity') or 'contraction'} granularity;"
@@ -1300,6 +1325,11 @@ def build(
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
         "host_llvm_transform": host_ir_receipt,
+        "host_artifacts": {
+            role: {"path": str(path.absolute()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
+            for role, path in (("llvm_ir", model_ir), ("object", work / "model.o"))
+        },
+        **({"device_artifacts": device_artifacts} if device_artifacts is not None else {}),
         **({"host_provider": host_provider_receipt} if host_provider_receipt is not None else {}),
         "supplemental_objects_sha256": _supplemental_object_digest(supplemental_objects).hex()
         if supplemental_objects

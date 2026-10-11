@@ -464,6 +464,8 @@ def compile_saved_model(
             "build_hash": built.get("build_hash"),
             "index_lowering": built["index_lowering"],
             "matrix_routing": built.get("matrix_routing"),
+            "host_artifacts": built.get("host_artifacts"),
+            "device_artifacts": built.get("device_artifacts"),
         }
         # Bind the producer's record, rather than minting a new command history.
         # Its consumer independently verifies completed commands and input bytes.

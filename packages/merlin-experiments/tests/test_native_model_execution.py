@@ -1522,8 +1522,9 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
         )
     assert source_pin["sha256"] == _digest(retained / "capsule.interface.mlir")["sha256"]
     assert "candidate_source_eligibility_failure" not in result
-    assert result["model_execution_check"]["kind"] == "candidate_whole_program_execution"
-    assert "candidate_full_model_native_unverified" in result["model_execution_check"]["violations"]
+    assert result["model_execution_check"]["kind"] == (
+        "candidate_whole_program_execution" if verification_fails else "owned_host_model_execution")
+    assert "candidate_completed_dispatch_unverified" in result["model_execution_check"]["violations"]
     assert "dynamic_dispatch_ledger_missing_or_malformed" not in result["model_execution_check"]["violations"]
     if verification_fails:
         assert result["candidate_emission_failure"]["type"] == "ValueError"

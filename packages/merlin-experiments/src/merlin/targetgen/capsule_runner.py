@@ -3002,6 +3002,8 @@ def _grade_candidate_model_capsule_inline(
                 selection_record=context.get("owned_host_build"),
                 simulator=os.environ.get("MERLIN_MODEL_NATIVE_SIMULATOR") or "none",
                 timeout=timeout,
+                source_certificate=result["candidate_source_eligibility"],
+                readback_policy=readback_policy,
             )
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
