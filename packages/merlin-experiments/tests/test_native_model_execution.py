@@ -1450,6 +1450,7 @@ def test_all_host_relabel_cannot_hide_independently_eligible_source_operation(tm
 def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp_path, monkeypatch, verification_fails):
     from merlin.targetgen import capsule_runner as runner
     from merlin.targetgen import native_model_execution as native
+    from merlin.targetgen import owned_host_model_execution as owned
 
     generated, run_path = tmp_path / "generated", tmp_path / "run"
     source = tmp_path / "capsule"
@@ -1479,18 +1480,18 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
         yield tmp_path, {"construction": "frozen"}, verify
 
     def execute(**kwargs):
-        calls.append("submitted_native_build")
-        assert kwargs["simulator"] is None
+        calls.append("owned_host_device_build")
+        assert kwargs["simulator"] == "none"
         return {"status": "compiled_not_run"}
 
-    monkeypatch.setattr(runner, "run_entrypoints", emit)
+    monkeypatch.setattr(runner, "run_entrypoints", lambda *a, **k: pytest.fail("candidate host emission ran"))
     monkeypatch.setattr(runner, "_model_runtime_bundle", bundle)
     monkeypatch.setattr(
         native,
         "independent_frozen_source_eligibility",
         lambda *a, **k: {"source_mlir_sha256": "a" * 64, "eligible_source_op_indices": [0]},
     )
-    monkeypatch.setattr(native, "execute_candidate_model", execute)
+    monkeypatch.setattr(owned, "execute_owned_host_model", execute)
     for key in ("MERLIN_MODEL_NATIVE_SIMULATOR", "MERLIN_MODEL_NATIVE_RTL_FACTS", "MERLIN_MODEL_NATIVE_BOARD_CONFIG"):
         monkeypatch.delenv(key, raising=False)
     config = SimpleNamespace(
@@ -1504,13 +1505,12 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
     result = runner.run_capsule(
         capsule, tmp_path, runs_root=tmp_path, target="synthetic", config=config, oracle_adapters={}, pkg=object()
     )
-    assert calls == ["submitted_four_stage_entrypoints", "submitted_native_build"]
+    assert calls == ["owned_host_device_build"]
     assert result["status"] == "incomplete"
-    assert result["candidate_emission"]["lowered_mlir"]["sha256"]
     assert result["legacy_model_diagnostic"]["status"] == "not_run"
     retained = run_path / ".private_model_sources" / "capsule"
     assert (retained / "capsule.yaml").is_file()
-    source_pin = result["candidate_emission"]["source_interface"]
+    source_pin = result["owned_host_source"]["source_interface"]
     assert source_pin["path"] == str(retained / "capsule.interface.mlir")
     assert source_pin["sha256"] == _digest(retained / "capsule.interface.mlir")["sha256"]
     assert source_pin["sha256"] == _digest(source / "capsule.interface.mlir")["sha256"]
@@ -1528,6 +1528,7 @@ def test_model_runner_grades_submitted_whole_program_without_legacy_baseline(tmp
     if verification_fails:
         assert result["candidate_emission_failure"]["type"] == "ValueError"
         assert "candidate_native_execution" not in result
+        assert "owned_host_native_execution" not in result
 
 
 def test_non_accelerating_model_keeps_legacy_runner(tmp_path, monkeypatch):
@@ -1605,6 +1606,8 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
     from merlin.targetgen import capsule_runner as runner
     from merlin.targetgen import native_model_execution as native
 
+    (tmp_path / "capsule.yaml").write_text("name: M\n")
+    (tmp_path / "capsule.interface.mlir").write_text("module {}")
     selected = object()
     calls = []
     monkeypatch.setattr(runner, "load_package", lambda *a, **k: calls.append("load") or selected)
@@ -1617,12 +1620,22 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         lambda *a, **k: SimpleNamespace(generated=tmp_path / "generated", run_path=tmp_path / "run"),
     )
 
-    def stop_after_selection(pkg, *a, **k):
-        assert pkg is selected
-        calls.append("entrypoints")
-        raise ValueError("synthetic candidate emission refusal")
+    from contextlib import contextmanager
+    from merlin.targetgen import owned_host_model_execution as owned
 
-    monkeypatch.setattr(runner, "run_entrypoints", stop_after_selection)
+    @contextmanager
+    def runtime_bundle(*a, **k):
+        yield tmp_path, {}, lambda: None
+
+    monkeypatch.setattr(runner, "_model_runtime_bundle", runtime_bundle)
+
+    def stop_owned_build(**kwargs):
+        assert kwargs["candidate_package"] == tmp_path
+        calls.append("owned_device_build")
+        raise ValueError("synthetic owned host build refusal")
+
+    monkeypatch.setattr(owned, "execute_owned_host_model", stop_owned_build)
+    monkeypatch.setattr(runner, "run_entrypoints", lambda *a, **k: pytest.fail("candidate whole-program host emission is forbidden"))
     context = {
         "runs_root": str(tmp_path),
         "run_id": "M",
@@ -1633,12 +1646,12 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         "package_prebuilt": prebuilt,
     }
     result = runner._grade_candidate_model_capsule_inline(
-        {"name": "M", "kind": "model", "semantic": {"must_accelerate": True}},
+        {"name": "M", "kind": "model", "__dir__": str(tmp_path), "semantic": {"must_accelerate": True}},
         target="synthetic",
         timeout=1,
         package_dir=tmp_path,
         context=context,
     )
-    assert calls == ["load", "scan", *([] if prebuilt else ["build"]), "entrypoints"]
+    assert calls == ["load", "scan", *([] if prebuilt else ["build"]), "owned_device_build"]
     assert result["status"] == "incomplete"
     assert result["candidate_emission_failure"]["type"] == "ValueError"

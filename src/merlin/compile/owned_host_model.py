@@ -50,6 +50,7 @@ class OwnedHostModelCompiler:
         tolerance=None,
         math_archive_symbols=None,
         readback="full",
+        materialized_inputs=None,
     ):
         """Build original source; the candidate supplies closed device groups only.
 
@@ -101,6 +102,7 @@ class OwnedHostModelCompiler:
             tolerance=tolerance,
             math_archive_symbols=math_archive_symbols,
             readback=readback,
+            materialized_inputs=materialized_inputs,
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed during compilation")
