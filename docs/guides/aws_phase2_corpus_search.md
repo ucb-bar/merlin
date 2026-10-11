@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-11
 related: [aws_phase0_phase1, phase2_cpu_timing_study, phase2_component_search, neutral_runtime_tooling]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_configuration.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_resource_launch.py, packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py, packages/merlin-experiments/src/merlin_experiments/phase0/public_programs.py]
+code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_configuration.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_resource_launch.py, packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py, packages/merlin-experiments/src/merlin_experiments/phase2/functional_guard_execution.py, packages/merlin-experiments/src/merlin_experiments/phase0/public_programs.py]
 ---
 
 # Run bounded Phase 2 search from the Phase 1 compiler
@@ -120,6 +120,11 @@ Phase 1 identity and selected file comes from that original admitted run.
 Keep its staged target contract and facts environment selections consistent
 with `P1_DESCRIPTOR`. The CLI rechecks configuration identities when installing
 the queue, before compiler authoring.
+
+For bounded final functional grading, leave `MERLIN_MODEL_BUDGET_S` unset.
+The original inline whole-model grader carries the live package and resource
+owners through its worker threads. The exec-based model budget child cannot
+carry those owners and is refused in this bounded final guard.
 
 ## Iteration and final selection
 
