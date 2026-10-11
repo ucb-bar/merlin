@@ -627,6 +627,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.perf.isa_prohibition import scan_elf
+    from merlin.runtime.backends.spike import gcc_path
     from merlin.runtime.boards import load_boards
     from merlin.targetgen import elf_lanes
     from merlin.targetgen.rtl.facts import observed_facts
@@ -657,7 +658,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     linked_inputs = {(row["path"], row["sha256"]) for row in compilation["commands"][-1]["inputs"]}
     if (str(model_obj), file_sha256(model_obj)) not in linked_inputs:
         raise ValueError("owned host object was not an actual final link input")
-    if Path(compilation["commands"][-1]["executable"]["path"]) != toolchain.clang().resolve():
+    if Path(compilation["commands"][-1]["executable"]["path"]) != gcc_path().resolve():
         raise ValueError("owned model final link did not use the selected compiler")
     for entry in output["device_artifacts"]["kernels"].values():
         obj = _pinned(entry["artifacts"], "object")
