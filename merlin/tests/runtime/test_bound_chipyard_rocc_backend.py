@@ -685,3 +685,23 @@ def test_selected_execution_guards_only_gsim_and_releases_after_failure(
         assert bound.run_elf(elf, simulator=simulator, timeout=2) == _console()
     assert active is False
     assert events == (["enter", "exit"] if simulator == "gsim" else [])
+
+
+@pytest.mark.parametrize("engine", ["spike", "gsim"])
+def test_oracle_metadata_keeps_concrete_engine_through_actual_tier_projection(selection, tmp_path, engine):
+    from merlin_experiments.phase1.timing import barrier_timing_identity
+
+    from merlin.targetgen.capsule_runner import _sim_telemetry
+    from merlin.targetgen.contract.compile import simulator_provenance
+
+    if engine == "gsim":
+        _gsim(selection, tmp_path)
+    bound = _bound(selection)
+    metadata = {**bound.ORACLE[engine], "provenance": simulator_provenance(bound, engine)}
+    tier = {"status": "pass", **_sim_telemetry(metadata, "diagnostic_console.log")}
+    assert tier["engine"] == engine
+    assert tier["sim_provenance"]["engine"] == engine
+    if engine == "gsim":
+        identity = barrier_timing_identity(tier)
+        assert identity["engine"] == engine
+        assert identity["simulator_sha256"] == tier["sim_provenance"]["sha256"]

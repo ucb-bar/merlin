@@ -295,6 +295,7 @@ class BoundRoCCBackend:
     def ORACLE(self):
         return {
             engine: {
+                "engine": engine,
                 "kind": "functional" if engine == "spike" else "rtl",
                 "fidelity": "functional_model" if engine == "spike" else "elaborated_rtl",
                 "derived_from_rtl": engine == "gsim",
