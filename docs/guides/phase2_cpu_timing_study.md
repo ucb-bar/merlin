@@ -91,9 +91,11 @@ Costs support the existing arithmetic `N*((1-q)*S-E)>M`: `S` is complete ordinar
 RTL cost, `E` complete cheap cost, `q` the retained RTL fraction, and `M` setup,
 calibration and held validation. Missing denominators keep break-even UNKNOWN.
 The study returns the original held validation verdict; it creates no final
-acceptance. An original selected-engine/process or compiled-artifact join that
-cannot be reopened refuses calibration. Keep the retained profiles and resolve
-that source prerequisite before exposing a fit. No live costs or screening
+acceptance. An unavailable original selected-engine/process or compiled-artifact
+join leaves qualification UNKNOWN while preserving the complete cost summary
+and every retained profile. Resolve that source prerequisite before exposing a
+fit. Changed source, selected products or successful process receipts still
+refuse through their original integrity checks. No live costs or screening
 qualification have been established by the synthetic routing tests.
 
 Trusted in-process orchestration can install the live returned calibration

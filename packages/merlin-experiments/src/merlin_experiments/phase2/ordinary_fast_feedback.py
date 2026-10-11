@@ -22,7 +22,7 @@ from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
 from . import campaign as PC
-from .contracts import StageGateError, exact_tree_record, sha256_file, write_json
+from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
 from .retained_revisions import executing_revisions
 
 KIND = "corpus-compile-spike-feedback"
@@ -48,8 +48,12 @@ def compiled_observation(root, *, target):
         if llvm.stat().st_size > LIMITS.max_source_bytes or elf.stat().st_size > LIMITS.max_elf_bytes:
             raise ValueError("ordinary compiled feature byte limit exceeded")
         elf_pin = {"path": str(elf), "sha256": sha256_file(elf)}
-        links = [(path, I.verify(path)) for path in root.rglob("invocation.json")]
-        if not any(row["stage"] == "elf" and elf_pin in row["outputs"] for _, row in links):
+        links = []
+        for path in root.rglob("invocation.json"):
+            row = mapping_file(path)
+            if row.get("stage") == "elf" and elf_pin in row.get("outputs", []) and successful_record(row):
+                links.append(I.verify(path))
+        if not links:
             raise ValueError("ordinary feature ELF lacks its actual native link invocation")
         recipe = get_backend(target).harness_build_recipe()
         entry = recipe.require_kernel_stack_frame().entry_symbol
@@ -84,6 +88,18 @@ def compiled_observation(root, *, target):
             "reason": "ordinary compiled observation unavailable: " + type(error).__name__,
             "features": dict.fromkeys(FEATURES),
         }
+
+
+def successful_record(row):
+    """Select completed candidates before reopening their exact original receipts.
+
+    Ordinary build fallback keeps failed compiler/link/probe records. Those
+    records cannot supply a product witness, and are not the final successful
+    producer. This selection grants nothing; I.verify still checks every pin.
+    """
+    return row.get("status") == "completed" and (
+        row.get("returncode") == 0 if row.get("kind") == "subprocess" else row.get("outcome") == "returned"
+    )
 
 
 def _member_arm(*, policy, revision, member, workspace, deadline, workers):

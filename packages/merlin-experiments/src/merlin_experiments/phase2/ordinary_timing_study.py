@@ -413,31 +413,38 @@ def execute(request):
                 )
                 profiles.append(profile)
                 write_json(root / f"profile_{repeat}_{index}_{label}.json", profile)
-    from .ordinary_calibration import produce_calibration
+    from .ordinary_calibration import CalibrationUnavailable, domain, produce_calibration
 
+    calibrated = None
     with _complete_cost(root) as calibration:
-        calibrated = produce_calibration(
-            adapter.policy,
-            revisions,
-            baseline,
-            partition=request["public_partition"],
-            work_root=root / "calibration",
-            timeout_s=request["max_stage_seconds"],
-            workers=int(workers),
-            allocation=request["resources"],
-        )
+        try:
+            calibrated = produce_calibration(
+                adapter.policy,
+                revisions,
+                baseline,
+                partition=request["public_partition"],
+                work_root=root / "calibration",
+                timeout_s=request["max_stage_seconds"],
+                workers=int(workers),
+                allocation=request["resources"],
+            )
+        except CalibrationUnavailable as error:
+            qualification = {"status": "UNKNOWN", "exposable": False, "promotion": "NONE", "reason": str(error)}
+    adapter.verify(request)
+    if calibrated is not None:
+        qualification = loads(calibrated.report_json)
     return {
         "schema": SCHEMA,
         "execution_performed": True,
         "request_sha256": document_sha256(request),
         "profiles": profiles,
         "setup": setup,
-        "calibration_sha256": calibrated.sha256,
+        "calibration_sha256": None if calibrated is None else calibrated.sha256,
         "calibration_and_held_validation": calibration,
-        "domain_sha256": calibrated.domain_sha256,
+        "domain_sha256": domain(adapter.policy) if calibrated is None else calibrated.domain_sha256,
         "public_partition": request["public_partition"],
         "source_revisions": [revision.public_record() for revision in revisions],
-        "qualification": loads(calibrated.report_json),
+        "qualification": qualification,
         "cache_state": "UNKNOWN",
         "promotion": "NONE",
     }

@@ -105,6 +105,37 @@ def test_request_export_reuses_actual_original_normal_selection(ordinary_inputs,
     assert STUDY.plan(exported)["execution_performed"] is False
 
 
+def test_study_retains_complete_costs_and_results_when_calibration_is_unavailable(
+    ordinary_inputs, tmp_path, monkeypatch
+):
+    request = request_for(ordinary_inputs, tmp_path)
+    policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    adapter = STUDY.OrdinaryCorpusCpuStudyAdapter(policy)
+    observed = []
+
+    def profile(self, **kwargs):
+        observed.append(kwargs["kind"])
+        return {"kind": kwargs["kind"], "wall_seconds": 1.0, "result": {"synthetic": True}}
+
+    def unavailable(*args, **kwargs):
+        raise CAL.CalibrationUnavailable("original compiled join unavailable")
+
+    monkeypatch.setattr(STUDY.COST, "_allocated", lambda request: None)
+    monkeypatch.setattr(STUDY, "_load", lambda request: (adapter, (candidate, baseline), baseline))
+    monkeypatch.setattr(STUDY.OrdinaryCorpusCpuStudyAdapter, "profile", profile)
+    monkeypatch.setattr(CAL, "produce_calibration", unavailable)
+    result = STUDY.execute(request)
+    assert observed == [FAST.KIND, "corpus-rtl-feedback"] * 4
+    assert len(result["profiles"]) == 8
+    assert result["qualification"]["status"] == "UNKNOWN" and result["qualification"]["exposable"] is False
+    assert result["calibration_sha256"] is None
+    assert result["setup"]["wall_seconds"] >= 0
+    assert result["calibration_and_held_validation"]["cpu_seconds"] >= 0
+    assert len(list(tmp_path.joinpath("allocated").glob("profile_*.json"))) == 8
+    assert result["promotion"] == "NONE"
+
+
 def test_allocated_profile_selects_only_fixed_normal_route(ordinary_inputs, tmp_path, monkeypatch):
     request = request_for(ordinary_inputs, tmp_path)
     policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)

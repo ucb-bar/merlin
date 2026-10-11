@@ -25,6 +25,10 @@ _ISSUER = object()
 PARTITION_SCHEMA = "merlin.ordinary_public_screen_partition.v1"
 
 
+class CalibrationUnavailable(StageGateError):
+    """Original observations cannot qualify a screen; retained costs remain useful."""
+
+
 def domain(policy):
     binding = policy.binding()
     return document_sha256(
@@ -99,16 +103,20 @@ def _join(timing_root, cell, arm, compiled, package_sha256):
                 continue
             process = []
             for invocation in workspace.rglob("invocation.json"):
-                row = I.verify(invocation)
-                if row["stage"] in {"execution", "selected_rocc_process", "native_oracle_process"} and any(
-                    pin.get("sha256") == observed["elf_sha256"] for pin in row["inputs"]
+                row = mapping_file(invocation)
+                if (
+                    row.get("stage")
+                    in {"execution", "selected_rocc_process", "native_oracle_process", "native_runtime_process"}
+                    and FAST.successful_record(row)
+                    and any(pin.get("sha256") == observed["elf_sha256"] for pin in row.get("inputs", []))
                 ):
+                    I.verify(invocation)
                     process.append((str(invocation), sha256_file(invocation)))
             if not process or mapping_file(path).get("package_sha256") != package_sha256:
                 continue
             matches.append((observed["elf_sha256"], (str(path), sha256_file(path)), tuple(process)))
     if len(matches) != 1:
-        raise StageGateError(
+        raise CalibrationUnavailable(
             "ordinary calibration lacks one fresh joined compile/full-numeric/selected-engine observation"
         )
     return matches[0]
@@ -316,12 +324,12 @@ def produce_calibration(policy, revisions, baseline_revision, *, partition, work
             identity = cell["family"], cell["capsule"]
             measured = labels[identity]
             if not measured["measured"] or not measured["comparable"]:
-                raise StageGateError("ordinary calibration requires complete correct measured RTL roster")
+                raise CalibrationUnavailable("ordinary calibration requires complete correct measured RTL roster")
             for arm, source in (("baseline", baseline_revision), ("candidate", revision)):
                 value, cheap_pin = _cheap_observation(cheap_root, cell, arm, member_indices[identity])
                 compiled = value["compiled"]
                 if value["functional_status"] != "PASS" or compiled["status"] != "observed":
-                    raise StageGateError("ordinary calibration lacks original functional/compiled observation")
+                    raise CalibrationUnavailable("ordinary calibration lacks original functional/compiled observation")
                 program, attempt_pin, process_pins = _join(timing_root, cell, arm, compiled, source.source_sha256)
                 pins = (cheap_pin, attempt_pin, *process_pins)
                 artifacts.extend(pins)
