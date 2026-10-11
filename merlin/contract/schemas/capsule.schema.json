@@ -157,6 +157,7 @@
             "reduce_mean",
             "batch_matmul",
             "permute",
+            "dtype_cast",
             "bias_add",
             "residual_add",
             "residual_seam",

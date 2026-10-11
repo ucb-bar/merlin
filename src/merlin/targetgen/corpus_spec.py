@@ -23,13 +23,9 @@ from merlin.targetgen.capsule_dram import dtype_bits
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
-#
-# The WIDTH is deliberately absent. It used to be a fourth literal column, and it was a second copy of a
-# fact the format registry already owns: it read 1 byte/element for mxfp6 and mxfp4, which are 6- and
-# 4-bit formats, so the two authorities disagreed about how large an MX tensor is. Nothing was
-# mis-addressed only because the one consumer read it on the integer path, where the literal happened to
-# be right. `dtype_info` derives the width from the registry instead, so there is one source and a new
-# format is a registry entry rather than an edit here.
+# Element widths come from the format registry through `dtype_info`, not this
+# spelling table. Sub-byte formats must retain their actual widths in address
+# calculations.
 _DTYPE = {
     "int8": ("i8", "i8", True),
     "i8": ("i8", "i8", True),
