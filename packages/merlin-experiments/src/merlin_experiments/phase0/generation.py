@@ -746,6 +746,10 @@ def generate_target(
         )
         for entry in entries
     ]
+    if any(entry.get("public_boundary") for entry in entries) and operator_exclusion is None:
+        from .operator_exclusion import PublicationRefusal
+
+        raise PublicationRefusal()
     for _s in _sweep_skips:
         _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
         _what = f"class {_s['label']} of family {_s['family']}" if _s.get("label") else f"family {_s['family']}"

@@ -1,3 +1,8 @@
+# Activated only by an explicit public_joint_boundaries ordinary recipe.
+public_boundary_factory:
+  schema: merlin.phase0.public_joint_boundaries.v1
+  constructor: original_connected_float32_cuts
+  pressure: logical_tensor_volume_at_selected_store_rows
 sweeps:
 - id: PK
   # Keep the machine-law cohort intact. One derived cohort per observed M/N

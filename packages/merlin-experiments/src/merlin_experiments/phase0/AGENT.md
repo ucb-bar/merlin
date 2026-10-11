@@ -1,5 +1,15 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Ordinary `public_joint_boundaries` v1 selects the shared public boundary factory.
+`public_boundary_semantics` replays exact original public typed calls and derives
+connected cuts/dimension equalities; `public_boundaries` emits changed bounded
+ATen loaders through normal generation-time sealed capture and model writing.
+Reopen the original context before freezing loaders and every fresh captured
+call, schema, type and published reference before staged exclusion/discovery.
+Summed logical tensor volumes at selected store row widths are pressure probes,
+never physical placement, simultaneous allocations or lifetime proofs. Preserve
+complete original programs separately and every unsupported/budget-denied UNKNOWN.
+
 Ordinary recipe `performance_source_programs` v1 selects the complete descriptor's
 unchanged public performance roster as connected dev members. Require every
 original sealed capture, selected loader/profile, finite ABI/payload budgets and

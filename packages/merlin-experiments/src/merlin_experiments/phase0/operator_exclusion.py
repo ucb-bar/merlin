@@ -47,8 +47,14 @@ def contraction_signature_hashes(capsule, *, directory=None):
     bundle binding. These exact signatures grant no numerical or device support.
     """
     try:
-        if (capsule.get("materialized_capture") or {}).get("schema") == "merlin.materialized_public_capture.v2":
+        if (
+            capsule.get("public_boundary")
+            or (capsule.get("materialized_capture") or {}).get("schema") == "merlin.materialized_public_capture.v2"
+        ):
             from .public_programs import original_contractions, verify_written
+
+            if capsule.get("public_boundary"):
+                from .public_boundaries import verify_written
 
             if directory is None:
                 raise PublicationRefusal()

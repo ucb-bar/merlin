@@ -17,3 +17,10 @@ performance_source_programs:
   max_capture_bytes: 536870912
   max_input_elements: 16777216
   max_output_elements: 16777216
+public_joint_boundaries:
+  schema: merlin.phase0.public_joint_boundaries.v1
+  max_members: 64
+  max_nodes: 32
+  max_logical_elements: 1048576
+  max_extent: 65536
+  max_source_bytes: 65536

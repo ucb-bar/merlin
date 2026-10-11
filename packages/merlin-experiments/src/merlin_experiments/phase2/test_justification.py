@@ -42,6 +42,9 @@ def _host_basis(descriptor, directory: Path, gate) -> dict | None:
     from merlin_experiments.phase0.public_programs import BASIS_SCHEMA, verify_written
 
     if selected["schema"] == BASIS_SCHEMA:
+        if descriptor.get("public_boundary"):
+            from merlin_experiments.phase0.public_boundaries import verify_written
+
         try:
             return verify_written(descriptor, directory)
         except (ValueError, KeyError, TypeError, OSError) as exc:

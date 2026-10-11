@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
+from math import prod
 from pathlib import Path
 
 import yaml
@@ -819,8 +820,43 @@ def derive(
         )
         gradeable_sources.extend(public_entries)
         outputs.update(public_outputs)
+    boundary_entries = []
+    boundary_policy = recipe_doc.get("public_joint_boundaries")
+    if boundary_policy is not None:
+        from . import public_boundaries as PB
+
+        shared = yaml.safe_load(declaration.performance_template.read_bytes()) or {}
+        if performance_full is None or shared.get("public_boundary_factory") != PB.TEMPLATE:
+            raise ValueError(
+                "joint boundaries require complete public sources and the selected normal template factory"
+            )
+        boundary_entries, boundary_outputs, boundary_report = PB.derive(
+            public_entries, outputs, evidence=selected, policy=boundary_policy
+        )
+        # The original operator-private shape selection applies to the new
+        # geometry too. Refusal exposes neither a member nor a matching shape.
+        for entry in boundary_entries:
+            values = {
+                r["name"]: r
+                for r in [*entry["public_boundary"]["program"]["inputs"], *entry["public_boundary"]["program"]["nodes"]]
+            }
+            for node in entry["public_boundary"]["program"]["nodes"]:
+                if node["target"] in PB.S.CONTRACTIONS:
+                    lhs, rhs = (values[a["value"]]["shape"] for a in node["args"][:2])
+                    if (
+                        layer_guard.gemm(
+                            prod(lhs[:-1]), lhs[-1], rhs[0] if node["target"] == "aten.linear.default" else rhs[1]
+                        )
+                        is not None
+                    ):
+                        from .operator_exclusion import PublicationRefusal
+
+                        raise PublicationRefusal()
+        requirement["public_joint_boundaries"] = boundary_report
+        outputs["requirements.yaml"] = yaml.safe_dump(requirement, sort_keys=False).encode()
+        outputs.update(boundary_outputs)
     if plan.get("status") != "blocked":
-        plan["capsules"] = [*plan.get("capsules", []), *model_forms["entries"], *gradeable_sources]
+        plan["capsules"] = [*plan.get("capsules", []), *model_forms["entries"], *gradeable_sources, *boundary_entries]
         require_direct_tier(
             plan["capsules"], floor=certification_floor, declared_tiers=requirement["oracle_tiers_declared"]
         )

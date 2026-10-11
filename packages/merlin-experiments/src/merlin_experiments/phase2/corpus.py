@@ -247,6 +247,13 @@ def discover_performance_corpus(
                 verify_written(descriptor, source)
             except (ValueError, KeyError, TypeError, OSError) as exc:
                 raise StageGateError("generated public performance program source/reference changed") from exc
+        if descriptor.get("public_boundary"):
+            from merlin_experiments.phase0.public_boundaries import verify_written
+
+            try:
+                verify_written(descriptor, source)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("generated public boundary source/reference changed") from exc
         family = CONTRACTS.safe_component(str(performance.get("family") or ""), label="performance family")
         claim = performance.get("claim")
         if claim not in PP.CANONICAL_CLAIMS:

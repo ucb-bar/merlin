@@ -80,6 +80,13 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     document = yaml.safe_load(profile.read_bytes())
     result = {}
     for entry in (document or {}).get("capsules", []):
+        if entry.get("public_boundary"):
+            from .public_boundaries import selected_loader
+
+            loader = selected_loader(entry, profile.parent)
+            result[loader] = (profile.parent, loader.relative_to(profile.parent).as_posix())
+            context = profile.parent / entry["public_boundary"]["source_context"]["path"]
+            result[context] = (profile.parent, context.relative_to(profile.parent).as_posix())
         binding = entry.get("materialized_capture")
         if not binding:
             continue

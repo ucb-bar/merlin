@@ -310,6 +310,20 @@ def verify_selected_synthesis(
                 ):
                     raise ValueError("public performance program must be an explicitly selected dev member")
     permitted_statuses = {"inventoried", "incomplete"} if diagnostic else {"inventoried"}
+    from . import public_boundaries as PB
+
+    selected_boundaries = spec_doc.get("public_joint_boundaries")
+    boundary_entries = [e for e in profile_document.get("capsules") or [] if e.get("public_boundary")]
+    if selected_boundaries is not None:
+        recipe_document = yaml.safe_load(Path(recipe).read_bytes()) or {}
+        if PB.validate(recipe_document.get("public_joint_boundaries")) != selected_boundaries.get(
+            "selection"
+        ) or PB.digest(boundary_entries) != selected_boundaries.get("members_sha256"):
+            raise ValueError("public boundary synthesis differs from its selected ordinary derivation")
+        for entry in boundary_entries:
+            PB.selected_loader(entry, Path(synth_profile).parent)
+    elif boundary_entries:
+        raise ValueError("public boundary members require an explicit ordinary recipe selection")
     if applications and demands.get("status") not in permitted_statuses:
         raise ValueError(
             f"{conformance_spec}: declared applications require an inventoried operation-demand requirement"
@@ -873,6 +887,8 @@ def _merge_shared_perf(
     }
     if "curriculum_derivation" in shared:
         profile["_performance_template"]["curriculum_derivation"] = copy.deepcopy(shared["curriculum_derivation"])
+    if "public_boundary_factory" in shared:
+        profile["_performance_template"]["public_boundary_factory"] = copy.deepcopy(shared["public_boundary_factory"])
 
 
 def validate_profile_inputs(
@@ -1021,6 +1037,12 @@ def load_profile(
         )
         extra = list(doc.get("capsules") or ())
         for entry in extra:
+            if entry.get("public_boundary"):
+                from . import public_boundaries as PB
+
+                if prof["_performance_template"].get("public_boundary_factory") != PB.TEMPLATE:
+                    raise ValueError("public boundary synthesis requires its normal shared template factory")
+                entry["loader"] = str(PB.selected_loader(entry, synth.parent))
             selection = entry.get("materialized_capture")
             if selection is not None:
                 if not isinstance(selection, dict) or not isinstance(selection.get("path"), str):
