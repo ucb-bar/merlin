@@ -585,7 +585,8 @@ class BoundRoCCBackend:
             from merlin.llvmlower import toolchain
             from merlin.runtime.backends import spike_model
 
-            machine_tools = (toolchain.nm(), toolchain.readelf())
+            selected_machine_tools = (toolchain.nm(), toolchain.readelf())
+            machine_tools = tuple(tool.resolve(strict=True) for tool in selected_machine_tools)
             machine_tool_pins = {str(tool): _digest(tool) for tool in machine_tools}
             memory, isa, harts = (
                 spike_model.declared_memory(path),
@@ -606,7 +607,8 @@ class BoundRoCCBackend:
             )
             _require(_digest(path) == elf_sha, "saved model changed while reading machine declarations")
             _require(
-                all(_digest(tool) == machine_tool_pins[str(tool)] for tool in machine_tools),
+                tuple(tool.resolve(strict=True) for tool in selected_machine_tools) == machine_tools
+                and all(_digest(tool) == machine_tool_pins[str(tool)] for tool in machine_tools),
                 "saved-model machine inspection tools changed",
             )
             selected = [arg for arg in argv[1:] if not arg.startswith(("--isa=", "-m", "-p"))]
@@ -614,7 +616,7 @@ class BoundRoCCBackend:
             if harts is not None:
                 machine.append(f"-p{harts}")
             argv = [argv[0], *machine, *selected]
-            dependencies.extend([Path(spike_model.__file__).resolve(), toolchain.nm(), toolchain.readelf()])
+            dependencies.extend([Path(spike_model.__file__).resolve(), *machine_tools])
         if simulator in {"gsim", "verilator"}:
             dependencies.append(_path(block["receipt"]["path"]))
         else:
