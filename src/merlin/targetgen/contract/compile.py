@@ -38,6 +38,7 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
     from merlin.common import cpu_pool as cpu_owner
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import parse_roster, selected_pool
+    from merlin.runtime.build_runtime import run_in_build_view
 
     cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
     slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
@@ -49,6 +50,16 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
         with selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout):
             if timeout is not None:
                 kwargs["timeout"] = max(0, timeout - (time.monotonic() - started))
+            selected = run_in_build_view(
+                argv,
+                directory=Path(workdir).resolve(),
+                stage=stage,
+                inputs=inputs,
+                outputs=outputs,
+                **kwargs,
+            )
+            if selected is not None:
+                return selected
             return invocation_record.run(
                 argv,
                 directory=workdir,
@@ -608,10 +619,12 @@ def link_elf(
             kwargs["warm_profile"] = warm_profile
         harness = _render(cb, **kwargs, **blob_kwargs, **policy_kwargs)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
+    codec_inputs = ()
     if readback_policy is not None:
-        from .readback_policy import stage_codec_header
+        from .readback_policy import _codec_names, stage_codec_header
 
         stage_codec_header(workdir, policy=readback_policy)
+        codec_inputs = tuple(workdir / name for name in _codec_names(readback_policy))
     blob_sources = stage_harness_blobs(workdir, blob_payloads)
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
@@ -653,11 +666,16 @@ def link_elf(
         else:
             command = recipe.compile_command(source=source, output=unit)
             compile_cwd = None
+        fresh_inputs = (source,)
+        if source in blob_sources:
+            fresh_inputs = (source, source.with_suffix(".bin"))
+        elif source == workdir / "harness.c":
+            fresh_inputs = (source, *codec_inputs)
         step = _observed_run(
             command,
             workdir=workdir,
             stage="harness_object",
-            inputs=(source,),
+            inputs=fresh_inputs,
             outputs=(unit,),
             cwd=compile_cwd,
             capture_output=True,
