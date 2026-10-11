@@ -35,6 +35,8 @@ class CompiledStaticArmFeatures:
 
     @property
     def component_source_pins(self):
+        from . import retained_revisions
+
         self.verify()
         paths = (
             Path(__file__).resolve(),
@@ -43,6 +45,7 @@ class CompiledStaticArmFeatures:
             Path(component_compiled_features.__file__).resolve(),
             Path(compiled_static_features.__file__).resolve(),
             Path(component_source_demand.__file__).resolve(),
+            Path(retained_revisions.__file__).resolve(),
         )
         return {
             **dict(self.execution.independent_runtime.source_pins),
@@ -57,7 +60,7 @@ class CompiledStaticArmFeatures:
             **{path: sha256_file(path) for path in paths},
         }
 
-    def verify(self):
+    def verify(self, *, retained_revision=None):
         if (
             type(self.execution) is not ComponentIndependentExecution
             or type(self.selection) is not CompileFeatureSelection
@@ -67,7 +70,11 @@ class CompiledStaticArmFeatures:
             or any(type(value) is not str or not value for value in self.feature_ids)
         ):
             raise StageGateError("compiled arms require the exact ordinary execution and static observation owners")
-        self.execution.verify()
+        if retained_revision is None:
+            self.execution.verify()
+        else:
+            retained_revision.verify(authority=self.execution.edit_authority)
+            self.execution.verify(retained_revision=retained_revision)
         target = self.execution.independent_runtime.hardware_intake.target
         self.selection.verify(target)
         context = self.execution.independent_runtime.qualification.context
@@ -111,7 +118,10 @@ class CompiledStaticArmFeatures:
 
     def compile(self, *, compiler, member, corpus, workspace, timeout_s):
         """Compile through the original ordinary source/ABI and scoped transport."""
-        self.verify()
+        from .retained_revisions import executing_revision
+
+        retained = executing_revision(Path(compiler))
+        self.verify(retained_revision=retained)
         self.execution.baseline_admission.verify(corpus=corpus)
         if not any(row is member for row in corpus.capsules):
             raise StageGateError("compiled feature arm is outside the original source roster")
@@ -130,9 +140,12 @@ class CompiledStaticArmFeatures:
         ):
             raise StageGateError("compiled feature arms require fresh private output and exact compiler selection")
         before = exact_tree_record(compiler)["sha256"]
-        allowed = (self.execution.candidate, self.execution.baseline_admission.baseline)
-        if before not in {exact_tree_record(path)["sha256"] for path in allowed}:
-            raise StageGateError("compiled arm selected neither the fresh baseline nor its authorized candidate")
+        if retained is None:
+            allowed = (self.execution.candidate, self.execution.baseline_admission.baseline)
+            if before not in {exact_tree_record(path)["sha256"] for path in allowed}:
+                raise StageGateError("compiled arm selected neither the fresh baseline nor its authorized candidate")
+        elif before != retained.source_sha256:
+            raise StageGateError("compiled arm differs from its originally issued retained source")
         descriptor = mapping_file(member.source_dir / "capsule.yaml", yaml_file=True)
         if descriptor.get("operation", {}).get("op") != "component_program":
             raise StageGateError("compiled static arms have no original checked integer source for this member")
@@ -152,18 +165,23 @@ class CompiledStaticArmFeatures:
             )
         )
         workspace.mkdir(parents=True, mode=0o700)
-        copied, products = workspace / "compiler", workspace / "products"
-        shutil.copytree(compiler, copied)
+        products = workspace / "products"
+        if retained is None:
+            compiled_source = workspace / "compiler"
+            shutil.copytree(compiler, compiled_source)
+        else:
+            retained.verify(authority=self.execution.edit_authority)
+            compiled_source = retained.source
         started = time.monotonic()
         with qualified_package_execution(
-            candidate=copied,
+            candidate=compiled_source,
             view=self.execution.view,
             runtime=self.execution.runtime,
             evidence_root=products,
             container_transport=self.execution.container_transport,
         ):
             compile_only_execution.compile_source_only(
-                package_dir=copied,
+                package_dir=compiled_source,
                 source=source,
                 original_abi=abi,
                 contract_root=self.execution.contract_root,
@@ -176,20 +194,27 @@ class CompiledStaticArmFeatures:
             )
         if time.monotonic() - started >= timeout_s:
             raise StageGateError("compiled static feature arm exhausted its aggregate compile/extraction budget")
-        if exact_tree_record(compiler)["sha256"] != before or exact_tree_record(copied)["sha256"] != before:
+        if exact_tree_record(compiler)["sha256"] != before or exact_tree_record(compiled_source)["sha256"] != before:
             raise StageGateError("compiled static extraction changed the original compiler bytes")
-        self.verify()
+        self.verify(retained_revision=retained)
         return {"report_path": str(products / "compile_only_result.json"), "compiler_sha256": before}
 
-    def extract(self, *, member, corpus, workspace):
+    def extract(self, *, compiler, member, corpus, workspace):
         """Reopen actual ordinary compile consumption and derive static sites."""
-        self.verify()
+        from .retained_revisions import executing_revision
+
+        compiler = Path(compiler)
+        retained = executing_revision(compiler)
+        self.verify(retained_revision=retained)
         workspace = Path(workspace)
         if workspace.resolve() != workspace or not workspace.is_relative_to(self.execution.output):
             raise StageGateError("compiled extraction requires the original private compile owner")
+        compiled_source = retained.source if retained is not None else workspace / "compiler"
+        if exact_tree_record(compiled_source)["sha256"] != exact_tree_record(compiler)["sha256"]:
+            raise StageGateError("compiled extraction differs from its original compiler source")
         observed = observe_component_compiled_features(
             report_path=workspace / "products" / "compile_only_result.json",
-            package_dir=workspace / "compiler",
+            package_dir=compiled_source,
             contract_root=self.execution.contract_root,
             corpus=corpus,
             member=member,
@@ -197,14 +222,14 @@ class CompiledStaticArmFeatures:
             selection=self.selection,
             evidence_root=workspace / "features",
         )
-        self.verify()
+        self.verify(retained_revision=retained)
         return observed
 
     def observe(self, *, compiler, member, corpus, workspace, timeout_s):
         """Compile and extract through fixed ordinary functions, with no engine run."""
         started = time.monotonic()
         self.compile(compiler=compiler, member=member, corpus=corpus, workspace=workspace, timeout_s=timeout_s)
-        observed = self.extract(member=member, corpus=corpus, workspace=workspace)
+        observed = self.extract(compiler=compiler, member=member, corpus=corpus, workspace=workspace)
         if time.monotonic() - started >= timeout_s:
             raise StageGateError("compiled feature arm exhausted its aggregate compile/extraction budget")
         return observed
@@ -240,7 +265,9 @@ class CompiledStaticArmFeatures:
         )
 
     def pair(self, *, baseline, candidate, member, corpus, target_descriptor, scope, workspace, timeout_s):
-        self.verify()
+        from .retained_revisions import executing_revision
+
+        self.verify(retained_revision=executing_revision(Path(candidate)))
         if target_descriptor != self.execution.baseline_admission.target_descriptor or scope != self.execution.scope:
             raise StageGateError("compiled feature pair changed target or complete-cost scope")
         started, results = time.monotonic(), []

@@ -40,6 +40,10 @@ semantics. Matching source hashes are necessary and do not issue those roles.
 `CompiledStaticArmFeatures` uses the original scoped compiler transport,
 `compile_source_only`, and `observe_component_compiled_features`. It reopens the
 original checked source/ABI and actual LLVM/object/link/symbol observations.
+An issued queued revision uses its shared immutable source directly through the
+original read-only compiler mount, bound to the same frozen edit authority.
+Legacy sources retain their private copy. Extraction reopens the compiler path
+actually consumed; output stays within the original qualified execution owner.
 Extraction runs no engine and allocates no tensor values. Unsupported source or
 emitted bodies refuse. Emitted site/access-width counts and linked bytes leave
 dynamic counts, physical traffic, cold/warm costs, numerical correctness and
@@ -60,6 +64,15 @@ grant that role. Certificate, facts, elaborated CIRCT and validated engine/model
 artifact pins must belong to its original source membership; the unchanged
 certificate gate admits every exact development workload. This constructor
 does not extend the certificate envelope or grant a new timing scope.
+
+The queued search ranks paired **measured simulator cycles** over the exact
+generated component roster. Host preparation, allocation, reconstruction,
+replay, dispatch, publication and cleanup costs and whole-model timing remain
+outside that objective until independently measured complete-cost evidence
+exists. Queued complete-roster ranking selects
+`DevelopmentGsimFeedback.evaluate(complete_roster=True)` so losses on a cheap
+prefix cannot hide later savings. Ordinary feedback keeps its default prefix
+rejection. This option changes no workload/certificate/correctness admission.
 
 ## Nonexecuting study command
 

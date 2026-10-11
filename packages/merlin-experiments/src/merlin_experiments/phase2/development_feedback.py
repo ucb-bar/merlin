@@ -899,7 +899,10 @@ class DevelopmentGsimFeedback:
         timeout_s: int,
         measurement_plan=None,
         retained_revision=None,
+        complete_roster: bool = False,
     ) -> dict[str, Any]:
+        if type(complete_roster) is not bool or complete_roster and measurement_plan is not None:
+            raise StageGateError("complete-roster RTL ranking needs the original full measurement selection")
         candidate = Path(candidate).resolve(strict=True)
         if measurement_plan is not None:
             _measurement_selection(measurement_plan)
@@ -1098,7 +1101,9 @@ class DevelopmentGsimFeedback:
             # SAME work and it is already behind on all of it. The converse is false -- a candidate
             # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
             # winning prefix buys nothing and the full sweep is measured.
-            if measurement_plan is None and self._refuted_so_far(cells, index, len(members)):
+            # A weighted full-roster objective can recover on later members;
+            # its selected complete_roster route therefore preserves all cells.
+            if measurement_plan is None and not complete_roster and self._refuted_so_far(cells, index, len(members)):
                 stopped_after = index + 1
                 break
         for member in members[stopped_after:] if stopped_after is not None else ():

@@ -463,7 +463,7 @@ def _profile_stage(*, adapter, request, compiler, member, corpus, workspace, sta
                 timeout_s=request["max_stage_seconds"],
             )
         elif stage == "feature_extraction":
-            adapter.compiled_arms.extract(member=member, corpus=corpus, workspace=workspace)
+            adapter.compiled_arms.extract(compiler=compiler, member=member, corpus=corpus, workspace=workspace)
             result = {"features": str(workspace / "features" / "static_features.json")}
         else:
             from .evaluation_fidelity import evaluate_public_program_cpu

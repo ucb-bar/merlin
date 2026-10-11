@@ -35,6 +35,66 @@ def test_explicit_executor_required_at_use_and_custom_service_preserved(tmp_path
     assert observed[0]["hardware_counters"] is False
 
 
+@pytest.mark.parametrize("complete_roster,expected_measured", [(False, 3), (True, 4)])
+def test_complete_roster_keeps_later_host_savings_after_losing_prefix(
+    tmp_path, monkeypatch, complete_roster, expected_measured
+):
+    """Real sweep routing with synthetic arm data; no certificate or timing claim."""
+    from merlin.benchharness import hash_tree
+
+    baseline = tmp_path / "baseline"
+    baseline.mkdir()
+    (baseline / "compiler.py").write_text("# synthetic; never executed\n")
+    members = tuple(SimpleNamespace(family="family", capsule=f"member-{index}", descriptor={}) for index in range(4))
+    seen = []
+
+    def executor(**kwargs):
+        index = members.index(kwargs["member"])
+        seen.append((kwargs["arm"], index))
+        cycles = ((100, 101) if index < 3 else (10_000, 5_000))[kwargs["arm"] == "candidate"]
+        return {"correct": True, "gsim_cycles": cycles}
+
+    evaluator = DF.DevelopmentGsimFeedback(
+        SimpleNamespace(sha256="a" * 64),
+        SimpleNamespace(capsules=members, capsules_sha256="b" * 64),
+        baseline,
+        hash_tree(baseline)["sha256"],
+        None,
+        {},
+        tmp_path / "work",
+        {(member.family, member.capsule): object() for member in members},
+        executor=executor,
+    )
+    # Isolate the roster decision from execution/redaction authority. The full
+    # independent runtime and existing certificate gates are tested separately.
+    monkeypatch.setattr(evaluator, "_redact_execution", lambda raw, *_args, **_kwargs: raw)
+    monkeypatch.setattr(evaluator, "_refresh_achievable", lambda: None)
+    monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "1")
+    result = evaluator.evaluate(baseline, round_index=0, call_index=0, timeout_s=10, complete_roster=complete_roster)
+    assert sum(cell["measured"] for cell in result["cells"]) == expected_measured
+    assert len(result["cells"]) == 4
+    assert ("candidate", 3) in seen if complete_roster else ("candidate", 3) not in seen
+    if complete_roster:
+        assert result["cells"][-1]["candidate_gsim_cycles"] == 5_000
+        assert sum(row["candidate_gsim_cycles"] for row in result["cells"]) < sum(
+            row["baseline_gsim_cycles"] for row in result["cells"]
+        )
+
+
+@pytest.mark.parametrize("complete_roster,measurement_plan", [(1, None), (True, object())])
+def test_complete_roster_refuses_implicit_or_partial_selection(tmp_path, complete_roster, measurement_plan):
+    evaluator = DF.DevelopmentGsimFeedback(None, None, tmp_path, "a" * 64, None, {}, tmp_path, {})
+    with pytest.raises(StageGateError, match="original full measurement selection"):
+        evaluator.evaluate(
+            tmp_path,
+            round_index=0,
+            call_index=0,
+            timeout_s=10,
+            complete_roster=complete_roster,
+            measurement_plan=measurement_plan,
+        )
+
+
 @pytest.mark.parametrize("hardware_counters,workers", [(False, 3), (True, 1)])
 def test_prepared_feedback_binds_explicit_resources_to_installed_engine(
     tmp_path, monkeypatch, hardware_counters, workers
