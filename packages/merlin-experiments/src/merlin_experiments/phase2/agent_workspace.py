@@ -23,6 +23,7 @@ from merlin.targetgen.target_experiment import TargetExperiment
 from . import campaign as CAMPAIGN
 from . import contracts as CONTRACTS
 from . import corpus as CORPUS
+from . import normal_resource_launch as NR
 from .broker import AGENT_CORPUS_MOUNT
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
@@ -447,22 +448,25 @@ def outer_codex_policy(
 
 
 def run_required_tool_probes(
-    policy: AgentSandboxPolicy, target_experiment: TargetExperiment, candidate: Path, *, timeout_s: int = 60
+    policy: AgentSandboxPolicy,
+    target_experiment: TargetExperiment,
+    candidate: Path,
+    *,
+    timeout_s: int = 60,
+    external_boundary=None,
 ) -> list[dict[str, Any]]:
     policy.verify_execution()
     probes = policy.required_tools
     rows: list[dict[str, Any]] = []
     for probe in probes:
-        command = [
-            *policy.argv,
-            "--chdir",
-            str(candidate),
-            "bash",
-            "-c",
-            policy.env_prefix + probe.cmd,
-        ]
         policy.verify_execution()
-        proc = subprocess.run(command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s)
+        with NR.bounded_normal_scratch(
+            policy.argv, owner=candidate.parent / "tool_probe_scratch", boundary=external_boundary
+        ) as prefix:
+            command = [*prefix, "--chdir", str(candidate), "bash", "-c", policy.env_prefix + probe.cmd]
+            proc = subprocess.run(
+                command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
+            )
         row = {
             "label": probe.label,
             "returncode": proc.returncode,

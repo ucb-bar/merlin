@@ -62,6 +62,7 @@ def prepare_component_prompt_inputs(
     broker_path: str,
     broker_receipt_path: str,
     public_manifest_sha256: str | None = None,
+    author_agents: int | None = None,
 ) -> SP.ComponentPromptInputs:
     """Bind a host-selected component policy without selecting a model or legacy grant.
 
@@ -92,6 +93,7 @@ def prepare_component_prompt_inputs(
         broker_path,
         broker_receipt_path,
         public_manifest_sha256,
+        author_agents,
     )
     SP.render_component_prompt(inputs)
     return inputs

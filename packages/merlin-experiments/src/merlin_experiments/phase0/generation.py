@@ -358,11 +358,16 @@ def generate_target(
     arithmetic_intake=None,
     packing_intake=None,
     source_preparation: str | None = None,
+    operator_exclusion=None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
     if output_root is None:
         raise ValueError("Phase 0 requires an explicit output_root; generated capsules must not default to source data")
+    from .operator_exclusion import PublicationRefusal
+    from .operator_exclusion import require_selection as require_operator_exclusion
+
+    require_operator_exclusion(operator_exclusion, output_root, evidence_root)
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
     if component_coverage is not None and not component_only:
@@ -448,6 +453,10 @@ def generate_target(
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )
+    from .component_source_performance import SCHEMA_V2, verify_curriculum_template
+
+    if source_preparation == SCHEMA_V2:
+        verify_curriculum_template(performance_template, software=software_intake, hardware=hardware_intake)
     if profile.get("capsule_policy") == "derived_only":
         # Never substitute the old authored/reference corpus for a missing
         # derivation. Functional membership must come from new byte-bound inputs.
@@ -463,7 +472,13 @@ def generate_target(
             e.get("name")
             for e in profile.get("capsules", [])
             if e.get("source_role")
-            not in {"derived_sweep", "model_derived", "solver_derived", "materialized_iteration_capture"}
+            not in {
+                "derived_sweep",
+                "model_derived",
+                "solver_derived",
+                "materialized_iteration_capture",
+                "materialized_performance_capture",
+            }
         ]
         if authored:
             raise ValueError(f"derived-only Phase 0 refuses authored capsule membership: {authored}")
@@ -731,6 +746,10 @@ def generate_target(
         )
         for entry in entries
     ]
+    if any(entry.get("public_boundary") for entry in entries) and operator_exclusion is None:
+        from .operator_exclusion import PublicationRefusal
+
+        raise PublicationRefusal()
     for _s in _sweep_skips:
         _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
         _what = f"class {_s['label']} of family {_s['family']}" if _s.get("label") else f"family {_s['family']}"
@@ -826,6 +845,7 @@ def generate_target(
                     lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
                     out_root,
                     member=_member_path(e),
+                    operator_exclusion=operator_exclusion,
                 )
             else:
                 from merlin.targetgen.rtl.facts import observed_facts
@@ -842,7 +862,11 @@ def generate_target(
                         lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
                         out_root,
                         member=_member_path(e),
+                        operator_exclusion=operator_exclusion,
                     )
+        except PublicationRefusal:
+            # Operator publication checks cannot become per-member author diagnostics.
+            raise
         except Exception as exc:  # noqa: BLE001 — reported, never swallowed
             detail = _capture_failure_reason(exc)
             if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -872,8 +873,14 @@ class DevelopmentGsimFeedback:
             # makespan is not set by a slow member that was submitted last.
             for index, member in sorted(wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
                 if measurement_plan is not None or (member.family, member.capsule) not in self._baseline_cache:
-                    jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
-                jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
+                    jobs[pool.submit(contextvars.copy_context().run, one, index, member, "baseline")] = (
+                        index,
+                        "baseline",
+                    )
+                jobs[pool.submit(contextvars.copy_context().run, one, index, member, "candidate")] = (
+                    index,
+                    "candidate",
+                )
             for future in concurrent.futures.as_completed(jobs):
                 slot = jobs[future]
                 try:
@@ -970,8 +977,18 @@ class DevelopmentGsimFeedback:
         return value if type(value) is int else None
 
     def evaluate(
-        self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int, measurement_plan=None
+        self,
+        candidate: Path,
+        *,
+        round_index: int,
+        call_index: int,
+        timeout_s: int,
+        measurement_plan=None,
+        retained_revision=None,
+        complete_roster: bool = False,
     ) -> dict[str, Any]:
+        if type(complete_roster) is not bool or complete_roster and measurement_plan is not None:
+            raise StageGateError("complete-roster RTL ranking needs the original full measurement selection")
         candidate = Path(candidate).resolve(strict=True)
         if measurement_plan is not None:
             _measurement_selection(measurement_plan)
@@ -991,8 +1008,16 @@ class DevelopmentGsimFeedback:
         # bytes that produced them, and a snapshot gives that property outright instead of turning a
         # note into a voided campaign. Every run below reads the copy, so a concurrent edit cannot
         # change what was measured, and `candidate_sha256` names the bytes actually executed.
-        measured_candidate = call_root / "_measured_candidate"
-        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        if retained_revision is None:
+            measured_candidate = call_root / "_measured_candidate"
+            shutil.copytree(candidate, measured_candidate, symlinks=True)
+        else:
+            from .retained_revisions import executing_revision
+
+            if executing_revision(candidate) is not retained_revision:
+                raise StageGateError("retained RTL execution requires the issued fixed evaluator context")
+            retained_revision.verify()
+            measured_candidate = retained_revision.source
         candidate_before = str(hash_tree(measured_candidate)["sha256"])
         candidate = measured_candidate
         original_members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
@@ -1008,7 +1033,9 @@ class DevelopmentGsimFeedback:
         # measured on gSIM only in the final cells (one of them alone runs past an hour); here it gets
         # its roofline cell and a stated reason, and static analysis, Spike and the reduced witnesses
         # remain the agent's tools for it.
-        budget = authoring_gsim_floor_budget()
+        # An explicit complete sweep is the measured selection denominator.
+        # The exploratory floor budget must not silently omit its large cases.
+        budget = None if complete_roster else authoring_gsim_floor_budget()
         deferred = []
         if budget is not None:
             floors = {(member.family, member.capsule): self.roofline_floor(member) for member in members}
@@ -1190,7 +1217,9 @@ class DevelopmentGsimFeedback:
             # SAME work and it is already behind on all of it. The converse is false -- a candidate
             # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
             # winning prefix buys nothing and the full sweep is measured.
-            if measurement_plan is None and self._refuted_so_far(cells, index, len(members)):
+            # A weighted full-roster objective can recover on later members;
+            # its selected complete_roster route therefore preserves all cells.
+            if measurement_plan is None and not complete_roster and self._refuted_so_far(cells, index, len(members)):
                 stopped_after = index + 1
                 break
         for member in members[stopped_after:] if stopped_after is not None else ():
@@ -1281,6 +1310,8 @@ class DevelopmentGsimFeedback:
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
             raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
+        if retained_revision is not None:
+            retained_revision.verify()
         comparable = [row for row in cells if row["comparable"]]
         return CF.validate_redacted_feedback(
             {
@@ -1326,52 +1357,7 @@ class DevelopmentGsimFeedback:
         )
 
 
-def development_executor(
-    *,
-    contract_root: Path,
-    arm,
-    package,
-    package_sha256,
-    member,
-    decision,
-    workspace,
-    timeout_s,
-    certificate,
-    target_experiment,
-    rtl_identity,
-    hardware_counters=False,
-    counter_binding=None,
-):
-    # The installed engine uses the package-sandboxed Spike+GSIM path;
-    # the trusted caller supplies the contract resource root explicitly.
-
-    spec = PME.ExecutionSpec(
-        execution_index=0,
-        pair_index=0,
-        pair_id=f"{member.family}__{member.capsule}__development",
-        phase="tuning",
-        arm=arm,
-        family=member.family,
-        capsule=member.capsule,
-        replicate="r000",
-        package=package,
-        package_sha256=package_sha256,
-        member=member,
-        workload=PME.gsim_workload(member),
-        gsim_decision=decision,
-        gsim_certificate=certificate,
-    )
-    return PME.run_execution(
-        spec,
-        workspace,
-        timeout_s,
-        target_experiment,
-        rtl_identity,
-        contract_root=contract_root,
-        hardware_counters=hardware_counters,
-        **({"counter_binding": counter_binding} if hardware_counters else {}),
-        workers=1 if hardware_counters else sweep_workers(),
-    )
+development_executor = PME.development_executor
 
 
 def prepare_development_feedback(

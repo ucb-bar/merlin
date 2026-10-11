@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Iterator, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1051,7 +1052,7 @@ def _inside(path: Path, root: Path) -> bool:
 #: unmasked and the answer masks bypassed. Nothing would say so; the measurement would simply be
 #: taken outside the box. So the policy is per-thread and the patch is installed once, under a lock,
 #: for as long as any thread is inside it.
-_ACTIVE = threading.local()
+_ACTIVE = ContextVar("performance_package_sandbox", default=None)
 _PATCH_LOCK = threading.Lock()
 _PATCH_DEPTH = 0
 _ORIGINALS: dict = {}
@@ -1059,7 +1060,7 @@ _ORIGINALS: dict = {}
 
 def active_sandbox_policy() -> PackageSandboxPolicy | None:
     """The policy boxing the calling thread, or None when it is not inside one."""
-    return getattr(_ACTIVE, "policy", None)
+    return _ACTIVE.get()
 
 
 @contextlib.contextmanager
@@ -1071,8 +1072,7 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
     """
     global _PATCH_DEPTH
 
-    previous = getattr(_ACTIVE, "policy", None)
-    _ACTIVE.policy = policy
+    token = _ACTIVE.set(policy)
     with _PATCH_LOCK:
         if _PATCH_DEPTH == 0:
             _ORIGINALS["run_entrypoint"] = oot_runner.run_entrypoint
@@ -1083,7 +1083,7 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
     try:
         yield
     finally:
-        _ACTIVE.policy = previous
+        _ACTIVE.reset(token)
         with _PATCH_LOCK:
             _PATCH_DEPTH -= 1
             if _PATCH_DEPTH == 0:
@@ -1092,8 +1092,10 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
 
 
 def _refuse_build(pkg, *, timeout: int = 1800) -> None:
+    from . import functional_guard_execution
+
     active = getattr(oot_runner, "active_package_executor", None)
-    if callable(active) and active() is not None:
+    if callable(active) and active() is not None and not functional_guard_execution.owns_executor(active()):
         return _ORIGINALS["build_package"](pkg, timeout=timeout)
     build = pkg.manifest.get("build") or {}
     if any(build.get(key) for key in ("configure", "command")):
@@ -1101,8 +1103,15 @@ def _refuse_build(pkg, *, timeout: int = 1800) -> None:
 
 
 def _run_boxed(
-    pkg, name: str, input_mlir: Path, output_json: Path | None = None, *, timeout: int = 600,
-    write_bytecode: bool = False, artifact_profile=None, invocation_directory: Path | None = None,
+    pkg,
+    name: str,
+    input_mlir: Path,
+    output_json: Path | None = None,
+    *,
+    timeout: int = 600,
+    write_bytecode: bool = False,
+    artifact_profile=None,
+    invocation_directory: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Run one untrusted package entrypoint inside the CALLING THREAD's sandbox policy.
 
@@ -1110,11 +1119,19 @@ def _run_boxed(
     a closure: an invocation that arrives on a thread nobody boxed must not fall through to an
     unsandboxed execution, which is exactly what the previous save/restore could produce.
     """
+    from . import functional_guard_execution, normal_resource_launch
+
     active = getattr(oot_runner, "active_package_executor", None)
-    if callable(active) and active() is not None:
+    if callable(active) and active() is not None and not functional_guard_execution.owns_executor(active()):
         return _ORIGINALS["run_entrypoint"](
-            pkg, name, input_mlir, output_json, timeout=timeout, write_bytecode=write_bytecode,
-            artifact_profile=artifact_profile, invocation_directory=invocation_directory,
+            pkg,
+            name,
+            input_mlir,
+            output_json,
+            timeout=timeout,
+            write_bytecode=write_bytecode,
+            artifact_profile=artifact_profile,
+            invocation_directory=invocation_directory,
         )
     if write_bytecode or artifact_profile is not None:
         raise CampaignGateError("legacy package box has no reviewed artifact-profile or bytecode service")
@@ -1124,24 +1141,49 @@ def _run_boxed(
     _verify_frozen_policy(policy)
     if pkg.directory.resolve() != policy.package:
         raise CampaignGateError("capsule runner attempted to execute a package outside the snapshot")
+    if functional_guard_execution.active_guard() is not None and Path(input_mlir).is_symlink():
+        raise CampaignGateError("functional guard compiler input is linked")
+    if (
+        functional_guard_execution.active_guard() is not None
+        and output_json is not None
+        and Path(output_json).is_symlink()
+    ):
+        raise CampaignGateError("functional guard compiler output destination is linked")
     input_mlir = Path(input_mlir).resolve()
     output_json = Path(output_json).resolve() if output_json is not None else None
     if not _inside(input_mlir, policy.workspace):
         raise CampaignGateError("untrusted package input is outside the performance workspace")
     if output_json is not None and not _inside(output_json, policy.workspace):
         raise CampaignGateError("untrusted package output is outside the performance workspace")
+    if functional_guard_execution.active_guard() is not None:
+        return functional_guard_execution.execute_isolated(
+            policy, pkg, name, input_mlir, output_json, timeout=timeout, invocation_directory=invocation_directory
+        )
     argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
     if oot_runner._needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
     shell = policy.env_prefix + 'exec "$@"'
     command = [*policy.argv, "--chdir", str(policy.package), "bash", "-c", shell, "perf-package", *argv]
-    if invocation_directory is None:
-        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-    from merlin.common import invocation_record
+    boundary = normal_resource_launch.resources.active_resource_boundary()
+    with normal_resource_launch.bounded_normal_scratch(
+        policy.argv, owner=invocation_directory or policy.workspace, boundary=boundary
+    ) as prefix:
+        command = [*prefix, *command[len(policy.argv) :]]
+        if invocation_directory is None:
+            return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        from merlin.common import invocation_record
 
-    return invocation_record.run(command, directory=invocation_directory, stage=name, inputs=(input_mlir,),
-                                 outputs=(output_json,) if output_json else (), dependencies=(Path(__file__),),
-                                 capture_output=True, text=True, timeout=timeout)
+        return invocation_record.run(
+            command,
+            directory=invocation_directory,
+            stage=name,
+            inputs=(input_mlir,),
+            outputs=(output_json,) if output_json else (),
+            dependencies=(Path(__file__),),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
 
 
 def completion_report(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:

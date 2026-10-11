@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 
 SCHEMA = "merlin.invocation_record.v1"
+ARTIFACT_REUSE_SCHEMA = "merlin.artifact_reuse.v1"
 
 
 def _pin(path: Path) -> dict:
@@ -26,7 +27,16 @@ def _pin(path: Path) -> dict:
     try:
         if not path.is_file():
             raise OSError("not a regular file")
-        return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        before = path.stat()
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+        after = path.stat()
+        fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode")
+        if any(getattr(before, name) != getattr(after, name) for name in fields):
+            raise OSError("observation member changed during its read")
+        return {"path": str(path), "sha256": digest.hexdigest()}
     except OSError as error:
         # An observation must not replace the process's own missing-tool/input
         # failure. A verifier cannot admit an unavailable pin.
@@ -271,4 +281,74 @@ def require_environment(path: Path, *, environment, pin_replay=None) -> dict:
     document = verify(path, pin_replay=pin_replay)
     if document.get("kind") != "subprocess" or document.get("environment") != environment_identity(environment):
         raise ValueError("invocation has no matching effective process environment binding")
+    return document
+
+
+def record_artifact_reuse(
+    directory: Path, *, stage: str, selection_sha256: str, original_invocation: Path, inputs=(), outputs=()
+) -> Path:
+    """Record restored bytes separately from an actual process invocation.
+
+    The live build owner must authenticate the original closed process before
+    calling. This byte receipt issues no runtime closure, new invocation,
+    compiler timing, repeat or numerical verdict.
+    """
+    original = verify(original_invocation)
+    if original["kind"] != "subprocess" or not stage:
+        raise ValueError("artifact reuse requires its original completed process")
+    if (
+        type(selection_sha256) is not str
+        or len(selection_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in selection_sha256)
+    ):
+        raise ValueError("artifact reuse requires its complete selected build identity")
+    document = {
+        "schema": ARTIFACT_REUSE_SCHEMA,
+        "kind": "artifact_reuse",
+        "stage": stage,
+        "status": "restored",
+        "selection_sha256": selection_sha256,
+        "original_invocation": _pin(original_invocation),
+        "inputs": _pins(inputs),
+        "outputs": _pins(outputs),
+        "observed_ns": time.time_ns(),
+        "new_process": False,
+    }
+    original_hashes = {pin["sha256"] for pin in original["outputs"]}
+    if not document["outputs"] or any(pin["sha256"] not in original_hashes for pin in document["outputs"]):
+        raise ValueError("restored artifact has no matching original completed product")
+    encoded = json.dumps(document, sort_keys=True, indent=2) + "\n"
+    if len(encoded.encode()) > 1024 * 1024:
+        raise ValueError("artifact reuse receipt exceeds its byte budget")
+    parent = Path(directory).resolve() / "invocations" / uuid.uuid4().hex
+    parent.mkdir(parents=True, mode=0o700)
+    path = parent / "artifact_reuse.json"
+    path.write_text(encoded, encoding="utf-8")
+    verify_artifact_reuse(path)
+    return path
+
+
+def verify_artifact_reuse(path: Path) -> dict:
+    """Reopen byte provenance; saved receipts never issue a live cache owner."""
+    path = Path(path)
+    if path.stat().st_size > 1024 * 1024:
+        raise ValueError("artifact reuse receipt exceeds its byte budget")
+    document = json.loads(path.read_text())
+    if (
+        document.get("schema") != ARTIFACT_REUSE_SCHEMA
+        or document.get("kind") != "artifact_reuse"
+        or document.get("status") != "restored"
+        or document.get("new_process") is not False
+        or any(name in document for name in ("argv", "returncode", "started_ns", "finished_ns", "timing"))
+    ):
+        raise ValueError("artifact reuse receipt claims an unrelated process")
+    for pin in (*document["inputs"], *document["outputs"], document["original_invocation"]):
+        if not pin.get("sha256") or _pin(Path(pin["path"])) != pin:
+            raise ValueError("artifact reuse input, restored product or original record changed")
+    original = verify(Path(document["original_invocation"]["path"]))
+    if original["kind"] != "subprocess":
+        raise ValueError("artifact reuse has no actual original process")
+    original_hashes = {pin["sha256"] for pin in original["outputs"]}
+    if not document["outputs"] or any(pin["sha256"] not in original_hashes for pin in document["outputs"]):
+        raise ValueError("artifact reuse differs from its original completed products")
     return document

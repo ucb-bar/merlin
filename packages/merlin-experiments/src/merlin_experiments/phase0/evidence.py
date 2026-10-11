@@ -529,6 +529,10 @@ def select_evidence(
             whole_program_admission = json.loads(raw_whole_program)
             if operations_digest(whole_program_admission) != declared_whole_program.get("sha256"):
                 raise ValueError("whole-program admission sidecar differs from the requirement's commitment")
+        if conformance_spec is not None and requirement.get("public_program_sources") is not None:
+            from .public_programs import observe_inventory
+
+            observe_inventory(requirement, conformance_spec, observe)
         if sidecar is not None:
             raw_inventory = observe(sidecar, "application-inventory", required=False)
             if raw_inventory is not None:

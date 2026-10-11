@@ -7,6 +7,7 @@ traffic, allocations or time. Unsupported work is never silently discarded.
 
 from __future__ import annotations
 
+import struct
 from collections import Counter
 from dataclasses import asdict, dataclass
 
@@ -14,6 +15,34 @@ from merlin.targetgen.contract.emitted_dataflow import observe_emitted_dataflow
 from merlin.targetgen.elf_lanes import executable_sections
 
 SCHEMA = "merlin.compiled_static_features.v1"
+
+
+def linked_entry_extent(elf_bytes, entry_symbol):
+    """Read one defined function from the existing bounded ELF64 parser.
+
+    This establishes a linked extent only, never execution or semantic coverage.
+    Unsupported ELF formats and stripped/ambiguous definitions refuse.
+    """
+    from merlin.perf.debug_companion import _read, _string
+
+    _, sections = _read(elf_bytes)
+    definitions = set()
+    for table in sections:
+        if table.kind not in (2, 11):
+            continue
+        if table.entry_size != 24 or len(table.data) % 24 or not 0 <= table.link < len(sections):
+            raise ValueError("unsupported ELF function symbol table")
+        strings = sections[table.link]
+        if strings.kind != 3:
+            raise ValueError("ELF function symbols have no string table")
+        for offset in range(0, len(table.data), 24):
+            name, info, _, owner, address, size = struct.unpack_from("<IBBHQQ", table.data, offset)
+            if info & 15 == 2 and 0 < owner < len(sections) and _string(strings.data, name) == entry_symbol:
+                definitions.add((address, size))
+    if len(definitions) != 1:
+        raise ValueError("ELF has no unique retained function definition")
+    address, size = next(iter(definitions))
+    return {"symbol": entry_symbol, "address": address, "size_bytes": size, "scope": "static linked definition"}
 
 
 @dataclass(frozen=True)

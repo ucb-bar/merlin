@@ -13,6 +13,17 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 )
 
 
+def require_linked_symbols(elf: Path, symbols: set[str]) -> None:
+    from merlin.llvmlower import toolchain
+
+    command = [str(toolchain.nm()), "--defined-only", "--extern-only", str(elf)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=True)
+    defined = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
+    missing = sorted(symbols - defined)
+    if missing:
+        raise ValueError(f"linked ELF omits {len(missing)} routed device symbol(s): {missing[:8]}")
+
+
 def require_static_build_inputs(
     receipt: Mapping[str, Any], *, target: str, board: str, catalog: Path, dts: Path
 ) -> None:

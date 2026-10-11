@@ -23,6 +23,7 @@ venv. Precision is a parameter (``dtype``): the SAME token a target's ``compute_
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import json
@@ -41,6 +42,7 @@ from merlin.common.paths import env as _env
 from merlin.common.paths import repo_root
 from merlin.targetgen import capture_cache, component_sources
 from merlin.targetgen.golden_store import write_golden
+
 from .capsule_capture_spec import _capture_spec, _entry_seed
 
 _MODEL_CAPTURE_ABI_VERSION = 6
@@ -1388,8 +1390,6 @@ _FUSED_OP_INPUT_NAMES = {
 _FUSED_OP_INPUT_NAMES.update(component_sources.INPUT_NAMES)
 
 
-
-
 # Float tolerance for a host-eager golden. A target whose native datapath is integer (e.g.
 # exact_int) carries no atol/rtol, but a float (bf16/fp16) op still needs one — fall back to a sane
 # default so a fused op on an integer-datapath target is gradeable.
@@ -1466,9 +1466,6 @@ def _flatten(nested) -> list:
     for row in nested:
         out.extend(_flatten(row) if isinstance(row[0], list) else row)
     return out
-
-
-
 
 
 def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_order, exact_integer: bool = False):
@@ -3350,7 +3347,13 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
 
     from merlin.targetgen.application_inventory import verify_capture_receipt
 
-    if selection.get("workload_role") != "iteration" or selection.get("coverage_scope") != "full_capture":
+    public_performance = (
+        selection.get("schema") == "merlin.materialized_public_capture.v2"
+        and selection.get("workload_role") == "performance_scale"
+    )
+    if (selection.get("workload_role") != "iteration" and not public_performance) or selection.get(
+        "coverage_scope"
+    ) != "full_capture":
         raise M2MUnavailable(
             "materialized derivation requires an explicit full iteration capture, never held-out validation"
         )
@@ -3405,6 +3408,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     meta = json.loads(read_bound("meta.json"))
     if not meta.get("ok") or meta.get("opaque", -1) != 0:
         raise M2MUnavailable("materialized model metadata does not declare a clean capture")
+    if public_performance and meta.get("extra"):
+        raise M2MUnavailable("public performance capture needs a complete portable extra-constant binding")
     output_abi = meta.get("output_abi") or []
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
@@ -3466,6 +3471,19 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
             raise M2MUnavailable("materialized loader must be an ordinary member beside its selected capture")
         if hashlib.sha256(loader.read_bytes()).hexdigest() != selection["loader_sha256"]:
             raise M2MUnavailable("materialized loader differs from its preselected workload snapshot")
+    if public_performance:
+        profile_sha = (meta.get("loader_provenance") or {}).get("profile_sha256")
+        if profile_sha is not None or selection.get("profile_path"):
+            profile = Path(selection.get("profile_path", ""))
+            if (
+                profile.parent != directory
+                or profile.name != "profile.json"
+                or profile.is_symlink()
+                or not profile.is_file()
+                or hashlib.sha256(profile.read_bytes()).hexdigest() != profile_sha
+                or profile_sha != selection.get("profile_sha256")
+            ):
+                raise M2MUnavailable("public performance profile differs from its preselected capture")
     meta["materialized_artifact_identities"] = receipt["artifacts"]
     meta["materialized_receipt_bytes"] = receipt_raw
     # Retain original source bytes. The writer records the one known relocation.
@@ -3633,7 +3651,13 @@ def write_model_capsule(
         "name": entry["name"],
         "kind": "model",
         **({"materialized_capture": art.meta["materialized_capture"]} if artifact is not None else {}),
-        "source_role": "model_derived" if artifact is not None else entry.get("source_role", "pytorch_model_slice"),
+        "source_role": (
+            "materialized_performance_capture"
+            if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale"
+            else "model_derived"
+            if artifact is not None
+            else entry.get("source_role", "pytorch_model_slice")
+        ),
         "source_reference": entry.get("source_reference", f"whole model {entry.get('model', '')}"),
         "label": entry.get("label", "public"),
         "interface_mlir": "capsule.interface.mlir",
@@ -3761,6 +3785,8 @@ def write_model_capsule(
     frontend_evidence = _write_frontend_evidence(art, d, linalg)
     if frontend_evidence is not None:
         cap["frontend_trace"] = frontend_evidence
+    if entry.get("performance") is not None:
+        cap["performance"] = copy.deepcopy(entry["performance"])
     if src is not None:
         cap["capture_tool"] = _freeze_selected_m2m_tool(src.m2m_dir, d)
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
@@ -3778,6 +3804,19 @@ def write_model_capsule(
             if hashlib.sha256(loader_bytes).hexdigest() != art.meta["materialized_capture"]["loader_sha256"]:
                 raise M2MUnavailable("materialized loader changed during capsule copying")
             (d / "capsule.pytorch.py").write_bytes(loader_bytes)
+        if art.meta["materialized_capture"].get("workload_role") == "performance_scale":
+            origin = Path(art.meta["materialized_capture"]["path"]).parent
+            for member in ("meta.json", "inputs.npz", "input_order.json", "golden.npy"):
+                raw = (origin / member).read_bytes()
+                declared = art.meta["materialized_artifact_identities"][member]
+                if len(raw) != declared["bytes"] or hashlib.sha256(raw).hexdigest() != declared["sha256"]:
+                    raise M2MUnavailable("public performance capture reference closure changed")
+                (d / ("source-capture-" + member)).write_bytes(raw)
+            if art.meta["materialized_capture"].get("profile_path"):
+                profile_raw = Path(art.meta["materialized_capture"]["profile_path"]).read_bytes()
+                if hashlib.sha256(profile_raw).hexdigest() != art.meta["materialized_capture"]["profile_sha256"]:
+                    raise M2MUnavailable("public performance profile changed during publication")
+                (d / "profile.json").write_bytes(profile_raw)
     write_golden(d, golden)
     return d
 

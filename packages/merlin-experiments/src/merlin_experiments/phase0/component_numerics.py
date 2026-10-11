@@ -53,6 +53,16 @@ def evaluate(capsule):
                 [args[0].data[row * cols + col] for col in range(cols) for row in range(rows)],
                 node["dtype"],
             )
+        elif op == "reduce_sum":
+            rows, cols = args[0].shape
+            # Mathematical sums followed by the independent signed-width
+            # projection below; no emitted loop or contraction is consulted.
+            values = (
+                [sum(int(args[0].data[row * cols + col]) for row in range(rows)) for col in range(cols)]
+                if node["axis"] == 0
+                else [sum(int(args[0].data[row * cols + col]) for col in range(cols)) for row in range(rows)]
+            )
+            output = Tensor(tuple(node["shape"]), values, node["dtype"])
         else:
             output = Tensor(tuple(node["shape"]), list(args[0].data), node["dtype"])
         # Standard unflagged MLIR integer operations have modular width. This

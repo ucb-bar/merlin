@@ -1,5 +1,26 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Ordinary `public_joint_boundaries` v1 selects the shared public boundary factory.
+`public_boundary_semantics` replays exact original public typed calls and derives
+connected cuts/dimension equalities; `public_boundaries` emits changed bounded
+ATen loaders through normal generation-time sealed capture and model writing.
+Reopen the original context before freezing loaders and every fresh captured
+call, schema, type and published reference before staged exclusion/discovery.
+Summed logical tensor volumes at selected store row widths are pressure probes,
+never physical placement, simultaneous allocations or lifetime proofs. Preserve
+complete original programs separately and every unsupported/budget-denied UNKNOWN.
+
+Ordinary recipe `performance_source_programs` v1 selects the complete descriptor's
+unchanged public performance roster as connected dev members. Require every
+original sealed capture, selected loader/profile, finite ABI/payload budgets and
+operator-private exclusion before derivation publishes any source member. Keep
+the full original graph and host eager input/output closure through the existing
+materializer/writer and normal frozen input owner. Whole-program placement uses
+the same software screen as iteration sources. Purpose metadata may report only
+observed operations and existing conditional form boundaries; absent movement,
+conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
+is an alternative to an RTL trait rationale, never execution qualification.
+
 Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
 
 
@@ -26,6 +47,22 @@ recreate live source authority or upgrade prior observations.
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
+Profiles also own declaration-order Cartesian products and one-level variant
+formatting; sweeps retain their existing import names and expansion semantics.
+
+`operator_exclusion.select(path, sha256)` is a fixed operator-only selection of
+an ordinary private content-pinned JSON hash list. Never discover protected
+programs or shapes, put this selection in declarations/receipts/bundles, or expose
+matches in author feedback. Its typed contraction hashes include every actual
+matmul node's ordered input/result geometry, storage and selected arithmetic;
+names, graph topology and source bundle identity cannot hide an equal node.
+The operator passes the opaque selection directly to `declared_run.run` or
+`generation.generate_target`. `staging.write_staged` checks complete emitted
+public/dev sources before any new member is promoted. Unknown source structure,
+source/policy drift and exclusions share one generic refusal; hidden source
+cohorts retain their private scope. This safeguard grants no numerical/runtime
+qualification. Generation propagates that refusal without matched-member error
+rows. Default legacy calls do not discover or select an exclusion list.
 
 Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
 construction for the exact original signed diagonal/default, positive rank of
@@ -203,6 +240,19 @@ guard and private transfer commitment to fixed full-reference replay. No supplie
 factory, receipt, target encoding or accepted status is an input. Legacy request
 versions stay closed; v4 still retains all missing requirements and blocked later
 phases, with hardware guards and measured baselines unestablished.
+
+Explicit source-preparation v2 derives the shared template and objectives from
+live minimal software and RTL intake. The declared caller selects only a pinned,
+closed construction policy; workload/query selectors and arbitrary factories
+refuse before issuance. Normal generation rederives that complete template before
+writing, then uses existing sweep, aggregate-budget, source-screen and exact
+reference owners. Real signed casts and axis reductions use component-program
+v2. Every member retains its purpose, numerical policy, complete output boundary,
+source tier and limits. Joint adjacent source probes use observed memory depth,
+volume and optional array dimensions; physical axis/capacity/tail mappings remain
+UNKNOWN. Missing semantics and metadata-budget refusals retain mandatory rows.
+The explicit host source basis substitutes for a required RTL trait only for
+source preparation; saved execution labels cannot satisfy its execution gate.
 
 `component_source_demand` is a separate explicit private v1 source-contract
 consumer. Replay the same live source selectors and every complete original

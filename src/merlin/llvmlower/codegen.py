@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import subprocess
 from pathlib import Path
 
 from merlin.common import compile_trace
@@ -67,12 +68,39 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
     if timeout_s is not None:
         limit = min(limit, timeout_s) if limit is not None else timeout_s
     from merlin.common import invocation_record
+    from merlin.runtime.build_runtime import run_in_build_view
 
     if not outputs:
         _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
         return
     argv = tuple(str(token) for token in cmd)
     cwd, environment = Path.cwd(), dict(os.environ)
+    if "-fstack-usage" in argv:
+        outputs = tuple(dict.fromkeys((*map(Path, outputs), Path(outputs[0]).with_suffix(".su"))))
+    try:
+        selected = run_in_build_view(
+            argv,
+            inputs=inputs,
+            outputs=outputs,
+            directory=Path(outputs[0]).parent.resolve(),
+            stage=stage,
+            cwd=cwd,
+            env=environment,
+            timeout=limit,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        shown = " ".join(argv)[:1000]
+        raise CodegenError(f"command timed out after {limit}s (pathological compile): {shown}") from None
+    if selected is not None:
+        if selected.returncode:
+            shown = " ".join(argv)[:1000]
+            raise CodegenError(
+                f"command failed (rc {selected.returncode}): {shown}\n"
+                f"STDOUT:{(selected.stdout or '')[-2000:]}\nSTDERR:{(selected.stderr or '')[-2000:]}"
+            )
+        return
     with invocation_record.observe(
         Path(outputs[0]).parent,
         stage=stage,

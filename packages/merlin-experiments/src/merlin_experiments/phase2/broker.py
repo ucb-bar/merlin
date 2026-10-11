@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.targetgen.target_experiment import TargetExperiment
 
+from . import normal_resource_launch as NR
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
 from .contracts import write_json as _write_json
@@ -143,8 +144,10 @@ def inner_command(
     timeout_s: int,
 ) -> list[str]:
     """Construct one shell-free payload for the inner broker."""
-    if (policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
-        or not policy.clear_environment):
+    if (
+        policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
+        or not policy.clear_environment
+    ):
         raise StageGateError("inner command requires the explicit clear-environment policy")
     if (
         not argv
@@ -184,6 +187,7 @@ class Broker:
         max_tool_seconds: int,
         mandatory_analysis_reserve_seconds: float = 0.0,
         public_control_dir: Path | None = None,
+        external_boundary=None,
     ):
         self.workflow = workflow
         if (
@@ -192,11 +196,17 @@ class Broker:
             or workflow.target_experiment != target_experiment
         ):
             raise StageGateError("broker workflow is bound to another invocation")
+        with NR.selected_boundary(external_boundary, writable_roots=(candidate, receipt_path.parent)):
+            self._external_boundary = external_boundary
         self.policy = policy
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
-            if (not self.public_control_dir.is_absolute() or self.public_control_dir.is_symlink()
-                or self.public_control_dir == receipt_path.parent or self.public_control_dir.is_relative_to(candidate)):
+            if (
+                not self.public_control_dir.is_absolute()
+                or self.public_control_dir.is_symlink()
+                or self.public_control_dir == receipt_path.parent
+                or self.public_control_dir.is_relative_to(candidate)
+            ):
                 raise StageGateError(
                     "component public broker control must be separate from private evidence and candidate"
                 )
@@ -361,7 +371,10 @@ class Broker:
             raise budget_error
         started = time.monotonic()
         try:
-            return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
+            with NR.selected_boundary(
+                self._external_boundary, writable_roots=(self.candidate, self.receipt_path.parent)
+            ):
+                return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
         except StageGateError:
             # EVERY ALLOCATED INDEX GETS A RECEIPT. The index is taken before the inner command is
             # built, and building it can refuse (clear-environment policy, malformed argv, a
@@ -409,10 +422,20 @@ class Broker:
             result, feedback_document = outcome
         else:
             command = inner_command(self.policy, self.target_experiment, self.candidate, raw_argv, timeout_s)
+            original_prefix = self.policy.argv
+            if command[: len(original_prefix)] != list(original_prefix):
+                raise StageGateError("broker command lost its original verified namespace prefix")
             try:
-                proc = subprocess.run(
-                    command, cwd=str(self.policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
-                )
+                with NR.bounded_normal_scratch(
+                    original_prefix, owner=self.receipt_path.parent / "tool_scratch", boundary=self._external_boundary
+                ) as prefix:
+                    proc = subprocess.run(
+                        [*prefix, *command[len(original_prefix) :]],
+                        cwd=str(self.policy.process_cwd),
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_s,
+                    )
                 result = {
                     "returncode": proc.returncode,
                     "stdout": (proc.stdout or "")[-1_000_000:],
@@ -427,6 +450,8 @@ class Broker:
                     "timed_out": True,
                     "elapsed_s": round(time.monotonic() - started, 3),
                 }
+        if self._external_boundary is not None:
+            self._external_boundary.verify(writable_roots=(self.candidate, self.receipt_path.parent))
         with self._lock:
             self.calls[call_index].update(
                 {key: value for key, value in result.items() if key not in ("stdout", "stderr")}
@@ -463,9 +488,20 @@ class Broker:
             if self.public_control_dir is not None:
                 # Public status projection has no private artifact paths, input
                 # identities, provenance, goldens or evaluator source records.
-                projection = {key: receipt[key] for key in
-                              ("index", "action", "state", "returncode", "stdout_sha256", "stderr_sha256",
-                               "bindings_command_sha256", "receipt_schema_version") if key in receipt}
+                projection = {
+                    key: receipt[key]
+                    for key in (
+                        "index",
+                        "action",
+                        "state",
+                        "returncode",
+                        "stdout_sha256",
+                        "stderr_sha256",
+                        "bindings_command_sha256",
+                        "receipt_schema_version",
+                    )
+                    if key in receipt
+                }
                 with (self.public_control_dir / "receipts.jsonl").open("ab", buffering=0) as stream:
                     stream.write(_canonical_json(projection))
                     os.fsync(stream.fileno())
@@ -568,6 +604,9 @@ class Broker:
             self._server.shutdown()
             self._server.server_close()
             self._thread.join(timeout=5)
+            pool = getattr(self.workflow, "evaluation_pool", None)
+            if pool is not None:
+                pool.close()
             if socket_path is not None:
                 socket_path.unlink(missing_ok=True)
 
@@ -619,7 +658,13 @@ raise SystemExit(int(result.get("returncode", 125)))
 
 
 def stage_broker_shim(
-    control_dir: Path, *, host: str, port: int, token: str, tool_timeout_s: int, actions: Sequence[BrokerAction],
+    control_dir: Path,
+    *,
+    host: str,
+    port: int,
+    token: str,
+    tool_timeout_s: int,
+    actions: Sequence[BrokerAction],
     socket_path: str | None = None,
 ) -> Path:
     if control_dir.is_symlink() or (control_dir.exists() and not control_dir.is_dir()):

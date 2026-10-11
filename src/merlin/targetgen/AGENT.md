@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+Explicit `component_program` v2 adds signed integer casts and true kept-axis
+sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
+meaning. Logical copies, fanout, aliases and state epochs are source semantics;
+physical placement, allocation, effects and timing need separate witnesses.
+`op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
+selected `Bound`, retaining impossible positive lower witnesses as missing. It
+grants no tensor-axis, physical-capacity or tiling interpretation.
+
 `original_reduction_sources` preserves exact original mean/softmax axes, dtype defaults and layer-normalization literals/affine/epsilon bindings. Fresh positive contiguous geometry uses original rank and explicit extent; normalized suffixes remain literal. Bind rank to complete original shape/stride metadata before axis expansion, and bound complete logical input/affine/output counts before fresh allocation. Unsupported storage/promotion/empty/layout cases stay unavailable. Construction grants no reference, stress, alias/effect, packing, hardware or phase admission.
 
 
@@ -52,6 +60,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `build_cache.build_identity` includes the independently selected original
+  `llvmlower.codegen.clang()` driver beside recipe compile/link drivers. Exact
+  path, driver bytes and reported version/target invalidate legacy build keys;
+  an unsupported or unavailable selector disables reuse. These driver pins do
+  not establish transitive toolchain/loader/header/sysroot closure. Explicit
+  readback, build-service and other cache-free routes remain cache-free.
 - `artifact_bundle.py` supplies explicit profile-bound structural checks for a
   draft artifact composition. File identities and logical-buffer ordering grant
   no artifact ABI, physical alias, capability, synchronization or execution
@@ -63,6 +77,9 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   invocation without the scoped owner during a guarded run refuses, including
   threads that did not inherit the execution context. Normal unguarded calls
   retain their existing package contract and runtime behavior.
+- `capsule_common.lower_interface` copies the caller's context into its original
+  overlapping buffer worker and joins that worker before returning or raising;
+  caller-owned package/resource scopes and scratch must outlive actual calls.
 
 - `cli.py` / `pipeline.py` — the deterministic, LLM-free entry points.
 - `ingest/` — record inputs as a SourceManifest (no crawling, no vendoring).

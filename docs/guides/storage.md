@@ -3,7 +3,7 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-10-07
+last_verified: 2026-10-11
 related: [reproducibility, getting_started, gemmini_experiment]
 code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/oot_repo.py,
@@ -14,6 +14,8 @@ code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/storage_cli.py,
             src/merlin/common/storage_lifecycle.py,
             src/merlin/common/storage_ops.py,
+            packages/merlin-experiments/src/merlin_experiments/phase2/external_resources.py,
+            packages/merlin-experiments/src/merlin_experiments/phase2/_kernel_resources.py,
             merlin/contract/storage.yaml,
             .claude/hooks/guard_artifact_writes.py,
             packages/merlin-experiments/src/merlin/targetgen/sandbox/bwrap.py,
@@ -23,6 +25,55 @@ code_refs: [src/merlin/common/content_store.py,
 ---
 
 # Disk under `out/` — why it grows and what is safe to reclaim
+
+## Externally enforced evaluation budgets
+
+The optional evaluation boundary consumes an already provisioned Linux cgroup v2
+and a dedicated capped backing filesystem. It creates neither. Its live owner
+is passed separately from serializable assigned resource data. The verifier
+reopens current cgroup membership, finite local `cpu.max`/`memory.max`, disabled
+swap, the selected effective CPU set, nonwritable controls and all selected
+writable roots. The stage must already have no effective/permitted/ambient
+capabilities and `NoNewPrivs=1`; ordinary local children inherit that boundary.
+All author, evaluator, cache, journal, output and temporary roots must be included
+in the same explicit original-owner inventory. Runtime/scientific qualification
+does not issue resource authority.
+
+The whole stage must also already run in an enclosing filesystem namespace with
+a readonly root. Every writable backing mount must use that same capped
+filesystem, including `/tmp` and `/dev/shm`; device-directory metadata is readonly.
+Only the genuine kernel procfs and devpts interfaces are exempt. The verifier
+reopens the actual complete mount inventory and namespace identity, so a mount
+plan or container inspection record cannot supply this proof. The ordinary local
+Phase1 simulator/backend inherits this enclosing namespace and the same cgroup;
+changing its implementation or selecting a separate simulator is unnecessary.
+Inherited writable regular-file handles must also use capped backing; readonly
+mounts cannot revoke a previously opened host log or output file. Writable raw
+block-device handles refuse. Unbound external supervisors and container services
+remain refused.
+The visible device namespace must also contain only ordinary minimal kernel
+devices and standard proc/terminal links, with no raw storage or FUSE device grant.
+Their numbers follow the [Linux device ABI](https://docs.kernel.org/admin-guide/devices.html).
+
+Supported backing is a whole writable ext4, XFS or tmpfs filesystem whose actual
+`statvfs` data capacity does not exceed the selected disk budget. Bind subtrees,
+linked roots, nested mounts, large volumes with project-quota metadata and
+unbound native/container services refuse hard mode. This bounds allocated data,
+including unlinked open files; it does not bound sparse logical file sizes.
+Existing namespace launches can replace their fresh `/tmp` and `/dev/shm` with
+empty private directories on this backing while preserving original tool and
+source grants. Root and device-directory metadata are remounted readonly.
+Kernel OOM behavior still applies, and individual evaluations can fail when the
+shared backing becomes full. Failed durable result/cleanup finalization remains
+UNKNOWN with ownership retained, rather than publishing completion.
+
+The ordinary pool without this selected live owner provides admission accounting,
+process limits and sampled output cancellation. It does not claim aggregate
+kernel CPU/RAM/disk enforcement. Tests on a shared host exercise read-only
+refusals and harmless cleanup failures; they do not establish a successful
+externally provisioned hard boundary.
+
+## Storage accounting
 
 Generated output is large by design: a whole-model run holds MLIR at every stage, an ELF, a trace and
 a grade. It became large by *accident* twice, and both times the diagnosis took longer than the fix,

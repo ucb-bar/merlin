@@ -21,6 +21,38 @@ def elf():
     return bytes(header) + empty + strings + code + names + b"opaque00"
 
 
+def symbol_elf():
+    """Structural ELF64 with a real function-symbol row; no executable ISA fixture."""
+    names = b"\0.names\0.code\0.strings\0.symbols\0"
+    strings = b"\0entry\0"
+    header = bytearray(64)
+    header[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<HHIQQQIHHHHHH", header, 16, 2, 0, 1, 1024, 0, 64, 0, 64, 0, 0, 64, 5, 1)
+    start = 64 + 5 * 64
+    sections = [bytes(64), struct.pack("<IIQQQQIIQQ", 1, 3, 0, 0, start, len(names), 0, 0, 1, 0)]
+    start += len(names)
+    sections.append(struct.pack("<IIQQQQIIQQ", 8, 1, 4, 1024, start, 8, 0, 0, 1, 0))
+    start += 8
+    sections.append(struct.pack("<IIQQQQIIQQ", 14, 3, 0, 0, start, len(strings), 0, 0, 1, 0))
+    start += len(strings)
+    sections.append(struct.pack("<IIQQQQIIQQ", 23, 2, 0, 0, start, 24, 3, 0, 8, 24))
+    symbol = struct.pack("<IBBHQQ", 1, 2, 0, 2, 1024, 8)
+    return bytes(header) + b"".join(sections) + names + b"opaque00" + strings + symbol
+
+
+def test_linked_entry_is_read_from_native_symbol_table_and_missing_definition_refuses():
+    assert F.linked_entry_extent(symbol_elf(), "entry") == {
+        "symbol": "entry",
+        "address": 1024,
+        "size_bytes": 8,
+        "scope": "static linked definition",
+    }
+    with pytest.raises(ValueError, match="unique retained"):
+        F.linked_entry_extent(symbol_elf(), "another")
+    with pytest.raises(ValueError, match="ELF64"):
+        F.linked_entry_extent(b"not an ELF", "entry")
+
+
 def observe(operations, **changes):
     kwargs = {
         "llvm_mlir": "module { llvm.func @entry(%a: !llvm.ptr, %b: !llvm.ptr) {\n" + operations + "\nllvm.return } }",
