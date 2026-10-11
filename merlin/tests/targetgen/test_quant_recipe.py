@@ -482,3 +482,33 @@ def test_a_capture_takes_the_targets_recipe_only_when_it_is_derived_for_that_for
     monkeypatch.setattr(QR, "for_target", lambda target, **_: [QR.derive(RF.derive("t", facts={}))])
     assert CS.derived_recipe("t", "int8") is None  # underivable: scheme stands
     assert CS.derived_recipe(None, "int8") is None
+
+
+def test_capture_cpu_policy_keeps_reference_bytes_when_inherited_threads_change():
+    from merlin.common.paths import env
+
+    python = env("MERLIN_M2M_PYTHON")
+    if not python or not Path(python).is_file():
+        pytest.skip("no capture interpreter is configured")
+    worker = Path(QR.__file__).with_name("_m2m_capture_worker.py")
+    program = """
+import importlib.util, json, sys, torch
+spec = importlib.util.spec_from_file_location("capture_worker", sys.argv[1])
+worker = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(worker)
+observations = []
+for inherited_threads in (2, 4):
+    torch.set_num_threads(inherited_threads)
+    policy = worker._seed_capture(0, torch)
+    assert policy["cpu_threads"] == torch.get_num_threads() == 1
+    model = torch.nn.Sequential(torch.nn.Linear(16, 32), torch.nn.GELU(), torch.nn.Linear(32, 16)).eval()
+    with torch.no_grad():
+        output = model(torch.linspace(-1, 1, 272).reshape(17, 16))
+    observations.append(output.contiguous().view(torch.uint8).numpy().tobytes())
+assert observations[0] == observations[1]
+print(json.dumps({"cpu_threads": policy["cpu_threads"], "same_bytes": True}))
+"""
+    result = subprocess.run(
+        [python, "-c", program, str(worker)], capture_output=True, text=True, timeout=60, check=True
+    )
+    assert json.loads(result.stdout) == {"cpu_threads": 1, "same_bytes": True}

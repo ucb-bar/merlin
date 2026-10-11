@@ -133,11 +133,14 @@ def _seed_capture(seed: int, torch) -> dict:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    # Parallel CPU reductions can change reference bytes when affinity changes.
+    torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
     return {
         "seed": seed,
         "rngs": ["python", "numpy", "torch"],
         "deterministic_algorithms": "required",
+        "cpu_threads": torch.get_num_threads(),
         "scope": "selected framework build and inputs",
     }
 
