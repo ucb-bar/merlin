@@ -143,8 +143,10 @@ def inner_command(
     timeout_s: int,
 ) -> list[str]:
     """Construct one shell-free payload for the inner broker."""
-    if (policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
-        or not policy.clear_environment):
+    if (
+        policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
+        or not policy.clear_environment
+    ):
         raise StageGateError("inner command requires the explicit clear-environment policy")
     if (
         not argv
@@ -195,8 +197,12 @@ class Broker:
         self.policy = policy
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
-            if (not self.public_control_dir.is_absolute() or self.public_control_dir.is_symlink()
-                or self.public_control_dir == receipt_path.parent or self.public_control_dir.is_relative_to(candidate)):
+            if (
+                not self.public_control_dir.is_absolute()
+                or self.public_control_dir.is_symlink()
+                or self.public_control_dir == receipt_path.parent
+                or self.public_control_dir.is_relative_to(candidate)
+            ):
                 raise StageGateError(
                     "component public broker control must be separate from private evidence and candidate"
                 )
@@ -463,9 +469,20 @@ class Broker:
             if self.public_control_dir is not None:
                 # Public status projection has no private artifact paths, input
                 # identities, provenance, goldens or evaluator source records.
-                projection = {key: receipt[key] for key in
-                              ("index", "action", "state", "returncode", "stdout_sha256", "stderr_sha256",
-                               "bindings_command_sha256", "receipt_schema_version") if key in receipt}
+                projection = {
+                    key: receipt[key]
+                    for key in (
+                        "index",
+                        "action",
+                        "state",
+                        "returncode",
+                        "stdout_sha256",
+                        "stderr_sha256",
+                        "bindings_command_sha256",
+                        "receipt_schema_version",
+                    )
+                    if key in receipt
+                }
                 with (self.public_control_dir / "receipts.jsonl").open("ab", buffering=0) as stream:
                     stream.write(_canonical_json(projection))
                     os.fsync(stream.fileno())
@@ -568,6 +585,9 @@ class Broker:
             self._server.shutdown()
             self._server.server_close()
             self._thread.join(timeout=5)
+            pool = getattr(self.workflow, "evaluation_pool", None)
+            if pool is not None:
+                pool.close()
             if socket_path is not None:
                 socket_path.unlink(missing_ok=True)
 
@@ -619,7 +639,13 @@ raise SystemExit(int(result.get("returncode", 125)))
 
 
 def stage_broker_shim(
-    control_dir: Path, *, host: str, port: int, token: str, tool_timeout_s: int, actions: Sequence[BrokerAction],
+    control_dir: Path,
+    *,
+    host: str,
+    port: int,
+    token: str,
+    tool_timeout_s: int,
+    actions: Sequence[BrokerAction],
     socket_path: str | None = None,
 ) -> Path:
     if control_dir.is_symlink() or (control_dir.exists() and not control_dir.is_dir()):
