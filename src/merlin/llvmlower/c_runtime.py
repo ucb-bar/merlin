@@ -18,6 +18,7 @@ Nothing here is target-specific: the same artifacts feed the host and the spike 
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -145,6 +146,7 @@ def generate(
     prepared_dir: str | Path | None = None,
     entry_projection: EntryWeightProjection | None = None,
     entry_projection_source: str | Path | None = None,
+    materialize_weights: bool = True,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -160,7 +162,13 @@ def generate(
     ``max_session_steps`` caps how many steps of a session corpus are embedded (streams and the
     correctness/quality references together, so step k still meets reference k). ``None`` embeds the
     whole corpus, which is what every existing caller gets.
+
+    ``materialize_weights=False`` still derives and hashes the exact blob and
+    argument offsets, but leaves the binary file to a caller that already has
+    a verified copy. This avoids duplicating checkpoint weights per stage.
     """
+    if type(materialize_weights) is not bool:
+        raise TypeError("materialize_weights must be a bool")
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
     prepared_dir = Path(prepared_dir).resolve() if prepared_dir is not None else out_dir
     if entry_projection is not None:
@@ -655,7 +663,13 @@ def generate(
         f"void {invoke_name}(void **d) {{ _mlir_ciface_{ciface_name}({call}); }}",
     ]
 
-    (out_dir / "weights.bin").write_bytes(bytes(blob) + bytes(appended))
+    weight_digest = hashlib.sha256()
+    weight_digest.update(blob)
+    weight_digest.update(appended)
+    if materialize_weights:
+        with (out_dir / "weights.bin").open("wb") as stream:
+            stream.write(blob)
+            stream.write(appended)
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")
@@ -680,6 +694,7 @@ def generate(
         "n_qinner": len(qinner_args),
         "n_quant_hoist": len(quant_hoist_args),
         "weights_bytes": len(blob) + len(appended),
+        "weights_sha256": weight_digest.hexdigest(),
         "static_io_bytes": static_io_bytes + output_bytes,
     }
     if entry_projection is not None:

@@ -9,6 +9,7 @@ that only measures a few steps is not forced to embed the whole corpus as C lite
 from __future__ import annotations
 
 import json
+import hashlib
 import struct
 
 import numpy as np
@@ -99,6 +100,13 @@ def test_table_and_blob_carry_the_lifted_quant_inner_tensor(tmp_path):
     stored = np.frombuffer(blob[offset : offset + SCALE.nbytes], dtype=np.float32)
     assert np.array_equal(stored, SCALE)
     assert info["weights_bytes"] == len(blob)
+    metadata_only = tmp_path / "generated_without_weights"
+    no_blob = c_runtime.generate(model, metadata_only, model / "inputs.npz",
+                                 materialize_weights=False)
+    assert not (metadata_only / "weights.bin").exists()
+    assert no_blob["weights_bytes"] == len(blob)
+    assert no_blob["weights_sha256"] == info["weights_sha256"] == hashlib.sha256(
+        blob).hexdigest()
 
     # and the derivation the object is built from names exactly that argument
     assert [a.key for a in qinner.plan_for_bundle(model / "model.mlir")] == ["fc.tensor_impl.scale"]

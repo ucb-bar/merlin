@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 
 import numpy as np
@@ -61,6 +62,13 @@ def test_generation_keeps_all_outputs_and_emits_stateful_session(monkeypatch, tm
     info = c_runtime.generate(model, out, model / "inputs.npz")
     assert info["n_outputs"] == 2 and info["n_state_pairs"] == 1
     assert info["has_session_correctness"] is True and info["has_session_quality"] is True
+    metadata_only = tmp_path / "generated_without_weights"
+    no_blob = c_runtime.generate(model, metadata_only, model / "inputs.npz",
+                                 materialize_weights=False)
+    assert not (metadata_only / "weights.bin").exists()
+    assert no_blob["weights_bytes"] == info["weights_bytes"]
+    assert no_blob["weights_sha256"] == info["weights_sha256"] == hashlib.sha256(
+        (out / "weights.bin").read_bytes()).hexdigest()
     gen = (out / "model_gen.h").read_text(encoding="utf-8")
     io = (out / "model_io.h").read_text(encoding="utf-8")
     call = (out / "model_call.c").read_text(encoding="utf-8")

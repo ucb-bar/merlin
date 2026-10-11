@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 from dataclasses import replace
 
@@ -110,15 +111,18 @@ def test_generate_emits_unique_entrypoints_and_compilable_scheduler(tmp_path, mo
     root = _root(tmp_path)
     _mock_abis(monkeypatch)
 
-    def fake_generate(_bundle, out, _inputs, *, ciface_name, invoke_name):
+    def fake_generate(_bundle, out, _inputs, *, ciface_name, invoke_name,
+                      materialize_weights=True):
         out.mkdir(parents=True)
-        (out / "weights.bin").write_bytes(b"same-weights")
+        if materialize_weights:
+            (out / "weights.bin").write_bytes(b"same-weights")
         (out / "model_gen.h").write_text("/* fixture */\n", encoding="utf-8")
         (out / "model_io.h").write_text("/* fixture */\n", encoding="utf-8")
         (out / "model_call.c").write_text(
             f"void {invoke_name}(void **d) {{ (void)d; }}\n", encoding="utf-8")
         return {"n_args": 2, "n_outputs": 1, "ciface_name": ciface_name,
-                "invoke_name": invoke_name}
+                "invoke_name": invoke_name, "weights_bytes": 12,
+                "weights_sha256": hashlib.sha256(b"same-weights").hexdigest()}
 
     monkeypatch.setattr(session_bundle.c_runtime, "generate", fake_generate)
     out = tmp_path / "generated"
@@ -132,6 +136,12 @@ def test_generate_emits_unique_entrypoints_and_compilable_scheduler(tmp_path, mo
     assert "@forward" not in (out / "stage_1_decode" / "model.renamed.mlir").read_text()
     recorded = json.loads((out / "session_build.json").read_text())
     assert recorded["bindings"][0]["target_program"] == "decode"
+    metadata_only = tmp_path / "generated_without_weights"
+    hash_only = session_bundle.generate(root, metadata_only, materialize_weights=False)
+    assert all(not (metadata_only / f"stage_{index}_{name}" / "weights.bin").exists()
+               for index, name in enumerate(("prefill", "decode")))
+    assert all(row["weights_sha256"] == hashlib.sha256(b"same-weights").hexdigest()
+               for row in hash_only["programs"])
 
     fixture = out / "fixture.c"
     fixture.write_text('''

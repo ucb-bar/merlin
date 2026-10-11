@@ -428,8 +428,11 @@ long merlin_session_quality_output_lastdim(void);
     return header, source
 
 
-def generate(root: str | Path, out_dir: str | Path) -> dict[str, Any]:
+def generate(root: str | Path, out_dir: str | Path, *,
+             materialize_weights: bool = True) -> dict[str, Any]:
     """Generate stage-local runtime artifacts plus a cross-stage scheduler."""
+    if type(materialize_weights) is not bool:
+        raise TypeError("materialize_weights must be a bool")
     session = load(root)
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -438,8 +441,10 @@ def generate(root: str | Path, out_dir: str | Path) -> dict[str, Any]:
         entrypoint = f"merlin_stage_{index}_{program.name}"
         invoke = "merlin_invoke" if index == 0 else f"merlin_stage_{index}_invoke"
         stage_out = out / f"stage_{index}_{program.name}"
+        weight_options = {} if materialize_weights else {"materialize_weights": False}
         info = c_runtime.generate(program.bundle, stage_out, program.bundle / "inputs.npz",
-                                  ciface_name=entrypoint, invoke_name=invoke)
+                                  ciface_name=entrypoint, invoke_name=invoke,
+                                  **weight_options)
         # A stage is lowered from its own `model.renamed.mlir` below, without the preparation step
         # that lifts a quantized subclass's inner tensors to arguments. The table generated above
         # already carries rows for them, so the two would describe different argument lists.
@@ -453,8 +458,15 @@ def generate(root: str | Path, out_dir: str | Path) -> dict[str, Any]:
             (program.bundle / "model.mlir").read_text(encoding="utf-8"), entrypoint)
         (stage_out / "model.renamed.mlir").write_text(renamed, encoding="utf-8")
         weights = stage_out / "weights.bin"
-        with weights.open("rb") as stream:
-            weights_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+        if materialize_weights:
+            with weights.open("rb") as stream:
+                weights_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+            if info.get("weights_sha256", weights_sha256) != weights_sha256:
+                raise ValueError(f"program {program.name}: generated weight blob changed")
+        else:
+            weights_sha256 = info.get("weights_sha256")
+            if not isinstance(weights_sha256, str) or len(weights_sha256) != 64 or weights.exists():
+                raise ValueError(f"program {program.name}: no hash-only weight identity")
         records.append({
             "index": index, "name": program.name, "steps": program.steps,
             "bundle": str(program.bundle), "entrypoint": entrypoint, "invoke": invoke,
