@@ -645,6 +645,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
             else output_identity
         ),
     )
+    # Receipt-policy fixture only; real inventory identities are tested separately.
+    monkeypatch.setattr(sealed_m2m, "_tree", lambda path: {"owner": Path(path)})
+    monkeypatch.setattr(sealed_m2m, "_snapshot_rows", lambda rows, relative=".": input_identity)
     monkeypatch.setattr(sealed_m2m, "_materialized", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v2", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v3", lambda *_: materialized)
@@ -668,6 +671,13 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     assert result.get("capture_dtype") == (None if old else "int8")
     assert result["phase0_admission"] == "not_granted"
     assert result["status"] == "verified_sandbox_replay"
+    if not old:
+        pending = run / "sealed_m2m_pending.json"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_INVENTORY_REUSE_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = "current-issuer"
+        pending.write_text(json.dumps(receipt))
     if version == "v2":
         # These exact historical issuers differ only in strict JSON reads and
         # historical replay admission. Selected v2 still rechecks every byte.
