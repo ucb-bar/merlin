@@ -126,6 +126,24 @@ def _bound(selection):
     return B.bind(target="synthetic", contract=selection[0], facts=selection[1])
 
 
+def test_explicit_execution_metadata_never_discovers_provider(monkeypatch, selection):
+    from merlin.runtime.backends import base
+    from merlin.targetgen import target_registry
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("explicit execution data discovered a provider")
+
+    monkeypatch.setattr(base, "get_backend", forbidden)
+    monkeypatch.setattr(target_registry, "resolve", forbidden)
+    contract, facts = selection
+    observed = base.execution_capability_facts("synthetic", contract=contract, facts=facts)
+    assert observed["whole_program_kernel_abi"]["satisfied"] is True
+    assert observed["whole_program_kernel_abi"]["tier"] == "backend_declared"
+    assert all(row["tier"] == "backend_declared" for row in observed.values())
+    incomplete = base.execution_capability_facts("synthetic", contract=contract, facts={})
+    assert all(row["satisfied"] is None for row in incomplete.values())
+
+
 def _engine(selection):
     return selection[0]["runner"]["chipyard_rocc"]["engines"]["spike"]
 
