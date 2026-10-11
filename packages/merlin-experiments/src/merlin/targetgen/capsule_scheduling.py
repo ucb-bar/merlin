@@ -15,6 +15,7 @@ back in input order.
 from __future__ import annotations
 
 import heapq
+import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from math import prod
@@ -75,6 +76,19 @@ def run_pipelined(
     around it (``None`` waits for it).
     """
     deps = dependencies(capsules)
+    # Linux affinity is per thread. Keep grading preparation off the scheduler's
+    # manager cores; subprocesses inherit this pool until their build/simulator
+    # owner explicitly selects its own pool. Restore affinity on every exit.
+    from merlin.common.cpu_pool import parse_roster, selected_pool
+
+    grade_cpus = parse_roster(os.environ.get("MERLIN_GRADE_CPUS", ""))
+    if grade_cpus:
+        unpinned_run_one = run_one
+
+        def run_one(capsule, parallel):
+            with selected_pool(grade_cpus):
+                return unpinned_run_one(capsule, parallel)
+
     names = [str(cap["name"]) for cap in capsules]
     index = {name: i for i, name in enumerate(names)}
     children: dict[str, list[str]] = {name: [] for name in names}

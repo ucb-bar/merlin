@@ -608,6 +608,7 @@ def resolve_plan(
                 "MERLIN_BUILD_CPUS",
                 "MERLIN_BUILD_SLOT_ROOT",
                 "MERLIN_GRADE_WORKERS",
+                "MERLIN_GRADE_CPUS",
                 "MERLIN_GSIM_CPUS",
                 "MERLIN_GSIM_MAX_SLOTS",
                 "MERLIN_GSIM_SLOT_ROOT",
