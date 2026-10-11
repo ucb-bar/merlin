@@ -18,6 +18,11 @@ code_refs:
 
 # Launch a bounded component compiler search
 
+This guide covers the separate optional component workflow. The normal Phase 2
+experiment reuses Phase 1's corpus and neutral runtime; follow the
+[ordinary AWS search guide](aws_phase2_corpus_search.md). Its launch does not
+require the component qualification ledger below.
+
 This route improves one fresh compiler against an independently generated public
 development corpus. The search objective is paired measured simulator cycles over
 the complete selected component roster. Complete host and model costs remain
