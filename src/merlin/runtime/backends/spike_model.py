@@ -39,6 +39,8 @@ from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
+from .host_compiler_policy import _harness_cflags as _harness_cflags
+from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
@@ -55,46 +57,6 @@ CLANG_TARGET = "--target=riscv64-unknown-elf"
 # merlin_model.c additionally asserts that a pointer is one int64_t word. This is a
 # selected runtime ABI constraint, not a target-hardware index-width assumption.
 _C_DESCRIPTOR_INDEX_BITS = 64
-
-
-def _harness_cflags(model_flags: list[str]) -> list[str]:
-    """Give GCC the model's ISA/ABI while retaining GCC-compatible harness options."""
-    flags = list(RVV_CFLAGS)
-    for prefix in ("-march=", "-mabi=", "-mcmodel="):
-        selected = [flag for flag in model_flags if flag.startswith(prefix)]
-        if selected:
-            flags = [flag for flag in flags if not flag.startswith(prefix)]
-            flags.append(selected[-1])
-    return flags
-
-
-def _select_host_vectorize(
-    model_flags: list[str],
-    schedule: str | None,
-    requested: bool | None,
-) -> bool:
-    """Select host scheduling from the declared ISA or the caller's explicit policy.
-
-    Fixed-width vectors can be scalarized by LLVM, so an explicit schedule or
-    override may intentionally use them on a scalar ISA. The default RVV
-    schedule should only be selected for an ISA declaring floating vectors.
-    A ``zvl`` minimum-length extension alone does not provide vector execution.
-    """
-    if requested is not None and not isinstance(requested, bool):
-        raise ValueError("host_vectorize must be a bool or None")
-    if requested is False and schedule is not None:
-        raise ValueError("host_vectorize=False conflicts with an explicit rvv_schedule")
-    if requested is not None:
-        return requested
-    if schedule is not None:
-        return True
-    marches = [flag[len("-march=") :].lower() for flag in model_flags if flag.startswith("-march=")]
-    if not marches:
-        return False
-    base, *extensions = marches[-1].split("_")
-    if base.startswith(("rv32", "rv64")) and "v" in base[4:]:
-        return True
-    return any(extension.startswith(("zve32f", "zve64f", "zve64d")) for extension in extensions)
 
 
 class SpikeModelError(RuntimeError):
