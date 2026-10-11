@@ -460,6 +460,16 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         raise SystemExit(f"cannot resolve formal whole-model simulator: {exc}") from exc
     _formal_mesh_sim = _formal_mesh_selection["engine"]
 
+    # Only answer-free, pinned launch inputs enter public owned-host compilation.
+    from . import public_owned_host_selection
+    os.environ.pop(public_owned_host_selection.ENV, None)
+    if a.private_full_model_spec is not None and a.instruction_selection is not None:
+        public_host_selection = public_owned_host_selection.prepare(
+            a.private_full_model_spec, a.instruction_selection, target=context.target,
+            output=run_dir.absolute() / "public_owned_host_build_selection.json",
+        )
+        os.environ[public_owned_host_selection.ENV] = json.dumps(public_host_selection, sort_keys=True)
+
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
     pub = _score(

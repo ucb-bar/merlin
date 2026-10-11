@@ -263,6 +263,8 @@ class DeviceBuild:
     shim_object: Path | None = None
     #: shim entry symbol -> the kernel symbol it calls.
     kernels: dict[str, str] = field(default_factory=dict)
+    #: Actual translation/compile/rename invocations for each linked kernel.
+    custody: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     skipped: tuple[tuple[str, str], ...] = ()
     #: symbol -> which entry the kernel was built from: :data:`FROM_GROUP` (the layer's own stated
     #: program, epilogue and all) or :data:`FROM_EXTENTS` (a bare contraction of those extents).
@@ -506,6 +508,22 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
+def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output):
+    from merlin.common import invocation_record
+
+    with invocation_record.observe(
+        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,), dependencies=(Path(__file__),)
+    ) as observed:
+        result = _run_build_tool(argv, timeout=timeout)
+        observed.complete(result)
+    path = observed.path
+    return result, {
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size_bytes": path.stat().st_size,
+    }
+
+
 def kernel_entry(
     symbol: str, extents: Sequence[int], stated: Mapping[str, Any] | None, device: str
 ) -> tuple[dict[str, Any] | None, str, str]:
@@ -690,6 +708,8 @@ def build_device_objects(
     # interfaces may nevertheless produce the same LLVM artifact; compile its raw
     # object once, then rename a separate copy for each shim entry.
     compiled_by_artifact: dict[str, list[tuple[Path, Path]]] = {}
+    custody_by_raw = {}
+    custody = {}
 
     def dedup_receipt() -> dict[str, int]:
         return {
@@ -765,31 +785,57 @@ def build_device_objects(
         )
         if raw is None:
             ll = stem.with_suffix(".ll")
-            t = _run_build_tool([mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)], timeout=timeout)
+            t, translated_invocation = _observed_build_tool(
+                [mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)],
+                timeout=timeout,
+                directory=work,
+                stage="device_llvm_translation",
+                inputs=(art,),
+                output=ll,
+            )
             if t.returncode != 0:
                 skipped.append((sym, f"mlir-translate: {(t.stderr or '').strip()[:200]}"))
                 continue
 
             raw = stem.with_suffix(".raw.o")
-            c = _run_build_tool(
-                [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)], timeout=timeout
+            c, compiled_invocation = _observed_build_tool(
+                [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)],
+                timeout=timeout,
+                directory=work,
+                stage="device_object_compilation",
+                inputs=(ll,),
+                output=raw,
             )
             if c.returncode != 0:
                 skipped.append((sym, f"clang: {(c.stderr or '').strip()[:200]}"))
                 continue
             compiled_by_artifact.setdefault(digest, []).append((art, raw))
+            custody_by_raw[raw] = {"translation": translated_invocation, "compilation": compiled_invocation}
+        else:
+            # Retain the exact shared translation beside every source interface.
+            # Consumers join each call separately even when codegen is deduplicated.
+            translated = raw.with_name(raw.name.removesuffix(".raw.o") + ".ll")
+            stem.with_suffix(".ll").write_bytes(translated.read_bytes())
 
         obj = stem.with_suffix(".o")
         if oc is None:
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
             continue
-        rn = _run_build_tool([oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)], timeout=timeout)
+        rn, renamed_invocation = _observed_build_tool(
+            [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
+            timeout=timeout,
+            directory=work,
+            stage="device_object_symbol_rename",
+            inputs=(raw,),
+            output=obj,
+        )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
             continue
 
         objs.append(obj)
         kernels[sym] = want
+        custody[sym] = {**custody_by_raw[raw], "rename": renamed_invocation}
         built_from[sym] = provenance
 
     if stop_on_first_failure and skipped:
@@ -860,6 +906,7 @@ def build_device_objects(
         objects=(*objs, shim_o),
         shim_object=shim_o,
         kernels=kernels,
+        custody=custody,
         built_from=built_from,
         skipped=tuple(skipped),
         object_dedup=dedup_receipt(),

@@ -2981,39 +2981,29 @@ def _grade_candidate_model_capsule_inline(
             dtype=context["dtype"],
             benchmark=capsule["name"],
         )
-        _, candidate_cb, candidate_llvm = run_entrypoints(
-            selected_pkg,
-            package_dir,
-            capsule,
-            paths,
-            contract=context["contract"],
-            timeout=timeout,
-            fourth_output_name=context["fourth_output_name"],
-        )
-        source_interface = Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")
-        if source_interface.is_symlink():
-            raise ValueError("frozen model interface cannot be a symlink")
-        result["candidate_emission"] = {
-            "capsule_declaration": _digest((Path(capsule["__dir__"]) / "capsule.yaml").resolve(strict=True)),
-            "source_interface": _digest(source_interface.resolve(strict=True)),
-            "command_buffer": _digest((paths.generated / "command_buffer.json").resolve(strict=True)),
-            "lowered_mlir": _digest((paths.generated / context["fourth_output_name"]).resolve(strict=True)),
+        # Host lowering is a trusted Merlin service. The candidate is invoked
+        # only for independently source-bound device groups by that service.
+        from .owned_host_model_execution import execute_owned_host_model
+        result["owned_host_source"] = {
+            "capsule_declaration": _digest(Path(capsule["__dir__"]) / "capsule.yaml"),
+            "source_interface": _digest(Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")),
         }
+
         with _model_runtime_bundle(capsule, timeout=timeout) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
-            policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
-            result["candidate_native_execution"] = execute_candidate_model(
-                command_buffer=candidate_cb,
-                lowered_mlir_text=candidate_llvm,
-                capsule_dir=capsule["__dir__"],
-                capture_bundle=bundle,
+            result["owned_host_native_execution"] = execute_owned_host_model(
+                capsule=capsule,
+                candidate_package=package_dir,
                 target=target,
-                out_dir=paths.run_path / "candidate_native",
-                simulator=os.environ.get("MERLIN_MODEL_NATIVE_SIMULATOR") or None,
-                rtl_facts=os.environ.get("MERLIN_MODEL_NATIVE_RTL_FACTS") or None,
-                board_config=os.environ.get("MERLIN_MODEL_NATIVE_BOARD_CONFIG") or None,
+                bundle=bundle,
+                provenance=provenance,
+                verify=verify,
+                output=paths.run_path / "owned_host_native",
+                selection_record=context.get("owned_host_build"),
+                simulator=os.environ.get("MERLIN_MODEL_NATIVE_SIMULATOR") or "none",
                 timeout=timeout,
-                **policy_kwargs,
+                source_certificate=result["candidate_source_eligibility"],
+                readback_policy=readback_policy,
             )
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
@@ -3022,6 +3012,7 @@ def _grade_candidate_model_capsule_inline(
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
+        result.pop("owned_host_native_execution", None)
     return enforce_model_execution_check(
         result,
         capsule,
@@ -4976,6 +4967,10 @@ def run_capsule(
                     "contract": str(contract) if contract is not None else None,
                     "fourth_output_name": cfg.fourth_output_name,
                     "package_prebuilt": pkg is not None,
+                    "owned_host_build": (
+                        json.loads(os.environ["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"])
+                        if os.environ.get("MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION") else None
+                    ),
                     **({"readback_policy": readback_policy.record()} if readback_policy is not None else {}),
                 },
             )
@@ -5008,6 +5003,14 @@ def run_capsule(
             paths.generated.mkdir(parents=True, exist_ok=True)
             (paths.generated / "placement_census.json").write_text(json.dumps(census, indent=2), encoding="utf-8")
         return result
+
+    from .owned_host_leaf_execution import grade_owned_host_leaf, selected_host_leaf
+
+    if selected_host_leaf(capsule):
+        return grade_owned_host_leaf(
+            capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
+            timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
+        )
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}

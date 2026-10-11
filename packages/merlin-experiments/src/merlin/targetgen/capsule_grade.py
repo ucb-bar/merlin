@@ -277,7 +277,11 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
 
 
 def model_execution_check(
-    result: dict, capsule: dict | None = None, *, target: str | None = None, readback_policy=None,
+    result: dict,
+    capsule: dict | None = None,
+    *,
+    target: str | None = None,
+    readback_policy=None,
 ) -> dict:
     """Return the model capsule's honest structural/effect evidence.
 
@@ -294,11 +298,16 @@ def model_execution_check(
     candidate_completed_dispatch: dict | None = None
     candidate_check = None
     if bool(((capsule or {}).get("semantic") or {}).get("must_accelerate")):
+        if "owned_host_native_execution" in result:
+            from .owned_host_model_execution import audit_owned_host_model
+
+            return audit_owned_host_model(result, capsule, target=target, readback_policy=readback_policy)
         # Keep candidate proof independent from this legacy host-dispatch
         # model check. The old ledger cannot certify a different program.
         effective_target = target or (result.get("operation") or {}).get("target")
         candidate_check = candidate_native_model_check(
-            result, target=effective_target if isinstance(effective_target, str) else "",
+            result,
+            target=effective_target if isinstance(effective_target, str) else "",
             **({"readback_policy": readback_policy} if readback_policy is not None else {}),
         )
         violations.extend(candidate_check["violations"])
@@ -763,13 +772,38 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     requested evidence did not run), while malformed evidence from the requested engine is a real fail.
     """
     check = model_execution_check(
-        result, capsule, target=target,
+        result,
+        capsule,
+        target=target,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
     )
     result["model_execution_check"] = check
     if check.get("candidate_native_model_check") is not None:
         result["candidate_native_model_check"] = check["candidate_native_model_check"]
     if check.get("status") == "pass":
+        if check.get("kind") == "owned_host_model_execution":
+            result["status"] = "pass"
+            result.pop("failure", None)
+            result["numeric"] = check["numeric"]
+            result["owned_host_model_check"] = check["owned_host_model_check"]
+            result["candidate_source_coverage"] = check["owned_host_model_check"]["candidate_source_coverage"]
+            tier_check = check["candidate_required_tiers"]
+            result["tiers"] = {
+                tier: {
+                    "tier": tier,
+                    "status": "pass",
+                    "mandatory": True,
+                    "evidence": "owned_host_model_same_elf"
+                    if tier in {"L2", "L3"}
+                    else "owned_host_model_structural_legality",
+                    "derived_from_rtl": tier == "L3"
+                    and (tier_check["tiers"][tier].get("selection") or {}).get("fidelity") == "elaborated_rtl",
+                    "cycle_accurate": False,
+                    "candidate_evidence": tier_check["tiers"][tier],
+                }
+                for tier in tier_check["required_tiers"]
+            }
+            return result
         if check.get("kind") == "candidate_whole_program_execution":
             # Promote only after all frozen mandatory candidate tiers, source
             # attribution, host veto and independent full output passed.
@@ -1073,9 +1107,17 @@ def _bounded_grade_workers(requested: int, oracle_adapters: dict | None) -> int:
     return min(requested, *(capsule_worker_cap(engine) for engine in engines)) if engines else requested
 
 
+def _qualified_model_check(row: dict) -> dict | None:
+    check = row.get("model_execution_check")
+    if isinstance(check, dict) and check.get("kind") == "owned_host_model_execution":
+        return check
+    check = row.get("candidate_native_model_check")
+    return check if isinstance(check, dict) else None
+
+
 def _score_numeric_status(row: dict) -> str | None:
     """Never attribute a legacy host-graph comparison to a submitted model ELF."""
-    check = row.get("candidate_native_model_check")
+    check = _qualified_model_check(row)
     if isinstance(check, dict):
         if check.get("status") == "pass":
             return "pass"
@@ -1087,7 +1129,7 @@ def _score_numeric_status(row: dict) -> str | None:
 
 def _candidate_score_view(row: dict) -> dict:
     """Use only candidate-native evidence in a model's score, leaving its durable row intact."""
-    check = row.get("candidate_native_model_check")
+    check = _qualified_model_check(row)
     if row.get("kind") != "model" or not isinstance(check, dict):
         return row
     view = dict(row)
@@ -1129,7 +1171,13 @@ def _candidate_score_view(row: dict) -> dict:
             or audit.get("status") not in {"pass", "fail", "unverified"}
         ):
             continue
-        projected = {"status": audit["status"], "mandatory": True, "evidence": "candidate_whole_program_same_elf"}
+        projected = {
+            "status": audit["status"],
+            "mandatory": True,
+            "evidence": "owned_host_model_same_elf"
+            if check.get("kind") == "owned_host_model_execution"
+            else "candidate_whole_program_same_elf",
+        }
         for field in ("fidelity", "derived_from_rtl", "cycle_accurate"):
             value = audit.get(field)
             if (field == "fidelity" and isinstance(value, str) and value) or (
@@ -1328,7 +1376,9 @@ def grade(
             # child. Candidate result records cannot choose their own codec.
             readback_policy = CR._adapter_readback_policy(oracle_adapters or {})
             enforce_model_execution_check(
-                result, _caps_by_name.get(str(result.get("capsule"))), target=target,
+                result,
+                _caps_by_name.get(str(result.get("capsule"))),
+                target=target,
                 **({"readback_policy": readback_policy} if readback_policy is not None else {}),
             )
             # The runner persisted the model result before this suite-level cross-record proof existed.
@@ -1695,14 +1745,14 @@ def grade(
         if _tier_status(rec) != "pass":
             return False
         flag = _tier_field(rec, "derived_from_rtl")
-        if flag is None and isinstance(row.get("candidate_native_model_check"), dict):
+        if flag is None and _qualified_model_check(row) is not None:
             return False  # no tier-name fallback for a submitted whole-program candidate
         return bool(name in _rtl_names) if flag is None else bool(flag)
 
     def _tier_is_rtl(row, name, rec) -> bool:
         """Same three-state rule as :func:`_is_rtl_pass`, without the pass requirement."""
         flag = _tier_field(rec, "derived_from_rtl")
-        if flag is None and isinstance(row.get("candidate_native_model_check"), dict):
+        if flag is None and _qualified_model_check(row) is not None:
             return False
         return bool(name in _rtl_names) if flag is None else bool(flag)
 

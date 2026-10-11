@@ -702,7 +702,7 @@ def _pinned_native_file(record: Mapping[str, Any], role: str) -> Path:
     return path
 
 
-def _frozen_model_policy(capsule_dir: Path, *, target: str) -> dict[str, Any]:
+def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups: bool = False) -> dict[str, Any]:
     """Read the selected reviewed corpus policy, not an ambient/default ISA rule."""
     import yaml
 
@@ -735,11 +735,13 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str) -> dict[str, Any]:
         or not isinstance(roles, list)
         or any(not isinstance(role, str) or not role for role in roles)
         or not isinstance(expected, list)
-        or not expected
+        or (not expected and not source_bound_groups)
         or any(not isinstance(name, str) or not name for name in expected)
         or coverage.get("instruction_classes") != expected
     ):
         raise NativeModelExecutionError("frozen instruction coverage or prohibited-role policy is unresolved")
+    if source_bound_groups and (type(source_bound_groups) is not bool or declaration.get("kind") != "model"):
+        raise NativeModelExecutionError("source-bound group instruction policy requires an original model capsule")
     required = declaration.get("required_oracle_tiers")
     if (
         not isinstance(required, list)
@@ -756,6 +758,13 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str) -> dict[str, Any]:
         "required_tiers": required,
         "expected_instruction_classes": expected,
         "prohibited_instruction_roles": roles,
+        **(
+            {
+                "instruction_class_scope": "global reviewed requirements plus independently mandatory source-bound group work"
+            }
+            if source_bound_groups
+            else {}
+        ),
     }
 
 

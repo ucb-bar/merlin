@@ -67,8 +67,12 @@ def _output_root(path: str | Path) -> Path:
     return output
 
 
-def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.ndarray | None:
-    verification = verify_capture_receipt(capture / "model.mlir")
+def _saved_reference(capture: Path, name: str | None, *, execution: bool, materialized_inputs=None) -> np.ndarray | None:
+    verification = (
+        {"status": "verified_materialized"}
+        if materialized_inputs is not None and materialized_inputs.verify(capture)
+        else verify_capture_receipt(capture / "model.mlir")
+    )
     if verification.get("status") != "verified_materialized":
         raise BaremetalModelError(f"saved capture receipt is not byte-verified: {verification.get('errors')}")
     for required in ("inputs.npz", "input_order.json", "golden.npy"):
@@ -82,7 +86,8 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.
     if (capture / "goldens.npz").exists() or (capture / "output_order.json").exists():
         raise BaremetalModelError("multi-output captures have no complete bare-metal OUT gate")
     reference = capture / name
-    recorded = json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    recorded = (materialized_inputs.verify(capture) if materialized_inputs is not None else
+                json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {})
     if not reference.is_file() or reference.is_symlink() or (recorded.get(name) or {}).get("sha256") != _sha(reference):
         raise BaremetalModelError(f"reference {name!r} is absent or not bound by the capture receipt")
     golden = np.load(reference, allow_pickle=False)
@@ -93,7 +98,7 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.
     return golden.reshape(-1)
 
 
-def _full_references(capture: Path, reference_file: str | None) -> list[tuple[str, np.ndarray | None]]:
+def _full_references(capture: Path, reference_file: str | None, *, materialized_inputs=None) -> list[tuple[str, np.ndarray | None]]:
     """``[(name, reference or None)]`` in forward-result order for a full-readback execution.
 
     A capture that states every result (``output_order.json`` with one array each in ``goldens.npz``)
@@ -103,7 +108,8 @@ def _full_references(capture: Path, reference_file: str | None) -> list[tuple[st
     capture tree whose digest this compilation records."""
     from merlin.llvmlower.c_runtime import _out_specs
 
-    recorded = json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    recorded = (materialized_inputs.verify(capture) if materialized_inputs is not None else
+                json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {})
 
     def present(name: str, *, receipt_bound: bool) -> Path:
         path = capture / name
@@ -278,6 +284,7 @@ def compile_saved_model(
     readback: str = "prefix",
     group_profile: bool = False,
     tolerance: dict[str, float] | None = None,
+    materialized_inputs=None,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -353,8 +360,14 @@ def compile_saved_model(
         capture_tree = MI.strict_tree_sha256(capture_path)
         package_tree = MI.strict_tree_sha256(package_path)
         catalog_sha, dts_sha = _sha(catalog_path), _sha(dts_path)
-        golden = _saved_reference(capture_path, reference_file, execution=run != "none" and not full)
-        references = _full_references(capture_path, reference_file) if full and run != "none" else None
+        if materialized_inputs is not None:
+            from merlin.compile.materialized_model_inputs import MaterializedModelInputs
+            if type(materialized_inputs) is not MaterializedModelInputs:
+                raise BaremetalModelError("explicit trusted materialized model binding required")
+            materialized_inputs.verify(capture_path)
+            receipt["inputs"]["materialization"] = materialized_inputs.record()
+        golden = _saved_reference(capture_path, reference_file, execution=run != "none" and not full, materialized_inputs=materialized_inputs)
+        references = _full_references(capture_path, reference_file, materialized_inputs=materialized_inputs) if full and run != "none" else None
         boards = load_boards(catalog_path)
         selected = boards.get(board)
         if selected is None or selected.target != target:
@@ -451,6 +464,8 @@ def compile_saved_model(
             "build_hash": built.get("build_hash"),
             "index_lowering": built["index_lowering"],
             "matrix_routing": built.get("matrix_routing"),
+            "host_artifacts": built.get("host_artifacts"),
+            "device_artifacts": built.get("device_artifacts"),
         }
         # Bind the producer's record, rather than minting a new command history.
         # Its consumer independently verifies completed commands and input bytes.
@@ -587,6 +602,8 @@ def compile_saved_model(
             raise BaremetalModelError("selected native RTL engine changed during execution")
         if native and MI.selected_firrtl(rtl_facts, target=target, config=selected.rtl_sim_config) != facts:
             raise BaremetalModelError("selected RTL facts or source FIRRTL changed during execution")
+        if materialized_inputs is not None:
+            materialized_inputs.verify(capture_path)
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

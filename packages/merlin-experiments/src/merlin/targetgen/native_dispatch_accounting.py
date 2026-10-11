@@ -127,7 +127,7 @@ _SOURCE_FAMILY_DEVICE_ROLES = {
 
 
 def _verified_work_functs_by_family(
-    endpoints: list[Mapping[str, Any]], table: Mapping[str, Any]
+    endpoints: list[Mapping[str, Any]], table: Mapping[str, Any], *, work_roles_only: bool = False
 ) -> dict[str, set[int]]:
     """Bind trusted source families to selected RTL-confirmed work roles.
 
@@ -139,9 +139,15 @@ def _verified_work_functs_by_family(
         raise NativeModelExecutionError("selected target has no unique verified spatial endpoint")
     names = {int(key): value for key, value in (table.get("names") or {}).items()}
     roles = endpoints[0].get("roles") or {}
-    if not isinstance(roles, Mapping) or any(
+    checked_roles = roles
+    if work_roles_only and isinstance(roles, Mapping):
+        accepted_roles = {
+            role for roles_for_family in _SOURCE_FAMILY_DEVICE_ROLES.values() for role in roles_for_family
+        }
+        checked_roles = {role: declared for role, declared in roles.items() if role in accepted_roles}
+    if not isinstance(checked_roles, Mapping) or any(
         not isinstance(declared, list) or not declared or any(name not in names.values() for name in declared)
-        for declared in roles.values()
+        for declared in checked_roles.values()
     ):
         raise NativeModelExecutionError("endpoint roles are not confirmed by selected RTL decode table")
     return {

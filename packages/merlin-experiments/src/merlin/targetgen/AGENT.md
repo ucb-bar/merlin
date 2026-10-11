@@ -50,3 +50,11 @@ Reopen that live owner before and after ordinary lowering/execution and keep
 reference details in private evidence; caller-visible original failures contain
 no expected values or private paths. Opaque pointer arity does not prove flat
 tensor storage or a ranked memref descriptor bridge.
+
+`owned_host_leaf_execution` grades reviewed host-only layers and model slices as
+provided platform infrastructure. Reopen original source eligibility and require
+zero accelerator-eligible operations before selecting fixed Merlin host lowering.
+Candidates provide no host arithmetic. Keep complete typed inputs/outputs, actual
+host compiler/object/link custody, whole-ELF accelerator prohibition and every
+frozen numerical tier; missing native execution never passes. This grants no
+candidate accelerator or host-code authorship credit.
