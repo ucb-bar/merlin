@@ -25,6 +25,7 @@ from . import functional_inputs as FI
 from . import gsim_gate as GATE
 from . import measurement_support as MS
 from . import paired_measurement as PME
+from . import queued_search_actions as QSA
 from .broker_policy import BrokerServices
 from .contracts import StageGateError, canonical_json, document_sha256, exact_tree_record, mapping_file, sha256_file
 from .edit_authority import FrozenEditAuthority
@@ -101,12 +102,13 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self.edit_authority = edit_authority
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
+        self.evaluation_pool, self.search_coordinator = None, None
         self._functions = (
             (DF, "development_executor", DF.development_executor),
             (DF.DevelopmentGsimFeedback, "evaluate", DF.DevelopmentGsimFeedback.evaluate),
             (PME, "run_execution", PME.run_execution),
         )
-        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME)
+        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA)
         self._source_pins = tuple(
             (str(path), sha256_file(path))
             for path in (Path(__file__).resolve(), *(Path(owner.__file__).resolve() for owner in owners))
@@ -121,6 +123,33 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     @property
     def search_baseline(self):
         return self._selected_feedback.baseline
+
+    def enable_evaluation_pool(self, *, revisions, resources, job_resources, root, **kwargs):
+        from .evaluation_pool import ComponentEvaluationPool
+
+        if self.evaluation_pool is not None or revisions.authority is not self.edit_authority:
+            raise StageGateError("normal corpus queue requires its original edit authority once")
+        self.evaluation_pool = ComponentEvaluationPool(
+            policy=self, revisions=revisions, resources=resources, job_resources=job_resources, root=root, **kwargs
+        )
+        return self.evaluation_pool
+
+    def build_registry(self):
+        original = super().build_registry()
+        return (*original, *QSA.actions()) if self.search_coordinator is not None else original
+
+    def validate_actions(self, actions):
+        super().validate_actions(actions)
+        expected = {action.name: action for action in self.build_registry()}
+        if set(actions) != set(expected) or any(
+            actions[name].advertised() != expected[name].advertised() for name in expected
+        ):
+            raise StageGateError("normal search action contract differs from its original selected owners")
+
+    def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        if action_name in {action.name for action in QSA.actions()}:
+            return QSA.execute(self, action_name, rendered, timeout_s, started)
+        return super().execute(request, action_name, rendered, call_index, timeout_s, started)
 
     def _binding(self):
         feedback, functional = self._selected_feedback, self._functional

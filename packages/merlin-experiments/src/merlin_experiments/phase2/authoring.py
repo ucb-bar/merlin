@@ -303,23 +303,35 @@ def functional_emission_guard(
                 grading_candidate = output / "compiler"
                 shutil.copytree(candidate, grading_candidate)
                 score = CG.grade(
-                    grading_candidate, capsules_root=view.public, runs_root=output,
+                    grading_candidate,
+                    capsules_root=view.public,
+                    runs_root=output,
                     model_snapshot_root=output / ".private_model_sources",
-                    labels={"public", "dev"}, contract=view.contract,
-                    oracle_adapters=adapters, timeout=timeout_s, target=target_experiment.target,
+                    labels={"public", "dev"},
+                    contract=view.contract,
+                    oracle_adapters=adapters,
+                    timeout=timeout_s,
+                    target=target_experiment.target,
                 )
                 scored = score.get("per_capsule") or []
-                expected_names = {CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
-                                  for path in capsules}
+                expected_names = {
+                    CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
+                    for path in capsules
+                }
                 complete = (
                     len(scored) == len(expected_names)
                     and {row.get("capsule") for row in scored} == expected_names
-                    and all(row.get("status") == "pass" and row.get("numeric") == "pass"
-                            and not row.get("cert_verdict") for row in scored)
+                    and all(
+                        row.get("status") == "pass" and row.get("numeric") == "pass" and not row.get("cert_verdict")
+                        for row in scored
+                    )
                     and score.get("integrity_status") == "clean"
                 )
-                regrade = {"status": "pass" if complete else "fail", "score": score,
-                           "evidence_root": str(output) if grade_root is not None else None}
+                regrade = {
+                    "status": "pass" if complete else "fail",
+                    "score": score,
+                    "evidence_root": str(output) if grade_root is not None else None,
+                }
                 if not complete:
                     offenders.append({"kind": "complete_functional_regrade_failed"})
             except Exception as exc:  # noqa: BLE001 - missing execution remains a refusal
@@ -416,6 +428,7 @@ def _codex_round(
     round_index: int,
     timeout_s: int,
     codex_binary: Path,
+    max_concurrent_subagents: int | None = None,
 ) -> tuple[int, Path, AW.AgentSandboxPolicy]:
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
@@ -452,6 +465,7 @@ def _codex_round(
         effective_model=resolved_model,
         sandbox_command=exact_bwrap,
         codex_binary=codex_binary,
+        **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
         codex_home_root=stage_root / "codex_homes",
     )
     policy = captured.get("policy")
@@ -511,6 +525,9 @@ def run_stage(
     workflow_id: str = BP.CORPUS_FEEDBACK_V1,
     component_launch=None,
     whole_model_profile_inputs: Path | None = None,
+    search_configuration: Path | None = None,
+    compiler_edit_contract: Path | None = None,
+    external_resource_boundary=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -525,12 +542,27 @@ def run_stage(
             raise StageGateError(
                 "component authoring uses one fresh continuous session within the explicit wall budget"
             )
-        return run_component_stage(component_launch, suite=suite, model=model, effort=effort,
-                                   wall_budget_seconds=wall_budget_seconds, max_tool_calls=max_tool_calls,
-                                   tool_timeout_seconds=tool_timeout_seconds)
+        return run_component_stage(
+            component_launch,
+            suite=suite,
+            model=model,
+            effort=effort,
+            wall_budget_seconds=wall_budget_seconds,
+            max_tool_calls=max_tool_calls,
+            tool_timeout_seconds=tool_timeout_seconds,
+        )
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("performance authoring requires an explicit sandbox input selection")
     sandbox_inputs = copy.deepcopy(sandbox_inputs)
+    search = None
+    if search_configuration is not None:
+        from .search_configuration import read_search_configuration
+
+        search = read_search_configuration(search_configuration)
+        if rounds != 1 or compiler_edit_contract is None:
+            raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
+        if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
+            raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
     if any(
@@ -612,6 +644,10 @@ def run_stage(
             else None
         ),
     )
+    if search is not None:
+        from .queued_search_actions import actions as search_actions
+
+        prepared_actions = (*prepared_actions, *search_actions())
     prepared_action_contract = action_registry_contract(prepared_actions, base)
     minimum_calls = rounds * sum(action.required for action in prepared_actions)
     if max_tool_calls < minimum_calls:
@@ -781,6 +817,8 @@ def run_stage(
             },
         )
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
+        if search is not None:
+            actions = (*actions, *search_actions())
         if action_registry_contract(actions, candidate) != prepared_action_contract:
             refusal = f"candidate manifest action contract drifted before round {round_index}"
             break
@@ -797,6 +835,47 @@ def run_stage(
             probe_results = AW.run_required_tool_probes(inner, target_experiment, candidate)
         control_dir = stage_root / "control" / f"round_{round_index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
+        workflow = BP.select_workflow(
+            BP.CORPUS_FEEDBACK_V1,
+            candidate=candidate,
+            target_experiment=target_experiment,
+            receipt_path=receipt_path,
+            services=BP.BrokerServices(
+                whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
+                command_buffer_analysis=ED.analyze_command_buffers,
+            ),
+            feedback_evaluator=feedback,
+            feedback_round=round_index,
+            functional_base=base,
+            e2e_sentinel=prompt_inputs.e2e_sentinel,
+        )
+        search_pool = None
+        if search is not None:
+            from .ordinary_search_stage import prepare_round
+
+            workflow, search_pool = prepare_round(
+                search,
+                stage_root=stage_root,
+                candidate=candidate,
+                baseline=base,
+                corpus=frozen_corpus,
+                edit_contract=compiler_edit_contract,
+                functional_runs_root=functional_runs_root,
+                functional_run_id=functional_run_id,
+                functional_submission_sha256=functional_submission_sha256,
+                target_experiment=target_experiment,
+                receipt_path=receipt_path,
+                contract_root=contract_root,
+                certificate_path=gsim_certificate,
+                certificate_sha256=gsim_certificate_sha256,
+                rtl_facts_path=rtl_facts,
+                services=workflow.services,
+                e2e_sentinel=prompt_inputs.e2e_sentinel,
+                tuning_call_budget=max_tool_calls,
+                waive_functional_gate=waive_functional_gate,
+                whole_model_inputs=whole_model_profile_inputs,
+                external_boundary=external_resource_boundary,
+            )
         broker = PB.Broker(
             inner,
             target_experiment,
@@ -806,20 +885,7 @@ def run_stage(
             deadline=deadline,
             max_calls=max_tool_calls - total_calls,
             max_tool_seconds=tool_timeout_seconds,
-            workflow=BP.select_workflow(
-                BP.CORPUS_FEEDBACK_V1,
-                candidate=candidate,
-                target_experiment=target_experiment,
-                receipt_path=receipt_path,
-                services=BP.BrokerServices(
-                    whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
-                    command_buffer_analysis=ED.analyze_command_buffers,
-                ),
-                feedback_evaluator=feedback,
-                feedback_round=round_index,
-                functional_base=base,
-                e2e_sentinel=prompt_inputs.e2e_sentinel,
-            ),
+            workflow=workflow,
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
@@ -849,8 +915,11 @@ def run_stage(
                     round_index=round_index,
                     timeout_s=round_timeout,
                     codex_binary=codex_path,
+                    **({"max_concurrent_subagents": search.author_agents} if search is not None else {}),
                 )
         finally:
+            if search_pool is not None:
+                search_pool.close()
             broker_config = control_dir / ".perf_broker.json"
             if broker_config.is_file() and not broker_config.is_symlink():
                 broker_config.chmod(0o600)
@@ -1031,7 +1100,10 @@ def run_stage(
     # or emission require the ordinary full-output numerical certification.
     try:
         functional_guard = functional_emission_guard(
-            base, previous_submission, target_experiment, frozen_functional=frozen_functional,
+            base,
+            previous_submission,
+            target_experiment,
+            frozen_functional=frozen_functional,
             grade_root=stage_root / "functional_guard_grade",
         )
     except Exception as exc:  # noqa: BLE001 - an unrunnable guard is absence of proof, not a pass

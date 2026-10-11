@@ -26,6 +26,7 @@ from .feedback_guardian import run_feedback_guardian
 from .feedback_protocol import FeedbackValueLimits, receive_feedback_value
 from .portfolio_launch import acquire_host_resource_lease
 from .retained_revisions import RetainedRevisionStore, executing_revisions
+from .search_inputs import SearchInputs
 from .supervised_feedback import _close_guardian, _complete_cleanup, _packet
 
 KINDS = ("component-analytical-feedback", "component-rtl-feedback")
@@ -122,6 +123,19 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
     temporary.mkdir(mode=0o700)
     os.environ["TMPDIR"] = str(temporary)
     os.environ["MERLIN_PERF_SWEEP_WORKERS"] = "1"
+    inputs = SearchInputs(policy)
+    if inputs.ordinary:
+        os.environ["MERLIN_PERF_SWEEP_WORKERS"] = str(grant.cores)
+        with executing_revisions(revision, baseline_revision):
+            raw = policy.evaluate_retained(
+                revision,
+                baseline_revision,
+                work_root=root / "rtl",
+                call_index=index,
+                timeout_s=timeout_s,
+                workers=grant.cores,
+            )
+            return inputs.validate_result(raw, revision, kind)
     with executing_revisions(revision, baseline_revision):
         policy._validate()
     if kind == KINDS[0]:
@@ -218,11 +232,11 @@ def _fixed_evaluator(*, policy, revision, baseline_revision, kind, timeout_s, ro
 class ComponentEvaluationPool:
     def __init__(self, *, policy, revisions, resources, job_resources, root, beam=3, max_pending=6, max_jobs=256):
         from .component_analytical import ComponentAnalyticalBinding
-        from .component_workflow import ComponentOnlyPolicy
+
+        self.inputs = SearchInputs(policy)
 
         if (
-            type(policy) is not ComponentOnlyPolicy
-            or type(revisions) is not RetainedRevisionStore
+            type(revisions) is not RetainedRevisionStore
             or type(resources) is not AssignedResources
             or type(job_resources) is not JobResources
             or type(beam) is not int
@@ -235,10 +249,10 @@ class ComponentEvaluationPool:
             raise StageGateError("evaluation pool requires its fixed component policy and bounded host grants")
         resources.verify()
         job_resources.verify()
-        policy._validate()
+        self.inputs.validate()
         if (
-            policy.component_analytical is not None
-            and type(policy.component_analytical.binding) is not ComponentAnalyticalBinding
+            self.inputs.analytical is not None
+            and type(self.inputs.analytical.binding) is not ComponentAnalyticalBinding
         ):
             raise StageGateError("queued analytical route requires its issued independent execution binding")
         self.policy, self.revisions = policy, revisions
@@ -259,8 +273,8 @@ class ComponentEvaluationPool:
             raise StageGateError("evaluation pool requires a fresh canonical private root")
         protected = (
             policy.candidate,
-            policy.baseline_admission.baseline,
-            policy.component_corpus.root,
+            self.inputs.baseline,
+            self.inputs.corpus.root,
             revisions.root,
             revisions.authority.output,
         )
@@ -278,7 +292,7 @@ class ComponentEvaluationPool:
         ):
             raise StageGateError("one evaluation exceeds its assigned capacity after author and source reserves")
         self.root.mkdir(parents=True, mode=0o700)
-        provider = policy.component_analytical
+        provider = self.inputs.analytical
         lease_path = (
             provider.binding.lease_path if provider is not None else self.root.parent / "component-engine.lease"
         )
@@ -296,6 +310,7 @@ class ComponentEvaluationPool:
             feedback_guardian,
             feedback_protocol,
             retained_revisions,
+            search_inputs,
             supervised_feedback,
         )
 
@@ -308,6 +323,7 @@ class ComponentEvaluationPool:
             feedback_guardian,
             feedback_protocol,
             retained_revisions,
+            search_inputs,
             supervised_feedback,
             owned_children,
             protocol,
@@ -321,7 +337,7 @@ class ComponentEvaluationPool:
         )
         self._worker_code = _fixed_evaluator.__code__
         try:
-            self.baseline_revision = revisions.freeze(policy.baseline_admission.baseline)
+            self.baseline_revision = revisions.freeze(self.inputs.baseline)
         except BaseException:
             self._engine_lease.close()
             raise
@@ -354,8 +370,17 @@ class ComponentEvaluationPool:
         for path, digest in self._implementation_pins:
             if sha256_file(path) != digest:
                 raise StageGateError("fixed evaluation implementation source changed")
-        self.policy._validate()
-        provider = self.policy.component_analytical
+        self.inputs.validate()
+        if self.inputs.ordinary:
+            return document_sha256(
+                {
+                    "normal_policy": self.policy.search_closure_sha256,
+                    "implementation": [(str(path), digest) for path, digest in self._implementation_pins],
+                    "resources": asdict(self.resources),
+                    "grant": asdict(self.grant),
+                }
+            )
+        provider = self.inputs.analytical
         return document_sha256(
             {
                 "corpus": self.policy._component_bindings,
@@ -385,13 +410,14 @@ class ComponentEvaluationPool:
         if closure != job.closure or _environment() != job.environment:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
-    def submit(self, revision_id, *, kind=KINDS[0], timeout_s=600):
+    def submit(self, revision_id, *, kind=None, timeout_s=600):
         with self._lock:
+            kind = self.inputs.kinds[0] if kind is None else kind
             if self._closed or self._submissions_stopped:
                 raise StageGateError("evaluation submissions stopped")
-            if kind not in KINDS or type(timeout_s) not in (int, float) or not 1 <= timeout_s <= 2400:
+            if kind not in self.inputs.kinds or type(timeout_s) not in (int, float) or not 1 <= timeout_s <= 2400:
                 raise StageGateError("evaluation submission has an unsupported kind or deadline")
-            if getattr(self.policy, "component_analytical" if kind == KINDS[0] else "component_rtl") is None:
+            if (self.inputs.analytical if kind == KINDS[0] else self.inputs.rtl) is None:
                 raise StageGateError("selected queued component evaluation provider is unavailable")
             if sum(job.state not in TERMINAL for job in self._jobs.values()) >= self.max_pending:
                 raise StageGateError("evaluation queue backpressure: pending grant is full")
@@ -416,12 +442,15 @@ class ComponentEvaluationPool:
                 self.root,
                 revision.source,
                 self.baseline_revision.source,
-                self.policy.component_corpus.root,
+                self.inputs.corpus.root,
                 self.policy.target_experiment.path,
             }
-            paths.update(Path(path) for path in dict(self.policy.independent_runtime.source_pins))
-            if self.policy.component_analytical is not None:
-                arms = self.policy.component_analytical.binding.independent_arms
+            if self.inputs.ordinary:
+                paths.update(Path(row["path"]) for row in self.policy.binding()["runtime_source_pins"])
+            else:
+                paths.update(Path(path) for path in dict(self.policy.independent_runtime.source_pins))
+            if self.inputs.analytical is not None:
+                arms = self.inputs.analytical.binding.independent_arms
                 if arms is not None:
                     paths.add(arms.cache_root)
             try:
@@ -462,7 +491,7 @@ class ComponentEvaluationPool:
     def _retained_output_bytes(self):
         # Keep completed artifacts priced after their CPU/RAM/engine grants close.
         total = sum(self._disk_bytes(job.root) for job in self._jobs.values() if job.state in TERMINAL)
-        provider = self.policy.component_analytical
+        provider = self.inputs.analytical
         if provider is not None and provider.binding.independent_arms is not None:
             total += self._disk_bytes(provider.binding.independent_arms.cache_root)
         total += sum(path.stat().st_size for path in self.root.glob("*.json"))
@@ -613,34 +642,8 @@ class ComponentEvaluationPool:
                     raise StageGateError(
                         "evaluation worker refused its fixed feedback envelope: " + str(frame.get("failure"))[:512]
                     )
-                from .component_workflow import validate_component_feedback
-
-                result = validate_component_feedback(frame["result"])
-                rows = result["evidence"] if job.kind == KINDS[0] else result["evidence"]["cells"]
                 with executing_revisions(job.revision, self.baseline_revision):
-                    if {(row["family"], row["capsule"]) for row in rows} != self.policy._validate():
-                        raise StageGateError("completed evaluation omitted its exact admitted member roster")
-                    provider = self.policy.component_analytical
-                    expected = (
-                        (
-                            "calibrated_component_analytical",
-                            provider.implementation_sha256,
-                            provider.configuration_sha256,
-                        )
-                        if job.kind == KINDS[0]
-                        else (
-                            "certified_component_rtl",
-                            self.policy._rtl_configuration[0][1],
-                            self.policy.component_rtl.certificate.sha256,
-                        )
-                    )
-                if (
-                    (result["tier"], result["provider_sha256"], result["configuration_sha256"]) != expected
-                    or result["candidate_sha256"] != job.revision.source_sha256
-                    or result["corpus_sha256"] != self.policy.component_corpus.capsules_sha256
-                    or result["manifest_sha256"] != self.policy.component_corpus.manifest_sha256
-                ):
-                    raise StageGateError("evaluation worker feedback differs from its admitted request")
+                    result = self.inputs.validate_result(frame["result"], job.revision, job.kind)
             except Exception as failure:
                 error = failure
         try:

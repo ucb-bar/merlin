@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .contracts import StageGateError, mapping_file, sha256_file, write_json
 from .search_coordinator import SearchSettings
+from .search_inputs import SearchInputs
 
 _FIELDS = {
     "schema",
@@ -45,18 +46,17 @@ def prepare_search_configuration(
     This emits selection data, not runtime, model or timing qualification. Run it
     on the allocated worker: CPU assignments are checked against actual affinity.
     """
-    from .component_workflow import ComponentOnlyPolicy
     from .evaluation_pool import AssignedResources, JobResources
 
-    if type(policy) is not ComponentOnlyPolicy or policy.component_rtl is None:
-        raise StageGateError("search preparation requires its live component policy and selected RTL evaluator")
+    inputs = SearchInputs(policy)
+    identities = inputs.identities()
     if (
         type(resources) is not AssignedResources
         or type(job_resources) is not JobResources
         or type(settings) is not SearchSettings
     ):
         raise StageGateError("search preparation requires explicit typed resources and stopping settings")
-    policy._validate()
+    inputs.validate()
     resources.verify()
     job_resources.verify()
     settings.verify()
@@ -65,10 +65,7 @@ def prepare_search_configuration(
         raise StageGateError("search preparation requires a fresh ordinary configuration destination")
     document = {
         "schema": "merlin.component_search_configuration.v1",
-        "manifest_sha256": policy.component_corpus.manifest_sha256,
-        "corpus_sha256": policy.component_corpus.capsules_sha256,
-        "baseline_sha256": policy.baseline_admission.baseline_sha256,
-        "certificate_sha256": policy.component_rtl.certificate.sha256,
+        **identities,
         "resources": {**asdict(resources), "cpu_ids": list(resources.cpu_ids)},
         "job_resources": asdict(job_resources),
         "settings": asdict(settings),
@@ -81,7 +78,7 @@ def prepare_search_configuration(
     }
     write_json(path, document)
     selection = read_search_configuration(path)
-    policy._validate()
+    inputs.validate()
     selection.verify()
     return selection
 
@@ -104,20 +101,14 @@ class SearchConfiguration:
         ):
             raise StageGateError("search launch configuration changed")
 
-    def install(self, policy, *, edit_authority, root):
+    def install(self, policy, *, edit_authority, root, external_boundary=None):
         from .evaluation_pool import AssignedResources, JobResources
         from .retained_revisions import RetainedRevisionStore
         from .search_coordinator import ComponentSearchCoordinator
 
         self.verify()
-        if policy.component_rtl is None:
-            raise StageGateError("search launch requires its explicitly selected certified RTL evaluator")
-        expected = {
-            "manifest_sha256": policy.component_corpus.manifest_sha256,
-            "corpus_sha256": policy.component_corpus.capsules_sha256,
-            "baseline_sha256": policy.baseline_admission.baseline_sha256,
-            "certificate_sha256": policy.component_rtl.certificate.sha256,
-        }
+        inputs = SearchInputs(policy)
+        expected = inputs.identities()
         if any(self.document[key] != value for key, value in expected.items()):
             raise StageGateError("search selects another frozen corpus, fresh baseline or timing certificate")
         resources = dict(self.document["resources"])
@@ -132,7 +123,7 @@ class SearchConfiguration:
             max_files=self.document["source_files"],
             max_total_bytes=self.document["retained_source_bytes"],
         )
-        arms = policy.component_analytical.binding.compiled_arms if policy.component_analytical is not None else None
+        arms = inputs.analytical.binding.compiled_arms if inputs.analytical is not None else None
         # The fixed compile observer accepts work only under its originally
         # issued private output owner. Revision selection grants no output path.
         evaluation_root = arms.execution.output / "search-evaluations" if arms is not None else root / "evaluations"
@@ -144,6 +135,7 @@ class SearchConfiguration:
             beam=self.settings.beam_width,
             max_pending=self.document["max_pending"],
             max_jobs=self.document["max_jobs"],
+            **({"external_boundary": external_boundary} if external_boundary is not None else {}),
         )
         try:
             policy.search_coordinator = ComponentSearchCoordinator(pool, settings=self.settings)

@@ -179,6 +179,8 @@ def main(
     parser.add_argument("--gsim-certificate-sha256", required=True)
     parser.add_argument("--rtl-facts", type=Path, required=True)
     parser.add_argument("--telemetry-price-table", type=Path, required=True)
+    parser.add_argument("--search-configuration", type=Path, help="bounded queue budgets for the normal Phase 1 fork")
+    parser.add_argument("--compiler-edit-contract", type=Path, help="approved edit contract required by queued search")
     parser.add_argument(
         "--whole-model-profile-inputs",
         type=Path,
@@ -228,6 +230,14 @@ def main(
             telemetry_price_table=args.telemetry_price_table,
             workflow_id=args.workflow,
             whole_model_profile_inputs=args.whole_model_profile_inputs,
+            **(
+                {
+                    "search_configuration": args.search_configuration,
+                    "compiler_edit_contract": args.compiler_edit_contract,
+                }
+                if args.search_configuration is not None
+                else {}
+            ),
         )
     except (StageGateError, PC.CampaignGateError) as exc:
         print(f"NO-GO: {exc}", file=sys.stderr)

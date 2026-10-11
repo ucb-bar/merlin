@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -872,8 +873,14 @@ class DevelopmentGsimFeedback:
             # makespan is not set by a slow member that was submitted last.
             for index, member in sorted(wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
                 if measurement_plan is not None or (member.family, member.capsule) not in self._baseline_cache:
-                    jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
-                jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
+                    jobs[pool.submit(contextvars.copy_context().run, one, index, member, "baseline")] = (
+                        index,
+                        "baseline",
+                    )
+                jobs[pool.submit(contextvars.copy_context().run, one, index, member, "candidate")] = (
+                    index,
+                    "candidate",
+                )
             for future in concurrent.futures.as_completed(jobs):
                 slot = jobs[future]
                 try:

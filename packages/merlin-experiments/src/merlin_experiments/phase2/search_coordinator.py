@@ -13,6 +13,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 
 from .contracts import StageGateError, document_sha256
+from .search_inputs import ORDINARY_KIND
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,9 @@ class SearchSettings:
             raise StageGateError("search requires a bounded beam, time reserve and positive improvement threshold")
 
 
-def rank_measured_contenders(observations, *, roster, corpus_sha256, configuration_sha256):
+def rank_measured_contenders(
+    observations, *, roster, corpus_sha256, configuration_sha256, timing_kind="component-rtl-feedback"
+):
     """Replay complete development observations; repeated timings retain their range.
 
     This pure projection is diagnostic. Only the coordinator can obtain input
@@ -61,17 +64,24 @@ def rank_measured_contenders(observations, *, roster, corpus_sha256, configurati
     weights = {identity: 1 / len(counts) / counts[identity[0]] for identity in roster}
     groups, excluded = {}, []
     for observation in observations:
-        if observation["state"] != "completed" or observation["kind"] != "component-rtl-feedback":
+        if observation["state"] != "completed" or observation["kind"] != timing_kind:
             continue
-        feedback = validate_component_feedback(observation["result"])
-        if (
-            feedback["tier"] != "certified_component_rtl"
-            or feedback["candidate_sha256"] != observation["source_sha256"]
-            or feedback["corpus_sha256"] != corpus_sha256
-            or feedback["configuration_sha256"] != configuration_sha256
-        ):
+        if timing_kind == ORDINARY_KIND:
+            from .corpus_feedback import validate_redacted_feedback
+
+            feedback = validate_redacted_feedback(observation["result"])
+            identity = (feedback["candidate_sha256"], feedback["tuning_corpus_sha256"], feedback["certificate_sha256"])
+            cells = feedback["cells"]
+        elif timing_kind == "component-rtl-feedback":
+            feedback = validate_component_feedback(observation["result"])
+            if feedback["tier"] != "certified_component_rtl":
+                raise StageGateError("search observation lacks its selected certified timing tier")
+            identity = (feedback["candidate_sha256"], feedback["corpus_sha256"], feedback["configuration_sha256"])
+            cells = feedback["evidence"]["cells"]
+        else:
+            raise StageGateError("search timing route is outside its fixed original evaluators")
+        if identity != (observation["source_sha256"], corpus_sha256, configuration_sha256):
             raise StageGateError("search timing observation differs from its issued source/corpus/engine")
-        cells = feedback["evidence"]["cells"]
         identities = [(row["family"], row["capsule"]) for row in cells]
         if sorted(identities) != list(roster):
             raise StageGateError("search observation changes the complete objective roster")
@@ -114,18 +124,21 @@ def rank_measured_contenders(observations, *, roster, corpus_sha256, configurati
 class ComponentSearchCoordinator:
     """Single promotion owner for a live pool; decisions remain development only."""
 
+    timing_kind = "component-rtl-feedback"
+
     def __init__(self, pool, *, settings=SearchSettings()):
         from .evaluation_pool import ComponentEvaluationPool
 
         if type(pool) is not ComponentEvaluationPool or type(settings) is not SearchSettings:
             raise StageGateError("search must bind the actual fixed evaluation pool")
         settings.verify()
-        if pool.policy.component_rtl is None:
+        if pool.inputs.rtl is None:
             raise StageGateError("search requires an explicitly selected certified timing evaluator")
         self.pool, self.settings = pool, settings
-        self.roster = tuple(sorted(pool.policy._validate()))
-        self.corpus_sha256 = pool.policy.component_corpus.capsules_sha256
-        self.configuration_sha256 = pool.policy.component_rtl.certificate.sha256
+        self.roster = tuple(sorted(pool.inputs.validate()))
+        self.corpus_sha256 = pool.inputs.corpus.capsules_sha256
+        self.configuration_sha256 = pool.inputs.rtl.certificate.sha256
+        self.timing_kind = pool.inputs.timing_kind
         self.started = time.monotonic()
         self._incumbent = pool.baseline_revision.public_record()
         self._plateau = 0
@@ -152,6 +165,7 @@ class ComponentSearchCoordinator:
             roster=self.roster,
             corpus_sha256=self.corpus_sha256,
             configuration_sha256=self.configuration_sha256,
+            timing_kind=self.timing_kind,
         )
         ranked = projection["ranked"]
         eligible = {row["source_sha256"]: row for row in ranked}
@@ -262,7 +276,7 @@ class ComponentSearchCoordinator:
                 row
                 for row in self.pool.observations()
                 if row["state"] == "completed"
-                and row["kind"] == "component-rtl-feedback"
+                and row["kind"] == self.timing_kind
                 and row["source_sha256"] == source
                 and row["job_id"] in ranked["jobs"]
             ),
