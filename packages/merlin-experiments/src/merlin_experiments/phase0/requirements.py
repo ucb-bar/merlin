@@ -463,6 +463,7 @@ def derive(
         contract=selected.contract,
         facts=selected.refreshed_facts,
         taxonomy=selected.isa_taxonomy,
+        defer_classes=config.get("evidence_mode") == "diagnostic",
     )
     with (
         target_registry.observed_contract(te.target, selected.contract),

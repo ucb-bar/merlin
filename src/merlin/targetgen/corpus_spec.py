@@ -500,7 +500,8 @@ def profile_datapath(profile: dict, *, numeric_only: bool = False) -> dict:
 
 
 def derive_binding(
-    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None
+    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None,
+    defer_classes: bool = False,
 ) -> CorpusBinding:
     """Derive the per-target binding from the descriptor + the profile's ``datapath`` block (compare +
     tolerances + optional requant-output dtype — the numeric contract the manifest does not yet carry)."""
@@ -543,7 +544,8 @@ def derive_binding(
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
-        classes_for=_classes_source(te, c, taxonomy=taxonomy),
+        classes_for=(lambda **kw: _classes_source(te, c, taxonomy=taxonomy)(**kw))
+        if defer_classes else _classes_source(te, c, taxonomy=taxonomy),
     )
 
 

@@ -100,3 +100,18 @@ def test_binding_refuses_missing_and_unsupported_datapath(monkeypatch):
     contract["capabilities"] = {"mesh": {"rows": 8}}
     binding = CS.derive_binding(te, {})
     assert binding.operand_dtype == "fp16" and binding.tile_dim == 8
+
+
+def test_diagnostic_binding_defers_but_does_not_admit_missing_instruction_classes():
+    contract = {"compute_units": [{"name": "array", "kind": "systolic", "dtypes": ["int8"],
+                                  "accumulate": [{"in": "int8", "weight": "int8", "acc": "i32"}]}]}
+    facts = {"facts": {"arrays": [{"name": "mesh", "rows": 8, "cols": 8}]}}
+    te = SimpleNamespace(target="synthetic", sim_via="sim")
+    selected = {"contract": contract, "facts": facts, "taxonomy": {}}
+    datapath = {"required_oracle_tiers": ["L0"]}
+    with pytest.raises(ValueError, match="corpus_issue_order"):
+        CS.derive_binding(te, datapath, **selected)
+    binding = CS.derive_binding(te, datapath, defer_classes=True, **selected)
+    assert binding.operand_dtype == "int8" and binding.accum_dtype == "i32" and binding.tile_dim == 8
+    with pytest.raises(ValueError, match="corpus_issue_order"):
+        binding.classes_for(op="matmul")
