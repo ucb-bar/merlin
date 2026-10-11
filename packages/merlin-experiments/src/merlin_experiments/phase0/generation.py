@@ -472,7 +472,13 @@ def generate_target(
             e.get("name")
             for e in profile.get("capsules", [])
             if e.get("source_role")
-            not in {"derived_sweep", "model_derived", "solver_derived", "materialized_iteration_capture"}
+            not in {
+                "derived_sweep",
+                "model_derived",
+                "solver_derived",
+                "materialized_iteration_capture",
+                "materialized_performance_capture",
+            }
         ]
         if authored:
             raise ValueError(f"derived-only Phase 0 refuses authored capsule membership: {authored}")

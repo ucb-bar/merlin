@@ -52,6 +52,9 @@ def _materialized_iteration_capsules(
     digest: str,
     *,
     loader_snapshots: dict[str, tuple[Path, str]] | None = None,
+    performance_selection: dict | None = None,
+    performance_forms: dict | None = None,
+    facts_sha256: str | None = None,
 ) -> tuple[list[dict], dict[str, bytes]]:
     """Select full iteration programs, not a family representative or a held-out model.
 
@@ -61,23 +64,44 @@ def _materialized_iteration_capsules(
     """
     from merlin.targetgen.capsule_source import materialized_model_artifacts
 
+    from . import public_programs as PP
+
     entries, outputs = [], {}
     loader_snapshots = loader_snapshots or {}
+    role = "iteration"
+    prefix = "materialized"
+    if performance_selection is not None:
+        PP.validate_selection(performance_selection)
+        if (
+            set(loader_snapshots) != set(full["applications"])
+            or len(loader_snapshots) > performance_selection["max_members"]
+        ):
+            raise ValueError(
+                "connected performance sources require the complete preselected public roster within budget"
+            )
+        role, prefix = "performance_scale", "materialized-performance"
     for label, application in sorted(full["applications"].items()):
         if not label or Path(label).name != label or label in {".", ".."}:
             raise ValueError("application identity must be a single safe path component")
         source = Path(application["capture_source_path"])
+        if performance_selection is not None:
+            PP.check_budget(source.parent, performance_selection)
         selection = {
             "path": str(source),
             "capture_sha256": application["capture_sha256"],
             "receipt_sha256": application["capture_receipt"]["receipt_sha256"],
             "workload_id": label,
-            "workload_role": "iteration",
+            "workload_role": role,
             "coverage_scope": "full_capture",
             "full_inventory_sha256": digest,
             "operation_count": application["n_operations"],
         }
-        artifact = materialized_model_artifacts(selection)
+        if performance_selection is not None:
+            selection["schema"] = PP.CAPTURE_SCHEMA
+        # Read the common public bundle payload before installing its selected
+        # loader/profile beside it. The final performance selection validates
+        # that complete closure again through the ordinary writer and freeze.
+        artifact = materialized_model_artifacts({**selection, "workload_role": "iteration"})
         receipt_raw = (source.parent / "capture_receipt.json").read_bytes()
         if hashlib.sha256(receipt_raw).hexdigest() != selection["receipt_sha256"]:
             raise ValueError(f"capture receipt changed while copying {label}")
@@ -89,18 +113,18 @@ def _materialized_iteration_capsules(
             path = source.parent / member
             if path.is_symlink() or not path.is_file():
                 raise ValueError(f"materialized member missing or symlinked: {path}")
-            outputs[f"materialized/{label}/{member}"] = path.read_bytes()
+            outputs[f"{prefix}/{label}/{member}"] = path.read_bytes()
         # Independent recheck closes a producer mutation during the copy.
-        copied = outputs[f"materialized/{label}/model.mlir"]
+        copied = outputs[f"{prefix}/{label}/model.mlir"]
         if hashlib.sha256(copied).hexdigest() != selection["capture_sha256"]:
             raise ValueError(f"capture bytes changed while copying {label}")
         for member, identity in receipt["artifacts"].items():
-            raw = outputs[f"materialized/{label}/{member}"]
+            raw = outputs[f"{prefix}/{label}/{member}"]
             if len(raw) != identity["bytes"] or hashlib.sha256(raw).hexdigest() != identity["sha256"]:
                 raise ValueError(f"receipt-bound bytes changed while copying {label}/{member}")
         if (
             artifact.meta.get("framework_catalog")
-            and hashlib.sha256(outputs[f"materialized/{label}/pytorch-opset.json"]).hexdigest()
+            and hashlib.sha256(outputs[f"{prefix}/{label}/pytorch-opset.json"]).hexdigest()
             != artifact.meta["framework_catalog"]["sha256"]
         ):
             raise ValueError(f"framework catalog changed while copying {label}")
@@ -112,8 +136,21 @@ def _materialized_iteration_capsules(
             loader_bytes = loader_path.read_bytes()
             if hashlib.sha256(loader_bytes).hexdigest() != loader_sha256:
                 raise ValueError(f"selected workload loader changed while copying {label}")
-            outputs[f"materialized/{label}/loader.py"] = loader_bytes
-            loader_binding = {"loader_path": f"materialized/{label}/loader.py", "loader_sha256": loader_sha256}
+            outputs[f"{prefix}/{label}/loader.py"] = loader_bytes
+            loader_binding = {"loader_path": f"{prefix}/{label}/loader.py", "loader_sha256": loader_sha256}
+            if performance_selection is not None:
+                profile = loader_path.with_name("profile.json")
+                declared_profile = (artifact.meta.get("loader_provenance") or {}).get("profile_sha256")
+                if profile.is_file() or declared_profile is not None:
+                    if profile.is_symlink() or not profile.is_file():
+                        raise ValueError("public performance source lacks its selected profile")
+                    profile_raw = profile.read_bytes()
+                    if hashlib.sha256(profile_raw).hexdigest() != declared_profile:
+                        raise ValueError("public performance profile differs from its actual capture")
+                    outputs[f"{prefix}/{label}/profile.json"] = profile_raw
+                    loader_binding.update(
+                        profile_path=f"{prefix}/{label}/profile.json", profile_sha256=declared_profile
+                    )
         entries.append(
             {
                 "name": f"SY_source_{label}",
@@ -127,12 +164,26 @@ def _materialized_iteration_capsules(
                 "source_reference": "full saved iteration capture; target compile and execution unverified",
                 "materialized_capture": {
                     **selection,
-                    "path": f"materialized/{label}/model.mlir",
+                    "path": f"{prefix}/{label}/model.mlir",
                     **loader_binding,
                 },
                 "generalization": {"generalization_axis": "composition"},
             }
         )
+        if performance_selection is not None:
+            entry = entries[-1]
+            entry.update(
+                name=f"PG_source_{label}", cat="_perf", label="dev", source_role="materialized_performance_capture"
+            )
+            entry["source_reference"] = (
+                "complete unchanged independent public performance capture; target execution and timing unverified"
+            )
+            entry["performance"] = PP.performance(
+                entry,
+                trace=json.loads(outputs[f"{prefix}/{label}/frontend-trace.json"]),
+                forms=performance_forms or {},
+                facts_sha256=facts_sha256,
+            )
     return entries, outputs
 
 
@@ -380,9 +431,9 @@ def derive(
     profiles and historical corpus members are deliberately not inputs. Repeating
     the same selection produces identical bytes; changed inputs need a new root.
 
-    ``performance_captures`` are the descriptor's declared ``performance_applications``:
-    independent captures that feed only the Phase 2 form scope (see
-    :func:`performance_scale_selection`).
+    ``performance_captures`` are the descriptor's declared ``performance_applications``.
+    They feed the Phase 2 form scope and, only with the ordinary recipe's explicit
+    ``performance_source_programs`` selection, complete connected dev members.
     """
     declaration = from_definition(definition)
     te = load_target_experiment(declaration.descriptor)
@@ -436,12 +487,12 @@ def derive(
             if capture_python is not None and capture_python != interpreter:
                 raise ValueError("iteration captures select different PyTorch interpreters")
             capture_python = interpreter
-    performance_capture_evidence, performance_attestations = {}, {}
+    performance_capture_evidence, performance_attestations, performance_loaders = {}, {}, {}
     if performance_preselections:
         # The same pre-execution selection and sealed-replay attestation as an iteration capture; a
         # performance-scale capture feeds only the Phase 2 form scope, never the Phase 1 sources.
         from .capture_execution_attestation import attest_sealed_m2m
-        from .capture_selection import verify
+        from .capture_selection import load, verify
 
         for label, (selection_path, selected_sha256) in sorted(performance_preselections.items()):
             performance_capture_evidence[label] = verify(
@@ -451,6 +502,11 @@ def derive(
                 performance_capture_evidence[label],
                 selection_path=selection_path,
                 model_path=performance_captures[label],
+            )
+            selected_capture = load(selection_path, expected_sha256=selected_sha256)
+            performance_loaders[label] = (
+                Path(selected_capture["run_dir"]) / "snapshots/source/workload/loader.py",
+                selected_capture["plan"]["loader_sha256"],
             )
     spec = load_spec(definition)
     config = spec.document["phases"]["0"]["config"]
@@ -606,6 +662,63 @@ def derive(
             raise ValueError("core requirement omitted the selected certification floor")
         requirement["certification_floor"]["source"] = "descriptor.workload_spec.certification_floor"
     requirement["scope"]["performance"] = derive_performance_scope(requirement["scope"], selected.software_spec)
+    from . import public_programs as PP
+
+    public_selection = recipe_doc.get("performance_source_programs")
+    performance_full = None
+    if public_selection is not None:
+        PP.validate_selection(public_selection)
+        if not performance_captures or set(performance_loaders) != set(performance_captures) or layer_guard is None:
+            raise ValueError(
+                "connected public performance sources require every declared sealed capture "
+                "and an operator-private exclusion selection"
+            )
+        with (
+            target_registry.observed_contract(te.target, selected.contract),
+            observed_facts(te.target, selected.refreshed_facts, Path(rtl_facts)),
+        ):
+            performance_full = application_inventory.application_demand_inventory(
+                performance_captures,
+                te.target,
+                detailed=True,
+                **{
+                    **options,
+                    "application_metadata": {
+                        label: {"workload_id": label, "workload_role": "iteration", "coverage_scope": "full_capture"}
+                        for label in performance_captures
+                    },
+                },
+            )
+        for application in performance_full["applications"].values():
+            trace = json.loads((Path(application["capture_source_path"]).parent / "frontend-trace.json").read_bytes())
+            for row in PP.original_contractions(trace):
+                if layer_guard.gemm(*row["gemm"]) is not None or (
+                    row["conv"] is not None and layer_guard.conv(*row["conv"]) is not None
+                ):
+                    from .operator_exclusion import PublicationRefusal
+
+                    raise PublicationRefusal()
+        performance_digest = hashlib.sha256(
+            json.dumps(performance_full, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        requirement["public_program_sources"] = {
+            "schema": PP.POLICY_SCHEMA,
+            "selection": public_selection,
+            "sidecar": "performance-application-demands.json",
+            "full_inventory_sha256": performance_digest,
+        }
+        with (
+            target_registry.observed_contract(te.target, selected.contract),
+            observed_facts(te.target, selected.refreshed_facts, Path(rtl_facts)),
+        ):
+            extra_admission = derive_inventory(
+                performance_full, target=te.target, evidence=selected, captures=performance_captures
+            )
+        whole_program["applications"].update(extra_admission["applications"])
+        from .program_admission import operations_digest
+
+        whole_program["sha256"] = operations_digest(whole_program)
+        requirement["whole_program_admission"]["sha256"] = whole_program["sha256"]
     # The two capture-derived stages share ONE grouping and ONE binding (the corpus binding under the
     # selected recipe, contract and facts), read only the declared ITERATION captures, and refuse any
     # held-out model. Their outputs are byte-bound here with every other derived member.
@@ -677,6 +790,8 @@ def derive(
         "whole-program-admission.json": _json(whole_program),
         **policy_outputs,
     }
+    if performance_full is not None:
+        outputs["performance-application-demands.json"] = _json(performance_full)
     if selected_capture_evidence:
         outputs["capture-preselections.json"] = _json(requirement["capture_execution_preselections"])
     # Save the census even when an exact writer cannot express every signature.
@@ -693,6 +808,17 @@ def derive(
     source_entries, source_outputs = _materialized_iteration_capsules(full, digest, loader_snapshots=loader_snapshots)
     outputs.update(source_outputs)
     gradeable_sources = [entry for entry in source_entries if entry["materialized_capture"].get("loader_sha256")]
+    if performance_full is not None:
+        public_entries, public_outputs = _materialized_iteration_capsules(
+            performance_full,
+            performance_digest,
+            loader_snapshots=performance_loaders,
+            performance_selection=public_selection,
+            performance_forms=requirement["scope"]["performance"]["forms"],
+            facts_sha256=selected.raw_facts_sha256,
+        )
+        gradeable_sources.extend(public_entries)
+        outputs.update(public_outputs)
     if plan.get("status") != "blocked":
         plan["capsules"] = [*plan.get("capsules", []), *model_forms["entries"], *gradeable_sources]
         require_direct_tier(

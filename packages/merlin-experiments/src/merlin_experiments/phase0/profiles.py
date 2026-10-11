@@ -250,28 +250,65 @@ def verify_selected_synthesis(
             if invalid:
                 raise ValueError(f"{sidecar}: declared applications lack verified materialization receipts: {invalid}")
         source_entries = [entry for entry in profile_document.get("capsules", []) if entry.get("materialized_capture")]
+        performance_detailed = {}
+        selected_programs = spec_doc.get("public_program_sources")
+        if selected_programs is not None:
+            from .public_programs import validate_selection
+
+            validate_selection(selected_programs["selection"])
+            recipe_document = yaml.safe_load(Path(recipe).read_bytes()) or {}
+            if recipe_document.get("performance_source_programs") != selected_programs["selection"]:
+                raise ValueError("public program selection differs from the ordinary recipe")
+            if selected_programs.get("sidecar") != "performance-application-demands.json":
+                raise ValueError("public program inventory must remain beside its selected requirement")
+            if (Path(conformance_spec).parent / selected_programs["sidecar"]).is_symlink():
+                raise ValueError("public program inventory may not be a symlink")
+            performance_detailed = json.loads(
+                (Path(conformance_spec).parent / selected_programs["sidecar"]).read_bytes()
+            )
+            performance_digest = hashlib.sha256(
+                json.dumps(performance_detailed, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            if performance_digest != selected_programs.get("full_inventory_sha256") or set(
+                performance_detailed.get("applications") or {}
+            ) != set((descriptor_doc.get("workload_spec") or {}).get("performance_applications") or []):
+                raise ValueError("public program inventory differs from the declared selected performance roster")
         seen_sources = set()
         for entry in source_entries:
             binding = entry["materialized_capture"]
             label = binding.get("workload_id") if isinstance(binding, dict) else None
-            source_row = (detailed.get("applications") or {}).get(label)
+            performance_source = binding.get("workload_role") == "performance_scale"
+            source_inventory = performance_detailed if performance_source else detailed
+            source_row = (source_inventory.get("applications") or {}).get(label)
             if not isinstance(source_row, dict) or label in seen_sources:
                 raise ValueError(f"{synth_profile}: duplicate or unknown materialized iteration identity")
             seen_sources.add(label)
             expected_source = {
                 "capture_sha256": source_row["capture_sha256"],
                 "receipt_sha256": source_row["capture_receipt"]["receipt_sha256"],
-                "full_inventory_sha256": actual,
+                "full_inventory_sha256": performance_digest if performance_source else actual,
                 "operation_count": source_row["n_operations"],
-                "workload_role": "iteration",
+                "workload_role": "performance_scale" if performance_source else "iteration",
                 "coverage_scope": "full_capture",
             }
-            if entry.get("source_role") != "materialized_iteration_capture" or any(
+            expected_role = (
+                "materialized_performance_capture" if performance_source else "materialized_iteration_capture"
+            )
+            if entry.get("source_role") != expected_role or any(
                 binding.get(key) != value for key, value in expected_source.items()
             ):
                 raise ValueError(
                     f"{synth_profile}: materialized source does not bind its exact full iteration inventory"
                 )
+            if performance_source:
+                from .public_programs import CAPTURE_SCHEMA
+
+                if (
+                    binding.get("schema") != CAPTURE_SCHEMA
+                    or entry.get("cat") != "_perf"
+                    or entry.get("label") != "dev"
+                ):
+                    raise ValueError("public performance program must be an explicitly selected dev member")
     permitted_statuses = {"inventoried", "incomplete"} if diagnostic else {"inventoried"}
     if applications and demands.get("status") not in permitted_statuses:
         raise ValueError(
@@ -365,6 +402,23 @@ HOST_SOURCE_BASIS = "merlin.phase0.host_source_execution_basis.v1"
 
 def validate_host_source_basis(value, *, owner):
     """A source/execution selection is distinct from an accelerator RTL trait."""
+    from .public_programs import BASIS_SCHEMA
+
+    if isinstance(value, dict) and value.get("schema") == BASIS_SCHEMA:
+        if (
+            set(value)
+            != {"schema", "kind", "capture_sha256", "receipt_sha256", "operations", "numerical_reference", "boundary"}
+            or value["kind"] != "public_program"
+            or any(not is_sha256(value[key]) for key in ("capture_sha256", "receipt_sha256"))
+            or value["numerical_reference"] != "host_torch_eager"
+            or value["boundary"] != "complete_program_call"
+            or not isinstance(value["operations"], list)
+            or not value["operations"]
+            or any(not isinstance(op, str) or not op for op in value["operations"])
+            or len(set(value["operations"])) != len(value["operations"])
+        ):
+            raise ValueError(f"{owner}: public program basis requires its exact source/reference selection")
+        return value
     if (
         not isinstance(value, dict)
         or set(value) != {"schema", "kind", "software_intake_sha256", "operations", "numerical_reference", "boundary"}
@@ -972,7 +1026,7 @@ def load_profile(
                 if not isinstance(selection, dict) or not isinstance(selection.get("path"), str):
                     raise ValueError(f"{synth}: materialized capture must declare a path and exact identities")
                 resolved = dict(selection)
-                for key in ("path", "loader_path"):
+                for key in ("path", "loader_path", "profile_path"):
                     if key not in selection:
                         continue
                     if not isinstance(selection[key], str):

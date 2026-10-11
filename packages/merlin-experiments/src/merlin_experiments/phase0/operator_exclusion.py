@@ -39,7 +39,7 @@ def _digest(value):
     ).hexdigest()
 
 
-def contraction_signature_hashes(capsule):
+def contraction_signature_hashes(capsule, *, directory=None):
     """Hash each actual typed contraction, independent of node or output names.
 
     Shapes and ordered storage types come from the rebuilt typed program. The
@@ -47,6 +47,17 @@ def contraction_signature_hashes(capsule):
     bundle binding. These exact signatures grant no numerical or device support.
     """
     try:
+        if (capsule.get("materialized_capture") or {}).get("schema") == "merlin.materialized_public_capture.v2":
+            from .public_programs import original_contractions, verify_written
+
+            if directory is None:
+                raise PublicationRefusal()
+            verify_written(capsule, directory)
+            trace = json.loads((Path(directory) / "frontend-trace.json").read_bytes())
+            return tuple(
+                _digest({"schema": SIGNATURE_SCHEMA, **row, "numeric_policy": capsule["numeric_policy"]})
+                for row in original_contractions(trace)
+            )
         saved = capsule["component_program"]
         original = capsule["operation"]
         if original["op"] != "component_program":
@@ -156,15 +167,18 @@ class OperatorPrivateExclusion:
                 raise PublicationRefusal()
             if cap["label"] == "hidden":
                 return
-            signatures = contraction_signature_hashes(cap)
-            program = cap["component_program"]
-            _, expected = component_program.render(
-                cap["operation"]["attributes"]["program"],
-                operand_dtype=program["selected_storage"]["operand"],
-                accumulator_dtype=program["selected_storage"]["accumulator"],
-            )
+            signatures = contraction_signature_hashes(cap, directory=directory)
             source = (directory / "capsule.interface.mlir").read_bytes()
-            if source != expected.encode() or hashlib.sha256(source).hexdigest() in sources:
+            if "component_program" in cap:
+                program = cap["component_program"]
+                _, expected = component_program.render(
+                    cap["operation"]["attributes"]["program"],
+                    operand_dtype=program["selected_storage"]["operand"],
+                    accumulator_dtype=program["selected_storage"]["accumulator"],
+                )
+                if source != expected.encode():
+                    raise PublicationRefusal()
+            if hashlib.sha256(source).hexdigest() in sources:
                 raise PublicationRefusal()
             if set(signatures) & contractions:
                 raise PublicationRefusal()

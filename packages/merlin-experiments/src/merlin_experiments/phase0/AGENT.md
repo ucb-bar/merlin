@@ -1,5 +1,16 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Ordinary recipe `performance_source_programs` v1 selects the complete descriptor's
+unchanged public performance roster as connected dev members. Require every
+original sealed capture, selected loader/profile, finite ABI/payload budgets and
+operator-private exclusion before derivation publishes any source member. Keep
+the full original graph and host eager input/output closure through the existing
+materializer/writer and normal frozen input owner. Whole-program placement uses
+the same software screen as iteration sources. Purpose metadata may report only
+observed operations and existing conditional form boundaries; absent movement,
+conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
+is an alternative to an RTL trait rationale, never execution qualification.
+
 Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
 
 

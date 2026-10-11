@@ -1,0 +1,19 @@
+# New ordinary Phase 0 selection; leaves the existing release recipe unchanged.
+# Uses the descriptor's complete, unchanged public performance_applications roster.
+software_spec: ../target/software-spec.yaml
+capsule_policy: derived_only
+performance_oracles: {L2: spike, L3: verilator}
+datapath:
+  semantic_defaults: {must_accelerate: true}
+  compare: exact_int
+  requant_output_dtype: i8
+  requant_shift: 3
+  required_oracle_tiers: [L0, L1, L2, L3]
+capsules: []
+performance_source_programs:
+  schema: merlin.phase0.public_program_selection.v1
+  selection: declared_performance_applications
+  max_members: 4
+  max_capture_bytes: 536870912
+  max_input_elements: 16777216
+  max_output_elements: 16777216

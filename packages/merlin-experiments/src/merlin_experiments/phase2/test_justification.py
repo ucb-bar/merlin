@@ -39,6 +39,15 @@ def _host_basis(descriptor, directory: Path, gate) -> dict | None:
         validate_host_source_basis(selected, owner="Phase 2 test rationale")
     except ValueError as exc:
         raise StageGateError(str(exc)) from exc
+    from merlin_experiments.phase0.public_programs import BASIS_SCHEMA, verify_written
+
+    if selected["schema"] == BASIS_SCHEMA:
+        try:
+            return verify_written(descriptor, directory)
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            raise StageGateError(
+                "public program rationale differs from its original complete source/reference"
+            ) from exc
     preparation = (descriptor.get("performance") or {}).get("source_preparation") or {}
     screen = descriptor.get("source_semantics_screen") or {}
     program = descriptor.get("component_program") or {}

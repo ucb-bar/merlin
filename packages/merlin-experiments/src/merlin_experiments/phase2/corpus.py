@@ -236,10 +236,17 @@ def discover_performance_corpus(
         if (
             source.name != name
             or descriptor.get("label") != "dev"
-            or descriptor.get("source_role") != "derived_sweep"
+            or descriptor.get("source_role") not in {"derived_sweep", "materialized_performance_capture"}
             or not isinstance(performance, Mapping)
         ):
             raise StageGateError(f"performance capsule {name!r} is not a generated dev member")
+        if descriptor.get("source_role") == "materialized_performance_capture":
+            from merlin_experiments.phase0.public_programs import verify_written
+
+            try:
+                verify_written(descriptor, source)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("generated public performance program source/reference changed") from exc
         family = CONTRACTS.safe_component(str(performance.get("family") or ""), label="performance family")
         claim = performance.get("claim")
         if claim not in PP.CANONICAL_CLAIMS:
