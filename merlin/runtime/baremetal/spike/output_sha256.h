@@ -75,4 +75,9 @@ static void merlin_output_sha256_i1(const void *p,size_t count,uint8_t digest[32
   merlin_sha256_update(&s,(const uint8_t *)p,count);
   merlin_sha256_final(&s,digest);
 }
+static void merlin_output_sha256_raw(const void *p,size_t bytes,uint8_t digest[32]) {
+  merlin_sha256 s;merlin_sha256_init(&s);
+  merlin_sha256_update(&s,(const uint8_t *)p,bytes);
+  merlin_sha256_final(&s,digest);
+}
 #endif

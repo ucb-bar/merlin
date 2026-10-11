@@ -13,7 +13,7 @@ def verify_output_sha256(text: str, reference: np.ndarray) -> dict:
     The caller must separately establish the reference's numerical validity and
     provenance; a matching digest alone does not validate model semantics.
     """
-    records = [line.split() for line in text.splitlines() if line.startswith("OUT_SHA256")]
+    records = [line.split() for line in text.splitlines() if line.startswith("OUT_SHA256 ")]
     if len(records) != 1:
         raise ValueError("expected exactly one OUT_SHA256 record")
     record = records[0]
@@ -47,3 +47,36 @@ def verify_output_sha256(text: str, reference: np.ndarray) -> dict:
     if observed != expected:
         raise ValueError("full output SHA256 mismatch")
     return {"encoding": encoding, "elements": array.size, "bytes": len(raw), "sha256": expected}
+
+
+def verify_all_output_sha256(text: str, references: list[np.ndarray] | tuple[np.ndarray, ...]) -> list[dict]:
+    """Check each indexed raw-storage digest against the matching result array.
+
+    The caller must bind result order and dtype to an independently captured
+    session ABI. This verifier checks bytes, not model numerical semantics.
+    """
+    records = [line.split() for line in text.splitlines() if line.startswith("OUT_SHA256_INDEX ")]
+    if len(records) != len(references):
+        raise ValueError("indexed output digest count does not match reference results")
+    verified = []
+    for index, (record, reference) in enumerate(zip(records, references, strict=True)):
+        if (
+            len(record) != 6
+            or record[:3] != ["OUT_SHA256_INDEX", str(index), "rawbytes"]
+            or any(not field or any(c not in "0123456789" for c in field) for field in record[3:5])
+            or len(record[5]) != 64
+            or any(c not in "0123456789abcdef" for c in record[5])
+        ):
+            raise ValueError("invalid indexed output digest record")
+        array = np.asarray(reference)
+        if array.dtype.hasobject or not array.dtype.isnative:
+            raise ValueError("indexed output reference needs native-endian value storage")
+        raw = array.tobytes(order="C")
+        if int(record[3]) != array.size or int(record[4]) != len(raw):
+            raise ValueError("indexed output digest extent mismatch")
+        expected = hashlib.sha256(raw).hexdigest()
+        if record[5] != expected:
+            raise ValueError("indexed output digest mismatch")
+        verified.append({"index": index, "elements": array.size,
+                         "bytes": len(raw), "sha256": expected})
+    return verified

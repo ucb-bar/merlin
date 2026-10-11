@@ -86,6 +86,9 @@ void hash_i64(const void *p,size_t n,unsigned char *out) {
 void hash_i1(const void *p,size_t n,unsigned char *out) {
  merlin_output_sha256_i1(p,n,out);
 }
+void hash_raw(const void *p,size_t n,unsigned char *out) {
+ merlin_output_sha256_raw(p,n,out);
+}
 """)
     lib = work / "probe.so"
     subprocess.run(
@@ -106,7 +109,7 @@ void hash_i1(const void *p,size_t n,unsigned char *out) {
         check=True,
     )
     dll = ctypes.CDLL(str(lib))
-    for name in ("hash_bytes", "hash_floats", "hash_i64", "hash_i1"):
+    for name in ("hash_bytes", "hash_floats", "hash_i64", "hash_i1", "hash_raw"):
         getattr(dll, name).argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
     return dll
 
@@ -143,6 +146,8 @@ def test_integer_and_boolean_output_encoding(hasher):
 
     booleans = bytes([0, 1, 1, 0, 1])
     hasher.hash_i1(booleans, len(booleans), output)
+    assert output.raw.hex() == hashlib.sha256(booleans).hexdigest()
+    hasher.hash_raw(booleans, len(booleans), output)
     assert output.raw.hex() == hashlib.sha256(booleans).hexdigest()
 
 
@@ -187,3 +192,23 @@ def test_typed_record_validation(reference, encoding):
         verify_output_sha256(record, np.zeros(array.shape, dtype=np.float32))
     with pytest.raises(ValueError):
         verify_output_sha256(record.replace(digest, "0" * 64), array)
+
+
+def test_indexed_output_digests_cover_boolean_and_state_storage():
+    import numpy as np
+
+    from merlin.runtime.output_digest import verify_all_output_sha256, verify_output_sha256
+
+    outputs = [np.array([False, True, True], dtype=np.bool_),
+               np.array([[0x3F80, 0xBF80]], dtype=np.uint16)]
+    records = [f"OUT_SHA256_INDEX {index} rawbytes {array.size} {array.nbytes} "
+               f"{hashlib.sha256(array.tobytes()).hexdigest()}"
+               for index, array in enumerate(outputs)]
+    console = "\n".join(records) + "\n"
+    assert [row["index"] for row in verify_all_output_sha256(console, outputs)] == [0, 1]
+    first = f"OUT_SHA256 i1byte 3 3 {hashlib.sha256(outputs[0].tobytes()).hexdigest()}\n"
+    assert verify_output_sha256(first + console, outputs[0])["encoding"] == "i1byte"
+    with pytest.raises(ValueError, match="mismatch"):
+        verify_all_output_sha256(console, [outputs[0], np.zeros_like(outputs[1])])
+    with pytest.raises(ValueError, match="count"):
+        verify_all_output_sha256(console, outputs[:1])

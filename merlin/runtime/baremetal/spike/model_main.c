@@ -184,6 +184,45 @@ int main(int hart) {
   }
   htif_putc('\n');
 #endif
+#ifdef MERLIN_ALL_OUTPUT_SHA256
+  /* One digest per declared result, including state results. Raw bytes are
+   * compared against the captured dtype's storage, without numerical casts. */
+  int output_index = 0;
+  for (int arg_index = 0; arg_index < MERLIN_N_ARGS; arg_index++) {
+    const merlin_arg_t *arg = &MERLIN_ARGS[arg_index];
+    if (arg->kind != MERLIN_OUTPUT) continue;
+    if (output_index >= MERLIN_N_OUTPUTS || arg->rank < 0 ||
+        arg->rank > MERLIN_MAX_RANK || arg->elem_size <= 0) {
+      htif_puts("FAIL output digest ABI\n"); htif_exit(1); return 1;
+    }
+    size_t elements = 1;
+    for (int dim = 0; dim < arg->rank; dim++) {
+      if (arg->dims[dim] < 0 ||
+          (elements && (size_t)arg->dims[dim] > SIZE_MAX / elements)) {
+        htif_puts("FAIL output digest extent\n"); htif_exit(1); return 1;
+      }
+      elements *= (size_t)arg->dims[dim];
+    }
+    if (elements && (size_t)arg->elem_size > SIZE_MAX / elements) {
+      htif_puts("FAIL output digest bytes\n"); htif_exit(1); return 1;
+    }
+    size_t bytes = elements * (size_t)arg->elem_size;
+    uint8_t digest[32];
+    merlin_output_sha256_raw(MERLIN_OUTPUT_PTR[output_index], bytes, digest);
+    htif_puts("OUT_SHA256_INDEX ");
+    htif_putd((long)output_index); htif_puts(" rawbytes ");
+    htif_putd((long)elements); htif_putc(' '); htif_putd((long)bytes); htif_putc(' ');
+    for (unsigned i = 0; i < 32; i++) {
+      static const char hex[] = "0123456789abcdef";
+      htif_putc(hex[digest[i] >> 4]); htif_putc(hex[digest[i] & 15]);
+    }
+    htif_putc('\n');
+    output_index++;
+  }
+  if (output_index != MERLIN_N_OUTPUTS) {
+    htif_puts("FAIL output digest count\n"); htif_exit(1); return 1;
+  }
+#endif
   htif_puts("METRIC cycles ");
   htif_putd((long)(c1 - c0));
   htif_putc('\n');

@@ -493,6 +493,7 @@ def build(
     code_reserve: int | None = None,
     output_dump_cap: int = 4096,
     output_sha256: bool = False,
+    output_all_sha256: bool = False,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -515,6 +516,8 @@ def build(
     ``output_sha256`` additionally hashes every first-output f32, i64 or i1
     value in its canonical byte encoding, after timing. Pair with
     ``output_dump_cap=1`` for compact logs.
+    ``output_all_sha256`` also hashes every result's raw storage, including
+    recurrent state outputs, with one indexed record per result.
 
     The lowering arguments mirror ``zephyr_model.build_app`` and retain their historical defaults;
     the selected compiler's index width is now explicitly bound for every build. ``int8_compute``
@@ -662,6 +665,8 @@ def build(
         raise ValueError("output_dump_cap must be a positive signed 32-bit integer")
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
+    if not isinstance(output_all_sha256, bool):
+        raise ValueError("output_all_sha256 must be a bool")
     from ..host_math import build_host_math, host_math_recipe
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
@@ -1113,6 +1118,8 @@ def build(
     _hh.update(profile_flags.encode())
     if output_sha256:
         _hh.update(b"output_sha256=True")
+    if output_all_sha256:
+        _hh.update(b"output_all_sha256=True")
     build_hash = _hh.hexdigest()[:12]
     # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
     # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
@@ -1156,7 +1163,8 @@ def build(
             + console_defs
             + prof_defs
             + [f'-DMERLIN_BUILD_HASH="{build_hash}"', f"-DMERLIN_DUMP_CAP={output_dump_cap}"]
-            + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else []),
+            + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
+            + (["-DMERLIN_ALL_OUTPUT_SHA256"] if output_all_sha256 else []),
         ),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
@@ -1245,6 +1253,7 @@ def build(
         "console": console,
         "output_dump_cap": output_dump_cap,
         "output_sha256": output_sha256,
+        "output_all_sha256": output_all_sha256,
         "chip_freq_hz": chip_freq_hz,
         "console_provenance": dict(console_facts.provenance) if console_facts else {},
         # The matrix build carries the hardware revision its instructions were derived from, so a
