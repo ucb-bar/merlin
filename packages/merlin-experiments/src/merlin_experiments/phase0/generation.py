@@ -884,6 +884,7 @@ def generate_target(
                 print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
                 continue
             failures.append((e.get("name", "?"), detail))
+            print(f"  [failure] {e.get('name', '?')}: {detail}", flush=True)
             if family:
                 _performance_errors.append(
                     {
@@ -962,10 +963,15 @@ def generate_target(
                 (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
                 if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
                     failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
+                    print(
+                        f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
+                        flush=True,
+                    )
                 # Verified evidence admits a generation-time capture only from the sealed runner.
                 capture_refusal = verified_capture_failure(actual)
                 if evidence_mode != "diagnostic" and capture_refusal is not None:
                     failures.append((e.get("name", "?"), "generation-time capture: " + capture_refusal))
+                    print(f"  [failure] {e.get('name', '?')}: generation-time capture: {capture_refusal}", flush=True)
             _scrub_capsule_dir(w)
             written.append(w)
             # A qualified model's per-group capsules are corpus members of their own: Phase 1 grades
