@@ -366,7 +366,19 @@ def _host_call_proof(host_ir, *, assigned, output):
     )
     if result.returncode != 0:
         raise ValueError("actual final host LLVM cannot be CFG-audited: " + result.stderr[-500:])
-    module = Parser(make_llvm_context(), translated.read_text()).parse_module()
+    # The stock importer emits module metadata with upstream custom assembly
+    # absent from xDSL. Generic printing preserves those operations/attributes
+    # and the actual CFG; do not drop metadata or rewrite LLVM instructions.
+    printer = translator.with_name("mlir-opt").resolve(strict=True)
+    printer_before = _digest(printer)
+    generic = Path(output) / "owned_host_cfg.generic.mlir"
+    printed = subprocess.run(
+        [str(printer), str(translated), "--mlir-print-op-generic", "-o", str(generic)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if printed.returncode != 0 or _digest(printer) != printer_before:
+        raise ValueError("actual host CFG cannot be printed generically with selected MLIR")
+    module = Parser(make_llvm_context(), generic.read_text()).parse_module()
     wrapper = _llvm_function(module, "_mlir_ciface_forward")
 
     def callee(op):
@@ -404,6 +416,8 @@ def _host_call_proof(host_ir, *, assigned, output):
         "host_llvm": before,
         "importer": importer_before,
         "imported_cfg": _digest(translated),
+        "generic_printer": printer_before,
+        "generic_cfg": _digest(generic),
         "mandatory_call_roster": dict(required),
         "scope": "actual final LLVM source-call dominance; not hardware commit trace",
     }
@@ -642,6 +656,11 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     elf = Path(output["elf"])
     recipe = output["compilation_recipe"]
     compilation = verify_completed_recipe(Path(recipe["path"]), executable=elf, expected_recipe_sha256=recipe["sha256"])
+    quantization = (compilation.get("preparation") or {}).get("quantization_policy")
+    if quantization is not None:
+        document = json.loads(Path(quantization["path"]).read_text())
+        if document.get("selection") != "captured_scope" or document.get("passes") != ["contraction_int8"]:
+            raise ValueError("owned host lowering did not preserve captured quantization scope")
     host = output["host_artifacts"]
     model_ir, model_obj = _pinned(host, "llvm_ir"), _pinned(host, "object")
     model_commands = [row for row in compilation["commands"] if row["output"]["path"] == str(model_obj)]
@@ -803,7 +822,11 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout):
             if tier == "L2":
                 backend, citation, revalidate = _functional_engine_for_facts(target, selected_facts)
                 revalidate()
-                console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
+                declared_runner = getattr(backend, "run_declared_model_elf", None)
+                if declared_runner is not None:
+                    console = declared_runner(elf, timeout=timeout, capture_bytes=True)
+                else:
+                    console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
                 revalidate()
                 engine_evidence = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":
@@ -917,6 +940,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             or inputs.get("arena_mb") != selection["arena_mb"]
             or inputs.get("run") != "none"
             or inputs.get("readback") != "full"
+            or inputs.get("respect_captured_quantization_scope") is not True
             or inputs.get("board_catalog_sha256") != file_sha256(paths["board_catalog"])
             or inputs.get("dts_sha256") != file_sha256(paths["dts"])
         ):

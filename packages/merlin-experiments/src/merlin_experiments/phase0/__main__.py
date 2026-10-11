@@ -41,6 +41,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--conformance-spec", type=Path, help="explicit reviewed conformance requirement for synthesized entries"
     )
+    ap.add_argument("--generation-scope", choices=("full", "phase1-functional"), default="full")
     ap.add_argument("--synth-profile", type=Path, help="explicit optional generated synthesis sidecar")
     ap.add_argument("--smt-profile", type=Path, help="explicit optional solver-generated sidecar")
     ap.add_argument("--hidden-profile", type=Path, help="explicit optional private holdout sidecar (host only)")
@@ -145,6 +146,8 @@ def main(argv=None) -> int:
             options["component_only"] = True
         if a.component_coverage is not None:
             options["component_coverage"] = a.component_coverage
+        if a.generation_scope != "full":
+            options["generation_scope"] = a.generation_scope
         written = generate_target(t, **options)
         print(f"{t}: wrote {len(written)} capsules -> {written[0].parent.parent if written else '(none)'}")
     if a.comparison_manifest or not a.target:

@@ -441,6 +441,7 @@ def resolve_plan(
     phase0_capability_contract: Path | None = None,
     phase0_synth_profile: Path | None = None,
     phase0_hidden_profile: Path | None = None,
+    phase0_generation_scope: str | None = None,
     phase0_component_coverage: Path | None = None,
     phase0_rtl_facts: Path | None = None,
     phase0_evidence_mode: str | None = None,
@@ -485,6 +486,7 @@ def resolve_plan(
                 phase0_capability_contract,
                 phase0_synth_profile,
                 phase0_hidden_profile,
+                phase0_generation_scope,
                 phase0_component_coverage,
                 phase0_rtl_facts,
                 phase0_evidence_mode,
@@ -498,6 +500,10 @@ def resolve_plan(
     ):
         raise SpecError("Phase 0 artifact selection requires --phase 0")
     phase0_selection = {}
+    if phase0_generation_scope is not None:
+        if phase0_generation_scope not in ("full", "phase1-functional"):
+            raise SpecError("Phase 0 generation scope must be full or phase1-functional")
+        phase0_selection["generation_scope"] = phase0_generation_scope
     for name, path in (
         ("conformance_spec", phase0_conformance_spec),
         ("capability_contract", phase0_capability_contract),

@@ -34,7 +34,7 @@ from pathlib import Path
 if __package__:
     from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 else:
-    from _m2m_capture_deployment import _mlir_dtype, _numeric_deployment
+    from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
 # workloads/capture.py SCHEME + DTYPE_CAST so a capsule's precision matches how models are captured.

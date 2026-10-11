@@ -685,3 +685,11 @@ native full-output checks and actual reference-traversal stress never replace an
 original guard/private slot. Source preparation v2 carries these finite reviewed
 facets through the same live source chain; all original mandatory unknown domains,
 effects, mappings, runtime and pending candidate predicates survive unchanged.
+
+The optional `generation_scope: phase1-functional` retains full roster expansion
+and all ordinary nonperformance, hidden and application admission. Only existing
+`_perf` members are deferred before capsule writing. Keep every resolved claim in
+the byte-bound `phase2-deferred.json` ledger and preserve it during release
+preparation. Deferred claims are neither written members nor Phase 2 readiness;
+omission retains historical full generation. Do not reuse this selector to omit
+other mandatory obligations or change sealed capture freshness.

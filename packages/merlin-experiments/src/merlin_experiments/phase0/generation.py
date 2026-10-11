@@ -27,6 +27,23 @@ from .sweeps import _performance_facts, _resolve_flat_extents, expand_sweeps
 from .writer import SYNTH_ROLE, UnprovableForbid, _write_capsule
 
 
+def _select_generation_scope(entries: list[dict], scope: str) -> tuple[list[dict], list[dict]]:
+    """Defer only the existing nonfunctional performance category, retaining full records."""
+    if scope not in {"full", "phase1-functional"}:
+        raise ValueError("generation_scope must be full or phase1-functional")
+    if scope == "full":
+        return entries, []
+    functional, deferred = [], []
+    for entry in entries:
+        if entry.get("cat") == "_perf":
+            if not isinstance(entry.get("performance"), dict) or not entry["performance"]:
+                raise ValueError("deferred performance member lacks its explicit claim")
+            deferred.append(copy.deepcopy(entry))
+        else:
+            functional.append(entry)
+    return functional, deferred
+
+
 def _screen_selected_entry(
     spec: dict,
     entry: dict,
@@ -345,6 +362,7 @@ def generate_target(
     evidence_input: str | Path | None = None,
     evidence_mode: str | None = None,
     performance_template: str | Path | None = None,
+    generation_scope: str = "full",
     conformance_spec: str | Path | None = None,
     synth_profile: str | Path | None = None,
     smt_profile: str | Path | None = None,
@@ -368,6 +386,10 @@ def generate_target(
     from .operator_exclusion import require_selection as require_operator_exclusion
 
     require_operator_exclusion(operator_exclusion, output_root, evidence_root)
+    if generation_scope not in {"full", "phase1-functional"}:
+        raise ValueError("generation_scope must be full or phase1-functional")
+    if component_only and generation_scope != "full":
+        raise ValueError("functional generation scope is separate from component-only generation")
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
     if component_coverage is not None and not component_only:
@@ -601,6 +623,7 @@ def generate_target(
     entries = [_resolve_flat_extents(e, binding) for e in entries]
     entries = [_with_candidate_policy(e, instruction_policy) for e in entries]
     entries = [_with_reference_gate(e, te, descriptor) for e in entries]
+    entries, deferred_performance = _select_generation_scope(entries, generation_scope)
     component_identity = None
     component_plan = None
     component_coverage_report = None
@@ -1182,6 +1205,27 @@ def generate_target(
             f"  [prune] {len(superseded)} synthesized capsule(s) whose requirement cell no longer "
             f"exists were removed: {', '.join(superseded)}"
         )
+    if generation_scope != "full":
+        deferred_record = {
+            "generation_scope": generation_scope,
+            "status": "deferred_not_prepared",
+            "phase": "phase2",
+            "qualification": "No performance capsule, measurement or Phase 2 readiness is issued",
+            "shared_template": performance_record["shared_template"],
+            "facts": performance_record["facts"],
+            "requirements_sha256": hashlib.sha256(requirement_bytes).hexdigest() if requirement_bytes else None,
+            "entries": deferred_performance,
+        }
+        deferred_raw = (json.dumps(deferred_record, sort_keys=True, indent=2) + "\n").encode()
+        deferred_path = out_root / "phase2-deferred.json"
+        deferred_path.write_bytes(deferred_raw)
+        performance_record["preparation"] = {
+            "scope": generation_scope,
+            "status": "deferred_not_prepared",
+            "deferred_members": len(deferred_performance),
+            "ledger": "phase2-deferred.json",
+            "sha256": hashlib.sha256(deferred_raw).hexdigest(),
+        }
     update_provenance_manifest(
         written,
         cap_root=out_root,

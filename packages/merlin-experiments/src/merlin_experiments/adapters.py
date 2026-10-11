@@ -415,6 +415,7 @@ ADAPTERS = {
             "hardware_spec": Option("input"),
             "rtl_facts": Option("input"),
             "evidence_mode": Option(choices=("diagnostic", "verified")),
+            "generation_scope": Option(choices=("full", "phase1-functional")),
             "performance_template": Option("input"),
             "conformance_spec": Option("input"),
             "synth_profile": Option("input"),

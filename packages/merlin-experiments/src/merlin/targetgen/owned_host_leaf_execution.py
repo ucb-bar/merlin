@@ -160,6 +160,7 @@ def _host_leaf_structure(receipt, *, target, facts):
     from merlin.common.facts_view import interface
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+    from merlin.runtime.backends.spike import gcc_path
     from merlin.targetgen import elf_lanes
 
     from .owned_host_model_execution import _pinned
@@ -182,7 +183,7 @@ def _host_leaf_structure(receipt, *, target, facts):
     if not any(row["path"] == str(ir) and row["sha256"] == file_sha256(ir) for row in commands[0]["inputs"]):
         raise ValueError("provided host leaf LLVM is not its actual object source")
     final = completed["commands"][-1]
-    if Path(final["executable"]["path"]) != toolchain.clang().resolve() or not any(
+    if Path(final["executable"]["path"]) != gcc_path().resolve() or not any(
         row["path"] == str(obj) and row["sha256"] == file_sha256(obj) for row in final["inputs"]
     ):
         raise ValueError("provided host leaf object is not its actual final link input")
@@ -227,7 +228,7 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
     )
 
     record, tiers, failure = {}, {}, None
-    status, numeric = "incomplete", {"status": "not_compared"}
+    status, numeric = "incomplete", {"status": "skipped"}
     required = set(capsule.get("required_oracle_tiers") or [])
     try:
         root = Path(capsule["__dir__"])
@@ -243,7 +244,7 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
         selection_path = _selected_file({"selection": selection_record}, "selection")
         selection = json.loads(selection_path.read_text())
         catalog, dts, facts = (_selected_file(selection, role) for role in ("board_catalog", "dts", "rtl_facts"))
-        _, host, host_identity = _resolve_model_host_lane(target, "fp32")
+        _, host, host_identity = _resolve_model_host_lane(target, None)
         host_bytes = strict_tree_sha256(host)
         output = paths.run_path / "owned_host_leaf"
         materialized, source, source_identity = materialize_host_leaf(capsule, target=target, output=output / "inputs")
@@ -260,6 +261,7 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
             timeout_s=timeout,
             readback="full",
             materialized_inputs=materialized,
+            respect_captured_quantization_scope=True,
         )
         if receipt.get("status") != "compiled":
             raise ValueError("provided host compilation failed: " + str(receipt.get("failure")))
@@ -297,7 +299,12 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
             if tier == "L2":
                 backend, citation, verify = _functional_engine_for_facts(target, protected_facts)
                 verify()
-                console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
+                model_run = getattr(backend, "run_declared_model_elf", None)
+                console = (
+                    model_run(elf, timeout=timeout, capture_bytes=True)
+                    if callable(model_run)
+                    else backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
+                )
                 verify()
                 engine = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":
@@ -367,7 +374,7 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
         status=status,
         failure=failure,
         tiers=tiers,
-        trace_check_res={"status": "not_applicable", "violations": []},
+        trace_check_res={"status": "skipped", "violations": []},
         numeric=numeric,
         required=required,
         no_oracle=no_oracle,

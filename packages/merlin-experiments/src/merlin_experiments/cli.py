@@ -203,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         child.add_argument(
             "--phase0-synth-profile", type=Path, help="new synthesized Phase 0 profile (select with requirement)"
         )
+        child.add_argument("--phase0-generation-scope", choices=("full", "phase1-functional"))
         child.add_argument(
             "--phase0-hidden-profile",
             type=Path,
@@ -757,6 +758,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_rtl_facts=args.phase0_rtl_facts,
                 phase0_evidence_mode=args.phase0_evidence_mode,
                 phase0_hidden_profile=args.phase0_hidden_profile,
+                phase0_generation_scope=args.phase0_generation_scope,
                 phase0_component_coverage=args.phase0_component_coverage,
                 phase0_m2m_root=args.phase0_m2m_root,
                 phase0_m2m_python=args.phase0_m2m_python,

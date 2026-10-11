@@ -644,3 +644,12 @@ def test_generation_capture_bwrap_is_frozen_into_the_sealed_capture_plan(authore
     make({**selected, "evidence_mode": "diagnostic"})
     with pytest.raises(SpecError, match="only to sealed generation captures"):
         plan(phase0_bwrap=bwrap)
+
+
+def test_functional_scope_is_bound_to_ordinary_frozen_command(authored):
+    make, _, config = authored
+    selected = {**config, "generation_scope": "phase1-functional"}
+    plan = make(selected)
+    command = plan["phases"]["0"]
+    assert command["argv"][command["argv"].index("--generation-scope") + 1] == "phase1-functional"
+    assert "--generation-scope" not in make(config)["phases"]["0"]["argv"]

@@ -498,6 +498,11 @@ class BoundRoCCBackend:
         self._engine_identity("spike")
         return _path(self._engine("spike")["binary"]["path"])
 
+    def spike_extension(self):
+        """Expose the exact verified functional extension used by this runner."""
+        extension = self._engine_identity("spike")["extension"]
+        return tuple(extension["flags"]), _path(extension["path"]).parent
+
     def verilator_path(self):
         self._engine_identity("verilator")
         return _path(self._engine("verilator")["binary"]["path"])
@@ -541,8 +546,25 @@ class BoundRoCCBackend:
             _require(bool(outputs), "selected execution omitted complete output values")
         return outputs, raw
 
-    def run_elf(self, elf, *, simulator, timeout, capture_bytes=False, **kwargs):
-        _require(not kwargs and type(capture_bytes) is bool, "selected execution received unsupported options")
+    def run_declared_model_elf(self, elf, *, timeout, capture_bytes=False):
+        """Run an explicitly selected saved-model image with its own machine declarations.
+
+        Ordinary kernel invocations retain their contract argv. Model callers
+        separately verify the declared board/ISA and original-source build.
+        """
+        return self.run_elf(
+            elf, simulator="spike", timeout=timeout, capture_bytes=capture_bytes, declared_model_machine=True
+        )
+
+    def run_elf(self, elf, *, simulator, timeout, capture_bytes=False, declared_model_machine=False, **kwargs):
+        _require(
+            not kwargs and type(capture_bytes) is bool and type(declared_model_machine) is bool,
+            "selected execution received unsupported options",
+        )
+        _require(
+            not declared_model_machine or simulator == "spike",
+            "saved-model machine declarations select only the functional simulator",
+        )
         block = self._engine(simulator)
         _require(
             type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= block["max_timeout_s"],
@@ -559,6 +581,42 @@ class BoundRoCCBackend:
         flags = before.get("extension", {}).get("flags", [])
         argv = [block["binary"]["path"], *flags, *(str(path) if arg == "{elf}" else arg for arg in block["argv"])]
         dependencies = [Path(__file__).resolve(), _path(block["binary"]["path"])]
+        if declared_model_machine:
+            from merlin.llvmlower import toolchain
+            from merlin.runtime.backends import spike_model
+
+            selected_machine_tools = (toolchain.nm(), toolchain.readelf())
+            machine_tools = tuple(tool.resolve(strict=True) for tool in selected_machine_tools)
+            machine_tool_pins = {str(tool): _digest(tool) for tool in machine_tools}
+            memory, isa, harts = (
+                spike_model.declared_memory(path),
+                spike_model.declared_isa(path),
+                spike_model.declared_harts(path),
+            )
+            _require(
+                memory is not None
+                and isa is not None
+                and memory[0] >= 0
+                and memory[1] > 0
+                and memory[0] + memory[1] <= 1 << 64,
+                "saved model has no bounded explicit memory/ISA declaration",
+            )
+            _require(
+                harts is None or type(harts) is int and 0 < harts <= 256,
+                "saved model has an invalid declared hart count",
+            )
+            _require(_digest(path) == elf_sha, "saved model changed while reading machine declarations")
+            _require(
+                tuple(tool.resolve(strict=True) for tool in selected_machine_tools) == machine_tools
+                and all(_digest(tool) == machine_tool_pins[str(tool)] for tool in machine_tools),
+                "saved-model machine inspection tools changed",
+            )
+            selected = [arg for arg in argv[1:] if not arg.startswith(("--isa=", "-m", "-p"))]
+            machine = [f"--isa={isa}", f"-m{hex(memory[0])}:{hex(memory[1])}"]
+            if harts is not None:
+                machine.append(f"-p{harts}")
+            argv = [argv[0], *machine, *selected]
+            dependencies.extend([Path(spike_model.__file__).resolve(), *machine_tools])
         if simulator in {"gsim", "verilator"}:
             dependencies.append(_path(block["receipt"]["path"]))
         else:
