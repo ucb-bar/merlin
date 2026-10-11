@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -196,6 +197,73 @@ def test_distinct_link_driver_is_content_bound(key_of, recipe, monkeypatch):
     assert key_of() != first
     monkeypatch.setattr(BC, "toolchain_token", lambda driver: None if driver == "link-driver" else compile_token)
     assert key_of() is None
+
+
+@pytest.mark.parametrize("mutation", ["bytes", "path", "version", "missing", "unsupported", "selector_error"])
+def test_selected_kernel_clang_invalidates_unchanged_recipe_build(
+    recipe, store, lowering, tmp_path, monkeypatch, mutation
+):
+    """Source-only driver probes: never invoke a compiler or simulator."""
+    from merlin.llvmlower import codegen, toolchain
+
+    driver = tmp_path / "kernel-clang"
+    driver.write_text("source-only selected compiler one\n")
+    driver.chmod(0o755)
+    version = "selected-clang-version-one"
+
+    def probe(argv, **kwargs):
+        assert argv[0] == str(driver)
+        assert argv[1] in {"--version", "-dumpmachine"}
+        return SimpleNamespace(returncode=0, stdout=version if argv[1] == "--version" else "riscv64-unknown-elf")
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", probe)
+    token = BC.toolchain_token
+    monkeypatch.setattr(
+        BC,
+        "toolchain_token",
+        lambda compiler: "unchanged-recipe-driver" if str(compiler) == "/usr/bin/false-compiler" else token(compiler),
+    )
+    monkeypatch.setattr(BC, "build_path", lambda target=None: (lowering,))
+    # codegen imports its selector: selecting a different toolchain-module
+    # alias must not change which compiler this actual original path consumes.
+    monkeypatch.setattr(codegen, "clang", lambda: driver)
+    monkeypatch.setattr(toolchain, "clang", lambda: pytest.fail("used a different compiler selector"))
+
+    def key():
+        return BC.build_identity(target="t", lowered_mlir_text="module {}", cb={}, inputs={}, recipe=recipe)
+
+    initial = key()
+    assert initial is not None
+    work = tmp_path / "original-build"
+    _build(work)
+    BC.store(initial, work, ELF)
+    assert BC.reuse(tmp_path / "same-selection", key(), ELF) is not None
+    if mutation == "bytes":
+        stamp = driver.stat().st_mtime_ns
+        driver.write_text("source-only selected compiler two\n")
+        os.utime(driver, ns=(stamp, stamp))
+    elif mutation == "path":
+        other = tmp_path / "other-clang"
+        other.write_bytes(driver.read_bytes())
+        other.chmod(0o755)
+        driver = other
+    elif mutation == "version":
+        version = "selected-clang-version-two"
+        driver.chmod(0o755)  # Invalidate the stat memo while preserving path and bytes.
+    elif mutation == "missing":
+        driver.unlink()
+    elif mutation == "unsupported":
+        monkeypatch.setattr(codegen, "clang", lambda: object())
+    else:
+        monkeypatch.setattr(codegen, "clang", lambda: (_ for _ in ()).throw(ValueError("no selected compiler")))
+    changed = key()
+    assert changed != initial
+    if mutation in {"missing", "unsupported", "selector_error"}:
+        assert changed is None
+    assert BC.reuse(tmp_path / "changed-selection", changed, ELF) is None
+    assert not (tmp_path / "changed-selection" / ELF).exists()
 
 
 def test_support_source_and_link_script_bytes_are_in_the_key(key_of, recipe):

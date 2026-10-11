@@ -60,6 +60,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `build_cache.build_identity` includes the independently selected original
+  `llvmlower.codegen.clang()` driver beside recipe compile/link drivers. Exact
+  path, driver bytes and reported version/target invalidate legacy build keys;
+  an unsupported or unavailable selector disables reuse. These driver pins do
+  not establish transitive toolchain/loader/header/sysroot closure. Explicit
+  readback, build-service and other cache-free routes remain cache-free.
 - `artifact_bundle.py` supplies explicit profile-bound structural checks for a
   draft artifact composition. File identities and logical-buffer ordering grant
   no artifact ABI, physical alias, capability, synchronization or execution

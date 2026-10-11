@@ -38,8 +38,10 @@ normal build:
 * the build recipe as it would run TODAY: its march, the exact compile and link argument vectors, the
   load address, and the BYTES of the link script and of every support source. A recipe that changes a
   flag or a support source is a different build;
-* the compile and link drivers that would answer, by resolved path, bytes and reported version. They are outside the
-  repo and outside every git pin, so nothing else in this repo would notice it moving;
+* the compile and link drivers that would answer, including the independently selected kernel Clang,
+  by resolved path, bytes and reported version. They are outside the repo and outside every git pin,
+  so nothing else in this repo would notice them moving. These driver identities do not close
+  transitive toolchain, loader, header or sysroot dependencies;
 * the bytes of the code that performs the build (:func:`build_path`) -- the lowering pipeline, the
   contract compile path, the command-buffer module, the backend registry, and the target's own backend
   package, derived from the registry rather than named here.
@@ -73,8 +75,9 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 __all__ = [
     "BUILD_IDENTITY_VERSION",
@@ -97,7 +100,7 @@ __all__ = [
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
-BUILD_IDENTITY_VERSION = 2
+BUILD_IDENTITY_VERSION = 3
 
 #: Version of the on-disk record shape. A record written by another version is not read.
 RECORD_VERSION = 1
@@ -142,7 +145,7 @@ def disabled() -> bool:
     return (os.environ.get(_CACHE_ENV, "") or "").strip().lower() in _OFF
 
 
-def cache_root() -> "Path | None":
+def cache_root() -> Path | None:
     """The store directory, or ``None`` when the cache is off or its root cannot be created."""
     if disabled():
         return None
@@ -169,7 +172,7 @@ def _digest_of(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _file_sha(path: Path) -> "str | None":
+def _file_sha(path: Path) -> str | None:
     try:
         h = hashlib.sha256()
         with open(path, "rb") as fh:
@@ -185,7 +188,7 @@ def _file_sha(path: Path) -> "str | None":
 # ---------------------------------------------------------------------------------------------
 
 
-def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
+def build_path(target: str | None = None) -> tuple[Path, ...] | None:
     """Every file whose bytes decide what the build EMITS, or ``None`` if one cannot be located.
 
     ``None`` is not "nothing built it" -- it is "the builder cannot be established", and the caller must
@@ -262,7 +265,7 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
 _TOOLCHAIN_MEMO: dict = {}
 
 
-def toolchain_token(compiler: "str | Path") -> "str | None":
+def toolchain_token(compiler: str | Path) -> str | None:
     """Identity of the compiler driver that would build today, or ``None``.
 
     The toolchain lives outside the repo and outside every declared hardware pin, so no other identity
@@ -304,7 +307,7 @@ def toolchain_token(compiler: "str | Path") -> "str | None":
     return value
 
 
-def recipe_token(recipe: Any) -> "dict | None":
+def recipe_token(recipe: Any) -> dict | None:
     """The build recipe as it would run today, as a hashable record, or ``None``.
 
     Argument vectors are rendered against placeholder file names so the token describes the FLAGS and
@@ -408,9 +411,7 @@ def _build_path_digest(files) -> str:
     return digest
 
 
-def artifact_identity(
-    *, kind: str, target: str, inputs: "Mapping", source_files, toolchain: "str | None"
-) -> "str | None":
+def artifact_identity(*, kind: str, target: str, inputs: Mapping, source_files, toolchain: str | None) -> str | None:
     """Content identity for a build that does NOT go through a declared harness recipe.
 
     :func:`build_identity` covers the shared operator build path, whose inputs are a recipe and a
@@ -444,8 +445,8 @@ def artifact_identity(
 
 
 def build_identity(
-    *, target: str, lowered_mlir_text: str, cb: Mapping, inputs: "Mapping | None", recipe: Any
-) -> "str | None":
+    *, target: str, lowered_mlir_text: str, cb: Mapping, inputs: Mapping | None, recipe: Any
+) -> str | None:
     """Content identity for exactly what one compile would produce, or ``None`` to build normally.
 
     Every component must resolve. See the module docstring for what is in the key and what is
@@ -462,6 +463,19 @@ def build_identity(
     tools = {driver: toolchain_token(driver) for driver in sorted(drivers)}
     if any(token is None for token in tools.values()):
         return None
+    try:
+        # The kernel object uses codegen's imported selector, independently of
+        # the harness recipe driver. Hash exactly the tool that path consumes.
+        from merlin.llvmlower import codegen
+
+        kernel_driver = codegen.clang()
+        if not isinstance(kernel_driver, (str, Path)) or not str(kernel_driver).strip():
+            return None
+        kernel_tool = toolchain_token(kernel_driver)
+    except Exception:  # noqa: BLE001 -- an unavailable original compiler means rebuild
+        return None
+    if kernel_tool is None:
+        return None
     files = build_path(target)
     if not files:
         return None
@@ -474,6 +488,7 @@ def build_identity(
             "inputs": _digest_of(inputs) if inputs is not None else "",
             "recipe": recipe_rec,
             "toolchain": tools,
+            "kernel_codegen_toolchain": kernel_tool,
             "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
@@ -486,7 +501,7 @@ def build_identity(
 # ---------------------------------------------------------------------------------------------
 
 
-def contents(workdir: "str | Path") -> list:
+def contents(workdir: str | Path) -> list:
     """Every file in the build directory, as relative paths, excluding the key marker.
 
     WHAT IS STORED IS THE WHOLE DIRECTORY, not a diff against its state before the build. An earlier
@@ -531,7 +546,7 @@ def _already_there(dst: Path, meta: Mapping) -> bool:
     return _file_sha(dst) == meta.get("sha256")
 
 
-def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = None) -> "Path | None":
+def reuse(workdir: str | Path, key: str | None, elf_name: str | None = None) -> Path | None:
     """The executable for ``key`` already present or restorable into ``workdir``, or ``None``.
 
     Two hits, narrowest first. The MARKER path costs nothing and covers the second tier of one ladder,
@@ -598,7 +613,7 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = Non
     return work / record["elf"]
 
 
-def store(key: "str | None", workdir: "str | Path", elf_name: str, metadata: "Mapping | None" = None) -> None:
+def store(key: str | None, workdir: str | Path, elf_name: str, metadata: Mapping | None = None) -> None:
     """Keep every file this build created or changed, under ``key``. Never raises.
 
     The entry is assembled in a temporary directory and moved into place, so a concurrent worker
@@ -673,7 +688,7 @@ def store(key: "str | None", workdir: "str | Path", elf_name: str, metadata: "Ma
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def metadata_for(key: "str | None") -> "dict | None":
+def metadata_for(key: str | None) -> dict | None:
     """The metadata stored beside a build, or ``None``.
 
     Read separately from :func:`reuse` so a caller that needs no metadata pays nothing, and so a
@@ -695,7 +710,7 @@ def metadata_for(key: "str | None") -> "dict | None":
     return dict(meta) if isinstance(meta, dict) else {}
 
 
-def forget(workdir: "str | Path") -> None:
+def forget(workdir: str | Path) -> None:
     """Drop the key marker from a build directory, so its contents can never speak for a later grade.
 
     Called beside the removal of a stale executable: the marker asserts "this directory holds the build
