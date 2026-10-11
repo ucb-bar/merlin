@@ -65,6 +65,19 @@ def test_host_cycles_outweigh_large_contraction_speedup():
     assert result["ranked"][0]["ratio_hi"] == pytest.approx(5_100 / 10_100)
 
 
+def test_incumbent_priorities_share_exact_ranking_weights_and_source():
+    winner = observation("c" * 64, 50, 5_000)
+    winner["result"]["evidence"]["cells"][0]["roofline"] = {"status": "derived", "roofline_cycles": 10}
+    loser = observation("d" * 64, 100, 10_000)
+    loser["result"]["evidence"]["cells"][0]["roofline"] = {"status": "derived", "roofline_cycles": 1}
+    status = diagnostic_coordinator([winner, loser]).status()
+    assert status["incumbent"]["source_sha256"] == "c" * 64
+    priority = status["priorities"]
+    assert priority["weighted_cycles"] == status["ranked"][0]["candidate_weighted_cycles"]
+    assert priority["ranked"][0]["potential_weighted_savings"] == {"lo": 20, "hi": 20}
+    assert priority["unpriced_weighted_cycles"] == {"lo": 2_500, "hi": 2_500}
+
+
 def test_repeated_measurements_never_pick_only_the_fastest_sample():
     result = rank(observation("c" * 64, 50, 5_000), observation("c" * 64, 200, 12_000, index=1))
     row = result["ranked"][0]

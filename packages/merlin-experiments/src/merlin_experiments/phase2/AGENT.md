@@ -69,6 +69,13 @@ not prove aggregate OS limits or 20–25-core member fanout. Preserve explicit
 UNKNOWN/refusal until actual enforcing and execution owners exist. See the
 operator guide `docs/guides/phase2_component_search.md`.
 
+`search_priorities` projects the incumbent's complete measured roster with the
+exact selection weights and every repeat. Rank potential weighted savings, not
+utilization alone. Matched empirical throughput targets and hardware lower
+bounds retain distinct meanings; neither promises reachable improvement.
+Unpriced host members remain in the total measured time, and absent complete
+evaluation costs stay UNKNOWN. Priorities cannot select or stop a compiler.
+
 `test_justification` v2 accepts the explicit prepared host source basis from
 source-preparation v2, reopens the complete typed component program and emitted
 bytes, and binds its full numerical-reference tree. It supplies source rationale

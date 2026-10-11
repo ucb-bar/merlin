@@ -135,7 +135,13 @@ readonly. CPU and engine grants cap member fanout. Authors may edit live source
 while issued jobs evaluate retained bytes.
 
 Compilation and Spike supply static and numerical observations. Derived
-roofline/headroom reports identify recoverable time, not implementation ranking.
+roofline/headroom reports identify potential time savings. Search status orders
+the incumbent's members by potential savings using the same weights as compiler
+selection and preserves all observed repeat ranges. Matched empirical throughput
+targets and hardware lower bounds have distinct meanings; neither guarantees
+reachable improvement. Members without a bound remain visible with their
+complete measured cost. Evaluation costs and savings per evaluation second stay
+unknown until complete matched tool costs are observed.
 Qualified models screen only inside their measured domain. Unknown predictions
 and larger regimes require selected CPU RTL observations. Measure cold/warm costs
 and throughput in AWS with the [timing study](phase2_cpu_timing_study.md), including

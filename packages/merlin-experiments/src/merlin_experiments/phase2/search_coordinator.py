@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 
 from .contracts import StageGateError, document_sha256
 from .search_inputs import ORDINARY_KIND
+from .search_priorities import measured_priorities
 
 
 @dataclass(frozen=True)
@@ -92,13 +93,18 @@ def rank_measured_contenders(
         group = groups.setdefault(source, {"observations": [], "members": {identity: [] for identity in roster}})
         group["observations"].append(observation)
         for identity, row in zip(identities, cells, strict=True):
-            group["members"][identity].append((row["baseline_gsim_cycles"], row["candidate_gsim_cycles"]))
+            group["members"][identity].append(row)
     ranked = []
     for source, group in groups.items():
-        baseline_lo = sum(weights[key] * min(pair[0] for pair in values) for key, values in group["members"].items())
-        baseline_hi = sum(weights[key] * max(pair[0] for pair in values) for key, values in group["members"].items())
-        candidate_lo = sum(weights[key] * min(pair[1] for pair in values) for key, values in group["members"].items())
-        candidate_hi = sum(weights[key] * max(pair[1] for pair in values) for key, values in group["members"].items())
+
+        def weighted_cycles(arm, aggregate):
+            return sum(
+                weights[key] * aggregate(row[f"{arm}_gsim_cycles"] for row in values)
+                for key, values in group["members"].items()
+            )
+
+        baseline_lo, baseline_hi = weighted_cycles("baseline", min), weighted_cycles("baseline", max)
+        candidate_lo, candidate_hi = weighted_cycles("candidate", min), weighted_cycles("candidate", max)
         first = group["observations"][0]
         ranked.append(
             {
@@ -110,6 +116,7 @@ def rank_measured_contenders(
                 "ratio_hi": candidate_hi / baseline_lo,
                 "baseline_weighted_cycles": {"lo": baseline_lo, "hi": baseline_hi},
                 "candidate_weighted_cycles": {"lo": candidate_lo, "hi": candidate_hi},
+                "priorities": measured_priorities(group["members"], weights),
             }
         )
     return {
@@ -229,7 +236,7 @@ class ComponentSearchCoordinator:
             {"revision_id": row["revision_id"], "screening": row["result"]["screening"]}
             for row in observations
             if row["state"] == "completed"
-            and row["kind"] == "component-analytical-feedback"
+            and row["kind"] in ("component-analytical-feedback", "corpus-compile-spike-feedback")
             and "screening" in row["result"]
         ]
         return {
@@ -242,6 +249,10 @@ class ComponentSearchCoordinator:
             "beam": beam,
             **projection,
             "screening": screening,
+            "priorities": next(
+                (row["priorities"] for row in ranked if row["source_sha256"] == self._incumbent["source_sha256"]),
+                {"status": "UNKNOWN", "reason": "incumbent has no complete measured roster"},
+            ),
             "plateau_batches": self._plateau,
             "stop_reason": stop,
             "promotion": "NO_FINAL_ACCEPTANCE",
