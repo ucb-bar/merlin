@@ -309,7 +309,7 @@ def grade_owned_host_leaf(
                     reason="required provided-host tier is not selected in this grading request",
                 )
                 failure = {
-                    "plane": "oracle_availability", "category": "NOT_RUN_IS_NOT_PASS",
+                    "plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
                     "tier": tier, "tier_status": "unavailable",
                     "detail": "required provided-host tier is not selected in this grading request",
                 }
