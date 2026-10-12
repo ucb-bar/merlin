@@ -146,7 +146,7 @@ def _completed_job_ids(ch: Path) -> set[str]:
     return {p.stem[len(prefix) :] for p in ch.glob(f"{prefix}*.json")}
 
 
-def _current_source_first(requests, ws):
+def _current_source_first(requests, ws, *, context=None, capsules_root=None, cert_tier=None, contract=None):
     """Prioritize current-source work without treating request metadata as evidence.
 
     Source recovery still authenticates every promoted request at launch. Unknown
@@ -163,19 +163,46 @@ def _current_source_first(requests, ws):
             try:
                 row = json.loads(request.read_text())
             except (OSError, ValueError):
-                ranks[request] = 1
+                ranks[request] = (1, 1)
                 continue
             if not isinstance(row, dict):
-                ranks[request] = 1
+                ranks[request] = (1, 1)
                 continue
             digest = row.get("submission_digest")
             # Direct requests are frozen from current source when launched.
-            ranks[request] = 0 if not row.get("promoted") or digest == current else 1
+            current_work = not row.get("promoted") or digest == current
+            ready_model = False
+            if current_work and digest == current and row.get("promoted") and context is not None:
+                try:
+                    import yaml
+
+                    from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                    names = _valid_capsules(str(row.get("capsules", "all")), capsules_root)
+                    ready_model = bool(names and names != ["all"]) and all(
+                        yaml.safe_load((capsules_root / name / "capsule.yaml").read_text()).get("kind") == "model"
+                        and model_gate_vouchers.lookup(
+                            ws, digest=current, capsule=name, context=context,
+                            cert_tier=cert_tier, contract=contract,
+                        ) is not None
+                        for name in names
+                    )
+                except (OSError, ValueError, TypeError, AttributeError):
+                    ready_model = False
+            ranks[request] = (0 if current_work else 1, 0 if ready_model else 1)
         if _TP._submission_digest(ws) != current:
             return ordered
         return sorted(ordered, key=lambda request: ranks[request])
     except Exception:  # noqa: BLE001 -- an unreadable fingerprint cannot reorder the queue
         return ordered
+
+
+def _observe_pending(requests, claimed, queued_since, now):
+    """Observe wait even while all worker slots are occupied."""
+    pending = [p for p in requests if p.stem[len("simreq_"):] not in claimed]
+    for request in pending:
+        queued_since.setdefault(request.stem[len("simreq_"):], now)
+    return pending
 
 
 class VerilSlotsUnusable(RuntimeError):
@@ -553,6 +580,7 @@ def main(
     # driver dies first nobody ever writes it and the broker polls forever -- while HOLDING sim slots and
     # child simulators. Three sibling brokers were found orphaned to init hours after their run ended,
     # spawned for a round that never started. Exit when the process that started us is gone.
+    queued_since = {}
     orig_ppid = os.getppid()
     while True:
         if (ch / "STOP").exists() or os.getppid() != orig_ppid:
@@ -562,6 +590,10 @@ def main(
             if j["proc"].poll() is None:
                 continue
             rc = j["proc"].returncode
+            timing = dict(j["timing"], finished_at_unix=time.time(),
+                          worker_runtime_s=max(0.0, time.monotonic() - j["started_monotonic"]),
+                          returncode=rc)
+            (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
             resp = ch / f"simresp_{jid}.json"
             tmp = j["resp_tmp"]
             try:
@@ -643,9 +675,12 @@ def main(
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
         # launch queued (respect local + global caps)
+        queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
-            queued = (req for req in ch.glob("simreq_*.json") if req.stem[len("simreq_") :] not in claimed)
-            for req in _current_source_first(queued, ws):
+            for req in _current_source_first(
+                queued, ws, context=context, capsules_root=capsules_root,
+                cert_tier=_CERT_TIER, contract=contract,
+            ):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
                     continue
@@ -756,6 +791,37 @@ def main(
                 if sim != _NEUTRAL_SIM:  # --sim is meaningless where the contract picks the tier
                     argv2 += ["--sim", sim]
                 _tiers = str(r.get("tiers") or "").strip()
+                model_vouchers = []
+                try:
+                    if r.get("promoted") and caps != ["all"]:
+                        import yaml
+
+                        from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                        for name in caps:
+                            declaration = yaml.safe_load((capsules_root / name / "capsule.yaml").read_text())
+                            if declaration.get("kind") != "model":
+                                continue
+                            voucher = model_gate_vouchers.lookup(
+                                ws, digest=launched_source_digest, capsule=name, context=context,
+                                cert_tier=_CERT_TIER, contract=contract,
+                            )
+                            if voucher is None:
+                                raise ValueError("promoted model has no protected closed L2 gate voucher")
+                            model_vouchers.append(voucher)
+                        if model_vouchers:
+                            _tiers = "L2,L3"
+                            for voucher in model_vouchers:
+                                argv2 += ["--model-gate-voucher", str(voucher)]
+                except (ValueError, OSError) as exc:
+                    _release_veril_workers(slots)
+                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
+                        "error": f"model continuation refused: {exc}", "all_pass": False,
+                        "promotion_source_verified": source_identity_verified,
+                    }))
+                    (ch / f"simerr_{jid}").write_text("model continuation not admitted")
+                    claimed.add(jid)
+                    continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
@@ -774,7 +840,19 @@ def main(
                     if snapshot_root:
                         shutil.rmtree(snapshot_root, ignore_errors=True)
                     raise
+                started = time.monotonic()
+                timing = {
+                    "schema": "simjob_resource_timing_v1", "job_id": jid,
+                    "source_digest": launched_source_digest, "started_at_unix": time.time(),
+                    "queue_wait_s": max(0.0, started - queued_since.pop(jid, started)),
+                    "reserved_verilator_slots": len(slots), "worker_pid": proc.pid,
+                    "configured_gsim_capacity": os.environ.get("MERLIN_GSIM_MAX_SLOTS"),
+                    "configured_gsim_cpus": os.environ.get("MERLIN_GSIM_CPUS"),
+                    "scope": "broker-observed queue wait and worker runtime; not native-only runtime",
+                }
+                (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
                 running[jid] = {
+                    "timing": timing, "started_monotonic": started,
                     "proc": proc,
                     "slots": slots,
                     "resp_tmp": str(resp_tmp),

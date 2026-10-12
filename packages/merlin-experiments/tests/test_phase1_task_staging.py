@@ -93,7 +93,10 @@ def test_tools_are_observed_after_callback_creation_and_again_after_changes(tmp_
     assert callback() == ("sim_job", "isa_query")
 
 
-@pytest.mark.parametrize("level", LEVELS, ids=[level["id"] for level in LEVELS])
+@pytest.mark.parametrize(
+    "level", [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+    ids=[level["id"] for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+)
 def test_actual_tool_inventory_follows_selected_level_and_explicit_ablation(tmp_path, level):
     from merlin.targetgen.generate_bundles import _ALL_ARMS
 

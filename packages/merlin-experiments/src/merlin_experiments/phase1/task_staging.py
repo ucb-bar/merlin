@@ -115,6 +115,14 @@ def resolved_tools(
     drop = set(drop_tools)
     out = [t for t in base if t not in drop]
     out += [t for t in add_tools if t not in out]
+    manifest_file = bdir / "input_bundle_manifest.yaml"
+    if manifest_file.is_file():
+        from merlin.targetgen.tool_profile import verify_tool_profile
+
+        manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+        verify_tool_profile(manifest, tools=tuple(out))
+    elif set(out) & {"isa_dialect_generation", "lean_proof_authoring"}:
+        raise ValueError("optional ISA/Lean tools require an explicit versioned bundle manifest")
     return tuple(out)
 
 
@@ -172,6 +180,11 @@ def task_tool_inventory_block(config: TaskStagingConfig) -> str:
         lines.append(f"- `{name}`: {tool.blurb} {access}")
     if not names:
         lines.append("No additional treatment tools are selected; use the common substrate and admitted toolchain.")
+    manifest = config.bundle_dir / "input_bundle_manifest.yaml"
+    if manifest.is_file():
+        from merlin.targetgen.tool_profile import tool_profile_prompt
+
+        lines.append(tool_profile_prompt(yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}))
     return "\n".join(lines) + "\n"
 
 

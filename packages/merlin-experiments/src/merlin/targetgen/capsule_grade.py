@@ -1242,6 +1242,7 @@ def grade(
     additional_forbidden: tuple[str, ...] = (),
     model_snapshot_root: str | Path | None = None,
     on_capsule_complete=None,
+    model_gate_continuations=(),
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1443,6 +1444,7 @@ def grade(
         no_oracle=no_oracle,
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
+        model_gate_continuations=model_gate_continuations,
         **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0

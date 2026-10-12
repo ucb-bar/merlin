@@ -48,7 +48,11 @@ NAMES = {
 def timeline_section(activity: Mapping[str, Any] | None, detail: Mapping[str, Any], now: float) -> str:
     lanes = A.lanes(activity) + list(detail.get("lanes") or ())
     out = '<section id="timeline"><h2>Timeline: agent, grades, simulator jobs, freeze</h2>'
-    out += "<p class='sub'>Capsule L2/L3 points are grade milestones; unavailable means no oracle result. Simulator bars show recorded job spans, not individual capsule durations. Private capsules are omitted from named lanes.</p>"
+    out += (
+        "<p class='sub'>Capsule L2/L3 points are grade milestones; unavailable means no oracle result. "
+        "Simulator bars show recorded job spans, not individual capsule durations. "
+        "Private capsules are omitted from named lanes.</p>"
+    )
     out += C.gantt_legend(COLOURS, NAMES)
     out += "<h3>Whole run</h3>" + C.gantt(lanes, now=now, colours=COLOURS, label="run timeline")
     starts = [s["start"] for lane in lanes for s in lane.get("spans") or () if s.get("start") is not None]
@@ -58,6 +62,22 @@ def timeline_section(activity: Mapping[str, Any] | None, detail: Mapping[str, An
         )
     jobs = detail.get("jobs") or []
     if jobs:
+        sims = [j for j in jobs if j.get("kind") == "simjob"]
+        active = [j for j in sims if j.get("state") == "running"]
+        queued = sum(j.get("state") == "queued" for j in sims)
+        timing = [j.get("resource_timing", {}) for j in sims]
+        waits = [t["queue_wait_s"] for t in timing if "queue_wait_s" in t]
+        runtimes = [t["worker_runtime_s"] for t in timing if "worker_runtime_s" in t]
+        slots = [j.get("resource_timing", {}).get("reserved_verilator_slots") for j in active]
+        occupancy = str(sum(slots)) if slots and all(v is not None for v in slots) else NR
+        mean_wait = f"{sum(waits) / len(waits):.1f}s" if waits else NR
+        mean_runtime = f"{sum(runtimes) / len(runtimes):.1f}s" if runtimes else NR
+        out += (
+            f"<p>Simulation jobs: {len(active)} active, {queued} queued; "
+            f"legacy Verilator reservations: {occupancy}. Recorded mean queue wait: {mean_wait}; "
+            f"mean completed worker runtime: {mean_runtime}. "
+            "Actual gSIM occupancy is not recorded here; legacy reservations are not measured emulator utilization.</p>"
+        )
         rows = [
             [
                 esc(j["kind"]),
@@ -67,6 +87,9 @@ def timeline_section(activity: Mapping[str, Any] | None, detail: Mapping[str, An
                 when(j.get("started")),
                 when(j.get("ended")),
                 esc(j["state"]),
+                text_or_nr(j.get("resource_timing", {}).get("queue_wait_s")),
+                text_or_nr(j.get("resource_timing", {}).get("worker_runtime_s")),
+                text_or_nr(j.get("resource_timing", {}).get("reserved_verilator_slots")),
                 text_or_nr(j.get("all_pass")),
                 text_or_nr(j.get("capsules")),
             ]
@@ -74,7 +97,8 @@ def timeline_section(activity: Mapping[str, Any] | None, detail: Mapping[str, An
         ]
         out += details(
             f"Simulator jobs and self-check requests ({len(jobs)}; ends are marker-file times)",
-            table(["kind", "engine", "id", "requested", "started", "ended", "state", "all pass", "capsules"], rows),
+            table(["kind", "engine", "id", "requested", "started", "ended", "state",
+                   "queue wait (s)", "worker runtime (s)", "legacy Verilator slots", "all pass", "capsules"], rows),
         )
     else:
         out += f"<p>Simulator jobs and self-check requests (<span class='mono'>.qa_channel</span>): {NR}.</p>"

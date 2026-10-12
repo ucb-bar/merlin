@@ -47,6 +47,7 @@ from . import measurement_support as MS
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
 from . import ordinary_fast_feedback as FAST
+from . import ordinary_impact_selection as IMPACT
 from . import ordinary_measurement_selection as MEMBER_SELECTION
 from . import ordinary_queue_calibration as QUEUE_CAL
 from . import ordinary_screen_features as SCREEN_FEATURES
@@ -194,6 +195,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             QUEUE_CAL,
             SCREEN_FEATURES,
             MEMBER_SELECTION,
+            IMPACT,
             CANDIDATE_CENSUS,
             CENSUS_LAUNCH,
             DYNAMIC_CENSUS,

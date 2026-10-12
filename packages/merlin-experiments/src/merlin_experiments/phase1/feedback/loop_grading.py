@@ -409,6 +409,7 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
     caps = discover_capsules((root,), labels={"public", "dev"}, contract=inputs.contract)
     excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
     allowed = {str(cap["name"]) for cap in caps if cap.get("name") and cap["name"] not in excluded}
+    by_name = {str(cap["name"]): cap for cap in caps if cap.get("name")}
 
     def complete(result):
         name = result.get("capsule")
@@ -420,6 +421,13 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
         try:
             if json.loads(path.read_text()) != json.loads(json.dumps(result, allow_nan=False)):
                 raise ValueError("completed capsule differs from its durable result")
+            if result.get("kind") == "model" and loop == "L2" and cert == "L3":
+                from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                model_gate_vouchers.issue(
+                    ws, frozen_source, result, capsule=by_name[name],
+                    context=inputs.context, cert_tier=cert, receipt_path=path, contract=inputs.contract,
+                )
             promotion.promote(
                 ws, Path(ws) / ".qa_channel",
                 {"per_capsule": [{"capsule": name, "pass": True, "tiers": {loop: "pass"},

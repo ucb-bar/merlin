@@ -59,6 +59,7 @@ FORWARDED_PROBES = {
     "dynamic_census": "--dynamic-census",
 }
 PROTOCOL_VERSION = 3
+COMMON_ACTIONS = frozenset({"common-transform"})
 _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 
 
@@ -329,6 +330,7 @@ def main(
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     ap.add_argument("--poll", type=float, default=0.5)
+    ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
     a = ap.parse_args(argv)
     from ..frozen_facts import select
 
@@ -342,6 +344,13 @@ def main(
     ws = Path(a.ws)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
+    common_service = None
+    if a.compiler_bundle_manifest is not None:
+        from .common_transforms import CommonTransformService
+
+        common_service = CommonTransformService(
+            workspace=ws, bundle_manifest=a.compiler_bundle_manifest, repo=context.repo,
+        )
     orig_ppid = os.getppid()
     seen: set[str] = set()
     health_path = ch / "broker_health.json"
@@ -429,6 +438,27 @@ def main(
                 _atomic_write(resp, json.dumps(doc))
                 _atomic_write(ch / f"done_{rid}", "err")
                 continue
+        if r.get("action") in COMMON_ACTIONS:
+            try:
+                if common_service is None:
+                    raise FileNotFoundError("versioned common transformation tooling was not admitted for this run")
+                proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
+                proof_root.mkdir(mode=0o700, exist_ok=True)
+                body = common_service.apply(r.get("transform"), work_root=proof_root)
+            except Exception as error:
+                from merlin.common.path_scrub import scrub_host_paths
+
+                body = {"status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
+                        "reason": scrub_host_paths(str(error)), "all_pass": False}
+            doc = _decorate_response(
+                json.dumps(body), r, rid, graded_digest, started_ns=started_ns, completed_ns=time.time_ns(),
+            )
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "ok")
+            health["processed"] = int(health.get("processed", 0)) + 1
+            health["last_completed_at_unix_ns"] = time.time_ns()
+            _atomic_write(health_path, json.dumps(health, sort_keys=True))
+            continue
         inspection = r.get("caller_layout") or r.get("candidate_diagnostics")
         sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
         policy_error = _sim_policy_error(sim) if sim else None

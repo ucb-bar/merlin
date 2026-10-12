@@ -69,3 +69,9 @@ currently implements `decode_clean` and `legal_funct` only. Its explicit
 `instructions` roster does not reinterpret the legacy protocol contract above.
 An incomplete hardware decode table cannot establish universal instruction
 legality. Unimplemented temporal/bounds rules and strategy rules refuse.
+
+`BoundSemantics.operand_observer` is optional and driven only by the explicitly
+selected `rocc_operand_protocol` version 1 data. It normalizes operand roles
+without changing raw command/coverage identities or discovering authored inputs.
+Actual field widths come from original source facts: reserved `slot_width` alone
+does not qualify a field or address flag. Missing relations remain UNKNOWN.

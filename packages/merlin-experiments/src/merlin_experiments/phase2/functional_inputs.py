@@ -279,6 +279,8 @@ def load_frozen_functional_inputs(
             "kind": "public_functional_input_projection",
             "content_sha256": public_digest,
             "grants": public_rows,
+            **({"compiler_tool_profile": private["bundle"]["compiler_tool_profile"]}
+               if private["bundle"].get("compiler_tool_profile") is not None else {}),
         }
         public_marker = Path(public_manifest_path)
         public_marker.parent.mkdir(parents=True, exist_ok=True)

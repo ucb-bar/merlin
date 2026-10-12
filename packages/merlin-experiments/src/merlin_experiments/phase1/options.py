@@ -89,7 +89,7 @@ def build_parser(
         "--arm",
         choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],
         default=default_arm,
-        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3/EL4 merlin_assisted "
+        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3–EL6 merlin_assisted "
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
     ap.add_argument("--run-id", required=True)

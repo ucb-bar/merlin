@@ -69,6 +69,7 @@ class BrokerServices:
     whole_model_analysis: WholeModelAnalysis | None = None
     command_buffer_analysis: CommandBufferAnalysis | None = None
     global_analysis_view: GlobalAnalysisView | None = None
+    common_transform: Callable[[str, int], dict] | None = None
 
 
 _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"

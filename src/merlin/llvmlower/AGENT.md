@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`graph_optimizations` is an explicit source-pinned logical-host route selected
+before ordinary preprocessing. Its first admitted domain is static pointwise
+tensors and permutations. Independent scalar/coordinate/expanded-source checks
+and positive structural cost contracts gate layout propagation and contiguous
+dispatch fusion. Unknown views, reductions and opaque regions refuse this
+selection. These checks confer no Lean, physical-representation or timing
+authority; target placement and device policy remain OOT responsibilities.
+
 `compile_host` may explicitly select `HostDescriptorSelection` for complete
 original tensor/storage declarations. The ordinary caller requires unchanged
 typed source/prepared correspondence, actual translation/object/runtime/link

@@ -477,6 +477,12 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("run_dir", type=Path)
     coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
+    prepare.add_argument(
+        "--with-level", action="append", choices=("EL5", "EL6"), default=[],
+        help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
+    )
+    prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
         "--output",
@@ -641,6 +647,9 @@ def main(argv: list[str] | None = None) -> int:
                     retirements=args.retirements,
                     generated_only=args.generated_only,
                     phase1_policy_descriptor=args.phase1_policy_descriptor,
+                    optional_levels=tuple(args.with_level),
+                    lean_toolchain_manifest=args.lean_toolchain_manifest,
+                    host_index_bits=args.host_index_bits,
                 )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)

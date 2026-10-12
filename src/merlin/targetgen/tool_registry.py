@@ -265,6 +265,37 @@ TOOLS: dict[str, ToolSpec] = {
         "as plain imports inside the sandbox. Oracle-free: public schema against public routes.",
         broker=_CCA_BROKER,
     ),
+    "isa_dialect_generation": ToolSpec(
+        "isa_dialect_generation",
+        "Optional ISA-derived instruction dialect generation. Run `python -m "
+        "merlin.targetgen.isa_codegen_cli --software-spec PATH --facts PATH --target NAME --out DIR` "
+        "using the admitted software declaration and selected RTL facts. Generates instruction "
+        "operations, local verifiers and encoding mechanics; no tensor lowering or schedules. "
+        "Unresolved declarations refuse generation.",
+        bundle_paths=tuple(
+            f"{_PY}targetgen/{name}.py" for name in ("isa_spec", "isa_dialect_gen", "isa_codegen_cli")
+        ),
+        note="ALLOWED (ISA generation arm): declarative instruction generator",
+        deny_reason="optional ISA dialect generation requires EL5 or EL6",
+        ablatable=False,
+    ),
+    "lean_proof_authoring": ToolSpec(
+        "lean_proof_authoring",
+        "Optional interactive Lean transformation tools. Run `python -m merlin.verify.lean_cli --help` "
+        "for inspect/check on your own before/after IR and the admitted semantic contract. "
+        "The installed, pinned Lean toolchain must be available; a missing tool or timeout is not "
+        "a proof. You cannot alter admitted semantics or the host-owned formal coverage policy.",
+        bundle_paths=(
+            f"{_PY}verify/lean_contract.py",
+            f"{_PY}verify/lean_export.py",
+            f"{_PY}verify/lean_checker.py",
+            f"{_PY}verify/lean_cli.py",
+            f"{_PY}verify/lean/Merlin/Foundation.lean",
+        ),
+        note="ALLOWED (Lean authoring arm): checked transformation proof development",
+        deny_reason="interactive Lean proof development requires EL6",
+        ablatable=False,
+    ),
 }
 
 
@@ -287,6 +318,10 @@ ARM_TOOLS: dict[str, tuple[str, ...]] = {
     # two ways at once, so its delta would attribute to neither, and the earlier contrast would silently
     # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
     "merlin_verify": _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
+    "merlin_isa": _ASSISTED + ("rtl_generators", "rtl_facts", "isa_dialect_generation"),
+    "merlin_lean": _ASSISTED + (
+        "rtl_generators", "rtl_facts", "isa_dialect_generation", "lean_proof_authoring"
+    ),
 }
 
 
@@ -320,6 +355,9 @@ def arm_tools(arm: str, *, add: tuple[str, ...] = (), drop: tuple[str, ...] = ()
     """
     for n in (*add, *drop):
         spec(n)  # fail closed on a typo before anything is generated
+    restricted = {"isa_dialect_generation", "lean_proof_authoring"} & set(add)
+    if restricted:
+        raise ValueError("optional ISA/Lean capabilities require their explicit EL5/EL6 level, not --with-tool")
     bad = [n for n in drop if not spec(n).ablatable]
     if bad:
         raise ValueError(
