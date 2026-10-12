@@ -484,3 +484,58 @@ def generate(root: str | Path, out_dir: str | Path, *,
     (out / "session_build.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
+
+
+def materialize_shared_weights(
+    session: MultiProgramSession, manifest: dict[str, Any], out_dir: str | Path,
+) -> dict[str, Any]:
+    """Materialize one verified weight blob for a session with a shared layout.
+
+    ``generate(..., materialize_weights=False)`` records each stage's weight
+    identity without retaining duplicate checkpoint-sized files. This helper
+    checks those identities before writing one blob from its captured stage.
+    Target linkers can then package it in their own object format.
+    """
+    rows = manifest.get("programs")
+    if not isinstance(rows, list) or len(rows) != len(session.programs):
+        raise ValueError("session weight manifest differs from its program schedule")
+    selected: tuple[Program, dict[str, Any]] | None = None
+    shared: tuple[int, str] | None = None
+    for program, row in zip(session.programs, rows, strict=True):
+        if not isinstance(row, dict) or row.get("name") != program.name:
+            raise ValueError("session weight manifest differs from its program schedule")
+        size, digest = row.get("weights_bytes"), row.get("weights_sha256")
+        if (type(size) is not int or size < 0 or not isinstance(digest, str)
+                or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)):
+            raise ValueError(f"program {program.name} has no valid weight identity")
+        if selected is None:
+            selected = (program, row)
+        if size:
+            identity = (size, digest)
+            if shared is not None and identity != shared:
+                raise ValueError("session programs have different nonempty weight blobs")
+            shared = identity
+            if selected[1]["weights_bytes"] == 0:
+                selected = (program, row)
+    assert selected is not None
+    program, row = selected
+    out = Path(out_dir).resolve()
+    if out.exists() or out.is_symlink():
+        raise ValueError("shared weight output directory must be fresh")
+    info = c_runtime.generate(
+        program.bundle, out, program.bundle / "inputs.npz",
+        ciface_name=row["entrypoint"], invoke_name=row["invoke"],
+        materialize_weights=True,
+    )
+    blob = out / "weights.bin"
+    expected = (row["weights_bytes"], row["weights_sha256"])
+    if (blob.is_symlink() or not blob.is_file() or
+            (info.get("weights_bytes"), info.get("weights_sha256")) != expected or
+            blob.stat().st_size != expected[0]):
+        raise ValueError("materialized shared weights differ from the session manifest")
+    with blob.open("rb") as stream:
+        actual_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual_digest != expected[1]:
+        raise ValueError("materialized shared weight bytes differ from the session manifest")
+    return {"program": program.name, "path": str(blob),
+            "bytes": expected[0], "sha256": expected[1]}

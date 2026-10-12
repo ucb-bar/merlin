@@ -142,6 +142,11 @@ def test_generate_emits_unique_entrypoints_and_compilable_scheduler(tmp_path, mo
                for index, name in enumerate(("prefill", "decode")))
     assert all(row["weights_sha256"] == hashlib.sha256(b"same-weights").hexdigest()
                for row in hash_only["programs"])
+    shared = session_bundle.materialize_shared_weights(
+        session_bundle.load(root), hash_only, tmp_path / "shared_weights")
+    assert shared["program"] == "prefill"
+    assert shared["bytes"] == 12
+    assert (tmp_path / "shared_weights/weights.bin").read_bytes() == b"same-weights"
 
     fixture = out / "fixture.c"
     fixture.write_text('''
@@ -195,6 +200,42 @@ def test_scheduler_names_copy_sizes_uniquely_for_multiple_stage_bindings(tmp_pat
     assert "size_t source_bytes_0" in source
     assert "size_t source_bytes_1" in source
     assert source.count("size_t source_bytes =") == 0
+
+
+def test_shared_weight_materialization_rejects_different_stage_layouts(tmp_path, monkeypatch):
+    root = _root(tmp_path)
+    _mock_abis(monkeypatch)
+    session = session_bundle.load(root)
+    manifest = {"programs": [
+        {"name": name, "entrypoint": name, "invoke": name,
+         "weights_bytes": len(value),
+         "weights_sha256": hashlib.sha256(value).hexdigest()}
+        for name, value in (("prefill", b"first"), ("decode", b"other"))]}
+    with pytest.raises(ValueError, match="different nonempty weight blobs"):
+        session_bundle.materialize_shared_weights(session, manifest, tmp_path / "shared")
+    assert not (tmp_path / "shared").exists()
+
+
+def test_shared_weight_materialization_checks_actual_bytes(tmp_path, monkeypatch):
+    root = _root(tmp_path)
+    _mock_abis(monkeypatch)
+    session = session_bundle.load(root)
+    expected = b"correct"
+    manifest = {"programs": [
+        {"name": name, "entrypoint": name, "invoke": name,
+         "weights_bytes": len(expected),
+         "weights_sha256": hashlib.sha256(expected).hexdigest()}
+        for name in session.program_names]}
+
+    def incorrect_generate(_bundle, out, _inputs, **_kwargs):
+        out.mkdir()
+        (out / "weights.bin").write_bytes(b"corrupt")
+        return {"weights_bytes": len(expected),
+                "weights_sha256": hashlib.sha256(expected).hexdigest()}
+
+    monkeypatch.setattr(session_bundle.c_runtime, "generate", incorrect_generate)
+    with pytest.raises(ValueError, match="weight bytes differ"):
+        session_bundle.materialize_shared_weights(session, manifest, tmp_path / "shared")
 
 
 def test_c_runtime_can_name_a_stage_entrypoint(monkeypatch, tmp_path):
