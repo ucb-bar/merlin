@@ -219,6 +219,21 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         raise ValueError("owned host model omitted eligible device groups")
     assigned = emitted.get("routed")
     joined = join_routed_source_groups(assigned, source)
+    from merlin.kernels.shapes import observe_contractions
+
+    original_shapes = {id(op): shape for op, shape in observe_contractions(module)}
+    original_groups = {group.index: group for group in groups}
+    for row in assigned:
+        entry = emitted.get("entries", {}).get(row["symbol"], {})
+        if entry.get("op") != "conv2d":
+            continue
+        shape = original_shapes.get(id(original_groups[joined[row["group"]]].root))
+        if shape is None or (
+            row.get("parallel") != list(shape.parallel)
+            or row.get("reduction") != list(shape.reduction)
+            or row.get("dtypes") != list(shape.dtypes)
+        ):
+            raise ValueError("convolution entry differs from original source contraction")
     elf = Path(output["elf"])
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
