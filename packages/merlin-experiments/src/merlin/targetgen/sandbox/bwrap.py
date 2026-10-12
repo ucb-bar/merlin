@@ -1306,17 +1306,18 @@ def _frozen_answer_surfaces(
         if path_kind(path) == kind:
             result[path] = AnswerSurface(f"frozen {origin}:{path.name}", path, kind, origin, grantable)
 
+    live_index = _MountPathIndex((surface.path,) for surface in live)
     for _, destination, source in grants:
         # Preserve every discovered private identity, including registry-owned
         # modules and support providers copied by a broad public grant.
-        for surface in live:
-            if surface.path.is_relative_to(destination):
-                add(
-                    source / surface.path.relative_to(destination),
-                    surface.kind,
-                    surface.origin,
-                    surface.grantable,
-                )
+        for surface_id in sorted(live_index.descendants(destination)):
+            surface = live[surface_id]
+            add(
+                source / surface.path.relative_to(destination),
+                surface.kind,
+                surface.origin,
+                surface.grantable,
+            )
 
         classified_roots = [(path, "corpus") for path in corpus_roots]
         classified_roots.extend((path, "example") for path in example_roots)
