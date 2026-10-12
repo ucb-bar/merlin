@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-12
 related: [verified_compiler_tooling, compiler_verification, lowering_pipeline, phase2_test_justification, component_compiler_convergence]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/llvmlower, src/merlin/targetgen]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/llvmlower, src/merlin/targetgen, src/merlin/perf, packages/merlin-experiments/src/merlin_experiments/phase1/brokers/common_transforms.py]
 ---
 
 # Capability roadmap for a verified general compiler
@@ -30,18 +30,47 @@ independent development tests. Phase 1 establishes a correct general compiler
 for the admitted domain. Phase 2 changes its implementation and policies using
 identity-bound evidence, while retaining Phase 1's exact inputs and tooling.
 
-The first delivery implements static view/scalar normalization, ordered loop
+The common substrate supplies static view/scalar normalization, ordered loop
 segmentation, initialized local buffer reuse and conservative sequential
-dependencies. It generates optional typed ISA definitions and checks modeled
-obligations through Lean. General tensor bufferization, all numerical policies,
-arbitrary effectful scheduling and whole-machine equivalence are not established
-by this delivery.
+dependencies. Version 2 additionally supplies guarded scalar CSE/DCE and LICM,
+bounded ordered unrolling, actual IR analyses and an explicit resource allocator.
+These capabilities have different invocation and assurance boundaries below.
+Their presence does not prove whole-model compilation or performance.
+
+## What actually runs
+
+The ordinary shared host compiler and the common authoring service are distinct
+routes. A candidate can request the service and compile its returned standard IR;
+`lower_model` does not silently insert that service or its allocator into every
+host or OOT compilation. Reuse the already invoked upstream passes rather than
+adding another implementation with the same name.
+
+| Route and selection | Actual invoked implementation | Established scope and remaining qualification |
+| --- | --- | --- |
+| Selected logical host layout and dispatch fusion | An explicit source-pinned `GraphOptimizationContract` selects `layout_propagation.rewrite_module` and/or the existing outlined logical-host fusion planner/emitter before ordinary `lower_model` preprocessing. | The first selected domain is static pointwise tensors and permutations. Typed interfaces, ordered scalar regions, symbolic logical coordinates and expanded actual-source correspondence are checked independently. Unsupported forms refuse; byte/dispatch savings and code-growth limits are structural cost proxies. This route supplies no Lean, physical representation, hardware or timing proof. |
+| Ordinary host preparation and scalar lowering | `llvmlower.lower.lower_model` calls `passes_xdsl.preprocess_text` and `pipeline.lower_to_llvm_ir`. The default upstream pass list runs canonicalization/CSE, elementwise fusion and named-op generalization, one-shot bufferization, out-parameter conversion, ownership-based deallocation, allocation/loop hoisting, linalg-to-loops, SCF-to-CF, strided metadata expansion and LLVM conversion/translation. | These are existing executed passes, not missing compiler mechanisms. Numerical execution and ordinary build gates remain their assurance; the new Lean obligations do not prove this complete pipeline. An upstream pass being scheduled does not establish a profitable rewrite for every input. |
+| Selected CPU vector or multicore lowering | `llvmlower.pipeline.lower_to_llvm_ir` selects `build_rvv_pipeline` and its transform schedule for the supported CPU vector path, or `_parallel_pipeline` for scalar OpenMP; serial lowering remains the default. | Existing host scheduling/vectorization machinery is reusable where the selected host ISA/runtime permits it. It does not generate an accelerator schedule, cover every CPU, or inherit a complete transformation theorem. |
+| Ordinary host object generation and linking | `llvmlower.lower.lower_model` uses `codegen.compile_ll` for selected objects or `codegen.build_host_shared` for a host library, including the shared MLIR C runtime. Wide C-interface boundary repair runs before code generation. | Stock LLVM owns CPU instruction selection, physical register allocation and its selected optimizations. Do not duplicate its register allocator in the OOT. Device artifact lowering, target ABI details and final deployment remain separate obligations. |
+| Existing optional host lifetime/arena optimization | The `sink-deallocs` option inserts canonicalization followed by upstream `optimize-allocation-liveness`, with a structural placement check. `lower_model(static_arena=True)` calls `arena_bind.bind_arena` after LLVM translation; that route reuses `xdsl_dialects.lowering.arena_plan.pack_disjoint`. | Both are opt-in, not defaults. The binder checks the admitted allocation/free, escape and CFG conditions and conflicting placement; unsupported cases remain unbound or refused. It is not the new SSA resource allocator and is not covered by the new Lean lifetime receipt. It does not establish asynchronous device residency. |
+| Host-owned common transformation request | `CommonTransformService.apply` invokes `transforms.pipeline.apply_common_pipeline` on the request's actual standard xDSL IR. Default selectors enable supported shape/integer simplification and initialized buffer reuse; loop segmentation, dependency permutations and version-2 scalar redundancy/LICM/unrolling require explicit options. | Changed covered transforms require actual host-issued receipts bound to before/after IR. Structural correspondence is trusted; Lean checks modeled bit-vector equality, pure scalar reuse/speculation, ordered loop arithmetic/folds and disjoint lifetime obligations. Opaque effectful schedule changes without a supported semantic model refuse proof. This is not a full SCF/memory/LLVM/RTL theorem. |
+| Version-2 host pass observations | The common request automatically invokes `perf.pass_observation.observe_changes`, recomputing storage/dependency planning and `analyses.analyze_ir` on connected actual before/after IR with the reviewed index width. | Reports static operations/loops, known integer allocation bytes, reservation plans, dependency edges, unresolved aliases and block-scoped logical liveness/pressure. It does not run resource allocation. Dynamic work, physical traffic, cycles and capsule impact remain unknown; these observations have no ranking authority. |
+| Version-2 callable structural analyses | An OOT or shared consumer explicitly calls `transforms.analyses.analyze_ir` and can validate its source-bound result with `validate_analysis`. | Supplies conservative alias/effect/dependency facts, scoped captured uses/liveness and known logical footprint/pressure subtotals. Region/CFG memory arguments remain unknown until forwarding is proved. No full CFG, access-range, cache, physical representation or asynchronous lifetime claim is made. |
+| Version-2 callable instruction resource allocation | An OOT explicitly supplies `ResourceBinding`, banks/units and `InstructionConstraints` to `allocate_instruction_resources`; `emit_resource_allocation` emits typed assignments and `validate_allocated_ir` independently checks those actual recorded assignments using the existing checked allocator. | Sequential single-result SSA and result-free state events are supported. Unknown effects, pointer/dynamic/opaque representations, nested control flow and simultaneous results remain refusals. The annotation is not terminal operand lowering, automatic host arena planning, a Lean receipt or proof that the supplied constraints match hardware. |
+| Optional ISA and interactive proof authoring | The minimal reviewed ISA can drive the generic definition/encoding/local-verifier generator in the EL5 treatment. EL6 additionally admits interactive Lean authoring. Automatic common verification is host-owned for every EL. | These tools generate declarations or check scoped obligations; they do not choose tiling, placement, layouts or schedules. The target OOT must author its compiler policies. Phase 2 inherits the admitted Phase 1 source/tool profile exactly; it cannot add a treatment tool after the fact. |
+
+Versioned public source membership makes a callable helper available and pins its
+identity; it does not establish that the candidate used it. Before claiming an
+OOT capability complete, inspect its actual compilation path, emitted operands
+and independent numerical/hardware checks. Before claiming an optimization
+complete, also establish its measured effect on the relevant original tests.
 
 ## Remaining capability groups
 
-The rows below are requirements and exploration surfaces, not a statement that
-all listed optimizations are implemented. Phase 1 first needs a legal scalable
-path; Phase 2 chooses profitable alternatives from measured bottlenecks.
+The rows below describe the full capability requirements and their remaining
+qualification, not a backlog of missing pass implementations. The existing
+routes above already supply portions of several rows. Phase 1 first needs a
+legal scalable target compiler; Phase 2 chooses profitable alternatives from
+measured bottlenecks. Target constraints and policies remain OOT authoring work.
 
 | Group and passes | Owner | Phase | Verification obligation | Useful feedback |
 | --- | --- | --- | --- | --- |

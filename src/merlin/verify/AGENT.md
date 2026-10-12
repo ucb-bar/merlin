@@ -50,6 +50,11 @@ and working log: `docs/design/compiler_verification.md`.
   structural correspondence. They do not prove complete SCF/memory execution, LLVM,
   physical resource allocation, ISA encoding, numerical policy or RTL behavior.
   Unsupported effects, poison flags and metadata remain explicit gaps.
+- `lean_obligations.py` projects V2 total-scalar rewrites and ordered unrolling
+  only after exact IR correspondence passes. Generic function/fold lemmas do not
+  model timing, allocation failure or arbitrary memory/RTL execution. The
+  invocation inventory commitment is written after closed-file byte validation;
+  a saved commitment cannot seed the process-local completion ledger.
 
 - **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
   solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
