@@ -146,6 +146,23 @@ def execute_owned_host_model(
     return record
 
 
+def _independently_eligible_group_ids(placement, groups):
+    """Keep every group containing proven eligible work, regardless of its root."""
+    rows = placement.get("eligible_source_regions")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("owned source lacks independently eligible group roster")
+    selected = set()
+    for row in rows:
+        index = row.get("source_group") if isinstance(row, dict) else None
+        if type(index) is not int or index < 0:
+            raise ValueError("owned source eligible group identity is invalid")
+        selected.add(index)
+    available = {group.index for group in groups}
+    if not selected <= available:
+        raise ValueError("owned source eligible group is absent from original groups")
+    return selected
+
+
 def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, certificate=None):
     """Recompute original group identities and audit the actual linked objects."""
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
@@ -167,9 +184,10 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     placement = _source_placement(
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"
     )
+    eligible_groups = _independently_eligible_group_ids(placement, groups)
     source = {"eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {}}
     for group in groups:
-        if group.placement == groups_api.HOST:
+        if group.index not in eligible_groups:
             continue
         region, nodes = eligible_source_identity(group.root)
         source["eligible_groups"].append(group.index)
