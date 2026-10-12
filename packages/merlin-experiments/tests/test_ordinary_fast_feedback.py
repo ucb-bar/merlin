@@ -3,6 +3,7 @@
 import copy
 import json
 import subprocess
+import time
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -96,6 +97,166 @@ def test_retained_cheap_route_executes_only_original_spike_and_keeps_rtl_pending
     assert inputs.validate_result(result, candidate, FAST.KIND) == result
     with pytest.raises(StageGateError, match="another evaluator"):
         inputs.validate_result(result, candidate, "arbitrary")
+
+
+def test_selected_cheap_route_runs_only_selected_members_and_preserves_pending_roster(cheap_inputs, tmp_path):
+    fixture, calls = cheap_inputs
+    extend_corpus(fixture, tmp_path)
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    selected = tuple(sorted(policy.validate_search_inputs()))[:1]
+    result = policy.evaluate_retained(
+        candidate,
+        baseline,
+        kind=FAST.SELECTED_KIND,
+        selected_members=selected,
+        work_root=tmp_path / "selected-cheap",
+        call_index=0,
+        timeout_s=10,
+    )
+    assert len(calls) == 2 and not fixture.executions
+    assert result["promotion"] == "DIAGNOSTIC_ONLY" and result["screening"]["status"] == "UNKNOWN"
+    assert result["selected_members"] == [list(key) for key in selected]
+    assert len(result["cells"]) == 2
+    for cell in result["cells"]:
+        if (cell["family"], cell["capsule"]) in selected:
+            assert cell["pending_reason"] is None
+            for arm in ("baseline", "candidate"):
+                assert cell[arm]["functional_status"] == "PASS" and cell[arm]["pending_tiers"] == ["L3"]
+        else:
+            assert cell["baseline"] is cell["candidate"] is None and cell["pending_reason"]
+    inputs = SI.SearchInputs(policy)
+    assert inputs.validate_result(result, candidate, FAST.SELECTED_KIND) == result
+    FAST.validate_selected_feedback(result, members=selected)
+    with pytest.raises(StageGateError):
+        inputs.validate_result(result, candidate, FAST.KIND)
+    with pytest.raises(StageGateError, match="queued selection"):
+        FAST.validate_selected_feedback(result, members=tuple(sorted(policy.validate_search_inputs()))[1:])
+    with pytest.raises(CAL.CalibrationUnavailable, match="complete original"):
+        object.__new__(CAL.OrdinaryCalibration).screen(policy, result)
+
+
+@pytest.mark.parametrize("drift", ["unselected_arm", "selected_missing", "screening", "promotion", "selection"])
+def test_selected_cheap_transport_cannot_claim_unselected_work_or_complete_screening(cheap_inputs, tmp_path, drift):
+    fixture, _calls = cheap_inputs
+    extend_corpus(fixture, tmp_path)
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    selected = tuple(sorted(policy.validate_search_inputs()))[:1]
+    result = policy.evaluate_retained(
+        candidate,
+        baseline,
+        kind=FAST.SELECTED_KIND,
+        selected_members=selected,
+        work_root=tmp_path / "selected-cheap",
+        call_index=0,
+        timeout_s=10,
+    )
+    result = copy.deepcopy(result)
+    observed = next(row for row in result["cells"] if row["baseline"] is not None)
+    pending = next(row for row in result["cells"] if row["baseline"] is None)
+    if drift == "unselected_arm":
+        pending["candidate"] = observed["candidate"]
+    elif drift == "selected_missing":
+        observed["baseline"] = None
+    elif drift == "selection":
+        result["selected_members"].append(["private", "not-in-public-roster"])
+    elif drift == "promotion":
+        result["promotion"] = "SCREENING_ONLY"
+    else:
+        result["screening"]["status"] = "qualified_public_screening"
+    with pytest.raises(StageGateError):
+        SI.SearchInputs(policy).validate_result(result, candidate, FAST.SELECTED_KIND)
+
+
+def test_partial_kind_cannot_enter_complete_measured_or_provisional_ranking(ordinary_inputs, tmp_path):
+    from merlin_experiments.phase2 import provisional_search, search_coordinator
+
+    policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    roster = tuple(sorted(policy.validate_search_inputs()))
+    observation = {"kind": FAST.SELECTED_KIND, "state": "completed"}
+    assert (
+        search_coordinator.rank_measured_contenders(
+            [observation],
+            roster=roster,
+            corpus_sha256=policy.search_corpus.capsules_sha256,
+            configuration_sha256=policy.feedback_evaluator.certificate.sha256,
+            timing_kind=SI.ORDINARY_KIND,
+        )["ranked"]
+        == []
+    )
+    pool = SimpleNamespace(
+        inputs=SimpleNamespace(ordinary=True),
+        revisions=SimpleNamespace(get=lambda *_a: pytest.fail("partial parent is not ranked")),
+    )
+    assert provisional_search.project(SimpleNamespace(pool=pool, roster=roster), [observation])["candidates"] == []
+
+
+@pytest.mark.parametrize("kind,members", [(FAST.SELECTED_KIND, ()), (FAST.KIND, (("private", "absent"),))])
+def test_selected_route_requires_explicit_public_members_without_narrowing_full_jobs(
+    cheap_inputs, tmp_path, kind, members
+):
+    fixture, calls = cheap_inputs
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    with pytest.raises(StageGateError):
+        policy.evaluate_retained(
+            candidate,
+            baseline,
+            kind=kind,
+            selected_members=members,
+            work_root=tmp_path / "refused",
+            call_index=0,
+            timeout_s=10,
+        )
+    assert not calls
+
+
+def test_fixed_worker_and_broker_preserve_selected_functional_scope_without_running_a_pool(
+    cheap_inputs, tmp_path, monkeypatch
+):
+    from merlin_experiments.phase2 import evaluation_pool as EP
+    from merlin_experiments.phase2 import queued_search_actions as ACTIONS
+
+    fixture, calls = cheap_inputs
+    extend_corpus(fixture, tmp_path)
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    members = tuple(sorted(policy.validate_search_inputs()))[:1]
+    root = tmp_path / "worker"
+    root.mkdir()
+    # Exercise real dispatch; OS allocation and queue edges remain explicit stubs.
+    monkeypatch.setattr(EP.os, "sched_setaffinity", lambda *_a: None)
+    monkeypatch.setattr(EP.resource, "setrlimit", lambda *_a: None)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("MERLIN_PERF_SWEEP_WORKERS", "2")
+    result = EP._evaluate_fixed_routes(
+        policy=policy,
+        revision=candidate,
+        baseline_revision=baseline,
+        kind=FAST.SELECTED_KIND,
+        selected_members=members,
+        timeout_s=10,
+        root=root,
+        grant=SimpleNamespace(cores=2, engine_slots=2, ram_bytes=1 << 30, disk_bytes=1 << 20),
+        cpus=(),
+        index=0,
+    )
+    assert result["selected_members"] == [list(key) for key in members] and len(calls) == 2
+    submitted = []
+    policy.evaluation_pool = SimpleNamespace(submit=lambda *args, **kwargs: submitted.append((args, kwargs)) or {})
+    policy.search_coordinator = SimpleNamespace(admit_submission=lambda **kwargs: None)
+    ACTIONS.execute(
+        policy,
+        FAST.SELECTED_ACTION,
+        {"revision_id": candidate.revision_id, "members": "/".join(members[0])},
+        10,
+        time.monotonic(),
+    )
+    assert submitted == [
+        ((candidate.revision_id,), {"kind": FAST.SELECTED_KIND, "selected_members": members, "timeout_s": 10})
+    ]
+    assert FAST.SELECTED_ACTION in {action.name for action in ACTIONS.actions()}
 
 
 def test_census_uses_original_selected_facts_and_restores_ambient_context(cheap_inputs, tmp_path, monkeypatch):
