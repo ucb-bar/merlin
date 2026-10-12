@@ -197,7 +197,7 @@ def validate_host_capabilities(
                     or row["signature"]
                     != {
                         "family": "reduction",
-                        "ordered_operand_dtypes": ["f32", "f32", "i64"],
+                        "ordered_operand_dtypes": ["bf16" if body["operation"] == "bf16_extended_f32_literal_boundary_count_i64" else "f32", "f32", "i64"],
                         "ordered_result_dtypes": ["i64"],
                     }
                     or not isinstance(row.get("numerical_contract"), dict)
