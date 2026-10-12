@@ -769,7 +769,10 @@ def materialize_bundle_inputs(
         raise
 
 
-def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False) -> list[str]:
+def _bundle_mount_args(
+    ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False,
+    visibility_prefix: Sequence[str] | None = None,
+) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
 
     bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
@@ -809,6 +812,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
     ]
     allow_dests = [d.absolute() for d, _ in live]
     deny_dests: list[tuple[Path, str]] = []
+    host_deny_dests: list[tuple[Path, str]] = []
     for denied in bundle.get("denied", []):
         d = resolve_grant(denied["path"], repo).absolute()
         kind = path_kind(d)
@@ -823,7 +827,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
         else:
             manifest, _ = _snapshot_grants(ws, bundle, repo)
             host_records = _snapshot_host_inputs(ws, bundle, repo, manifest)
-        deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
+        host_deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
     for private, kind in _private_validation_paths(bundle):
         if private == ws or private in ws.parents or private.is_relative_to(ws):
             raise RuntimeError("private validation input overlaps the writable authoring workspace")
@@ -872,6 +876,21 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
             ops.append((len(d.parts), 1, ["--tmpfs", str(d)]))
         else:
             ops.append((len(d.parts), 1, ["--ro-bind", _DEVNULL, str(d)]))
+    visibility = None
+    if visibility_prefix is not None:
+        preview = list(visibility_prefix)
+        for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
+            preview.extend(args)
+        visibility = _MountVisibility(preview)
+    for destination, kind in host_deny_dests:
+        # Consult the full actual prefix AND the pending public grants/masks.
+        # System/runtime binds can expose a host file even without a bundle
+        # grant; later reapply calls reconsider their complete composed prefix.
+        # A standalone caller without that prefix retains every legacy denial.
+        if visibility is not None and not visibility.is_exposed(destination):
+            continue
+        args = ["--tmpfs", str(destination)] if kind == "dir" else ["--ro-bind", _DEVNULL, str(destination)]
+        ops.append((len(destination.parts), 1, args))
     for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
         out += args
     return out
@@ -894,7 +913,7 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict, *, repo: Pa
     submission rather than reporting a setup failure.
     """
     repo = (repo or repo_root()).absolute()
-    return [*argv, *_bundle_mount_args(ws, bundle, repo), "--bind", str(ws), str(ws)]
+    return [*argv, *_bundle_mount_args(ws, bundle, repo, visibility_prefix=argv), "--bind", str(ws), str(ws)]
 
 
 def base_argv(
@@ -1000,7 +1019,9 @@ def base_argv(
         if Path(projects).exists():
             parts += ["--tmpfs", projects]
 
-    parts += _bundle_mount_args(ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs)
+    parts += _bundle_mount_args(
+        ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs, visibility_prefix=parts
+    )
     # Bind the writable workspace LAST so no mask clobbers it.
     parts += ["--bind", str(ws), str(ws)]
     return parts
