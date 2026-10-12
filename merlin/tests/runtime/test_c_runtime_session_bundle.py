@@ -216,6 +216,32 @@ def test_shared_weight_materialization_rejects_different_stage_layouts(tmp_path,
     assert not (tmp_path / "shared").exists()
 
 
+def test_shared_weight_materialization_selects_later_weighted_stage(tmp_path, monkeypatch):
+    root = _root(tmp_path)
+    _mock_abis(monkeypatch)
+    session = session_bundle.load(root)
+    value = b"shared"
+    manifest = {"programs": [
+        {"name": "prefill", "entrypoint": "first", "invoke": "first",
+         "weights_bytes": 0, "weights_sha256": hashlib.sha256(b"").hexdigest()},
+        {"name": "decode", "entrypoint": "second", "invoke": "second",
+         "weights_bytes": len(value),
+         "weights_sha256": hashlib.sha256(value).hexdigest()},
+    ]}
+
+    def generate_later(bundle, out, _inputs, **kwargs):
+        assert bundle == session.programs[1].bundle
+        assert kwargs["ciface_name"] == "second"
+        out.mkdir()
+        (out / "weights.bin").write_bytes(value)
+        return {"weights_bytes": len(value),
+                "weights_sha256": hashlib.sha256(value).hexdigest()}
+
+    monkeypatch.setattr(session_bundle.c_runtime, "generate", generate_later)
+    result = session_bundle.materialize_shared_weights(session, manifest, tmp_path / "shared")
+    assert result["program"] == "decode"
+
+
 def test_shared_weight_materialization_checks_actual_bytes(tmp_path, monkeypatch):
     root = _root(tmp_path)
     _mock_abis(monkeypatch)
