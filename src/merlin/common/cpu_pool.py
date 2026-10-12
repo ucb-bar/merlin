@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import fcntl
 import os
+import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
+_ACTIVE_LEASE = ContextVar("selected_cpu_lease", default=None)
 
 def parse_roster(raw: str) -> tuple[int, ...]:
     if not raw:
@@ -31,8 +34,16 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
     if not cpus:
         yield
         return
+    held = _ACTIVE_LEASE.get()
+    if slot_root is not None and held is not None and held[:2] == (os.getpid(), threading.get_native_id()):
+        if held[2] == slot_root:
+            if held[3] not in cpus or os.sched_getaffinity(0) != {held[3]}:
+                raise RuntimeError("nested CPU build pool differs from its held lease")
+            yield
+            return
     original = os.sched_getaffinity(0)
     locked_fd = None
+    token = None
     chosen = set(cpus)
     try:
         if slot_root is not None:
@@ -58,8 +69,12 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
         os.sched_setaffinity(0, chosen)
         if os.sched_getaffinity(0) != chosen:
             raise RuntimeError("selected CPU pool is unavailable in the process partition")
+        if locked_fd is not None:
+            token = _ACTIVE_LEASE.set((os.getpid(), threading.get_native_id(), slot_root, next(iter(chosen))))
         yield
     finally:
+        if token is not None:
+            _ACTIVE_LEASE.reset(token)
         os.sched_setaffinity(0, original)
         if locked_fd is not None:
             os.close(locked_fd)
