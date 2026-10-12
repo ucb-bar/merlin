@@ -8,6 +8,8 @@ import os
 import stat
 from pathlib import Path
 
+from merlin.common.path_relations import LexicalPathIndex
+
 _PRIVATE_ROOT_SCHEMA = "merlin.private_toolchain_root.v1"
 
 
@@ -83,11 +85,12 @@ def _closed_subdirectories(root, members, blocked):
     """One bottom-up walk selects maximal closed private subtrees, never extra files."""
     if root.resolve() != root or not root.is_dir():
         return []
+    blocked_index = LexicalPathIndex.from_paths(blocked)
     pending, order, facts = [root], [], {}
     try:
         while pending:
             directory = pending.pop()
-            closed = not any(directory.is_relative_to(path) or path.is_relative_to(directory) for path in blocked)
+            closed = not blocked_index.overlaps(directory)
             children, count = [], 0
             with os.scandir(directory) as entries:
                 for entry in entries:
