@@ -3314,6 +3314,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
     model.
     """
     import contextlib
+    import hashlib
     import shutil
     import subprocess
     import tempfile
@@ -3340,6 +3341,16 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
         weights = _model_asset(root, op_attrs.get("weights"), "external weights")
         manifest_name = op_attrs.get("weights_manifest")
         manifest_asset = _model_asset(root, manifest_name, "capture-time weight manifest") if manifest_name else None
+        profile_name = op_attrs.get("loader_profile")
+        profile_sha = op_attrs.get("loader_profile_sha256")
+        loader_profile = None
+        if profile_name is not None or profile_sha is not None:
+            loader_profile = _model_asset(root, profile_name, "selected loader profile")
+            if (loader_profile != loader.with_name("profile.json")
+                    or not isinstance(profile_sha, str) or hashlib.sha256(loader_profile.read_bytes()).hexdigest() != profile_sha):
+                raise ValueError("selected loader profile differs from its immutable capsule binding")
+        elif loader.with_name("profile.json").exists():
+            raise ValueError("adjacent loader profile has no immutable capsule binding")
         dependency_name = op_attrs.get("loader_dependencies")
         dependency_root = None
         if dependency_name:
@@ -3363,6 +3374,8 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
             "external_weights": weights,
             "independent_golden": golden_yaml,
         }
+        if loader_profile is not None:
+            source_files["loader_profile"] = loader_profile
         if manifest_asset is not None:
             source_files["capture_manifest"] = manifest_asset
         from merlin.targetgen import golden_store as _GS
@@ -3473,6 +3486,8 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 "torch_seed": int(op_attrs.get("torch_seed", 0)),
                 "numeric_policy": capsule.get("numeric_policy") or {},
             }
+            if loader_profile is not None:
+                request["loader_profile"] = {"path": str(loader_profile), "sha256": profile_sha}
             if manifest_asset is not None:
                 request["captured_manifest"] = str(manifest_asset)
             if dependency_root is not None:
