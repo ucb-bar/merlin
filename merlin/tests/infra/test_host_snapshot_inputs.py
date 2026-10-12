@@ -618,3 +618,87 @@ def test_malformed_host_input_declarations_fail_closed(private_bundle, entries):
     with pytest.raises(RuntimeError, match="host_inputs"):
         BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
     assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_public_directory_cycle_is_refused_with_indexed_private_paths(private_bundle):
+    repo, workspace, bundle, _ = private_bundle
+    public = repo / "inputs" / "cycle-root"
+    public.mkdir()
+    (public / "loop").symlink_to(public, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="directory cycle"):
+        BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_private_alias_translation_parses_mounts_once_per_policy_call(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    frozen = tmp_path / "frozen"
+    source.mkdir()
+    frozen.mkdir()
+    records = []
+    for index in range(24):
+        original = source / str(index)
+        copy = frozen / str(index)
+        original.write_text("private input")
+        copy.write_bytes(original.read_bytes())
+        records.append((str(original), original, copy))
+    calls = 0
+    original_mounts = HS._mounts
+
+    def counted_mounts(argv):
+        nonlocal calls
+        calls += 1
+        return original_mounts(argv)
+
+    monkeypatch.setattr(HS, "_mounts", counted_mounts)
+    surfaces = HS._private_path_surfaces(["--ro-bind", str(source), "/alias"], records, set())
+    assert calls == 1
+    paths = {surface.path for surface in surfaces}
+    assert {record[1] for record in records} <= paths
+    assert {record[2] for record in records} <= paths
+    assert {Path("/alias") / str(index) for index in range(24)} <= paths
+
+
+def test_private_alias_index_skips_disjoint_mount_sources(tmp_path, monkeypatch):
+    private = tmp_path / "private"
+    private.write_text("host input")
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    argv = ["--ro-bind", str(private), "/selected-alias"]
+    for index in range(32):
+        source = unrelated / str(index)
+        source.mkdir()
+        argv.extend(["--ro-bind", str(source), f"/unrelated/{index}"])
+    calls = 0
+    original_alias = HS._bind_alias
+
+    def counted_alias(*args):
+        nonlocal calls
+        calls += 1
+        return original_alias(*args)
+
+    monkeypatch.setattr(HS, "_bind_alias", counted_alias)
+    surfaces = HS._private_path_surfaces(argv, [(str(private), private, private)], set())
+    assert calls == 1
+    assert {surface.path for surface in surfaces} == {private, Path("/selected-alias")}
+
+
+def test_support_alias_index_keeps_destination_reexposure_and_contract_exemption(tmp_path):
+    from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+
+    private = tmp_path / "owner"
+    private.mkdir()
+    public = tmp_path / "public.txt"
+    public.write_text("control")
+    protected = AnswerSurface("owner", private, "dir", "backend", ("contracts",))
+    denied_destination = private / "implementation" / "alias.txt"
+    allowed_destination = private / "contracts" / "public.txt"
+    mounts = [
+        ("expose", str(public), str(denied_destination)),
+        ("expose", str(public), str(allowed_destination)),
+    ]
+    projected = BW._support_bind_surfaces(mounts, [protected])
+    paths = [surface.path for surface in projected]
+    assert paths[0] == private
+    assert denied_destination in paths
+    assert allowed_destination not in paths

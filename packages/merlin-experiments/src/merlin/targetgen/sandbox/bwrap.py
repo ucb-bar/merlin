@@ -17,6 +17,7 @@ launching bwrap, so it is the CI-safe isolation proof.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import os
@@ -240,6 +241,7 @@ def _validate_host_sources(
     if not hosts and not private_denials:
         return
     private = [path.absolute() for _, path in hosts] + [path.absolute() for path in private_denials]
+    private_index = LexicalPathIndex.from_paths(private)
     private_inodes = set()
     for _, path in hosts:
         if path.resolve() != path or path.is_symlink():
@@ -287,12 +289,12 @@ def _validate_host_sources(
                 raise RuntimeError("private validation source has an unsupported member")
 
     def inspect(member: Path, ancestry: tuple[tuple[int, int], ...]) -> None:
-        if any(member == path or path in member.parents for path in private):
+        if private_index.contains(member):
             return  # A private child of a broad grant is always masked.
         resolved = member.resolve()
-        if any(resolved == path or path in resolved.parents for path in private):
+        if private_index.contains(resolved):
             raise RuntimeError("allowed grant contains an alias to host-only inputs")
-        if resolved != member and any(resolved in path.parents for path in private):
+        if resolved != member and resolved in private_index.ancestors:
             raise RuntimeError("allowed grant contains an alias to host-only inputs")
         stat = member.stat()
         key = (stat.st_dev, stat.st_ino)
@@ -1175,6 +1177,34 @@ def _bind_alias(private: Path, kind: str, source: Path, destination: Path) -> tu
     return None
 
 
+class _MountPathIndex:
+    """Lexical overlap candidates, retaining the original ordered mount IDs."""
+
+    def __init__(self, groups):
+        self.exact = {}
+        for mount_id, paths in enumerate(groups):
+            for path in paths:
+                self.exact.setdefault(path.parts, set()).add(mount_id)
+        self.ordered = sorted(self.exact)
+
+    def descendants(self, path):
+        found = set()
+        prefix = path.parts
+        start = bisect.bisect_left(self.ordered, prefix)
+        for index in range(start, len(self.ordered)):
+            parts = self.ordered[index]
+            if parts[:len(prefix)] != prefix:
+                break
+            found.update(self.exact[parts])
+        return found
+
+    def related(self, path):
+        found = self.descendants(path)
+        for ancestor in (path, *path.parents):
+            found.update(self.exact.get(ancestor.parts, ()))
+        return found
+
+
 def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
     """Project answer denials through every bind, including deeper re-exposures.
 
@@ -1187,6 +1217,15 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
     The caller's surfaces come back unchanged and in order (one row per query), followed by the
     projected denials that name a path no caller surface already names.
     """
+    if not surfaces:
+        return []
+    exposed = []
+    for state, raw_source, raw_destination in mounts:
+        if state == "expose":
+            source = Path(raw_source).absolute()
+            exposed.append((source, Path(raw_destination), {source, source.resolve()}))
+    source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
+    destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
     known = {surface.path for surface in surfaces}
     result: dict[Path, AnswerSurface] = {}
 
@@ -1198,12 +1237,11 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
         for private in {surface.path.absolute(), surface.path.resolve()}:
             exemptions = tuple(private / sub for sub in surface.grantable)
             project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
-            for state, raw_source, raw_destination in mounts:
-                if state != "expose":
-                    continue
-                source, destination = Path(raw_source).absolute(), Path(raw_destination)
+            candidates = source_index.related(private) | destination_index.descendants(private)
+            for mount_id in sorted(candidates):
+                source, destination, spellings = exposed[mount_id]
                 aliases = []
-                for resolved in {source, source.resolve()}:
+                for resolved in spellings:
                     if any(resolved == public or public in resolved.parents for public in exemptions):
                         continue
                     translated = _bind_alias(private, surface.kind, resolved, destination)
