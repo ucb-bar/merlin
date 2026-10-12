@@ -988,6 +988,18 @@ operations:
       semantics: {ordered_operations: "finite_f32_literal; ogt(input,bound); select(bound,input)", equal_and_unordered: original_input, literal_identity: exact_source_f32_bits, scope: source_build_link_host_placement_only, native_equivalence: unqualified}
       evidence: {source_schema: merlin.static_composite_math_body.v1, selected_index_and_elf_join: required}
 
+  - id: host_review_bf16_embedding_copy
+    status: reviewed
+    ops: [aten.embedding.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [i64, bf16], ordered_result_dtypes: [bf16], ranks: [3]}
+    source_body: {schema: merlin.static_embedding_gather_body.v1, operation: bf16_embedding_gather}
+    numerical_contract:
+      status: unreviewed
+      semantics: {arithmetic: none, selection: exact_captured_table_row_and_output_column, index_domain: "0 <= index < table_rows; out-of-range inputs are not admitted", scope: conditional_source_build_link_host_placement_only, native_equivalence: unqualified}
+      evidence: {source_schema: merlin.static_embedding_gather_body.v1, selected_index_and_elf_join: required}
+
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:

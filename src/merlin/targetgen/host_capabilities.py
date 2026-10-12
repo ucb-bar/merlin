@@ -14,6 +14,15 @@ from merlin.common.digest import is_sha256
 from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
 from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
 from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.frontends.linalg_embedding_gather import (
+    SCHEMA as EMBEDDING_GATHER_SCHEMA,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    recognize as recognize_embedding_gather,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    validate_source_body as validate_embedding_gather_body,
+)
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -138,6 +147,12 @@ def validate_host_capabilities(
                 validate_static_composite_math_source_body(body)
                 if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
                     raise ValueError("composite math source requires an exact selected linkage contract")
+            elif isinstance(body, dict) and body.get("schema") == EMBEDDING_GATHER_SCHEMA:
+                validate_embedding_gather_body(body)
+                if row.get("signature", {}).get("ordered_operand_dtypes") != ["i64", "bf16"] or row.get(
+                    "signature", {}
+                ).get("ordered_result_dtypes") != ["bf16"]:
+                    raise ValueError("embedding gather declaration has a different exact typed signature")
             elif isinstance(body, dict) and body.get("schema") == STATIC_PROJECTED_POINTWISE_BODY_SCHEMA:
                 validate_static_projected_pointwise_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA:
@@ -494,6 +509,7 @@ def _screen_source_body(
             STATIC_F32_MATH_SOURCE_BODY_SCHEMA: recognize_static_f32_math_body,
             STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA: recognize_static_composite_math_body,
             STATIC_PROJECTED_POINTWISE_BODY_SCHEMA: recognize_static_projected_pointwise,
+            EMBEDDING_GATHER_SCHEMA: recognize_embedding_gather,
         }.get(body["schema"], recognize_static_pointwise)
         patterns = tuple(recognizer(op) for op in source_operations)
     except InvalidLinalgPattern as exc:
