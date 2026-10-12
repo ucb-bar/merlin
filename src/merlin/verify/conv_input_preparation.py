@@ -27,6 +27,45 @@ class _Copy:
     origins: tuple
 
 
+def _load_port_layout(semantics, isa, target):
+    """Read the actual load-state slot; absence is no permission to assume port zero."""
+    from merlin.targetgen.rocc import semantics as authored_semantics
+
+    layout = isa.get("CONFIG_LD_LAYOUT")
+    if layout is None and semantics is authored_semantics:
+        roles = authored_semantics.operand_roles(authored_semantics._load_manifest(target).contract)
+        fields = roles.get("classes", {}).get("CONFIG_LD", {}).get("fields", [])
+        bundles = {f["bundle"] for f in fields if f.get("operand") == "rs1" and "bundle" in f}
+        if len(bundles) != 1:
+            raise ValueError("load-port state has no unique selected register bundle")
+        facts = authored_semantics._load_facts(target)["facts"]
+        layouts = authored_semantics._facts_interface(facts, "register_bundle_layouts")["bundles"]
+        layout = layouts.get(next(iter(bundles)))
+    if not isinstance(layout, dict) or layout.get("width") != 64:
+        raise ValueError("input preparation requires an explicitly selected 64-bit register ABI")
+    field = layout.get("fields", {}).get("state_id")
+    if (
+        not isinstance(field, dict)
+        or type(field.get("offset")) is not int
+        or type(field.get("width")) is not int
+        or field["offset"] < 0
+        or field["width"] <= 0
+        or field["offset"] + field["width"] > 64
+    ):
+        raise ValueError("load-port state field is absent or unresolved")
+    return field
+
+
+def _unpoisoned_pointer_add(op):
+    if op.results[0].type != IntegerType(64) or any(v.type != IntegerType(64) for v in op.operands):
+        raise ValueError("pointer arithmetic truncates the selected register width")
+    for key in ("overflowFlags", "overflow_flags", "isExact", "isDisjoint"):
+        flags = op.properties.get(key)
+        value = getattr(getattr(flags, "value", None), "data", getattr(flags, "data", None))
+        if flags is not None and value not in ((), 0, False):
+            raise ValueError("pointer arithmetic has unproved poison flags")
+
+
 def prove_input_preparation(function, activity, context, *, target):
     """Return independently counted preparation totals, or a closed refusal."""
     try:
@@ -57,6 +96,7 @@ def _prove(function, activity, context, *, target):
         raise ValueError("input preparation exceeds finite proof bound")
     semantics = _semantics(target)
     isa = semantics.isa_constants(target)
+    load_port_field = _load_port_layout(semantics, isa, target)
     values = {arg: _Pointer(i) for i, arg in enumerate(blocks[0].args)}
     capacity = {i: prod(b["shape"]) * (4 if b["dtype"] == "i32" else 1) for i, b in enumerate(buffers)}
     memory, consumed, initialized = {}, set(), set()
@@ -108,12 +148,13 @@ def _prove(function, activity, context, *, target):
                     raise ValueError("input preparation has unknown pointer ancestry")
                 result = _Pointer(pointer.root, pointer.offset + offset)
             elif name == "llvm.ptrtoint":
-                if not isinstance(args[0], _Pointer):
-                    raise ValueError("input preparation pointer conversion is unbound")
+                if not isinstance(args[0], _Pointer) or op.results[0].type != IntegerType(64):
+                    raise ValueError("input preparation pointer conversion is unbound or truncates register width")
                 result = args[0]
             elif name in _INTEGER:
                 left, right = args
                 if name == "llvm.add" and isinstance(left, _Pointer) and type(right) is int:
+                    _unpoisoned_pointer_add(op)
                     result = _Pointer(left.root, left.offset + right)
                 else:
                     integer(left)
@@ -174,7 +215,11 @@ def _prove(function, activity, context, *, target):
                         for a in args
                     ]
                     klass, decoded = semantics.decode_instruction(parsed[0], *operands, isa)
+                    if klass in {"MVIN2", "MVIN3"}:
+                        raise ValueError("input preparation does not prove independent secondary load-port state")
                     pointer_args = [a for a in args if isinstance(a, _Pointer)]
+                    if klass in {"MVIN", "MVOUT"} and not pointer_args:
+                        raise ValueError("DRAM transfer has no bound declared pointer")
                     if klass == "UNKNOWN":
                         raise ValueError("input preparation contains undecoded command")
                     if pointer_args:
@@ -220,6 +265,9 @@ def _prove(function, activity, context, *, target):
                         else:
                             raise ValueError("input scratch/output pointer escapes decoded transfer role")
                     elif klass == "CONFIG_LD":
+                        state = (integer(args[0]) >> load_port_field["offset"]) & ((1 << load_port_field["width"]) - 1)
+                        if state != 0:
+                            raise ValueError("input preparation does not prove nonzero load-port state")
                         load_stride = decoded.get("stride")
                     elif klass == "CONFIG_ST":
                         store_stride = decoded.get("out_stride_bytes")

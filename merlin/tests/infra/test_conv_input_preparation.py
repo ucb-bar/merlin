@@ -29,15 +29,25 @@ CONTEXT = {
 }
 
 
-def _proof(monkeypatch, replacement):
+def _proof(monkeypatch, replacement, transform=lambda text: text):
     from merlin.targetgen.rocc import decode
 
     def instruction(funct, rs1, rs2, isa):
-        return ("CONFIG_LD", {"stride": 1}) if funct == 0 else ("MVIN", {"dram": rs1, "rows": 1, "cols": 1})
+        return (
+            ("CONFIG_LD", {"stride": 1})
+            if funct == 0
+            else ("MVIN2" if funct == 1 else "MVIN", {"dram": rs1, "rows": 1, "cols": 1})
+        )
 
-    semantics = SimpleNamespace(isa_constants=lambda target: {"CUSTOM_OPCODE": 0x7B}, decode_instruction=instruction)
+    semantics = SimpleNamespace(
+        isa_constants=lambda target: {
+            "CUSTOM_OPCODE": 0x7B,
+            "CONFIG_LD_LAYOUT": {"width": 64, "fields": {"state_id": {"offset": 3, "width": 2}}},
+        },
+        decode_instruction=instruction,
+    )
     monkeypatch.setattr(decode, "_semantics", lambda target: semantics)
-    function = _functions(_parse_module(BODY.replace("REPLACE", replacement)))["kernel"]
+    function = _functions(_parse_module(transform(BODY.replace("REPLACE", replacement))))["kernel"]
     return prove_input_preparation(function, analyze_host_cfg_activity(function), CONTEXT, target="test")
 
 
@@ -57,3 +67,34 @@ def test_loaded_value_arithmetic_output_store_and_unknown_pointer_refuse(monkeyp
     ]
     for replacement in bad:
         assert _proof(monkeypatch, replacement)["status"] == "unproven"
+
+
+def test_unbound_dma_secondary_port_and_nonzero_load_state_refuse(monkeypatch):
+    copy = "llvm.store %value, %scratch : i8, !llvm.ptr"
+    changes = [
+        lambda text: text.replace('"llvm.inline_asm"(%address, %one)', '"llvm.inline_asm"(%one, %one)'),
+        lambda text: text.replace("0x2, x0", "0x1, x0"),
+        lambda text: text.replace(
+            "llvm.store %value", "%port = llvm.mlir.constant(9) : i64\n llvm.store %value"
+        ).replace('"llvm.inline_asm"(%one, %one)', '"llvm.inline_asm"(%port, %one)'),
+    ]
+    for change in changes:
+        assert _proof(monkeypatch, copy, change)["status"] == "unproven"
+
+
+def test_pointer_add_requires_full_width_and_no_poison_flags():
+    import pytest
+    from xdsl.dialects.builtin import IntegerAttr, IntegerType
+
+    from merlin.verify.conv_input_preparation import _unpoisoned_pointer_add
+
+    value = SimpleNamespace(type=IntegerType(64))
+    op = SimpleNamespace(results=[value], operands=[value, value], properties={})
+    _unpoisoned_pointer_add(op)
+    op.properties["overflowFlags"] = IntegerAttr(1, 32)
+    with pytest.raises(ValueError, match="poison"):
+        _unpoisoned_pointer_add(op)
+    op.properties.clear()
+    op.results = [SimpleNamespace(type=IntegerType(32))]
+    with pytest.raises(ValueError, match="truncates"):
+        _unpoisoned_pointer_add(op)
