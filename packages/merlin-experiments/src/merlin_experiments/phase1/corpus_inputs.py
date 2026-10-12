@@ -82,6 +82,54 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             raise ValueError("reviewed Phase 1 bundle does not grant the selected capability contract read-only")
 
 
+def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze, source_root):
+    """Keep a reviewed common-tool semantics declaration public, never model data."""
+    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.targetgen.software_spec import software_spec_path_for_recipe, validate_software_spec
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2, verify_tool_profile
+
+    from ..corpus.numeric_policy import numeric_profile_path
+    from .feedback import private_source_freeze
+
+    profile = verify_tool_profile(bundle)
+    if profile is None or profile.get("common_substrate") != COMMON_SUBSTRATE_V2:
+        return paths
+    root = te._source_root().absolute()
+    recipe = numeric_profile_path(te.numeric_profile, repo=root)
+    if recipe is None:
+        return paths
+    selected = software_spec_path_for_recipe(recipe)
+    if selected is None:
+        return paths
+    grants = [row for row in bundle.get("allowed", [])
+              if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"
+              and bwrap.resolve_grant(row["path"], root).absolute() == selected]
+    if not grants:
+        return paths
+    if len(grants) != 1:
+        raise ValueError("public software declaration has ambiguous grants")
+    resolved = private_source_freeze.verify(spec, source_freeze, root=source_root, target=te.target)
+    copies = [copy for (original, field), copy in resolved.items()
+              if original == str(selected) and field == "software_spec"]
+    if not copies:
+        return paths
+    if any(original == str(selected) and field != "software_spec" for original, field in resolved):
+        raise ValueError("public software declaration has a private non-software role")
+    if selected.is_symlink() or any(parent.is_symlink() for parent in selected.parents):
+        raise ValueError("public software declaration is indirect")
+    digest = file_sha256(selected)
+    if any(file_sha256(copy) != digest for copy in copies):
+        raise ValueError("public software declaration differs from authenticated private source")
+    document = yaml.safe_load(selected.read_bytes())
+    checked = validate_software_spec(document, target=te.target, source=selected)
+    if checked.get("status") != "reviewed":
+        raise ValueError("public software declaration is not reviewed")
+    # The exact already-reviewed grant authorizes these semantics bytes. Only
+    # its original software-role spelling is removed; frozen copies and all
+    # capture/weight/golden/archive directories retain their private denials.
+    return [row for row in paths if not (row.get("path") == str(selected) and row.get("kind") == "file")]
+
+
 def prepare_bundle(
     run_dir: Path,
     te,
@@ -124,6 +172,10 @@ def prepare_bundle(
             scope_requirements=loader_env_requirements_for(te.path),
             source_freeze=frozen_authored,
             source_freeze_root=frozen_authored_root,
+        )
+        private_paths = _reconcile_public_software_denial(
+            te, bundle, private_paths, spec=private_source,
+            source_freeze=frozen_authored, source_root=frozen_authored_root,
         )
         # The host writes these only after authoring.  A resumed agent must not
         # see private model evidence or its paths through a broad run grant.
