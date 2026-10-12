@@ -224,6 +224,7 @@ def grade_owned_host_leaf(
     from .capsule_runner import TierResult, _finalize_capsule_result, _resolve_model_host_lane
     from .owned_host_model_execution import (
         _functional_engine_for_facts,
+        _run_selected_functional,
         _numeric_full_output,
         _run_selected_rtl,
         _selected_facts,
@@ -319,12 +320,7 @@ def grade_owned_host_leaf(
             if tier == "L2":
                 backend, citation, verify = _functional_engine_for_facts(target, protected_facts)
                 verify()
-                model_run = getattr(backend, "run_declared_model_elf", None)
-                console = (
-                    model_run(elf, timeout=timeout, capture_bytes=True)
-                    if callable(model_run)
-                    else backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
-                )
+                console = _run_selected_functional(backend, elf, timeout=timeout)
                 verify()
                 engine = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":
