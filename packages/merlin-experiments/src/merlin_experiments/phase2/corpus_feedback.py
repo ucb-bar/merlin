@@ -451,11 +451,29 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
         return {}
 
     def build_registry(self):
-        return _build_action_registry(self.candidate, self.target_experiment, unavailable=self.unavailable)
+        actions = _build_action_registry(self.candidate, self.target_experiment, unavailable=self.unavailable)
+        if self.services.common_transform is not None:
+            from .common_transforms import action
+
+            actions = (*actions, action())
+        return actions
 
     verify_receipts = staticmethod(verify_broker_receipts)
 
     def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        if action_name == "common-transform":
+            if self.services.common_transform is None:
+                raise StageGateError("the frozen Phase 1 common transformation service is unavailable")
+            try:
+                document = self.services.common_transform(rendered["request"], timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode(), "stderr": "",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as error:
+                from merlin.common.path_scrub import scrub_host_paths
+
+                result = {"returncode": 125, "stdout": "", "stderr": scrub_host_paths(str(error)),
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            return result, None
         handlers = {
             E2E_ANALYSIS_ACTION: self._analyze,
             INVENTORY_ACTION: self._inventory,

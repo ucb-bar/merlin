@@ -193,7 +193,7 @@ def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
     _simple_name(inputs.target, label="target")
     if inputs.approach != "arm4":
         raise PerfPromptContractError(
-            "the performance campaign evaluates only an EL4-produced compiler "
+            "the performance campaign retains the frozen functional compiler approach "
             "(frozen approach='arm4' compatibility key)"
         )
     _simple_name(inputs.functional_run_id, label="functional run id")

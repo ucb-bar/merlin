@@ -674,6 +674,12 @@ def run_stage(
     frozen_functional = FI.load_frozen_functional_inputs(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
     )
+    from . import common_transforms as COMMON_TRANSFORMS
+
+    public_projection = (
+        CONTRACTS.mapping_file(frozen_functional.public_marker) if frozen_functional.public_marker else {}
+    )
+    inherited_common_transforms = public_projection.get("compiler_tool_profile") is not None
     prepared_actions = BP.action_registry(
         BP.CORPUS_FEEDBACK_V1,
         base,
@@ -684,6 +690,8 @@ def run_stage(
             else None
         ),
     )
+    if inherited_common_transforms:
+        prepared_actions = (*prepared_actions, COMMON_TRANSFORMS.action())
     if search is not None:
         from .queued_search_actions import actions as search_actions
 
@@ -859,6 +867,8 @@ def run_stage(
             },
         )
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
+        if inherited_common_transforms:
+            actions = (*actions, COMMON_TRANSFORMS.action())
         if search is not None:
             actions = (*actions, *search_actions())
         if action_registry_contract(actions, candidate) != prepared_action_contract:
@@ -890,6 +900,9 @@ def run_stage(
             services=BP.BrokerServices(
                 whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
                 command_buffer_analysis=ED.analyze_command_buffers,
+                common_transform=COMMON_TRANSFORMS.service(
+                    frozen_functional, candidate=candidate, work_root=stage_root / "_common_transform_work",
+                ) if inherited_common_transforms else None,
             ),
             feedback_evaluator=feedback,
             feedback_round=round_index,

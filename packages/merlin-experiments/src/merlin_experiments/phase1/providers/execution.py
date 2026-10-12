@@ -251,6 +251,7 @@ def launch(
                 policy_root,
                 contract,
                 config.selected_rtl_facts,
+                run_dir / "input_bundle_manifest.yaml" if bundle.get("compiler_tool_profile") is not None else None,
             ),
         )
         if sandbox == "bwrap"

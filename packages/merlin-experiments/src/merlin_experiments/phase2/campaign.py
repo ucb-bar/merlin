@@ -57,6 +57,14 @@ def verify_private_input_snapshot(run_dir: Path, environment: Mapping) -> dict:
     bundle_digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
     if environment.get("bundle_manifest_sha256") != bundle_digest:
         raise CampaignGateError("functional archived bundle bytes disagree with host provenance")
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    try:
+        profile = verify_tool_profile(bundle, tools=tuple(environment.get("resolved_tools") or ()))
+    except ValueError as error:
+        raise CampaignGateError(str(error)) from error
+    if profile is not None and environment.get("compiler_tool_profile") != profile:
+        raise CampaignGateError("functional run changed its immutable compiler tool profile")
     root = Path(str(snapshot.get("path") or ""))
     ws = Path(str(environment.get("workspace_path") or ""))
     if not root.is_absolute() or not ws.is_absolute() or root.is_symlink() or BW.bundle_snapshot_root(ws) != root:
@@ -713,8 +721,10 @@ def inspect_functional_run(
 
     if environment.get("run_id") != run_id or manifest.get("run_id") != run_id:
         raise CampaignGateError("functional evidence names a different run id")
-    if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
-        raise CampaignGateError("functional run is not from the Arm-4 RTL-checks bundle")
+    profile = environment.get("compiler_tool_profile")
+    if profile is None:
+        if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
+            raise CampaignGateError("functional run is not from the historical Arm-4 RTL-checks bundle")
     found: list[Deviation] = list(_validate_clean_run(environment, summary))
     if manifest.get("integrity_status") != "clean" or manifest.get("integrity_exempt") is not False:
         found.append(

@@ -481,6 +481,9 @@ def prepare(
         return load_target_experiment(context.descriptor)
 
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    _compiler_tool_profile = verify_tool_profile(bundle)
     if (a.preflight_only or a.codex_canary) and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
         raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
     bundle_dir = request.bundle_manifest.parent
@@ -765,6 +768,7 @@ def prepare(
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
     _resolved_tool_ids = request.resolved_tools()
+    verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))
     if (
         _hidden_snapshot_record is not None
         and _hidden_snapshot_record["n_capsules"] != _task_scope_record["held_out_capsules"]
@@ -873,6 +877,7 @@ def prepare(
             # The explicit list remains convenient for analysis; treatment_snapshot binds it to the
             # source declarations and to the exact task/docs that instructed the agent.
             "resolved_tools": list(_resolved_tool_ids),
+            **({"compiler_tool_profile": _compiler_tool_profile} if _compiler_tool_profile is not None else {}),
             "treatment_snapshot": _treatment_snapshot,
             "implementation_sources": _implementation_sources,
             "invocation_treatment": _invocation_treatment,

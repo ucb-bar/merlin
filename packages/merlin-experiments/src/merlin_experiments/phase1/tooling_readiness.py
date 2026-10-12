@@ -49,10 +49,20 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
         for logical in (*spec.bundle_paths, *(str(getattr(te, attr)) for attr in spec.derived_paths)):
             candidates = {logical}
             prefix = "merlin/python/merlin/"
-            if logical.startswith(prefix):
+            selected_logical = logical
+            if (
+                bundle.get("compiler_tool_profile") is not None
+                and name == "verify_seam"
+                and logical == prefix + "verify/"
+            ):
+                # Fresh profiles retain the historical client as exact leaves;
+                # a directory grant would also expose optional proof authoring.
+                selected_logical = prefix + "verify/cli.py"
+                candidates = {selected_logical}
+            if selected_logical.startswith(prefix):
                 for source in sources:
-                    selected = str((source / logical[len(prefix) :]).resolve())
-                    candidates.add(selected + ("/" if logical.endswith("/") else ""))
+                    selected = str((source / selected_logical[len(prefix) :]).resolve())
+                    candidates.add(selected + ("/" if selected_logical.endswith("/") else ""))
             if name == "rtl_facts" and bundle.get("selected_rtl_facts_file"):
                 selected = Path(bundle["selected_rtl_facts_file"])
                 candidates.add(str(selected.parent) + "/")
@@ -127,9 +137,25 @@ def _asm_probe(context) -> str:
     return names[0]
 
 
-def _sandbox_probe(target: str, tools: tuple[str, ...], mnemonic: str) -> str:
+def _sandbox_probe(target: str, tools: tuple[str, ...], mnemonic: str, *, common_substrate: bool = False) -> str:
     has = set(tools)
     lines = ["import json, subprocess, sys"]
+    if common_substrate:
+        from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
+
+        lines += ["import importlib"]
+        lines += [f"importlib.import_module({module!r})" for module in COMMON_PUBLIC_MODULES]
+    if "isa_dialect_generation" in has:
+        lines += [
+            "from merlin.targetgen.isa_spec import resolve_isa",
+            "from merlin.targetgen.isa_dialect_gen import generate_package",
+            "assert callable(resolve_isa) and callable(generate_package)",
+        ]
+    if "lean_proof_authoring" in has:
+        lines += [
+            "from merlin.verify import lean_cli, lean_export, lean_checker",
+            "assert callable(lean_cli.main)",
+        ]
     if "xdsl_kit" in has:
         lines += [
             "from merlin.targetgen.evidence.store import Evidence",
@@ -229,7 +255,10 @@ def public_probe_session(
                 argv += ["--rtl-facts", str(selected_facts)]
             with (channel / spec.log).open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
-        yield _sandbox_probe(context.target, tools, _asm_probe(context) if "isa_tools" in tools else "")
+        yield _sandbox_probe(
+            context.target, tools, _asm_probe(context) if "isa_tools" in tools else "",
+            common_substrate=bundle.get("compiler_tool_profile") is not None,
+        )
     finally:
         for spec in specs:
             channel = ws / spec.channel
@@ -275,16 +304,17 @@ def assess(
     """Return a fail-closed, selected-bundle readiness verdict; no paid agent starts."""
     selected_arm = bundle.get("arm")
     selected_assisted = set(tools) - {"cpp_oot_generators"}
-    if (selected_arm in {"raw_baseline", "cpp_merlininfra"} and not selected_assisted) or (
+    profile = bundle.get("compiler_tool_profile")
+    if profile is None and ((selected_arm in {"raw_baseline", "cpp_merlininfra"} and not selected_assisted) or (
         selected_arm is None and not str(bundle.get("bundle_id", "")).startswith("merlin_assisted")
-    ):
+    )):
         return {"status": "skipped", "reason": f"{selected_arm} has no assisted authoring contract", "checks": []}
     checks = []
     try:
         if selected_arm not in TR.ARM_TOOLS:
             raise RuntimeError(f"unrecognized assisted arm {selected_arm!r}")
         selected = tuple(dict.fromkeys(tools))
-        if not selected:
+        if not selected and profile is None:
             raise RuntimeError("assisted bundle resolved no tools")
         unknown = set(selected) - set(TR.known_tools())
         if unknown:
@@ -306,6 +336,22 @@ def assess(
             )
         )
         checks += _grant_checks(te, bundle, selected)
+        if profile is not None:
+            from merlin.targetgen.tool_profile import verify_tool_profile
+
+            verified_profile = verify_tool_profile(bundle, tools=selected)
+            toolchain = verified_profile.get("lean_toolchain") or {}
+            checks.append(_check(
+                "automatic_formal_toolchain_selection",
+                toolchain.get("selection") == "explicit_manifest" and toolchain.get("readiness") == "declared_unprobed",
+                "explicit frozen toolchain declaration; successful proof checking remains required "
+                "per covered transformation",
+            ))
+            checks.append(_check(
+                "common_host_index_width_selection",
+                type(verified_profile.get("host_index_bits")) is int,
+                "reviewed host ABI index width; missing width refuses common transformation lowering",
+            ))
         if "rtl_facts" in selected:
             checks += _frozen_rtl_checks(te, ws, bundle, public_root, repo=context.repo)
         if all(check["ok"] for check in checks):

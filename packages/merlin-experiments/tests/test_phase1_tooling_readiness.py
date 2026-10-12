@@ -102,6 +102,37 @@ def test_selected_source_grants_still_fail_when_one_is_missing(tmp_path, monkeyp
     assert sum(not check["ok"] for check in checks) == 1
 
 
+def test_new_verification_profile_accepts_exact_legacy_client_leaves(tmp_path, monkeypatch):
+    _, te, _ = _inputs(tmp_path)
+    root = tmp_path / "selected-src" / "merlin"
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    allowed = [
+        {"path": str(root / "common") + "/"},
+        {"path": str(root / "verify/cli.py")},
+        {"path": str(root / "xdsl_dialects/opt.py")},
+    ]
+    bundle = {"allowed": allowed, "compiler_tool_profile": {"schema": "merlin.compiler_tool_profile.v1"}}
+    checks = R._grant_checks(te, bundle, ("verify_seam",))
+    assert len(checks) == 2 and all(check["ok"] for check in checks)
+    assert "verify/cli.py" in checks[0]["detail"]
+    allowed.remove({"path": str(root / "verify/cli.py")})
+    assert not R._grant_checks(te, bundle, ("verify_seam",))[0]["ok"]
+
+
+def test_historical_verification_profile_still_requires_its_directory_grant(tmp_path, monkeypatch):
+    _, te, _ = _inputs(tmp_path)
+    root = tmp_path / "selected-src" / "merlin"
+    monkeypatch.setattr(R, "python_source_dir", lambda: tmp_path / "unrelated-install")
+    allowed = [
+        {"path": str(root / "common") + "/"},
+        {"path": str(root / "verify/cli.py")},
+        {"path": str(root / "xdsl_dialects/opt.py")},
+    ]
+    assert not R._grant_checks(te, {"allowed": allowed}, ("verify_seam",))[0]["ok"]
+    allowed.append({"path": str(root / "verify") + "/"})
+    assert all(check["ok"] for check in R._grant_checks(te, {"allowed": allowed}, ("verify_seam",)))
+
+
 def test_assisted_selected_snapshot_probe_failure_is_no_go(tmp_path, monkeypatch):
     context, te, ws = _inputs(tmp_path)
     monkeypatch.setattr(R, "_grant_checks", lambda *args: [R._check("grants", True, "frozen")])

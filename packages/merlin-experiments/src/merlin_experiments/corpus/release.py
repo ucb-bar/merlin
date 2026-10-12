@@ -400,6 +400,9 @@ def prepare(
     retirements: Path | None = None,
     generated_only: bool = False,
     phase1_policy_descriptor: Path | None = None,
+    optional_levels: tuple[str, ...] = (),
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -407,6 +410,11 @@ def prepare(
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
+
+    if not isinstance(optional_levels, tuple) or len(set(optional_levels)) != len(optional_levels) or any(
+        level not in {"EL5", "EL6"} for level in optional_levels
+    ):
+        raise SpecError("optional corpus levels must be a unique tuple containing only EL5 and EL6")
 
     source = run_dir.expanduser().resolve(strict=True)
     if output is None:
@@ -475,6 +483,9 @@ def prepare(
                 selected_facts=selected_facts,
                 selected_contract=selected_contract,
                 phase1_gates=phase1_gates,
+                optional_levels=optional_levels,
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")
