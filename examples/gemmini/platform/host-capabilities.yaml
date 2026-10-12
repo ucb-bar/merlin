@@ -976,6 +976,17 @@ operations:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
       evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_literal_upper_compare_select_f32
+    status: reviewed
+    ops: [aten.clamp.default]
+    families: [elementwise_map]
+    placement: host
+    signature: {family: elementwise_map, ordered_operand_dtypes: [f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3, 4]}
+    source_body: {schema: merlin.static_composite_math_body.v1, operation: clamp_upper_literal_compare_select}
+    numerical_contract:
+      status: unreviewed
+      semantics: {ordered_operations: "finite_f32_literal; ogt(input,bound); select(bound,input)", equal_and_unordered: original_input, literal_identity: exact_source_f32_bits, scope: source_build_link_host_placement_only, native_equivalence: unqualified}
+      evidence: {source_schema: merlin.static_composite_math_body.v1, selected_index_and_elf_join: required}
 
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
