@@ -83,6 +83,16 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     from merlin.kernels.decode.objdump import tokenize_text, word_of
     from merlin.kernels.decode.rocc import decode_stream, fields_of
     from merlin.llvmlower import toolchain
+    from merlin.perf.compiled_static_features import linked_entry_extent
+
+    image = path.read_bytes()
+    try:
+        extent = linked_entry_extent(image, symbol)
+        start, size = extent["address"], extent["size_bytes"]
+        if type(start) is not int or start < 0 or type(size) is not int or size <= 0:
+            raise ValueError("function has no positive declared extent")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise NativeModelExecutionError(f"no verified {symbol!r} function extent: {exc}") from exc
 
     disassembler = toolchain.objdump()
     if not disassembler.is_file() or disassembler.is_symlink():
@@ -95,7 +105,11 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     )
     if run.returncode:
         raise NativeModelExecutionError(f"symbol-scoped disassembly failed: {run.stderr[-350:]}")
-    rows = tokenize_text(run.stdout)
+    if path.read_bytes() != image:
+        raise NativeModelExecutionError("device image changed during symbol inventory")
+    rows = [row for row in tokenize_text(run.stdout) if start <= row.addr < start + size]
+    if any(row.addr + len(row.hexcode.replace(" ", "")) // 2 > start + size for row in rows):
+        raise NativeModelExecutionError("decoded instruction crosses the selected function extent")
     if not rows or f"<{symbol}>:" not in run.stdout:
         raise NativeModelExecutionError(f"no disassembled {symbol!r} symbol in {path.name}")
     decoded = decode_stream(rows, table)
