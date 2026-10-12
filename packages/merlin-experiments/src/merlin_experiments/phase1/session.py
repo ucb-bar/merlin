@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -466,6 +467,18 @@ def validate_options(a: RunOptions) -> int | None:
 def prepare(
     request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *, workspace_leases: list
 ) -> PreparedRun | int:
+    """Close all preparation verification scopes before returning or refusing."""
+    with ExitStack() as snapshot_scopes:
+        return _prepare(
+            request, transport, stage_task, workspace_leases=workspace_leases,
+            snapshot_scopes=snapshot_scopes,
+        )
+
+
+def _prepare(
+    request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *,
+    workspace_leases: list, snapshot_scopes: ExitStack,
+) -> PreparedRun | int:
     """Prepare/resume a run, returning its original refusal code or admitted inputs.
 
     Call inside workspace_session and keep that wrapper active through authoring and
@@ -605,6 +618,14 @@ def prepare(
     _corpus_review = None
     _semantic_model_snapshot = None
     _semantic_diagnostic = None
+    if a.sandbox == "bwrap":
+        from merlin.common.bundle_snapshot import verified_snapshot_scope
+
+        # Assembly and seed staging are complete. The scope reuses only verified
+        # immutable snapshot content within this preparation and rehashes it fully
+        # on close, including every refusal/exception, before anything is returned.
+        snapshot_scopes.enter_context(verified_snapshot_scope(ws, bundle, repo=context.repo))
+
     if _corpus_seal and a.sandbox != "bwrap":
         raise RuntimeError("sealed corpus admission requires a verified native bwrap input snapshot")
     if a.sandbox == "bwrap":
