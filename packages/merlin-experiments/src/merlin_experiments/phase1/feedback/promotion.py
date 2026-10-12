@@ -781,6 +781,30 @@ def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = 
         return None
 
 
+def _mandatory_cert_members(*, context: InvocationContext, capsules_root: Path | None, cert_tier: str) -> set[str]:
+    """Declared mandatory tiers cannot be suppressed by representative coverage.
+
+    Inspect only the selected graded public/dev cohort, never performance or hidden roots.
+    Descriptor exclusions still apply. Optional certification keeps its ordinary cover.
+    """
+    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    te = load_target_experiment(context.descriptor)
+    caps = discover_capsules(
+        ((capsules_root,) if capsules_root is not None else te.graded_roots()),
+        labels={"public", "dev"},
+        contract=context.repo / "merlin/contract",
+    )
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
+    return {
+        str(cap["name"])
+        for cap in caps
+        if cap.get("name") and cap["name"] not in excluded
+        and cert_tier in (cap.get("required_oracle_tiers") or ())
+    }
+
+
 def _tier_state(ws) -> dict:
     import json as _j
 
@@ -1358,6 +1382,13 @@ def promote(
                 depends_on=deps,
                 execution_digest=execution_by_name.get(n),
             )
+        )
+    # A representative subset is an optional-cert cost policy, not authority to omit
+    # a tier the admitted manifest requires. Keep the same scheduler, PASS gate and
+    # identity ledger; only its eligibility set includes these mandatory members.
+    if cover is not None:
+        cover = set(cover) | _mandatory_cert_members(
+            context=context, capsules_root=capsules_root, cert_tier=cert_tier
         )
     want = [
         w

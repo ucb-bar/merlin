@@ -473,3 +473,28 @@ def test_nested_policy_cert_cover_keeps_public_dev_exclusions_and_real_empty(tmp
     empty = tmp_path / "empty"
     empty.mkdir()
     assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=empty) == set()
+
+
+def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import promotion
+    from merlin.targetgen import capsule_common, target_experiment
+
+    caps = [
+        {"name": "mandatory", "label": "public", "required_oracle_tiers": ["L2", "L3"]},
+        {"name": "optional", "label": "dev", "required_oracle_tiers": ["L2"]},
+        {"name": "excluded", "label": "public", "required_oracle_tiers": ["L3"]},
+    ]
+    selected = tmp_path / "selected-functional"
+    def discover(roots, **kw):
+        assert roots == (selected,)
+        assert kw["labels"] == {"public", "dev"}
+        return caps
+    monkeypatch.setattr(capsule_common, "discover_capsules", discover)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(
+        effective_exclusions=lambda names: {"excluded"},
+        graded_roots=lambda: pytest.fail("selected root was ignored"),
+        perf_roots=lambda: pytest.fail("performance roots were inspected"),
+    ))
+    assert promotion._mandatory_cert_members(
+        context=context(tmp_path), capsules_root=selected, cert_tier="L3"
+    ) == {"mandatory"}
