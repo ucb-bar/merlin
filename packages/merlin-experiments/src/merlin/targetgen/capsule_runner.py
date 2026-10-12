@@ -6492,6 +6492,30 @@ def _capsule_dependency_waves(capsules: list[dict]) -> list[list[dict]]:
     return waves
 
 
+def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -> bool:
+    """An explicit L2 screen may open only the L2 capstone, never full certification."""
+    if result.get("status") == "pass":
+        return True
+    if oracle_adapters is None or set(oracle_adapters) != {"L2"}:
+        return False
+    if result.get("status") != "incomplete" or "L2" not in capsule.get("required_oracle_tiers", []):
+        return False
+    failure = result.get("failure") or {}
+    if (failure.get("plane") != "oracle_unavailable" or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
+            or failure.get("tier") != "L3" or failure.get("tier_status") != "unavailable"):
+        return False
+    tiers = result.get("tiers") or {}
+    if (tiers.get("L2") or {}).get("status") != "pass" or (result.get("numeric") or {}).get("status") != "pass":
+        return False
+    for tier in capsule.get("required_oracle_tiers", []):
+        if tier == "L3":
+            continue
+        record = tiers.get(tier) or {}
+        if record.get("status") != "pass" and not record.get("not_applicable"):
+            return False
+    return True
+
+
 def _run_suite(
     capsules: list[dict],
     package_dir: str | Path,
@@ -6675,7 +6699,14 @@ def _run_suite(
     graded = [r for r in op_results if r.get("status") not in NOT_MEASURED_STATUSES]
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded  # fall back rather than divide by zero if nothing is classifiable
-    frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0
+    capsule_by_name = {str(c["name"]): c for c in op_caps}
+    frac = (sum(
+        _model_gate_operation_passed(r, capsule_by_name.get(str(r.get("capsule")), {}), oracle_adapters)
+        for r in denom
+    ) / len(denom)) if denom else 0.0
+    if oracle_adapters is not None and set(oracle_adapters) == {"L2"}:
+        print("  model gate: selected L2 screen evidence only; full certification remains required",
+              flush=True, file=sys.stderr)
     if len(eligible) != len(graded):
         print(
             f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
