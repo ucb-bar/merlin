@@ -161,6 +161,8 @@ def _prove(function, activity, context, *, target):
                 ):
                     raise ValueError("input preparation command has unclosed effects")
                 template = _asm_template(op)
+                if template == "fence" and args:
+                    raise ValueError("input preparation pointer/scalar escapes opaque fence")
                 if template != "fence":
                     parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
                     if parsed is None or not parsed[1] or len(args) != 2:
