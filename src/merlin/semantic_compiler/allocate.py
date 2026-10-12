@@ -8,92 +8,14 @@ An UNSAT result applies only to one candidate, order and bounded model.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from .extract import Candidate, Choice
-from .rules import AddressConstraint, RuleProgram
+from .allocation_types import AllocationResult, CandidateGraph, Reservation, StorageBank, Value
+from .rules import AddressConstraint
 
-
-@dataclass(frozen=True)
-class StorageBank:
-    name: str
-    backing: str
-    capacity: int
-    unit: str
-    alignment: int = 1
-
-    def __post_init__(self) -> None:
-        if not self.name or not self.backing or not self.unit or self.capacity <= 0 or self.alignment <= 0:
-            raise ValueError("storage bank needs positive geometry and explicit units")
-
-    def record(self) -> dict[str, str | int]:
-        return vars(self).copy()
-
-    @classmethod
-    def from_record(cls, row: dict[str, str | int]) -> StorageBank:
-        if set(row) != {"name", "backing", "capacity", "unit", "alignment"}:
-            raise ValueError("storage bank has missing or unknown fields")
-        return cls(**row)
-
-
-@dataclass(frozen=True)
-class Reservation:
-    """Physical interval unavailable to every typed view of one backing store.
-
-    The target contract names the storage view and supplies the interval in its
-    explicit address unit. Reservations last for this entire candidate. Shorter
-    lifetimes require a qualified temporal model, not an assumed issue order.
-    """
-
-    storage: str
-    start: int
-    extent: int
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.storage, str)
-            or not self.storage
-            or not isinstance(self.start, int)
-            or isinstance(self.start, bool)
-            or self.start < 0
-            or not isinstance(self.extent, int)
-            or isinstance(self.extent, bool)
-            or self.extent <= 0
-        ):
-            raise ValueError("reservation needs a storage, nonnegative start and positive extent")
-
-
-@dataclass(frozen=True)
-class Value:
-    id: int
-    symbol: str
-    storage: str
-    extent: int
-    children: tuple[int, ...]
-    source_node: str | None
-    kind: str
-    validity: tuple[AddressConstraint, ...] = ()
-    input_read_offsets: tuple[int, ...] = ()
-    completion_offset: int = 0
-    in_place_inputs: tuple[int, ...] = ()
-    # A source input is immutable across the kernel unless its boundary says reusable.
-    preserve_input: bool = True
-
-    def __post_init__(self) -> None:
-        if type(self.preserve_input) is not bool or (self.kind != "input" and not self.preserve_input):
-            raise ValueError("input retention must be a boolean on input values")
-
-    def read_offset(self, index: int) -> int:
-        return self.input_read_offsets[index] if self.input_read_offsets else 0
-
-
-@dataclass(frozen=True)
-class CandidateGraph:
-    values: tuple[Value, ...]
-    outputs: tuple[int, ...]
-
-    def value(self, value_id: int) -> Value:
-        return self.values[value_id]
+if TYPE_CHECKING:
+    from .extract import Candidate, Choice
+    from .rules import RuleProgram
 
 
 def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGraph:
@@ -141,7 +63,7 @@ def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[i
     """Enumerate bounded legal instruction orders after a low-pressure first order."""
     if limit <= 0:
         raise ValueError("order limit must be positive")
-    instructions = {value.id for value in graph.values if value.kind == "instruction"}
+    instructions = {value.id for value in graph.values if value.kind in {"instruction", "event"}}
     emitted = 0
 
     def walk(done: tuple[int, ...], pending: frozenset[int]) -> Iterator[tuple[int, ...]]:
@@ -165,14 +87,14 @@ def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[i
 
 def instruction_schedule(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
     """Issue serially until target timing has a reviewed overlap contract."""
-    instructions = {value.id for value in graph.values if value.kind == "instruction"}
+    instructions = {value.id for value in graph.values if value.kind in {"instruction", "event"}}
     if len(order) != len(instructions) or set(order) != instructions:
         raise ValueError("order omits or duplicates an instruction")
     position = {value_id: index for index, value_id in enumerate(order)}
     if any(
         child in position and position[child] >= position[value.id]
         for value in graph.values
-        if value.kind == "instruction"
+        if value.kind in {"instruction", "event"}
         for child in value.children
     ):
         raise ValueError("order executes a consumer before its instruction producer")
@@ -199,7 +121,7 @@ def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tupl
     schedule = instruction_schedule(graph, order)
     ranges: dict[int, tuple[int, int]] = {}
     for value in graph.values:
-        start = schedule[value.id][0] if value.kind == "instruction" else 0
+        start = schedule[value.id][0] if value.id in schedule else 0
         uses = [
             schedule[parent.id][0] + parent.read_offset(index)
             for parent in graph.values
@@ -207,7 +129,7 @@ def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tupl
             for index, child in enumerate(parent.children)
             if child == value.id
         ]
-        own_completion = schedule[value.id][1] if value.kind == "instruction" else start
+        own_completion = schedule[value.id][1] if value.id in schedule else start
         end = max((*uses, own_completion))
         if value.id in graph.outputs:
             end = max((completion for _, completion in schedule.values()), default=0) + 1
@@ -242,6 +164,8 @@ def interference_edges(
     edges = set()
     for left_index, left in enumerate(graph.values):
         for right in graph.values[left_index + 1 :]:
+            if left.extent == 0 or right.extent == 0:
+                continue
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
             lo1, hi1 = ranges[left.id]
@@ -249,15 +173,6 @@ def interference_edges(
             if lo1 <= hi2 and lo2 <= hi1 and not _qualified_in_place_pair(graph, left, right):
                 edges.add((left.id, right.id))
     return frozenset(edges)
-
-
-@dataclass(frozen=True)
-class AllocationResult:
-    status: str
-    order: tuple[int, ...]
-    addresses: dict[int, int]
-    reason: str = ""
-    issue_times: tuple[tuple[int, int], ...] = ()
 
 
 def _geometry(banks: tuple[StorageBank, ...]) -> dict[str, StorageBank]:
@@ -382,7 +297,11 @@ def check_assignment(
         for reservation in reservations:
             if bank.backing != bank_map[reservation.storage].backing:
                 continue
-            if address < reservation.start + reservation.extent and reservation.start < address + value.extent:
+            if (
+                value.extent
+                and address < reservation.start + reservation.extent
+                and reservation.start < address + value.extent
+            ):
                 return False, "assignment overlaps reserved physical storage"
         if value.source_node in fixed_inputs and value.kind == "input":
             if address != fixed_inputs[value.source_node]:
@@ -399,6 +318,8 @@ def check_assignment(
                 return False, "instruction alignment validity failed"
     for left_index, left in enumerate(graph.values):
         for right in graph.values[left_index + 1 :]:
+            if left.extent == 0 or right.extent == 0:
+                continue
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
             a = addresses[left.id]
@@ -477,7 +398,7 @@ def allocate(
         addr = variables[value.id]
         solver.add(addr >= 0, addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
         for reservation in reservations:
-            if bank.backing == bank_map[reservation.storage].backing:
+            if value.extent and bank.backing == bank_map[reservation.storage].backing:
                 solver.add(
                     z3.Or(
                         addr + value.extent <= reservation.start,
@@ -494,6 +415,8 @@ def allocate(
                 solver.add(ports[condition.lhs] % condition.value == 0)
     for left_index, left in enumerate(graph.values):
         for right in graph.values[left_index + 1 :]:
+            if left.extent == 0 or right.extent == 0:
+                continue
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
             lo1, hi1 = ranges[left.id]
