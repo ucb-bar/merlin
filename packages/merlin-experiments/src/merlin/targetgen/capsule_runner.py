@@ -6686,7 +6686,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
-    on_complete=None, calibrate=None, calibration_cap=0,
+    on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6722,10 +6722,25 @@ def _run_streaming_model_gate(
             },
         }
 
+    def admitted(cap):
+        if cap.get("kind") != "model":
+            return True
+        from .model_gate_continuation import admits
+
+        continuation = not op_caps and admits(cap, model_gate_continuations, target=target, adapters=oracle_adapters)
+        value = fraction()
+        passed = continuation or model_gate_satisfied(cap, value)
+        if passed:
+            cap["_driver_model_gate_admission"] = {
+                "passed": True, "fraction": value,
+                "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
+            }
+        return passed
+
     return run_pipelined(
         caps, run_one, max_workers=max_workers, calibrate=calibrate, calibration_cap=calibration_cap,
         on_complete=finished,
-        can_start=lambda cap: cap.get("kind") != "model" or model_gate_satisfied(cap, fraction()),
+        can_start=admitted,
         blocked_result=blocked,
         calibration_eligible=lambda cap: cap.get("kind") != "model",
         priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
@@ -6742,6 +6757,7 @@ def _run_suite(
     timeout: int = 600,
     max_workers: int = 1,
     on_capsule_complete: Callable[[dict], None] | None = None,
+    model_gate_continuations=(),
     target: str | None = None,
     suite: str | None = None,
     dtype: str = "i8xi8_i32",
@@ -6788,7 +6804,7 @@ def _run_suite(
 
         _pass_recorder.install_pass_recorder()
 
-    def _one(cap: dict, workers: int = 1) -> dict:
+    def _one_native(cap: dict, workers: int = 1) -> dict:
         # ``workers`` is what THIS capsule ran inside, not what the suite was configured for: the
         # calibration head is serial by construction, and recording the suite's max_workers for it
         # would describe contention its numbers never saw.
@@ -6828,6 +6844,16 @@ def _run_suite(
                 no_oracle=no_oracle,
                 workers=workers,
             )
+
+    def _one(cap: dict, workers: int = 1) -> dict:
+        result = _one_native(cap, workers)
+        gate = cap.get("_driver_model_gate_admission")
+        if cap.get("kind") == "model" and isinstance(gate, dict):
+            result["model_gate_admission"] = gate
+            path = Path(runs_root) / "runs" / (suite or suite_for(target)) / cap["name"] / "capsule_result.json"
+            if path.is_file():
+                path.write_text(json.dumps(result, indent=2))
+        return result
 
     def _run_all(caps: list[dict]) -> list[dict]:
         # PIPELINED: a capsule starts as soon as a worker is free and its selected `extends` sibling has
@@ -6893,6 +6919,7 @@ def _run_suite(
             oracle_adapters=oracle_adapters, on_complete=on_capsule_complete,
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
+            model_gate_continuations=model_gate_continuations,
         ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
@@ -6957,8 +6984,18 @@ def _run_suite(
         )
     model_results = []
     for c in model_caps:
-        if model_gate_satisfied(c, frac):
-            model_results.append(_one(c))
+        from .model_gate_continuation import admits
+
+        continuation = not op_caps and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
+        if model_gate_satisfied(c, frac) or continuation:
+            c["_driver_model_gate_admission"] = {
+                "passed": True, "fraction": frac,
+                "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
+            }
+            result = _one(c)
+            model_results.append(result)
+            if on_capsule_complete is not None:
+                on_capsule_complete(result)
         else:
             thr = (c.get("gate") or {}).get("after_op_pass_fraction")
             model_results.append(

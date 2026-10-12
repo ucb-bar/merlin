@@ -889,6 +889,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
     ap.add_argument("--progress-out", default="", help=argparse.SUPPRESS)
+    ap.add_argument("--model-gate-voucher", action="append", default=[], help=argparse.SUPPRESS)
     ap.add_argument(
         "--caller-layout",
         default="",
@@ -1098,6 +1099,17 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             context=context, capsules_root=caps_root, contract=contract,
             source=sub, runs=runs_root, adapters=adapters,
         )
+        model_continuations = []
+        if a.model_gate_voucher:
+            from .model_gate_vouchers import verify
+            from .promotion import _submission_digest as promotion_digest
+
+            if not want or set(adapters) != {"L2", "L3"}:
+                raise ValueError("model continuation requires an explicit L2/L3 model selection")
+            model_continuations = [verify(
+                path, source_digest=promotion_digest(sub.parent), capsules=want,
+                context=context, cert_tier="L3", contract=contract,
+            ) for path in a.model_gate_voucher]
         _score = CG.grade(
             str(sub),
             capsules_root=str(caps_root),
@@ -1108,6 +1120,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             timeout=a.timeout,
             max_workers=a.workers,
             target=_tgt,
+            model_gate_continuations=tuple(model_continuations),
             **({"on_capsule_complete": completion} if completion is not None else {}),
         )
     except Exception as e:

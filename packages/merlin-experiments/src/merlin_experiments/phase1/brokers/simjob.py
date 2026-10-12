@@ -756,6 +756,36 @@ def main(
                 if sim != _NEUTRAL_SIM:  # --sim is meaningless where the contract picks the tier
                     argv2 += ["--sim", sim]
                 _tiers = str(r.get("tiers") or "").strip()
+                model_vouchers = []
+                try:
+                    if r.get("promoted") and caps != ["all"]:
+                        import yaml
+
+                        from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                        for name in caps:
+                            declaration = yaml.safe_load((capsules_root / name / "capsule.yaml").read_text())
+                            if declaration.get("kind") != "model":
+                                continue
+                            voucher = model_gate_vouchers.lookup(
+                                ws, digest=launched_source_digest, capsule=name, context=context, cert_tier=_CERT_TIER, contract=contract,
+                            )
+                            if voucher is None:
+                                raise ValueError("promoted model has no protected closed L2 gate voucher")
+                            model_vouchers.append(voucher)
+                        if model_vouchers:
+                            _tiers = "L2,L3"
+                            for voucher in model_vouchers:
+                                argv2 += ["--model-gate-voucher", str(voucher)]
+                except (ValueError, OSError) as exc:
+                    _release_veril_workers(slots)
+                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
+                        "error": f"model continuation refused: {exc}", "all_pass": False,
+                        "promotion_source_verified": source_identity_verified,
+                    }))
+                    (ch / f"simerr_{jid}").write_text("model continuation not admitted")
+                    claimed.add(jid)
+                    continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
