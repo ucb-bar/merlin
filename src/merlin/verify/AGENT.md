@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT) layers that sit beside
+Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT/Lean) layers that sit beside
 the capsule oracle ladder. The bench grades *outcomes*; this package verifies *passes*. Model, results
 and working log: `docs/design/compiler_verification.md`.
 
@@ -36,6 +36,20 @@ and working log: `docs/design/compiler_verification.md`.
   under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
 
 ## Invariants
+
+- `lean_contract.py` owns public result data and strict modeled coverage; it cannot issue
+  accepted evidence. `lean_export.py` projects actual pure integer SSA under explicit
+  primitive semantics. `lean_checker.py` runs the selected Lean kernel and owns live
+  host completions. Deserialized receipts, candidate callbacks and status strings are
+  never acceptance authority. Reuse only bounded process-local successful proof checks
+  bound to actual IR, semantic model, scope and revalidated toolchain products.
+- The common transformation broker chooses the frozen semantics, index width and
+  toolchain. Lower experiment levels receive automatic checking through that broker;
+  the author-facing Lean API is an explicitly separate treatment. Do not broaden grants.
+- Loop/storage checks combine parameterized arithmetic/lifetime lemmas with trusted
+  structural correspondence. They do not prove complete SCF/memory execution, LLVM,
+  physical resource allocation, ISA encoding, numerical policy or RTL behavior.
+  Unsupported effects, poison flags and metadata remain explicit gaps.
 
 - **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
   solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
