@@ -280,8 +280,8 @@ operations:
     families: [elementwise_map]
     placement: host
     signature: {family: elementwise_map, ordered_operand_dtypes: [i1, f32, f32, f32], ordered_result_dtypes: [f32], ranks: [1, 2, 3]}
-    source_body: {schema: merlin.static_pointwise_source_body.v1, operation: arith.select}
-    numerical_contract: {status: unreviewed, semantics: {selection: predicate_selected_operand, arithmetic_on_selected_value: none, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_select}}
+    source_body: {schema: merlin.static_projected_pointwise_body.v1, operation: arith.select}
+    numerical_contract: {status: unreviewed, semantics: {selection: predicate_selected_operand, operand_maps: source_proved_static_singleton_or_scalar_projection, arithmetic_on_selected_value: none, native_nonfinite: unqualified}, evidence: {neutral_case: matrix_f32_select, source_schema: merlin.static_projected_pointwise_body.v1, selected_index_and_elf_join: required}}
   - id: host_review_f32_nonzero_r1_4
     status: reviewed
     ops: [aten._to_copy.default]
