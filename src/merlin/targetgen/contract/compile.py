@@ -417,6 +417,26 @@ def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
     } or None
 
 
+def _ordinary_integer_harness_inputs(cb):
+    """Materialize the runner's existing integer stimulus, never a model fallback."""
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.harness_render import _roster, _tensor
+    from merlin.common.quant_formats import get
+
+    if cb.get("kernel_abi") is not None:
+        raise ValueError("whole-program harness requires explicit semantic inputs")
+    normalized, slots = _roster(cb)
+    total = 0
+    for spec in normalized["tensors"].values():
+        total += _tensor(spec)[2]
+        if get(spec["dtype"]).kind != "int_affine":
+            raise ValueError("non-integer harness requires explicit semantic inputs")
+    if total > 16 * 1024 * 1024:
+        raise ValueError("neutral harness exceeds its complete storage budget before input rendering")
+    leaves = materialize_inputs(cb)
+    return {name: leaves[name].to_list() for name, access in slots.items() if access != "write"}
+
+
 def _explicit_prepack_inputs(inputs, authorizations) -> None:
     """Never satisfy a host immutable-payload grant from candidate recorded operands."""
     if authorizations is None:
@@ -589,6 +609,8 @@ def link_elf(
     # may use the historical recorded-operand fallback.
     if _compact_caller is None and prepack_authorizations is None and _build_service is None and inputs is None:
         inputs = _recorded_operands(cb)
+        if inputs is None and getattr(_backends.get_backend(target), "REQUIRES_EXPLICIT_LOGICAL_INPUTS", False):
+            inputs = _ordinary_integer_harness_inputs(cb)
     if _compile_only_linkage is not None:
         pass
     elif _compact_caller is not None:

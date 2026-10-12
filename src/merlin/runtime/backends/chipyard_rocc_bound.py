@@ -289,6 +289,7 @@ class BoundRoCCBackend:
     EXECUTION_CAPABILITIES = {
         "whole_program_kernel_abi": "core logical pointer harness with original full input/output membership"
     }
+    REQUIRES_EXPLICIT_LOGICAL_INPUTS = True
 
     def _data(self):
         return json.loads(self._selection_json)

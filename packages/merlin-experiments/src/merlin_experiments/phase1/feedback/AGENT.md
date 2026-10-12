@@ -246,3 +246,9 @@ Mixed scalar source bodies reuse the mandatory private Linalg witness with exact
 per-input shapes/maps and bf16/f64 byte spans. Reopen every mixed ordinal and literal
 from the actual capture tree at linked-build and completion checks. Routing-only
 host declarations do not certify arithmetic or native numerical equivalence.
+
+Cert cover resolves the already discovered exact public/dev leaf directories, including
+nested frozen policy cohorts; actual empty and wholly excluded cohorts stay empty.
+Fast loop feedback schedules the existing cert queue immediately using its frozen
+candidate source. It does not grant withheld tiers, duplicate the full grade or
+change native slot limits; broker promotion keeps the same identity ledger.

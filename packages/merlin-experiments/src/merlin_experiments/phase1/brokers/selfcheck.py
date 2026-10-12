@@ -33,6 +33,21 @@ from pathlib import Path
 from merlin_experiments.phase1.context import add_context_arguments, resolve_context
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
+
+def _freeze_passed_source(ws: Path, expected_digest: str):
+    """Bind asynchronous promotion to the source just graded, before releasing the author."""
+    from merlin_experiments.phase1.feedback import snapshots
+
+    token, error = snapshots.create_promotion_snapshot(
+        ws, ws, expected_digest, submission_digest=lambda root: _submission_digest(Path(root) / "submission")
+    )
+    if error:
+        raise RuntimeError(error)
+    source = snapshots.promotion_snapshot_path(ws, token)
+    if source is None or _submission_digest(source / "submission") != expected_digest:
+        raise RuntimeError("passed selfcheck source snapshot differs from graded identity")
+    return source
+
 #: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
 #: shim writes the keys, this broker turns them back into flags; a probe missing here is one a
 #: sandboxed agent cannot reach, however well it works outside the box.
@@ -552,6 +567,16 @@ def main(
                 completed_ns=time.time_ns(),
             )
             _atomic_write(resp, json.dumps(doc))
+        # Capture the verified source BEFORE done releases the author to edit it.
+        # The optional queueing below must never hash the newly edited live workspace.
+        promotion_source = None
+        try:
+            if resp.exists():
+                passed = json.loads(resp.read_text())
+                if not passed.get("error") and any(row.get("pass") is True for row in passed.get("per_capsule", [])):
+                    promotion_source = _freeze_passed_source(ws, graded_digest)
+        except Exception as exc:
+            print(f"[promote] source freeze refused: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         # COMPLETE THE CALLER'S REQUEST before optional promotion.  The shim deliberately waits for both
         # response and done; publishing the verdict and then running promotion first made a slow or wedged
         # promotion indistinguishable from a lost response even though the verdict was already durable.
@@ -579,7 +604,7 @@ def main(
             _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
             if _loop and _cert and resp.exists():
                 _v = _j.loads(resp.read_text())
-                if isinstance(_v, dict) and not _v.get("error"):
+                if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                     _promote(
                         ws,
                         ch,
@@ -590,6 +615,7 @@ def main(
                         sys.stderr,
                         context=context,
                         capsules_root=promotion_capsules_root,
+                        source_ws=promotion_source,
                     )
         except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
             print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)

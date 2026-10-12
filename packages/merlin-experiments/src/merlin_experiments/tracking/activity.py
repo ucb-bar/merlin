@@ -371,7 +371,13 @@ def read(run_dir: Path, inventory: R.Inventory, tails: Tails | None = None) -> d
         detail = f"{tail.rows_read} rows to byte {tail.offset:,}" + (f", {tail.bad} unreadable" if tail.bad else "")
         inventory.note(f"rounds/{path.name}", path, "read" if tail.present else "absent", detail)
         info[path.name] = {"offset": tail.offset, "rows": tail.rows_read, "bad": tail.bad}
-    return state.snapshot(files, info)
+    result = state.snapshot(files, info)
+    from merlin_experiments.phase1.telemetry.evidence import declared_home_usage
+
+    live_usage = declared_home_usage(run_dir)
+    if live_usage["available"]:
+        result["live_usage"] = live_usage
+    return result
 
 
 # --------------------------------------------------------------------------- Gantt lanes

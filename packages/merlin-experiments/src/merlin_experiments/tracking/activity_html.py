@@ -72,6 +72,10 @@ def _tiles(activity: Mapping[str, Any]) -> str:
     tokens_in = sum(r["input_tokens"] for r in activity["rounds"])
     usage = sum(r["usage_turns"] for r in activity["rounds"])
     errors = sum(r["errors"] for r in activity["rounds"])
+    live = activity.get("live_usage")
+    if live:
+        tokens_in = live["tokens"]["tokens_input_total"]
+        tokens_out = live["tokens"]["tokens_output"]
     tiles = [
         tile("Rounds with a stream", str(len(activity["rounds"])), f"{len(activity['turns'])} turns"),
         tile("Commands run", f"{activity['n_commands']:,}", f"{activity['failed_commands']:,} exited non-zero"),
@@ -80,9 +84,10 @@ def _tiles(activity: Mapping[str, Any]) -> str:
         tile("Files edited", f"{len(activity['edits']):,}", f"{sum(activity['edits'].values()):,} changes"),
         tile("Errors", f"{errors:,}", "error events and failed turns"),
         tile(
-            "Tokens (reported turns)",
-            f"{tokens_in:,} in / {tokens_out:,} out" if usage else NR,
-            f"{usage} turns reported usage",
+            "Tokens (provider cumulative)" if live else "Tokens (reported turns)",
+            f"{tokens_in:,} in / {tokens_out:,} out" if usage or live else NR,
+            ("latest matched provider-thread cumulative usage; input includes cache"
+             if live else f"{usage} turns reported usage"),
         ),
     ]
     return '<div class="tiles">' + "".join(tiles) + "</div>"

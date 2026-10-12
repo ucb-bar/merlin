@@ -397,10 +397,104 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
     monkeypatch.setattr(
         qa, "_per_capsule_from_results", lambda root: {"public": {"status": "pass", "tiers": {"L2": "pass"}}}
     )
+    from merlin_experiments.phase1.feedback import promotion
+
+    promoted = []
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: ("L2", "L3", {"public"}))
+
+    def promote(*args, source_ws, context, capsules_root):
+        assert (ws / "qa/verdict.json").is_file()
+        assert source_ws != ws
+        assert (source_ws / "submission/manifest.yaml").read_text() == "language: python\n"
+        assert context == inputs.context
+        assert capsules_root == inputs.promotion_root
+        promoted.append(args[2]["per_capsule"])
+
+    monkeypatch.setattr(promotion, "promote", promote)
     verdict = G.fast_grade(ws, tmp_path / "run", 900, 10, inputs=inputs)
+    assert promoted and promoted[0][0]["tiers"] == {"L2": "pass"}
     assert verdict["all_pass"] is None
     assert seen[0]["target"] == "isolated"
     assert seen[0]["capsules_root"] == str(inputs.public_root)
     assert seen[0]["contract"] == str(inputs.contract)
     assert seen[0]["oracle_adapters"] == {"L2": "loop"}
     assert json.loads((ws / "qa/verdict.json").read_text()) == verdict
+
+
+def test_nested_policy_cert_cover_keeps_public_dev_exclusions_and_real_empty(tmp_path, monkeypatch):
+    import yaml
+    from merlin_experiments.phase1.feedback import promotion
+
+    from merlin.targetgen import capsule_common, target_experiment
+
+    policy = tmp_path / "policy"
+    for index, (name, label, family) in enumerate(
+        (
+            ("public_case", "public", "contraction"),
+            ("dev_case", "dev", "elementwise_map"),
+            ("hidden_case", "hidden", "reduction"),
+        )
+    ):
+        leaf = policy / str(index) / name
+        leaf.mkdir(parents=True)
+        (leaf / "capsule.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "name": name,
+                    "label": label,
+                    "inputs": [{"dtype": "int8", "shape": [16, 16]}],
+                    "semantic": {"semantic_family": family},
+                }
+            )
+        )
+    monkeypatch.setattr(
+        capsule_common,
+        "load_capsule",
+        lambda directory, **kw: {
+            **yaml.safe_load((Path(directory) / "capsule.yaml").read_text()),
+            "__dir__": str(directory),
+        },
+    )
+    excluded = set()
+    monkeypatch.setattr(
+        target_experiment,
+        "load_target_experiment",
+        lambda _: SimpleNamespace(
+            target="fixture",
+            effective_exclusions=lambda _: excluded,
+        ),
+    )
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=policy) == {
+        "public_case",
+        "dev_case",
+    }
+    excluded.update(("public_case", "dev_case"))
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=policy) == set()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=empty) == set()
+
+
+def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import promotion
+    from merlin.targetgen import capsule_common, target_experiment
+
+    caps = [
+        {"name": "mandatory", "label": "public", "required_oracle_tiers": ["L2", "L3"]},
+        {"name": "optional", "label": "dev", "required_oracle_tiers": ["L2"]},
+        {"name": "excluded", "label": "public", "required_oracle_tiers": ["L3"]},
+    ]
+    selected = tmp_path / "selected-functional"
+    def discover(roots, **kw):
+        assert roots == (selected,)
+        assert kw["labels"] == {"public", "dev"}
+        return caps
+    monkeypatch.setattr(capsule_common, "discover_capsules", discover)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(
+        effective_exclusions=lambda names: {"excluded"},
+        graded_roots=lambda: pytest.fail("selected root was ignored"),
+        perf_roots=lambda: pytest.fail("performance roots were inspected"),
+    ))
+    assert promotion._mandatory_cert_members(
+        context=context(tmp_path), capsules_root=selected, cert_tier="L3"
+    ) == {"mandatory"}

@@ -226,12 +226,13 @@ def cost_section(detail: Mapping[str, Any], activity: Mapping[str, Any] | None) 
     cost = (detail.get("cost") or {}).get("cost")
     timing = (detail.get("cost") or {}).get("timing")
     out = '<section id="cost"><h2>Tokens and time</h2>'
+    live_usage = (detail.get("cost") or {}).get("live_usage")
     if cost:
         tiles = [
             tile(
                 "Tokens total",
                 num(cost.get("tokens_total")),
-                f"in {num(cost.get('tokens_input'))}, cached {num(cost.get('tokens_cached'))}, out "
+                f"input {num(cost.get('tokens_input'))}, cached {num(cost.get('tokens_cached'))}, out "
                 f"{num(cost.get('tokens_output'))}",
             ),
             tile("Tool calls", num(cost.get("tool_calls")), f"usage complete {text_or_nr(cost.get('usage_complete'))}"),
@@ -250,12 +251,32 @@ def cost_section(detail: Mapping[str, Any], activity: Mapping[str, Any] | None) 
         out += '<div class="tiles">' + "".join(tiles) + "</div>"
     else:
         out += f"<p>cost_time_toolcalls.yaml: {NR}.</p>"
+    if live_usage:
+        out += "<p>Live cumulative provider usage: input includes cached tokens; reasoning is a subset of output. "
+        out += "USD charge is not reported for this subscription run. Rates below describe client-observed "
+        out += "usage-sample traffic, not server decode throughput or TTFT. Unmatched agents are excluded.</p>"
+        rows = []
+        for actor in live_usage["threads"]:
+            tokens = actor["tokens"]
+            rows.append([
+                esc(actor["thread_id"]), esc(", ".join(str(v) for v in actor["rounds"])),
+                num(tokens["input_total"]), num(tokens["cache_read"]), num(tokens["output"]), num(tokens["reasoning"]),
+                text_or_nr(actor["input_tokens_per_client_observed_s"]),
+                text_or_nr(actor["output_tokens_per_client_observed_s"]),
+                text_or_nr(actor["reasoning_share_of_output"]), esc(actor["sampled_through"]), NR,
+            ])
+        out += "<h3>Observed agent threads</h3>" + table(
+            ["thread", "rounds", "input incl. cache", "cached", "output", "reasoning subset",
+             "input tok/s", "output tok/s",
+             "reasoning/output", "usage through", "USD charge"], rows, (2, 3, 4, 5, 6, 7, 8),
+        )
     if timing:
         out += (
             f"<p>Wall split ({text_or_nr(timing.get('method'))}): think/generate "
             f"{text_or_nr(timing.get('think_generate_s'))} s, tools and waiting "
             f"{text_or_nr(timing.get('tool_and_wait_s'))} s ({text_or_nr(timing.get('think_pct'))}% "
-            f"thinking); {text_or_nr(timing.get('tool_calls_matched'))} calls matched, "
+            "no outstanding tool; think/generate proxy); "
+            f"{text_or_nr(timing.get('tool_calls_matched'))} calls matched, "
             f"{text_or_nr(timing.get('tool_calls_unterminated'))} unterminated.</p>"
         )
         tools = [

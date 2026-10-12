@@ -460,6 +460,31 @@ def fast_grade(
     write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
     FL.record_channel_health(ws, run_dir)
+    # The first successful loop verdict unlocks cert work immediately. The existing
+    # broker queue owns native parallelism, deduplication and certification; never
+    # wait for the periodic full-grade cadence or attribute these bytes to live edits.
+    try:
+        import sys as _sys
+
+        from merlin_experiments.phase1.feedback.promotion import promote as _promote
+        from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
+
+        _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
+        if _loop and _cert and verdict.get("per_capsule"):
+            _promote(
+                ws,
+                ws / ".qa_channel",
+                verdict,
+                _loop,
+                _cert,
+                _cover,
+                _sys.stderr,
+                source_ws=cand.parent,
+                context=inputs.context,
+                capsules_root=inputs.promotion_root,
+            )
+    except Exception as exc:  # noqa: BLE001 -- optional cert scheduling cannot erase loop feedback
+        print(f"[first-grade] promotion skipped: {type(exc).__name__}: {exc}", flush=True)
     return verdict
 
 
