@@ -552,6 +552,27 @@ def test_omitted_logical_inputs_and_warm_profile_are_explicit_refusals(selection
         bound.render_harness(_program(), target="synthetic", inputs={"X": [[1, 2]]}, warm_profile={})
 
 
+def test_job_budget_respects_selected_process_ceiling(selection, monkeypatch):
+    from merlin.common import execution_deadline as D
+    from merlin.targetgen.contract.compile import _selected_run_timeout
+
+    contract, facts = copy.deepcopy(selection)
+    contract["runner"]["chipyard_rocc"]["engines"]["spike"]["max_timeout_s"] = 600
+    bound = B.bind(target="synthetic", contract=contract, facts=facts)
+    monkeypatch.setattr(D.time, "monotonic", lambda: 100.0)
+    assert _selected_run_timeout(bound, "spike", 900, D.ExecutionDeadline(100, 900)) == 600
+    assert _selected_run_timeout(bound, "spike", 900, D.ExecutionDeadline(0, 150)) == 50
+
+
+def test_expired_job_budget_refuses_before_selected_process(selection, monkeypatch):
+    from merlin.common import execution_deadline as D
+    from merlin.targetgen.contract.compile import _selected_run_timeout
+
+    monkeypatch.setattr(D.time, "monotonic", lambda: 100.0)
+    with pytest.raises(TimeoutError, match="wall budget expired"):
+        _selected_run_timeout(_bound(selection), "spike", 900, D.ExecutionDeadline(0, 99))
+
+
 def test_ordinary_integer_runner_stimulus_reaches_strict_harness(selection):
     from merlin.runtime.commandbuffer import materialize_inputs
     from merlin.targetgen.contract.compile import _ordinary_integer_harness_inputs
