@@ -128,15 +128,26 @@ def original_compiler_imports(service):
         yield
 
 
+@contextlib.contextmanager
 def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
-    """The original broker passes its archived manifest outside the request body."""
+    """Close setup custody before grading; keep original execution scopes alive."""
+    from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    owner = (None if bundle_manifest is None else CommonTransformService(
-        workspace=Path.cwd(), bundle_manifest=bundle_manifest, repo=context.repo))
-    return original_compiler_execution(owner,
-        target_experiment=None if owner is None else load_target_experiment(context.descriptor),
-        candidate=Path(submission), work_root=Path(work_root))
+    if bundle_manifest is None:
+        yield
+        return
+    workspace = Path.cwd()
+    bundle = yaml.safe_load(Path(bundle_manifest).read_bytes())
+    with contextlib.ExitStack() as execution:
+        with verified_snapshot_scope(workspace, bundle, repo=context.repo):
+            owner = CommonTransformService(
+                workspace=workspace, bundle_manifest=bundle_manifest, repo=context.repo)
+            execution.enter_context(_original_execution_lifetime(
+                owner, target_experiment=load_target_experiment(context.descriptor),
+                candidate=Path(submission), work_root=Path(work_root)))
+        # The full final setup read has completed. Actual grading is outside reuse.
+        yield
 
 
 @contextlib.contextmanager
@@ -318,8 +329,10 @@ class _Executor:
             command = [*prefix, "--chdir", str(package), "bash", "-c", policy.env_prefix + 'exec "$@"',
                        "original-package", *argv]
             if evidence is None:
-                return bwrap_args.run(command, policy_end=len(prefix)+2, capture_output=True, text=True, timeout=timeout)
-            return bwrap_args.run(command, policy_end=len(prefix)+2, directory=evidence, stage="original_profile_package",
+                return bwrap_args.run(
+                    command, policy_end=len(prefix)+2, capture_output=True, text=True, timeout=timeout)
+            return bwrap_args.run(
+                command, policy_end=len(prefix)+2, directory=evidence, stage="original_profile_package",
                 inputs=inputs, outputs=outputs, dependencies=(Path(__file__), *dependencies),
                 capture_output=True, text=True, timeout=timeout)
 
@@ -431,6 +444,24 @@ def active_original_execution():
 
 @contextlib.contextmanager
 def original_compiler_execution(service, *, target_experiment, candidate, work_root, sandbox_inputs=None):
+    """Batch only setup for an exact owner, never the grading lifetime."""
+    from merlin.common.bundle_snapshot import verified_snapshot_scope
+
+    if service is None:
+        yield
+        return
+    if type(service) is not CommonTransformService or P.active_package_executor() is not None:
+        raise ValueError("original profile execution requires its exact owner and no foreign executor")
+    with contextlib.ExitStack() as execution:
+        with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
+            execution.enter_context(_original_execution_lifetime(
+                service, target_experiment=target_experiment, candidate=candidate,
+                work_root=work_root, sandbox_inputs=sandbox_inputs))
+        yield
+
+
+@contextlib.contextmanager
+def _original_execution_lifetime(service, *, target_experiment, candidate, work_root, sandbox_inputs=None):
     """One original host scope for all actual package checks and child mounts."""
     if service is None:
         yield
