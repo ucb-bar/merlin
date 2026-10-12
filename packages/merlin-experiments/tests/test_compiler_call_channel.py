@@ -226,7 +226,8 @@ def test_cancellation_reaps_own_session_proof_child_before_final_identity_work(o
         "deadline":time.monotonic()+15,"parent_pid":os.getpid(),
         "owner":{"workspace":str(value.owner.workspace),"bundle_manifest":str(value.owner.bundle_manifest),
             "repo":str(value.owner.repo),"archive_sha256":hashlib.sha256(value.owner.bundle_bytes).hexdigest(),
-            "snapshot_sha256":value.owner.snapshot_digest,"profile_sha256":value.owner.profile["sha256"]}}))
+            "snapshot_sha256":value.owner.snapshot_digest,"profile_sha256":value.owner.profile["sha256"],
+            "snapshot_marker_sha256":value.owner.snapshot_marker_digest}}))
     process=multiprocessing.get_context("fork").Process(target=_cleanup_probe,args=(selection,control))
     process.start()
     deadline=time.monotonic()+5
@@ -274,3 +275,63 @@ def test_phase2_normal_box_reuses_original_explicit_runtime_selection(original,m
     with value.owner.compiler_imports(),PC.boxed_entrypoints(policy):
         result=P.run_entrypoint(pkg,"compile",value.source,value.workspace / "out",timeout=5)
     assert result.returncode==0 and seen==["compile"]
+
+
+def _lazy_selection(value):
+    return {"schema": C.SCHEMA, "workspace": str(value.workspace),
+        "package": str(value.package), "package_sha256": C._sources(value.package),
+        "input_path": str(value.source), "input_sha256": C._sha(value.source),
+        "command_name": "compile", "deadline": time.monotonic() + 15, "parent_pid": os.getpid(),
+        "owner": {"workspace": str(value.owner.workspace), "bundle_manifest": str(value.owner.bundle_manifest),
+            "repo": str(value.owner.repo), "archive_sha256": hashlib.sha256(value.owner.bundle_bytes).hexdigest(),
+            "snapshot_sha256": value.owner.snapshot_digest, "profile_sha256": value.owner.profile["sha256"],
+            "snapshot_marker_sha256": value.owner.snapshot_marker_digest}}
+
+
+def test_idle_channel_readiness_does_not_construct_full_snapshot_service(original, monkeypatch):
+    value = original
+    channel = value.workspace / '.qa_channel'
+    channel.mkdir()
+    (channel / 'STOP').write_text('stop')
+    control = value.root / 'lazy-control'
+    control.mkdir()
+    monkeypatch.setattr(C, 'CommonTransformService', lambda **kwargs: pytest.fail('idle SDK scan'))
+    C._serve(_lazy_selection(value), control)
+    assert json.loads((control / 'ready.json').read_bytes())['ready'] is True
+
+
+def test_first_request_requires_full_original_service_before_dispatch(original, monkeypatch):
+    value = original
+    channel = value.workspace / '.qa_channel'
+    channel.mkdir()
+    rid, row = request()
+    (channel / ('req_' + rid + '.json')).write_text(json.dumps(row))
+    control = value.root / 'lazy-control'
+    control.mkdir()
+    calls = []
+
+    def construct(**kwargs):
+        calls.append(kwargs)
+        raise ValueError('full frozen payload refused')
+
+    monkeypatch.setattr(C, 'CommonTransformService', construct)
+    monkeypatch.setattr(C, '_dispatch', lambda *a, **kw: pytest.fail('unverified request dispatched'))
+    with pytest.raises(ValueError, match='full frozen payload refused'):
+        C._serve(_lazy_selection(value), control)
+    assert len(calls) == 1
+    assert not (channel / ('resp_' + rid + '.json')).exists()
+
+
+@pytest.mark.parametrize('changed', ['archive', 'marker'])
+def test_lazy_readiness_refuses_mutated_protected_metadata(original, changed):
+    value = original
+    selection = _lazy_selection(value)
+    if changed == 'archive':
+        value.owner.bundle_manifest.write_bytes(value.owner.bundle_bytes + b'\n')
+    else:
+        from merlin.common.bundle_snapshot import MARKER, bundle_snapshot_root
+        marker = bundle_snapshot_root(value.owner.workspace) / MARKER
+        marker.chmod(0o600)
+        marker.write_bytes(marker.read_bytes() + b'\n')
+    with pytest.raises(ValueError, match='changed its original'):
+        C._verify_owner_selection(selection['owner'])
