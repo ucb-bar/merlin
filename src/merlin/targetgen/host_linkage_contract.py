@@ -33,7 +33,10 @@ def validate_linkage_contract(value: object) -> dict[str, Any]:
 def required_composite_math_symbol(schema: object, operation: object) -> str | None:
     """Name an unresolved selected-library obligation, not an observed call."""
     from merlin.frontends.linalg_composite_math import STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA
+    from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
 
+    if schema == MIXED_SCHEMA and type(operation) is str:
+        return {"f64_math_sin": "sin", "f64_math_cos": "cos", "f64_arith_constant_math_powf": "pow"}.get(operation)
     if schema != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA or type(operation) is not str:
         return None
     return {"literal_base_pow_f32": "powf", "tanh_gelu_f32": "tanhf"}.get(operation)
@@ -52,6 +55,12 @@ def validate_source_linkage_contract(schema: object, operation: object, value: o
     ):
         return contract  # Preserve the previously reviewed unary-math contract.
     symbol = required_composite_math_symbol(schema, operation)
-    if schema != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA or symbol is None or contract["symbols"] != [symbol]:
+    from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+
+    if (
+        schema not in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA}
+        or symbol is None
+        or contract["symbols"] != [symbol]
+    ):
         raise ValueError("linkage contract does not match the exact composite math source form")
     return contract

@@ -990,11 +990,12 @@ def _generic_copy_module(
         output_dtype = dtype
     if iterators is None:
         iterators = ", ".join(["#linalg.iterator_type<parallel>"] * 4)
+    domain = ", ".join(f"d{i}" for i in range(len(output_shape.split("x"))))
     input_type = f"tensor<{input_shape}x{dtype}>"
     output_type = f"tensor<{output_shape}x{output_dtype}>"
     properties = (
-        f"indexing_maps = [affine_map<(d0, d1, d2, d3) -> ({input_map})>, "
-        f"affine_map<(d0, d1, d2, d3) -> ({output_map})>], "
+        f"indexing_maps = [affine_map<({domain}) -> ({input_map})>, "
+        f"affine_map<({domain}) -> ({output_map})>], "
         f"iterator_types = [{iterators}], operandSegmentSizes = array<i32: {segments}>"
     )
     return mq.parse(
@@ -1008,6 +1009,36 @@ def _generic_copy_module(
   }}
 }}"""
     )
+
+
+@pytest.mark.parametrize(
+    "input_shape,input_map,accepted",
+    [
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1, d5 * 4 + d2", True),
+        ("1x2x11x12", "d3, d0, d4 * 4 + d1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1 + 1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1 - 1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 floordiv 2, d5 * 4 + d2", False),
+    ],
+)
+def test_generic_copy_support_proves_linear_tiled_movement_bounds(input_shape, input_map, accepted):
+    from merlin.common import mlir_query as mq
+    from merlin_experiments.phase1.feedback.private_data_movement import verify_generic_copy
+
+    # Independent geometry: patch coordinates are bounded by the identity output domain.
+    module = _generic_copy_module(
+        input_shape=input_shape,
+        output_shape="2x4x4x1x3x3",
+        input_map=input_map,
+        output_map="d0, d1, d2, d3, d4, d5",
+        iterators=", ".join(["#linalg.iterator_type<parallel>"] * 6),
+    )
+    op = tuple(mq.walk(module))[2]
+    if accepted:
+        verify_generic_copy(op, ordinal=2)
+    else:
+        with pytest.raises(ValueError):
+            verify_generic_copy(op, ordinal=2)
 
 
 def test_generic_copy_support_requires_typed_singleton_projection_and_exact_join():

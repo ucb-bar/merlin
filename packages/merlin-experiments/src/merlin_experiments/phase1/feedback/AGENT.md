@@ -235,3 +235,14 @@ formal completion. `freeze.py` owns the existing freeze.json record using the sh
 tree-hash and explicit repository identity. Preserve mandatory L3 simulator selection
 even for no-oracle diagnostics. Only synthetic external execution is substituted in
 installed lifecycle tests; those tier records are not hardware qualification.
+
+`private_data_movement.py` proves pure generic movement with static identity output
+domains. Input affine additions and literal multipliers require conservative integer
+extrema inside every input extent; symbols, nonlinear/divisor expressions and shared
+input coordinate dimensions remain refused. This is source movement support only,
+never compute placement, value equivalence or native execution evidence.
+
+Mixed scalar source bodies reuse the mandatory private Linalg witness with exact
+per-input shapes/maps and bf16/f64 byte spans. Reopen every mixed ordinal and literal
+from the actual capture tree at linked-build and completion checks. Routing-only
+host declarations do not certify arithmetic or native numerical equivalence.

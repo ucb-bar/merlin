@@ -67,3 +67,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 ## Notes for future agents
 
 smolVLA reuse structure: capture unit = one denoise step; `select_action` runs N steps per tick, so every weight is `reused_across_invocations` — the repeated-RHS pattern with real shapes.
+
+`linalg_mixed_patterns.py` is opt-in typed routing source evidence. It proves closed
+bf16/f64/mixed scalar SSA sequences, default tensor layouts and bounded static input
+projections; it preserves finite literal bits and refuses init reads/fast-math. Historical
+f32 schemas retain their meanings. It grants no framework numerical equivalence.

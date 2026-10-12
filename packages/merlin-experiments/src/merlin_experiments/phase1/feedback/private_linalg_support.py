@@ -7,6 +7,7 @@ do not prove a global arena allocation or pointer-base address range.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict
@@ -40,12 +41,32 @@ from merlin.frontends.linalg_composite_math import (
     validate_serialized_static_composite_math_pattern,
     validate_static_composite_math_source_body,
 )
+from merlin.frontends.linalg_embedding_gather import (
+    SCHEMA as EMBEDDING_GATHER_SCHEMA,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    TYPES as EMBEDDING_GATHER_TYPES,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    recognize as recognize_embedding_gather,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    validate_pattern as validate_embedding_gather_pattern,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    validate_source_body as validate_embedding_gather_body,
+)
 from merlin.frontends.linalg_math_patterns import (
     STATIC_F32_MATH_SOURCE_BODY_SCHEMA,
     recognize_static_f32_math_body,
     static_f32_math_ordered_types,
     validate_static_f32_math_source_body,
 )
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import ordered_types as mixed_ordered_types
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_pattern as validate_mixed_pattern
 from merlin.frontends.linalg_patterns import (
     STATIC_POINTWISE_SOURCE_BODY_SCHEMA,
     STATIC_PROJECTED_POINTWISE_BODY_SCHEMA,
@@ -97,10 +118,21 @@ _OCCURRENCE = {
     "linkage_requirement",
 }
 _DYNAMIC_OCCURRENCE = _OCCURRENCE | {"shape_source", "dynamic_bound"}
+_GATHER_OCCURRENCE = _OCCURRENCE | {"table_shape", "table_argument"}
 
 
 def _contract(schema: object, operation: object, predicate: object) -> tuple[dict[str, str], Any, tuple[str, ...]]:
     """Resolve a closed versioned declaration without crossing schema namespaces."""
+    if schema == MIXED_SCHEMA:
+        if predicate is not None:
+            raise InvalidLinalgPattern("mixed source body declares no predicate")
+        declaration = validate_mixed({"schema": schema, "operation": operation})
+        return declaration, recognize_mixed, mixed_ordered_types(declaration)
+    if schema == EMBEDDING_GATHER_SCHEMA:
+        if predicate is not None:
+            raise InvalidLinalgPattern("embedding gather source has no scalar predicate")
+        declaration = validate_embedding_gather_body({"schema": schema, "operation": operation})
+        return declaration, recognize_embedding_gather, EMBEDDING_GATHER_TYPES
     if schema == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
         if predicate is not None:
             raise InvalidLinalgPattern("Boolean source body does not declare a predicate")
@@ -238,6 +270,8 @@ def record(
             or tuple(pattern["ordered_types"]) != expected_types
         ):
             raise ValueError("static Linalg proof differs from parsed source")
+        if body["schema"] == EMBEDDING_GATHER_SCHEMA:
+            validate_embedding_gather_pattern(pattern)
         if body["schema"] == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
             try:
                 validate_serialized_static_boolean_pattern(pattern)
@@ -281,6 +315,9 @@ def record(
             "lowering_intrinsic_obligations": pattern.get("lowering_intrinsic_obligations"),
             "linkage_requirement": deepcopy(linkage),
         }
+        if body["schema"] == EMBEDDING_GATHER_SCHEMA:
+            occurrence["table_shape"] = pattern["table_shape"]
+            occurrence["table_argument"] = pattern["table_argument"]
         if dynamic:
             occurrence["shape_source"] = pattern["shape_source"]
             occurrence["dynamic_bound"] = deepcopy(bounds[0])
@@ -342,7 +379,10 @@ def link(
 
 
 def _has_composite(witness: Mapping[str, Any]) -> bool:
-    return any(item.get("schema") == STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA for item in witness["occurrences"])
+    return any(
+        item.get("schema") in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA, EMBEDDING_GATHER_SCHEMA}
+        for item in witness["occurrences"]
+    )
 
 
 def _composite_source_matches(
@@ -380,14 +420,30 @@ def _composite_source_matches(
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:
-            if item.get("schema") != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA:
+            if item.get("schema") not in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA, EMBEDDING_GATHER_SCHEMA}:
                 continue
             ordinal = item.get("ordinal")
             if type(ordinal) is not int or not 0 <= ordinal < len(parsed):
                 return False
-            pattern = asdict(recognize_static_composite_math_body(parsed[ordinal]))
+            if item.get("schema") == EMBEDDING_GATHER_SCHEMA:
+                pattern = asdict(recognize_embedding_gather(parsed[ordinal]))
+                if any(json.dumps(item.get(key)) != json.dumps(value) for key, value in pattern.items()):
+                    return False
+                continue
+            pattern = asdict(
+                (recognize_mixed if item["schema"] == MIXED_SCHEMA else recognize_static_composite_math_body)(
+                    parsed[ordinal]
+                )
+            )
+            if item["schema"] == MIXED_SCHEMA:
+                if any(
+                    json.loads(json.dumps(item.get(key))) != json.loads(json.dumps(pattern.get(key)))
+                    for key in ("operation", "shape", "ordered_types", "literal_bits", "input_shapes", "input_maps")
+                ):
+                    return False
+                continue
             if item.get("operation") != pattern["operation"] or any(
-                tuple(item.get(key, ())) != tuple(pattern[key])
+                tuple(item.get(key) or ()) != tuple(pattern.get(key) or ())
                 for key in ("shape", "ordered_types", "literal_bits", "lowering_intrinsic_obligations")
             ):
                 return False
@@ -401,7 +457,7 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
     if not isinstance(occurrences, list) or type(index_bits) is not int or not 2 <= index_bits <= 128:
         return False
     maximum = (1 << (index_bits - 1)) - 1
-    element_bytes = {"i1": 1, "f32": 4, "i64": 8}
+    element_bytes = {"i1": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
 
     def fits(shape: object, dtype: object, *, scalar: bool = False) -> bool:
         if (
@@ -439,7 +495,17 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
         shape, types, inputs = item.get("shape"), item.get("ordered_types"), item.get("input_shapes")
         if not isinstance(types, (list, tuple)) or len(types) < 2 or not fits(shape, types[-1]):
             return False
-        if item.get("schema") in {STATIC_BOOLEAN_SOURCE_BODY_SCHEMA, STATIC_PROJECTED_POINTWISE_BODY_SCHEMA}:
+        if item.get("schema") == EMBEDDING_GATHER_SCHEMA:
+            if (
+                not isinstance(inputs, (list, tuple)) or len(inputs) != 1
+                or not fits(inputs[0], "i64") or not fits(item.get("table_shape"), "bf16")
+            ):
+                return False
+        elif item.get("schema") in {
+            STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
+            STATIC_PROJECTED_POINTWISE_BODY_SCHEMA,
+            MIXED_SCHEMA,
+        }:
             if not isinstance(inputs, (list, tuple)) or len(inputs) != len(types) - 2:
                 return False
             if any(
@@ -505,6 +571,20 @@ def _math_record_valid(item: object) -> bool:
     """Revalidate exact literal/intrinsic metadata and selected symbol duty."""
     if not isinstance(item, Mapping):
         return False
+    if item.get("schema") == MIXED_SCHEMA:
+        try:
+            validate_mixed_pattern(
+                {
+                    key: item[key]
+                    for key in ("operation", "shape", "ordered_types", "input_shapes", "input_maps", "literal_bits")
+                }
+            )
+            symbol = required_composite_math_symbol(item["schema"], item["operation"])
+            if symbol:
+                validate_source_linkage_contract(item["schema"], item["operation"], item.get("linkage_requirement"))
+            return item.get("lowering_intrinsic_obligations") is None
+        except (KeyError, TypeError, ValueError):
+            return False
     if item.get("schema") != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA:
         return item.get("literal_bits") is None and item.get("lowering_intrinsic_obligations") is None
     try:
@@ -564,7 +644,8 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
     ordinals = []
     for item in occurrences:
         if not isinstance(item, Mapping) or set(item) != (
-            _DYNAMIC_OCCURRENCE if item.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA else _OCCURRENCE
+            _DYNAMIC_OCCURRENCE if item.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA
+            else _GATHER_OCCURRENCE if item.get("schema") == EMBEDDING_GATHER_SCHEMA else _OCCURRENCE
         ):
             return False
         ordinal, shape, types, maps = item["ordinal"], item["shape"], item["ordered_types"], item["input_maps"]
@@ -621,6 +702,16 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
             return False
         if item["schema"] == STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA and item["predicate"] is not None:
             return False
+        if item["schema"] == EMBEDDING_GATHER_SCHEMA:
+            try:
+                validate_embedding_gather_pattern({
+                    key: item[key] for key in (
+                        "operation", "shape", "ordered_types", "input_shapes", "input_maps",
+                        "table_shape", "table_argument"
+                    )
+                })
+            except (InvalidLinalgPattern, KeyError):
+                return False
         if item["schema"] == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
             try:
                 validate_serialized_static_boolean_pattern(

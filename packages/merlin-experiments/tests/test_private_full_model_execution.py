@@ -438,6 +438,13 @@ def test_the_static_gate_links_every_executed_program_with_full_readback(tmp_pat
     }
 
 
+def test_static_build_options_preserve_explicit_per_program_board(tmp_path):
+    gate = _gate(tmp_path, net__model=dict(EXECUTED, board="functional-board"))
+    options = PFX.build_options(gate)
+    assert options["net"]["model"]["board"] == "functional-board"
+    assert "board" not in options["policy"]["step"]
+
+
 def test_results_the_integer_reference_omits_are_held_to_the_host_execution(tmp_path, monkeypatch):
     golden, second = np.array([1.0, -2.0], np.float32), np.array([0.25, 4.0, 8.0], np.float32)
     fixture = Fixture(tmp_path, golden=golden, integer=golden, results=[[2], [3]], fp32=[golden, second])

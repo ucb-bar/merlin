@@ -956,6 +956,7 @@ def _verify_compiled_program(
     bucketize_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     result = {
         "program": program,
+        "board": board,
         "status": "capture_lower_codegen_link_verified",
         "capture_tree_sha256": stage_tree["sha256"],
         "source_sha256": source["source_sha256"],
@@ -1168,12 +1169,25 @@ def run(
                 raise ValueError("selected software, capability or host declaration is malformed")
             if software.get("target") != target or capability.get("name") != target:
                 raise ValueError("selected software or capability declaration names another target")
-            selected_index_observation = control_support.selected_build_observation(
-                host_package, catalog, str(row["board"]), target
-            )
+            program_options = {
+                program: dict(((build_options or {}).get(name) or {}).get(program) or {})
+                for program, _ in programs
+            }
+            program_boards = {
+                program: options.pop("board", row["board"])
+                for program, options in program_options.items()
+            }
+            if any(not isinstance(board, str) or not board for board in program_boards.values()):
+                raise ValueError("every program requires an explicit valid selected build board")
+            selected_index_observations = {
+                program: control_support.selected_build_observation(host_package, catalog, board, target)
+                for program, board in program_boards.items()
+            }
             with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
                 sources = {
-                    program: _source_obligations(stage, target, software, capability, host, selected_index_observation)
+                    program: _source_obligations(
+                        stage, target, software, capability, host, selected_index_observations[program]
+                    )
                     for program, stage in programs
                 }
             if not any(source["eligible_groups"] for source in sources.values()):
@@ -1233,7 +1247,7 @@ def run(
                             capture=stage,
                             package=host_package,
                             board_catalog=catalog,
-                            board=str(row["board"]),
+                            board=program_boards[program],
                             dts=dts,
                             output=base / name / program,
                             target=target,
@@ -1241,7 +1255,7 @@ def run(
                             arena_mb=int(row["arena_mb"]),
                             device=device,
                             **({"math_archive_symbols": math_symbols} if math_symbols else {}),
-                            **dict(((build_options or {}).get(name) or {}).get(program) or {}),
+                            **program_options[program],
                         )
                 linked_policy.require_route(device, instruction_selection)
                 compiled.append(
@@ -1253,7 +1267,7 @@ def run(
                         stage_tree=stage_tree,
                         package_digest=package_digest,
                         target=target,
-                        board=str(row["board"]),
+                        board=program_boards[program],
                         catalog=catalog,
                         dts=dts,
                         device_selected=device is not None,
@@ -1309,7 +1323,12 @@ def run(
                 "programs": compiled,
                 "linked_device_groups": sum(entry["linked_device_groups"] for entry in compiled),
                 "candidate_tree_sha256": package_digest["sha256"],
-                "static_build_board": str(row["board"]),
+                "static_build_board": (
+                    next(iter(program_boards.values()))
+                    if len(set(program_boards.values())) == 1
+                    else "per_program_selection"
+                ),
+                "static_build_program_boards": program_boards,
                 "static_build_board_catalog_source": str(catalog),
                 "static_build_board_catalog_sha256": board_catalog_sha256,
                 "static_build_board_dts_source": str(dts),

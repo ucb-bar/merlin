@@ -25,6 +25,7 @@ SOURCE_ONLY_SCOPE = "source body only; host placement, selected libm supplier an
 
 _FORMS = {
     "clamp_upper_literal": (("f32", "f32", "f32"), 1, ()),
+    "clamp_upper_literal_compare_select": (("f32", "f32", "f32"), 1, ()),
     "clamp_lower_literal": (("f32", "f32", "f32"), 1, ()),
     "reciprocal_f32": (("f32", "f32", "f32"), 1, ()),
     "reciprocal_signed_i64_to_f32": (("i64", "f32", "f32"), 1, ()),
@@ -140,6 +141,21 @@ def _recognize_clamp(body, source):
     return operation, (bits,)
 
 
+def _recognize_compare_select_clamp(body, source):
+    from xdsl.dialects.arith import CmpfOp, SelectOp
+
+    if len(body) != 4:
+        raise InvalidLinalgPattern("literal compare/select clamp has extra or missing operations")
+    bound, bits = _literal(body[0])
+    predicate = body[1].properties.get("predicate")
+    if getattr(getattr(predicate, "value", None), "data", None) != 2:
+        raise InvalidLinalgPattern("upper compare/select clamp must use ordered greater-than")
+    condition = _scalar(body[1], CmpfOp, (source, bound), "i1", frozenset({"predicate", "fastmath"}))
+    value = _scalar(body[2], SelectOp, (condition, bound, source), "f32")
+    _yield(body[3], value)
+    return "clamp_upper_literal_compare_select", (bits,)
+
+
 def _recognize_reciprocal(body, source, *, signed_i64: bool):
     from xdsl.dialects.arith import DivfOp, SIToFPOp
 
@@ -213,6 +229,10 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("literal clamp requires f32 input/init/result")
         operation, literals = _recognize_clamp(body, shell.args[0])
+    elif names[:3] == ("arith.constant", "arith.cmpf", "arith.select"):
+        if types != ("f32", "f32", "f32"):
+            raise InvalidLinalgPattern("literal compare/select clamp requires f32 input/init/result")
+        operation, literals = _recognize_compare_select_clamp(body, shell.args[0])
     elif names[:2] == ("arith.constant", "arith.divf"):
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("f32 reciprocal requires f32 input/init/result")
