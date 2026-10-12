@@ -508,10 +508,12 @@ def main(
                     MERLIN_SELFCHECK_PROMOTION_SHA256=graded_digest,
                 )
             with log_out.open("w") as fo, log_err.open("w") as fe:
+                from merlin.common.cpu_pool import worker_pool_command
                 from merlin_experiments.frozen_python import inherited_python_command
 
                 proc = subprocess.Popen(
-                    inherited_python_command(argv2), cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
+                    worker_pool_command(inherited_python_command(argv2), worker_env),
+                    cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
                 )
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline)

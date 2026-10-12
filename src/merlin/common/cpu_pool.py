@@ -63,3 +63,11 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
         os.sched_setaffinity(0, original)
         if locked_fd is not None:
             os.close(locked_fd)
+
+
+def worker_pool_command(command: list[str], env: dict[str, str]) -> list[str]:
+    """Select grading affinity before the worker interpreter imports any code."""
+    cpus = parse_roster(env.get("MERLIN_GRADE_CPUS", ""))
+    if not cpus:
+        return command
+    return ["taskset", "--cpu-list", ",".join(map(str, cpus)), *command]
