@@ -618,3 +618,13 @@ def test_malformed_host_input_declarations_fail_closed(private_bundle, entries):
     with pytest.raises(RuntimeError, match="host_inputs"):
         BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
     assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_public_directory_cycle_is_refused_with_indexed_private_paths(private_bundle):
+    repo, workspace, bundle, _ = private_bundle
+    public = repo / "inputs" / "cycle-root"
+    public.mkdir()
+    (public / "loop").symlink_to(public, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="directory cycle"):
+        BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert not BW.bundle_snapshot_root(workspace).exists()
