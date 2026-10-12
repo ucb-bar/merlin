@@ -657,3 +657,27 @@ def test_private_alias_translation_parses_mounts_once_per_policy_call(tmp_path, 
     assert {record[1] for record in records} <= paths
     assert {record[2] for record in records} <= paths
     assert {Path("/alias") / str(index) for index in range(24)} <= paths
+
+
+def test_private_alias_index_skips_disjoint_mount_sources(tmp_path, monkeypatch):
+    private = tmp_path / "private"
+    private.write_text("host input")
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    argv = ["--ro-bind", str(private), "/selected-alias"]
+    for index in range(32):
+        source = unrelated / str(index)
+        source.mkdir()
+        argv.extend(["--ro-bind", str(source), f"/unrelated/{index}"])
+    calls = 0
+    original_alias = HS._bind_alias
+
+    def counted_alias(*args):
+        nonlocal calls
+        calls += 1
+        return original_alias(*args)
+
+    monkeypatch.setattr(HS, "_bind_alias", counted_alias)
+    surfaces = HS._private_path_surfaces(argv, [(str(private), private, private)], set())
+    assert calls == 1
+    assert {surface.path for surface in surfaces} == {private, Path("/selected-alias")}
