@@ -18,6 +18,20 @@ SCHEMA = "merlin.common_transform_request.v1"
 MAX_REQUEST_BYTES = 256 * 1024
 
 
+def _frozen_import_root(root, originals, frozen):
+    """Map only selected import files; an empty declared root supplies no imports."""
+    matching = [
+        target.parents[len(source.relative_to(root).parts) - 1]
+        for source, target in zip(originals, frozen, strict=True)
+        if source.is_relative_to(root)
+    ]
+    if not matching:
+        return None
+    if len(set(matching)) != 1:
+        raise ValueError("common proof import root has no exact frozen file closure")
+    return matching[0]
+
+
 class CommonTransformService:
     """The launcher selects immutable inputs; requests cannot select proof policy."""
 
@@ -93,14 +107,9 @@ class CommonTransformService:
         import_roots = []
         for value in document["library_roots"]:
             root = original(value)
-            matching = [
-                target.parents[len(source.relative_to(root).parts) - 1]
-                for source, target in zip(originals[1:], frozen[1:], strict=True)
-                if source.is_relative_to(root)
-            ]
-            if not matching or len(set(matching)) != 1:
-                raise ValueError("common proof import root has no exact frozen file closure")
-            import_roots.append(matching[0])
+            mapped = _frozen_import_root(root, originals[1:], frozen[1:])
+            if mapped is not None:
+                import_roots.append(mapped)
         toolchain = LeanToolchain(
             executable=frozen[0],
             executable_sha256=executable["sha256"],
