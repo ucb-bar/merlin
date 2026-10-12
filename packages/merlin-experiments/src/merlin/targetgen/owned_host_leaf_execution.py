@@ -22,8 +22,18 @@ def selected_host_leaf(capsule):
         return False
     screen = capsule.get("software_screen") or {}
     decisions = screen.get("decisions") or []
+    semantic = capsule.get("semantic") or {}
+    # Pure layout programs can have no compute decisions at all. The declared
+    # nonaccelerated movement boundary still needs the fixed host compiler;
+    # _original_host_source independently refuses any eligible source before build.
+    movement_without_compute = (
+        screen.get("decisions") == []
+        and semantic.get("semantic_family") == "movement"
+        and semantic.get("eligible") is False
+        and semantic.get("must_accelerate") is False
+    )
     return (
-        bool(decisions)
+        (bool(decisions) or movement_without_compute)
         and screen.get("status") == "admitted"
         and all(row.get("placement") == "host" and row.get("status") == "admitted" for row in decisions)
     )

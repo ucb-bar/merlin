@@ -63,7 +63,8 @@ def test_materialized_leaf_keeps_every_original_argument_and_full_output(tmp_pat
         bound.verify(bound.root)
 
 
-def test_runner_uses_provided_service_before_candidate_entrypoints(tmp_path, monkeypatch):
+@pytest.mark.parametrize("pure_movement", [False, True])
+def test_runner_uses_provided_service_before_candidate_entrypoints(tmp_path, monkeypatch, pure_movement):
     from types import SimpleNamespace
 
     from merlin.targetgen import capsule_runner
@@ -73,6 +74,9 @@ def test_runner_uses_provided_service_before_candidate_entrypoints(tmp_path, mon
         "kind": "model_slice",
         "software_screen": {"status": "admitted", "decisions": [{"placement": "host", "status": "admitted"}]},
     }
+    if pure_movement:
+        capsule["software_screen"]["decisions"] = []
+        capsule["semantic"] = {"semantic_family": "movement", "eligible": False, "must_accelerate": False}
     cfg = SimpleNamespace(target="fixture", suite="fixtures", dtype="f32", force_match_policy=None)
     monkeypatch.setattr(capsule_runner, "run_entrypoints", lambda *a, **k: pytest.fail("candidate host arithmetic ran"))
     observed = []
@@ -89,7 +93,21 @@ def test_runner_uses_provided_service_before_candidate_entrypoints(tmp_path, mon
     assert len(observed) == 1
 
 
-def test_original_host_leaf_refuses_newly_eligible_source(tmp_path, monkeypatch):
+def test_empty_compute_decisions_select_only_declared_nonaccelerated_movement():
+    capsule = {
+        "kind": "model_slice",
+        "software_screen": {"status": "admitted", "decisions": []},
+        "semantic": {"semantic_family": "movement", "eligible": False, "must_accelerate": False},
+    }
+    assert leaf.selected_host_leaf(capsule)
+    for change in ({"eligible": True}, {"must_accelerate": True}, {"semantic_family": "contraction"}):
+        assert not leaf.selected_host_leaf({**capsule, "semantic": {**capsule["semantic"], **change}})
+    assert not leaf.selected_host_leaf({**capsule, "software_screen": {"status": "refused", "decisions": []}})
+    assert not leaf.selected_host_leaf({**capsule, "software_screen": {"status": "admitted"}})
+
+
+@pytest.mark.parametrize("pure_movement", [False, True])
+def test_original_host_leaf_refuses_newly_eligible_source(tmp_path, monkeypatch, pure_movement):
     from merlin.targetgen import native_model_execution
 
     declaration = {
@@ -98,6 +116,9 @@ def test_original_host_leaf_refuses_newly_eligible_source(tmp_path, monkeypatch)
         "operation": {"attributes": {}},
         "software_screen": {"status": "admitted", "decisions": [{"placement": "host", "status": "admitted"}]},
     }
+    if pure_movement:
+        declaration["software_screen"]["decisions"] = []
+        declaration["semantic"] = {"semantic_family": "movement", "eligible": False, "must_accelerate": False}
     (tmp_path / "capsule.yaml").write_text(yaml.safe_dump(declaration))
     (tmp_path / "source.mlir").write_text("source bytes")
     monkeypatch.setattr(
