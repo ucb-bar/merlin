@@ -673,7 +673,12 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
     from merlin.llvmlower import toolchain
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
     from merlin.targetgen.contract.harness_abi import for_target
-    from merlin.verify.lean_emission_context import requires_fresh_object
+    from merlin.verify.lean_emission_context import (
+        artifact_cache_key,
+        is_emitted_artifact,
+        read_emitted_artifact,
+        requires_fresh_object,
+    )
 
     entry = for_target(target).entry_symbol
     cache_root = _object_cache_root()
@@ -683,22 +688,22 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
             fingerprint = _object_cache_fingerprint(target)
         except Exception:  # noqa: BLE001 -- an unfingerprintable toolchain disables the cache, not the build
             cache_root = None
-    compiled_by_artifact: dict[str, tuple[Path, str]] = {}
-    # ONE LOCK PER DISTINCT ARTIFACT, never one for the build: identical artifacts (a region's members,
-    # two groups with one signature) compile once, and different ones compile concurrently. A single
-    # lock around the compile serialized every group's object behind the slowest.
-    text_locks: dict[str, threading.Lock] = {}
+    compiled_by_artifact: dict[object, tuple[Path, str]] = {}
+    # Untraced bytes share their original lock/cache. Traced origins stay distinct;
+    # repeated reads of one observed origin share only that origin's completed object.
+    text_locks: dict[object, threading.Lock] = {}
     table_lock = threading.Lock()
 
     def compiled_object(artifact_text: str, work: Path) -> tuple[Path, str]:
-        """(compiled ``.o`` path, ``object_cache`` state) for this artifact TEXT -- ``"hit"`` off the
+        """(compiled ``.o`` path, ``object_cache`` state) for this original owner -- ``"hit"`` off the
         persistent disk cache, ``"shared"`` off this build's own in-memory memo (another group with the
         same artifact already compiled it), or ``"miss"`` (compiled here, and disk-cached for later)."""
+        owner_key = artifact_cache_key(artifact_text)
         with table_lock:
-            lock = text_locks.setdefault(artifact_text, threading.Lock())
+            lock = text_locks.setdefault(owner_key, threading.Lock())
         with lock:
             fresh = requires_fresh_object(artifact_text)
-            cached = None if fresh else compiled_by_artifact.get(artifact_text)
+            cached = None if fresh else compiled_by_artifact.get(owner_key)
             if cached is not None:
                 return cached[0], "shared"
             cached_path = None
@@ -721,17 +726,17 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
                 if cached_path is not None:
                     _object_cache_store(cached_path, compiled)
                 state = "miss"
-            compiled_by_artifact[artifact_text] = (compiled, state)
+            compiled_by_artifact[owner_key] = (compiled, state)
             return compiled, state
 
     def one(row: dict[str, Any]) -> None:
         group = int(row["group"])
         work = out / f"g{group}"
         symbol = f"{entry}_g{group}"
-        fresh = False
+        fresh = is_emitted_artifact(row["artifact"])
         try:
-            artifact_text = Path(row["artifact"]).read_text(encoding="utf-8")
-            fresh = requires_fresh_object(artifact_text)
+            artifact_text = read_emitted_artifact(row["artifact"])
+            fresh = fresh or requires_fresh_object(artifact_text)
             compiled, object_cache = compiled_object(artifact_text, work)
             renamed = out / f"g{group}.o"
             subprocess.run(
@@ -776,7 +781,8 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
         with contextlib.suppress(Exception):  # noqa: BLE001 -- pruning is an optimization, never a build dependency
             prune_object_cache(cache_root)
     # WHAT THE DEDUPE BOUGHT: a repeated model block emits byte-identical artifacts, compiled once each.
-    return {"unique_signatures": len(compiled_by_artifact), "total_groups": len(answered)}
+    return {"unique_signatures": len({row["compiled_signature"] for row in answered if "compiled_signature" in row}),
+            "total_groups": len(answered)}
 
 
 # ------------------------------------------------------------------------------------ corpus binding

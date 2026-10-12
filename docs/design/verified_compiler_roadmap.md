@@ -51,8 +51,15 @@ lowering, checks the raw checkpoint chain at the original object entry and binds
 the fresh object consumed there. The entry comes from the original build or
 capability contract. Absent traces retain historical reuse with zero formal
 credit; unconsumed traces also grant none. Unsupported edges retain partial,
-unproved obligations; covered failures reject the build. The join covers one
-selected observed source, not every same-byte emission. Explicit compile-only
+unproved obligations; covered failures reject the build. Original emissions
+carry separate host-issued identities even when their code bytes agree. Only
+exact host-registered artifact paths recover those identities; plain copies,
+expired scopes and forked registries cannot select an original source. Failed
+consumers remain claimed. Host rewrites replace path ownership; intervening
+observed writers prevent stale registration. Repeated ordinary oracle consumers
+recheck the original source obligation and compile fresh objects, retaining
+native rebuild cost per tier; no saved report or byte cache restores authority.
+Explicit compile-only
 proof transport avoids duplicate checking. The trace does not prove internal
 pass history, terminal lowering, dispatch or machine/numerical/RTL behavior.
 
