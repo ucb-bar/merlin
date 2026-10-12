@@ -932,6 +932,29 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
     }
 
 
+def _same_owned_frozen_policy(recorded, fresh) -> bool:
+    """Join a retained capsule copy by verified bytes, preserving policy owners."""
+    from .native_model_execution import _read_pinned_payload
+
+    local_roles = {"capsule_declaration", "instruction_coverage"}
+    if not isinstance(recorded, dict) or not isinstance(fresh, dict) or set(recorded) != set(fresh):
+        return False
+    if any(recorded[key] != fresh[key] for key in fresh if key not in local_roles):
+        return False
+    for role in local_roles:
+        # Reopen both ordinary files under their exact stored identities;
+        # dropping path strings alone would let a missing or mutated copy pass.
+        original = _read_pinned_payload(recorded, role)
+        selected = _read_pinned_payload(fresh, role)
+        old_pin, new_pin = recorded[role], fresh[role]
+        if (set(old_pin) != {"path", "sha256", "size_bytes"}
+                or set(new_pin) != {"path", "sha256", "size_bytes"}
+                or old_pin["sha256"] != new_pin["sha256"]
+                or old_pin["size_bytes"] != new_pin["size_bytes"] or original != selected):
+            return False
+    return True
+
+
 def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
     """Independently reopen the provided-host result before promoting any tier."""
     import os
@@ -981,7 +1004,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             raise ValueError("owned model build used different selected host/board inputs")
         frozen_policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target, source_bound_groups=True)
         if (
-            frozen_policy != record.get("frozen_policy")
+            not _same_owned_frozen_policy(record.get("frozen_policy"), frozen_policy)
             or record.get("required_tiers") != frozen_policy["required_tiers"]
         ):
             raise ValueError("owned model changed the frozen mandatory tier or ISA policy")
