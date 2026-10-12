@@ -30,8 +30,10 @@ shared in ``snapshots``; narrowing never credits a verdict to different bytes.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import time
+from functools import wraps
 from pathlib import Path
 
 # The two verdict words this module records. Imported from the scheduler rather than restated here, so
@@ -993,6 +995,22 @@ def _no_narrower_cause(execution_digest, comps) -> str | None:
     return "; ".join(why)
 
 
+def _ledger_transaction(function):
+    """Serialize complete ledger read/modify/write operations across grading brokers."""
+    @wraps(function)
+    def locked(ws, *args, **kwargs):
+        root = Path(ws, "qa")
+        root.mkdir(parents=True, exist_ok=True)
+        with (root / ".tier_state.lock").open("a") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                return function(ws, *args, **kwargs)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    return locked
+
+
+@_ledger_transaction
 def record_cert(ws, verdict, cert_tier, log=None, identity=None, source_identity_verified: bool = False) -> list[str]:
     """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
 
@@ -1252,6 +1270,7 @@ def affordable_cert_items(want, *, cert_tier, log, context: InvocationContext, c
     return kept, declined
 
 
+@_ledger_transaction
 def promote(
     ws,
     ch,
