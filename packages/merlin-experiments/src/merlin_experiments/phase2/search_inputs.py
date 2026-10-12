@@ -71,7 +71,9 @@ class SearchInputs:
                 from .ordinary_fast_feedback import validate_feedback
 
                 return validate_feedback(raw, policy=self.policy, revision=revision)
-            if kind != ORDINARY_KIND:
+            from .ordinary_measurement_selection import KIND as SELECTED_KIND
+
+            if kind not in (ORDINARY_KIND, SELECTED_KIND):
                 raise StageGateError("normal corpus search selected another evaluator")
             result = validate_redacted_feedback(raw)
             if (

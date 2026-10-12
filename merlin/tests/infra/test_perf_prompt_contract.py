@@ -138,6 +138,23 @@ def test_prompt_is_deterministic_and_carries_every_campaign_boundary() -> None:
         assert tool.command in first
 
 
+def test_prompt_prioritizes_public_absolute_cost_without_assuming_optimality_or_reset() -> None:
+    text = PP.render_initial_prompt(_inputs())
+    assert "weighted absolute savings" in text
+    assert "Cross-shape rates require independent transfer evidence" in text
+    assert "actual repeat" in text
+    assert "Do not assume zero dispersion" in text
+    assert "baseline minus candidate" in text
+    for stale in (
+        "This is the number to close",
+        "member near 1.0 has none",
+        "largest relative factor",
+        "dispersion is zero",
+        "every cycle counts",
+    ):
+        assert stale not in text
+
+
 @pytest.mark.parametrize(
     "mutate, message",
     (

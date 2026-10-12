@@ -36,8 +36,9 @@ from .whole_model_profile import load_selected_inputs as _load_whole_model_input
 
 def _measurement_selection(value):
     from .component_measurement_scheduling import DevelopmentMeasurementPlan
+    from .ordinary_measurement_selection import OrdinaryMeasurementPlan
 
-    if type(value) is not DevelopmentMeasurementPlan:
+    if type(value) not in (DevelopmentMeasurementPlan, OrdinaryMeasurementPlan):
         raise StageGateError("development measurement selection requires its live qualified plan")
     return value
 
@@ -1035,7 +1036,12 @@ class DevelopmentGsimFeedback:
         # remain the agent's tools for it.
         # An explicit complete sweep is the measured selection denominator.
         # The exploratory floor budget must not silently omit its large cases.
-        budget = None if complete_roster else authoring_gsim_floor_budget()
+        from .ordinary_measurement_selection import OrdinaryMeasurementPlan
+        budget = (
+            None
+            if complete_roster or type(measurement_plan) is OrdinaryMeasurementPlan
+            else authoring_gsim_floor_budget()
+        )
         deferred = []
         if budget is not None:
             floors = {(member.family, member.capsule): self.roofline_floor(member) for member in members}

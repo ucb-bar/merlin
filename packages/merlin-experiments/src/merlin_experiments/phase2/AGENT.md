@@ -1,5 +1,56 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`provisional_search` projects original completed cheap observations into a
+diverse exploration shortlist, separate from the complete measured incumbent.
+Reopen retained sources and original feedback; unknown or failed observations
+are unmeasured. Known identical emissions may be deduplicated. Only live
+qualified screening orders absolute model savings; no projection can promote
+a compiler or establish a plateau. The normal broker restores only issued
+parents through the bounded revision store. Serialize author edits before
+restoration; retained workers keep their immutable inputs.
+
+`ordinary_queue_calibration` fits only this live normal queue's completed
+compile/Spike and complete RTL products. Its public partition is frozen before
+observations; all alternatives of a member stay together. Reopen actual native
+products, complete numerical observations and successful original receipts.
+Install the issued owner only as coordinator exploration state; the original
+runtime closure, measured incumbent and final gates remain unchanged. Fitting
+launches no simulator, retains bounded evidence and prices retained disk.
+Missing evidence refuses; unqualified fits remain UNKNOWN. Rich feature
+selection reads training activity only. Identifiable empirical coefficients
+are not physical rates. All observed feature domains, including constants and
+unfitted columns, constrain predictions; unseen work cannot be priced zero.
+
+`ordinary_measurement_selection` selects explicit public diagnostic members
+through the normal retained evaluator and its original source, numerical and
+certificate gates. It does not require strict component-runtime roles or grant
+new physical authority. Queue scope stays pinned across dispatch/consumption;
+unselected obligations have null timing and explicit reasons. Partial timing
+cannot establish objective attainment, promotion or a plateau. The complete
+original roster remains required for measured selection and final grading.
+
+`public_program_measurement` routes the frozen ordinary public source basis into
+the original submitted-model evaluator via closed engine/facts/timer data.
+Explicit `simulator="spike"` requires the original L2 ceiling and grants no
+timing or RTL observation. Valid reviewed optional timer/caller bytes remain
+identical for same-build comparison; absent timing remains unavailable and
+Spike cycle values never price work. Original tiers stay intact with L3 pending;
+source/ABI/ISA/dispatch and full numerical checks precede observed L0/L1/L2
+projection, and the full grade stays incomplete. The original backend call is
+observed as a Python dispatch with actual ELF/engine dependencies and raw
+console bytes; it is never relabeled as a newly observed subprocess.
+Retain original source, package sandbox/resource scopes, complete ABI/numerics,
+source-placement and mandatory tiers. An exec budget child cannot carry live
+owners: existing hard-mode refusal remains required, and the original guarded
+inline route requires its existing budget-unset policy. After a passing grade,
+reopen actual source, inputs, candidate, caller, object/ELF, console and original
+bound engine receipt. Reparse all outputs under the trusted selected readback
+policy and check the full original numerical contract before normal certificate
+admission. Engine hashes come from actual receipts. Reuse is false; no second
+execution or reconstructed role is issued. Missing clock/source selections,
+warm/compact and unsupported coherent-output replay remain unavailable.
+Protected/validation programs cannot use this pre-freeze public selector.
+
 `ordinary_build_runtime` binds optional original live immutable toolchain and
 LLVM-product owners before queue admission. Contexts reach both normal
 compile/Spike and RTL member workers; calibration/final omit product reuse.
@@ -35,7 +86,8 @@ disjoint public training/held member groups and immutable compiler alternatives.
 Reopen the actual same-source/full-numeric/selected-engine products. Collapse
 identical executable replicates; ranking pairs compare alternatives on the same
 member/configuration. Keep original ranking, error, coverage and sample-count
-gates. Only a live issued owner can install screening before queue admission.
+gates. A live issued owner can install screening before queue admission; the
+normal coordinator may separately install one from its completed original jobs.
 Calibration forces fresh execution; absent qualification keeps measured fallback.
 Optional native runtime/index selections remain original live process owners,
 and default calls stay fresh. Publish artifact archives only from the parent
@@ -59,6 +111,14 @@ process lifetime. The actual namespace disables nested user namespaces and
 remounts root/device metadata readonly. Preserve the sealed policy and default
 argv. Bind the exact owner explicitly in broker HTTP threads and reopen it before
 publishing feedback. Parser/routing spies issue no kernel enforcement authority.
+
+`census_launch` narrows that original package policy to one streamed readonly ELF
+plus admitted tools and fresh private scratch. The original completed ELF link
+producer and numerical L2 gate remain required. There is no raw-host fallback
+or private grading/reference workspace grant. A live unresolved descendant owner
+raises mandatory `CensusCleanupUnknown`; optional diagnostic fallback may not
+hide it or remove its input/backing. Default scratch sampling is soft; selected
+aggregate enforcement remains the original external resource owner's job.
 
 `functional_guard_execution` applies the original package sandbox and scoped
 executor to baseline/candidate emission and the complete original final grade.
