@@ -45,7 +45,12 @@ class _Scope:
 
 @contextmanager
 def boxed_guard_package(target, workspace, package, *, inputs=None):
-    """The original grade remains unmodified when no hard owner is selected."""
+    """Keep the selected original package owner, or the historical resource box."""
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
+    if active_original_execution() is not None:
+        yield
+        return
     if resources.resources.active_resource_boundary() is None:
         yield
         return
@@ -73,9 +78,11 @@ def active_guard():
 
 def emit_pair(package, interface, scratch, tag, timeout_s, target, *, inputs=None):
     """Keep the original emission evaluator and admit only its exact interface."""
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
     from . import emission_analysis
 
-    if resources.resources.active_resource_boundary() is None:
+    if active_original_execution() is not None or resources.resources.active_resource_boundary() is None:
         return emission_analysis.emit_pair(package, interface, scratch, tag, timeout_s)
     incoming = Path(scratch) / "guard_interface.mlir"
     copy_plain_file(interface, incoming)
@@ -84,14 +91,24 @@ def emit_pair(package, interface, scratch, tag, timeout_s, target, *, inputs=Non
 
 
 def require_inline_models(capsules):
-    """Exec-based budget children cannot inherit this live package owner."""
-    if resources.resources.active_resource_boundary() is None:
+    """Budget children require the original sealed-profile delegation route."""
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
+    if active_original_execution() is None and resources.resources.active_resource_boundary() is None:
         return
     from merlin.targetgen import capsule_runner
 
     if capsule_runner.model_budget_seconds() is not None and any(
         mapping_file(Path(path) / "capsule.yaml", yaml_file=True).get("kind") == "model" for path in capsules
     ):
+        from merlin_experiments.phase1.feedback.compiler_profile_child import model_child_temporary_root
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import _Executor
+
+        if (
+            type(campaign.oot_runner.active_package_executor()) is _Executor
+            and model_child_temporary_root() is not None
+        ):
+            return
         raise StageGateError(
             "bounded final guard cannot launch the exec-based whole-model budget child; "
             "the original inline whole-model route requires MERLIN_MODEL_BUDGET_S unset"

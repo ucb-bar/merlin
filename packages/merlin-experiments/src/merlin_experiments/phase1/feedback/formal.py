@@ -381,6 +381,61 @@ def _verify_formal_readback_policy(run_dir: Path, context: InvocationContext) ->
 
 
 def main(argv: list[str] | None = None, *, context: InvocationContext | None = None) -> int:
+    """Retain original API admission across public, hidden and private grading."""
+    selection = argparse.ArgumentParser(add_help=False)
+    add_context_arguments(selection)
+    selection.add_argument("--run-dir")
+    selection.add_argument("--workspace", type=Path)
+    early, _ = selection.parse_known_args(argv)
+    if early.run_dir is None:
+        return _main(argv, context=context)
+    manifest = Path(early.run_dir).absolute() / "input_bundle_manifest.yaml"
+    environment_path = manifest.parent / "environment.yaml"
+    if environment_path.is_symlink():
+        raise ValueError("formal original run environment is indirect")
+    environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
+    if not isinstance(environment, dict):
+        raise ValueError("formal original run environment is malformed")
+    if not manifest.exists() and not manifest.is_symlink():
+        if environment.get("compiler_tool_profile") is not None:
+            raise ValueError("formal original compiler profile archive is missing")
+        return _main(argv, context=context)  # Historical unprofiled runs keep their policy.
+    if manifest.is_symlink() or manifest.resolve() != manifest:
+        raise ValueError("formal compiler profile requires the original ordinary archived manifest")
+    bundle = yaml.safe_load(manifest.read_bytes())
+    if not isinstance(bundle, dict) or bundle.get("compiler_tool_profile") is None:
+        if environment.get("compiler_tool_profile") is not None:
+            raise ValueError("formal original compiler profile was removed")
+        return _main(argv, context=context)
+    from merlin_experiments.phase1.run_inputs import bundle_manifest_identity
+
+    if (
+        environment.get("compiler_tool_profile") != bundle["compiler_tool_profile"]
+        or environment.get("bundle_manifest_sha256") != bundle_manifest_identity(manifest, bundle)
+    ):
+        raise ValueError("formal compiler profile differs from the original run record")
+    if early.workspace is None:
+        raise ValueError("formal compiler profile requires its original frozen workspace")
+    original_context = context if context is not None else resolve_context(early, selection)
+    from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
+
+    owner = CommonTransformService(
+        workspace=early.workspace.absolute(), bundle_manifest=manifest, repo=original_context.repo
+    )
+    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
+
+    target = load_target_experiment(original_context.descriptor)
+    with original_compiler_execution(
+        owner, target_experiment=target, candidate=manifest.parent / "submission",
+        work_root=manifest.parent / "_qa_work" / "formal_profile_execution",
+    ):
+        # Keep the caller's context convention, including installed explicit
+        # corpus requirements; profile selection does not enable legacy defaults.
+        return _main(argv, context=context)
+
+
+def _main(argv: list[str] | None = None, *, context: InvocationContext | None = None) -> int:
     ap = argparse.ArgumentParser()
     add_context_arguments(ap)
     ap.add_argument("--run-dir", required=True)

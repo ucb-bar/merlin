@@ -2790,8 +2790,8 @@ def _grade_model_capsule_unlocked(
     An explicit absent/nonpositive budget preserves the original inline route.
     Otherwise a separate child session owns descendant execution so expiry can
     terminate its process tree. The child receives source-pinned JSON data;
-    it cannot inherit or reconstruct live package/resource capabilities.
-    Guarded callers must retain the existing hard-mode carryability refusal.
+    original profile executions restore their sealed host selections in the
+    child before any package call; foreign live owners remain inadmissible.
     """
     budget = model_budget_seconds() if budget_s is None else budget_s
 
@@ -2843,7 +2843,9 @@ def _grade_model_capsule_unlocked(
             numeric_policy_identity=numeric_policy_identity,
         )
 
-    with _tf.TemporaryDirectory(prefix="model_grade_") as _td:
+    from merlin_experiments.phase1.feedback import compiler_profile_child as _child_profile
+
+    with _tf.TemporaryDirectory(prefix="model_grade_", dir=_child_profile.model_child_temporary_root()) as _td:
         spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"
         # The child may outlive the materializer's cache generation. Keep the
         # capsule bytes under the grade's own lifetime before handing it a path.
@@ -2879,33 +2881,45 @@ def _grade_model_capsule_unlocked(
         if _child_env.get("MERLIN_PASS_LOG"):
             _child_env["MERLIN_PASS_LOG_CAPSULE"] = str(capsule["name"])
             _child_env["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(list(capsule.get("pass_requirements") or []))
-        proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True, env=_child_env, start_new_session=True)
-        try:
-            tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
-        except _sp.TimeoutExpired:
-            elapsed = time.monotonic() - started
-            _kill_tree(proc.pid)
-            try:
-                proc.wait(timeout=10)
-            except _sp.TimeoutExpired:
-                pass
-            # `budget_exhausted`, not `incomplete`: nothing about the submission was measured, so it
-            # belongs in neither bucket. Scoring it as a failure would make all_pass unreachable and
-            # cost an agent loop its only early exit -- see NOT_MEASURED_STATUSES.
-            return _stopped(
-                f"whole-model grade exceeded its {budget:.0f}s budget (ran {elapsed:.0f}s) and was "
-                f"stopped. Raise MERLIN_MODEL_BUDGET_S, or clear it for no ceiling, to grade it. "
-                f"NOT a verdict on the submission.",
-                status="budget_exhausted",
-                model_budget_s=budget,
-                elapsed_s=round(elapsed, 1),
+        with _child_profile.prepare_model_child(
+            spec_path=spec_p, environment=_child_env, package_dir=package_dir
+        ) as transport:
+            proc = _sp.Popen(
+                [*cmd, *(transport.argv if transport else ())],
+                stdout=_sp.PIPE,
+                stderr=_sp.STDOUT,
+                text=True,
+                env=_child_env,
+                start_new_session=True,
+                **({"pass_fds": transport.pass_fds} if transport else {}),
             )
-        if not out_p.is_file():
-            return _stopped(f"whole-model grade process exited {proc.returncode} without a result: {tail[-400:]}")
-        try:
-            return json.loads(out_p.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
+            try:
+                tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
+            except _sp.TimeoutExpired:
+                elapsed = time.monotonic() - started
+                _kill_tree(proc.pid)
+                try:
+                    proc.wait(timeout=10)
+                except _sp.TimeoutExpired:
+                    pass
+                # `budget_exhausted`, not `incomplete`: nothing about the submission was measured, so it
+                # belongs in neither bucket. Scoring it as a failure would make all_pass unreachable and
+                # cost an agent loop its only early exit -- see NOT_MEASURED_STATUSES.
+                return _stopped(
+                    f"whole-model grade exceeded its {budget:.0f}s budget (ran {elapsed:.0f}s) and was "
+                    f"stopped. Raise MERLIN_MODEL_BUDGET_S, or clear it for no ceiling, to grade it. "
+                    f"NOT a verdict on the submission.",
+                    status="budget_exhausted",
+                    model_budget_s=budget,
+                    elapsed_s=round(elapsed, 1),
+                )
+            if not out_p.is_file():
+                return _stopped(f"whole-model grade process exited {proc.returncode} without a result: {tail[-400:]}")
+            try:
+                result = json.loads(out_p.read_text(encoding="utf-8"))
+                return transport.verify_result(result) if transport else result
+            except (OSError, json.JSONDecodeError) as exc:
+                return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
 
 
 def _grade_candidate_model_capsule_inline(
@@ -6744,31 +6758,9 @@ def main(argv: list[str] | None = None) -> int:
     # one result file out, so the parent can kill the process group without losing what it knows.
     _av = list(sys.argv[1:] if argv is None else argv)
     if "--model-grade" in _av:
-        sub = argparse.ArgumentParser(add_help=False)
-        sub.add_argument("--model-grade", required=True)
-        sub.add_argument("--model-grade-out", required=True)
-        sa, _ = sub.parse_known_args(_av)
-        _die_with_parent()
-        spec = json.loads(Path(sa.model_grade).read_text(encoding="utf-8"))
-        if spec.get("candidate_context") is not None:
-            res = _grade_candidate_model_capsule_inline(
-                spec["capsule"],
-                target=spec["target"],
-                timeout=int(spec["timeout"]),
-                package_dir=spec["package_dir"],
-                context=spec["candidate_context"],
-            )
-        else:
-            res = _grade_model_capsule_inline(
-                spec["capsule"],
-                target=spec.get("target"),
-                timeout=int(spec["timeout"]),
-                package_dir=spec.get("package_dir"),
-                numeric_policy=spec.get("numeric_policy", _MODEL_NUMERIC_UNSET),
-                numeric_policy_identity=spec.get("numeric_policy_identity"),
-            )
-        Path(sa.model_grade_out).write_text(json.dumps(res, indent=2), encoding="utf-8")
-        return 0
+        from merlin_experiments.phase1.feedback.compiler_profile_child import run_model_grade
+
+        return run_model_grade(_av)
 
     ap = argparse.ArgumentParser(description="capsule_bench_v0 runner")
     ap.add_argument("--package", required=True)

@@ -89,8 +89,10 @@ def run(
         command += ["--instruction-selection", str(instruction_selection)]
     if options.skip_hidden:
         command.append("--skip-hidden")
+    if selected_rtl_facts is not None or prepared.bundle.get("compiler_tool_profile") is not None:
+        command += ["--workspace", str(workspace)]
     if selected_rtl_facts is not None:
-        command += ["--workspace", str(workspace), "--rtl-facts", str(selected_rtl_facts)]
+        command += ["--rtl-facts", str(selected_rtl_facts)]
     from merlin_experiments.frozen_python import inherited_python_command
 
     result = subprocess.run(inherited_python_command(command), cwd=str(context.repo))

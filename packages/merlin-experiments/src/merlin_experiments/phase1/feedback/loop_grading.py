@@ -49,6 +49,16 @@ class GradingInputs:
     public_build_service: object | None = None
     public_build_selection: dict | None = None
     public_build_budget_s: int = 0
+    compiler_profile_service: object | None = None
+
+
+def compiler_execution(inputs, *, candidate, run_dir):
+    from .compiler_profile_runtime import original_compiler_execution
+
+    return original_compiler_execution(inputs.compiler_profile_service,
+        target_experiment=(None if inputs.compiler_profile_service is None else
+                           load_target_experiment(inputs.context.descriptor)), candidate=candidate,
+        work_root=Path(run_dir).resolve() / "_qa_work/profile_package_execution")
 
 
 def declared_loop_tiers(policy_roots: tuple[Path, ...]) -> set:
@@ -231,60 +241,61 @@ def grade(
             argv.append("--no-oracle")
         from merlin_experiments.phase1.feedback import qa
 
-        verdict = (qa_runner or partial(qa.run, context=inputs.context))(
-            str(cand),
-            str(public_root),
-            run_dir / "_qa_work" / f"runs_{_key}",
-            {"public", "dev"},
-            no_oracle,
-            timeout,
-            **({"contract": inputs.contract} if inputs.contract is not None else {}),
-            **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
-        )
-        if candidate_sha256 is not None:
-            verdict["graded_candidate_sha256"] = candidate_sha256
-        verdict = write_verdict(out, verdict)
-        _write_stage_ledger(
-            run_dir,
-            rnd,
-            cand,
-            run_dir / "_qa_work" / f"runs_{_key}",
-            verdict,
-            artifact_key=scratch_key,
-            previous_artifact_key=previous_scratch_key,
-        )
-        _attach_shape_generalization(
-            verdict,
-            cand,
-            run_dir,
-            rnd,
-            timeout=timeout,
-            artifact_key=scratch_key,
-            context=inputs.context,
-            contract=inputs.contract,
-            additional_forbidden=inputs.additional_forbidden,
-        )
-        _attach_codegen_scalability(
-            verdict,
-            cand,
-            run_dir,
-            rnd,
-            timeout=timeout,
-            artifact_key=scratch_key,
-            context=inputs.context,
-            contract=inputs.contract,
-            additional_forbidden=inputs.additional_forbidden,
-            **(
-                {
-                    "build_service": inputs.public_build_service,
-                    "build_selection": inputs.public_build_selection,
-                    "build_budget_s": inputs.public_build_budget_s,
-                    "candidate_sha256": candidate_sha256,
-                }
-                if inputs.public_build_service is not None
-                else {}
-            ),
-        )
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir):
+            verdict = (qa_runner or partial(qa.run, context=inputs.context))(
+                str(cand),
+                str(public_root),
+                run_dir / "_qa_work" / f"runs_{_key}",
+                {"public", "dev"},
+                no_oracle,
+                timeout,
+                **({"contract": inputs.contract} if inputs.contract is not None else {}),
+                **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
+            )
+            if candidate_sha256 is not None:
+                verdict["graded_candidate_sha256"] = candidate_sha256
+            verdict = write_verdict(out, verdict)
+            _write_stage_ledger(
+                run_dir,
+                rnd,
+                cand,
+                run_dir / "_qa_work" / f"runs_{_key}",
+                verdict,
+                artifact_key=scratch_key,
+                previous_artifact_key=previous_scratch_key,
+            )
+            _attach_shape_generalization(
+                verdict,
+                cand,
+                run_dir,
+                rnd,
+                timeout=timeout,
+                artifact_key=scratch_key,
+                context=inputs.context,
+                contract=inputs.contract,
+                additional_forbidden=inputs.additional_forbidden,
+            )
+            _attach_codegen_scalability(
+                verdict,
+                cand,
+                run_dir,
+                rnd,
+                timeout=timeout,
+                artifact_key=scratch_key,
+                context=inputs.context,
+                contract=inputs.contract,
+                additional_forbidden=inputs.additional_forbidden,
+                **(
+                    {
+                        "build_service": inputs.public_build_service,
+                        "build_selection": inputs.public_build_selection,
+                        "build_budget_s": inputs.public_build_budget_s,
+                        "candidate_sha256": candidate_sha256,
+                    }
+                    if inputs.public_build_service is not None
+                    else {}
+                ),
+            )
         _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
         FL.record_channel_health(ws, run_dir)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
@@ -436,19 +447,21 @@ def fast_grade(
         public_roots=lambda: inputs.public_root() if callable(inputs.public_root) else inputs.public_root,
     )
     try:
-        _CG.grade(
-            str(cand),
-            capsules_root=str(inputs.public_root() if callable(inputs.public_root) else inputs.public_root),
-            runs_root=str(fruns),
-            model_snapshot_root=fruns.resolve() / ".private_model_sources",
-            labels={"public", "dev"},
-            contract=str(inputs.contract if inputs.contract is not None else inputs.context.repo / "merlin/contract"),
-            oracle_adapters=adapters,
-            timeout=timeout,
-            max_workers=_CG.default_grade_workers(),
-            target=te.target,
-            additional_forbidden=inputs.additional_forbidden,
-        )
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir):
+            _CG.grade(
+                str(cand),
+                capsules_root=str(inputs.public_root() if callable(inputs.public_root) else inputs.public_root),
+                runs_root=str(fruns),
+                model_snapshot_root=fruns.resolve() / ".private_model_sources",
+                labels={"public", "dev"},
+                contract=str(inputs.contract if inputs.contract is not None
+                             else inputs.context.repo / "merlin/contract"),
+                oracle_adapters=adapters,
+                timeout=timeout,
+                max_workers=_CG.default_grade_workers(),
+                target=te.target,
+                additional_forbidden=inputs.additional_forbidden,
+            )
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)

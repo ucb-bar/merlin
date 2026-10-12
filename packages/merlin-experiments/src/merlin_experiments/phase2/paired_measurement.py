@@ -14,6 +14,7 @@ import threading
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -1279,7 +1280,8 @@ def execute_schedule(
         # replicate citing a shared observation goes last: it is a memo hit once the first finishes,
         # and submitted early it would hold a slot waiting for that.
         futures = {
-            spec.execution_index: pool.submit(measure, spec) for spec in sorted(plan.schedule, key=_submission_key)
+            spec.execution_index: pool.submit(copy_context().run, measure, spec)
+            for spec in sorted(plan.schedule, key=_submission_key)
         }
         launched = [(spec, futures[spec.execution_index]) for spec in plan.schedule]
         try:

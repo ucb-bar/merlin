@@ -23,7 +23,7 @@ from merlin_experiments.phase2.contracts import StageGateError
 
 from .container_image import image_root_masks, verify_image_export
 from .container_policy import ContainerMount as ContainerMount
-from .container_policy import _verify_created_container, verify_owned_container
+from .container_policy import _verify_created_container, selected_environment, verify_owned_container
 from .container_policy import mount_from_source as mount_from_source
 from .container_policy import mounts_from_strict_policy as mounts_from_strict_policy
 
@@ -123,6 +123,8 @@ class PreparedContainerTransport:
         cwd: str,
         evidence_root: Path,
         timeout_s: float = 30,
+        environment: tuple[tuple[str, str], ...] | None = None,
+        namespace_masks: tuple[str, ...] = (),
     ) -> subprocess.CompletedProcess:
         """Run a disposable command; original admission remains caller-owned.
 
@@ -135,7 +137,30 @@ class PreparedContainerTransport:
         if active_resource_boundary() is not None:
             raise StageGateError("hard resource boundary cannot admit an unbound external container executor")
         closure = self.verify()
+        effective_environment = None
+        if environment is not None:
+            original = json.loads(self.configuration.read_bytes()).get("config", {}).get("Env", [])
+            if type(original) is not list or any(type(value) is not str or "=" not in value for value in original):
+                raise StageGateError("original selected image environment is unsupported")
+            inherited = selected_environment(tuple(tuple(value.split("=", 1)) for value in original))
+            effective_environment = tuple((inherited | selected_environment(environment)).items())
         masks = image_root_masks(self.image_archive)
+        if (
+            type(namespace_masks) is not tuple
+            or len(namespace_masks) > 256
+            or len(set(namespace_masks)) != len(namespace_masks)
+            or any(
+                type(value) is not str
+                or not PurePosixPath(value).is_absolute()
+                or str(PurePosixPath(value)) != value
+                or ".." in PurePosixPath(value).parts
+                or value in {"/", "/dev", "/proc", "/sys", "/tmp"}
+                or any(c in value for c in ",\x00\n\r")
+                for value in namespace_masks
+            )
+        ):
+            raise StageGateError("container namespace masks require bounded canonical original destinations")
+        masks = tuple(sorted(set((*masks, *namespace_masks))))
         if (
             not isinstance(mounts, tuple)
             or any(type(row) is not ContainerMount for row in mounts)
@@ -149,6 +174,8 @@ class PreparedContainerTransport:
         for row in final_mounts:
             row.verify()
         destinations = [row.destination for row in final_mounts]
+        if set(namespace_masks) & set(destinations):
+            raise StageGateError("original container mask conflicts with an explicit bind destination")
         if len(set(destinations)) != len(destinations) or cwd not in destinations:
             raise StageGateError("container destinations conflict or lack the original working directory")
         for writable in (row for row in final_mounts if not row.read_only):
@@ -173,6 +200,8 @@ class PreparedContainerTransport:
                     "mounts": [row.__dict__ | {"source": str(row.source)} for row in final_mounts],
                     "command": command,
                     "cwd": cwd,
+                    **({"selected_environment": environment} if environment is not None else {}),
+                    **({"namespace_masks": namespace_masks} if namespace_masks else {}),
                 },
                 sort_keys=True,
             )
@@ -249,6 +278,9 @@ class PreparedContainerTransport:
                 f"type=bind,src={row.source},dst={row.destination},"
                 "bind-propagation=rprivate,bind-recursive=disabled" + (",readonly" if row.read_only else ""),
             ]
+        if environment is not None:
+            for key, value in environment:
+                args += ["--env", key + "=" + value]
         args += [closure["image_id"], str(timeout_s), "--", *command]
         receipt, native, container_id, failure, owned = {}, None, None, None, False
         try:
@@ -271,6 +303,7 @@ class PreparedContainerTransport:
                 cwd=cwd,
                 timeout_s=timeout_s,
                 masks=masks,
+                environment=effective_environment,
             )
             result = run("container_command", ["start", "--attach", container_id], inputs=(cid_file, plan))
             if len(result.stdout) > 300000 or result.stderr:

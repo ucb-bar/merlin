@@ -287,6 +287,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         if public_build_selection != _environment_record.get("public_object_build_selection"):
             raise RuntimeError("frozen public object-build tool/source selection changed before authoring")
 
+    from .feedback.compiler_profile_runtime import selected_service
+
+    compiler_profile_service = selected_service(workspace=ws, run_dir=run_dir, repo=context.repo)
     grading_inputs = LG.GradingInputs(
         context=prepared.request.context,
         arm=arm,
@@ -300,6 +303,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         public_build_service=public_build_service,
         public_build_selection=public_build_selection,
         public_build_budget_s=a.public_object_build_budget_s,
+        compiler_profile_service=compiler_profile_service,
     )
     _grade = T.timed(
         partial(
@@ -975,21 +979,22 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 f"directory in the pilot corpus — recorded not_promoted, NOT passed"
             )
         try:
-            _CG.grade(
-                str(vcand),
-                capsules_root=_roots,
-                runs_root=str(vruns),
-                model_snapshot_root=vruns.resolve() / ".private_model_sources",
-                labels={"public", "dev"},
-                contract=str(_contract_root if _contract_root is not None else context.repo / "merlin/contract"),
-                oracle_adapters=adapters,
-                timeout=CERT._verilator_l3_budget(
-                    run_dir, eligible, _cert_tier, context=context, timing_file=runtime.oracle_timing
-                ),
-                max_workers=_CG.default_grade_workers(),
-                target=_te().target,
-                additional_forbidden=grading_inputs.additional_forbidden,
-            )
+            with LG.compiler_execution(grading_inputs, candidate=vcand, run_dir=run_dir):
+                _CG.grade(
+                    str(vcand),
+                    capsules_root=_roots,
+                    runs_root=str(vruns),
+                    model_snapshot_root=vruns.resolve() / ".private_model_sources",
+                    labels={"public", "dev"},
+                    contract=str(_contract_root if _contract_root is not None else context.repo / "merlin/contract"),
+                    oracle_adapters=adapters,
+                    timeout=CERT._verilator_l3_budget(
+                        run_dir, eligible, _cert_tier, context=context, timing_file=runtime.oracle_timing
+                    ),
+                    max_workers=_CG.default_grade_workers(),
+                    target=_te().target,
+                    additional_forbidden=grading_inputs.additional_forbidden,
+                )
         except Exception as e:
             print(f"[verilator attempt {attempt}] grade error: {str(e)[:200]}")
         if _glog is not None:  # record CIRCT gate decisions (skips + per-call wall)

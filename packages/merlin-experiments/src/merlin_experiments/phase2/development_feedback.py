@@ -113,6 +113,7 @@ class DevelopmentGsimFeedback:
     _profile_baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
     #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
     _prefetched: dict = field(default_factory=dict)
+    _compiler_profile_service: object | None = field(default=None, repr=False)
 
     def _execute(
         self,
@@ -218,20 +219,23 @@ class DevelopmentGsimFeedback:
                 timeout_s = deadline - time.monotonic()
                 if timeout_s <= 0:
                     raise StageGateError("selected development measurement exhausted its dispatch budget")
-            result = self.executor(
-                arm=arm,
-                package=package,
-                package_sha256=package_sha256,
-                member=member,
-                decision=decision,
-                workspace=workspace,
-                timeout_s=timeout_s,
-                certificate=self.certificate,
-                target_experiment=self.target_experiment,
-                rtl_identity=self.rtl_identity,
-                hardware_counters=hardware_counters,
-                **({"counter_binding": self.counter_binding_evidence()} if hardware_counters else {}),
-            )
+            from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
+
+            with original_compiler_imports(self._compiler_profile_service):
+                result = self.executor(
+                    arm=arm,
+                    package=package,
+                    package_sha256=package_sha256,
+                    member=member,
+                    decision=decision,
+                    workspace=workspace,
+                    timeout_s=timeout_s,
+                    certificate=self.certificate,
+                    target_experiment=self.target_experiment,
+                    rtl_identity=self.rtl_identity,
+                    hardware_counters=hardware_counters,
+                    **({"counter_binding": self.counter_binding_evidence()} if hardware_counters else {}),
+                )
             if measurement_plan is not None:
                 measurement_plan.verify(self, package=package, arm=arm, member=member)
             return result
@@ -1459,6 +1463,9 @@ def prepare_development_feedback(
         raise StageGateError(f"development GSIM feedback certificate is unavailable or invalid: {exc}") from exc
     if str(hash_tree(baseline)["sha256"]) != baseline_sha256:
         raise StageGateError("development GSIM baseline bytes differ from the functional submission")
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import functional_service
+
+    profile_service = None if functional_run_dir is None else functional_service(functional_run_dir)
     return DevelopmentGsimFeedback(
         certificate,
         corpus,
@@ -1483,4 +1490,5 @@ def prepare_development_feedback(
         tuning_call_budget=tuning_call_budget,
         whole_model_inputs=_load_whole_model_inputs(whole_model_inputs, target_experiment),
         rtl_facts_path=Path(rtl_facts_path),
+        _compiler_profile_service=profile_service,
     )

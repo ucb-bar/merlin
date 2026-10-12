@@ -202,6 +202,7 @@ def worker_command(
     contract: Path | None = None,
     *,
     rtl_facts: Path | None = None,
+    compiler_bundle_manifest: Path | None = None,
 ) -> list[str]:
     """Fixed trusted worker; candidate request fields never select executable or resources."""
     command = [sys.executable, "-m", "merlin_experiments.phase1.feedback.selfcheck"]
@@ -210,6 +211,8 @@ def worker_command(
         command += ["--contract", str(contract)]
     if rtl_facts is not None:
         command += ["--rtl-facts", str(rtl_facts)]
+    if compiler_bundle_manifest is not None:
+        command += ["--compiler-bundle-manifest", str(compiler_bundle_manifest)]
     return command
 
 
@@ -862,6 +865,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     )
     ap.add_argument("--candidate-diagnostics", action="store_true",
                     help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline")
+    ap.add_argument("--compile-only", action="store_true",
+                    help="compile original public scale/frontier tensor sources and link a no-data probe; no execution")
+    ap.add_argument("--compiler-bundle-manifest", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--dynamic-census", action="store_true",
                     help="append bounded own-ELF activity after functional screen")
     a = ap.parse_args(argv)
@@ -870,6 +876,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
         select(Path.cwd(), a.rtl_facts)
     context = resolve_context(a, ap, context)
+    if a.compile_only:
+        from .compiler_profile_runtime import selfcheck_compile_only
+
+        return selfcheck_compile_only(a, context=context)
     if a.caller_layout:
         try:
             if a.rtl_facts is None:
@@ -897,25 +907,29 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         capsules_root = _public_capsules(context)
     capsules_root = Path(capsules_root)
 
-    if a.candidate_diagnostics:
-        return diagnostics_cli(a, context=context, capsules_root=capsules_root, contract=contract)
+    if a.candidate_diagnostics or a.shape_coverage or a.model_layers or a.offload_census:
+        from .compiler_profile_runtime import selfcheck_diagnostics
 
-    if a.shape_coverage:
-        return _shape_coverage(Path(a.submission), a.out, context=context, contract=contract)
-    if a.model_layers:
-        return _model_layers(
-            Path(a.submission),
-            a.out,
-            timeout=a.timeout,
-            workers=a.workers,
-            capsules=a.capsules,
-            context=context,
-            contract=contract,
-        )
-    if a.offload_census:
-        return _offload_census(
-            Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract
-        )
+        with selfcheck_diagnostics(a.compiler_bundle_manifest, context=context, arguments=a):
+            if a.candidate_diagnostics:
+                return diagnostics_cli(a, context=context, capsules_root=capsules_root, contract=contract)
+
+            if a.shape_coverage:
+                return _shape_coverage(Path(a.submission), a.out, context=context, contract=contract)
+            if a.model_layers:
+                return _model_layers(
+                    Path(a.submission),
+                    a.out,
+                    timeout=a.timeout,
+                    workers=a.workers,
+                    capsules=a.capsules,
+                    context=context,
+                    contract=contract,
+                )
+            if a.offload_census:
+                return _offload_census(
+                    Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract
+                )
 
     sub = Path(a.submission)
     if not (sub / "manifest.yaml").exists():
@@ -1023,17 +1037,21 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         )
         _progress_thread.start()
     try:
-        _score = CG.grade(
-            str(sub),
-            capsules_root=str(caps_root),
-            runs_root=str(runs_root),
-            labels={"public", "dev"},
-            contract=str(contract if contract is not None else context.repo / "merlin/contract"),
-            oracle_adapters=adapters,
-            timeout=a.timeout,
-            max_workers=a.workers,
-            target=_tgt,
-        )
+        from .compiler_profile_runtime import selfcheck_execution
+
+        with selfcheck_execution(a.compiler_bundle_manifest, context=context, submission=sub,
+                work_root=_isodir / "profile-package-work"):
+            _score = CG.grade(
+                str(sub),
+                capsules_root=str(caps_root),
+                runs_root=str(runs_root),
+                labels={"public", "dev"},
+                contract=str(contract if contract is not None else context.repo / "merlin/contract"),
+                oracle_adapters=adapters,
+                timeout=a.timeout,
+                max_workers=a.workers,
+                target=_tgt,
+            )
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"}))
         return 1

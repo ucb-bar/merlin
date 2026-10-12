@@ -470,15 +470,23 @@ class PreparedIndependentRuntimeContext:
             if fixture is not None:
                 self.verify_control(fixture)
             active = package_runtime.active_package_executor()
+            from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
+            profile_owner = active_original_execution()
+            compose_profile = profile_owner is not None and type(active) is not ComponentPackageExecutor
             if active is None and (fixture is None or package != fixture.grade_arguments["package_dir"]):
                 raise StageGateError("authored compiler diagnostics require the ordinary isolated package executor")
-            if active is not None and (
-                getattr(active, "container_transport", None) is not self.container_transport
-                or self.container_transport is not None
+            if (
+                active is not None
+                and not compose_profile
                 and (
-                    type(active) is not ComponentPackageExecutor
-                    or active.view != self.compiler_view
-                    or active.runtime != self.compiler_runtime
+                    getattr(active, "container_transport", None) is not self.container_transport
+                    or self.container_transport is not None
+                    and (
+                        type(active) is not ComponentPackageExecutor
+                        or active.view != self.compiler_view
+                        or active.runtime != self.compiler_runtime
+                    )
                 )
             ):
                 raise StageGateError("active compiler executor differs from the prepared command transport/grants")
@@ -493,7 +501,7 @@ class PreparedIndependentRuntimeContext:
                     evidence_root=root,
                     container_transport=self.container_transport,
                 )
-                if active is None and self.container_transport is not None
+                if compose_profile or active is None and self.container_transport is not None
                 else package_runtime.scoped_package_executor(
                     PrivateRuntimeControlExecutor(
                         package,
