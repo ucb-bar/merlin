@@ -145,3 +145,27 @@ def test_isolation_lowers_priority_and_pins_cpus_in_its_own_process():
     result = json.loads(done.stdout.strip().splitlines()[-1])
     assert result["nice"] == 19 and result["cpus"] == [cpu]
     assert result["io"] in ("idle",) or result["io"].startswith(("unchanged", "unavailable"))
+
+
+def test_phase1_recent_activity_does_not_prove_live_process(tmp_path):
+    import json
+
+    history = tmp_path / "qa_history"
+    history.mkdir()
+    (history / "verdict_00_a.json").write_text(json.dumps({"graded_at": "2026-10-12T00:00:00Z"}))
+    state = records.phase1(tmp_path, records.Inventory(), now=records.epoch("2026-10-12T00:01:00Z"),
+                           stall_hours=6)["liveness"]
+    assert state["state"] == records.UNFINALIZED
+    assert state["activity_state"] == "FRESH"
+    assert state["hours"] == 0.02
+    assert "current process liveness not recorded" in state["detail"]
+
+
+def test_phase1_freeze_is_not_completion_and_explicit_terminal_wins(tmp_path):
+    (tmp_path / "freeze.json").write_text('{"frozen_at":"2026-10-12T00:00:00Z"}')
+    def state(**kwargs):
+        return records.phase1(tmp_path, records.Inventory(), now=1, stall_hours=6, **kwargs)["liveness"]["state"]
+    assert state() == records.FROZEN
+    (tmp_path / "run_manifest.yaml").write_text("completion:\n  formal_grade_complete: true\n")
+    assert state() == records.FINISHED
+    assert state(orchestration_record={"state": "interrupted"}) == records.ENDED

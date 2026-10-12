@@ -13,6 +13,8 @@ from . import records as R
 
 NR = "not recorded"
 _COLOUR = {
+    R.UNFINALIZED: "33",
+    R.FROZEN: "33",
     R.LIVE: "32",
     R.FINISHED: "32",
     R.STALLED: "1;31",

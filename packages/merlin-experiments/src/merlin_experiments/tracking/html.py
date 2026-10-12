@@ -19,6 +19,8 @@ from . import records as R
 NR = '<span class="nr">not recorded</span>'
 
 _STATE_BADGE = {
+    R.UNFINALIZED: "neutral",
+    R.FROZEN: "neutral",
     R.LIVE: "good",
     R.FINISHED: "good",
     R.STALLED: "critical",
