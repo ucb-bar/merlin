@@ -158,7 +158,7 @@ bundle. When selecting the neutral data runtime, rebind `MERLIN_TARGET_CONTRACT`
 and `MERLIN_RTL_FACTS` to this release's `payload/experiment/contracts/target_contract.yaml`
 and `payload/experiment/rtl_facts/facts.json`. The original Phase 0 contract path
 conflicts with the release descriptor even if its bytes match. Follow the
-[worker preparation guide](../docs/guides/aws_phase0_phase1.md).
+[worker preparation guide](../docs/guides/phase0_phase1_setup.md).
 Keep the authored definition unchanged and select both release inputs explicitly:
 
 ```sh

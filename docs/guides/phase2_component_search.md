@@ -3,7 +3,7 @@ title: Launch a bounded component compiler search
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-11
+last_verified: 2026-10-12
 related: [component_phase2_workflow, phase2_cpu_timing_study, phase2_test_justification]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/search_configuration.py
@@ -20,7 +20,7 @@ code_refs:
 
 This guide covers the separate optional component workflow. The normal Phase 2
 experiment reuses Phase 1's corpus and neutral runtime; follow the
-[ordinary AWS search guide](aws_phase2_corpus_search.md). Its launch does not
+[ordinary search guide](phase2_corpus_search.md). Its launch does not
 require the component qualification ledger below.
 
 This route improves one fresh compiler against an independently generated public
@@ -29,16 +29,15 @@ the complete selected component roster. Complete host and model costs remain
 UNKNOWN unless separately measured by their original owners. Private validation
 programs and reference implementations are outside author inputs and tuning.
 
-## Current readiness
+## Qualify the component runtime
 
-The search integration is not a qualified target launch. The shipped prepared
-runtime currently refuses the complete stage witness, and its ordinary factory
-does not install the feature, CCA or RTL measurement producers required by
-measurement qualification. Supplying AWS binaries or saved receipts cannot fill
-these code gaps. The source curriculum also needs compatible public declarations
-and an actual ordinary generation run. Resolve these prerequisites before using
-the launch example below; its configuration and routing tests establish no
-physical execution or timing qualification.
+The prepared component runtime refuses a complete stage witness when its
+required feature, CCA or RTL measurement producers are absent. Select and qualify
+those producers independently, together with compatible public declarations and
+an ordinary source generation run. Binaries or saved receipts cannot replace
+missing producers. Resolve these requirements before using the launch example
+below; configuration and routing checks establish no execution or timing
+qualification.
 
 ## Required operator inputs
 

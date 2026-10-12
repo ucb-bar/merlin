@@ -8,6 +8,7 @@ from .contracts import StageGateError
 
 ORDINARY_KIND = "corpus-rtl-feedback"
 ORDINARY_FAST_KIND = "corpus-compile-spike-feedback"
+ORDINARY_SELECTED_FAST_KIND = "corpus-selected-compile-spike-feedback"
 
 
 class SearchInputs:
@@ -73,10 +74,10 @@ class SearchInputs:
 
             if kind == compile_only.KIND:
                 return compile_only.validate_feedback(raw, policy=self.policy, revision=revision)
-            if kind == ORDINARY_FAST_KIND:
+            if kind in (ORDINARY_FAST_KIND, ORDINARY_SELECTED_FAST_KIND):
                 from .ordinary_fast_feedback import validate_feedback
 
-                return validate_feedback(raw, policy=self.policy, revision=revision)
+                return validate_feedback(raw, policy=self.policy, revision=revision, kind=kind)
             from .ordinary_measurement_selection import KIND as SELECTED_KIND
 
             if kind not in (ORDINARY_KIND, SELECTED_KIND):

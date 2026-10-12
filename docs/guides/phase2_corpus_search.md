@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: experiments
 last_verified: 2026-10-12
-related: [aws_phase0_phase1, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
+related: [phase0_phase1_setup, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
@@ -30,16 +30,15 @@ toolchain, neutral runtime, corpus and functional compiler fork. Original
 functional admission and final correctness gates remain in force. The separate
 component-runtime qualification ledger is not a prerequisite.
 
-Follow [Phase 0 and Phase 1 preparation](aws_phase0_phase1.md) first. Record
-delivered Git revisions, sealed release digest, descriptor digest, functional
+Follow [Phase 0 and Phase 1 preparation](phase0_phase1_setup.md) first. Record
+selected Git revisions, sealed release digest, descriptor digest, functional
 run ID and compiler digest, selected RTL facts and timing certificate. Reopen
-those same files on AWS. Source publication is not worker qualification.
+those same files on the execution worker and qualify its runtime.
 Protected validation programs and reference compiler answers are not author inputs.
 
 The [search and feedback design](../design/normal_search_feedback.md) describes
 the implemented diagnostic, provisional exploration and measured selection
-routes. Published source supplies no Phase 1 success, worker qualification,
-screening qualification or performance parity claim.
+routes and their qualification requirements.
 
 ## Public performance inputs
 
@@ -59,6 +58,18 @@ A source packaging probe does not qualify a release, compilation or timing.
 Phase 1 owns functional completion. Phase 2 may include larger public members
 and connected graphs from that same sealed closure. Keep complete public programs
 separate from protected validation. Member counts do not establish coverage.
+
+For a focused development check, the queue exposes
+`evaluation-submit-functional-selected` with `revision_id` and `members`.
+Members are comma-separated original public `family/capsule` identities.
+The fixed evaluator compiles and runs Spike for the baseline and candidate on
+those members only. Feedback retains the complete original roster, with null
+observations and a pending reason for each unselected member. It runs no RTL.
+This is an explicit diagnostic selection, not evidence that a source edit
+cannot affect other members. Complete compile/Spike observations still precede
+empirical calibration and complete exploration ordering; full measured and
+final correctness gates remain required. Unknown dependency impact must broaden
+checks. Partial results cannot establish promotion, convergence or a model fit.
 
 ## Candidate inspection during Phase 1
 
@@ -379,8 +390,7 @@ qualification. No measured speedup is claimed, and these optional owners create 
 extra Phase 1 or Phase 2 launch prerequisite. Calibration and final evaluation
 keep fresh observations.
 
-Repository acceptance covers ordinary-route integration, source gates and focused
-revision/context/resource/final-roster tests. AWS acceptance also requires actual
-sealed inputs, functional baseline, native engine readiness, sandbox canary,
-allocated resource boundary and measured tool costs. Synthetic routing tests
-establish wiring; target performance and convergence require the actual experiment.
+Before launching, verify the sealed inputs, functional baseline, selected engine,
+sandbox canary and allocated resource boundary. Measure tool costs on that worker
+before using them to plan evaluations. Compiler performance and search convergence
+require completed experiment observations.

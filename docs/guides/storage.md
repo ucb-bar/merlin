@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: infra
 last_verified: 2026-10-11
-related: [reproducibility, getting_started, gemmini_experiment]
+related: [reproducibility, getting_started, phase0_phase1_setup]
 code_refs: [src/merlin/common/content_store.py,
             src/merlin/common/oot_repo.py,
             src/merlin/common/artifacts.py,
@@ -216,11 +216,10 @@ directory, so relocating a workspace is an edit to data. Losing the contract deg
 The content store gets the saving at the moment a tree is frozen, which does nothing for the trees
 written before it existed — and those are most of the root. `merlin-storage dedup` finds files that
 hold bytes another file already holds and re-points each name at one store object. Nothing is
-removed: every name still resolves, verified by digest before the swap. Measured 2026-09-15 over
-`out/artifacts` and `out/runs`, files ≥1 MiB: **65.9 GiB across 1,196 content groups**, the largest
-being a per-run agent home's plugin cache replicated 445 times, whole-model `const_blob.o` weight
-blobs duplicated across validation directories, and shipped `.zip` bundles byte-identical to the
-unpacked trees beside them.
+removed: every name still resolves, verified by digest before the swap. Typical
+candidates include repeated immutable tool caches, weight objects and archives
+whose unpacked files already exist. Use a fresh report to price the actual roots;
+historical storage totals do not describe a new checkout.
 
 Two things to know before running it with `--apply`:
 

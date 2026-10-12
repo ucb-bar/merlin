@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: rvvgen
 last_verified: 2026-07-20
-related: [beam_search, expert_gap_attribution, whole_model_op_profile, transpose_fusion, kernel_mining]
+related: [beam_search, normal_search_feedback, whole_model_op_profile, transpose_fusion, kernel_mining]
 code_refs:
   - src/merlin/kernels/cca.py
   - src/merlin/kernels/cca_contract.py
@@ -52,10 +52,9 @@ meaningful:
   `merlin/tests/data/cca_asm/` (f32 / int8-qd8 / f16, the last carrying a native-accumulate caveat).
 - **Compiler CCA** — lifted the same way from *our own* emitted object (`generated/objdump.txt`,
   disassembled from the fork's `model.o`). This is what our compiler *actually* produced — read from
-  the emitted code, never assumed from the schedule text. (Why "actually": two levers, `KC` and
-  `MR`-under-`unroll_m`, were once wired end-to-end yet emitted identical code — see
-  [expert_gap_attribution.md](expert_gap_attribution.md). A CCA lifted from emitted code catches that;
-  a schedule-text diff does not.)
+  the emitted code, never assumed from the schedule text. Different schedule selections can
+  emit identical code; compare actual artifacts before treating a selection change as an
+  executed alternative. See [diagnostic feedback](normal_search_feedback.md).
 
 A **divergence** is a facet where expert-CCA ≠ compiler-CCA (`cca_compare.compare`, which reflects the
 facet list from the dataclass so a new facet is never silently skipped).

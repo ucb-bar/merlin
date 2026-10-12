@@ -4,8 +4,7 @@ kind: design
 status: current
 owner: merlin-core
 last_verified: 2026-10-10
-related:
-  - docs/design/independent_rtl_intake.md
+related: [docs/design/independent_rtl_intake.md]
 code_refs:
   - src/merlin/targetgen/rtl/hw_conditional_value_cones.py
   - src/merlin/targetgen/rtl/hw_value_bindings.py

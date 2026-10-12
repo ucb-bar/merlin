@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: ir
 last_verified: 2026-10-12
-related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, aws_phase0_phase1]
+related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
 code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 

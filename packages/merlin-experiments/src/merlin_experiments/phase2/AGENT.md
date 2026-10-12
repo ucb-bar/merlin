@@ -80,6 +80,12 @@ every member worker.
 `ordinary_fast_feedback` runs the same boxed compiler/capsule ladder through an
 explicit L2 execution ceiling. Preserve original mandatory tiers as pending;
 compile/Spike observations cannot become full grades or measured timing.
+Its explicit selected diagnostic kind executes only named original public
+members and retains null pending observations for the rest. Bind the completed
+selection to the original immutable queued job. Partial results cannot enter
+complete empirical calibration, provisional complete-roster ordering or measured
+promotion. Full cheap/RTL/final gates remain unchanged; selection supplies no
+proof of dependency impact or artifact/verdict reuse.
 Join fresh emitted LLVM and actual linked ELF/invocation products before using
 the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
 nor linked bytes are physical work. `ordinary_calibration` executes this fixed

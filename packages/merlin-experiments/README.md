@@ -108,7 +108,7 @@ grading. Catalog definitions accept the corresponding `instruction_selection` an
 `private_full_model_spec` input fields. No selection is discovered from candidate
 metadata, and the declaration alone establishes no instruction or runtime authority.
 
-### Sealed fresh Codex client check (AWS execution)
+### Sealed fresh Codex client check
 
 The installed Phase 1 command accepts an explicit client runtime for both the
 canary and ordinary authoring. Supply operator-reviewed inputs and paths:

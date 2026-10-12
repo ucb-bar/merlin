@@ -209,6 +209,8 @@ class OrdinaryCalibration:
                 raise StageGateError("ordinary calibration original compiled/measured evidence changed")
 
     def screen(self, policy, document):
+        if document.get("kind") != FAST.KIND:
+            raise CalibrationUnavailable("ordinary screening requires the complete original compile/Spike route")
         self.verify(policy)
         report = json.loads(self.report_json)
         if report.get("exposable") is not True:

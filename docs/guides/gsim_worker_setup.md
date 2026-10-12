@@ -1,38 +1,35 @@
 ---
-title: Provisioning Merlin's Gemmini gSIM on a Linux worker
+title: Set up gSIM on a Linux worker
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-10
+last_verified: 2026-10-12
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
 code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py, packages/merlin-experiments/src/merlin_experiments/phase1/canary.py, packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_runtime.py]
 ---
 
-# Provisioning Gemmini gSIM on a Linux worker
+# Set up gSIM on a Linux worker
 
-This is a source-and-input setup procedure, **not** an AWS qualification result. Provision the
-worker, storage and access controls yourself. Use an x86-64 Linux worker for the documented native
+Provision a worker with the required storage and access controls. Use an x86-64 Linux worker for the documented native
 model; an x86-64 emulator does not run natively on an ARM/Graviton worker. Keep private inputs,
 credentials and generated simulator artifacts outside Git and candidate-visible workspaces.
 
-The native fork procedure below is retained inspection material. Ordinary catalog
-experiments require verified hardware inputs, neutral execution tooling and the
-selected session's actual startup checks. These build commands alone do not admit
-an engine or its helpers. The additional component qualification route is described
-in [fresh compiler origin](../design/fresh_compiler_origin.md). The handwritten
-support provider and copied kernel headers have been removed from Merlin. The
-retained `examples/gemmini/support` provider is data only, served by the legacy generic
-`merlin.runtime.backends.chipyard_rocc` backend.
+Catalog experiments require verified hardware inputs, a reviewed neutral
+execution contract and startup checks on the selected worker. Build receipts
+identify the simulator; execution controls qualify its selected use. See
+[Phase 0 and Phase 1 setup](phase0_phase1_setup.md) for the complete procedure.
 
 ## Clone and install the source stack
 
 Install Python 3.12+, `uv`, Clang 19 or newer (the native Gemmini path has used Clang 23), GNU Make,
 Flex with `FlexLexer.h`, Bison and GMP development files. Follow [getting started](getting_started.md)
-to install Merlin and `packages/merlin-experiments` into a Python environment:
+to install Merlin and `packages/merlin-experiments` into a Python environment.
+Set `MERLIN_REVISION` to the full source commit selected for the experiment:
 
 ```sh
-git clone --branch feat/compiler-readiness https://github.com/ucb-bar/merlin.git merlin
+git clone https://github.com/ucb-bar/merlin.git merlin
 cd merlin
+git checkout --detach "$MERLIN_REVISION"
 git rev-parse HEAD  # record and review the full source commit before freezing a run
 uv venv
 uv pip install -e '.[dev,xdsl,targetgen]'
@@ -44,20 +41,15 @@ checkpoints. Use the [LLVM toolchain guide](llvm_toolchain.md) and the selected 
 configuration. If regenerating frontend captures, also follow the [model2MLIR guide](model2mlir.md)
 and record its source and framework versions independently.
 
-For historical provider-bound execution, select support explicitly. A Merlin clone supplies shared orchestration and the
-generic chipyard RoCC runtime; `examples/gemmini/support` is the data-only provider that
-selects it (contract copy, plugin pointers, and an ISA-headers spec that references the
-pinned bare-metal runtime by digest).
-For fresh authoring, select an independently derived data contract for the
+Select an independently derived data contract for the
 [neutral runtime tooling](../reference/neutral_runtime_tooling.md). Declare
-`runner.backend: chipyard_rocc`, the explicit pinned engine/toolchain roster and
-logical harness ABI v2. Select that contract with `MERLIN_TARGET_CONTRACT` and
-its existing facts with `MERLIN_RTL_FACTS`; this route needs no executable support
-provider. Candidate implementation and the private handwritten reference remain
-out of tree. An old vendor-header ABI is not compatible with this route.
+`runner.backend: chipyard_rocc`, the pinned engine/toolchain roster and logical
+harness ABI v2. Select the contract with `MERLIN_TARGET_CONTRACT` and its facts
+with `MERLIN_RTL_FACTS`. Candidate compilers remain in OOT repositories; compiler
+references and vendor kernel libraries are excluded from fresh author inputs.
 
 Clone the [public gSIM fork](https://github.com/copparihollmann/gsim) at an exact commit of its
-`merlin` branch (not `master`). The published Merlin integration commit below is an example pin;
+`merlin` branch (not `master`). The commit below is an example build pin;
 record the full commit actually selected for a new build:
 
 ```sh
@@ -109,10 +101,6 @@ binary and requires its own receipt and qualification. The builder's `native/bui
 it does **not** prove which RTL revision originally elaborated the FIRRTL. Retain that source recipe,
 Chipyard/toolchain revisions and the generated ABI header separately.
 
-From the Merlin checkout, select the data-only support provider, exact model and facts explicitly:
-
-```sh
-export MERLIN_TARGET_PATH="$PWD/examples/gemmini/support"
 From the Merlin checkout, select the reviewed data contract and exact facts explicitly:
 
 ```sh
@@ -125,7 +113,6 @@ export MERLIN_GSIM_EMU_GEMMINI=/absolute/fresh/out/build/rtl_engines/native-gsim
 export MERLIN_GEMMINI_GSIM_EMU="$MERLIN_GSIM_EMU_GEMMINI"
 export MERLIN_REQUIRED_RTL_ENGINE=gsim
 export MERLIN_GSIM_REQUIRE_RECEIPT=1
-export MERLIN_RTL_FACTS=/absolute/selected/facts.json
 ```
 
 Keep both binary override spellings identical. Set the selected guest RISC-V toolchain and LLVM/MLIR
@@ -168,11 +155,11 @@ A private-input YAML file is not its input closure: transfer its referenced mode
 selected SDK/toolchain and attestation inputs separately, or regenerate them through the normal
 capture workflow. A small simulator bringup bundle alone does not make an EL4 full-model gate ready.
 
-## Prepare the catalog Phase 0 and Phase 1 handoff
+## Prepare catalog experiments
 
-The [worker preparation procedure](aws_phase0_phase1.md) lists the complete input
-closure and the neutral contract pinning command. Fetch the completed source
-handoff before preparing the worker; native checks run on AWS afterward.
+The [worker preparation procedure](phase0_phase1_setup.md) lists the complete input
+closure and the neutral contract pinning command. Run native checks on the
+worker that will execute the experiment.
 
 Use a reviewed experiment definition with explicit recipe, conformance and synthesis
 inputs, verified evidence mode, exact facts and capability contract, and an
@@ -236,7 +223,7 @@ on the selected engine. Version 2 timing also binds gSIM's strict receipt and se
 FIRRTL facts; legacy Verilator records apply only to a Verilator selection. These
 observations size timeouts, not accelerator cycle predictions. Producing one requires
 an explicitly selected independent operator-only probe backend; a simulator binary
-alone cannot provide it. The [focused probe command](aws_phase0_phase1.md#4-run-the-independent-native-probe-and-startup-checks)
+alone cannot provide it. The [focused probe command](phase0_phase1_setup.md#4-run-the-independent-native-probe-and-startup-checks)
 selects its actual capsules, incorrect-output and prohibited-instruction controls,
 deadline and fresh timing destination. Keep that destination outside the sealed
 release payload.
@@ -264,7 +251,7 @@ For a Codex client, select `--driver codex`, an explicit `--model`,
 `--codex-binary`, `--codex-auth-source` and `--codex-home-root` for all three
 installed invocations: preflight, canary and ordinary authoring. Use
 `--codex-canary --round-timeout 300` with another fresh run ID for the bounded
-client check. The [package instructions](../../packages/merlin-experiments/README.md#sealed-fresh-codex-client-check-aws-execution)
+client check. The [package instructions](../../packages/merlin-experiments/README.md#sealed-fresh-codex-client-check)
 show the commands. They use the same runtime selection and sandbox composition;
 the parent home root can be reused, while each round home must be fresh. The
 credential file is mounted for the client, denied to its tools, and never copied
@@ -275,7 +262,7 @@ legacy default client is not covered by a differently selected canary.
 
 ## Launch readiness boundary
 
-Handoff is ready when one pinned source revision installs, the selected verified
+A worker is ready to launch when one pinned source revision installs, the selected verified
 Phase 0 inputs produce a reviewed release covering its mandatory obligations, an
 independent nonzero probe checks complete outputs and rejects an incorrect output
 on the selected engine, and ordinary native preflight passes on the execution
@@ -286,8 +273,7 @@ performance.
 
 The additional component qualification ledger, Phase 2 calibration and final
 whole-model performance comparison remain their own acceptance work. They are
-not additional prerequisites of the ordinary catalog launcher. After this handoff,
-expand preparation only when the selected run reports a concrete missing requirement.
+not additional prerequisites of the ordinary catalog launcher.
 
 ## Worker isolation and access
 
