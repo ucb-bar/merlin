@@ -378,7 +378,7 @@ def screen_bucketize_source(model_path: Path, trace_path: Path, ordinals: tuple[
             and row.get("source_ids") == [source_id]
             and row.get("destination_ids") == [destination_id]
         ]
-        if len(relations) != 1 or relations[0].get("kind") != "introduced":
+        if len(relations) != 1 or relations[0].get("kind") not in {"identity", "introduced"}:
             raise InvalidLinalgPattern("bucketize trace lacks an exact selected transformation relation")
 
     if (

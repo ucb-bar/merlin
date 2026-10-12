@@ -257,3 +257,21 @@ def test_unrostered_intervening_id_is_retained_but_not_proved(tmp_path):
     binding = screen_bucketize_source(model, trace_path, (ordinal,)).trace_bindings[0][1]
     assert binding.unresolved_ancestry_ids == (replacement, "g:quantization_input:root:n1")
     assert binding.ancestry_status == "original_quantized_prepared_flag_match_only"
+
+
+def test_preserved_bucketize_identity_relations_keep_exact_ancestry_guards(tmp_path):
+    text = _program(right=True)
+    model = tmp_path / 'model.mlir'
+    trace_path = tmp_path / 'frontend-trace.json'
+    model.write_text(text)
+    ordinal = next(i for i, op in enumerate(mq.walk(mq.parse(text))) if mq.op_name(op) == 'linalg.generic')
+    trace = _trace(text, right=True)
+    for stage in trace['transformations']:
+        stage['relations'][0]['kind'] = 'identity'
+    trace_path.write_text(json.dumps(trace))
+    proof = screen_bucketize_source(model, trace_path, (ordinal,))
+    assert proof.trace_bindings[0][1].original_node_id == 'g:original:root:n1'
+    trace['transformations'][1]['relations'][0]['destination_ids'] = ['g:prepared:root:missing']
+    trace_path.write_text(json.dumps(trace))
+    with pytest.raises(InvalidLinalgPattern, match='exact selected transformation relation'):
+        screen_bucketize_source(model, trace_path, (ordinal,))
