@@ -549,6 +549,14 @@ class BoundSemantics:
             "FUNCT3": table["funct3"],
             "FUNCT_CLASS": {code: value[0] for code, value in self._instructions.items()},
         }
+        self.operand_observer = None
+        if contract.get("rocc_operand_protocol") is not None:
+            from .normalized_operands import BoundOperandObserver
+
+            self.operand_observer = BoundOperandObserver(
+                target=target, protocol=contract["rocc_operand_protocol"], facts=facts,
+                raw_isa=self._isa, word_bits=self._width,
+            )
         self.legal_codes = frozenset(codes)
         self.complete_decode = table.get("scope") == "complete_rocc_funct7" and table.get("complete_isa") is True
         from merlin.targetgen.rtl_checks_generic import BoundChecks
