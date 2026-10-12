@@ -464,11 +464,16 @@ def generate_bundles(
 
             if python_source_root is None:
                 raise ValueError("common substrate requires the selected Python source root")
-            attach_common_substrate(
-                out[bid], version=common_substrate, python_source_root=python_source_root,
-                lean_toolchain_manifest=lean_toolchain_manifest,
-                host_index_bits=host_index_bits,
-            )
+            from .tool_profile import COMMON_SUBSTRATE_V3
+
+            if common_substrate != COMMON_SUBSTRATE_V3:
+                attach_common_substrate(
+                    out[bid],
+                    version=common_substrate,
+                    python_source_root=python_source_root,
+                    lean_toolchain_manifest=lean_toolchain_manifest,
+                    host_index_bits=host_index_bits,
+                )
         elif lean_toolchain_manifest is not None:
             raise ValueError("selected Lean tooling requires the versioned common compiler substrate")
         if python_source_root is not None:
@@ -477,6 +482,30 @@ def generate_bundles(
             _select_llvm_grant(out[bid], llvm_toolchain_root)
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
+        if common_substrate == "merlin.common_compiler_substrate.v3":
+            # Resolve original semantic inputs only after ordinary source/facts
+            # grants have reached their final canonical selected locations.
+            software = [
+                row["path"]
+                for row in out[bid]["host_inputs"]
+                if row.get("note") == "selected software semantics; not hardware evidence"
+            ]
+            if len(software) > 1:
+                raise ValueError("common formal semantics have ambiguous original software inputs")
+            selected_software = Path(software[0]) if software else None
+            if selected_software is not None and not selected_software.is_absolute():
+                selected_software = (te._source_root() / selected_software).resolve()
+            attach_common_substrate(
+                out[bid],
+                version=common_substrate,
+                python_source_root=python_source_root,
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
+                software_spec_path=selected_software,
+                facts_path=selected_facts[0] / "facts.json" if selected_facts else None,
+                target=te.target,
+            )
+            _select_python_grants(out[bid], python_source_root)
     return out
 
 
@@ -674,7 +703,12 @@ not correctness-qualified implementations and must not be promoted without an in
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
     if manifest.get("arm") in {
-        "merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify", "merlin_isa", "merlin_lean"
+        "merlin_assisted",
+        "merlin_rtlchecks",
+        "merlin_eqsat",
+        "merlin_verify",
+        "merlin_isa",
+        "merlin_lean",
     }:
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
@@ -833,15 +867,17 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
-    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2
+    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3
 
     ap.add_argument(
-        "--common-substrate", choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2),
+        "--common-substrate",
+        choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
     ap.add_argument(
-        "--host-index-bits", type=int,
+        "--host-index-bits",
+        type=int,
         help="reviewed index width of the selected host ABI; unknown refuses common lowering",
     )
     a = ap.parse_args(argv)

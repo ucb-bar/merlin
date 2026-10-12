@@ -6,7 +6,6 @@ kernel function under the entry symbol its contract declares, with the kernel AB
 tensors by name + output buffers and prints ``OUT/METRIC/DONE``), the link, and the oracle
 invocation. This path is uniform for Python and C++ packages — the only difference is who produced
 the MLIR.
-
 **This module names no target and imports none.** ``target`` is a required argument throughout, and
 everything target-specific is resolved through it: the harness ABI from the target's contract
 (:mod:`.harness_abi`), and the harness renderer, build recipe and oracle from its backend via
@@ -27,6 +26,8 @@ from typing import Any
 
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
+from merlin.targetgen.host_optimization_admission import active_selection, host_choices_build
+from merlin.verify.lean_emission_context import observe_object, requires_fresh_object
 
 from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
@@ -115,32 +116,26 @@ def _abi_receipt(workdir: Path, obj: Path, abi: str) -> None:
     )
 
 
+@observe_object
 def llvm_mlir_to_object(
     lowered_mlir_text: str,
     workdir: Path,
     *,
     target: str | None = None,
     _build_service=None,
+    _host_optimization=None,
     build_timeout_s: int | None = None,
     execution_deadline: ExecutionDeadline | None = None,
 ) -> Path:
-    """Lower package-emitted llvm-dialect MLIR to an rv64 object (.o) for ``target``'s own ISA.
-
-    THE MARCH IS THE TARGET'S, NOT A DEFAULT. This object and the runner-owned harness are linked into
-    one ELF and executed on one core, so they have to be built for the same instruction set. The
-    default here is the vector-capable ``rv64gcv``, while a systolic target's harness recipe declares
-    ``rv64gc`` -- and for years that disagreement was invisible, because every kernel on such a target
-    was inline-asm accelerator instructions with nothing for the auto-vectorizer to take. The first
-    kernel that gives it something (a scalar float program placed on the host lane) was compiled with
-    ``vsetivli``/``vle32.v``/``vfadd.vv`` for a core with no vector unit, trapped on the first one, and
-    was reported as the submission's kernel faulting at runtime.
-
-    ``target=None`` keeps the previous default, for callers with no target in hand.
-    A pure build-only caller may additionally bound translation and every object
-    compiler subprocess with one declining diagnostic wall budget. This does
-    not turn parsing or static stack inspection into a numerical verdict.
+    """Build emitted IR with the original toolchain, ISA and shared harness ABI.
+    ``target=None`` preserves the legacy unbound recipe. Optional host choices
+    require original semantic/runtime admission and an actual compatible IR stage.
+    Finished LLVM cannot select tensor transformations. Original and selected
+    products retain distinct identities. Build-only deadlines and measured stack
+    preflight are structural gates, never numerical or execution verdicts.
     """
     from merlin.llvmlower import codegen
+    from merlin.targetgen.package_runtime import active_package_executor
 
     deadline = selected_deadline(seconds=build_timeout_s, parent=execution_deadline, build_service=_build_service)
 
@@ -150,8 +145,19 @@ def llvm_mlir_to_object(
         return deadline.remaining("public object-build budget expired")
 
     workdir.mkdir(parents=True, exist_ok=True)
+    (workdir / "kernel.host_optimization.json").unlink(missing_ok=True)
     source = workdir / "kernel.llvm.mlir"
     source.write_text(lowered_mlir_text, encoding="utf-8")
+    executor = active_package_executor()
+    from merlin.llvmlower.host_optimization_compile import HostCompilationOptimization
+
+    host = HostCompilationOptimization.select(
+        lowered_mlir_text, workdir, explicit=_host_optimization, finished_llvm_only=_build_service is not None
+    )
+    host_report, host_lowering_observation = None, None
+    if host is not None:
+        lowered_mlir_text = host.prepared.selected_mlir
+
     extra: tuple[str, ...] = ()
     recipe = None
     if _build_service is not None:
@@ -210,9 +216,7 @@ def llvm_mlir_to_object(
         from merlin.common import invocation_record
         from merlin.common.ir_audit import IrAudit
         from merlin.llvmlower.pipeline import lower_to_llvm_ir
-        from merlin.targetgen.package_runtime import active_package_executor
 
-        executor = active_package_executor()
         requested = getattr(executor, "record_stage_inspection", False) is True
         audit = IrAudit(workdir, enabled=requested, producer="merlin.targetgen.contract.compile", source=__file__)
 
@@ -222,13 +226,16 @@ def llvm_mlir_to_object(
                 workdir,
                 stage="llvm_translation",
                 function=lower_to_llvm_ir,
-                arguments={"workdir": str(workdir.resolve())},
-                inputs=(source,),
+                arguments=host.translation_arguments() if host is not None else {"workdir": str(workdir.resolve())},
+                inputs=(source, host.selected_source_path) if host is not None else (source,),
                 outputs=(workdir / "kernel.ll",),
                 dependencies=(Path(__file__),),
             ) as observed,
         ):
             options = {"audit": audit} if requested else {}
+            if host is not None:
+                host_options, host_lowering_observation = host.lowering_options()
+                options.update(host_options)
             ll = lower_to_llvm_ir(lowered_mlir_text, workdir=workdir, **options)
             (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
             observed.returned()
@@ -238,11 +245,15 @@ def llvm_mlir_to_object(
             recipe = _backends.harness_build_recipe(target).with_effective_abi()
             extra = (recipe.march(), recipe.mabi())
     llvm_path, object_path = workdir / "kernel.ll", workdir / "kernel.o"
+    if host is not None:
+        llvm_path, host_report = host.optimize_translated(llvm_path, observation=host_lowering_observation)
     if recipe is None:
-        return Path(codegen.compile_ll(llvm_path, object_path, "riscv", extra_flags=extra))
+        compiled = Path(codegen.compile_ll(llvm_path, object_path, "riscv", extra_flags=extra))
+        return host.complete(compiled, llvm_path, report=host_report) if host is not None else compiled
 
     report_path = object_path.with_suffix(".su")
     receipt_path = workdir / "kernel.stack_frame.json"
+    object_path.with_suffix(".measured.su").unlink(missing_ok=True)
     for stale_output in (object_path, report_path, receipt_path, workdir / "kernel.abi.json"):
         stale_output.unlink(missing_ok=True)
     abi = recipe.mabi().partition("=")[2]
@@ -271,14 +282,9 @@ def llvm_mlir_to_object(
             report_path, llvm_path=llvm_path, entry_symbol=policy.entry_symbol, max_static_bytes=policy.max_static_bytes
         )
     except StackFramePreflightError as exc:
-        # REPAIR ON A PROVEN FAILURE, never pre-emptively. The host lane hoists one `alloca` per
-        # intermediate into the entry frame with no reuse, so the frame scales with the model:
-        # 816 bytes on ResNet-50 and 99,897,984 bytes on SmolVLA's flow_denoise against a
-        # 65,536-byte budget. Seating that storage in one `.bss` arena fits it (measured: 496).
-        #
-        # It runs ONLY after the emitted frame has been measured over budget, so a build that
-        # already fits is byte-identical to before -- which is what keeps the one bundle known to
-        # have run correctly on hardware a valid acceptance test for this path.
+        # Select generic stack repair only after an observed frame failure.
+        # Rebuild and remeasure its actual object; unavailable repairs retain
+        # the original refusal. Already fitting objects remain unchanged.
         repaired = _repair_oversized_frame(
             llvm_path,
             object_path,
@@ -319,7 +325,7 @@ def llvm_mlir_to_object(
             },
         )
         _abi_receipt(workdir, compiled, abi)
-        return compiled
+        return host.complete(compiled, arena_llvm, report=host_report) if host is not None else compiled
     write_receipt(
         receipt_path,
         status="passed",
@@ -331,7 +337,7 @@ def llvm_mlir_to_object(
         measurement=measurement,
     )
     _abi_receipt(workdir, compiled, abi)
-    return compiled
+    return host.complete(compiled, llvm_path, report=host_report) if host is not None else compiled
 
 
 def _repair_oversized_frame(
@@ -363,7 +369,7 @@ def _repair_oversized_frame(
     arena_object = object_path.with_suffix(".arena.o")
     arena_su = arena_object.with_suffix(".su")
     arena_llvm.write_text(rewritten, encoding="utf-8")
-    for stale in (arena_object, arena_su):
+    for stale in (arena_object, arena_su, arena_object.with_suffix(".measured.su")):
         stale.unlink(missing_ok=True)
     compile_kwargs = {"extra_flags": (*extra, "-fstack-usage")}
     if remaining is not None:
@@ -782,8 +788,7 @@ def link_elf(
         )
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return elf
-
-
+@host_choices_build
 def compile_lowered_to_elf(
     cb: dict[str, Any],
     lowered_mlir_text: str,
@@ -891,10 +896,10 @@ def compile_lowered_to_elf(
             kwargs["warm_profile"] = warm_profile
         return link_elf(cb, obj, work, **kwargs)
     _explicit_prepack_inputs(inputs, prepack_authorizations)
-    if prepack_authorizations is not None:
-        # Cached builds skip the renderer's exact payload/binding checks. Until the
-        # authorization policy is itself part of cache admission, never reuse or
-        # publish such a build. The absent-authorization path remains unchanged.
+    if prepack_authorizations is not None or active_selection() is not None or requires_fresh_object(lowered_mlir_text):
+        # The legacy cache cannot bind prepacking or original host permissions.
+        # Build the current selected artifact freshly rather than reuse/store it.
+        # Unselected calls retain the existing cache path.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         kwargs = {"target": target, "inputs": inputs, "prepack_authorizations": prepack_authorizations}
         if warm_profile is not None:

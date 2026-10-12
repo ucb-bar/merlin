@@ -17,6 +17,7 @@ from . import tool_registry as TR
 SCHEMA = "merlin.compiler_tool_profile.v1"
 COMMON_SUBSTRATE_V1 = "merlin.common_compiler_substrate.v1"
 COMMON_SUBSTRATE_V2 = "merlin.common_compiler_substrate.v2"
+COMMON_SUBSTRATE_V3 = "merlin.common_compiler_substrate.v3"
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
     "merlin.transforms.certificates",
@@ -59,6 +60,33 @@ AUTOMATIC_CHECKER_MODULES_V2 = (
     "merlin.verify.lean_obligations",
     "merlin.perf.pass_observation",
 )
+COMMON_NAMESPACE_MODULES_V3 = (*COMMON_NAMESPACE_MODULES_V2, "merlin.targetgen.__init__")
+AUTOMATIC_CHECKER_MODULES_V3 = (
+    *AUTOMATIC_CHECKER_MODULES_V2,
+    "merlin.verify.lean_resource_geometry",
+    "merlin.verify.lean_state_effects",
+    "merlin.verify.lean_state_projection",
+    "merlin.verify.lean_checked",
+    "merlin.verify.lean_emission_chain",
+    "merlin.verify.lean_emission_context",
+    "merlin.verify.lean_sat_runtime",
+    "merlin.verify.lean_isa_semantics",
+    "merlin.targetgen.isa_spec",
+    "merlin.targetgen.isa_dialect_gen",
+    "merlin.targetgen.compiler_profile_admission",
+    "merlin.targetgen.tool_profile_toolchain",
+    "merlin.targetgen.host_optimization_admission",
+    "merlin.targetgen.common_transforms",
+    "merlin.common.bundle_snapshot",
+    "merlin.common.bwrap_args",
+    "merlin.llvmlower.host_optimization_request",
+    "merlin.llvmlower.host_optimization_compile",
+)
+AUTOMATIC_CHECKER_DATA_V3 = (
+    *AUTOMATIC_CHECKER_DATA,
+    "verify/lean/Merlin/ResourceGeometry.lean",
+    "verify/lean/Merlin/StateEffects.lean",
+)
 _OPTIONAL_TOOLS = frozenset({"isa_dialect_generation", "lean_proof_authoring"})
 
 
@@ -68,7 +96,18 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         return COMMON_NAMESPACE_MODULES, COMMON_PUBLIC_MODULES, AUTOMATIC_CHECKER_MODULES
     if version == COMMON_SUBSTRATE_V2:
         return COMMON_NAMESPACE_MODULES_V2, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V2
+    if version == COMMON_SUBSTRATE_V3:
+        return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V3
     raise ValueError("unknown common compiler substrate")
+
+
+def substrate_data(version: str) -> tuple[str, ...]:
+    substrate_inventory(version)
+    return AUTOMATIC_CHECKER_DATA_V3 if version == COMMON_SUBSTRATE_V3 else AUTOMATIC_CHECKER_DATA
+
+
+def _policy_version(version: str) -> str:
+    return {COMMON_SUBSTRATE_V1: "1", COMMON_SUBSTRATE_V2: "2", COMMON_SUBSTRATE_V3: "3"}[version]
 
 
 def _digest(document: dict) -> str:
@@ -113,7 +152,7 @@ def common_tool_profile(
         }
         for module in automatic
     ]
-    for relative in AUTOMATIC_CHECKER_DATA:
+    for relative in substrate_data(version):
         source = root / "merlin" / relative
         if source.is_symlink() or not source.is_file() or source.resolve() != source:
             raise ValueError("automatic verifier data is absent, linked or noncanonical")
@@ -125,7 +164,7 @@ def common_tool_profile(
         != hashlib.sha256(_source(root, "merlin.verify.lean_contract").read_bytes()).hexdigest()
     ):
         raise ValueError("loaded formal coverage policy differs from the selected source release")
-    policy = lean_contract.coverage_policy_record(version="2" if version == COMMON_SUBSTRATE_V2 else "1")
+    policy = lean_contract.coverage_policy_record(version=_policy_version(version))
     if policy.get("mode") != "strict_within_coverage":
         raise ValueError("new compiler substrate requires the host-owned strict formal coverage policy")
     record = {
@@ -187,7 +226,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
             raise ValueError("common compiler source identity is malformed")
     automatic_sources = profile.get("automatic_checker_sources")
     expected_automatic = [(module, _logical(module)) for module in automatic] + [
-        (None, _PY + relative) for relative in AUTOMATIC_CHECKER_DATA
+        (None, _PY + relative) for relative in substrate_data(profile["common_substrate"])
     ]
     if (
         not isinstance(automatic_sources, list)
@@ -206,7 +245,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     policy = profile.get("proof_policy") or {}
     from merlin.verify.lean_contract import coverage_policy_record
 
-    expected_policy = coverage_policy_record(version="2" if profile["common_substrate"] == COMMON_SUBSTRATE_V2 else "1")
+    expected_policy = coverage_policy_record(version=_policy_version(profile["common_substrate"]))
     if (
         policy.get("mode") != "strict_within_coverage"
         or policy.get("unknown_within_coverage") != "reject"
@@ -223,6 +262,10 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     width = profile.get("host_index_bits")
     if width is not None and (type(width) is not int or not 2 <= width <= 128):
         raise ValueError("compiler tool profile has an invalid reviewed host index width")
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+        from merlin.verify.lean_isa_semantics import validate_semantic_inputs
+
+        validate_semantic_inputs(profile.get("semantic_inputs"))
     return copy.deepcopy(profile)
 
 
@@ -233,6 +276,9 @@ def attach_common_substrate(
     python_source_root: Path,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
+    software_spec_path: Path | None = None,
+    facts_path: Path | None = None,
+    target: str | None = None,
 ) -> None:
     """Add reviewed common facilities while masking optional tools on every other level."""
     namespaces, public, automatic = substrate_inventory(version)
@@ -250,7 +296,7 @@ def attach_common_substrate(
     for row in historical_verify:
         bundle["allowed"].remove(row)
         for source in sorted((python_source_root / "merlin/verify").glob("*.py")):
-            if not source.name.startswith("lean_"):
+            if not source.name.startswith("lean_") and "merlin.verify." + source.stem not in automatic:
                 bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
     for module in (*namespaces, *public):
         bundle["allowed"].append({"path": _logical(module), "mode": "ro", "note": "common compiler infrastructure"})
@@ -258,17 +304,21 @@ def attach_common_substrate(
     # host inputs, never exposed by adding a general proof API to lower levels.
     if "lean_proof_authoring" not in tools:
         for module in automatic:
+            if version == COMMON_SUBSTRATE_V3 and any(
+                row.get("path") == str(_source(python_source_root, module)) for row in bundle["allowed"]
+            ):
+                continue
             bundle["host_inputs"].append(
                 {"path": str(_source(python_source_root, module)), "note": "host-owned automatic formal verification"}
             )
         bundle["host_inputs"].extend(
             {"path": str(python_source_root / "merlin" / relative), "note": "automatic formal verification lemmas"}
-            for relative in AUTOMATIC_CHECKER_DATA
+            for relative in substrate_data(version)
         )
     else:
         author_sources = [(_logical(module), _source(python_source_root, module)) for module in automatic]
         author_sources.extend(
-            (_PY + relative, python_source_root / "merlin" / relative) for relative in AUTOMATIC_CHECKER_DATA
+            (_PY + relative, python_source_root / "merlin" / relative) for relative in substrate_data(version)
         )
         for logical, selected in author_sources:
             for row in bundle["allowed"]:
@@ -283,7 +333,12 @@ def attach_common_substrate(
     ]
     for row in software_inputs:
         bundle["host_inputs"].remove(row)
-        bundle["allowed"].append({"path": row["path"], "mode": "ro", "note": "admitted software semantics"})
+        path = (
+            str(software_spec_path)
+            if version == COMMON_SUBSTRATE_V3 and software_spec_path is not None
+            else row["path"]
+        )
+        bundle["allowed"].append({"path": path, "mode": "ro", "note": "admitted software semantics"})
     for tool_name in sorted(_OPTIONAL_TOOLS):
         tool = TR.spec(tool_name)
         if tool_name not in tools:
@@ -292,86 +347,40 @@ def attach_common_substrate(
                 for path in tool.bundle_paths
                 if path != _logical("merlin.verify.lean_contract")
             )
-    toolchain = {"selection": "not_selected", "readiness": "unavailable"}
-    if lean_toolchain_manifest is not None:
-        selected = Path(lean_toolchain_manifest)
-        if (
-            not selected.is_absolute()
-            or selected.is_symlink()
-            or selected.resolve() != selected
-            or not selected.is_file()
-        ):
-            raise ValueError("Lean toolchain manifest must be an ordinary canonical selected file")
-        document = json.loads(selected.read_text(encoding="utf-8"))
-        if not isinstance(document, dict) or document.get("schema") != "merlin.lean_toolchain.v1":
-            raise ValueError("unknown selected Lean toolchain manifest schema")
-        executable = document.get("executable")
-        files = document.get("files")
-        if not isinstance(executable, dict) or not isinstance(files, list) or not files:
-            raise ValueError("Lean toolchain requires its explicit executable and closed file membership")
-        roots = document.get("library_roots")
-        if not isinstance(roots, list) or not roots or any(not isinstance(root, str) or not root for root in roots):
-            raise ValueError("Lean toolchain requires its explicit import roots")
-        for name in ("timeout_s", "memory_mb"):
-            budget = document.get(name, 120 if name == "timeout_s" else 1024)
-            if type(budget) is not int or budget < 1:
-                raise ValueError("Lean toolchain requires positive execution budgets")
+    from .tool_profile_toolchain import attach_selected_toolchain
 
-        def resolve_member(raw: str) -> Path:
-            path = Path(raw)
-            if ".." in path.parts or not raw:
-                raise ValueError("Lean toolchain member path is invalid")
-            path = path if path.is_absolute() else selected.parent / path
-            if path.is_symlink() or path.resolve() != path:
-                raise ValueError("Lean toolchain member is linked or noncanonical")
-            return path
+    toolchain = attach_selected_toolchain(bundle, tools, lean_toolchain_manifest)
+    if version == COMMON_SUBSTRATE_V3 and lean_toolchain_manifest is not None:
+        from .tool_profile_toolchain import require_packaged_mathematics
 
-        rows = [executable, *files]
-        paths: list[str] = []
-        import_roots = [resolve_member(root) for root in roots]
-        missing = any(not root.is_dir() for root in import_roots)
-        for row in rows:
-            if not isinstance(row, dict):
-                raise ValueError("Lean toolchain contains an invalid file member")
-            raw, digest = row.get("path"), row.get("sha256")
-            if (
-                not isinstance(raw, str)
-                or not isinstance(digest, str)
-                or len(digest) != 64
-                or any(character not in "0123456789abcdef" for character in digest)
-            ):
-                raise ValueError("Lean toolchain member requires an explicit path and SHA-256")
-            path = resolve_member(raw)
-            if path.exists():
-                if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-                    raise ValueError("selected Lean toolchain bytes differ from its manifest")
-            else:
-                missing = True
-            if str(path) not in paths:
-                paths.append(str(path))
-        role = "allowed" if "lean_proof_authoring" in tools else "host_inputs"
-        for path in (str(selected), *paths):
-            # The compiled formal closure may also name the packaged foundation
-            # already selected as automatic checker data. One source identity
-            # must have one materialization record, rather than duplicate grants.
-            if any(row.get("path") == path for row in bundle[role]):
-                continue
-            row = {"path": path, "note": "selected formal verification toolchain"}
-            if path == str(selected):
-                row["note"] = "selected formal verification toolchain manifest"
-            if role == "allowed":
-                row["mode"] = "ro"
-            bundle[role].append(row)
-        toolchain = {
-            "selection": "explicit_manifest",
-            "manifest_sha256": hashlib.sha256(selected.read_bytes()).hexdigest(),
-            "executable_sha256": executable["sha256"],
-            "dependency_revision": document.get("dependency_revision"),
-            "readiness": "unavailable" if missing else "declared_unprobed",
-        }
+        require_packaged_mathematics(
+            lean_toolchain_manifest, python_source_root, ("Foundation", "ResourceGeometry", "StateEffects")
+        )
     profile = {key: value for key, value in profile.items() if key != "sha256"}
     profile["lean_toolchain"] = toolchain
     profile["host_index_bits"] = host_index_bits
+    if version == COMMON_SUBSTRATE_V3:
+        from merlin.verify.lean_isa_semantics import select_isa_semantics
+
+        profile["semantic_inputs"] = select_isa_semantics(
+            software_spec_path=software_spec_path, facts_path=facts_path, target=target
+        ).record()
+        for key in ("software_spec", "rtl_facts"):
+            selected = profile["semantic_inputs"][key]
+            if selected is None:
+                continue
+            path = Path(selected["path"])
+            covered = any(
+                row.get("path") == str(path)
+                or (str(row.get("path", "")).endswith("/") and path.is_relative_to(Path(row["path"])))
+                for row in (*bundle["allowed"], *bundle["host_inputs"])
+            )
+            if not covered:
+                bundle["host_inputs"].append(
+                    {"path": str(path), "note": "original formal semantic input; never a new agent grant"}
+                )
+    elif software_spec_path is not None or facts_path is not None or target is not None:
+        raise ValueError("original formal semantic selection requires substrate V3")
     profile["sha256"] = _digest(profile)
     bundle["compiler_tool_profile"] = profile
     verify_tool_profile(bundle)
@@ -410,6 +419,27 @@ def tool_profile_prompt(bundle: dict) -> str:
         "Tool presence describes an interface, not a successful runtime qualification. "
         "Report actual availability and proof outcomes separately from numerical and performance results.",
     ]
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+        lines.append(
+            "Use `merlin.transforms.client.check_transform(workspace, before_ir, after_ir, entry=\"...\")` "
+            "to submit actual compiler rewrites for covered host checking. The original host selects "
+            "software/ISA semantics and effect premises from sealed inputs. A result establishes only "
+            "its reported formal scope; hardware, numerical execution and performance need independent evidence."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+        lines.append(
+            "The original command-buffer schema accepts an optional source-bound "
+            "`host_optimization_request`. Only bounded documented choices are permitted; "
+            "the original reviewed software profile independently supplies any required host "
+            "semantic and runtime permissions. Omission of those permissions leaves the request "
+            "unavailable. Numerical, instruction-policy and complete execution gates still apply."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+        lines.append(
+            "During original compiler entrypoint calls, `MERLIN_COMMON_WORKSPACE` names "
+            "the isolated request workspace for the same public transformation/check client. "
+            "Replies establish only their reported scope."
+        )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:
             lines.append(f"- `{name}`: {TR.spec(name).blurb}")

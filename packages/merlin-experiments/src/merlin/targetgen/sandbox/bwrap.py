@@ -327,31 +327,9 @@ def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
 
 
 def _snapshot_content(root: Path) -> tuple[str, int, int]:
-    """Digest, file count and byte count for the frozen payload (not its marker)."""
-    rows: list[tuple[str, str, int]] = []
-    total = 0
-    marker = root / _SNAPSHOT_COMPLETE
-    members = sorted(root.rglob("*"))
-    if any(path.is_symlink() for path in members):
-        raise RuntimeError("bundle input snapshot contains a symlink")
-    for path in (p for p in members if p.is_file() and p != marker):
-        digest = hashlib.sha256()
-        size = 0
-        with path.open("rb") as stream:
-            while chunk := stream.read(8 * 1024 * 1024):
-                digest.update(chunk)
-                size += len(chunk)
-        rows.append((path.relative_to(root).as_posix(), digest.hexdigest(), size))
-        total += size
-    aggregate = hashlib.sha256()
-    for rel, digest, size in rows:
-        aggregate.update(rel.encode("utf-8"))
-        aggregate.update(b"\0")
-        aggregate.update(str(size).encode("ascii"))
-        aggregate.update(b"\0")
-        aggregate.update(digest.encode("ascii"))
-        aggregate.update(b"\n")
-    return aggregate.hexdigest(), len(rows), total
+    from merlin.common.bundle_snapshot import snapshot_content
+
+    return snapshot_content(root)
 
 
 def _read_snapshot_manifest(ws: Path) -> dict:
@@ -647,6 +625,9 @@ def materialize_bundle_inputs(
         return previous
     if pending.exists() or pending.is_symlink():
         shutil.rmtree(pending) if pending.is_dir() else pending.unlink()
+    from merlin.targetgen.tool_profile_toolchain import validate_private_toolchain_roots
+
+    validate_private_toolchain_roots(bundle)
 
     grants = _grant_sources(bundle, repo)
     hosts = [(path, resolve_grant(path, repo)) for path in _host_input_paths(bundle)]
@@ -725,6 +706,7 @@ def materialize_bundle_inputs(
                 content_store.place_tree(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
             else:
                 content_store.place_file(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
+        validate_private_toolchain_roots(bundle, snapshot_root=pending, repo=repo)
         digest, n_files, n_bytes = _snapshot_content(pending)
         grant_records = []
         for rel, source in inputs:
@@ -1175,6 +1157,23 @@ def _bind_alias(private: Path, kind: str, source: Path, destination: Path) -> tu
     return None
 
 
+def _resolved_bind_mounts(mounts: list[tuple[str, str, str]]) -> list[tuple[Path, Path, set[Path]]]:
+    """Resolve each source once within the trusted, stable launch namespace.
+
+    Retain every ordered exposed mount and both lexical/canonical source names.
+    This cache ends with the call; later calls must observe changed aliases.
+    """
+    sources: dict[Path, set[Path]] = {}
+    result = []
+    for state, raw_source, raw_destination in mounts:
+        if state == "expose":
+            source = Path(raw_source).absolute()
+            if source not in sources:
+                sources[source] = {source, source.resolve()}
+            result.append((source, Path(raw_destination), sources[source]))
+    return result
+
+
 def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
     """Project answer denials through every bind, including deeper re-exposures.
 
@@ -1189,6 +1188,7 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
     """
     known = {surface.path for surface in surfaces}
     result: dict[Path, AnswerSurface] = {}
+    binds = _resolved_bind_mounts(mounts) if surfaces else []
 
     def project(path: Path, surface: AnswerSurface) -> None:
         if path not in known:
@@ -1198,12 +1198,9 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
         for private in {surface.path.absolute(), surface.path.resolve()}:
             exemptions = tuple(private / sub for sub in surface.grantable)
             project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
-            for state, raw_source, raw_destination in mounts:
-                if state != "expose":
-                    continue
-                source, destination = Path(raw_source).absolute(), Path(raw_destination)
+            for source, destination, resolved_sources in binds:
                 aliases = []
-                for resolved in {source, source.resolve()}:
+                for resolved in resolved_sources:
                     if any(resolved == public or public in resolved.parents for public in exemptions):
                         continue
                     translated = _bind_alias(private, surface.kind, resolved, destination)

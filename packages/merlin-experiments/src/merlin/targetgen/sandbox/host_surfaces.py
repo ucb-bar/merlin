@@ -20,6 +20,7 @@ from merlin.targetgen.sandbox.bwrap import (
     _host_input_paths,
     _mounts,
     _private_validation_paths,
+    _resolved_bind_mounts,
     _snapshot_grants,
     _snapshot_host_inputs,
     _validate_host_locations,
@@ -70,7 +71,8 @@ def _host_mount_devices() -> list[tuple[int, Path]]:
 
 
 def _host_hardlink_surfaces(
-    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
+    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]],
+    *, mounts: list[tuple[str, str, str]] | None = None,
 ) -> list[AnswerSurface]:
     """Mask extra runtime names for private inodes, not identical public bytes.
 
@@ -130,7 +132,7 @@ def _host_hardlink_surfaces(
                         hits.append(Path(entry.path).relative_to(root))
         return hits
 
-    for state, raw_source, raw_destination in _mounts(argv):
+    for state, raw_source, raw_destination in _mounts(argv) if mounts is None else mounts:
         if state != "expose":
             continue
         source, destination = Path(raw_source).absolute(), Path(raw_destination).absolute()
@@ -223,16 +225,14 @@ def _private_path_surfaces(
 ) -> list[AnswerSurface]:
     """One alias translation for frozen payloads and exact host provenance files."""
     surfaces: dict[Path, AnswerSurface] = {}
+    mounts = _mounts(argv)
+    binds = _resolved_bind_mounts(mounts) if records else []
     for _, original, frozen in records:
         kind = path_kind(frozen)
         for private in {original, frozen}:
             surfaces[private] = AnswerSurface("host-only input", private, kind, "hidden")
-            for state, raw_source, raw_destination in _mounts(argv):
-                if state != "expose":
-                    continue
-                source = Path(raw_source).absolute()
-                for resolved in {source, source.resolve()}:
-                    destination = Path(raw_destination)
+            for _source, destination, resolved_sources in binds:
+                for resolved in resolved_sources:
                     translated = _bind_alias(private, kind, resolved, destination)
                     if translated is None:
                         continue
@@ -240,7 +240,7 @@ def _private_path_surfaces(
                     if alias_kind == "missing":
                         raise RuntimeError("private input alias cannot be classified for masking")
                     surfaces[alias] = AnswerSurface("host-only input alias", alias, alias_kind, "hidden")
-    for surface in _host_hardlink_surfaces(argv, records, approved):
+    for surface in _host_hardlink_surfaces(argv, records, approved, mounts=mounts):
         surfaces[surface.path] = surface
     return list(surfaces.values())
 

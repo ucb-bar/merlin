@@ -210,7 +210,10 @@ def render_dialect_module(model: ResolvedISA) -> str:
 def build_dialect(model: ResolvedISA) -> Dialect:
     """Build generated definitions in memory through exactly the same source emitter."""
     namespace: dict = {"__name__": f"generated_{model.namespace}_instructions"}
-    exec(compile(render_dialect_module(model), "<generated-isa-dialect>", "exec"), namespace)
+    # Generated classes need actual type annotations for xDSL introspection.
+    # Inheriting this caller's future-annotations flag would turn them into
+    # strings in an anonymous, unregistered module namespace.
+    exec(compile(render_dialect_module(model), "<generated-isa-dialect>", "exec", dont_inherit=True), namespace)
     return namespace["DIALECT"]
 
 
