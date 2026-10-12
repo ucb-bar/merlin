@@ -500,7 +500,8 @@ def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tm
     ) == {"mandatory"}
 
 
-def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch):
+@pytest.mark.parametrize("producer", ["fast_grade", "selfcheck"])
+def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch, producer):
     import threading
     from merlin.targetgen import capsule_common, capsule_scheduling
     from merlin_experiments.phase1.feedback import promotion, qa
@@ -522,7 +523,20 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
     monkeypatch.setattr(qa, "_execution_digest_from_result", lambda _: None)
     monkeypatch.setattr(promotion, "affordable_cert_items", lambda want, **kw: (want, {}))
     monkeypatch.setattr(promotion, "_mandatory_cert_members", lambda **kw: {"first", "second"})
-    callback = G._completed_loop_promoter(ws, frozen, runs, "L2", "L3", {"first"}, inputs=inputs)
+    if producer == "fast_grade":
+        callback = G._completed_loop_promoter(ws, frozen, runs, "L2", "L3", {"first"}, inputs=inputs)
+    else:
+        from merlin_experiments.phase1.brokers.selfcheck import _submission_digest
+        from merlin_experiments.phase1.feedback import selfcheck
+
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_WS", str(ws))
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_ROOT", str(inputs.promotion_root))
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_SHA256", _submission_digest(frozen / "submission"))
+        monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: ("L2", "L3", {"first"}))
+        callback = selfcheck._streaming_completion(
+            context=ctx, capsules_root=inputs.public_root, contract=inputs.contract,
+            source=frozen / "submission", runs=runs, adapters={"L2": object()},
+        )
     second_started, release_second = threading.Event(), threading.Event()
     rows = {}
 

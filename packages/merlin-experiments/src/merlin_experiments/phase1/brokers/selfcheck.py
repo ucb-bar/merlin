@@ -495,10 +495,24 @@ def main(
             staged_resp = ch / f".resp_{rid}.{os.getpid()}.tmp"
             staged_resp.unlink(missing_ok=True)
             aborted = False
+            # Trusted worker callbacks may certify completed capsules while the
+            # request is still running. Freeze before launching, not after done.
+            streaming_source = None
+            worker_env = dict(os.environ)
+            if not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
+                streaming_source = _freeze_passed_source(ws, graded_digest)
+                argv2[argv2.index("--submission") + 1] = str(streaming_source / "submission")
+                worker_env.update(
+                    MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
+                    MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
+                    MERLIN_SELFCHECK_PROMOTION_SHA256=graded_digest,
+                )
             with log_out.open("w") as fo, log_err.open("w") as fe:
                 from merlin_experiments.frozen_python import inherited_python_command
 
-                proc = subprocess.Popen(inherited_python_command(argv2), cwd=str(ws), stdout=fo, stderr=fe, text=True)
+                proc = subprocess.Popen(
+                    inherited_python_command(argv2), cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
+                )
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline)
                     if why:

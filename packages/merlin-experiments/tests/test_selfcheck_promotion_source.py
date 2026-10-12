@@ -31,6 +31,24 @@ def test_source_change_before_freeze_refuses_promotion(tmp_path, monkeypatch):
         _freeze_passed_source(ws, graded)
 
 
+def test_streaming_worker_refuses_a_candidate_not_bound_by_its_broker(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback.selfcheck import _streaming_completion
+
+    source = tmp_path / "submission"
+    source.mkdir()
+    (source / "manifest.yaml").write_text("source: original\n")
+    bound = _submission_digest(source)
+    monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_WS", str(tmp_path))
+    monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_ROOT", str(tmp_path / "policy"))
+    monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_SHA256", bound)
+    (source / "manifest.yaml").write_text("source: changed\n")
+    with pytest.raises(ValueError, match="differs from frozen broker identity"):
+        _streaming_completion(
+            context=None, capsules_root=tmp_path, contract=None,
+            source=source, runs=tmp_path / "runs", adapters={"L2": object()},
+        )
+
+
 def test_direct_job_and_promotion_keep_same_source_after_author_edit(tmp_path, monkeypatch):
     from merlin_experiments.phase1.brokers.simjob import _freeze_direct_job_source
 
