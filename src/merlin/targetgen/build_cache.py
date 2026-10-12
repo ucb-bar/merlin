@@ -201,6 +201,9 @@ def build_path(target: str | None = None) -> tuple[Path, ...] | None:
     exact Python files inside the registered target package (including backend siblings). Invalid
     declarations disable reuse, never silently fall back to a partial key. This grants no execution
     or sandbox access; it only identifies code that must invalidate a cached executable.
+
+    The exact core data-bound RoCC backend owns its renderer in the core package,
+    independently of the external target metadata that selected it.
     """
     from merlin.common.paths import python_source_dir
 
@@ -231,10 +234,14 @@ def build_path(target: str | None = None) -> tuple[Path, ...] | None:
         declared = getattr(mod, "build_source_paths", None)
         if declared is not None:
             try:
+                from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
                 from merlin.targetgen import target_registry
 
-                info = target_registry.resolve(str(target))
-                package = Path(info.external_root or info.base).absolute()
+                if type(mod) is BoundRoCCBackend:
+                    package = (root / "merlin").absolute()
+                else:
+                    info = target_registry.resolve(str(target))
+                    package = Path(info.external_root or info.base).absolute()
                 module_file = Path(mod.__file__).absolute()
                 module_file.relative_to(package)
                 if not package.is_dir() or package.is_symlink():
