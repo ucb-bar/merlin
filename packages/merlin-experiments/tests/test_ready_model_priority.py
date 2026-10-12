@@ -44,3 +44,13 @@ def test_source_changes_during_priority_observation_keep_fifo(tmp_path, monkeypa
     for path in paths:
         path.write_text(json.dumps({'promoted': True, 'submission_digest': 'first'}))
     assert simjob._current_source_first(reversed(paths), tmp_path) == paths
+
+
+def test_wait_observation_precedes_worker_capacity_and_preserves_first_seen(tmp_path):
+    request = tmp_path / 'simreq_waiting.json'
+    observed = {}
+    assert simjob._observe_pending([request], set(), observed, 10.0) == [request]
+    # A busy worker pool does not reset or suppress queued time.
+    assert simjob._observe_pending([request], set(), observed, 70.0) == [request]
+    assert observed['waiting'] == 10.0
+    assert simjob._observe_pending([request], {'waiting'}, observed, 90.0) == []

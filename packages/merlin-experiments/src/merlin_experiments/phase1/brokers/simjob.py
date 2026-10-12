@@ -197,6 +197,14 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
         return ordered
 
 
+def _observe_pending(requests, claimed, queued_since, now):
+    """Observe wait even while all worker slots are occupied."""
+    pending = [p for p in requests if p.stem[len("simreq_"):] not in claimed]
+    for request in pending:
+        queued_since.setdefault(request.stem[len("simreq_"):], now)
+    return pending
+
+
 class VerilSlotsUnusable(RuntimeError):
     """The slot directory cannot be used at all -- distinct from every slot being busy."""
 
@@ -667,11 +675,8 @@ def main(
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
         # launch queued (respect local + global caps)
+        queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
-            queued = (req for req in ch.glob("simreq_*.json") if req.stem[len("simreq_") :] not in claimed)
-            queued = list(queued)
-            for request in queued:
-                queued_since.setdefault(request.stem[len("simreq_"):], time.monotonic())
             for req in _current_source_first(
                 queued, ws, context=context, capsules_root=capsules_root,
                 cert_tier=_CERT_TIER, contract=contract,
@@ -840,7 +845,9 @@ def main(
                     "schema": "simjob_resource_timing_v1", "job_id": jid,
                     "source_digest": launched_source_digest, "started_at_unix": time.time(),
                     "queue_wait_s": max(0.0, started - queued_since.pop(jid, started)),
-                    "reserved_native_slots": len(slots), "worker_pid": proc.pid,
+                    "reserved_verilator_slots": len(slots), "worker_pid": proc.pid,
+                    "configured_gsim_capacity": os.environ.get("MERLIN_GSIM_MAX_SLOTS"),
+                    "configured_gsim_cpus": os.environ.get("MERLIN_GSIM_CPUS"),
                     "scope": "broker-observed queue wait and worker runtime; not native-only runtime",
                 }
                 (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
