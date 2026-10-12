@@ -6,6 +6,8 @@ import json
 import os
 import subprocess
 import sys
+import zlib
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +23,7 @@ from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.sandbox import bwrap
 from merlin.targetgen.sandbox import toolchain as TC
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
 from merlin.targetgen.target_experiment import load_target_experiment
 from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, attach_common_substrate
 
@@ -112,6 +115,33 @@ def test_actual_fresh_interpreter_restores_exact_original_profile_source_and_sea
             assert checked["original_compiler_child"]["candidate_sha256"] == P.active_package_executor().source_sha256
     assert P.active_package_executor() is None and API.active_compiler_imports() is None
     assert list((original.private / "compiler").iterdir()) == []
+
+
+def test_large_original_runtime_selection_restores_through_sealed_bounded_fd(original):
+    surfaces = tuple(AnswerSurface("private runtime", original.private / f"member-{index:05d}", "file", "hidden")
+                     for index in range(3000))
+    original.inputs = replace(original.inputs, surfaces=surfaces)
+    with _scope(original):
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                                       package_dir=original.candidate) as transport:
+            assert os.fstat(transport.fd).st_size <= CHILD.MAX_BYTES
+            assert len(json.dumps(transport.document).encode()) > CHILD.MAX_BYTES
+            result = _run(transport, original, script=_CONTROL.replace(
+                "assert P.active_package_executor() is not None",
+                "assert len(P.active_package_executor().inputs.surfaces) == 3000"))
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+
+
+@pytest.mark.parametrize("payload", ["oversized", "truncated", "suffix"])
+def test_compressed_selection_refuses_expansion_and_unclosed_streams(payload):
+    compressed = zlib.compress(b"x" * (CHILD.MAX_SELECTION_BYTES + 1)) if payload == "oversized" else zlib.compress(b"{}")
+    if payload == "truncated":
+        compressed = compressed[:-1]
+    elif payload == "suffix":
+        compressed += b"unbound trailing bytes"
+    with pytest.raises(StageGateError, match="closed transport bound"):
+        CHILD._decode_selection(CHILD._COMPRESSED_SELECTION + compressed)
 
 
 @pytest.mark.parametrize("change", ["environment", "source", "descriptor", "spec_bytes"])

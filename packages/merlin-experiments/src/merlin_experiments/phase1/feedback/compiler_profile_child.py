@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import sys
+import zlib
 from pathlib import Path
 
 from merlin.common import invocation_record
@@ -31,6 +32,8 @@ from merlin_experiments.phase2.retained_revisions import source_inventory
 
 SCHEMA = "merlin.original_model_child.v1"
 MAX_BYTES = 256 << 10
+MAX_SELECTION_BYTES = 4 << 20
+_COMPRESSED_SELECTION = b"merlin.original_model_child.zlib.v1\0"
 # Linux UAPI linux/fcntl.h: some otherwise compatible CPython builds omit these
 # names and os.memfd_create. Kernel enforcement is identical in either binding.
 _SEALS, _ADD_SEALS, _GET_SEALS = 0x000F, 1033, 1034
@@ -68,6 +71,32 @@ def _data(value):
 
 def _digest(value):
     return hashlib.sha256(json.dumps(_data(value), sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
+def _encode_selection(document):
+    raw = json.dumps(_data(document), sort_keys=True, allow_nan=False).encode()
+    if len(raw) > MAX_SELECTION_BYTES:
+        raise StageGateError("original model child selection exceeds its decoded transport bound")
+    encoded = raw if len(raw) <= MAX_BYTES else _COMPRESSED_SELECTION + zlib.compress(raw)
+    if len(encoded) > MAX_BYTES:
+        raise StageGateError("original model child selection exceeds its bounded transport size")
+    return encoded
+
+
+def _decode_selection(raw):
+    if len(raw) > MAX_BYTES:
+        raise StageGateError("model child capability exceeds its bounded transport size")
+    if raw.startswith(_COMPRESSED_SELECTION):
+        decoder = zlib.decompressobj()
+        try:
+            decoded = decoder.decompress(raw[len(_COMPRESSED_SELECTION):], MAX_SELECTION_BYTES + 1)
+        except zlib.error as error:
+            raise StageGateError("model child compressed selection is invalid") from error
+        if (len(decoded) > MAX_SELECTION_BYTES or not decoder.eof
+            or decoder.unused_data or decoder.unconsumed_tail):
+            raise StageGateError("model child compressed selection exceeds its closed transport bound")
+        raw = decoded
+    return json.loads(raw)
 
 
 def _plain(value):
@@ -279,9 +308,7 @@ def prepare_model_child(*, spec_path, environment, package_dir):
             "writable_roots": [str(path) for path in boundary.writable_roots],
             "boundary_sha256": boundary.verify(writable_roots=(_plain(spec_path).parent,)),
         }
-    raw = json.dumps(_data(document), sort_keys=True, allow_nan=False).encode()
-    if len(raw) > MAX_BYTES:
-        raise StageGateError("original model child selection exceeds its bounded transport size")
+    raw = _encode_selection(document)
     fd = _memfd()
     readonly = None
     try:
@@ -315,9 +342,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     os.lseek(fd, 0, os.SEEK_SET)
     with os.fdopen(fd, "rb") as stream:
         raw = stream.read(MAX_BYTES + 1)
-    if len(raw) > MAX_BYTES:
-        raise StageGateError("model child capability exceeds its bounded transport size")
-    document = json.loads(raw)
+    document = _decode_selection(raw)
     if (
         document.get("schema") != SCHEMA
         or document["parent"] != _process(os.getppid())

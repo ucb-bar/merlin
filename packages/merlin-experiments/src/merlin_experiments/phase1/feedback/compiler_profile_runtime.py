@@ -9,6 +9,8 @@ authority; mutable source, callback-selected policies and foreign owners refuse.
 from __future__ import annotations
 
 import contextlib
+import contextvars
+import functools
 import hashlib
 import json
 import shlex
@@ -22,6 +24,44 @@ import yaml
 from merlin.targetgen import package_runtime as P
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 
+_INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
+
+
+def finish_snapshot_invocation():
+    """Complete the final full custody read before output/receipt publication."""
+    close = _INVOCATION_PUBLICATION.get()
+    if close is not None:
+        close()
+
+
+def snapshot_scoped_entrypoint(function):
+    """Only exact original execution owners can batch one compiler invocation."""
+    @functools.wraps(function)
+    def call(self, *args, **kwargs):
+        from merlin.common.bundle_snapshot import verified_snapshot_scope
+        from merlin_experiments.phase1.component_package_execution import ComponentPackageExecutor
+
+        if type(self) is _Executor:
+            selected = self
+        elif type(self) is ComponentPackageExecutor:
+            selected = self.original_execution
+            if selected is None:
+                return function(self, *args, **kwargs)
+            if type(selected) is not _Executor or P.active_package_executor() is not self:
+                raise ValueError("snapshot batching lost its exact original component executor")
+        else:
+            raise ValueError("snapshot batching requires an exact original executor")
+        if type(selected.owner) is not CommonTransformService:
+            raise ValueError("snapshot batching requires its original profile owner")
+        with contextlib.ExitStack() as stack:
+            owner = selected.owner
+            stack.enter_context(verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo))
+            token = _INVOCATION_PUBLICATION.set(stack.close)
+            try:
+                return function(self, *args, **kwargs)
+            finally:
+                _INVOCATION_PUBLICATION.reset(token)
+    return call
 
 def selected_service(*, workspace, run_dir, repo):
     """Read only the original archived manifest; historical runs keep no scope."""
@@ -319,6 +359,7 @@ class _Executor:
                     raise P.CertFailure("build", "tool_crash", "boxed declared build failed: " + result.stderr[-500:])
         self._verify(pkg)
 
+    @snapshot_scoped_entrypoint
     def run_entrypoint(self, pkg, name, input_mlir, output_json=None, *, timeout=600,
                       invocation_directory=None, write_bytecode=False, artifact_profile=None):
         self._verify(pkg)
@@ -363,6 +404,7 @@ class _Executor:
             P._admit_artifact_protocol(pkg, artifact_profile)
             if artifact_profile is not None:
                 require_profile(artifact_profile)
+            finish_snapshot_invocation()
             if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
                 copy_plain_file(outgoing, output_json, output=True)
         self._verify(pkg)

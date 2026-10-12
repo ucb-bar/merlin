@@ -142,16 +142,50 @@ class _Cancelled(BaseException):
     pass
 
 
+
+def _verify_owner_selection(owner):
+    """Bind readiness to protected metadata without scanning the SDK payload.
+
+    The parent fully checks the original service before and after the compiler
+    call. A requested proof additionally constructs that service and checks all
+    frozen bytes before dispatch; readiness itself grants no proof authority.
+    """
+    import yaml
+
+    from merlin.common.bundle_snapshot import MARKER, bundle_snapshot_root
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    if type(owner) is not dict or set(owner) != {
+        "workspace", "bundle_manifest", "repo", "archive_sha256", "snapshot_sha256",
+        "profile_sha256", "snapshot_marker_sha256",
+    }:
+        raise ValueError("compiler channel has no exact original owner selection")
+    workspace, archive, repo = (Path(owner[name]) for name in ("workspace", "bundle_manifest", "repo"))
+    for path in (workspace, archive, repo):
+        if not path.is_absolute() or path.resolve() != path or path.is_symlink():
+            raise ValueError("compiler channel owner is not an ordinary canonical selection")
+    if not workspace.is_dir() or not repo.is_dir() or archive.is_relative_to(workspace):
+        raise ValueError("compiler channel authority is not independent of its original workspace")
+    if _sha(archive) != owner["archive_sha256"]:
+        raise ValueError("compiler channel changed its original archive")
+    profile = verify_tool_profile(yaml.safe_load(archive.read_bytes()))
+    if profile is None or profile["sha256"] != owner["profile_sha256"]:
+        raise ValueError("compiler channel changed its original profile")
+    marker = bundle_snapshot_root(workspace) / MARKER
+    if marker.resolve() != marker or _sha(marker) != owner["snapshot_marker_sha256"]:
+        raise ValueError("compiler channel changed its original snapshot marker")
+    document = json.loads(marker.read_bytes())
+    if (document.get("version") != 4 or document.get("repo") != str(repo)
+        or document.get("content_sha256") != owner["snapshot_sha256"]):
+        raise ValueError("compiler channel changed its original snapshot owner")
+
 def _serve(selection, control):
     if set(selection) != {"schema", "workspace", "package", "package_sha256", "input_path", "input_sha256",
                           "command_name", "deadline", "owner", "parent_pid"} or selection["schema"] != SCHEMA:
         raise ValueError("compiler channel has no original host selection")
     owner = selection["owner"]
-    service = CommonTransformService(workspace=Path(owner["workspace"]),
-        bundle_manifest=Path(owner["bundle_manifest"]), repo=Path(owner["repo"]))
-    if (service.profile["sha256"] != owner["profile_sha256"] or service.snapshot_digest != owner["snapshot_sha256"]
-        or hashlib.sha256(service.bundle_bytes).hexdigest() != owner["archive_sha256"]):
-        raise ValueError("compiler channel changed its original frozen owner")
+    _verify_owner_selection(owner)
+    service = None
     workspace, package, input_path = map(Path, (selection["workspace"], selection["package"], selection["input_path"]))
     if (input_path.resolve() != input_path or input_path.is_symlink()
         or _sources(package) != selection["package_sha256"]):
@@ -185,6 +219,14 @@ def _serve(selection, control):
                 request = _read(descriptor, name, MAX_REQUEST_BYTES)
                 proof = control / "proofs" / request_id
                 proof.mkdir(parents=True, mode=0o700)
+                if service is None:
+                    service = CommonTransformService(workspace=Path(owner["workspace"]),
+                        bundle_manifest=Path(owner["bundle_manifest"]), repo=Path(owner["repo"]))
+                    if (service.profile["sha256"] != owner["profile_sha256"]
+                        or service.snapshot_digest != owner["snapshot_sha256"]
+                        or service.snapshot_marker_digest != owner["snapshot_marker_sha256"]
+                        or hashlib.sha256(service.bundle_bytes).hexdigest() != owner["archive_sha256"]):
+                        raise ValueError("compiler channel changed its original frozen owner")
                 body = _dispatch(service, request, request_id, deadline=deadline, proof_root=proof,
                     package_sha256=selection["package_sha256"], input_sha256=selection["input_sha256"])
                 _write(descriptor, "resp_" + request_id + ".json", body)
@@ -278,7 +320,8 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
             "command_name": command_name, "deadline": deadline, "parent_pid": os.getpid(),
             "owner": {"workspace": str(service.workspace), "bundle_manifest": str(service.bundle_manifest),
                 "repo": str(service.repo), "archive_sha256": hashlib.sha256(service.bundle_bytes).hexdigest(),
-                "snapshot_sha256": service.snapshot_digest, "profile_sha256": service.profile["sha256"]}}
+                "snapshot_sha256": service.snapshot_digest, "profile_sha256": service.profile["sha256"],
+                "snapshot_marker_sha256": service.snapshot_marker_digest}}
         path = control / "selection.json"
         path.write_text(json.dumps(selection, sort_keys=True))
         path.chmod(0o400)
