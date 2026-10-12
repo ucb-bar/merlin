@@ -129,6 +129,15 @@ class CommonTransformService:
             raise ValueError("common transform requires actual structured IR and explicit parameters")
         if set(options) - {field.name for field in fields(PipelineOptions)}:
             raise ValueError("common transform contains unsupported transformation parameters")
+        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2
+
+        if self.profile.get("common_substrate") != COMMON_SUBSTRATE_V2 and set(options) & {
+            "eliminate_redundancy",
+            "hoist_invariants",
+            "unroll_factors",
+            "max_added_operations",
+        }:
+            raise ValueError("transformation parameters are outside the original frozen substrate")
         index_bits = self.profile.get("host_index_bits")
         if type(index_bits) is not int:
             raise ValueError("common transform requires the independently reviewed host ABI index width")
@@ -136,7 +145,13 @@ class CommonTransformService:
             raise ValueError("common transform cannot change the frozen host ABI index width")
         selected = dict(options)
         selected["index_bits"] = index_bits
-        for name in ("normalize_shapes", "simplify_integers", "reuse_buffers"):
+        for name in (
+            "normalize_shapes",
+            "simplify_integers",
+            "reuse_buffers",
+            "eliminate_redundancy",
+            "hoist_invariants",
+        ):
             if name in selected and type(selected[name]) is not bool:
                 raise ValueError("common transform selectors must be booleans")
         tiles = selected.get("tile_iterations", ())
@@ -147,6 +162,18 @@ class CommonTransformService:
         ):
             raise ValueError("common transform tiling parameters exceed the admitted request budget")
         selected["tile_iterations"] = tuple(tiles)
+        factors = selected.get("unroll_factors", ())
+        growth = selected.get("max_added_operations", 4096)
+        if (
+            not isinstance(factors, (tuple, list))
+            or len(factors) > 32
+            or any(type(factor) is not int or not 1 <= factor <= 64 for factor in factors)
+            or type(growth) is not int
+            or not 1 <= growth <= 4096
+        ):
+            raise ValueError("unrolling exceeds the inherited host compilation budget")
+        selected["unroll_factors"] = tuple(factors)
+        selected["max_added_operations"] = growth
         orders = selected.get("dependency_orders", ())
         if not isinstance(orders, (list, tuple)) or len(orders) > 32:
             raise ValueError("common dependency order exceeds the admitted request budget")
@@ -194,6 +221,14 @@ class CommonTransformService:
             "hardware_conformance": "not_established",
             "numerical_execution": "not_established",
         }
+        if self.profile.get("common_substrate") == COMMON_SUBSTRATE_V2:
+            from merlin.perf.pass_observation import observe_changes
+
+            document["pass_observations"] = observe_changes(
+                result.changes, profile_sha256=self.profile["sha256"], index_bits=index_bits
+            )
+        if time.monotonic() > deadline:
+            raise TimeoutError("common transformation observations exceeded its original host work budget")
         if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
             raise ValueError("common transformation output exceeds its inherited byte budget")
         return document

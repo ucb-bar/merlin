@@ -16,6 +16,7 @@ from . import tool_registry as TR
 
 SCHEMA = "merlin.compiler_tool_profile.v1"
 COMMON_SUBSTRATE_V1 = "merlin.common_compiler_substrate.v1"
+COMMON_SUBSTRATE_V2 = "merlin.common_compiler_substrate.v2"
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
     "merlin.transforms.certificates",
@@ -37,7 +38,37 @@ AUTOMATIC_CHECKER_MODULES = (
     "merlin.verify.lean_checker",
 )
 AUTOMATIC_CHECKER_DATA = ("verify/lean/Merlin/Foundation.lean",)
+COMMON_PUBLIC_MODULES_V2 = (
+    *COMMON_PUBLIC_MODULES,
+    "merlin.transforms.pure_scalar",
+    "merlin.transforms.scalar_witness",
+    "merlin.transforms.unrolling",
+    "merlin.transforms.analysis_types",
+    "merlin.transforms.analysis_memory",
+    "merlin.transforms.analysis_liveness",
+    "merlin.transforms.analyses",
+    "merlin.transforms.resource_allocation",
+    "merlin.semantic_compiler.allocation_types",
+    "merlin.semantic_compiler.allocate",
+    "merlin.semantic_compiler.rules",
+    "merlin.semantic_compiler.model",
+)
+COMMON_NAMESPACE_MODULES_V2 = (*COMMON_NAMESPACE_MODULES, "merlin.semantic_compiler.__init__")
+AUTOMATIC_CHECKER_MODULES_V2 = (
+    *AUTOMATIC_CHECKER_MODULES,
+    "merlin.verify.lean_obligations",
+    "merlin.perf.pass_observation",
+)
 _OPTIONAL_TOOLS = frozenset({"isa_dialect_generation", "lean_proof_authoring"})
+
+
+def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Published source membership is interpreted by its explicit substrate version."""
+    if version == COMMON_SUBSTRATE_V1:
+        return COMMON_NAMESPACE_MODULES, COMMON_PUBLIC_MODULES, AUTOMATIC_CHECKER_MODULES
+    if version == COMMON_SUBSTRATE_V2:
+        return COMMON_NAMESPACE_MODULES_V2, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V2
+    raise ValueError("unknown common compiler substrate")
 
 
 def _digest(document: dict) -> str:
@@ -55,14 +86,17 @@ def _source(root: Path, module: str) -> Path:
     return selected
 
 
-def common_tool_profile(arm: str, tools: tuple[str, ...], *, python_source_root: Path) -> dict:
+def common_tool_profile(
+    arm: str, tools: tuple[str, ...], *, python_source_root: Path, version: str = COMMON_SUBSTRATE_V1
+) -> dict:
     """Bind actual common source bytes and host-owned formal coverage declarations."""
     from merlin.verify import lean_contract
 
     root = Path(python_source_root)
     if not root.is_absolute() or root.resolve() != root or not root.is_dir():
         raise ValueError("common substrate requires the explicit canonical selected Python source root")
-    modules = (*COMMON_NAMESPACE_MODULES, *COMMON_PUBLIC_MODULES)
+    namespaces, public, automatic = substrate_inventory(version)
+    modules = (*namespaces, *public)
     sources = [
         {
             "module": module,
@@ -77,7 +111,7 @@ def common_tool_profile(arm: str, tools: tuple[str, ...], *, python_source_root:
             "path": _logical(module),
             "sha256": hashlib.sha256(_source(root, module).read_bytes()).hexdigest(),
         }
-        for module in AUTOMATIC_CHECKER_MODULES
+        for module in automatic
     ]
     for relative in AUTOMATIC_CHECKER_DATA:
         source = root / "merlin" / relative
@@ -91,16 +125,16 @@ def common_tool_profile(arm: str, tools: tuple[str, ...], *, python_source_root:
         != hashlib.sha256(_source(root, "merlin.verify.lean_contract").read_bytes()).hexdigest()
     ):
         raise ValueError("loaded formal coverage policy differs from the selected source release")
-    policy = lean_contract.coverage_policy_record()
+    policy = lean_contract.coverage_policy_record(version="2" if version == COMMON_SUBSTRATE_V2 else "1")
     if policy.get("mode") != "strict_within_coverage":
         raise ValueError("new compiler substrate requires the host-owned strict formal coverage policy")
     record = {
         "schema": SCHEMA,
-        "common_substrate": COMMON_SUBSTRATE_V1,
+        "common_substrate": version,
         "arm": arm,
         "treatment_tools": list(tools),
-        "common_public_modules": list(COMMON_PUBLIC_MODULES),
-        "automatic_checker_modules": list(AUTOMATIC_CHECKER_MODULES),
+        "common_public_modules": list(public),
+        "automatic_checker_modules": list(automatic),
         "common_sources": sources,
         "automatic_checker_sources": automatic_sources,
         "proof_policy": copy.deepcopy(policy),
@@ -120,7 +154,8 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     document = {key: value for key, value in profile.items() if key != "sha256"}
     if profile.get("sha256") != _digest(document):
         raise ValueError("compiler tool profile identity changed")
-    if profile.get("common_substrate") != COMMON_SUBSTRATE_V1 or profile.get("arm") != bundle.get("arm"):
+    namespaces, public, automatic = substrate_inventory(profile.get("common_substrate"))
+    if profile.get("arm") != bundle.get("arm"):
         raise ValueError("compiler tool profile differs from its selected bundle")
     declared = profile.get("treatment_tools")
     if not isinstance(declared, list) or declared != bundle.get("tools"):
@@ -131,12 +166,12 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     expected = set(TR.ARM_TOOLS.get(arm, ())) & _OPTIONAL_TOOLS
     if set(declared) & _OPTIONAL_TOOLS != expected:
         raise ValueError("optional tool inventory contradicts its explicit experiment level")
-    if profile.get("common_public_modules") != list(COMMON_PUBLIC_MODULES):
+    if profile.get("common_public_modules") != list(public):
         raise ValueError("common compiler inventory is incomplete or changed")
-    if profile.get("automatic_checker_modules") != list(AUTOMATIC_CHECKER_MODULES):
+    if profile.get("automatic_checker_modules") != list(automatic):
         raise ValueError("automatic verification inventory changed")
     sources = profile.get("common_sources")
-    expected_modules = (*COMMON_NAMESPACE_MODULES, *COMMON_PUBLIC_MODULES)
+    expected_modules = (*namespaces, *public)
     if not isinstance(sources, list) or [row.get("module") for row in sources if isinstance(row, dict)] != list(
         expected_modules
     ):
@@ -151,7 +186,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
         ):
             raise ValueError("common compiler source identity is malformed")
     automatic_sources = profile.get("automatic_checker_sources")
-    expected_automatic = [(module, _logical(module)) for module in AUTOMATIC_CHECKER_MODULES] + [
+    expected_automatic = [(module, _logical(module)) for module in automatic] + [
         (None, _PY + relative) for relative in AUTOMATIC_CHECKER_DATA
     ]
     if (
@@ -169,10 +204,14 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
         ):
             raise ValueError("automatic verifier source identity is malformed")
     policy = profile.get("proof_policy") or {}
+    from merlin.verify.lean_contract import coverage_policy_record
+
+    expected_policy = coverage_policy_record(version="2" if profile["common_substrate"] == COMMON_SUBSTRATE_V2 else "1")
     if (
         policy.get("mode") != "strict_within_coverage"
         or policy.get("unknown_within_coverage") != "reject"
         or policy.get("outside_coverage") != "independent_checks_required"
+        or policy != expected_policy
     ):
         raise ValueError("compiler tool profile weakens the formal preservation policy")
     toolchain = profile.get("lean_toolchain") or {}
@@ -196,12 +235,11 @@ def attach_common_substrate(
     host_index_bits: int | None = None,
 ) -> None:
     """Add reviewed common facilities while masking optional tools on every other level."""
-    if version != COMMON_SUBSTRATE_V1:
-        raise ValueError(f"unknown common compiler substrate {version!r}")
+    namespaces, public, automatic = substrate_inventory(version)
     if host_index_bits is not None and (type(host_index_bits) is not int or not 2 <= host_index_bits <= 128):
         raise ValueError("reviewed host index width must be 2..128 bits or explicitly unknown")
     tools = tuple(bundle["tools"])
-    profile = common_tool_profile(bundle["arm"], tools, python_source_root=python_source_root)
+    profile = common_tool_profile(bundle["arm"], tools, python_source_root=python_source_root, version=version)
     # Deny-by-default isolation admits only these leaves. Parent denials would
     # also hide common leaves, so replace those historical blanket exclusions.
     bundle["denied"] = [row for row in bundle["denied"] if row.get("path") not in {"merlin/", _PY + "verify/"}]
@@ -214,17 +252,32 @@ def attach_common_substrate(
         for source in sorted((python_source_root / "merlin/verify").glob("*.py")):
             if not source.name.startswith("lean_"):
                 bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
-    for module in (*COMMON_NAMESPACE_MODULES, *COMMON_PUBLIC_MODULES):
+    for module in (*namespaces, *public):
         bundle["allowed"].append({"path": _logical(module), "mode": "ro", "note": "common compiler infrastructure"})
     # Automatic verification is host-owned. These dependencies are sealed as
     # host inputs, never exposed by adding a general proof API to lower levels.
     if "lean_proof_authoring" not in tools:
-        for module in AUTOMATIC_CHECKER_MODULES:
-            bundle["host_inputs"].append({"path": _logical(module), "note": "host-owned automatic formal verification"})
+        for module in automatic:
+            bundle["host_inputs"].append(
+                {"path": str(_source(python_source_root, module)), "note": "host-owned automatic formal verification"}
+            )
         bundle["host_inputs"].extend(
-            {"path": _PY + relative, "note": "automatic formal verification lemmas"}
+            {"path": str(python_source_root / "merlin" / relative), "note": "automatic formal verification lemmas"}
             for relative in AUTOMATIC_CHECKER_DATA
         )
+    else:
+        author_sources = [(_logical(module), _source(python_source_root, module)) for module in automatic]
+        author_sources.extend(
+            (_PY + relative, python_source_root / "merlin" / relative) for relative in AUTOMATIC_CHECKER_DATA
+        )
+        for logical, selected in author_sources:
+            for row in bundle["allowed"]:
+                if row.get("path") == logical:
+                    row["path"] = str(selected)
+            if not any(row.get("path") == str(selected) for row in bundle["allowed"]):
+                bundle["allowed"].append(
+                    {"path": str(selected), "mode": "ro", "note": "admitted formal author tool dependency"}
+                )
     software_inputs = [
         row for row in bundle["host_inputs"] if row.get("note") == "selected software semantics; not hardware evidence"
     ]
@@ -298,6 +351,11 @@ def attach_common_substrate(
                 paths.append(str(path))
         role = "allowed" if "lean_proof_authoring" in tools else "host_inputs"
         for path in (str(selected), *paths):
+            # The compiled formal closure may also name the packaged foundation
+            # already selected as automatic checker data. One source identity
+            # must have one materialization record, rather than duplicate grants.
+            if any(row.get("path") == path for row in bundle[role]):
+                continue
             row = {"path": path, "note": "selected formal verification toolchain"}
             if path == str(selected):
                 row["note"] = "selected formal verification toolchain manifest"

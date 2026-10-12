@@ -49,6 +49,14 @@ def test_index_width_is_owned_by_frozen_host_policy(tmp_path):
         service.apply(_request(), work_root=tmp_path)
 
 
+@pytest.mark.parametrize(
+    "options", [{"eliminate_redundancy": True}, {"hoist_invariants": True}, {"unroll_factors": [4]}]
+)
+def test_v1_cannot_silently_acquire_v2_transforms(tmp_path, options):
+    with pytest.raises(ValueError, match="frozen substrate"):
+        _service().apply(_request(**options), work_root=tmp_path)
+
+
 def test_missing_formal_toolchain_cannot_turn_into_a_success(tmp_path):
     with pytest.raises(FileNotFoundError, match="explicitly selected"):
         _service().apply(_request(), work_root=tmp_path)
@@ -129,6 +137,15 @@ def test_host_callback_keeps_fixed_scope_model_toolchain_and_returns_completion(
     if fault is None:
         result = service.apply(_request(reuse_buffers=False), work_root=tmp_path, timeout_s=4)
         assert result["status"] == "verified" and result["receipts"]
+        assert "pass_observations" not in result
+        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2
+
+        service.profile["common_substrate"] = COMMON_SUBSTRATE_V2
+        result = service.apply(_request(reuse_buffers=False), work_root=tmp_path, timeout_s=4)
+        observation = result["pass_observations"]
+        assert observation["compiler_tool_profile_sha256"] == service.profile["sha256"]
+        assert observation["passes"][0]["static_operation_delta"] == -1
+        assert observation["ranking_authority"] == "none"
     else:
         with pytest.raises(ValueError, match="not established by Lean"):
             service.apply(_request(reuse_buffers=False), work_root=tmp_path, timeout_s=4)

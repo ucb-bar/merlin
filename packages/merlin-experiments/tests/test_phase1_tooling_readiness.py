@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 from merlin_experiments.phase1 import tooling_readiness as R
 
@@ -305,3 +306,83 @@ def test_selected_release_facts_replace_the_legacy_pin(tmp_path, monkeypatch):
     monkeypatch.setattr(compiler, "compile_checks", lambda *args: {"kernel": "CHECK: op"})
     monkeypatch.setattr(runner, "find_filecheck", lambda *args: "/bin/FileCheck")
     assert all(row["ok"] for row in R._frozen_rtl_checks(te, ws, bundle, capsule.parent, repo=context.repo))
+
+
+def test_common_readiness_exercises_host_broker_not_only_imports(tmp_path, monkeypatch):
+    """CPU transport control; external Lean completion is explicitly synthetic."""
+    import hashlib
+
+    from merlin.transforms import client
+
+    monkeypatch.chdir(tmp_path)
+    seen = []
+
+    def call(workspace, source_ir, options, **kwargs):
+        seen.append((workspace, source_ir, options))
+        return {
+            "status": "verified",
+            "source_sha256": hashlib.sha256(source_ir.encode()).hexdigest(),
+            "transformed_ir": "builtin.module {}",
+            "compiler_tool_profile_sha256": "a" * 64,
+            "receipts": [
+                {"method": "lean_kernel", "status": "verified", "query_sha256": "b" * 64, "toolchain_sha256": "c" * 64}
+            ],
+        }
+
+    monkeypatch.setattr(client, "apply_transform", call)
+    script = R._sandbox_probe("synthetic", (), "", common_substrate=True, common_profile_sha256="a" * 64)
+    exec(compile(script, "<common readiness>", "exec"), {})
+    assert len(seen) == 1
+    assert "arith.addi" in seen[0][1]
+    assert "coverage" not in seen[0][2] and "toolchain" not in seen[0][2]
+
+
+@pytest.mark.parametrize("status", ["unknown", "unchanged", "refuted"])
+def test_importable_common_modules_do_not_establish_readiness(tmp_path, monkeypatch, status):
+    from merlin.transforms import client
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(client, "apply_transform", lambda *_args, **_kwargs: {"status": status})
+    script = R._sandbox_probe("synthetic", (), "", common_substrate=True)
+    with pytest.raises(AssertionError):
+        exec(compile(script, "<common readiness>", "exec"), {})
+
+
+def test_common_probe_uses_original_broker_with_private_frozen_manifest(tmp_path, monkeypatch):
+    from merlin_experiments import frozen_python
+
+    context, _, ws = _inputs(tmp_path)
+    context.readback_policy = None
+    calls, manifests = [], []
+    monkeypatch.setattr(R.BW, "frozen_selected_rtl_facts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(frozen_python, "inherited_python_command", lambda argv: argv)
+
+    class Process:
+        def __init__(self, argv, **kwargs):
+            calls.append(argv)
+            manifest = Path(argv[argv.index("--compiler-bundle-manifest") + 1])
+            assert not manifest.is_relative_to(ws)
+            assert manifest.stat().st_mode & 0o077 == 0
+            manifests.append(manifest)
+            assert yaml.safe_load(manifest.read_text())["compiler_tool_profile"]["sha256"] == "a" * 64
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(R.subprocess, "Popen", Process)
+    with R.public_probe_session(context, ws, {"compiler_tool_profile": {"sha256": "a" * 64}}, ()) as script:
+        assert "apply_transform" in script and len(calls) == 1
+        assert calls[0][2] == "merlin_experiments.phase1.brokers.selfcheck"
+        assert manifests[0].exists()
+    assert not manifests[0].exists()
+    assert (ws / ".qa_channel/STOP").exists()
+
+
+def test_fresh_lowest_level_missing_snapshot_is_no_go(tmp_path):
+    context, _, ws = _inputs(tmp_path)
+    run_dir = tmp_path / "receipt"
+    run_dir.mkdir()
+    result = R.run(
+        context, None, ws, {"arm": "raw_baseline", "compiler_tool_profile": {}}, (), tmp_path, run_dir, None, "frozen"
+    )
+    assert result["status"] == "no_go"

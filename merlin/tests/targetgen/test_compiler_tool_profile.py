@@ -20,7 +20,10 @@ from merlin.targetgen.tool_profile import (
     COMMON_NAMESPACE_MODULES,
     COMMON_PUBLIC_MODULES,
     COMMON_SUBSTRATE_V1,
+    COMMON_SUBSTRATE_V2,
+    attach_common_substrate,
     inherited_tool_profile,
+    substrate_inventory,
     tool_profile_prompt,
     verify_tool_profile,
 )
@@ -43,6 +46,28 @@ def selected_sources(tmp_path):
         path.write_text("-- Independent verifier data fixture.\n")
     (root / "merlin/verify/cli.py").write_text('"""Historical independent verification client."""\n')
     return root
+
+
+def test_v2_extends_inventory_without_reinterpreting_v1_membership(selected_sources):
+    namespaces, public, automatic = substrate_inventory(COMMON_SUBSTRATE_V2)
+    for module in (*namespaces, *public, *automatic):
+        path = selected_sources / (module.replace(".", "/") + ".py")
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('"""Independent V2 source membership fixture."""\n')
+    original = _bundles(selected_sources)
+    extended = generate_bundles(_te(), common_substrate=COMMON_SUBSTRATE_V2, python_source_root=selected_sources)
+    for bundle in extended.values():
+        profile = verify_tool_profile(bundle)
+        assert profile["common_public_modules"] == list(public)
+        assert profile["proof_policy"]["registry_version"] == "2"
+        assert "total_scalar_rewrite_v1" in profile["proof_policy"]["domains"]
+        assert "merlin.transforms.resource_allocation" in profile["common_public_modules"]
+    for bundle in original.values():
+        assert verify_tool_profile(bundle)["common_public_modules"] == list(COMMON_PUBLIC_MODULES)
+        assert verify_tool_profile(bundle)["proof_policy"]["registry_version"] == "1"
+    with pytest.raises(ValueError, match="changed|differs"):
+        inherited_tool_profile(next(iter(original.values())), next(iter(extended.values())))
 
 
 def _te():
@@ -106,6 +131,23 @@ def test_automatic_verifier_closure_is_pinned_host_only_on_lower_levels(selected
     assert before["compiler_tool_profile"]["sha256"] != after["compiler_tool_profile"]["sha256"]
     with pytest.raises(ValueError, match="Phase 1 compiler tool profile"):
         inherited_tool_profile(before, after)
+
+
+def test_direct_substrate_selection_uses_canonical_private_files(selected_sources):
+    """Direct preparation cannot select private bytes through a compatibility alias."""
+    from merlin.targetgen.sandbox.bwrap import _validate_host_sources
+
+    bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
+    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V1, python_source_root=selected_sources)
+    hosts = [(row["path"], Path(row["path"])) for row in bundle["host_inputs"]]
+    assert hosts and all(path.is_absolute() and path.resolve() == path for _, path in hosts)
+    _validate_host_sources([], hosts)
+    alias = selected_sources.parent / "private-checker-alias.py"
+    alias.symlink_to(hosts[0][1])
+    with pytest.raises(RuntimeError, match="symlink aliases"):
+        _validate_host_sources([], [(str(alias), alias)])
+    profile = verify_tool_profile(bundle)
+    assert all(row["path"].startswith("merlin/python/merlin/") for row in profile["automatic_checker_sources"])
 
 
 def test_optional_leaf_grants_are_denied_on_other_levels_including_historical_verify(selected_sources):
@@ -218,7 +260,7 @@ def test_explicit_toolchain_is_host_owned_except_on_lean_author_level(selected_s
             {
                 "schema": "merlin.lean_toolchain.v1",
                 "executable": member(executable),
-                "files": [member(library)],
+                "files": [member(library), member(selected_sources / "merlin" / AUTOMATIC_CHECKER_DATA[0])],
                 "library_roots": [str(tmp_path)],
                 "dependency_revision": "independent-fixture",
                 "timeout_s": 1,
@@ -232,6 +274,9 @@ def test_explicit_toolchain_is_host_owned_except_on_lean_author_level(selected_s
         profile = verify_tool_profile(row)
         assert profile["lean_toolchain"]["readiness"] == "declared_unprobed"
         author = "lean_proof_authoring" in row["tools"]
+        assert len(_paths(row, "host_inputs")) == len(row["host_inputs"])
+        foundation = str(selected_sources / "merlin" / AUTOMATIC_CHECKER_DATA[0])
+        assert sum(entry["path"] == foundation for entry in row["allowed" if author else "host_inputs"]) == 1
         for path in (manifest, executable, library):
             assert (str(path) in _paths(row, "allowed")) == author
             assert (str(path) in _paths(row, "host_inputs")) != author

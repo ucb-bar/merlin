@@ -833,10 +833,10 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
-    from .tool_profile import COMMON_SUBSTRATE_V1
+    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2
 
     ap.add_argument(
-        "--common-substrate", choices=(COMMON_SUBSTRATE_V1,),
+        "--common-substrate", choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
