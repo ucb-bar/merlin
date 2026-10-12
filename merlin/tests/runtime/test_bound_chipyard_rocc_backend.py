@@ -552,6 +552,34 @@ def test_omitted_logical_inputs_and_warm_profile_are_explicit_refusals(selection
         bound.render_harness(_program(), target="synthetic", inputs={"X": [[1, 2]]}, warm_profile={})
 
 
+def test_ordinary_integer_runner_stimulus_reaches_strict_harness(selection):
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.targetgen.contract.compile import _ordinary_integer_harness_inputs
+
+    cb = _program()
+    del cb["kernel_abi"]
+    cb["commands"] = [{"opcode": "MOVE", "operands": {"src": "X", "dst": "Y"}}]
+    inputs = _ordinary_integer_harness_inputs(cb)
+    assert inputs == {"X": materialize_inputs(cb)["X"].to_list()}
+    assert "entry(tensor_0, tensor_1);" in _bound(selection).render_harness(
+        cb, target="synthetic", inputs=inputs
+    )
+    with pytest.raises(ValueError, match="exact complete logical input roster"):
+        _bound(selection).render_harness(cb, target="synthetic", inputs={})
+
+
+def test_integer_stimulus_fallback_does_not_replace_model_or_float_inputs():
+    from merlin.targetgen.contract.compile import _ordinary_integer_harness_inputs
+
+    with pytest.raises(ValueError, match="whole-program"):
+        _ordinary_integer_harness_inputs(_program())
+    cb = _program()
+    del cb["kernel_abi"]
+    cb["tensors"]["X"]["dtype"] = "f32"
+    with pytest.raises(ValueError, match="non-integer"):
+        _ordinary_integer_harness_inputs(cb)
+
+
 def test_coherent_execution_requires_a_separate_selected_reader(selection):
     selection[0]["harness_abi"]["readback_transport"] = COHERENT_DUMP_V1
     with pytest.raises(ValueError, match="coherent readback transport"):
