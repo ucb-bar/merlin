@@ -737,6 +737,208 @@ operations:
       status: unreviewed
       semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, compiled_numerical_equivalence: not_proved, existing_numerical_tolerance: unchanged}
       evidence: {exact_bf16_to_f32_extension: required, source_dense_nondecreasing_non_nan_boundaries: required, independent_capture_trace_right_flag_reproof: required, selected_index_observation: required, complete_compute_root_admission: required, candidate_capture_and_elf_join: required}
+  # Exact mixed-precision routing; native numerical gates remain mandatory.
+  - id: host_review_mixed_matmul_f32
+    status: "reviewed"
+    ops: ["aten.mm.default"]
+    placement: "host"
+    signature: {"family": "contraction", "ordered_operand_dtypes": ["f32", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_mixed_f64_f64_arith_addf
+    status: "reviewed"
+    ops: ["aten.add.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_addf"}
+  - id: host_review_mixed_bf16_bf16_arith_addf
+    status: "reviewed"
+    ops: ["aten.add.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_addf"}
+  - id: host_review_mixed_f64_arith_constant_arith_divf
+    status: "reviewed"
+    ops: ["aten.reciprocal.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_arith_divf"}
+  - id: host_review_mixed_f64_arith_constant_math_powf
+    status: "reviewed"
+    ops: ["aten.pow.Scalar"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_math_powf"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [pow]}
+  - id: host_review_mixed_bf16_f32_arith_extf_arith_addf
+    status: "reviewed"
+    ops: ["aten.add.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_addf"}
+  - id: host_review_mixed_f64_f32_arith_extf_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f32", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f32_arith_extf_arith_mulf"}
+  - id: host_review_mixed_bf16_f32_arith_extf_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_mulf"}
+  - id: host_review_mixed_bf16_arith_extf
+    status: "reviewed"
+    ops: ["aten._to_copy.default", "aten.bmm.default", "aten.mm.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2, 3, 4]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_arith_extf"}
+  - id: host_review_mixed_f64_f64_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_mulf"}
+  - id: host_review_mixed_bf16_bf16_arith_mulf
+    status: "reviewed"
+    ops: ["aten.mul.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "bf16", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [3]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_mulf"}
+  - id: host_review_mixed_i1_f64_f64_arith_select
+    status: "reviewed"
+    ops: ["aten.where.self"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i1", "f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i1_f64_f64_arith_select"}
+  - id: host_review_mixed_i64_arith_sitofp
+    status: "reviewed"
+    ops: ["aten._to_copy.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i64_arith_sitofp"}
+  - id: host_review_mixed_f64_f64_arith_subf
+    status: "reviewed"
+    ops: ["aten.sub.Tensor"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [1]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_subf"}
+  - id: host_review_mixed_f64_arith_truncf
+    status: "reviewed"
+    ops: ["aten._to_copy.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f32"], "ordered_result_dtypes": ["f32"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_truncf"}
+  - id: host_review_mixed_f32_arith_truncf
+    status: "reviewed"
+    ops: ["aten._to_copy.default", "aten.bmm.default", "aten.mm.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f32", "bf16"], "ordered_result_dtypes": ["bf16"], "ranks": [2, 3, 4]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f32_arith_truncf"}
+  - id: host_review_mixed_f64_math_cos
+    status: "reviewed"
+    ops: ["aten.cos.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_cos"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [cos]}
+  - id: host_review_mixed_f64_math_sin
+    status: "reviewed"
+    ops: ["aten.sin.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["f64", "f64"], "ordered_result_dtypes": ["f64"], "ranks": [2]}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+    source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_sin"}
+    linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [sin]}
+  - id: host_review_mixed_quant_ext_quantize_per_tensor_i8
+    status: "reviewed"
+    ops: ["quantized_decomposed.quantize_per_tensor.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["bf16", "f32", "i64"], "ordered_result_dtypes": ["i8"], "ranks": [3], "quantization_parameters": {"zero_point": 0, "quant_min": -128, "quant_max": 127}}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+  - id: host_review_mixed_quant_ext_dequantize_per_tensor_bf16
+    status: "reviewed"
+    ops: ["quantized_decomposed.dequantize_per_tensor.default"]
+    placement: "host"
+    signature: {"family": "elementwise_map", "ordered_operand_dtypes": ["i8", "f32", "i64"], "ordered_result_dtypes": ["bf16"], "ranks": [2, 3], "quantization_parameters": {"zero_point": 0}}
+    numerical_contract:
+      status: "unreviewed"
+      semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
+      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:

@@ -7,6 +7,7 @@ do not prove a global arena allocation or pointer-base address range.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict
@@ -46,6 +47,11 @@ from merlin.frontends.linalg_math_patterns import (
     static_f32_math_ordered_types,
     validate_static_f32_math_source_body,
 )
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import ordered_types as mixed_ordered_types
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_pattern as validate_mixed_pattern
 from merlin.frontends.linalg_patterns import (
     STATIC_POINTWISE_SOURCE_BODY_SCHEMA,
     STATIC_PROJECTED_POINTWISE_BODY_SCHEMA,
@@ -101,6 +107,11 @@ _DYNAMIC_OCCURRENCE = _OCCURRENCE | {"shape_source", "dynamic_bound"}
 
 def _contract(schema: object, operation: object, predicate: object) -> tuple[dict[str, str], Any, tuple[str, ...]]:
     """Resolve a closed versioned declaration without crossing schema namespaces."""
+    if schema == MIXED_SCHEMA:
+        if predicate is not None:
+            raise InvalidLinalgPattern("mixed source body declares no predicate")
+        declaration = validate_mixed({"schema": schema, "operation": operation})
+        return declaration, recognize_mixed, mixed_ordered_types(declaration)
     if schema == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
         if predicate is not None:
             raise InvalidLinalgPattern("Boolean source body does not declare a predicate")
@@ -342,7 +353,10 @@ def link(
 
 
 def _has_composite(witness: Mapping[str, Any]) -> bool:
-    return any(item.get("schema") == STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA for item in witness["occurrences"])
+    return any(
+        item.get("schema") in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA}
+        for item in witness["occurrences"]
+    )
 
 
 def _composite_source_matches(
@@ -380,14 +394,25 @@ def _composite_source_matches(
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:
-            if item.get("schema") != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA:
+            if item.get("schema") not in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA}:
                 continue
             ordinal = item.get("ordinal")
             if type(ordinal) is not int or not 0 <= ordinal < len(parsed):
                 return False
-            pattern = asdict(recognize_static_composite_math_body(parsed[ordinal]))
+            pattern = asdict(
+                (recognize_mixed if item["schema"] == MIXED_SCHEMA else recognize_static_composite_math_body)(
+                    parsed[ordinal]
+                )
+            )
+            if item["schema"] == MIXED_SCHEMA:
+                if any(
+                    json.loads(json.dumps(item.get(key))) != json.loads(json.dumps(pattern.get(key)))
+                    for key in ("operation", "shape", "ordered_types", "literal_bits", "input_shapes", "input_maps")
+                ):
+                    return False
+                continue
             if item.get("operation") != pattern["operation"] or any(
-                tuple(item.get(key, ())) != tuple(pattern[key])
+                tuple(item.get(key) or ()) != tuple(pattern.get(key) or ())
                 for key in ("shape", "ordered_types", "literal_bits", "lowering_intrinsic_obligations")
             ):
                 return False
@@ -401,7 +426,7 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
     if not isinstance(occurrences, list) or type(index_bits) is not int or not 2 <= index_bits <= 128:
         return False
     maximum = (1 << (index_bits - 1)) - 1
-    element_bytes = {"i1": 1, "f32": 4, "i64": 8}
+    element_bytes = {"i1": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
 
     def fits(shape: object, dtype: object, *, scalar: bool = False) -> bool:
         if (
@@ -439,7 +464,11 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
         shape, types, inputs = item.get("shape"), item.get("ordered_types"), item.get("input_shapes")
         if not isinstance(types, (list, tuple)) or len(types) < 2 or not fits(shape, types[-1]):
             return False
-        if item.get("schema") in {STATIC_BOOLEAN_SOURCE_BODY_SCHEMA, STATIC_PROJECTED_POINTWISE_BODY_SCHEMA}:
+        if item.get("schema") in {
+            STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
+            STATIC_PROJECTED_POINTWISE_BODY_SCHEMA,
+            MIXED_SCHEMA,
+        }:
             if not isinstance(inputs, (list, tuple)) or len(inputs) != len(types) - 2:
                 return False
             if any(
@@ -505,6 +534,20 @@ def _math_record_valid(item: object) -> bool:
     """Revalidate exact literal/intrinsic metadata and selected symbol duty."""
     if not isinstance(item, Mapping):
         return False
+    if item.get("schema") == MIXED_SCHEMA:
+        try:
+            validate_mixed_pattern(
+                {
+                    key: item[key]
+                    for key in ("operation", "shape", "ordered_types", "input_shapes", "input_maps", "literal_bits")
+                }
+            )
+            symbol = required_composite_math_symbol(item["schema"], item["operation"])
+            if symbol:
+                validate_source_linkage_contract(item["schema"], item["operation"], item.get("linkage_requirement"))
+            return item.get("lowering_intrinsic_obligations") is None
+        except (KeyError, TypeError, ValueError):
+            return False
     if item.get("schema") != STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA:
         return item.get("literal_bits") is None and item.get("lowering_intrinsic_obligations") is None
     try:

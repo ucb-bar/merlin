@@ -11,6 +11,9 @@ import json
 from collections.abc import Mapping
 
 from merlin.common.digest import is_sha256
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -220,6 +223,12 @@ def validate_host_capabilities(
                     or row["numerical_contract"].get("status") != "unreviewed"
                 ):
                     raise ValueError("f32 maximum source_body needs one exact typed placement-only selector")
+            elif isinstance(body, dict) and body.get("schema") == MIXED_SCHEMA:
+                validate_mixed(body)
+                if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
+                    raise ValueError("mixed math source requires its exact selected linkage contract")
+                if row.get("numerical_contract", {}).get("status") != "unreviewed":
+                    raise ValueError("mixed source-body routing declares no numerical qualification")
             else:
                 validate_static_pointwise_source_body(body)
         if "quantization_parameters" in row["signature"]:
@@ -479,6 +488,7 @@ def _screen_source_body(
     try:
         body = declaration["source_body"]
         recognizer = {
+            MIXED_SCHEMA: recognize_mixed,
             STATIC_BOOLEAN_SOURCE_BODY_SCHEMA: recognize_static_boolean_body,
             DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA: recognize_dynamic_boolean_cast_body,
             STATIC_F32_MATH_SOURCE_BODY_SCHEMA: recognize_static_f32_math_body,
