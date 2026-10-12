@@ -54,12 +54,19 @@ def prepare_arguments(
         manifest = yaml.safe_load(bundle_manifest.read_text(encoding="utf-8")) or {}
     except Exception as exc:
         raise ValueError(f"cannot read EL4 bundle manifest {bundle_manifest}: {exc}") from exc
+    from ..task_staging import arm_from_bundle_id
+
+    selected_arm = arm_from_bundle_id(selected)
     if (
         not isinstance(manifest, dict)
         or manifest.get("bundle_id") != selected
-        or manifest.get("arm") != "merlin_rtlchecks"
+        or selected_arm not in {"merlin_rtlchecks", "merlin_isa", "merlin_lean"}
+        or manifest.get("arm") != selected_arm
     ):
-        raise ValueError(f"{selected!r} is not a generated merlin_rtlchecks bundle")
+        raise ValueError(f"{selected!r} is not a generated RTL-informed bundle")
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    verify_tool_profile(manifest)
     arms = _option_values(argv, "--arm")
     if any(value != "merlin_assisted" for value in arms):
         raise ValueError("the EL4 RTL-checks wrapper requires --arm merlin_assisted")

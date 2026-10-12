@@ -921,6 +921,9 @@ def scaffold(
     selected_facts: Path | None = None,
     selected_contract: tuple[Path, str] | None = None,
     phase1_gates: dict | None = None,
+    optional_levels: tuple[str, ...] = (),
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1046,8 +1049,9 @@ def scaffold(
         }
     # Generate fresh declarations, not copies that might still point at the old corpus.
     from merlin.common.paths import python_source_dir
-    from merlin.targetgen.generate_bundles import materialize_bundles
+    from merlin.targetgen.generate_bundles import _ARMS, materialize_bundles
     from merlin.targetgen.sandbox.toolchain import ToolchainPaths
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2
 
     promoted = load_target_experiment(descriptor)
     toolchain = ToolchainPaths.from_checkout()
@@ -1070,6 +1074,10 @@ def scaffold(
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,
+            common_substrate=COMMON_SUBSTRATE_V2,
+            lean_toolchain_manifest=lean_toolchain_manifest,
+            host_index_bits=host_index_bits,
+            arms=tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels),
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     return inputs

@@ -3,6 +3,7 @@
 import time
 
 from . import component_workflow as controls
+from . import ordinary_impact_selection as IMPACT
 from . import ordinary_measurement_selection as SELECTION
 from . import ordinary_queue_calibration as CALIBRATION
 from .broker import BrokerAction
@@ -38,6 +39,13 @@ def actions():
             False,
         ),
         BrokerAction(
+            IMPACT.ACTION,
+            ("__host_corpus_search_pool__", IMPACT.ACTION),
+            ("revision_id",),
+            "Queue diagnostic RTL for changed original build products; unknown impact includes a member; no promotion",
+            False,
+        ),
+        BrokerAction(
             RESUME_ACTION,
             ("__host_corpus_search_pool__", RESUME_ACTION),
             ("revision_id",),
@@ -70,6 +78,8 @@ def execute(policy, action_name, rendered, timeout_s, started):
         answer = coordinator.resume_parent(rendered["revision_id"])
     elif action_name == CALIBRATION.ACTION:
         answer = CALIBRATION.install(coordinator, rendered["revision_ids"], timeout_s=timeout_s)
+    elif action_name == IMPACT.ACTION:
+        answer = IMPACT.submit(coordinator, rendered["revision_id"], timeout_s=timeout_s)
     elif action_name == SELECTION.ACTION:
         coordinator.admit_submission(timeout_s=timeout_s)
         members = SELECTION.parse_members(policy, rendered["members"])

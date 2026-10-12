@@ -243,7 +243,7 @@ def _arm_manifest(
             + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY]
             + deny
         )
-    elif arm == "merlin_rtlchecks":
+    elif arm in {"merlin_rtlchecks", "merlin_isa", "merlin_lean"}:
         deny = _VERIFY_DENY + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     elif arm == "merlin_verify":
         # EL4's deny block minus the verification seam: EL4-V is EL4 plus that one grant, so its
@@ -342,7 +342,11 @@ _ARMS = {
 # the xDSL arm and the run silently gets arm-3's tool set under the verify arm's name -- the exact
 # downgrade that resolver's own docstring was written to prevent. Move the entry into ``_ARMS`` and
 # widen the resolver in the same change.
-_OPT_IN_ARMS = {"merlin_verify": "merlin_assisted_verify"}
+_OPT_IN_ARMS = {
+    "merlin_verify": "merlin_assisted_verify",
+    "merlin_isa": "merlin_assisted_rtlchecks_isa",
+    "merlin_lean": "merlin_assisted_rtlchecks_isa_lean",
+}
 _ALL_ARMS = {**_ARMS, **_OPT_IN_ARMS}
 
 
@@ -425,6 +429,9 @@ def generate_bundles(
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
+    common_substrate: str | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
 ) -> dict[str, dict]:
     """The bundle manifests for ``te``, keyed by bundle_id. Target-agnostic: the same code emits them
     for any target from its descriptor + derived paths (no hand-authored YAML).
@@ -443,6 +450,8 @@ def generate_bundles(
     for a in wanted:
         if a not in _ALL_ARMS:
             raise KeyError(f"unknown arm {a!r}; known: {sorted(_ALL_ARMS)}")
+        if a in {"merlin_isa", "merlin_lean"} and common_substrate is None:
+            raise ValueError("EL5/EL6 require an explicitly versioned common compiler substrate")
     out = {}
     for arm in wanted:
         bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
@@ -450,6 +459,18 @@ def generate_bundles(
         out[bid]["host_inputs"].extend(
             {"path": path, "note": "operator-only frozen input; never an agent grant"} for path in host_inputs
         )
+        if common_substrate is not None:
+            from .tool_profile import attach_common_substrate
+
+            if python_source_root is None:
+                raise ValueError("common substrate requires the selected Python source root")
+            attach_common_substrate(
+                out[bid], version=common_substrate, python_source_root=python_source_root,
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
+            )
+        elif lean_toolchain_manifest is not None:
+            raise ValueError("selected Lean tooling requires the versioned common compiler substrate")
         if python_source_root is not None:
             _select_python_grants(out[bid], python_source_root)
         if llvm_toolchain_root is not None:
@@ -624,6 +645,10 @@ def _materialize_prompt_and_grants(
             allowed, manifest.get("tools") or (), python_source_root=python_source_root
         )
         prompt = render_prompt(te, cap, experiment, stem, granted_tools=granted)
+        if manifest.get("compiler_tool_profile") is not None:
+            from .tool_profile import tool_profile_prompt
+
+            prompt += tool_profile_prompt(manifest)
         if manifest.get("condition") == "kernel-library":
             library_alias = next(
                 (
@@ -648,7 +673,9 @@ not correctness-qualified implementations and must not be promoted without an in
         _w_if_absent("STARTER_PROMPT.md", prompt)
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
-    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}:
+    if manifest.get("arm") in {
+        "merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify", "merlin_isa", "merlin_lean"
+    }:
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 
@@ -664,6 +691,9 @@ def materialize_bundles(
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
+    common_substrate: str | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
 ) -> list[Path]:
     """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
     ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
@@ -719,6 +749,9 @@ def materialize_bundles(
             python_source_root=python_source_root,
             llvm_toolchain_root=llvm_toolchain_root,
             rtl_facts_root=rtl_facts_root,
+            common_substrate=common_substrate,
+            lean_toolchain_manifest=lean_toolchain_manifest,
+            host_index_bits=host_index_bits,
         )
         for bundle_id, manifest in bundles.items():
             bdir = dest / bundle_id
@@ -800,6 +833,17 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
+    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2
+
+    ap.add_argument(
+        "--common-substrate", choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2),
+        help="select versioned common transforms and strict covered-domain verification for a fresh release",
+    )
+    ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    ap.add_argument(
+        "--host-index-bits", type=int,
+        help="reviewed index width of the selected host ABI; unknown refuses common lowering",
+    )
     a = ap.parse_args(argv)
 
     if a.list_tools:
@@ -842,6 +886,9 @@ def _main(argv: list[str] | None = None) -> int:
         python_source_root=a.python_source_root,
         llvm_toolchain_root=a.llvm_toolchain_root,
         rtl_facts_root=a.rtl_facts_root,
+        common_substrate=a.common_substrate,
+        lean_toolchain_manifest=a.lean_toolchain_manifest,
+        host_index_bits=a.host_index_bits,
     )
     if product is not None:
         for path in written:

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
+from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
@@ -382,8 +383,9 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
         snapshot_support_surfaces(ws, manifest)
     hosts = _snapshot_host_inputs(ws, bundle, repo, manifest)
     _validate_host_locations(ws, [(path, destination) for path, destination, _ in hosts])
+    private_index = LexicalPathIndex.from_paths(private for _, private, _ in hosts)
     for _, destination, _ in grants:
-        if any(destination == private or private in destination.parents for _, private, _ in hosts):
+        if private_index.contains(destination):
             raise RuntimeError("allowed grant overlaps a host-only input")
     return manifest, grants
 
@@ -551,12 +553,12 @@ def snapshot_input_paths(ws: Path, bundle: dict, sources: list[Path], *, repo: P
     manifest = verify_bundle_snapshot(ws, bundle, repo=repo)
     require_snapshot_ownership(manifest)
     records = [*manifest["grants"], *manifest.get("host_records", [])]
-    destinations = [Path(record["destination"]) for record in records]
+    declarations = LexicalPathIndex.from_paths(Path(record["destination"]) for record in records)
     root = bundle_snapshot_root(ws)
     out = []
     for source in sources:
         source = source.absolute()
-        if ".." in source.parts or not any(source == path or path in source.parents for path in destinations):
+        if ".." in source.parts or not declarations.contains(source):
             raise RuntimeError("requested snapshot input was not declared in the frozen bundle")
         frozen = _snapshot_path(root, source, repo)
         if not frozen.exists():
@@ -696,12 +698,10 @@ def materialize_bundle_inputs(
 
     # Copy the union, not every overlapping spelling.  For example, a broad
     # contract grant plus its isa/layers children must produce one snapshot.
-    unique_sources = sorted({source.absolute() for _, source in inputs}, key=lambda p: (len(p.parts), str(p)))
-    roots: list[Path] = []
-    for source in unique_sources:
-        if any(parent == source or parent in source.parents for parent in roots):
-            continue
-        roots.append(source)
+    roots = minimal_roots(source for _, source in inputs)
+    private_index = LexicalPathIndex.from_paths(
+        chain((path for _, path in hosts), private_sources, (path for path, _ in private_validation))
+    )
 
     pending.mkdir(parents=True, mode=0o700)
     # One copy of each distinct byte-string, hard-linked here. A campaign's runs declare overlapping
@@ -719,16 +719,7 @@ def materialize_bundle_inputs(
             # A private descendant must never enter the globally shared CAS,
             # even transiently through a broad public parent. Keep that copied
             # root private; disjoint toolchain/public roots still deduplicate.
-            private_copy = any(
-                source == private.absolute()
-                or source in private.absolute().parents
-                or private.absolute() in source.parents
-                for private in [
-                    *(path for _, path in hosts),
-                    *private_sources,
-                    *(path for path, _ in private_validation),
-                ]
-            )
+            private_copy = private_index.overlaps(source)
             input_store = None if private_copy else store
             if source.is_dir():
                 content_store.place_tree(source, dst, input_store, observe=observe, preserve_permissions=private_copy)

@@ -13,7 +13,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 import yaml
@@ -49,10 +49,20 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
         for logical in (*spec.bundle_paths, *(str(getattr(te, attr)) for attr in spec.derived_paths)):
             candidates = {logical}
             prefix = "merlin/python/merlin/"
-            if logical.startswith(prefix):
+            selected_logical = logical
+            if (
+                bundle.get("compiler_tool_profile") is not None
+                and name == "verify_seam"
+                and logical == prefix + "verify/"
+            ):
+                # Fresh profiles retain the historical client as exact leaves;
+                # a directory grant would also expose optional proof authoring.
+                selected_logical = prefix + "verify/cli.py"
+                candidates = {selected_logical}
+            if selected_logical.startswith(prefix):
                 for source in sources:
-                    selected = str((source / logical[len(prefix) :]).resolve())
-                    candidates.add(selected + ("/" if logical.endswith("/") else ""))
+                    selected = str((source / selected_logical[len(prefix) :]).resolve())
+                    candidates.add(selected + ("/" if selected_logical.endswith("/") else ""))
             if name == "rtl_facts" and bundle.get("selected_rtl_facts_file"):
                 selected = Path(bundle["selected_rtl_facts_file"])
                 candidates.add(str(selected.parent) + "/")
@@ -127,9 +137,57 @@ def _asm_probe(context) -> str:
     return names[0]
 
 
-def _sandbox_probe(target: str, tools: tuple[str, ...], mnemonic: str) -> str:
+def _sandbox_probe(
+    target: str,
+    tools: tuple[str, ...],
+    mnemonic: str,
+    *,
+    common_substrate: bool = False,
+    common_profile_sha256: str | None = None,
+    common_modules: tuple[str, ...] | None = None,
+) -> str:
     has = set(tools)
     lines = ["import json, subprocess, sys"]
+    if common_substrate:
+        from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
+
+        lines += ["import importlib"]
+        modules = COMMON_PUBLIC_MODULES if common_modules is None else common_modules
+        lines += [f"importlib.import_module({module!r})" for module in modules]
+        source = """builtin.module {
+  func.func @readiness(%x: i8) -> i8 {
+    %zero = arith.constant 0 : i8
+    %result = arith.addi %x, %zero : i8
+    func.return %result : i8
+  }
+}"""
+        lines += [
+            "from pathlib import Path",
+            "import hashlib",
+            "from merlin.transforms.client import apply_transform",
+            f"source_ir = {source!r}",
+            "result = apply_transform(Path.cwd(), source_ir,",
+            "    {'normalize_shapes': False, 'simplify_integers': True, 'reuse_buffers': False}, wait_seconds=120)",
+            "assert result.get('status') == 'verified', result",
+            "assert result.get('source_sha256') == hashlib.sha256(source_ir.encode()).hexdigest(), result",
+            "assert result.get('transformed_ir') and result['transformed_ir'] != source_ir, result",
+            "assert result.get('receipts'), result",
+            "assert all(r.get('status') == 'verified' and r.get('method') == 'lean_kernel'",
+            "    and r.get('query_sha256') and r.get('toolchain_sha256') for r in result['receipts']), result",
+        ]
+        if common_profile_sha256 is not None:
+            lines += [f"assert result.get('compiler_tool_profile_sha256') == {common_profile_sha256!r}, result"]
+    if "isa_dialect_generation" in has:
+        lines += [
+            "from merlin.targetgen.isa_spec import resolve_isa",
+            "from merlin.targetgen.isa_dialect_gen import generate_package",
+            "assert callable(resolve_isa) and callable(generate_package)",
+        ]
+    if "lean_proof_authoring" in has:
+        lines += [
+            "from merlin.verify import lean_cli, lean_export, lean_checker",
+            "assert callable(lean_cli.main)",
+        ]
     if "xdsl_kit" in has:
         lines += [
             "from merlin.targetgen.evidence.store import Evidence",
@@ -209,7 +267,8 @@ def public_probe_session(
 
     from .feedback.lifecycle import stage_client
 
-    processes = []
+    processes, channels = [], []
+    private = ExitStack()
     selected_facts = BW.frozen_selected_rtl_facts(
         ws if facts_workspace is None else facts_workspace, bundle, repo=context.repo
     )
@@ -217,6 +276,7 @@ def public_probe_session(
     try:
         for spec in specs:
             channel = ws / spec.channel
+            channels.append(channel)
             channel.mkdir(exist_ok=True)
             if (channel / "STOP").exists():
                 raise ValueError("public tool probe refuses a stopped broker channel")
@@ -229,10 +289,45 @@ def public_probe_session(
                 argv += ["--rtl-facts", str(selected_facts)]
             with (channel / spec.log).open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
-        yield _sandbox_probe(context.target, tools, _asm_probe(context) if "isa_tools" in tools else "")
+        if bundle.get("compiler_tool_profile") is not None:
+            from .context import context_argv
+
+            authority = Path(
+                private.enter_context(tempfile.TemporaryDirectory(prefix="tooling-authority-", dir=ws.parent))
+            )
+            authority.chmod(0o700)
+            manifest = authority / "input_bundle_manifest.yaml"
+            manifest.write_text(yaml.safe_dump(bundle, sort_keys=False), encoding="utf-8")
+            manifest.chmod(0o600)
+            channel = ws / ".qa_channel"
+            channel.mkdir(exist_ok=True)
+            channels.append(channel)
+            if (channel / "STOP").exists():
+                raise ValueError("common tool probe refuses a stopped original broker channel")
+            argv = [
+                sys.executable,
+                "-m",
+                "merlin_experiments.phase1.brokers.selfcheck",
+                "--ws",
+                str(ws),
+                *context_argv(context),
+                "--compiler-bundle-manifest",
+                str(manifest),
+            ]
+            if selected_facts is not None:
+                argv += ["--rtl-facts", str(selected_facts)]
+            with (channel / "broker.log").open("w", encoding="utf-8") as log:
+                processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
+        yield _sandbox_probe(
+            context.target,
+            tools,
+            _asm_probe(context) if "isa_tools" in tools else "",
+            common_substrate=bundle.get("compiler_tool_profile") is not None,
+            common_profile_sha256=(bundle.get("compiler_tool_profile") or {}).get("sha256"),
+            common_modules=tuple((bundle.get("compiler_tool_profile") or {}).get("common_public_modules", ())) or None,
+        )
     finally:
-        for spec in specs:
-            channel = ws / spec.channel
+        for channel in channels:
             if channel.is_dir():
                 (channel / "STOP").write_text("stop", encoding="utf-8")
         for process in processes:
@@ -241,6 +336,7 @@ def public_probe_session(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        private.close()
 
 
 def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> dict:
@@ -275,8 +371,10 @@ def assess(
     """Return a fail-closed, selected-bundle readiness verdict; no paid agent starts."""
     selected_arm = bundle.get("arm")
     selected_assisted = set(tools) - {"cpp_oot_generators"}
-    if (selected_arm in {"raw_baseline", "cpp_merlininfra"} and not selected_assisted) or (
-        selected_arm is None and not str(bundle.get("bundle_id", "")).startswith("merlin_assisted")
+    profile = bundle.get("compiler_tool_profile")
+    if profile is None and (
+        (selected_arm in {"raw_baseline", "cpp_merlininfra"} and not selected_assisted)
+        or (selected_arm is None and not str(bundle.get("bundle_id", "")).startswith("merlin_assisted"))
     ):
         return {"status": "skipped", "reason": f"{selected_arm} has no assisted authoring contract", "checks": []}
     checks = []
@@ -284,7 +382,7 @@ def assess(
         if selected_arm not in TR.ARM_TOOLS:
             raise RuntimeError(f"unrecognized assisted arm {selected_arm!r}")
         selected = tuple(dict.fromkeys(tools))
-        if not selected:
+        if not selected and profile is None:
             raise RuntimeError("assisted bundle resolved no tools")
         unknown = set(selected) - set(TR.known_tools())
         if unknown:
@@ -306,6 +404,27 @@ def assess(
             )
         )
         checks += _grant_checks(te, bundle, selected)
+        if profile is not None:
+            from merlin.targetgen.tool_profile import verify_tool_profile
+
+            verified_profile = verify_tool_profile(bundle, tools=selected)
+            toolchain = verified_profile.get("lean_toolchain") or {}
+            checks.append(
+                _check(
+                    "automatic_formal_toolchain_selection",
+                    toolchain.get("selection") == "explicit_manifest"
+                    and toolchain.get("readiness") == "declared_unprobed",
+                    "explicit frozen toolchain declaration; successful proof checking remains required "
+                    "per covered transformation",
+                )
+            )
+            checks.append(
+                _check(
+                    "common_host_index_width_selection",
+                    type(verified_profile.get("host_index_bits")) is int,
+                    "reviewed host ABI index width; missing width refuses common transformation lowering",
+                )
+            )
         if "rtl_facts" in selected:
             checks += _frozen_rtl_checks(te, ws, bundle, public_root, repo=context.repo)
         if all(check["ok"] for check in checks):
@@ -331,7 +450,9 @@ def run(
     """Persist a private receipt bound to the selected manifest and frozen snapshot."""
     if snapshot is None:
         assisted = bundle.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}
-        assisted = assisted or bool(set(tools) - {"cpp_oot_generators"})
+        assisted = (
+            assisted or bool(set(tools) - {"cpp_oot_generators"}) or bundle.get("compiler_tool_profile") is not None
+        )
         result = {
             "status": "no_go" if assisted else "skipped",
             "reason": (
