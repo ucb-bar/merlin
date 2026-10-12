@@ -826,7 +826,13 @@ def derive(
         from . import public_boundaries as PB
 
         shared = yaml.safe_load(declaration.performance_template.read_bytes()) or {}
-        if performance_full is None or shared.get("public_boundary_factory") != PB.TEMPLATE:
+        expected_factory = PB.template_for(boundary_policy)
+        selected_factory = (
+            shared.get("public_boundary_factory")
+            if boundary_policy.get("schema") == PB.SCHEMA
+            else (shared.get("public_boundary_factories") or {}).get(boundary_policy.get("schema"))
+        )
+        if performance_full is None or selected_factory != expected_factory:
             raise ValueError(
                 "joint boundaries require complete public sources and the selected normal template factory"
             )
@@ -841,11 +847,13 @@ def derive(
                 for r in [*entry["public_boundary"]["program"]["inputs"], *entry["public_boundary"]["program"]["nodes"]]
             }
             for node in entry["public_boundary"]["program"]["nodes"]:
-                if node["target"] in PB.S.CONTRACTIONS:
+                if node["target"] in PB.S.contractions(entry["public_boundary"]["program"]):
                     lhs, rhs = (values[a["value"]]["shape"] for a in node["args"][:2])
                     if (
                         layer_guard.gemm(
-                            prod(lhs[:-1]), lhs[-1], rhs[0] if node["target"] == "aten.linear.default" else rhs[1]
+                            prod(lhs[:-1]) if node["target"] == "aten.linear.default" else lhs[-2],
+                            lhs[-1],
+                            rhs[0] if node["target"] == "aten.linear.default" else rhs[-1],
                         )
                         is not None
                     ):

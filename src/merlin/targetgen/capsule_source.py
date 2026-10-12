@@ -43,7 +43,7 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import capture_cache, component_sources
 from merlin.targetgen.golden_store import write_golden
 
-from .capsule_capture_spec import _capture_spec, _entry_seed
+from .capsule_capture_spec import _capture_spec
 
 _MODEL_CAPTURE_ABI_VERSION = 6
 
@@ -1402,7 +1402,7 @@ def _tol(binding) -> tuple[float, float]:
     return atol, rtol
 
 
-def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding) -> dict:
+def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding, *, output_names=None) -> dict:
     """Grade in the captured result's element type, not the target's operand type.
 
     The capture worker serializes even integer tensors through float64 JSON. An
@@ -1413,6 +1413,17 @@ def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, bi
     if len(output_abi) != len(golden_values):
         raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
     dtypes = {str(result.get("dtype") or "") for result in output_abi}
+    if len(dtypes) != 1 and output_names is not None:
+        if len(output_names) != len(output_abi) or len(set(output_names)) != len(output_names):
+            raise M2MUnavailable("typed model output numerical policy needs every unique original result")
+        return {
+            "schema": "merlin.numeric_policy.per_output.v1",
+            "compare": "per_output",
+            "outputs": {
+                name: _model_output_numeric_policy([abi], [value], binding)
+                for name, abi, value in zip(output_names, output_abi, golden_values, strict=True)
+            },
+        }
     if len(dtypes) != 1:
         raise M2MUnavailable(
             f"model results have different output dtypes {sorted(dtypes)}; one numeric policy cannot describe them"
@@ -3134,22 +3145,11 @@ def input_provenance_record(
 
 
 def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, list[str]]:
-    """What a whole-model capstone OWES the accelerator: its semantic family and instruction classes.
-
-    Both DERIVED, and from two independent places: the family comes from the MODEL's own captured linalg
-    (which ops it actually contains), the classes from THIS TARGET's role census. Neither is authored, so
-    adding a target or swapping the model changes the demand without editing anything here.
-
-    WHY IT EXISTS. A model capsule shipped ``instruction_classes: []`` with ``must_accelerate: false``,
-    which together mean a submission that runs the entire network on the CPU and returns the right numbers
-    PASSES the capstone. That is precisely the vacuity that was removed from the op capsules and never
-    from the thing the whole suite builds toward -- and the capstone is the one result anybody quotes.
-
-    Returns ``(family, classes)``. FAIL CLOSED at every step: a model whose ops the vocabulary cannot name,
-    a target that declares no matching capability, or a taxonomy with no role census all yield
-    ``(None, [])``, and the caller must then leave ``must_accelerate`` off rather than assert a demand it
-    could not ground. An ungrounded demand fails a conformant submission, which is the one direction
-    running the capsule cannot detect.
+    """Derive accelerator family/classes from original source and target roles.
+    Unsupported source families, absent capability or missing role census yield
+    ``(None, [])``. The caller must preserve that zero *mandatory* device demand
+    instead of inventing a hardware obligation. Public host programs retain
+    complete source/numerical checks and optional legal accelerator lowering.
     """
     from merlin.targetgen import eligibility as _el
     from merlin.targetgen import semantic_families as _sf
@@ -3603,12 +3603,15 @@ def write_model_capsule(
     if not output_abi:
         raise M2MUnavailable("model capture has no output_abi; refusing to guess result cardinality")
     golden_values = list(art.golden) if len(output_abi) > 1 else [art.golden]
-    numeric_policy = _model_output_numeric_policy(output_abi, golden_values, binding)
     out_names = [str(x) for x in (entry.get("outs") or [])]
     if not out_names:
         out_names = [str(entry.get("out", "Y0"))] if len(output_abi) == 1 else [f"Y{i}" for i in range(len(output_abi))]
     if len(out_names) != len(output_abi) or len(set(out_names)) != len(out_names):
         raise M2MUnavailable(f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
+    typed_public = (entry.get("public_boundary") or {}).get("schema") == "merlin.phase0.public_joint_boundaries.v2"
+    numeric_policy = _model_output_numeric_policy(
+        output_abi, golden_values, binding, output_names=out_names if typed_public else None
+    )
     out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
 

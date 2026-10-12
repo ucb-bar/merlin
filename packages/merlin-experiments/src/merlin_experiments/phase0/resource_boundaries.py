@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from math import prod
 
 KIND = "resident_allocation_boundary"
 
@@ -43,11 +44,14 @@ def validate(spec: dict, *, owner: str) -> None:
         "tail_offsets",
         "allocations",
         "include_exact_capacity",
+        "logical_payload_only",
     }
     if set(spec) - allowed:
         raise ValueError(f"{owner}: unknown boundary fields {sorted(set(spec) - allowed)}")
     if "include_exact_capacity" in spec and type(spec["include_exact_capacity"]) is not bool:
         raise ValueError(f"{owner}: include_exact_capacity must be Boolean")
+    if "logical_payload_only" in spec and type(spec["logical_payload_only"]) is not bool:
+        raise ValueError(f"{owner}: logical_payload_only must be Boolean")
     if not isinstance(spec.get("store"), str) or not spec["store"]:
         raise ValueError(f"{owner}: boundary needs one explicit physical store name")
     _path(spec.get("capacity_fact"), owner)
@@ -71,8 +75,21 @@ def validate(spec: dict, *, owner: str) -> None:
         raise ValueError(f"{owner}: declare every simultaneous allocation in the selected store")
     names = []
     for row in allocations:
-        if not isinstance(row, dict) or set(row) - {"name", "shape", "dtype", "copies", "round_up"}:
+        if not isinstance(row, dict) or set(row) - {
+            "name",
+            "shape",
+            "dtype",
+            "copies",
+            "round_up",
+            "logical_element_bits",
+        }:
             raise ValueError(f"{owner}: allocation must declare name, shape, dtype and optional copies/round_up")
+        if "logical_element_bits" in row and (
+            spec.get("logical_payload_only") is not True
+            or type(row["logical_element_bits"]) is not int
+            or not 1 <= row["logical_element_bits"] <= 64
+        ):
+            raise ValueError(f"{owner}: logical element bits require an explicit logical-only payload boundary")
         if not isinstance(row.get("name"), str) or not row["name"]:
             raise ValueError(f"{owner}: allocation needs a name")
         names.append(row["name"])
@@ -81,7 +98,7 @@ def validate(spec: dict, *, owner: str) -> None:
         shape = row.get("shape")
         if (
             not isinstance(shape, list)
-            or not shape
+            or (not shape and spec.get("logical_payload_only") is not True)
             or any(not ((type(x) is int and x > 0) or (isinstance(x, str) and x)) for x in shape)
         ):
             raise ValueError(f"{owner}: allocation shape must have positive extent tokens/axis names")
@@ -200,7 +217,14 @@ def derive(spec, *, owner, axis, target, tile, dtype, fixed, evidence, resolve_e
                 for i, value in enumerate(actual)
             ]
             selected_dtype = dtype if row["dtype"] == "operand" else row["dtype"]
-            rows = store.working_set_rows(shape, selected_dtype)
+            if spec.get("logical_payload_only") is True:
+                bits = row.get("logical_element_bits")
+                if type(bits) is not int:
+                    raise BoundaryUnavailable("logical payload boundary lacks every source element width", record)
+                payload = prod(shape) * ((bits + 7) // 8)
+                rows = (payload + store.row_bytes - 1) // store.row_bytes
+            else:
+                rows = store.working_set_rows(shape, selected_dtype)
             if selected_dtype is None or rows is None:
                 raise BoundaryUnavailable(f"allocation {row['name']!r} has an unmeasurable element/row width", record)
             copies = row.get("copies", 1)
