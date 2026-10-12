@@ -2,6 +2,18 @@
 
 ## Purpose
 
+`host_optimization_request` separates original semantic/runtime permissions
+from bounded, source-bound author choices. The ordinary target object producer
+selects the exact original executor context. Logical graph choices run only
+on admitted host IR; foreign/device operations and finished LLVM refuse them.
+Structured hoist/sink choices reuse the fixed upstream registry under original
+index/layout and storage premises. LLVM arena reuse requires original sequential,
+successful-allocation and non-reentrant admission. Original input, selected IR,
+translation product, later LLVM and final object retain separate byte identities.
+Reports establish conditional structural checks and product custody, never Lean
+proof, numerical, physical/runtime or timing authority. Unselected calls retain
+their original lowering choices.
+
 `graph_optimizations` is an explicit source-pinned logical-host route selected
 before ordinary preprocessing. Its first admitted domain is static pointwise
 tensors and permutations. Independent scalar/coordinate/expanded-source checks

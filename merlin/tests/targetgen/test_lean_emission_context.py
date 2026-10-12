@@ -1,0 +1,335 @@
+"""Ordinary source/object custody controls, with native/proof edges stubbed.
+
+The original archive/snapshot/import admission is real. The host class checker
+returns unsupported or a deliberate refusal; these tests establish no math,
+numerical, machine-code or hardware qualification.
+"""
+
+from __future__ import annotations
+
+import json
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+from pathlib import Path
+
+import pytest
+import yaml
+from test_lean_emission_chain import FINAL, _Executor
+from test_lean_emission_chain import emission as emission  # noqa: F401
+
+from merlin.common.paths import repo_root
+from merlin.targetgen import capsule_common as CC
+from merlin.targetgen import package_runtime as P
+from merlin.targetgen.common_transforms import CommonTransformService
+from merlin.targetgen.contract import compile as C
+from merlin.targetgen.sandbox import bwrap
+from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V3, attach_common_substrate
+from merlin.verify import lean_emission_chain as E
+from merlin.verify import lean_emission_context as X
+
+_ORIGINAL_VERIFY = CommonTransformService._verify
+
+
+def _owner(emission, monkeypatch, version=COMMON_SUBSTRATE_V3):
+    monkeypatch.setattr(CommonTransformService, "_verify", _ORIGINAL_VERIFY)
+    repo = repo_root()
+    workspace = emission["tmp"] / "workspace"
+    workspace.mkdir()
+    bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
+    attach_common_substrate(bundle, version=version, python_source_root=repo / "src", host_index_bits=64)
+    for row in bundle["allowed"]:
+        if row["path"].startswith("merlin/python/"):
+            row["path"] = str(repo / "src" / row["path"].removeprefix("merlin/python/"))
+    archive = emission["tmp"] / "frozen.yaml"
+    archive.write_text(yaml.safe_dump(bundle))
+    bwrap.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    return CommonTransformService(workspace=workspace, bundle_manifest=archive, repo=repo)
+
+
+@pytest.fixture
+def ordinary(emission, monkeypatch):
+    from merlin.llvmlower import codegen, pipeline
+    from merlin.targetgen import host_optimization_admission
+
+    owner = _owner(emission, monkeypatch)
+
+    # The actual original ABI selector is independently covered by its own
+    # frozen-contract controls; this fixture supplies only the native stub ABI.
+    def original_entry(admission, target, build_service):
+        assert admission.workspace == owner.workspace and build_service is None and target is None
+        admission.verify()
+        return "fixture_entry", None
+
+    monkeypatch.setattr(host_optimization_admission, "_original_entry", original_entry)
+    monkeypatch.setattr(pipeline, "lower_to_llvm_ir", lambda *_a, **_k: "define void @fixture_entry() { ret void }\n")
+
+    def object_stub(source, output, *_args, **_kwargs):
+        output.write_bytes(b"native boundary stub; not executable")
+        return output
+
+    monkeypatch.setattr(codegen, "compile_ll", object_stub)
+    return emission, owner
+
+
+def _scope(owner):
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
+
+    return original_compiler_imports(owner)
+
+
+def _lower(fixture, name="generated", **options):
+    return CC.lower_interface(
+        fixture["package"],
+        fixture["original_source"],
+        fixture["tmp"] / name,
+        contract=fixture["contract"],
+        timeout=30,
+        **options,
+    )
+
+
+def _reports(root):
+    return [json.loads(path.read_text()) for path in sorted(root.rglob("emission_proof_chain.json"))]
+
+
+def test_ordinary_capsule_and_whole_program_route_bind_actual_object(ordinary):
+    fixture, owner = ordinary
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        cb, artifact = _lower(fixture)
+        assert cb["kernel_abi"]["kind"] == "whole_program"
+        assert artifact == FINAL
+        assert len(X.active_emission_checks().records) == 1
+        obj = C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+        assert obj.is_file()
+        assert X.active_emission_checks().records == {}
+    reports = _reports(fixture["tmp"] / "build")
+    assert len(reports) == 1
+    report = reports[0]
+    assert report["status"] == "partial"
+    assert report["emitted_artifact"]["sha256"] == report["actual_consumer_source"]["sha256"]
+    assert report["numerics"] == report["machine_semantics"] == "not_established"
+    assert report["object_product"]["path"] == str(obj)
+    assert len(fixture["calls"]) == 1
+
+
+def test_source_memo_cannot_replay_a_fresh_original_check(ordinary):
+    fixture, owner = ordinary
+    memo = {}
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _lower(fixture, "one", memo=memo)
+        _lower(fixture, "two", memo=memo)
+        assert len(fixture["calls"]) == 0  # No actual ABI consumer, no formal credit.
+        assert memo == {}
+        assert len(X.active_emission_checks().records) == 2
+    assert X.active_emission_checks() is None
+
+
+@pytest.mark.parametrize("status", ["refuted", "unknown", "unavailable"])
+def test_covered_failed_edge_refuses_ordinary_compilation(ordinary, monkeypatch, status):
+    fixture, owner = ordinary
+    monkeypatch.setattr(CommonTransformService, "check", lambda *_a, **_k: {"status": status})
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        with pytest.raises(ValueError, match="fresh original live"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+        assert X.requires_fresh_object(artifact)
+        assert len(X.active_emission_checks().records) == 1
+        with pytest.raises(ValueError, match="incomplete or already claimed"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "retry")
+    assert not _reports(fixture["tmp"] / "build")
+    assert not (fixture["tmp"] / "build/kernel.o").exists()
+    assert not (fixture["tmp"] / "retry/kernel.o").exists()
+
+
+def test_wrong_final_trace_cannot_attest_another_emitted_artifact(ordinary):
+    fixture, owner = ordinary
+    trace = fixture["trace"]
+    trace["checkpoints"][-1]["ir"] = FINAL + "\n"
+    (fixture["package"].directory / "trace.json").write_text(json.dumps(trace))
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        with pytest.raises(ValueError, match="last checkpoint"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+
+
+def test_candidate_helper_entry_cannot_replace_original_dispatch_entry(ordinary):
+    fixture, owner = ordinary
+    artifact = FINAL + "\n"
+    artifact = artifact.replace("} }", "} llvm.func @helper() { llvm.return } }")
+    (fixture["package"].directory / "emitted.mlir").write_text(artifact)
+    fixture["trace"]["checkpoints"][-1] = {"ir": artifact, "entry": "helper"}
+    (fixture["package"].directory / "trace.json").write_text(json.dumps(fixture["trace"]))
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, actual = _lower(fixture)
+        with pytest.raises(ValueError, match="last checkpoint"):
+            C.llvm_mlir_to_object(actual, fixture["tmp"] / "build")
+
+
+def test_absent_trace_remains_independent_not_formally_qualified(ordinary):
+    fixture, owner = ordinary
+    fixture["package"].manifest["commands"].pop("emit_transformation_trace")
+    memo = {}
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture, memo=memo)
+        _lower(fixture, "repeated", memo=memo)
+        assert X.active_emission_checks().records == {}
+        assert len(memo) == 1 and not X.requires_fresh_object(artifact)
+        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+    assert _reports(fixture["tmp"] / "generated")[0]["status"] == "not_declared"
+    assert _reports(fixture["tmp"] / "build")[0]["status"] == "not_matched"
+    assert fixture["calls"] == []
+
+
+def test_saved_summary_or_second_consumer_cannot_restore_completion(ordinary):
+    fixture, owner = ordinary
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "one")
+        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "two")
+    assert _reports(fixture["tmp"] / "one")[0]["status"] == "partial"
+    assert _reports(fixture["tmp"] / "two")[0]["status"] == "not_matched"
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "three")
+    assert _reports(fixture["tmp"] / "three")[0]["status"] == "not_matched"
+
+
+def test_expired_copied_context_cannot_reuse_original_custody(ordinary):
+    fixture, owner = ordinary
+    original_live = set(E._LIVE)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _lower(fixture)
+        copied = copy_context()
+        scope = X.active_emission_checks()
+        assert scope.records
+    assert not scope.live and not scope.records
+    assert set(E._LIVE) == original_live
+    with pytest.raises(ValueError, match="current original host|host-issued"):
+        copied.run(X.active_emission_checks)
+
+
+def test_concurrent_same_byte_consumers_cannot_choose_another_source_obligation(ordinary):
+    fixture, owner = ordinary
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture, "source-one")
+        _lower(fixture, "source-two")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            jobs = [
+                pool.submit(copy_context().run, C.llvm_mlir_to_object, artifact, fixture["tmp"] / name)
+                for name in ("build-one", "build-two")
+            ]
+            for job in jobs:
+                with pytest.raises(ValueError, match="ambiguous original emission ownership"):
+                    job.result()
+        assert len(X.active_emission_checks().records) == 2
+        assert fixture["calls"] == []
+    for name in ("build-one", "build-two"):
+        assert not (fixture["tmp"] / name / "kernel.o").exists()
+        assert not _reports(fixture["tmp"] / name)
+
+
+def test_same_byte_ambiguity_refuses_before_a_covered_failed_source_is_skipped(ordinary, monkeypatch):
+    fixture, owner = ordinary
+    monkeypatch.setattr(CommonTransformService, "check", lambda *_a, **_k: {"status": "refuted"})
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture, "source-one")
+        # A distinct original input can yield the same emitted product. Its
+        # source obligation cannot be selected using only that product hash.
+        fixture["original_source"].write_text(fixture["original_source"].read_text() + "\n")
+        _lower(fixture, "source-two")
+        assert X.requires_fresh_object(artifact)
+        with pytest.raises(ValueError, match="ambiguous original emission ownership"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+        assert len(X.active_emission_checks().records) == 2
+        assert fixture["calls"] == []
+    assert not (fixture["tmp"] / "build/kernel.o").exists()
+
+
+def test_native_object_failure_keeps_the_actual_emission_claim_pending(ordinary, monkeypatch):
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+
+    def failed_native(*_args, **_kwargs):
+        raise ValueError("native object failed")
+
+    monkeypatch.setattr(codegen, "compile_ll", failed_native)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        with pytest.raises(ValueError, match="native object failed"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+        assert X.requires_fresh_object(artifact)
+        assert len(X.active_emission_checks().records) == 1
+        with pytest.raises(ValueError, match="incomplete or already claimed"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "retry")
+    assert not (fixture["tmp"] / "retry/kernel.o").exists()
+
+
+def test_inventory_overflow_cleans_failed_and_remaining_live_records(ordinary, monkeypatch):
+    fixture, owner = ordinary
+    monkeypatch.setattr(X, "_MAX_PENDING", 1)
+    original_live = set(E._LIVE)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _lower(fixture, "one")
+        with pytest.raises(ValueError, match="bounded live"):
+            _lower(fixture, "two")
+        assert len(X.active_emission_checks().records) == 1
+    assert set(E._LIVE) == original_live
+
+
+def test_existing_explicit_compile_only_chain_is_checked_once(ordinary, monkeypatch):
+    from test_lean_emission_chain import test_connected_compile_source_only_and_reopen_same_host_selection
+
+    fixture, owner = ordinary
+    fixture["selection"] = E.EmissionChainSelection(owner)
+    with _scope(owner):
+        test_connected_compile_source_only_and_reopen_same_host_selection(fixture, monkeypatch)
+        assert not X.active_emission_checks().records
+    assert len(fixture["calls"]) == 1
+
+
+def test_original_scope_never_replays_legacy_elf_cache(ordinary, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.targetgen import build_cache
+
+    fixture, owner = ordinary
+    monkeypatch.setattr(base, "get_backend", lambda target: object())
+
+    def legacy_replay(*args, **kwargs):
+        pytest.fail("legacy ELF cache cannot issue fresh original emission/object custody")
+
+    monkeypatch.setattr(build_cache, "reuse", legacy_replay)
+    calls = []
+    monkeypatch.setattr(
+        C, "llvm_mlir_to_object", lambda source, work, **options: calls.append("object") or work / "kernel.o"
+    )
+    monkeypatch.setattr(
+        C, "link_elf", lambda buffer, obj, work, **options: calls.append("link") or work / "program.elf"
+    )
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        assert X.requires_fresh_object(artifact)
+        elf = C.compile_lowered_to_elf({}, artifact, fixture["tmp"] / "build", target="transport_fixture", inputs={})
+    assert elf.name == "program.elf" and calls == ["object", "link"]
+
+
+def test_no_owner_or_different_owner_cannot_select_checks(ordinary):
+    fixture, owner = ordinary
+    with pytest.raises(ValueError, match="live original API"):
+        with X.original_emission_checks(owner):
+            pass
+    with owner.compiler_imports():
+        owner.repo = Path("/unselected-repository")
+        with pytest.raises(ValueError, match="different original owner"):
+            with X.original_emission_checks(owner):
+                pass
+
+
+def test_historical_versioned_profile_keeps_lowering_memo_and_no_chain(emission, monkeypatch):
+    owner = _owner(emission, monkeypatch, COMMON_SUBSTRATE_V1)
+    memo = {}
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _lower(emission, "one", memo=memo)
+        _lower(emission, "two", memo=memo)
+        assert X.active_emission_checks() is None
+    assert len(memo) == 1 and emission["calls"] == []
+    assert not _reports(emission["tmp"])

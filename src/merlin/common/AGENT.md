@@ -121,3 +121,10 @@ protected parent directories, resource locking, complete input membership and
 actual consumer correspondence. A file snapshot is never a compiler, hardware,
 runtime, numerical or timing qualification. Failed attempts are retained by the
 caller and return no snapshot selection; mode bits alone do not prove immutability.
+
+`bundle_snapshot` owns generic original-input custody: V4 archived declarations,
+canonical frozen source mappings, payload digest/counts and separately bound
+marker bytes. It has no experiment dependency and does not decide candidate
+visibility. The experiment freezer delegates payload hashing; its independent
+mount/answer checks remain mandatory. A verified input is not an execution or
+semantic receipt, and host-only inputs do not become public grants.

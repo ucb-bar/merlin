@@ -201,10 +201,15 @@ Keep its staged target contract and facts environment selections consistent
 with `P1_DESCRIPTOR`. The CLI rechecks configuration identities when installing
 the queue, before compiler authoring.
 
-For bounded final functional grading, leave `MERLIN_MODEL_BUDGET_S` unset.
-The original inline whole-model grader carries the live package and resource
-owners through its worker threads. The exec-based model budget child cannot
-carry those owners and is refused in this bounded final guard.
+The inline whole-model grader is selected when `MERLIN_MODEL_BUDGET_S` is
+unset. A positive budget uses the original sealed child transport when the
+exact original compiler-profile executor is active: it reconstructs the frozen
+profile, package sandbox and any selected kernel resource boundary in the
+child, then rechecks them after completion. Foreign or incomplete owners refuse;
+an alternative component executor is not reconstructed by this route. See
+[ordinary compiler execution](../design/public_compile_only_feedback.md#ordinary-compiler-execution-with-the-common-profile)
+for the supported scope. The budget changes process supervision, not numerical
+or certificate requirements.
 
 ## Iteration and final selection
 

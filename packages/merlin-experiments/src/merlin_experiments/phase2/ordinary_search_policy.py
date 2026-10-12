@@ -33,8 +33,10 @@ from merlin.targetgen import public_program_timing as PUBLIC_PROGRAM
 from merlin.targetgen.contract import artifact_retesting as AR
 from merlin.targetgen.contract import compile as NATIVE_BUILD
 from merlin.targetgen.target_experiment import TargetExperiment
+from merlin_experiments.phase1.brokers import compiler_call_channel as PROFILE_CHANNEL
 from merlin_experiments.phase1.feedback import candidate_census as CANDIDATE_CENSUS
 from merlin_experiments.phase1.feedback import candidate_observations as CANDIDATE_OBSERVATIONS
+from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE_RUNTIME
 
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
@@ -46,6 +48,7 @@ from . import gsim_gate as GATE
 from . import measurement_support as MS
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
+from . import ordinary_compile_only as COMPILE_ONLY
 from . import ordinary_fast_feedback as FAST
 from . import ordinary_impact_selection as IMPACT
 from . import ordinary_measurement_selection as MEMBER_SELECTION
@@ -146,12 +149,21 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self.native_runtime_view, self.artifact_retest_index = None, None
         self.build_runtime_view, self.build_product_index = None, None
         self._functions = (
+            (PROFILE_CHANNEL, "compiler_call_transport", PROFILE_CHANNEL.compiler_call_transport),
+            (PROFILE_CHANNEL, "_dispatch", PROFILE_CHANNEL._dispatch),
+            (PROFILE_CHANNEL, "_serve", PROFILE_CHANNEL._serve),
+            (PROFILE_RUNTIME, "original_compiler_imports", PROFILE_RUNTIME.original_compiler_imports),
+            (PROFILE_RUNTIME, "compiler_profile_binding", PROFILE_RUNTIME.compiler_profile_binding),
             (DF, "development_executor", DF.development_executor),
             (DF.DevelopmentGsimFeedback, "evaluate", DF.DevelopmentGsimFeedback.evaluate),
             (PME, "run_execution", PME.run_execution),
             (AR, "observe_public_artifact_retests", AR.observe_public_artifact_retests),
             (FAST, "evaluate_retained", FAST.evaluate_retained),
             (FAST, "compiled_observation", FAST.compiled_observation),
+            (COMPILE_ONLY, "evaluate_retained", COMPILE_ONLY.evaluate_retained),
+            (COMPILE_ONLY.ORIGINAL, "observe", COMPILE_ONLY.ORIGINAL.observe),
+            (COMPILE_ONLY.ORIGINAL.SOURCES, "derive", COMPILE_ONLY.ORIGINAL.SOURCES.derive),
+            (COMPILE_ONLY.ORIGINAL.CO, "compile_source_only", COMPILE_ONLY.ORIGINAL.CO.compile_source_only),
             (FAST.CR, "run_capsule", FAST.CR.run_capsule),
             (FAST.CR, "simulator_adapter", FAST.CR.simulator_adapter),
             (BUILD, "executing", BUILD.executing),
@@ -178,6 +190,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (COMPLETE_TIMING, "from_contract", COMPLETE_TIMING.from_contract),
         )
         owners = (
+            PROFILE_RUNTIME,
+            PROFILE_CHANNEL,
             FI,
             PC,
             CORPUS,
@@ -189,6 +203,10 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             QSA,
             AR,
             FAST,
+            COMPILE_ONLY,
+            COMPILE_ONLY.ORIGINAL,
+            COMPILE_ONLY.ORIGINAL.SOURCES,
+            COMPILE_ONLY.ORIGINAL.CO,
             CAL,
             BUILD,
             PROV,
@@ -276,6 +294,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             "workflow_id": self.workflow_id,
             "scope": "frozen_development_corpus_simulator_cycles",
             "functional_origin": _data(functional),
+            "compiler_tool_profile": PROFILE_RUNTIME.compiler_profile_binding(
+                feedback._compiler_profile_service, run_dir=functional.run_dir
+            ),
             "functional_files": [
                 {"path": str(functional.run_dir / name), "sha256": sha256_file(functional.run_dir / name)}
                 for name in _FUNCTIONAL_FILES
@@ -489,6 +510,11 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             raise StageGateError("ordinary queued feedback baseline differs from its Phase 1 functional fork")
         if DF.sweep_workers() != workers:
             raise StageGateError("ordinary retained feedback differs from its explicit member worker grant")
+        if kind == COMPILE_ONLY.KIND:
+            if selected_members:
+                raise StageGateError("compile-only uses its original public source roster")
+            with BUILD.executing(self, work_root, reuse_products=reuse_artifacts):
+                return COMPILE_ONLY.evaluate_retained(self, revision, work_root=work_root, timeout_s=timeout_s)
         if kind == FAST.KIND:
             with BUILD.executing(self, work_root, reuse_products=reuse_artifacts):
                 return FAST.evaluate_retained(

@@ -1,5 +1,12 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1
 
+`component_package_execution` explicitly composes its qualified transport/view/
+runtime with a live original compiler-profile owner. Reopen exact compiler source
+before and after calls; preserve original public imports and final answer masks.
+Use the same original common-call channel, one isolated canonical output workspace
+and a separately readonly input. Foreign execution owners cannot be replaced.
+Composition supplies no new proof, numerical or physical runtime authority.
+
 `conformance.py` owns transcript-derived treatment conformance and replay, not core
 capsule requirement derivation or numerical grading. Preserve historical tool-set
 applicability, persisted-result evidence, vendored-byte attribution and fail-closed

@@ -231,3 +231,13 @@ proofs. The fresh author view and qualified grader must use that same live
 selection. An absent pair preserves the original import restrictions. Approved
 direct imports and source-byte attribution do not establish semantic generality,
 transitive dependency isolation, runtime correctness, effects or hardware timing.
+
+`llvm_mlir_to_object` optionally consumes an exact original
+`HostOptimizationSelection`, normally from its scoped execution owner. A public
+request selects bounded choices only; it cannot supply semantics, ABI, runtime,
+callbacks or arbitrary pass pipelines. The ordinary route retains original
+emitted MLIR and binds selected host stages to the actual object, including an
+independently measured stack repair. This supplies no automatic proof authority.
+Stack preflight preserves raw compiler `.su` bytes for invocation custody and
+writes a separate canonical measurement view. Its receipt binds both byte sets;
+measured stack size remains a structural build gate, never execution evidence.

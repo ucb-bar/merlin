@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/verify/cli.py
   - src/merlin/verify/lean_checker.py
   - src/merlin/verify/lean_export.py
+  - src/merlin/verify/lean_sat_runtime.py
   - src/merlin/verify/lean/Merlin/Foundation.lean
   - src/merlin/transforms/pipeline.py
   - src/merlin/perf/whole_model_chunks.py
@@ -54,6 +55,15 @@ or target instructions. Strict coverage is fixed by the frozen host profile;
 unknown covered checks refuse acceptance. Independent numerical and hardware
 checks still apply. The [roadmap](verified_compiler_roadmap.md) lists the
 remaining models and pass groups.
+
+Lean receipts distinguish `lean_kernel` from `lean_native_reflection`. Generated
+bit-vector obligations using `bv_decide` require the original toolchain's pinned
+SAT executable and explicit `allow_native_reflection` permission. Lean checks the
+solver's LRAT certificate using native reflection; that mode trusts the selected
+Lean compiler and native checker and admits only its two additional reflection
+axioms. It is not kernel-only assurance. Missing selection, stale bytes or
+unapproved axioms refuse; a candidate cannot choose this mode in a request.
+Neither method proves that a final object implements a checked IR pair.
 
 | Boundary | What must be preserved | Verification approach | Status in Merlin |
 | --- | --- | --- | --- |
